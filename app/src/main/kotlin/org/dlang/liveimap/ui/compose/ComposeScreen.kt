@@ -1,11 +1,705 @@
 package org.dlang.liveimap.ui.compose
 
+import android.content.Context
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.ui.contacts.AddressBookPicker
 
-@Suppress("UNUSED_PARAMETER")
+private enum class AddressTarget {
+    To,
+    Cc,
+    Bcc,
+    Bounce,
+}
+
+private class ForwardRow(
+    val key: String,
+    val section: String,
+    val filename: String,
+    val mediaType: String,
+    val size: Int,
+    val included: Boolean,
+    val bytes: ByteArray?,
+    val wireBase64: Boolean,
+) {
+    fun toggle(): ForwardRow = ForwardRow(
+        key,
+        section,
+        filename,
+        mediaType,
+        size,
+        !included,
+        bytes,
+        wireBase64,
+    )
+}
+
+private class DeviceCopy(
+    val id: String,
+    val appendOnly: Boolean,
+    val mailbox: String,
+    val recipients: List<String>,
+    val bytes: ByteArray,
+)
+
 @Composable
 fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
-    Text("Compose")
+    val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    val session = remember { mailSession() }
+    val scope = rememberCoroutineScope()
+    val gate = remember { Mutex() }
+    var account by remember { mutableStateOf(AccountSettings()) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var connected by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var selectedMailbox by remember { mutableStateOf<String?>(null) }
+    var toText by remember { mutableStateOf("") }
+    var ccText by remember { mutableStateOf("") }
+    var bccText by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    var inReplyTo by remember { mutableStateOf("") }
+    var referencesHeader by remember { mutableStateOf("") }
+    var bounceTo by remember { mutableStateOf("") }
+    var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
+    var sourceUid by remember { mutableStateOf<Long?>(null) }
+    var held by remember { mutableStateOf<DeviceCopy?>(null) }
+    var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
+    var pickerOpen by remember { mutableStateOf(false) }
+    var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
+
+    fun applyDraft(draft: ReplyDraft) {
+        toText = draft.to.joinToString(", ")
+        ccText = draft.cc.joinToString(", ")
+        bccText = ""
+        subject = draft.subject
+        body = draft.body
+        inReplyTo = draft.inReplyTo
+        referencesHeader = draft.references
+    }
+
+    suspend fun ensureMailbox(box: String?) {
+        if (box == null) return
+        if (selectedMailbox != box) {
+            session.select(box)
+            selectedMailbox = box
+        }
+    }
+
+    suspend fun peekedText(uid: Long, html: Boolean): String {
+        val tree = session.fetchStructure(uid)
+        val part = textPart(tree, if (html) "html" else "plain")
+        if (part == null) {
+            notice = missingPartText(html)
+            return ""
+        }
+        return peekWireBytes(part.size, 4096, false) { offset, length ->
+            session.peekPart(uid, part.section, offset, length)
+        }.toString(Charsets.UTF_8)
+    }
+
+    suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
+        val box = seed.mailbox ?: return
+        val uid = seed.uids.firstOrNull() ?: return
+        ensureMailbox(box)
+        val parsed = parseRfc822(session.fetchRfc822(uid))
+        val quote = peekedText(uid, settings.preferHtml)
+        applyDraft(replyDraft(replyAll, parsed, settings.email, quote))
+    }
+
+    suspend fun loadForward(settings: AccountSettings) {
+        val box = seed.mailbox ?: return
+        val uid = seed.uids.firstOrNull() ?: return
+        ensureMailbox(box)
+        sourceUid = uid
+        val parsed = parseRfc822(session.fetchRfc822(uid))
+        val tree = session.fetchStructure(uid)
+        val part = textPart(tree, if (settings.preferHtml) "html" else "plain")
+        val quote = if (part == null) {
+            notice = missingPartText(settings.preferHtml)
+            ""
+        } else {
+            peekWireBytes(part.size, 4096, false) { offset, length ->
+                session.peekPart(uid, part.section, offset, length)
+            }.toString(Charsets.UTF_8)
+        }
+        applyDraft(forwardDraft(parsed, quote))
+        forwardRows = attachmentParts(tree).mapIndexed { index, item ->
+            ForwardRow(
+                key = "${item.section}:$index",
+                section = item.section,
+                filename = item.filename?.takeIf { it.isNotEmpty() } ?: "${item.type}/${item.subtype}",
+                mediaType = "${item.type}/${item.subtype}",
+                size = item.size,
+                included = false,
+                bytes = null,
+                wireBase64 = false,
+            )
+        }
+    }
+
+    suspend fun loadResume() {
+        val box = seed.mailbox ?: return
+        val uid = seed.uids.firstOrNull() ?: return
+        ensureMailbox(box)
+        val loaded = loadEditor(session.fetchRfc822(uid))
+        toText = loaded.to
+        ccText = loaded.cc
+        bccText = ""
+        subject = loaded.subject
+        body = loaded.body
+        inReplyTo = loaded.inReplyTo
+        referencesHeader = loaded.references
+        forwardRows = loaded.attachments.mapIndexed { index, part ->
+            ForwardRow(
+                key = "resume:$index",
+                section = "",
+                filename = part.filename,
+                mediaType = part.mediaType,
+                size = part.bytes.size,
+                included = true,
+                bytes = part.bytes,
+                wireBase64 = part.wireBase64,
+            )
+        }
+    }
+
+    suspend fun assemble(settings: AccountSettings): BuiltMail {
+        val parts = ArrayList<OutgoingPart>()
+        val uid = sourceUid
+        for (row in forwardRows) {
+            if (!row.included) continue
+            val payload = if (row.bytes != null) {
+                row.bytes to row.wireBase64
+            } else {
+                if (uid == null) throw MailFailure("fetch failed")
+                val fetched = peekWireBytes(row.size, 65536, true) { offset, length ->
+                    session.peekPart(uid, row.section, offset, length)
+                }
+                fetched to looksLikeBase64(fetched)
+            }
+            parts.add(OutgoingPart(row.filename, row.mediaType, payload.first, payload.second))
+        }
+        return buildPlain(
+            PlainMessage(
+                fromName = settings.displayName,
+                fromEmail = settings.email,
+                to = splitAddresses(toText),
+                cc = splitAddresses(ccText),
+                bcc = splitAddresses(bccText),
+                subject = subject,
+                body = body,
+                messageId = newMessageId(settings.email),
+                date = rfc822Date(),
+                inReplyTo = inReplyTo,
+                references = referencesHeader,
+                attachments = parts,
+            ),
+        )
+    }
+
+    suspend fun retryCopy(copy: DeviceCopy): Boolean {
+        if (copy.appendOnly) {
+            if (copy.mailbox.isEmpty()) {
+                notice = "Sent mailbox is not set"
+                return false
+            }
+            try {
+                session.append(copy.mailbox, copy.bytes)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                status = "Accepted but not saved"
+                return false
+            }
+            deleteCopy(appContext, copy.id)
+            if (held?.id == copy.id) held = null
+            notice = null
+            status = null
+            copies = readCopies(appContext)
+            return true
+        }
+        try {
+            session.smtpSend(copy.bytes, copy.recipients)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            notice = error.text
+            status = "Not sent"
+            return false
+        }
+        if (copy.mailbox.isNotEmpty()) {
+            try {
+                session.append(copy.mailbox, copy.bytes)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, copy.bytes)
+                writeCopy(appContext, saved)
+                if (held?.id == copy.id) held = saved
+                notice = error.text
+                status = "Accepted but not saved"
+                copies = readCopies(appContext)
+                return false
+            }
+        }
+        deleteCopy(appContext, copy.id)
+        if (held?.id == copy.id) held = null
+        notice = null
+        status = null
+        copies = readCopies(appContext)
+        return true
+    }
+
+    fun launchLocked(block: suspend () -> Boolean) {
+        if (busy || !connected) return
+        busy = true
+        scope.launch {
+            var leave = false
+            try {
+                gate.withLock {
+                    leave = try {
+                        block()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        notice = error.text
+                        false
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } finally {
+                busy = false
+            }
+            if (leave) onDone()
+        }
+    }
+
+    DisposableEffect(session) {
+        onDispose { session.close() }
+    }
+
+    LaunchedEffect(seed) {
+        gate.withLock {
+            val settings = try {
+                store.load()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                notice = error.message ?: "not connected"
+                return@withLock
+            }
+            account = settings
+            try {
+                store.password()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                notice = error.message ?: "not connected"
+                return@withLock
+            }
+            val opened = try {
+                session.open(settings)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return@withLock
+            }
+            when (opened) {
+                is OpenResult.Rejected -> {
+                    notice = opened.capabilities
+                    return@withLock
+                }
+                is OpenResult.Failed -> {
+                    notice = opened.text
+                    return@withLock
+                }
+                OpenResult.Connected -> Unit
+            }
+            connected = true
+            try {
+                when (seed.kind) {
+                    ComposeKind.New -> Unit
+                    ComposeKind.Reply -> loadReply(settings, replyAll = false)
+                    ComposeKind.ReplyAll -> loadReply(settings, replyAll = true)
+                    ComposeKind.Forward -> loadForward(settings)
+                    ComposeKind.Bounce -> Unit
+                    ComposeKind.ResumePostpone -> loadResume()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+            }
+            copies = readCopies(appContext)
+        }
+    }
+
+    val shown = copies.toMutableList()
+    val currentHeld = held
+    if (currentHeld != null && shown.none { it.id == currentHeld.id }) shown.add(currentHeld)
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(8.dp),
+    ) {
+        val stateText = status
+        if (stateText != null) Text(stateText)
+        val failure = notice
+        if (failure != null) Text(failure)
+        Text("From: ${formatMailbox(account.displayName, account.email)}")
+        for (copy in shown) {
+            val label = if (copy.appendOnly) "Accepted but not saved" else "Not sent"
+            TextButton(onClick = { launchLocked { retryCopy(copy) } }) {
+                Text("$label retry")
+            }
+        }
+        if (seed.kind == ComposeKind.Bounce) {
+            OutlinedTextField(
+                value = bounceTo,
+                onValueChange = { bounceTo = it },
+                label = { Text("Resent-To") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(onClick = {
+                pickerTarget = AddressTarget.Bounce
+                pickerOpen = true
+            }) { Text("Address book") }
+            if (pickerOpen) {
+                AddressBookPicker(
+                    onPicked = { picked ->
+                        bounceTo = formatMailbox(picked.name, picked.email)
+                        pickerOpen = false
+                    },
+                    onDismiss = { pickerOpen = false },
+                )
+                TextButton(onClick = { pickerOpen = false }) { Text("Close") }
+            }
+            TextButton(onClick = {
+                launchLocked {
+                    if (account.email.isEmpty()) {
+                        notice = "From address is not set"
+                        return@launchLocked false
+                    }
+                    if (account.bounceFcc && account.sentMailbox.isEmpty()) {
+                        notice = "Sent mailbox is not set"
+                        return@launchLocked false
+                    }
+                    val resentTo = bounceTo.trim()
+                    if (resentTo.isEmpty()) {
+                        notice = "Resent-To is not set"
+                        return@launchLocked false
+                    }
+                    if (seed.uids.isEmpty()) return@launchLocked false
+                    val box = seed.mailbox ?: return@launchLocked false
+                    ensureMailbox(box)
+                    val recipient = addrSpec(resentTo).ifEmpty { resentTo }
+                    val resentFrom = formatMailbox(account.displayName, account.email)
+                    for (uid in seed.uids) {
+                        val original = session.fetchRfc822(uid)
+                        val bounced = buildBounce(
+                            original,
+                            resentFrom = resentFrom,
+                            resentTo = resentTo,
+                            resentDate = rfc822Date(),
+                            resentMessageId = newMessageId(account.email),
+                        )
+                        val id = UUID.randomUUID().toString()
+                        val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
+                        try {
+                            session.smtpSend(bounced, listOf(recipient))
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: MailFailure) {
+                            val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                            writeCopy(appContext, copy)
+                            held = copy
+                            notice = error.text
+                            status = "Not sent"
+                            copies = readCopies(appContext)
+                            return@launchLocked false
+                        }
+                        if (!account.bounceFcc) continue
+                        try {
+                            session.append(account.sentMailbox, bounced)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: MailFailure) {
+                            val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), bounced)
+                            writeCopy(appContext, copy)
+                            held = copy
+                            notice = error.text
+                            status = "Accepted but not saved"
+                            copies = readCopies(appContext)
+                            return@launchLocked false
+                        }
+                    }
+                    notice = null
+                    status = null
+                    true
+                }
+            }) { Text("Bounce") }
+        } else {
+            OutlinedTextField(
+                value = toText,
+                onValueChange = { toText = it },
+                label = { Text("To") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = ccText,
+                onValueChange = { ccText = it },
+                label = { Text("Cc") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = bccText,
+                onValueChange = { bccText = it },
+                label = { Text("Bcc") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = subject,
+                onValueChange = { subject = it },
+                label = { Text("Subject") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(onClick = {
+                pickerTarget = AddressTarget.To
+                pickerOpen = true
+            }) { Text("To address book") }
+            TextButton(onClick = {
+                pickerTarget = AddressTarget.Cc
+                pickerOpen = true
+            }) { Text("Cc address book") }
+            TextButton(onClick = {
+                pickerTarget = AddressTarget.Bcc
+                pickerOpen = true
+            }) { Text("Bcc address book") }
+            if (pickerOpen) {
+                AddressBookPicker(
+                    onPicked = { picked ->
+                        val line = formatMailbox(picked.name, picked.email)
+                        when (pickerTarget) {
+                            AddressTarget.To -> toText = appendAddress(toText, line)
+                            AddressTarget.Cc -> ccText = appendAddress(ccText, line)
+                            AddressTarget.Bcc -> bccText = appendAddress(bccText, line)
+                            AddressTarget.Bounce -> bounceTo = line
+                        }
+                        pickerOpen = false
+                    },
+                    onDismiss = { pickerOpen = false },
+                )
+                TextButton(onClick = { pickerOpen = false }) { Text("Close") }
+            }
+            for (row in forwardRows) {
+                TextButton(onClick = {
+                    forwardRows = forwardRows.map { item ->
+                        if (item.key == row.key) item.toggle() else item
+                    }
+                }) {
+                    Text(if (row.included) "Included ${row.filename}" else "Include ${row.filename}")
+                }
+            }
+            OutlinedTextField(
+                value = body,
+                onValueChange = { body = it },
+                label = { Text("Body") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(onClick = {
+                launchLocked {
+                    val saved = held
+                    if (saved != null && saved.appendOnly) {
+                        return@launchLocked retryCopy(saved)
+                    }
+                    if (account.email.isEmpty()) {
+                        notice = "From address is not set"
+                        return@launchLocked false
+                    }
+                    if (account.sentMailbox.isEmpty()) {
+                        notice = "Sent mailbox is not set"
+                        return@launchLocked false
+                    }
+                    val built = try {
+                        assemble(account)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        notice = error.text
+                        return@launchLocked false
+                    }
+                    val id = saved?.id ?: UUID.randomUUID().toString()
+                    try {
+                        session.smtpSend(built.rfc822, built.recipients)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                        writeCopy(appContext, copy)
+                        held = copy
+                        notice = error.text
+                        status = "Not sent"
+                        copies = readCopies(appContext)
+                        return@launchLocked false
+                    }
+                    try {
+                        session.append(account.sentMailbox, built.rfc822)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, built.rfc822)
+                        writeCopy(appContext, copy)
+                        held = copy
+                        notice = error.text
+                        status = "Accepted but not saved"
+                        copies = readCopies(appContext)
+                        return@launchLocked false
+                    }
+                    deleteCopy(appContext, id)
+                    held = null
+                    notice = null
+                    status = null
+                    copies = readCopies(appContext)
+                    true
+                }
+            }) { Text(if (held?.appendOnly == true) "Save sent copy" else "Send") }
+            TextButton(onClick = {
+                launchLocked {
+                    if (account.postponedMailbox.isEmpty()) {
+                        notice = "Postponed mailbox is not set"
+                        return@launchLocked false
+                    }
+                    val built = try {
+                        assemble(account)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        notice = error.text
+                        return@launchLocked false
+                    }
+                    try {
+                        session.append(account.postponedMailbox, built.rfc822)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        notice = error.text
+                        return@launchLocked false
+                    }
+                    val current = held
+                    if (current != null && !current.appendOnly) {
+                        deleteCopy(appContext, current.id)
+                        held = null
+                        copies = readCopies(appContext)
+                    }
+                    notice = null
+                    status = null
+                    true
+                }
+            }) { Text("Postpone") }
+        }
+    }
+}
+
+private fun appendAddress(current: String, next: String): String {
+    val trimmed = current.trim()
+    if (trimmed.isEmpty()) return next
+    return "$trimmed, $next"
+}
+
+private fun copyDir(context: Context): File = File(context.filesDir, "unsent")
+
+private fun readCopies(context: Context): List<DeviceCopy> {
+    val dir = copyDir(context)
+    if (!dir.isDirectory) return emptyList()
+    val metas = dir.listFiles { file -> file.isFile && file.name.endsWith(".meta") } ?: return emptyList()
+    return metas.sortedBy { it.name }.mapNotNull { meta ->
+        try {
+            val lines = meta.readLines(Charsets.UTF_8)
+            if (lines.size < 2) return@mapNotNull null
+            val id = meta.name.removeSuffix(".meta")
+            val bytesFile = File(dir, "$id.rfc822")
+            if (!bytesFile.isFile) return@mapNotNull null
+            DeviceCopy(
+                id = id,
+                appendOnly = lines[0] == "append-only",
+                mailbox = lines[1],
+                recipients = lines.drop(2).filter { it.isNotEmpty() },
+                bytes = bytesFile.readBytes(),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+private fun writeCopy(context: Context, copy: DeviceCopy) {
+    try {
+        val dir = copyDir(context)
+        dir.mkdirs()
+        File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
+        val text = buildString {
+            appendLine(if (copy.appendOnly) "append-only" else "unsent")
+            appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
+            for (recipient in copy.recipients) {
+                appendLine(recipient.replace("\n", "").replace("\r", ""))
+            }
+        }
+        File(dir, "${copy.id}.meta").writeText(text, Charsets.UTF_8)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        // The screen keeps the same bytes in memory when the file write fails.
+    }
+}
+
+private fun deleteCopy(context: Context, id: String) {
+    val dir = copyDir(context)
+    File(dir, "$id.rfc822").delete()
+    File(dir, "$id.meta").delete()
 }

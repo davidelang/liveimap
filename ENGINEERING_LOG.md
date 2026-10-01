@@ -161,3 +161,20 @@
 - IndexModel loadWindow and applyView: arrival uses ArrivalNewest or ArrivalOldest and does not call sort; thread keeps server order
 - IndexWindowTest: 18 tests, 0 failures. Compact sets includePreview false. Delete adds \Deleted and does not copy
 - Fake MailSession stays inside IndexWindowTest.kt. NavHost, MailSession, and settings files were not edited
+
+## 2026-09-30 - reader and composer execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-compose-20260930-1418-plan.md
+- Work: replace the reader and composer stubs; add Rfc822 buildPlain and buildBounce; keep both screen signatures
+- Compose sends text/plain; Bcc stays off the header block; bounce prepends Resent-* and keeps the original Message-ID
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6e3a380 with builds tag
+
+## 2026-09-30 - reader and composer phase 1
+
+- MessageReaderScreen keeps its signature, selects the mailbox, and peeks the preferred part in 4096-byte steps
+- HTML is a WebView with JavaScript off and network loads blocked; a missing part shows No text/plain part or No text/html part and does not fetch the raw message
+- The first successful peek stores \Seen when markSeenOnOpen is set; attachment bytes are fetched only after a tap, 65536 wire bytes at a time, on a multiple of 4
+- ComposeScreen keeps its signature, calls AddressBookPicker, and sends text/plain
+- Bcc stays off the header block; bounce prepends Resent-* and keeps the original Message-ID; a failed SMTP send does not append
+- NavHost, MailSession, the index, the folder screen, and settings files were not edited
