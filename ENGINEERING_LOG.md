@@ -271,3 +271,17 @@
 - SettingsScreen sections are Server, Account, and Display. Password sits under Username on the keystore path. ChoiceField is one ExposedDropdownMenuBox. Email changes only when Username loses focus and email is blank
 - MainActivity uses darkColorScheme, lightColorScheme, or isSystemInDarkTheme from the stored theme, and FollowSystem until that load returns
 - Sent, postponed, and address book stay text fields. No Choose buttons
+
+## 2026-10-01 - settings folder picker execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-folder-picker-20261001-1043-plan.md
+- Work: Choose beside sent, postponed, address book, and both swipe move-mailbox fields. The dialog opens the stored account, lists FolderListModel rows, writes the tapped row mailbox, and shows failure text with no names
+- Expander only expands. Dismiss leaves the field unchanged. No second folder lister and no invented mailbox names
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD da3ece2
+
+## 2026-10-01 - settings folder picker phase 1
+
+- SettingsScreen puts Choose beside Sent mailbox, Postponed mailbox, Address book mailbox, and both swipe Move mailbox fields. Typed text still saves
+- The dialog calls mailSession().open with the stored account. Connected uses FolderListModel.loadLevel and toggleExpanded. Tapping the row name writes that row's mailbox, saves, and closes. The expander only expands
+- OpenResult.Failed shows text. OpenResult.Rejected shows capabilities. MailFailure shows text. Those cases list no mailboxes. Dismiss leaves the field unchanged
