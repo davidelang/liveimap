@@ -2036,7 +2036,7 @@ int listMailboxes(mailimap * imap, const char * pattern, bool extended, bool wit
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "(", true);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "CHILDREN", true);
+    r = sendWord(imap->imap_stream, "CHILDREN", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "SPECIAL-USE", true);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2045,14 +2045,14 @@ int listMailboxes(mailimap * imap, const char * pattern, bool extended, bool wit
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "(", true);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, "MESSAGES", true);
+        r = sendWord(imap->imap_stream, "MESSAGES", false);
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "UNSEEN", true);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, ")", true);
+        r = sendWord(imap->imap_stream, ")", false);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
-    r = sendWord(imap->imap_stream, ")", true);
+    r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2373,9 +2373,9 @@ int sendUidEsearch(mailimap * imap, struct mailimap_search_key * key, struct mai
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "(", true);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "ALL", true);
+    r = sendWord(imap->imap_stream, "ALL", false);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, ")", true);
+    r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "CHARSET", true);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2402,20 +2402,20 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "(", true);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, "ALL", true);
+        r = sendWord(imap->imap_stream, "ALL", false);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, ")", true);
+        r = sendWord(imap->imap_stream, ")", false);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
     r = sendWord(imap->imap_stream, "(", true);
     if (r != MAILIMAP_NO_ERROR) return r;
     if (reverse) {
-        r = sendWord(imap->imap_stream, "REVERSE", true);
+        r = sendWord(imap->imap_stream, "REVERSE", false);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
-    r = sendWord(imap->imap_stream, keyName, true);
+    r = sendWord(imap->imap_stream, keyName, reverse);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, ")", true);
+    r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;

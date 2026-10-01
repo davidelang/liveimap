@@ -329,3 +329,16 @@
 - A LIST failure is also reported for advertised CHILDREN, LIST-EXTENDED, LIST-STATUS, and SPECIAL-USE. SELECT INBOX failure skips the selected checks. sort is one From newest call. searchText("x") reports the UID count. IDLE calls stopWatch in finally. CONDSTORE, QRESYNC, and COMPRESS=DEFLATE skip because open sends them. Other leftover capabilities skip as no read-only command
 - SettingsScreen puts Test server after Address book mailbox. The monospace report is under the button. HorizontalDivider with 8.dp vertical padding sits before Display. The label is Testing… and the button is disabled while the screen scope runs mailSession, probeServer, and close in finally
 - ServerProbeTest uses a fake MailSession and does not call mailSession. A list syntax failure reports FAIL LIST and FAIL LIST-EXTENDED. A failed open is one FAIL login line and does not call listLevel
+
+## 2026-10-01 - Cyrus LIST return spacing execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-cyrus-list-return-spacing-20261001-1217-plan.md
+- Work: tight parentheses on extended LIST, ESEARCH, and ESORT so Cyrus getword does not see an empty word; plain LIST stays mailimap_list
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 17d76e5
+
+## 2026-10-01 - Cyrus LIST return spacing phase 1
+
+- listMailboxes extended sends RETURN (CHILDREN SPECIAL-USE), or RETURN (CHILDREN SPECIAL-USE STATUS (MESSAGES UNSEEN)) when status is on. The first word inside each parenthesis has no lead space. Each closing parenthesis has none. RETURN and STATUS still have a space before the opening parenthesis
+- sendUidEsearch sends RETURN (ALL). sendUidSortChoice sends (KEY) or (REVERSE KEY), and RETURN (ALL) when esort is on
+- Plain listMailboxes still calls mailimap_list. sendWord, mailimap_mailbox_send(""), and mailimap_list_mailbox_send are unchanged
