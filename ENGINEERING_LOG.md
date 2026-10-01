@@ -216,3 +216,26 @@
 - moveKind, listKind, resyncKind, searchKind, sortKind, previewKind, and fetchKind follow the degradation table. A missing v2 name does not reject the line
 - FolderEntry and FolderRow carry specialUse, messages, and unseen, defaulting to null. loadLevel copies those three fields through
 - No JNI in this phase
+
+## 2026-10-01 - Cyrus 3 capability degradation phase 1 blocked
+
+- Phase 1 commit 1e0655c is on master. ./build_app did not move the builds tag
+- CapabilityGateTest passed: missingIdleIsRejected, cyrus22Connects, moonLineConnects
+- testDebugUnitTest failed in DisconnectedSessionTest.openFailedTextIsNotConnected
+- mailSession() constructs LibetpanMailSession, and that class loads libliveimap.so. The host unit test has no liveimap library, so the test throws UnsatisfiedLinkError
+- That test file is not a Critical File. Phase 2 was not started
+
+## 2026-10-01 - JNI watch callback crash fix execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-jni-watch-callback-20261001-0732-plan.md
+- Work: drop internal from onNativeWatch so the JVM name stays onNativeWatch; look up the seven-arg FolderEntry constructor and pass null for specialUse, messages, and unseen
+- ensureJni returns false unless folderInit and onWatch are both non-null. Do not fill those three fields from the server
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 1e0655c with builds tag 54e8322
+
+## 2026-10-01 - JNI watch callback crash fix phase 1
+
+- onNativeWatch is a public instance method. The JVM name is onNativeWatch and the signature stays (IIJ[Ljava/lang/String;)V
+- FolderEntry <init> is (Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+- nativeListLevel passes null for specialUse, messages, and unseen and does not fill them from the server
+- ensureJni returns false unless folderInit and onWatch are both non-null

@@ -226,7 +226,7 @@ bool ensureJni(JNIEnv * env) {
     gJni.indexRowInit = env->GetMethodID(gJni.indexRow, "<init>",
         "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     gJni.folderInit = env->GetMethodID(gJni.folderEntry, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;ZC)V");
+        "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V");
     gJni.nsInit = env->GetMethodID(gJni.ns, "<init>",
         "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V");
     gJni.selectInit = env->GetMethodID(gJni.selectResult, "<init>", "(JJI)V");
@@ -248,7 +248,8 @@ bool ensureJni(JNIEnv * env) {
     jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
     gJni.onWatch = env->GetMethodID(sessionCls, "onNativeWatch", "(IIJ[Ljava/lang/String;)V");
     env->DeleteLocalRef(sessionCls);
-    gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr && gJni.onWatch != nullptr;
+    gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
+        gJni.folderInit != nullptr && gJni.onWatch != nullptr;
     return gJni.ready;
 }
 
@@ -1661,7 +1662,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
             jstring jmb = newString(env, mb->mb_name);
             jstring jleaf = newString(env, leaf.c_str());
             jobject entry = env->NewObject(gJni.folderEntry, gJni.folderInit, jmb, jleaf,
-                static_cast<jboolean>(hasChildren(mb)), static_cast<jchar>(mb->mb_delimiter));
+                static_cast<jboolean>(hasChildren(mb)), static_cast<jchar>(mb->mb_delimiter),
+                static_cast<jobject>(nullptr), static_cast<jobject>(nullptr), static_cast<jobject>(nullptr));
             env->DeleteLocalRef(jmb);
             env->DeleteLocalRef(jleaf);
             built.push_back(entry);

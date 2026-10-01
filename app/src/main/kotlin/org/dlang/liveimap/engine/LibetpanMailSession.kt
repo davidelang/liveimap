@@ -278,7 +278,7 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    internal fun onNativeWatch(kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
+    fun onNativeWatch(kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
         val mailbox = watchMailbox
         val change: MailboxChange = when (kind) {
             0 -> MailboxChange.Exists(exists)
