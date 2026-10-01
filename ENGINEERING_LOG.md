@@ -239,3 +239,7 @@
 - FolderEntry <init> is (Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
 - nativeListLevel passes null for specialUse, messages, and unseen and does not fill them from the server
 - ensureJni returns false unless folderInit and onWatch are both non-null
+
+## 2026-10-01 - Continue Cyrus 3 degradation
+
+- Start. Phase 1 makes openFailedTextIsNotConnected construct DisconnectedMailSession directly so the host JVM does not call mailSession() or load libliveimap.

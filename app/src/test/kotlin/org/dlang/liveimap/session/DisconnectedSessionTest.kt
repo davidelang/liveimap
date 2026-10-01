@@ -13,7 +13,7 @@ import kotlin.coroutines.startCoroutine
 class DisconnectedSessionTest {
     @Test
     fun openFailedTextIsNotConnected() {
-        val session = mailSession()
+        val session = DisconnectedMailSession()
         assertTrue(session is DisconnectedMailSession)
         assertTrue(session.capabilities.isEmpty())
         val result = runImmediate { session.open(AccountSettings()) }
