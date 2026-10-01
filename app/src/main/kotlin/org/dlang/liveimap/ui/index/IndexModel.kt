@@ -1,0 +1,393 @@
+package org.dlang.liveimap.ui.index
+
+import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.IndexMode
+import org.dlang.liveimap.session.IndexRequest
+import org.dlang.liveimap.session.IndexRow
+import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.ThreadNode
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Density
+import org.dlang.liveimap.settings.FolderView
+import org.dlang.liveimap.settings.SettingsStore
+import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.SwipeAction
+import org.dlang.liveimap.settings.SwipeBinding
+import kotlin.math.abs
+
+const val IndexPageSize = 60
+const val SwipeWidthPercent = 40
+
+fun previewLineCount(density: Density): Int = when (density) {
+    Density.Compact -> 0
+    Density.Medium -> 3
+    Density.Large -> 7
+}
+
+fun swipeReached(offsetPx: Float, widthPx: Float): Boolean {
+    if (widthPx <= 0f) return false
+    return abs(offsetPx) * 100f >= widthPx * SwipeWidthPercent
+}
+
+fun indexSwipeBinding(
+    offsetPx: Float,
+    widthPx: Float,
+    leftToRight: Boolean,
+    multiSelect: Boolean,
+    trailing: SwipeBinding,
+    leading: SwipeBinding,
+): SwipeBinding? {
+    if (multiSelect || !swipeReached(offsetPx, widthPx)) return null
+    val swipeLeft = offsetPx < 0f
+    val trailingSwipe = if (leftToRight) swipeLeft else !swipeLeft
+    return if (trailingSwipe) trailing else leading
+}
+
+fun barMoveMailbox(settings: AccountSettings): String {
+    return listOf(settings.swipeTrailing, settings.swipeLeading)
+        .filter { it.action == SwipeAction.Move }
+        .map { it.moveMailbox }
+        .firstOrNull { it.isNotEmpty() }
+        .orEmpty()
+}
+
+sealed class IndexCommand {
+    data object None : IndexCommand()
+    data class Compose(val seed: ComposeSeed) : IndexCommand()
+    data class ShowFlags(val uid: Long) : IndexCommand()
+}
+
+class IndexModel(
+    private val session: MailSession,
+    private val store: SettingsStore,
+    private val mailbox: String,
+) {
+    private var heldRows: List<IndexRow> = emptyList()
+    private var order: List<Long> = emptyList()
+    private var pageAnchor: Int = 0
+    private var includePreview: Boolean = false
+    private var activeSearch: String? = null
+    private var lastVisibleIndex: Int = 0
+
+    var notice: String? = null
+        private set
+
+    var view: FolderView = FolderView(SortKey.Arrival, newestFirst = true)
+        private set
+
+    var account: AccountSettings = AccountSettings()
+        private set
+
+    val rows: List<IndexRow>
+        get() = heldRows
+
+    val anchorPage: Int
+        get() = pageAnchor
+
+    val menuKeys: List<SortKey>
+        get() = SortKey.entries.filter { key ->
+            key != SortKey.ThreadOrderedSubject || orderedSubjectAdvertised()
+        }
+
+    suspend fun loadWindow(): List<IndexRow> {
+        activeSearch = null
+        return replaceWindow { fetchCurrent() }
+    }
+
+    suspend fun applyView(next: FolderView): List<IndexRow> {
+        val loaded = store.load()
+        val saved = loaded.copy(folderViews = loaded.folderViews + (mailbox to next))
+        store.save(saved)
+        account = saved
+        activeSearch = null
+        includePreview = saved.density != Density.Compact
+        view = next
+        return replaceWindow { fetchView(next) }
+    }
+
+    suspend fun applySearch(query: String): List<IndexRow> {
+        if (query.isEmpty()) {
+            if (activeSearch == null) return heldRows
+            activeSearch = null
+            return replaceWindow { fetchCurrent() }
+        }
+        account = store.load()
+        includePreview = account.density != Density.Compact
+        activeSearch = query
+        return replaceWindow { fetchSearch(query) }
+    }
+
+    suspend fun onFirstVisible(index: Int): List<IndexRow> {
+        val previousIndex = lastVisibleIndex
+        lastVisibleIndex = index
+        if (index < IndexPageSize) return heldRows
+        if (previousIndex >= IndexPageSize) return heldRows
+        val next = (pageAnchor + 1) * IndexPageSize
+        if (next >= order.size) return heldRows
+        val previous = heldRows
+        val previousAnchor = pageAnchor
+        pageAnchor += 1
+        try {
+            heldRows = pagesOf(order)
+            notice = null
+        } catch (failure: MailFailure) {
+            pageAnchor = previousAnchor
+            lastVisibleIndex = previousIndex
+            heldRows = previous
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun revealNewer(): List<IndexRow> {
+        if (pageAnchor == 0 || order.isEmpty()) return heldRows
+        val previous = heldRows
+        val previousAnchor = pageAnchor
+        val previousIndex = lastVisibleIndex
+        pageAnchor -= 1
+        lastVisibleIndex = 0
+        try {
+            heldRows = pagesOf(order)
+            notice = null
+        } catch (failure: MailFailure) {
+            pageAnchor = previousAnchor
+            lastVisibleIndex = previousIndex
+            heldRows = previous
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun applyChange(change: MailboxChange): List<IndexRow> {
+        when (change) {
+            is MailboxChange.Flags -> {
+                heldRows = heldRows.map { row ->
+                    if (row.uid == change.uid) row.copy(flags = change.flags) else row
+                }
+            }
+            is MailboxChange.Exists,
+            is MailboxChange.Expunge,
+            MailboxChange.UidValidityReset,
+            -> {
+                replaceWindow { fetchCurrent() }
+            }
+        }
+        return heldRows
+    }
+
+    suspend fun deleteMessages(uids: List<Long>): List<IndexRow> {
+        if (uids.isEmpty()) return heldRows
+        try {
+            session.storeFlags(uids, setOf("\\Deleted"), emptySet())
+            val idSet = uids.toSet()
+            heldRows = heldRows.map { row ->
+                if (row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
+            }
+            notice = null
+        } catch (failure: MailFailure) {
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun moveMessages(uids: List<Long>, moveMailbox: String): List<IndexRow> {
+        if (moveMailbox.isEmpty()) {
+            notice = "Move folder is not set"
+            return heldRows
+        }
+        if (uids.isEmpty()) return heldRows
+        try {
+            session.copyThenDelete(uids, moveMailbox)
+            val gone = uids.toSet()
+            order = order.filter { it !in gone }
+            heldRows = heldRows.filter { it.uid !in gone }
+            notice = null
+        } catch (failure: MailFailure) {
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun changeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>): List<IndexRow> {
+        if (uids.isEmpty() || (add.isEmpty() && remove.isEmpty())) return heldRows
+        try {
+            session.storeFlags(uids, add, remove)
+            val idSet = uids.toSet()
+            heldRows = heldRows.map { row ->
+                if (row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
+            }
+            notice = null
+        } catch (failure: MailFailure) {
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun expunge(): List<IndexRow> {
+        try {
+            session.uidExpungeDeleted()
+        } catch (failure: MailFailure) {
+            notice = failure.text
+            return heldRows
+        }
+        return replaceWindow { fetchCurrent() }
+    }
+
+    suspend fun performSwipe(uid: Long, binding: SwipeBinding): IndexCommand {
+        when (binding.action) {
+            SwipeAction.Delete -> deleteMessages(listOf(uid))
+            SwipeAction.Move -> moveMessages(listOf(uid), binding.moveMailbox)
+            SwipeAction.Reply -> return IndexCommand.Compose(actionSeed(ComposeKind.Reply, listOf(uid)))
+            SwipeAction.ReplyAll -> return IndexCommand.Compose(actionSeed(ComposeKind.ReplyAll, listOf(uid)))
+            SwipeAction.SetFlag -> {
+                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), setOf(binding.flag), emptySet())
+            }
+            SwipeAction.ClearFlag -> {
+                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), emptySet(), setOf(binding.flag))
+            }
+            SwipeAction.FlagScreen -> return IndexCommand.ShowFlags(uid)
+        }
+        return IndexCommand.None
+    }
+
+    fun openSeed(uid: Long): ComposeSeed? {
+        if (mailbox == account.postponedMailbox) {
+            return ComposeSeed(ComposeKind.ResumePostpone, mailbox, listOf(uid))
+        }
+        return null
+    }
+
+    fun bounceSeed(uids: List<Long>): ComposeSeed = actionSeed(ComposeKind.Bounce, uids)
+
+    fun actionSeed(kind: ComposeKind, uids: List<Long>): ComposeSeed =
+        ComposeSeed(kind, mailbox, uids)
+
+    suspend fun watch(onChange: (MailboxChange) -> Unit) {
+        session.watch(mailbox, onChange)
+    }
+
+    suspend fun stopWatch() {
+        session.stopWatch()
+    }
+
+    private suspend fun replaceWindow(load: suspend () -> List<IndexRow>): List<IndexRow> {
+        val previous = heldRows
+        val previousAnchor = pageAnchor
+        val previousIndex = lastVisibleIndex
+        pageAnchor = 0
+        lastVisibleIndex = 0
+        try {
+            heldRows = load()
+            notice = null
+        } catch (failure: MailFailure) {
+            heldRows = previous
+            pageAnchor = previousAnchor
+            lastVisibleIndex = previousIndex
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    private suspend fun fetchCurrent(): List<IndexRow> {
+        val loaded = store.load()
+        account = loaded
+        includePreview = loaded.density != Density.Compact
+        val query = activeSearch
+        if (query != null) return fetchSearch(query)
+        val resolved = loaded.folderViews[mailbox] ?: loaded.defaultView
+        view = resolved
+        return fetchView(resolved)
+    }
+
+    private suspend fun fetchView(folderView: FolderView): List<IndexRow> {
+        pageAnchor = 0
+        return when (folderView.key) {
+            SortKey.Arrival -> fetchArrival(folderView.newestFirst)
+            SortKey.ThreadReferences, SortKey.ThreadOrderedSubject -> fetchThread(folderView.key)
+            SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size ->
+                fetchSorted(folderView.key, folderView.newestFirst)
+        }
+    }
+
+    private suspend fun fetchArrival(newestFirst: Boolean): List<IndexRow> {
+        val mode = if (newestFirst) IndexMode.ArrivalNewest else IndexMode.ArrivalOldest
+        val fetched = session.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = mode,
+                limit = IndexPageSize,
+                prefetch = IndexPageSize,
+                includePreview = includePreview,
+            ),
+        )
+        order = fetched.map { it.uid }
+        return fetched.take(IndexPageSize * 2)
+    }
+
+    private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean): List<IndexRow> {
+        val uids = session.sort(key, newestFirst)
+        val loaded = pagesOf(uids)
+        order = uids
+        return loaded
+    }
+
+    private suspend fun fetchThread(key: SortKey): List<IndexRow> {
+        val uids = threadUids(session.thread(key))
+        val loaded = pagesOf(uids)
+        order = uids
+        return loaded
+    }
+
+    private suspend fun fetchSearch(query: String): List<IndexRow> {
+        val uids = session.searchText(query)
+        pageAnchor = 0
+        val loaded = pagesOf(uids)
+        order = uids
+        return loaded
+    }
+
+    private suspend fun pagesOf(uids: List<Long>): List<IndexRow> {
+        val visible = uids.drop(pageAnchor * IndexPageSize).take(IndexPageSize)
+        val prefetch = uids.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize)
+        val loaded = ArrayList<IndexRow>(visible.size + prefetch.size)
+        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible))
+        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch))
+        return loaded
+    }
+
+    private suspend fun fetchByUid(uids: List<Long>): List<IndexRow> {
+        return session.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = IndexMode.ByUid,
+                uids = uids,
+                limit = IndexPageSize,
+                prefetch = IndexPageSize,
+                includePreview = includePreview,
+            ),
+        )
+    }
+
+    private fun align(uids: List<Long>, fetched: List<IndexRow>): List<IndexRow> {
+        val byUid = fetched.associateBy { it.uid }
+        return uids.mapNotNull { byUid[it] }
+    }
+
+    private fun threadUids(node: ThreadNode): List<Long> {
+        val out = ArrayList<Long>()
+        fun walk(current: ThreadNode) {
+            val uid = current.uid
+            if (uid != null) out.add(uid)
+            for (child in current.children) walk(child)
+        }
+        walk(node)
+        return out
+    }
+
+    private fun orderedSubjectAdvertised(): Boolean {
+        return session.capabilities.any { it.equals("THREAD=ORDEREDSUBJECT", ignoreCase = true) }
+    }
+}

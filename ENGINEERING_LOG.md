@@ -146,3 +146,18 @@
 - loadLevel and toggleExpanded call namespaces and listLevel only; expansion is saved on the account
 - INBOX.sent-mail stays a child of INBOX; other and shared labels stay the server prefix
 - FolderTreeTest covers that tree
+
+## 2026-09-30 - message index execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/message-index-20260930-1417-plan.md
+- Work: replace the index stub with the folder window, IndexModel, and IndexWindowTest
+- Arrival does not call sort; thread keeps server order; commands go through MailSession
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b02e466 with builds tag
+
+## 2026-09-30 - message index phase 1
+
+- MessageIndexScreen keeps its signature and now shows the folder window, swipe, and multi-select
+- IndexModel loadWindow and applyView: arrival uses ArrivalNewest or ArrivalOldest and does not call sort; thread keeps server order
+- IndexWindowTest: 18 tests, 0 failures. Compact sets includePreview false. Delete adds \Deleted and does not copy
+- Fake MailSession stays inside IndexWindowTest.kt. NavHost, MailSession, and settings files were not edited
