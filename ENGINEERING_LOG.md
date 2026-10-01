@@ -133,3 +133,16 @@
 - mailSession() returns LibetpanMailSession. DisconnectedMailSession.kt stays in the tree.
 - CapabilityGateTest uses a fake capability line that omits IDLE.
 - System.loadLibrary("liveimap") runs from the LibetpanMailSession companion init.
+
+## 2026-09-30 - folder list execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-list-20260930-1416-plan.md
+- Work: replace the folder stub with one server level; INBOX.sent-mail stays under INBOX; namespace labels stay the server prefix
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-09-30 - folder list phase 1
+
+- FolderListScreen keeps onOpenMailbox and lists one server level from FolderListModel
+- loadLevel and toggleExpanded call namespaces and listLevel only; expansion is saved on the account
+- INBOX.sent-mail stays a child of INBOX; other and shared labels stay the server prefix
+- FolderTreeTest covers that tree
