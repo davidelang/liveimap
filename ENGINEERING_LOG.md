@@ -342,3 +342,16 @@
 - listMailboxes extended sends RETURN (CHILDREN SPECIAL-USE), or RETURN (CHILDREN SPECIAL-USE STATUS (MESSAGES UNSEEN)) when status is on. The first word inside each parenthesis has no lead space. Each closing parenthesis has none. RETURN and STATUS still have a space before the opening parenthesis
 - sendUidEsearch sends RETURN (ALL). sendUidSortChoice sends (KEY) or (REVERSE KEY), and RETURN (ALL) when esort is on
 - Plain listMailboxes still calls mailimap_list. sendWord, mailimap_mailbox_send(""), and mailimap_list_mailbox_send are unchanged
+
+## 2026-10-01 - swipe delete JNI ref execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-swipe-delete-jni-ref-20261001-1226-plan.md
+- Work: end JChars before DeleteLocalRef in the flag and SMTP recipient loops; LIST reference is the mailbox context and the pattern is %; thread, sort, and ENABLE send fixed literals; only the five system flags are stored
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 66aa06a
+
+## 2026-10-01 - swipe delete JNI ref phase 1
+
+- flagListFromArray and nativeSmtp destroy JChars before DeleteLocalRef. flagFromName returns only the five system-flag constructors. Any other name fails in nativeStoreFlags before mailimap_uid_store, and the failure names those five flags. \Deleted still stores
+- LIST reference is the parent plus its delimiter, the parent, or the namespace prefix. The pattern is %. Extended LIST sends the reference with mailimap_mailbox_send and % with mailimap_list_mailbox_send. RETURN, CHILDREN, SPECIAL-USE, and STATUS leadSpace calls are unchanged
+- THREAD sends the literal REFERENCES or ORDEREDSUBJECT and throws before a command otherwise. SORT sends DATE, FROM, SUBJECT, TO, CC, SIZE, or DISPLAY and does not pass keyName to sendWord. ENABLE stores QRESYNC or CONDSTORE and returns without mailimap_enable otherwise

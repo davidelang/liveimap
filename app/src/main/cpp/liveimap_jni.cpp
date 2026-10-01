@@ -510,8 +510,7 @@ struct mailimap_flag * flagFromName(const char * name) {
     if (strcasecmp(name, "\\Deleted") == 0) return mailimap_flag_new_deleted();
     if (strcasecmp(name, "\\Seen") == 0) return mailimap_flag_new_seen();
     if (strcasecmp(name, "\\Draft") == 0) return mailimap_flag_new_draft();
-    if (name[0] == '\\') return mailimap_flag_new_flag_extension(strdup(name));
-    return mailimap_flag_new_flag_keyword(strdup(name));
+    return nullptr;
 }
 
 bool flagListFromArray(JNIEnv * env, jobjectArray names, struct mailimap_flag_list ** out) {
@@ -525,13 +524,18 @@ bool flagListFromArray(JNIEnv * env, jobjectArray names, struct mailimap_flag_li
     jsize n = env->GetArrayLength(names);
     for (jsize i = 0; i < n; ++i) {
         auto js = static_cast<jstring>(env->GetObjectArrayElement(names, i));
-        JChars chars(env, js);
-        struct mailimap_flag * flag = flagFromName(chars.c());
+        struct mailimap_flag * flag = nullptr;
+        {
+            JChars chars(env, js);
+            flag = flagFromName(chars.c());
+        }
         if (js != nullptr) {
             env->DeleteLocalRef(js);
         }
         if (flag == nullptr) {
-            continue;
+            mailimap_flag_list_free(*out);
+            *out = nullptr;
+            return false;
         }
         if (mailimap_flag_list_add(*out, flag) != MAILIMAP_NO_ERROR) {
             mailimap_flag_free(flag);
@@ -1296,6 +1300,12 @@ LiveThread * detachThread(mailimap * imap) {
 }
 
 int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_response ** response) {
+    const char * wire = nullptr;
+    if (algorithm != nullptr) {
+        if (strcasecmp(algorithm, "REFERENCES") == 0) wire = "REFERENCES";
+        else if (strcasecmp(algorithm, "ORDEREDSUBJECT") == 0) wire = "ORDEREDSUBJECT";
+    }
+    if (wire == nullptr) return MAILIMAP_ERROR_INVAL;
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_token_send(imap->imap_stream, "UID");
@@ -1306,7 +1316,7 @@ int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_respo
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_token_send(imap->imap_stream, algorithm);
+    r = mailimap_token_send(imap->imap_stream, wire);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -1854,10 +1864,14 @@ int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq) 
 }
 
 void enableNamed(LiveSession * session, const char * capName) {
-    if (session == nullptr || session->imap == nullptr || capName == nullptr || capName[0] == 0) return;
+    if (session == nullptr || session->imap == nullptr || capName == nullptr) return;
+    const char * wire = nullptr;
+    if (strcasecmp(capName, "QRESYNC") == 0) wire = "QRESYNC";
+    else if (strcasecmp(capName, "CONDSTORE") == 0) wire = "CONDSTORE";
+    if (wire == nullptr) return;
     clist * list = clist_new();
     if (list == nullptr) return;
-    char * owned = strdup(capName);
+    char * owned = strdup(wire);
     struct mailimap_capability * cap = owned != nullptr
         ? mailimap_capability_new(MAILIMAP_CAPABILITY_NAME, nullptr, owned) : nullptr;
     if (cap == nullptr || clist_append(list, cap) != 0) {
@@ -1877,7 +1891,7 @@ void enableNamed(LiveSession * session, const char * capName) {
     mailimap_capability_data_free(data);
     if (r != MAILIMAP_NO_ERROR) return;
     if (result != nullptr) mailimap_capability_data_free(result);
-    if (strcasecmp(capName, "QRESYNC") == 0) session->qresync = true;
+    if (strcmp(wire, "QRESYNC") == 0) session->qresync = true;
 }
 
 void compressSession(LiveSession * session) {
@@ -2016,21 +2030,22 @@ std::string specialUseOf(struct mailimap_mailbox_list * mb) {
     return out;
 }
 
-int listMailboxes(mailimap * imap, const char * pattern, bool extended, bool withStatus, clist ** result, std::string * raw) {
+int listMailboxes(mailimap * imap, const char * reference, bool extended, bool withStatus, clist ** result, std::string * raw) {
     *result = nullptr;
     if (raw != nullptr) raw->clear();
-    if (!extended) return mailimap_list(imap, "", pattern, result);
+    const char * ref = reference != nullptr ? reference : "";
+    if (!extended) return mailimap_list(imap, ref, "%", result);
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "LIST", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_mailbox_send(imap->imap_stream, "");
+    r = mailimap_mailbox_send(imap->imap_stream, ref);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_list_mailbox_send(imap->imap_stream, pattern);
+    r = mailimap_list_mailbox_send(imap->imap_stream, "%");
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "RETURN", true);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2391,6 +2406,17 @@ int sendUidEsearch(mailimap * imap, struct mailimap_search_key * key, struct mai
 }
 
 int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool esort, struct mailimap_response ** response) {
+    const char * key = nullptr;
+    if (keyName != nullptr) {
+        if (strcasecmp(keyName, "DATE") == 0) key = "DATE";
+        else if (strcasecmp(keyName, "FROM") == 0) key = "FROM";
+        else if (strcasecmp(keyName, "SUBJECT") == 0) key = "SUBJECT";
+        else if (strcasecmp(keyName, "TO") == 0) key = "TO";
+        else if (strcasecmp(keyName, "CC") == 0) key = "CC";
+        else if (strcasecmp(keyName, "SIZE") == 0) key = "SIZE";
+        else if (strcasecmp(keyName, "DISPLAY") == 0) key = "DISPLAY";
+    }
+    if (key == nullptr) return MAILIMAP_ERROR_INVAL;
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "UID", false);
@@ -2413,7 +2439,7 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
         r = sendWord(imap->imap_stream, "REVERSE", false);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
-    r = sendWord(imap->imap_stream, keyName, reverse);
+    r = sendWord(imap->imap_stream, key, reverse);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2583,19 +2609,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     JChars kindChars(env, kind);
     bool extended = strcmp(kindChars.c(), "Plain") != 0;
     bool withStatus = strcmp(kindChars.c(), "ExtendedWithStatus") == 0;
-    std::string pattern;
+    std::string reference;
     if (parent != nullptr && par.c()[0] != 0) {
-        pattern = par.c();
+        reference = par.c();
         char delim = delimFor(session, par.c());
-        if (delim != 0) pattern.push_back(delim);
-        pattern.push_back('%');
+        if (delim != 0) reference.push_back(delim);
     } else {
-        pattern = pref.c();
-        pattern.push_back('%');
+        reference = pref.c();
     }
     clist * list = nullptr;
     std::string raw;
-    int r = listMailboxes(session->imap, pattern.c_str(), extended, withStatus, &list, &raw);
+    int r = listMailboxes(session->imap, reference.c_str(), extended, withStatus, &list, &raw);
     if (!cmdOk(r)) {
         if (list != nullptr) mailimap_list_result_free(list);
         throwImap(env, session->imap, "list failed");
@@ -3001,7 +3025,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env
     struct mailimap_flag_list * addFlags = nullptr;
     struct mailimap_flag_list * removeFlags = nullptr;
     if (!flagListFromArray(env, add, &addFlags) || !flagListFromArray(env, remove, &removeFlags)) {
-        throwFailure(env, "imap error");
+        if (addFlags != nullptr) mailimap_flag_list_free(addFlags);
+        if (removeFlags != nullptr) mailimap_flag_list_free(removeFlags);
+        throwFailure(env, "flag must be one of \\Answered, \\Flagged, \\Deleted, \\Seen, or \\Draft");
         unlockSession(session);
         return;
     }
@@ -3238,6 +3264,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars alg(env, algorithm);
+    if (strcasecmp(alg.c(), "REFERENCES") != 0 && strcasecmp(alg.c(), "ORDEREDSUBJECT") != 0) {
+        throwFailure(env, "thread algorithm must be REFERENCES or ORDEREDSUBJECT");
+        unlockSession(session);
+        return nullptr;
+    }
     struct mailimap_response * response = nullptr;
     int r = sendUidThread(session->imap, alg.c(), &response);
     if (r != MAILIMAP_NO_ERROR) {
@@ -3384,8 +3415,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     jsize nrcpt = recipients != nullptr ? env->GetArrayLength(recipients) : 0;
     for (jsize i = 0; i < nrcpt; ++i) {
         auto js = static_cast<jstring>(env->GetObjectArrayElement(recipients, i));
-        JChars rcpt(env, js);
-        r = mailsmtp_rcpt(smtp, rcpt.c());
+        {
+            JChars rcpt(env, js);
+            r = mailsmtp_rcpt(smtp, rcpt.c());
+        }
         if (js != nullptr) env->DeleteLocalRef(js);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = where + asciiSafe(smtp->response, "smtp error");
