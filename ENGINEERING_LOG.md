@@ -126,3 +126,10 @@
 - app/build.gradle.kts gains ndk abiFilters arm64-v8a and x86_64 and externalNativeBuild cmake 3.22.1. Dependencies are unchanged.
 - liveimap_jni.cpp exports Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen and the other JNI entry points. nativeUnselect calls mailimap_unselect. Connect is mailimap_socket_connect.
 - Host preflight linked both ABIs. llvm-nm shows mailimap_unselect and nativeOpen on each shared library.
+
+## 2026-09-30 - IMAP SMTP engine phase 2
+
+- LibetpanMailSession implements MailSession. open reads the keystore password and capabilityGate. A missing required token, including IDLE, returns OpenResult.Rejected and closes without LIST.
+- mailSession() returns LibetpanMailSession. DisconnectedMailSession.kt stays in the tree.
+- CapabilityGateTest uses a fake capability line that omits IDLE.
+- System.loadLibrary("liveimap") runs from the LibetpanMailSession companion init.

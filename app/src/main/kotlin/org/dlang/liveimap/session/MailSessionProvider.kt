@@ -1,3 +1,5 @@
 package org.dlang.liveimap.session
 
-fun mailSession(): MailSession = DisconnectedMailSession()
+import org.dlang.liveimap.engine.LibetpanMailSession
+
+fun mailSession(): MailSession = LibetpanMailSession()
