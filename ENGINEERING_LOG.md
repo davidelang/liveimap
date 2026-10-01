@@ -315,3 +315,17 @@
 - FolderListModel orders each level by case-insensitive leaf, then mailbox. INBOX stays the first root. Other-namespace roots stay after personal folders, and shared-namespace roots stay after those
 - FolderTreeTest: zeta, alpha, INBOX shows INBOX, alpha, zeta; children b, a show a, b
 - material-icons-core is next to the Material3 dependency
+
+## 2026-10-01 - settings test server execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-test-server-20261001-1218-plan.md
+- Work: Test server after the address book mailbox logs in with the saved account and runs read-only commands for advertised capabilities. Each line is OK, FAIL, or SKIP. A failed command does not stop later checks. The password is not shown. A divider separates that block from Display
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 39b7fcd
+
+## 2026-10-01 - settings test server phase 1
+
+- ServerProbe.probeServer opens the saved account. Failed or Rejected is one FAIL login line and returns. Connected runs the read-only checks. MailFailure is caught per check. The password is not read or printed
+- A LIST failure is also reported for advertised CHILDREN, LIST-EXTENDED, LIST-STATUS, and SPECIAL-USE. SELECT INBOX failure skips the selected checks. sort is one From newest call. searchText("x") reports the UID count. IDLE calls stopWatch in finally. CONDSTORE, QRESYNC, and COMPRESS=DEFLATE skip because open sends them. Other leftover capabilities skip as no read-only command
+- SettingsScreen puts Test server after Address book mailbox. The monospace report is under the button. HorizontalDivider with 8.dp vertical padding sits before Display. The label is Testing… and the button is disabled while the screen scope runs mailSession, probeServer, and close in finally
+- ServerProbeTest uses a fake MailSession and does not call mailSession. A list syntax failure reports FAIL LIST and FAIL LIST-EXTENDED. A failed open is one FAIL login line and does not call listLevel

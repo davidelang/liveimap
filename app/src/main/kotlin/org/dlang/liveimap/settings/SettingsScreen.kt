@@ -16,6 +16,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -43,6 +45,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
@@ -64,6 +67,8 @@ fun SettingsScreen() {
     var draftNewest by remember { mutableStateOf(true) }
     var draftExpanded by remember { mutableStateOf("") }
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
+    var probing by remember { mutableStateOf(false) }
+    var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(store) {
         settings = store.load()
@@ -127,6 +132,30 @@ fun SettingsScreen() {
         MailboxLine("Address book mailbox", settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
             persist(settings.copy(addressBookMailbox = it))
         }
+        TextButton(
+            onClick = {
+                if (!probing) {
+                    val account = settings
+                    probing = true
+                    scope.launch {
+                        val session = mailSession()
+                        try {
+                            serverReport = probeServer(session, account)
+                        } finally {
+                            session.close()
+                            probing = false
+                        }
+                    }
+                }
+            },
+            enabled = !probing,
+        ) {
+            Text(if (probing) "Testing…" else "Test server")
+        }
+        for (line in serverReport) {
+            Text(text = line, fontFamily = FontFamily.Monospace)
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
         Text("Display")
         BoolField("Mark seen on open", settings.markSeenOnOpen) {
             persist(settings.copy(markSeenOnOpen = it))
