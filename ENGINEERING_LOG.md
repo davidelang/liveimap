@@ -88,3 +88,10 @@
 - Work: add frozen MailSession types and DisconnectedMailSession; no screens, network, or native code
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 050b9be with builds tag
+
+## 2026-09-30 - stub mail screens execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/shell-stub-screens-20260930-1801-plan.md
+- Work: add FlagMarks, five stub screens, and NavHost routes
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 1393021 with builds tag
