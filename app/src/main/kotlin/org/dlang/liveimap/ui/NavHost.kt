@@ -108,6 +108,7 @@ fun NavHost() {
                         composeSeed = seed
                         route = MailRoute.Compose
                     },
+                    onBack = { route = MailRoute.Folders },
                 )
                 is MailRoute.Reader -> MessageReaderScreen(
                     mailbox = current.mailbox,
@@ -116,6 +117,7 @@ fun NavHost() {
                         composeSeed = seed
                         route = MailRoute.Compose
                     },
+                    onBack = { route = MailRoute.Index(current.mailbox) },
                 )
                 MailRoute.Compose -> ComposeScreen(
                     seed = composeSeed,

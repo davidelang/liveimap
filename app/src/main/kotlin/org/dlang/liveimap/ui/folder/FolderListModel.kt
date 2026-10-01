@@ -98,9 +98,9 @@ class FolderListModel(
 
         val roots = mutableListOf<LevelNode>()
         if (inboxNode != null) roots += inboxNode
-        roots += siblings
-        for (ns in other) roots += namespaceNode(ns)
-        for (ns in shared) roots += namespaceNode(ns)
+        roots += orderedLevel(siblings)
+        roots += orderedLevel(other.map { namespaceNode(it) })
+        roots += orderedLevel(shared.map { namespaceNode(it) })
 
         val rows = mutableListOf<FolderRow>()
         for (root in roots) {
@@ -141,7 +141,7 @@ class FolderListModel(
         if (!showChildren) return
         val nextAncestors = ancestors + node.mailbox
         val seen = mutableSetOf<String>()
-        for (child in childrenOf(node)) {
+        for (child in orderedLevel(childrenOf(node))) {
             if (!seen.add(child.mailbox)) continue
             if (child.mailbox in nextAncestors) continue
             appendVisible(child, depth + 1, node.mailbox, expanded, nextAncestors, rows)
@@ -165,6 +165,11 @@ class FolderListModel(
     private fun addChild(into: MutableList<LevelNode>, node: LevelNode) {
         if (into.none { it.mailbox == node.mailbox }) into += node
     }
+
+    private fun orderedLevel(nodes: List<LevelNode>): List<LevelNode> =
+        nodes.sortedWith(
+            compareBy<LevelNode>(String.CASE_INSENSITIVE_ORDER) { it.leaf }.thenBy { it.mailbox },
+        )
 
     private fun inboxChildPrefix(delimiter: Char): String? {
         if (delimiter == '\u0000') return null

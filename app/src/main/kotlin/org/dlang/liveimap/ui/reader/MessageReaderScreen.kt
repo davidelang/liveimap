@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,6 +73,7 @@ fun MessageReaderScreen(
     mailbox: String,
     uid: Long,
     onCompose: (ComposeSeed) -> Unit,
+    onBack: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -329,6 +334,12 @@ fun MessageReaderScreen(
             Text(text = status, modifier = Modifier.padding(8.dp))
         }
         Row(Modifier.horizontalScroll(rememberScrollState())) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                )
+            }
             TextButton(onClick = {
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
             }) { Text("Reply") }

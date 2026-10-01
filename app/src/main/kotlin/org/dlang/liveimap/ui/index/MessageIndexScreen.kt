@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.index
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SwipeToDismissBox
@@ -79,6 +88,7 @@ fun MessageIndexScreen(
     mailbox: String,
     onOpen: (Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
+    onBack: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -96,6 +106,7 @@ fun MessageIndexScreen(
     var anchorPage by remember { mutableStateOf(0) }
     var connected by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var searchVisible by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var multiSelect by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<Long>>(emptyList()) }
@@ -238,42 +249,78 @@ fun MessageIndexScreen(
             Text(text = message, modifier = Modifier.padding(8.dp))
         }
         if (connected) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { next ->
-                    val cleared = next.isEmpty() && query.isNotEmpty()
-                    query = next
-                    if (cleared) {
-                        scope.launch {
-                            gate.withLock {
-                                model.applySearch("")
-                                pull()
-                            }
-                            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                    )
+                }
+                Text(
+                    text = mailbox,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                IconButton(onClick = { searchVisible = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                    )
+                }
+                Box {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Sort,
+                                contentDescription = "Sort",
+                            )
                         }
+                        Text(
+                            text = sortShortLabel(view.key),
+                            modifier = Modifier.clickable { menuOpen = true },
+                        )
                     }
-                },
-                label = { Text("Search") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        scope.launch {
-                            gate.withLock {
-                                model.applySearch(query)
-                                pull()
-                            }
-                            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        menuKeys.forEach { key ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(if (key == view.key) "[${sortShortLabel(key)}]" else sortShortLabel(key))
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    query = ""
+                                    scope.launch {
+                                        gate.withLock {
+                                            model.applyView(FolderView(key, view.newestFirst))
+                                            pull()
+                                        }
+                                        if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                    }
+                                },
+                            )
                         }
-                    },
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-            )
-            Row {
-                TextButton(onClick = { menuOpen = !menuOpen }) {
-                    Text("View ${view.key.name} ${if (view.newestFirst) "newest" else "oldest"}")
+                        DropdownMenuItem(
+                            text = { Text(if (view.newestFirst) "Newest first" else "Oldest first") },
+                            onClick = {
+                                menuOpen = false
+                                query = ""
+                                scope.launch {
+                                    gate.withLock {
+                                        model.applyView(view.copy(newestFirst = !view.newestFirst))
+                                        pull()
+                                    }
+                                    if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                }
+                            },
+                        )
+                    }
                 }
                 TextButton(
                     onClick = {
@@ -287,37 +334,41 @@ fun MessageIndexScreen(
                     },
                 ) { Text("Expunge") }
             }
-            if (menuOpen) {
-                menuKeys.forEach { key ->
-                    TextButton(
-                        onClick = {
-                            query = ""
+            if (searchVisible) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { next ->
+                        val cleared = next.isEmpty() && query.isNotEmpty()
+                        query = next
+                        if (cleared) {
+                            searchVisible = false
                             scope.launch {
                                 gate.withLock {
-                                    model.applyView(FolderView(key, view.newestFirst))
+                                    model.applySearch("")
+                                    pull()
+                                }
+                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                            }
+                        }
+                    },
+                    label = { Text("Search") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            scope.launch {
+                                gate.withLock {
+                                    model.applySearch(query)
                                     pull()
                                 }
                                 if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                             }
                         },
-                    ) {
-                        Text(if (key == view.key) "[${key.name}]" else key.name)
-                    }
-                }
-                TextButton(
-                    onClick = {
-                        query = ""
-                        scope.launch {
-                            gate.withLock {
-                                model.applyView(view.copy(newestFirst = !view.newestFirst))
-                                pull()
-                            }
-                            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
-                        }
-                    },
-                ) {
-                    Text(if (view.newestFirst) "Newest first" else "Oldest first")
-                }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                )
             }
             if (multiSelect) {
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
@@ -544,6 +595,12 @@ private fun IndexMessageRow(
             }
         }
     }
+}
+
+private fun sortShortLabel(key: SortKey): String = when (key) {
+    SortKey.ThreadReferences -> "Thread"
+    SortKey.ThreadOrderedSubject -> "Ordered"
+    else -> key.name
 }
 
 private class SwipeBoxHolder {

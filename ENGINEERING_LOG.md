@@ -300,3 +300,18 @@
 - Work: IMAP and SMTP connect errors name the host, port, numeric address, and strerror or timed out; lookup uses gai_strerror; login names the user and the server reply
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 3a5efe7
+
+## 2026-10-01 - folder back search sort execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-back-search-sort-20261001-1208-plan.md
+- Work: back from the message list to Folders and from a message to that mailbox; search icon reveals the field; sort icon plus a short label opens the menu; Expunge stays on the row; each folder level sorts by leaf with INBOX first
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 034f1c7
+
+## 2026-10-01 - folder back search sort phase 1
+
+- MessageIndexScreen back returns to Folders. The mailbox name is beside it. Search is an icon that shows the field; clearing it to empty calls applySearch("") and hides it. Sort is an icon plus Arrival, Date, From, Subject, To, Cc, Size, Thread, or Ordered and opens one menu of menuKeys plus newest/oldest. Choosing one calls applyView and clears the search text. Expunge stays on the row
+- MessageReaderScreen back is the first action and returns to MailRoute.Index for that mailbox. Folders, Settings, and About stay. Compose still uses its done path
+- FolderListModel orders each level by case-insensitive leaf, then mailbox. INBOX stays the first root. Other-namespace roots stay after personal folders, and shared-namespace roots stay after those
+- FolderTreeTest: zeta, alpha, INBOX shows INBOX, alpha, zeta; children b, a show a, b
+- material-icons-core is next to the Material3 dependency

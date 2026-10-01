@@ -149,6 +149,30 @@ class FolderTreeTest {
         }
         fail("expected MailFailure")
     }
+
+    @Test
+    fun zetaAlphaInboxOrdersInboxFirstAndChildrenAlphabetically() {
+        val session = FakeMailSession(
+            namespaces = listOf(Namespace("", '.', NamespaceKind.Personal)),
+            levels = mapOf(
+                ListCall("", null) to listOf(
+                    FolderEntry("zeta", "zeta", true, '.'),
+                    FolderEntry("alpha", "alpha", false, '.'),
+                    FolderEntry("INBOX", "INBOX", false, '.'),
+                ),
+                ListCall("", "zeta") to listOf(
+                    FolderEntry("zeta.b", "b", false, '.'),
+                    FolderEntry("zeta.a", "a", false, '.'),
+                ),
+            ),
+        )
+        val store = MemorySettingsStore(
+            AccountSettings(expandedFolders = setOf("zeta")),
+        )
+        val rows = runImmediate { FolderListModel(session, store).loadLevel() }
+        assertEquals(listOf("INBOX", "alpha", "zeta"), rows.filter { it.depth == 0 }.map { it.mailbox })
+        assertEquals(listOf("a", "b"), rows.filter { it.parentMailbox == "zeta" }.map { it.leaf })
+    }
 }
 
 private data class ListCall(val prefix: String, val parentMailbox: String?)
