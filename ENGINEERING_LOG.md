@@ -55,3 +55,9 @@
 - Plan: sandbox/plans/rewrite-untrack-sandbox-20260930-1534-plan.md
 - Status set to BLOCKED — needs replan. No stash, no backup ref, no mirror, no filter-repo, no reset, no push.
 - Phase 2 `git log --all --full-history -- sandbox/` and phase 3 `git rev-list --all --objects` cannot succeed while `origin/master` stays `a15f423077abdf0f9103263e425c0b73db01adaf`. That commit adds `sandbox/research/plan-style-guide.md`, and `--all` walks `refs/remotes/origin/master`.
+
+## 2026-09-30 - finish app shell contracts execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/finish-app-shell-contracts-20260930-1723-plan.md
+- Work: finish settings persistence, the MailSession contract, and stub screens on efa08fc
+- First action per standard-plan-compliance-block.md; commits stay on master
