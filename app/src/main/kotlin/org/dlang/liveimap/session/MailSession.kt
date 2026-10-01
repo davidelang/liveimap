@@ -1,0 +1,28 @@
+package org.dlang.liveimap.session
+
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.SortKey
+
+interface MailSession {
+    val capabilities: Set<String>
+    suspend fun open(account: AccountSettings): OpenResult
+    suspend fun namespaces(): List<Namespace>
+    suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry>
+    suspend fun select(mailbox: String): SelectResult
+    suspend fun unselect()
+    suspend fun fetchIndex(request: IndexRequest): List<IndexRow>
+    suspend fun fetchStructure(uid: Long): MimePart
+    suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray
+    suspend fun fetchRfc822(uid: Long): ByteArray
+    suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>)
+    suspend fun uidExpungeDeleted()
+    suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String)
+    suspend fun searchText(query: String): List<Long>
+    suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
+    suspend fun thread(key: SortKey): ThreadNode
+    suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)
+    suspend fun stopWatch()
+    suspend fun append(mailbox: String, rfc822: ByteArray)
+    suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>)
+    fun close()
+}

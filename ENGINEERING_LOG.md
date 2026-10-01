@@ -81,3 +81,10 @@
 - Work: add ExperimentalMaterial3Api opt-in on LiveImapScaffold so the settings screen compiles
 - Settings files from 1a8c886 and 3f38f5f stay unchanged
 - Kept the existing scaffold block note in ENGINEERING_LOG.md
+
+## 2026-09-30 - mail session contract execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/mail-session-contract-20260930-1801-plan.md
+- Work: add frozen MailSession types and DisconnectedMailSession; no screens, network, or native code
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 050b9be with builds tag
