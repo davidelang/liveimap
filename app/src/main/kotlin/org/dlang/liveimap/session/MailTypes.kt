@@ -25,6 +25,9 @@ data class FolderEntry(
     val leaf: String,
     val hasChildren: Boolean,
     val delimiter: Char,
+    val specialUse: String? = null,
+    val messages: Int? = null,
+    val unseen: Int? = null,
 )
 
 enum class IndexMode {

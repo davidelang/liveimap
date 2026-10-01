@@ -201,3 +201,18 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/add-deploy-script-20261001-0631-plan.md
 - Work: add executable ./deploy that installs app-debug.apk and moves the deployed tag on success
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-01 - Cyrus 3 capability degradation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/cyrus3-capability-degradation-20261001-0705-plan.md
+- Work: keep the eight v1 names as a hard refusal; define one behavior for each v2 capability when it is absent
+- A missing v2 capability does not close the connection. Do not call UTF8=ACCEPT. Do not invent mailbox names
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 54e8322 with builds tag
+
+## 2026-10-01 - Cyrus 3 capability degradation phase 1
+
+- capabilityGate still rejects a line missing any of NAMESPACE, UIDPLUS, LITERAL+, CHILDREN, UNSELECT, SORT, THREAD=REFERENCES, IDLE
+- moveKind, listKind, resyncKind, searchKind, sortKind, previewKind, and fetchKind follow the degradation table. A missing v2 name does not reject the line
+- FolderEntry and FolderRow carry specialUse, messages, and unseen, defaulting to null. loadLevel copies those three fields through
+- No JNI in this phase

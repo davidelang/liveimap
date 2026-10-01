@@ -36,6 +36,39 @@ fun capabilityGate(serverList: String): OpenResult {
     return if (missing) OpenResult.Rejected(serverList) else OpenResult.Connected
 }
 
+private fun hasCap(serverList: String, name: String): Boolean =
+    capabilityTokens(serverList).any { it.equals(name, ignoreCase = true) }
+
+fun moveKind(serverList: String): String =
+    if (hasCap(serverList, "MOVE")) "Move" else "CopyThenDelete"
+
+fun listKind(serverList: String): String = when {
+    !hasCap(serverList, "LIST-EXTENDED") -> "Plain"
+    hasCap(serverList, "LIST-STATUS") -> "ExtendedWithStatus"
+    else -> "Extended"
+}
+
+fun resyncKind(serverList: String): String = when {
+    hasCap(serverList, "QRESYNC") -> "Qresync"
+    hasCap(serverList, "CONDSTORE") -> "Condstore"
+    else -> "FullSelect"
+}
+
+fun searchKind(serverList: String): String =
+    if (hasCap(serverList, "ESEARCH")) "Esearch" else "UidSearch"
+
+fun sortKind(serverList: String): String {
+    val command = if (hasCap(serverList, "ESORT")) "Esort" else "UidSort"
+    val from = if (hasCap(serverList, "SORT=DISPLAY")) "DISPLAY" else "FROM"
+    return "$command $from"
+}
+
+fun previewKind(serverList: String): String =
+    if (hasCap(serverList, "PREVIEW")) "Preview" else "BodyPeek"
+
+fun fetchKind(serverList: String): String =
+    if (hasCap(serverList, "BINARY")) "BinaryPeek" else "BodyPeek"
+
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
     private var capSet: Set<String> = emptySet()

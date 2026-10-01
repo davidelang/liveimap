@@ -13,6 +13,9 @@ data class FolderRow(
     val depth: Int,
     val parentMailbox: String?,
     val expanded: Boolean,
+    val specialUse: String? = null,
+    val messages: Int? = null,
+    val unseen: Int? = null,
 )
 
 class FolderListModel(
@@ -131,6 +134,9 @@ class FolderListModel(
             depth = depth,
             parentMailbox = parentMailbox,
             expanded = showChildren,
+            specialUse = node.specialUse,
+            messages = node.messages,
+            unseen = node.unseen,
         )
         if (!showChildren) return
         val nextAncestors = ancestors + node.mailbox
@@ -173,6 +179,9 @@ class FolderListModel(
         namespaceRoot = false,
         cachedChildren = null,
         childrenComplete = false,
+        specialUse = entry.specialUse,
+        messages = entry.messages,
+        unseen = entry.unseen,
     )
 
     private fun namespaceNode(ns: Namespace) = LevelNode(
@@ -193,5 +202,8 @@ class FolderListModel(
         val namespaceRoot: Boolean,
         val cachedChildren: List<LevelNode>?,
         val childrenComplete: Boolean,
+        val specialUse: String? = null,
+        val messages: Int? = null,
+        val unseen: Int? = null,
     )
 }
