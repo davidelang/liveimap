@@ -67,3 +67,17 @@
 - SettingsScreen passed a local function after a named argument; kotlinc rejected it as Unit
 - Password field now uses a trailing lambda that calls persistPassword
 - Rebuild of the settings phase after 1a8c886
+
+## 2026-09-30 - finish app shell contracts blocked on scaffold opt-in
+
+- compileDebugKotlin fails only at app/src/main/kotlin/org/dlang/liveimap/ui/LiveImapScaffold.kt:25
+- TopAppBar is ExperimentalMaterial3Api and that file has no OptIn
+- The file is already present and is not in this plan's Critical Files, so it was not edited
+- No builds tag. Phase 2 not started. Settings commits 1a8c886 and 3f38f5f are on master
+
+## 2026-09-30 - scaffold topappbar opt-in execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/scaffold-topappbar-optin-20260930-1801-plan.md
+- Work: add ExperimentalMaterial3Api opt-in on LiveImapScaffold so the settings screen compiles
+- Settings files from 1a8c886 and 3f38f5f stay unchanged
+- Kept the existing scaffold block note in ENGINEERING_LOG.md
