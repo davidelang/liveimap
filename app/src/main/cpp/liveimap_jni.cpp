@@ -4,8 +4,17 @@
 #include <jni.h>
 
 #include <poll.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -1512,25 +1521,205 @@ void watchMain(LiveSession * session) {
     gVm->DetachCurrentThread();
 }
 
-mailimap * openPlain(const char * host, int port, const char * user, const char * password, std::string * error) {
+const int kConnectTimeoutSec = 60;
+
+std::string serviceLabel(const char * proto, const char * host, int port) {
+    std::string label = proto != nullptr ? proto : "";
+    label.push_back(' ');
+    if (host != nullptr) label += host;
+    label.push_back(':');
+    label += std::to_string(port);
+    return label;
+}
+
+std::string errorText(int err) {
+    const char * text = strerror(err);
+    if (text == nullptr || text[0] == 0) return "connection failed";
+    return text;
+}
+
+std::string numericAddress(const struct addrinfo * ai) {
+    char buf[INET6_ADDRSTRLEN];
+    const void * src = nullptr;
+    if (ai != nullptr && ai->ai_addr != nullptr && ai->ai_family == AF_INET) {
+        src = &reinterpret_cast<const struct sockaddr_in *>(ai->ai_addr)->sin_addr;
+    } else if (ai != nullptr && ai->ai_addr != nullptr && ai->ai_family == AF_INET6) {
+        src = &reinterpret_cast<const struct sockaddr_in6 *>(ai->ai_addr)->sin6_addr;
+    }
+    if (src == nullptr || inet_ntop(ai->ai_family, src, buf, sizeof(buf)) == nullptr) {
+        return "?";
+    }
+    return buf;
+}
+
+std::string connectFailure(const char * proto, const char * host, int port,
+    const std::string & address, const std::string & detail) {
+    return serviceLabel(proto, host, port) + " (" + address + "): " + detail;
+}
+
+int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
+    if (ai == nullptr || ai->ai_addr == nullptr) {
+        *why = "connection failed";
+        return -1;
+    }
+    int fd = socket(ai->ai_family, ai->ai_socktype != 0 ? ai->ai_socktype : SOCK_STREAM, ai->ai_protocol);
+    if (fd < 0) {
+        *why = errorText(errno);
+        return -1;
+    }
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        *why = errorText(errno);
+        close(fd);
+        return -1;
+    }
+    int rc = connect(fd, ai->ai_addr, ai->ai_addrlen);
+    bool ready = rc == 0;
+    if (rc < 0 && errno != EINPROGRESS && errno != EINTR) {
+        *why = errorText(errno);
+        close(fd);
+        return -1;
+    }
+    if (rc < 0) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
+        while (true) {
+            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0) {
+                *why = "timed out";
+                close(fd);
+                return -1;
+            }
+            struct pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLOUT;
+            int waitMs = left < 60000 ? static_cast<int>(left) : 60000;
+            int pr = poll(&pfd, 1, waitMs);
+            if (pr == 0) {
+                *why = "timed out";
+                close(fd);
+                return -1;
+            }
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                *why = errorText(errno);
+                close(fd);
+                return -1;
+            }
+            if ((pfd.revents & POLLOUT) != 0) ready = true;
+            break;
+        }
+    }
+    int soerr = 0;
+    socklen_t len = sizeof(soerr);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &len) < 0) {
+        *why = errorText(errno);
+        close(fd);
+        return -1;
+    }
+    if (soerr != 0) {
+        *why = errorText(soerr);
+        close(fd);
+        return -1;
+    }
+    if (!ready) {
+        *why = "connection failed";
+        close(fd);
+        return -1;
+    }
+    // mailstream_socket_open_timeout requires a blocking fd.
+    int cur = fcntl(fd, F_GETFL, 0);
+    if (cur < 0 || fcntl(fd, F_SETFL, cur & ~O_NONBLOCK) < 0) {
+        *why = errorText(errno);
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+int tcpConnect(const char * proto, const char * host, int port, std::string * address, std::string * error) {
+    struct addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    struct addrinfo * res = nullptr;
+    std::string portText = std::to_string(port);
+    const char * lookup = host != nullptr ? host : "";
+    int gai = getaddrinfo(lookup, portText.c_str(), &hints, &res);
+    if (gai != 0) {
+        const char * text = gai_strerror(gai);
+        *error = serviceLabel(proto, host, port) + ": name lookup failed: "
+            + (text != nullptr && text[0] != 0 ? text : "unknown");
+        return -1;
+    }
+    std::string failures;
+    int fd = -1;
+    std::string chosen;
+    for (struct addrinfo * ai = res; ai != nullptr; ai = ai->ai_next) {
+        std::string numeric = numericAddress(ai);
+        std::string why;
+        int one = connectOne(ai, kConnectTimeoutSec, &why);
+        if (one >= 0) {
+            fd = one;
+            chosen = std::move(numeric);
+            break;
+        }
+        if (!failures.empty()) failures += "; ";
+        failures += connectFailure(proto, host, port, numeric, why);
+    }
+    if (res != nullptr) freeaddrinfo(res);
+    if (fd < 0) {
+        *error = failures.empty()
+            ? serviceLabel(proto, host, port) + ": name lookup failed: no address"
+            : failures;
+        return -1;
+    }
+    *address = std::move(chosen);
+    return fd;
+}
+
+mailimap * openPlain(const char * host, int port, const char * user, const char * password,
+    std::string * error, std::string * connectedAddress) {
     mailimap * imap = mailimap_new(0, nullptr);
     if (imap == nullptr) {
         *error = "imap error";
         return nullptr;
     }
-    mailimap_set_timeout(imap, 60);
-    int r = mailimap_socket_connect(imap, host, static_cast<uint16_t>(port));
+    mailimap_set_timeout(imap, kConnectTimeoutSec);
+    std::string address;
+    int fd = tcpConnect("IMAP", host, port, &address, error);
+    if (fd < 0) {
+        mailimap_free(imap);
+        return nullptr;
+    }
+    mailstream * stream = mailstream_socket_open_timeout(fd, kConnectTimeoutSec);
+    if (stream == nullptr) {
+        close(fd);
+        *error = connectFailure("IMAP", host, port, address, "connection failed");
+        mailimap_free(imap);
+        return nullptr;
+    }
+    int r = mailimap_connect(imap, stream);
     if (!connectOk(r)) {
-        *error = imapText(imap, "connection failed");
+        *error = connectFailure("IMAP", host, port, address, imapText(imap, "connection failed"));
+        if (imap->imap_stream != nullptr) {
+            mailstream_close(imap->imap_stream);
+            imap->imap_stream = nullptr;
+        } else {
+            mailstream_close(stream);
+        }
         mailimap_free(imap);
         return nullptr;
     }
     r = mailimap_login(imap, user, password);
     if (!cmdOk(r)) {
-        *error = imapText(imap, "login failed");
+        const char * name = user != nullptr ? user : "";
+        *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
+            + ": login failed: " + imapText(imap, "login failed");
         mailimap_free(imap);
         return nullptr;
     }
+    if (connectedAddress != nullptr) *connectedAddress = address;
     return imap;
 }
 
@@ -2268,7 +2457,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars sh(env, smtpHost);
     JChars fr(env, from);
     std::string error;
-    mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), &error);
+    std::string address;
+    mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), &error, &address);
     if (imap == nullptr) {
         setLastError(error);
         return 0;
@@ -2276,7 +2466,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     struct mailimap_capability_data * caps = nullptr;
     int r = mailimap_capability(imap, &caps);
     if (!cmdOk(r) || caps == nullptr) {
-        setLastError(imapText(imap, "capability failed"));
+        setLastError(serviceLabel("IMAP", h.c(), port) + " (" + address + "): capability failed: "
+            + imapText(imap, "capability failed"));
         mailimap_free(imap);
         return 0;
     }
@@ -3082,7 +3273,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     stopWatchLocked(session, env);
     JChars mb(env, mailbox);
     std::string error;
-    mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), &error);
+    mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), &error, nullptr);
     if (watch == nullptr) {
         throwFailure(env, error);
         unlockSession(session);
@@ -3145,10 +3336,30 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
-    mailsmtp_set_timeout(smtp, 60);
-    int r = mailsmtp_socket_connect(smtp, session->smtpHost.c_str(), static_cast<uint16_t>(session->smtpPort));
+    mailsmtp_set_timeout(smtp, kConnectTimeoutSec);
+    std::string address;
+    std::string dialError;
+    int fd = tcpConnect("SMTP", session->smtpHost.c_str(), session->smtpPort, &address, &dialError);
+    if (fd < 0) {
+        mailsmtp_free(smtp);
+        throwFailure(env, dialError);
+        unlockSession(session);
+        return;
+    }
+    mailstream * stream = mailstream_socket_open_timeout(fd, kConnectTimeoutSec);
+    if (stream == nullptr) {
+        close(fd);
+        mailsmtp_free(smtp);
+        throwFailure(env, connectFailure("SMTP", session->smtpHost.c_str(), session->smtpPort,
+            address, "connection failed"));
+        unlockSession(session);
+        return;
+    }
+    std::string where = serviceLabel("SMTP", session->smtpHost.c_str(), session->smtpPort)
+        + " (" + address + "): ";
+    int r = mailsmtp_connect(smtp, stream);
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = asciiSafe(smtp->response, "connection failed");
+        std::string why = where + asciiSafe(smtp->response, "connection failed");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);
@@ -3156,7 +3367,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     r = mailsmtp_helo(smtp);
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = asciiSafe(smtp->response, "smtp error");
+        std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);
@@ -3164,7 +3375,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     r = mailsmtp_mail(smtp, session->from.c_str());
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = asciiSafe(smtp->response, "smtp error");
+        std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);
@@ -3177,7 +3388,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         r = mailsmtp_rcpt(smtp, rcpt.c());
         if (js != nullptr) env->DeleteLocalRef(js);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = asciiSafe(smtp->response, "smtp error");
+            std::string why = where + asciiSafe(smtp->response, "smtp error");
             mailsmtp_free(smtp);
             throwFailure(env, why);
             unlockSession(session);
@@ -3192,7 +3403,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
     }
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = asciiSafe(smtp->response, "smtp error");
+        std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);

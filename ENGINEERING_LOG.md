@@ -293,3 +293,10 @@
 - versionName, AboutScreen, and the project-facts version bullet already match the plan and stay unchanged
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 31b9194
+
+## 2026-10-01 - show connect target execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/show-connect-target-20261001-1125-plan.md
+- Work: IMAP and SMTP connect errors name the host, port, numeric address, and strerror or timed out; lookup uses gai_strerror; login names the user and the server reply
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 3a5efe7
