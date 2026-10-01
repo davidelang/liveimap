@@ -178,3 +178,20 @@
 - ComposeScreen keeps its signature, calls AddressBookPicker, and sends text/plain
 - Bcc stays off the header block; bounce prepends Resent-* and keeps the original Message-ID; a failed SMTP send does not append
 - NavHost, MailSession, the index, the folder screen, and settings files were not edited
+
+## 2026-09-30 - address book reader execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/addressbook-reader-20260930-1419-plan.md
+- Work: replace the address book stub; read the Alpine mailbox; do not write it and do not read Android contacts
+- AddressBookPicker keeps its signature; ComposeScreen, NavHost, and MailSession stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 4592947 with builds tag
+
+## 2026-09-30 - address book reader phase 1
+
+- AddressBookPicker keeps its signature, selects the configured mailbox, and does not call append, storeFlags, or smtpSend
+- An empty addressBookMailbox shows Address book mailbox is not set and does not select
+- The first message must contain x-pine-addrbook; the book is the last message body with no MIME decoding
+- parseAlpineBook keeps tab fields, space continuations, empty nicknames, and [plaintext] in the comment
+- AlpineBookTest: 9 tests, 0 failures. A headerless body is rejected and a normal mail folder is not parsed
+- Fake MailSession stays inside AlpineBookTest.kt. ComposeScreen, NavHost, and MailSession were not edited
