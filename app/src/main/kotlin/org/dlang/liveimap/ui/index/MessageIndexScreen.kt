@@ -5,12 +5,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,6 +50,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -54,6 +58,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -75,9 +80,57 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.SwipeBinding
-import org.dlang.liveimap.ui.FlagMarks
 
 private val indexFlags = listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")
+
+data class IndexAppearance(
+    val alpha: Float,
+    val strikethrough: Boolean,
+)
+
+fun indexAppearance(flags: Set<String>): IndexAppearance {
+    val seen = "\\Seen" in flags
+    val deleted = "\\Deleted" in flags
+    return IndexAppearance(
+        alpha = if (seen) 0.55f else 1f,
+        strikethrough = deleted,
+    )
+}
+
+private val markImportant = Color(0xFFFFC107)
+private val markToMe = Color(0xFF1976D2)
+private val markReplied = Color(0xFF388E3C)
+private val markForwarded = Color(0xFF7B1FA2)
+private val markAttachment = Color(0xFF795548)
+
+private fun indexMarkColors(row: IndexRow): List<Color> = buildList {
+    if ("\\Flagged" in row.flags) add(markImportant)
+    if (row.toMe) add(markToMe)
+    if ("\\Answered" in row.flags) add(markReplied)
+    if ("\$Forwarded" in row.flags) add(markForwarded)
+    if (row.hasAttachment) add(markAttachment)
+}
+
+@Composable
+private fun IndexMarkDots(marks: List<Color>, modifier: Modifier = Modifier) {
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        for (column in marks.chunked(4)) {
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                for (color in column) {
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .background(color, CircleShape),
+                    )
+                }
+            }
+        }
+    }
+}
 
 private class SnapshotSync {
     var block: () -> Unit = {}
@@ -575,22 +628,52 @@ private fun IndexMessageRow(
                     .combinedClickable(onLongClick = onLongPress, onClick = onClick)
                     .padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val from = if (selected) "selected ${row.from}" else row.from
-                    Text(
-                        text = from,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(text = row.envelopeDate, maxLines = 1, overflow = TextOverflow.Clip)
+                val appearance = indexAppearance(row.flags)
+                val textColor = MaterialTheme.colorScheme.onSurface.copy(alpha = appearance.alpha)
+                val decoration = if (appearance.strikethrough) TextDecoration.LineThrough else TextDecoration.None
+                Row(verticalAlignment = Alignment.Top) {
+                    val marks = indexMarkColors(row)
+                    if (marks.isNotEmpty()) {
+                        IndexMarkDots(marks, Modifier.padding(end = 4.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val from = if (selected) "selected ${row.from}" else row.from
+                            Text(
+                                text = from,
+                                modifier = Modifier.weight(1f),
+                                color = textColor,
+                                textDecoration = decoration,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = row.envelopeDate,
+                                color = textColor,
+                                textDecoration = decoration,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                            )
+                        }
+                        Text(
+                            text = row.subject,
+                            color = textColor,
+                            textDecoration = decoration,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                Text(text = row.subject, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                FlagMarks(row.flags)
                 val lines = previewLineCount(account.density)
                 val preview = row.preview
                 if (lines > 0 && preview != null) {
-                    Text(text = preview, maxLines = lines, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = preview,
+                        color = textColor,
+                        textDecoration = decoration,
+                        maxLines = lines,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

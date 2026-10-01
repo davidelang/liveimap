@@ -361,3 +361,8 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-compile-so-builds-can-move-20261001-1334-plan.md
 - Work: orderedLevel uses compareBy with a case-insensitive leaf comparator then mailbox; the index sort control uses Icons.AutoMirrored.Filled.List
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-01 - index marks and compose close execution start
+
+- Approved plan: sandbox/plans/index-marks-and-compose-close-20261001-1352-plan.md
+- Work: drop the flag-name line; seen and deleted text appearance; left mark circles; to-me and attachment on the index row; Close leaves compose; store the literal $Forwarded after a forward send

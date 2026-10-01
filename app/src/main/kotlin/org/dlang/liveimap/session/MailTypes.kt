@@ -56,6 +56,8 @@ data class IndexRow(
     val subject: String,
     val envelopeDate: String,
     val preview: String?,
+    val toMe: Boolean = false,
+    val hasAttachment: Boolean = false,
 )
 
 data class MimePart(

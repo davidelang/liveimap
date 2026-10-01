@@ -282,7 +282,7 @@ bool ensureJni(JNIEnv * env) {
     gJni.integerCls = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
     gJni.indexRowInit = env->GetMethodID(gJni.indexRow, "<init>",
-        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V");
     gJni.folderInit = env->GetMethodID(gJni.folderEntry, "<init>",
         "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V");
     gJni.nsInit = env->GetMethodID(gJni.ns, "<init>",
@@ -527,7 +527,17 @@ bool flagListFromArray(JNIEnv * env, jobjectArray names, struct mailimap_flag_li
         struct mailimap_flag * flag = nullptr;
         {
             JChars chars(env, js);
-            flag = flagFromName(chars.c());
+            if (strcmp(chars.c(), "$Forwarded") == 0) {
+                char * literal = strdup("$Forwarded");
+                if (literal != nullptr) {
+                    flag = mailimap_flag_new_flag_keyword(literal);
+                    if (flag == nullptr) {
+                        free(literal);
+                    }
+                }
+            } else {
+                flag = flagFromName(chars.c());
+            }
         }
         if (js != nullptr) {
             env->DeleteLocalRef(js);
@@ -851,11 +861,108 @@ struct Row {
     std::string date;
     struct mailimap_body * structure = nullptr;
     bool deleted = false;
+    bool toMe = false;
+    bool hasAttachment = false;
     std::string preview;
     bool hasPreview = false;
 };
 
-void readAtt(struct mailimap_msg_att * att, Row * row) {
+bool sameMailbox(const char * mailbox, const char * host, const char * email) {
+    if (email == nullptr || email[0] == 0) {
+        return false;
+    }
+    if (mailbox == nullptr || host == nullptr || mailbox[0] == 0 || host[0] == 0) {
+        return false;
+    }
+    std::string combined(mailbox);
+    combined.push_back('@');
+    combined += host;
+    return strcasecmp(combined.c_str(), email) == 0;
+}
+
+bool envelopeToMatches(struct mailimap_envelope * env, const char * email) {
+    if (env == nullptr || env->env_to == nullptr || env->env_to->to_list == nullptr) {
+        return false;
+    }
+    for (clistiter * cur = clist_begin(env->env_to->to_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * addr = static_cast<struct mailimap_address *>(clist_content(cur));
+        if (addr != nullptr && sameMailbox(addr->ad_mailbox_name, addr->ad_host_name, email)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool countsAsAttachment(const char * mediaType, const char * disposition, const char * filename) {
+    if (disposition != nullptr && disposition[0] != 0 && strcasecmp(disposition, "attachment") == 0) {
+        return true;
+    }
+    if (filename != nullptr && filename[0] != 0) {
+        return true;
+    }
+    if (mediaType == nullptr || mediaType[0] == 0) {
+        return false;
+    }
+    if (strcasecmp(mediaType, "text") == 0 || strcasecmp(mediaType, "multipart") == 0) {
+        return false;
+    }
+    return true;
+}
+
+bool structureHasAttachment(struct mailimap_body * body) {
+    if (body == nullptr) {
+        return false;
+    }
+    if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
+        struct mailimap_body_type_mpart * mpart = body->bd_data.bd_body_mpart;
+        struct mailimap_body_fld_dsp * disp = nullptr;
+        const char * filename = nullptr;
+        if (mpart->bd_ext_mpart != nullptr) {
+            disp = mpart->bd_ext_mpart->bd_disposition;
+            filename = paramValue(mpart->bd_ext_mpart->bd_parameter, "name");
+        }
+        if (disp != nullptr) {
+            if (filename == nullptr) {
+                filename = paramValue(disp->dsp_attributes, "filename");
+            }
+            if (filename == nullptr) {
+                filename = paramValue(disp->dsp_attributes, "name");
+            }
+        }
+        const char * dispType = disp != nullptr ? disp->dsp_type : nullptr;
+        if (countsAsAttachment("multipart", dispType, filename)) {
+            return true;
+        }
+        if (mpart->bd_list != nullptr) {
+            for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur)) {
+                if (structureHasAttachment(static_cast<struct mailimap_body *>(clist_content(cur)))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    if (body->bd_type != MAILIMAP_BODY_1PART || body->bd_data.bd_body_1part == nullptr) {
+        return false;
+    }
+    struct mailimap_body_type_1part * part = body->bd_data.bd_body_1part;
+    std::string type;
+    std::string subtype;
+    describe1(part, &type, &subtype);
+    struct mailimap_body_fields * fields = fieldsOf1(part);
+    struct mailimap_body_fld_dsp * disp = part->bd_ext_1part != nullptr ? part->bd_ext_1part->bd_disposition : nullptr;
+    const char * filename = filenameOf(fields, disp);
+    const char * dispType = disp != nullptr ? disp->dsp_type : nullptr;
+    if (countsAsAttachment(type.c_str(), dispType, filename)) {
+        return true;
+    }
+    if (part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr) {
+        return structureHasAttachment(part->bd_data.bd_type_msg->bd_body);
+    }
+    return false;
+}
+
+void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail) {
     if (att == nullptr) {
         return;
     }
@@ -903,10 +1010,12 @@ void readAtt(struct mailimap_msg_att * att, Row * row) {
                             row->from = addressText(static_cast<struct mailimap_address *>(clist_content(a)));
                         }
                     }
+                    row->toMe = envelopeToMatches(env, accountEmail);
                 }
                 break;
             case MAILIMAP_MSG_ATT_BODYSTRUCTURE:
                 row->structure = st->att_data.att_bodystructure;
+                row->hasAttachment = structureHasAttachment(row->structure);
                 break;
             default:
                 break;
@@ -1010,7 +1119,8 @@ jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bo
     jobject obj = env->NewObject(gJni.indexRow, gJni.indexRowInit,
         static_cast<jlong>(row.uid), static_cast<jint>(row.sequence), flags,
         static_cast<jlong>(row.epoch), static_cast<jint>(row.size),
-        from, subject, date, prev);
+        from, subject, date, prev,
+        static_cast<jboolean>(row.toMe), static_cast<jboolean>(row.hasAttachment));
     env->DeleteLocalRef(flags);
     env->DeleteLocalRef(from);
     env->DeleteLocalRef(subject);
@@ -1019,14 +1129,14 @@ jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bo
     return obj;
 }
 
-std::vector<Row> rowsFromList(clist * list) {
+std::vector<Row> rowsFromList(clist * list, const char * accountEmail) {
     std::vector<Row> rows;
     if (list == nullptr) {
         return rows;
     }
     for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
         Row row;
-        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row);
+        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail);
         if (row.uid != 0) {
             rows.push_back(row);
         }
@@ -1450,7 +1560,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data)
             emitWatch(session, 1, session->watchExists, 0, nullptr);
         } else if (msg->mdt_type == MAILIMAP_MESSAGE_DATA_FETCH) {
             Row row;
-            readAtt(msg->mdt_msg_att, &row);
+            readAtt(msg->mdt_msg_att, &row, nullptr);
             if (row.uid != 0) {
                 JNIEnv * env = nullptr;
                 gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
@@ -2707,10 +2817,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jint mode, jlongArray uids, jint limit, jint prefetch, jboolean includePreview,
-    jint previewByteLimit, jboolean preferHtml, jboolean showDeleted, jboolean useServerPreview) {
+    jint previewByteLimit, jboolean preferHtml, jboolean showDeleted, jboolean useServerPreview,
+    jstring accountEmail) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
+    JChars accountEmailChars(env, accountEmail);
     JChars mb(env, mailbox);
     if (!selectMailbox(env, session, mb.c())) {
         unlockSession(session);
@@ -2741,14 +2853,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         }
         struct mailimap_set * set = mailimap_set_new_interval(first, last);
         clist * list = nullptr;
-        int r = fetchRows(session->imap, set, false, bodyPreview, serverPreview, &list);
+        int r = fetchRows(session->imap, set, false, true, serverPreview, &list);
         mailimap_set_free(set);
         if (!cmdOk(r)) {
             throwImap(env, session->imap, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
-        std::vector<Row> rows = rowsFromList(list);
+        std::vector<Row> rows = rowsFromList(list, accountEmailChars.c());
         std::vector<std::string> previews(rows.size());
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
@@ -2798,14 +2910,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         std::vector<uint32_t> page(all.begin() + static_cast<std::ptrdiff_t>(off), all.begin() + static_cast<std::ptrdiff_t>(end));
         struct mailimap_set * set = setFromUids(page);
         clist * list = nullptr;
-        int r = fetchRows(session->imap, set, true, bodyPreview, serverPreview, &list);
+        int r = fetchRows(session->imap, set, true, true, serverPreview, &list);
         if (set != nullptr) mailimap_set_free(set);
         if (!cmdOk(r)) {
             throwImap(env, session->imap, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
-        std::vector<Row> rows = rowsFromList(list);
+        std::vector<Row> rows = rowsFromList(list, accountEmailChars.c());
         std::vector<std::string> previews(rows.size());
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
@@ -2861,7 +2973,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr && body == nullptr; cur = clist_next(cur)) {
             Row row;
-            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row);
+            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, nullptr);
             body = row.structure;
         }
     }

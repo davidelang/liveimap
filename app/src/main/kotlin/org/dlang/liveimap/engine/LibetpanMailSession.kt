@@ -182,6 +182,7 @@ class LibetpanMailSession : MailSession {
             settings?.preferHtml == true,
             settings?.showDeleted != false,
             useServerPreview,
+            settings?.email.orEmpty(),
         ) ?: throw MailFailure("fetch failed")
         return rows.toList()
     }
@@ -375,6 +376,7 @@ class LibetpanMailSession : MailSession {
         preferHtml: Boolean,
         showDeleted: Boolean,
         useServerPreview: Boolean,
+        accountEmail: String,
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?

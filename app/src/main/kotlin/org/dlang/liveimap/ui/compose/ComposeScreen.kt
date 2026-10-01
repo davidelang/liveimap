@@ -96,6 +96,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     var bounceTo by remember { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
+    var deliveryDone by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
     var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
     var pickerOpen by remember { mutableStateOf(false) }
@@ -229,6 +230,22 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                 attachments = parts,
             ),
         )
+    }
+
+    suspend fun markForwarded(): Boolean {
+        if (seed.kind != ComposeKind.Forward) return true
+        val uid = sourceUid ?: return true
+        val box = seed.mailbox ?: return true
+        return try {
+            ensureMailbox(box)
+            session.storeFlags(listOf(uid), setOf("\$Forwarded"), emptySet())
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            notice = error.text
+            false
+        }
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
@@ -381,6 +398,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
+        TextButton(onClick = onDone) { Text("Close") }
         val stateText = status
         if (stateText != null) Text(stateText)
         val failure = notice
@@ -556,6 +574,12 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     if (saved != null && saved.appendOnly) {
                         return@launchLocked retryCopy(saved)
                     }
+                    if (deliveryDone) {
+                        status = null
+                        if (!markForwarded()) return@launchLocked false
+                        notice = null
+                        return@launchLocked true
+                    }
                     if (account.email.isEmpty()) {
                         notice = "From address is not set"
                         return@launchLocked false
@@ -601,9 +625,11 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     }
                     deleteCopy(appContext, id)
                     held = null
-                    notice = null
-                    status = null
                     copies = readCopies(appContext)
+                    deliveryDone = true
+                    status = null
+                    if (!markForwarded()) return@launchLocked false
+                    notice = null
                     true
                 }
             }) { Text(if (held?.appendOnly == true) "Save sent copy" else "Send") }
