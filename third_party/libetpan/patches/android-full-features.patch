@@ -1,6 +1,6 @@
 diff --git a/build-android/build.sh b/build-android/build.sh
 --- a/build-android/build.sh	2026-09-30 18:59:34.173366559 -0700
-+++ b/build-android/build.sh	2026-09-30 18:59:07.936694463 -0700
++++ b/build-android/build.sh	2026-09-30 19:04:46.345905327 -0700
 @@ -1,4 +1,5 @@
 -#!/bin/sh -x
 +#!/bin/sh
@@ -31,16 +31,19 @@ diff --git a/build-android/build.sh b/build-android/build.sh
  fi
  
  build() {
-@@ -73,7 +74,7 @@
+@@ -73,7 +74,10 @@
  
  cd "$current_dir/.."
  tar xzf "$current_dir/../build-mac/autogen-result.tar.gz"
 -./configure
++# The shipped autogen tarball predates LIBETPAN_VERSION_MICRO and
++# --with-json=libfastjson. Regenerate configure from configure.ac.
++NOCONFIGURE=1 ./autogen.sh
 +./configure --with-json=libfastjson
  # `make prepare` creates the include/libetpan symlinks but does NOT build
  # libetpan-config.h (it is a BUILT_SOURCES target, only made by a full `make`).
  # Generate it explicitly so the include/libetpan/libetpan-config.h symlink
-@@ -91,9 +92,13 @@
+@@ -91,9 +95,13 @@
  
  # Start building.
  ANDROID_PLATFORM=android-23
