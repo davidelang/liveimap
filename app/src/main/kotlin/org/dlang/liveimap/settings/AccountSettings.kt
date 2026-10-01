@@ -39,6 +39,12 @@ enum class SwipeAction {
     FlagScreen,
 }
 
+enum class ThemeMode {
+    Dark,
+    Light,
+    FollowSystem,
+}
+
 data class SwipeBinding(
     val action: SwipeAction,
     val moveMailbox: String = "",
@@ -66,6 +72,8 @@ data class AccountSettings(
     val swipeTrailing: SwipeBinding = SwipeBinding(SwipeAction.Delete),
     val swipeLeading: SwipeBinding = SwipeBinding(SwipeAction.ReplyAll),
     val bounceFcc: Boolean = false,
+    val friendlyName: String = "",
+    val theme: ThemeMode = ThemeMode.FollowSystem,
 )
 
 private val fieldNames = listOf(
@@ -89,6 +97,8 @@ private val fieldNames = listOf(
     "swipeTrailing",
     "swipeLeading",
     "bounceFcc",
+    "friendlyName",
+    "theme",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -114,6 +124,8 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("swipeTrailing=${encodeSwipe(swipeTrailing)}")
     appendLine("swipeLeading=${encodeSwipe(swipeLeading)}")
     appendLine("bounceFcc=$bounceFcc")
+    appendLine("friendlyName=${percentEncode(friendlyName)}")
+    appendLine("theme=${theme.name}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -128,6 +140,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         values[key] = line.substring(eq + 1)
     }
     for (key in fieldNames) {
+        if (key == "friendlyName" || key == "theme") continue
         if (key !in values) throw IllegalArgumentException("missing key")
     }
     return AccountSettings(
@@ -151,7 +164,24 @@ fun decodeAccountSettings(text: String): AccountSettings {
         swipeTrailing = parseSwipe(values.getValue("swipeTrailing")),
         swipeLeading = parseSwipe(values.getValue("swipeLeading")),
         bounceFcc = parseBoolean(values.getValue("bounceFcc")),
+        friendlyName = values["friendlyName"]?.let { percentDecode(it) } ?: "",
+        theme = values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem,
     )
+}
+
+fun looksLikeEmail(value: String): Boolean {
+    val trimmed = value.trim()
+    if (trimmed.any { it.isWhitespace() }) return false
+    val at = trimmed.indexOf('@')
+    if (at <= 0 || trimmed.indexOf('@', at + 1) >= 0) return false
+    val domain = trimmed.substring(at + 1)
+    return domain.contains('.') && !domain.startsWith('.') && !domain.endsWith('.')
+}
+
+fun emailDefaultedFromUsername(username: String, email: String): String {
+    if (email.isNotEmpty()) return email
+    if (looksLikeEmail(username)) return username
+    return email
 }
 
 private fun encodeView(view: FolderView): String =

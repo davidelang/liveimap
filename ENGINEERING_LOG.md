@@ -255,3 +255,19 @@
 - versionCode stays 1. buildConfig is true. Configuration writes no file. AndroidManifest and SettingsScreen stay unchanged
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 2d60941
+
+## 2026-10-01 - settings sections and theme execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-sections-and-theme-20261001-1042-plan.md
+- Work: split Settings into Server, Account, and Display; friendly name and theme after bounceFcc; older blobs missing those keys still decode; password stays out of encode and sits under Username; choices are one pulldown; email defaults only when Username loses focus and email is blank; MainActivity applies Dark, Light, or Follow system
+- Sent, postponed, and address book stay text fields. No Choose buttons
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD ff91d07
+
+## 2026-10-01 - settings sections and theme phase 1
+
+- AccountSettings appends friendlyName and theme after bounceFcc. A blob missing either or both decodes; any other missing key still throws. Password stays out of encode
+- looksLikeEmail accepts dlang@lang.hm and rejects dlang and a@b. emailDefaultedFromUsername fills a blank email from an email-shaped username
+- SettingsScreen sections are Server, Account, and Display. Password sits under Username on the keystore path. ChoiceField is one ExposedDropdownMenuBox. Email changes only when Username loses focus and email is blank
+- MainActivity uses darkColorScheme, lightColorScheme, or isSystemInDarkTheme from the stored theme, and FollowSystem until that load returns
+- Sent, postponed, and address book stay text fields. No Choose buttons

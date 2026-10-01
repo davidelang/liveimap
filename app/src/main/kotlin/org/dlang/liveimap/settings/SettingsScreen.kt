@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -21,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -76,13 +82,27 @@ fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("IMAP port 143 and SMTP port 25 are plaintext.")
+        Text("Server")
         LineField("IMAP host", settings.imapHost) { persist(settings.copy(imapHost = it)) }
         PortField("IMAP port", settings.imapPort) { persist(settings.copy(imapPort = it)) }
         LineField("SMTP host", settings.smtpHost) { persist(settings.copy(smtpHost = it)) }
         PortField("SMTP port", settings.smtpPort) { persist(settings.copy(smtpPort = it)) }
-        LineField("Username", settings.username) { persist(settings.copy(username = it)) }
-        LineField("Display name", settings.displayName) { persist(settings.copy(displayName = it)) }
+        Text("Account")
+        LineField("Friendly name", settings.friendlyName) {
+            persist(settings.copy(friendlyName = it))
+        }
+        LineField(
+            "Username",
+            settings.username,
+            onFocusLost = { username ->
+                persist(settings.copy(email = emailDefaultedFromUsername(username, settings.email)))
+            },
+        ) { persist(settings.copy(username = it)) }
+        LineField("Password", password, KeyboardType.Password, password = true) {
+            persistPassword(it)
+        }
         LineField("Email", settings.email, KeyboardType.Email) { persist(settings.copy(email = it)) }
+        LineField("Display name", settings.displayName) { persist(settings.copy(displayName = it)) }
         LineField("Sent mailbox", settings.sentMailbox) { persist(settings.copy(sentMailbox = it)) }
         LineField("Postponed mailbox", settings.postponedMailbox) {
             persist(settings.copy(postponedMailbox = it))
@@ -90,6 +110,7 @@ fun SettingsScreen() {
         LineField("Address book mailbox", settings.addressBookMailbox) {
             persist(settings.copy(addressBookMailbox = it))
         }
+        Text("Display")
         BoolField("Mark seen on open", settings.markSeenOnOpen) {
             persist(settings.copy(markSeenOnOpen = it))
         }
@@ -101,7 +122,12 @@ fun SettingsScreen() {
         ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { it.name }) { key ->
             persist(settings.copy(defaultView = settings.defaultView.copy(key = key)))
         }
-        BoolField("Default view newest first", settings.defaultView.newestFirst) { newest ->
+        ChoiceField(
+            "Default view newest first",
+            listOf(true, false),
+            settings.defaultView.newestFirst,
+            { if (it) "newest" else "oldest" },
+        ) { newest ->
             persist(settings.copy(defaultView = settings.defaultView.copy(newestFirst = newest)))
         }
         Text("Folder views")
@@ -151,8 +177,8 @@ fun SettingsScreen() {
             persist(settings.copy(swipeLeading = it))
         }
         BoolField("Bounce Fcc", settings.bounceFcc) { persist(settings.copy(bounceFcc = it)) }
-        LineField("Password", password, KeyboardType.Password, password = true) {
-            persistPassword(it)
+        ChoiceField("Theme", ThemeMode.entries, settings.theme, { it.name }) {
+            persist(settings.copy(theme = it))
         }
     }
 }
@@ -163,8 +189,10 @@ private fun LineField(
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     password: Boolean = false,
+    onFocusLost: ((String) -> Unit)? = null,
     onValue: (String) -> Unit,
 ) {
+    var hadFocus by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValue,
@@ -172,7 +200,14 @@ private fun LineField(
         singleLine = true,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { state ->
+                if (onFocusLost != null && hadFocus && !state.isFocused) {
+                    onFocusLost(value)
+                }
+                hadFocus = state.isFocused
+            },
     )
 }
 
@@ -195,6 +230,7 @@ private fun BoolField(label: String, value: Boolean, onValue: (Boolean) -> Unit)
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun <T> ChoiceField(
     label: String,
@@ -203,11 +239,36 @@ private fun <T> ChoiceField(
     name: (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    Text(label)
-    options.forEach { option ->
-        TextButton(onClick = { onSelect(option) }) {
-            val shown = name(option)
-            Text(if (option == selected) "[$shown]" else shown)
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = name(selected),
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(name(option)) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }

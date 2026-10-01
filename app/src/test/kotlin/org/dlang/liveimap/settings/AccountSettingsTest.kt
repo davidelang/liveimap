@@ -33,6 +33,8 @@ class AccountSettingsTest {
                 "swipeTrailing",
                 "swipeLeading",
                 "bounceFcc",
+                "friendlyName",
+                "theme",
             ),
             keys,
         )
@@ -44,6 +46,8 @@ class AccountSettingsTest {
         assertTrue(text.contains("swipeTrailing=Delete||"))
         assertTrue(text.contains("swipeLeading=ReplyAll||"))
         assertTrue(text.contains("bounceFcc=false"))
+        assertTrue(text.lines().contains("friendlyName="))
+        assertTrue(text.lines().contains("theme=FollowSystem"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 
@@ -111,6 +115,59 @@ class AccountSettingsTest {
             assertFalse(keys.contains("password"))
         }
         assertFalse(AccountSettings().encode().contains("password"))
+    }
+
+    @Test
+    fun friendlyNameAndThemeRoundTrip() {
+        val original = AccountSettings(friendlyName = "Ada/Lane", theme = ThemeMode.Dark)
+        val text = original.encode()
+        assertTrue(text.contains("friendlyName=Ada%2FLane"))
+        assertTrue(text.contains("theme=Dark"))
+        assertFalse(text.contains("password"))
+        assertEquals(original, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+    }
+
+    @Test
+    fun olderBlobMissingNewKeysDecodes() {
+        val older = AccountSettings().encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("friendlyName=") && !it.startsWith("theme=") }
+            .joinToString("\n")
+        assertEquals(AccountSettings(), decodeAccountSettings(older))
+        assertEquals("", decodeAccountSettings(older).friendlyName)
+        assertEquals(ThemeMode.FollowSystem, decodeAccountSettings(older).theme)
+
+        val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
+            .first { it.startsWith("friendlyName=") }
+        val nameOnly = decodeAccountSettings(older + "\n" + nameLine)
+        assertEquals("Ada/Lane", nameOnly.friendlyName)
+        assertEquals(ThemeMode.FollowSystem, nameOnly.theme)
+
+        val themeOnly = decodeAccountSettings(older + "\ntheme=Light")
+        assertEquals("", themeOnly.friendlyName)
+        assertEquals(ThemeMode.Light, themeOnly.theme)
+    }
+
+    @Test
+    fun looksLikeEmailCases() {
+        assertTrue(looksLikeEmail("dlang@lang.hm"))
+        assertFalse(looksLikeEmail("dlang"))
+        assertFalse(looksLikeEmail("a@b"))
+        assertTrue(looksLikeEmail("  dlang@lang.hm  "))
+        assertFalse(looksLikeEmail("dlang @lang.hm"))
+        assertFalse(looksLikeEmail("a@b."))
+        assertFalse(looksLikeEmail("a@.b"))
+        assertFalse(looksLikeEmail("a@b@c.com"))
+        assertFalse(looksLikeEmail("@lang.hm"))
+    }
+
+    @Test
+    fun emailDefaultedFromUsernameCases() {
+        assertEquals("kept@x.y", emailDefaultedFromUsername("dlang@lang.hm", "kept@x.y"))
+        assertEquals("dlang@lang.hm", emailDefaultedFromUsername("dlang@lang.hm", ""))
+        assertEquals("", emailDefaultedFromUsername("dlang", ""))
+        assertEquals("", emailDefaultedFromUsername("a@b", ""))
+        assertEquals("  dlang@lang.hm  ", emailDefaultedFromUsername("  dlang@lang.hm  ", ""))
     }
 
     private fun assertThrowsIae(block: () -> Unit) {
