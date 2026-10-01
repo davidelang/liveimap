@@ -2,6 +2,8 @@ package org.dlang.liveimap.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,40 +36,61 @@ fun NavHost() {
         mutableStateOf(ComposeSeed(kind = ComposeKind.New, mailbox = null))
     }
 
-    val title = when (route) {
-        MailRoute.Folders -> "Folders"
-        is MailRoute.Index -> "Index"
-        is MailRoute.Reader -> "Reader"
-        MailRoute.Compose -> "Compose"
-        MailRoute.Settings -> "Settings"
-        MailRoute.About -> "About"
-    }
+    val foldersHighlighted = route is MailRoute.Folders ||
+        route is MailRoute.Index ||
+        route is MailRoute.Reader ||
+        route is MailRoute.Compose
 
-    LiveImapScaffold(title = title) {
+    LiveImapScaffold {
         Column {
-            val onSettingsOrAbout = route is MailRoute.Settings || route is MailRoute.About
             Row {
                 TextButton(
                     onClick = {
-                        route = if (onSettingsOrAbout) {
-                            MailRoute.Folders
-                        } else {
-                            MailRoute.Settings
+                        if (route !is MailRoute.Folders) {
+                            route = MailRoute.Folders
                         }
                     },
+                    colors = if (foldersHighlighted) {
+                        ButtonDefaults.textButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        )
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
                 ) {
-                    Text(if (onSettingsOrAbout) "Folders" else "Settings")
+                    Text("Folders")
                 }
                 TextButton(
                     onClick = {
-                        route = if (route is MailRoute.About) {
-                            MailRoute.Settings
-                        } else {
-                            MailRoute.About
+                        if (route !is MailRoute.Settings) {
+                            route = MailRoute.Settings
                         }
                     },
+                    colors = if (route is MailRoute.Settings) {
+                        ButtonDefaults.textButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        )
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
                 ) {
-                    Text(if (route is MailRoute.About) "Settings" else "About")
+                    Text("Settings")
+                }
+                TextButton(
+                    onClick = {
+                        if (route !is MailRoute.About) {
+                            route = MailRoute.About
+                        }
+                    },
+                    colors = if (route is MailRoute.About) {
+                        ButtonDefaults.textButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        )
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                ) {
+                    Text("About")
                 }
             }
             when (val current = route) {

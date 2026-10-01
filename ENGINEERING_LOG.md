@@ -285,3 +285,11 @@
 - SettingsScreen puts Choose beside Sent mailbox, Postponed mailbox, Address book mailbox, and both swipe Move mailbox fields. Typed text still saves
 - The dialog calls mailSession().open with the stored account. Connected uses FolderListModel.loadLevel and toggleExpanded. Tapping the row name writes that row's mailbox, saves, and closes. The expander only expands
 - OpenResult.Failed shows text. OpenResult.Rejected shows capabilities. MailFailure shows text. Those cases list no mailboxes. Dismiss leaves the field unchanged
+
+## 2026-10-01 - git describe version navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/git-describe-version-20261001-0822-plan.md
+- Work: drop the title bar; always show Folders, Settings, and About; highlight the current one with secondaryContainer; Index, Reader, and Compose highlight Folders and Folders from those routes opens the folder list
+- versionName, AboutScreen, and the project-facts version bullet already match the plan and stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 31b9194
