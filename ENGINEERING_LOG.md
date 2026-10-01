@@ -195,3 +195,9 @@
 - parseAlpineBook keeps tab fields, space continuations, empty nicknames, and [plaintext] in the comment
 - AlpineBookTest: 9 tests, 0 failures. A headerless body is rejected and a normal mail folder is not parsed
 - Fake MailSession stays inside AlpineBookTest.kt. ComposeScreen, NavHost, and MailSession were not edited
+
+## 2026-10-01 - add deploy script execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/add-deploy-script-20261001-0631-plan.md
+- Work: add executable ./deploy that installs app-debug.apk and moves the deployed tag on success
+- First action per standard-plan-compliance-block.md; commits stay on master

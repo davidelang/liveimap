@@ -1,0 +1,210 @@
+#!/bin/bash
+# Install the last debug APK. The default path does not compile.
+# Agents must not run this (AGENT_MANDATES.md). There is no works tag here.
+
+set -euo pipefail
+
+APK="app/build/outputs/apk/debug/app-debug.apk"
+PKG="org.dlang.liveimap"
+
+usage() {
+  cat <<'EOF'
+Usage: ./deploy [-h|--help] [--clean] [--rebuild] [device...] [-- gradle-flag...]
+
+Install app/build/outputs/apk/debug/app-debug.apk (org.dlang.liveimap)
+with adb install -r. The default path does not recompile. When every
+selected install succeeds, move deployed (deployed on master, otherwise
+<branch>/deployed).
+
+  -h, --help   Print this usage and exit
+  --clean      Uninstall org.dlang.liveimap before install (UNINSTALL_FIRST=1).
+               Uninstall removes the app's data. Uninstall failure is ignored.
+  --rebuild    Call ./build_app once before install (REBUILD=1).
+               Gradle flags after -- are passed to ./build_app.
+  tablet, emulator
+               Select emulator-5554. Any other device argument is an adb serial.
+
+With no device arguments, install on every adb devices row whose state
+is device. If the APK is missing, run ./build_app to produce it.
+EOF
+}
+
+rebuild=0
+if [ "${REBUILD:-0}" = "1" ]; then
+  rebuild=1
+fi
+uninstall_first=0
+if [ "${UNINSTALL_FIRST:-0}" = "1" ]; then
+  uninstall_first=1
+fi
+
+device_args=()
+gradle_flags=()
+seen_dd=0
+help=0
+unknown=""
+
+for arg in "$@"; do
+  if [ "$seen_dd" -eq 1 ]; then
+    gradle_flags+=("$arg")
+    continue
+  fi
+  case "$arg" in
+    --)
+      seen_dd=1
+      ;;
+    -h|--help)
+      help=1
+      ;;
+    --clean)
+      uninstall_first=1
+      ;;
+    --rebuild)
+      rebuild=1
+      ;;
+    -*)
+      if [ -z "$unknown" ]; then
+        unknown=$arg
+      fi
+      ;;
+    *)
+      device_args+=("$arg")
+      ;;
+  esac
+done
+
+if [ "$help" -eq 1 ]; then
+  usage
+  exit 0
+fi
+if [ -n "$unknown" ]; then
+  echo "ERROR: unknown flag: $unknown" >&2
+  usage
+  exit 1
+fi
+if [ "$rebuild" -ne 1 ] && [ "${#gradle_flags[@]}" -gt 0 ]; then
+  echo "ERROR: gradle flags require --rebuild" >&2
+  usage
+  exit 1
+fi
+
+if [ "$rebuild" -eq 1 ]; then
+  if [ "${#gradle_flags[@]}" -gt 0 ]; then
+    ./build_app -- "${gradle_flags[@]}"
+  else
+    ./build_app
+  fi
+fi
+
+if [ ! -f "$APK" ]; then
+  echo "ERROR: missing $APK" >&2
+  echo "Run ./build_app to produce it." >&2
+  exit 1
+fi
+
+if ! devices_text=$(adb devices); then
+  echo "ERROR: adb devices failed" >&2
+  exit 1
+fi
+
+connected=()
+while read -r serial state _; do
+  serial=${serial//$'\r'/}
+  state=${state//$'\r'/}
+  if [ "$state" = "device" ]; then
+    connected+=("$serial")
+  fi
+done <<< "$devices_text"
+
+map_serial() {
+  case "$1" in
+    tablet|emulator) printf '%s' "emulator-5554" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+selected=()
+add_selected() {
+  local s
+  for s in "${selected[@]}"; do
+    [ "$s" = "$1" ] && return 0
+  done
+  selected+=("$1")
+}
+
+if [ "${#device_args[@]}" -eq 0 ]; then
+  for serial in "${connected[@]}"; do
+    add_selected "$serial"
+  done
+else
+  for name in "${device_args[@]}"; do
+    add_selected "$(map_serial "$name")"
+  done
+fi
+
+if [ "${#selected[@]}" -eq 0 ]; then
+  echo "ERROR: no devices in the device state" >&2
+  exit 1
+fi
+
+is_connected() {
+  local s
+  for s in "${connected[@]}"; do
+    [ "$s" = "$1" ] && return 0
+  done
+  return 1
+}
+
+failed=0
+for serial in "${selected[@]}"; do
+  if ! is_connected "$serial"; then
+    echo "ERROR: $serial is not in the device state" >&2
+    failed=1
+    continue
+  fi
+
+  if ! abi=$(adb -s "$serial" shell getprop ro.product.cpu.abi); then
+    echo "ERROR: could not read ro.product.cpu.abi on $serial" >&2
+    failed=1
+    continue
+  fi
+  abi=$(printf '%s' "$abi" | tr -d '[:space:]')
+  case "$abi" in
+    arm64-v8a|x86_64) ;;
+    *)
+      echo "ERROR: $serial ABI '$abi' is not arm64-v8a or x86_64" >&2
+      failed=1
+      continue
+      ;;
+  esac
+
+  if [ "$uninstall_first" -eq 1 ]; then
+    adb -s "$serial" uninstall "$PKG" || true
+  fi
+
+  if ! adb -s "$serial" install -r "$APK"; then
+    echo "ERROR: adb install -r failed on $serial" >&2
+    failed=1
+    continue
+  fi
+
+  if ! adb -s "$serial" logcat -c; then
+    echo "WARNING: adb logcat -c failed on $serial" >&2
+  fi
+done
+
+if [ "$failed" -ne 0 ]; then
+  echo "ERROR: one or more devices failed; deployed tag left unchanged" >&2
+  exit 1
+fi
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" == "master" ]; then
+  TAG_NAME="deployed"
+else
+  TAG_NAME="${CURRENT_BRANCH}/deployed"
+fi
+echo "Install successful. Updating '$TAG_NAME' tag."
+git tag -f "$TAG_NAME"
+git describe --tags --always
+exit 0
