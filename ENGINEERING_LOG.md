@@ -355,3 +355,9 @@
 - flagListFromArray and nativeSmtp destroy JChars before DeleteLocalRef. flagFromName returns only the five system-flag constructors. Any other name fails in nativeStoreFlags before mailimap_uid_store, and the failure names those five flags. \Deleted still stores
 - LIST reference is the parent plus its delimiter, the parent, or the namespace prefix. The pattern is %. Extended LIST sends the reference with mailimap_mailbox_send and % with mailimap_list_mailbox_send. RETURN, CHILDREN, SPECIAL-USE, and STATUS leadSpace calls are unchanged
 - THREAD sends the literal REFERENCES or ORDEREDSUBJECT and throws before a command otherwise. SORT sends DATE, FROM, SUBJECT, TO, CC, SIZE, or DISPLAY and does not pass keyName to sendWord. ENABLE stores QRESYNC or CONDSTORE and returns without mailimap_enable otherwise
+
+## 2026-10-01 - fix compile so builds can move execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-compile-so-builds-can-move-20261001-1334-plan.md
+- Work: orderedLevel uses compareBy with a case-insensitive leaf comparator then mailbox; the index sort control uses Icons.AutoMirrored.Filled.List
+- First action per standard-plan-compliance-block.md; commits stay on master

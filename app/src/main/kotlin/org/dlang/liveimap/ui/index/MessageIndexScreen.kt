@@ -19,8 +19,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -275,7 +275,7 @@ fun MessageIndexScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
-                                imageVector = Icons.Filled.Sort,
+                                imageVector = Icons.AutoMirrored.Filled.List,
                                 contentDescription = "Sort",
                             )
                         }

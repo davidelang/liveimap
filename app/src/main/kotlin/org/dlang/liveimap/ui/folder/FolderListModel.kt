@@ -168,7 +168,7 @@ class FolderListModel(
 
     private fun orderedLevel(nodes: List<LevelNode>): List<LevelNode> =
         nodes.sortedWith(
-            compareBy<LevelNode>(String.CASE_INSENSITIVE_ORDER) { it.leaf }.thenBy { it.mailbox },
+            compareBy<LevelNode, String>(String.CASE_INSENSITIVE_ORDER) { it.leaf }.thenBy { it.mailbox },
         )
 
     private fun inboxChildPrefix(delimiter: Char): String? {
