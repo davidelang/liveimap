@@ -366,3 +366,10 @@
 
 - Approved plan: sandbox/plans/index-marks-and-compose-close-20261001-1352-plan.md
 - Work: drop the flag-name line; seen and deleted text appearance; left mark circles; to-me and attachment on the index row; Close leaves compose; store the literal $Forwarded after a forward send
+
+## 2026-10-01 - move tabs below status bar execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/move-tabs-below-status-bar-20261001-1327-plan.md
+- Work: contentWindowInsets is statusBars union navigationBars union displayCutout; enableEdgeToEdge stays; no TopAppBar and no second tab-row padding
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 30e3aca
