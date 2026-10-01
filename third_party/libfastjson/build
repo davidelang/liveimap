@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Cross-compile the pinned libfastjson tree for the two Android ABIs.
+# configure runs in src/ (the fetch-deps checkout). config.h comes from that
+# NDK configure, not from a host config.h.
+set -euo pipefail
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+SRC="$HERE/src"
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK:-/usr/lib/android-ndk}}"
+HOST_TAG=linux-x86_64
+BIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin"
+
+if [[ ! -d "$SRC" ]]; then
+  echo "no src — run: third_party/fetch-deps --no-bwrap libfastjson" >&2
+  exit 1
+fi
+if [[ ! -x "$BIN/aarch64-linux-android23-clang" || ! -x "$BIN/x86_64-linux-android23-clang" ]]; then
+  echo "NDK clang not found under $BIN" >&2
+  exit 1
+fi
+if [[ ! -x "$BIN/llvm-ar" || ! -x "$BIN/llvm-ranlib" ]]; then
+  echo "llvm-ar or llvm-ranlib missing under $BIN" >&2
+  exit 1
+fi
+
+if [[ ! -f "$SRC/configure" ]]; then
+  ( cd "$SRC" && ./autogen.sh )
+fi
+
+build_one() {
+  local abi="$1" host="$2" cc="$3"
+  local prefix="$SRC/android-prefix/$abi"
+  local header jobs
+
+  jobs=$(nproc)
+  rm -rf "$prefix"
+  cd "$SRC"
+  if [[ -f Makefile ]]; then
+    make distclean || true
+  fi
+
+  CC="$cc" \
+  AR="$BIN/llvm-ar" \
+  RANLIB="$BIN/llvm-ranlib" \
+  CFLAGS="-fPIC" \
+  ./configure \
+    --host="$host" \
+    --build=x86_64-linux-gnu \
+    --disable-shared \
+    --enable-static \
+    --prefix="$prefix"
+
+  # tests/ is not part of the static archive.
+  make -j"$jobs" SUBDIRS=.
+  make install SUBDIRS=.
+
+  header="$prefix/include/libfastjson/json.h"
+  if [[ ! -f "$header" ]] || ! grep -q '_fj_json_h_' "$header"; then
+    echo "libfastjson header missing _fj_json_h_: $header" >&2
+    exit 1
+  fi
+  if [[ ! -f "$prefix/lib/libfastjson.a" ]]; then
+    echo "libfastjson.a was not installed at $prefix/lib/libfastjson.a" >&2
+    exit 1
+  fi
+  # libtool sometimes installs a script. Keep the real static archive.
+  if ! file "$prefix/lib/libfastjson.a" | grep -q 'ar archive'; then
+    if [[ -f "$SRC/.libs/libfastjson.a" ]] && file "$SRC/.libs/libfastjson.a" | grep -q 'ar archive'; then
+      cp -f "$SRC/.libs/libfastjson.a" "$prefix/lib/libfastjson.a"
+    fi
+  fi
+  if ! file "$prefix/lib/libfastjson.a" | grep -q 'ar archive'; then
+    echo "libfastjson.a is not an ar archive: $(file "$prefix/lib/libfastjson.a")" >&2
+    exit 1
+  fi
+  if grep -q 'LIBETPAN_STUB' "$prefix/lib/libfastjson.a"; then
+    echo "libfastjson.a contains LIBETPAN_STUB" >&2
+    exit 1
+  fi
+}
+
+export PATH="$BIN:$PATH"
+build_one arm64-v8a aarch64-linux-android "$BIN/aarch64-linux-android23-clang"
+build_one x86_64 x86_64-linux-android "$BIN/x86_64-linux-android23-clang"
+echo "libfastjson android prefixes ready"

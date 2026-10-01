@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Build LibEtPan and copy the six static archives for each ABI into src/out-libs.
+set -euo pipefail
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+SRC="$HERE/src"
+TP=$(dirname "$HERE")
+FJ_ROOT="$TP/libfastjson/src/android-prefix"
+NDK="${ANDROID_NDK:-/usr/lib/android-ndk}"
+
+if [[ ! -d "$SRC/build-android" ]]; then
+  echo "no libetpan src — run: third_party/fetch-deps --no-bwrap libetpan" >&2
+  exit 1
+fi
+
+for abi in arm64-v8a x86_64; do
+  archive="$FJ_ROOT/$abi/lib/libfastjson.a"
+  header="$FJ_ROOT/$abi/include/libfastjson/json.h"
+  if [[ ! -f "$archive" ]]; then
+    echo "missing $archive — build libfastjson first" >&2
+    exit 1
+  fi
+  if [[ ! -f "$header" ]] || ! grep -q '_fj_json_h_' "$header"; then
+    echo "libfastjson json.h missing _fj_json_h_ ($header)" >&2
+    exit 1
+  fi
+done
+
+export ANDROID_NDK="$NDK"
+export ANDROID_NDK_HOME="$NDK"
+export JSON_C_PATH_ROOT="$FJ_ROOT"
+
+(
+  cd "$SRC/build-android"
+  bash ./build.sh
+)
+
+etpan_libs="$SRC/build-android/libetpan-android-7/libs"
+if [[ ! -f "$etpan_libs/arm64-v8a/libetpan.a" ]]; then
+  unzip -qo "$SRC/build-android/libetpan-android-7.zip" -d "$SRC/build-android"
+fi
+
+copy_from_zip() {
+  local zip="$1" member="$2" dest="$3" tmp
+  tmp=$(mktemp -d)
+  unzip -qo "$zip" "$member" -d "$tmp"
+  cp -f "$tmp/$member" "$dest"
+  rm -rf "$tmp"
+}
+
+for abi in arm64-v8a x86_64; do
+  out="$SRC/out-libs/$abi"
+  mkdir -p "$out"
+  cp -f "$etpan_libs/$abi/libetpan.a" "$out/libetpan.a"
+  cp -f "$FJ_ROOT/$abi/lib/libfastjson.a" "$out/libfastjson.a"
+  copy_from_zip \
+    "$SRC/build-android/dependencies/openssl/openssl-android-3.zip" \
+    "openssl-android-3/libs/$abi/libssl.a" \
+    "$out/libssl.a"
+  copy_from_zip \
+    "$SRC/build-android/dependencies/openssl/openssl-android-3.zip" \
+    "openssl-android-3/libs/$abi/libcrypto.a" \
+    "$out/libcrypto.a"
+  copy_from_zip \
+    "$SRC/build-android/dependencies/cyrus-sasl/cyrus-sasl-android-4.zip" \
+    "cyrus-sasl-android-4/libs/$abi/libsasl2.a" \
+    "$out/libsasl2.a"
+  copy_from_zip \
+    "$SRC/build-android/dependencies/iconv/iconv-android-1.zip" \
+    "iconv-android-1/libs/$abi/libiconv.a" \
+    "$out/libiconv.a"
+done
+
+echo "libetpan out-libs ready"

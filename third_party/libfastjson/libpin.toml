@@ -1,0 +1,16 @@
+name = "libfastjson"
+git_https = "https://github.com/rsyslog/libfastjson.git"
+git_sha = "c2329f89006600703711271c6c39fe5181286264"
+reproducible = false
+build_time = "minutes"
+requires_writable_src = true
+build = ["./build"]
+consumer_note = "libfastjson v1.2609.0 static archives for arm64-v8a and x86_64"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libfastjson.a"
+from = "src/android-prefix/arm64-v8a/lib/libfastjson.a"
+
+[[artifact]]
+path = "artifact/x86_64/libfastjson.a"
+from = "src/android-prefix/x86_64/lib/libfastjson.a"

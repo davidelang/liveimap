@@ -1,11 +1,56 @@
 name = "libetpan"
-git_https = "https://github.com/dinhviethoa/libetpan.git"
+git_https = "https://github.com/davidelang/libetpan.git"
 git_sha = "8c9d5e06e49feb4d4d834bd01cefe7ed77acd899"
-git_describe = "0ab9f1d"
-track_branch = "master"
 reproducible = false
 build_time = "minutes"
-requires_writable_src = false
-build = []
-consumer_note = "LibEtPan from the local git_home clone"
+requires_writable_src = true
+build = ["./build"]
+consumer_note = "LibEtPan Android static archives (arm64-v8a and x86_64) plus OpenSSL, Cyrus SASL, iconv, and libfastjson"
 
+[[artifact]]
+path = "artifact/arm64-v8a/libetpan.a"
+from = "src/out-libs/arm64-v8a/libetpan.a"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libfastjson.a"
+from = "src/out-libs/arm64-v8a/libfastjson.a"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libssl.a"
+from = "src/out-libs/arm64-v8a/libssl.a"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libcrypto.a"
+from = "src/out-libs/arm64-v8a/libcrypto.a"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libsasl2.a"
+from = "src/out-libs/arm64-v8a/libsasl2.a"
+
+[[artifact]]
+path = "artifact/arm64-v8a/libiconv.a"
+from = "src/out-libs/arm64-v8a/libiconv.a"
+
+[[artifact]]
+path = "artifact/x86_64/libetpan.a"
+from = "src/out-libs/x86_64/libetpan.a"
+
+[[artifact]]
+path = "artifact/x86_64/libfastjson.a"
+from = "src/out-libs/x86_64/libfastjson.a"
+
+[[artifact]]
+path = "artifact/x86_64/libssl.a"
+from = "src/out-libs/x86_64/libssl.a"
+
+[[artifact]]
+path = "artifact/x86_64/libcrypto.a"
+from = "src/out-libs/x86_64/libcrypto.a"
+
+[[artifact]]
+path = "artifact/x86_64/libsasl2.a"
+from = "src/out-libs/x86_64/libsasl2.a"
+
+[[artifact]]
+path = "artifact/x86_64/libiconv.a"
+from = "src/out-libs/x86_64/libiconv.a"

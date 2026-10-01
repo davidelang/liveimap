@@ -95,3 +95,14 @@
 - Work: add FlagMarks, five stub screens, and NavHost routes
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 1393021 with builds tag
+
+## 2026-09-30 - Pin LibEtPan and libfastjson start
+
+- Plan: sandbox/plans/pin-libetpan-libfastjson-20260930-1414-plan.md
+- Status set to APPROVED. Phase 1 writes the pins, build scripts, and Android patch, then fetch-deps --no-bwrap so both src trees sit on the pinned shas. No app/ or ./build_app edits. Upstream checkouts are not committed.
+
+## 2026-09-30 - Pin phase 1: pins and Android patch
+
+- Wrote third_party/libfastjson and third_party/libetpan libpin.toml files, both build scripts, and patches/android-full-features.patch.
+- third_party/fetch-deps --no-bwrap libfastjson checked out c2329f89006600703711271c6c39fe5181286264.
+- third_party/fetch-deps --no-bwrap libetpan checked out 8c9d5e06e49feb4d4d834bd01cefe7ed77acd899 and applied the patch. Android.mk lists unselect.c. src trees are not committed.

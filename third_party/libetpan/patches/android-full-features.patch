@@ -1,0 +1,349 @@
+diff --git a/build-android/build.sh b/build-android/build.sh
+--- a/build-android/build.sh	2026-09-30 18:59:34.173366559 -0700
++++ b/build-android/build.sh	2026-09-30 18:59:07.936694463 -0700
+@@ -1,4 +1,5 @@
+-#!/bin/sh -x
++#!/bin/sh
++set -eu
+ 
+ build_version=7
+ openssl_build_version=3
+@@ -35,19 +36,19 @@
+ if test ! -f "$current_dir/dependencies/openssl/openssl-android-$openssl_build_version.zip" ; then
+   echo Building OpenSSL first
+   cd "$current_dir/dependencies/openssl"
+-  ./build.sh
++  bash ./build.sh
+ fi
+ 
+ if test ! -f "$current_dir/dependencies/cyrus-sasl/cyrus-sasl-android-$cyrus_sasl_build_version.zip" ; then
+   echo Building Cyrus SASL first
+   cd "$current_dir/dependencies/cyrus-sasl"
+-  ./build.sh
++  bash ./build.sh
+ fi
+ 
+ if test ! -f "$current_dir/dependencies/iconv/iconv-android-$iconv_build_version.zip" ; then
+   echo Building ICONV first
+   cd "$current_dir/dependencies/iconv"
+-  ./build.sh
++  bash ./build.sh
+ fi
+ 
+ build() {
+@@ -73,7 +74,7 @@
+ 
+ cd "$current_dir/.."
+ tar xzf "$current_dir/../build-mac/autogen-result.tar.gz"
+-./configure
++./configure --with-json=libfastjson
+ # `make prepare` creates the include/libetpan symlinks but does NOT build
+ # libetpan-config.h (it is a BUILT_SOURCES target, only made by a full `make`).
+ # Generate it explicitly so the include/libetpan/libetpan-config.h symlink
+@@ -91,9 +92,13 @@
+ 
+ # Start building.
+ ANDROID_PLATFORM=android-23
+-archs="arm64-v8a"	archs="arm64-v8a armeabi-v7a x86 x86_64"
++archs="arm64-v8a x86_64"
++JSON_C_PATH="${JSON_C_PATH:-}"
+ for arch in $archs ; do
+   TARGET_ARCH_ABI=$arch
++  if test -n "${JSON_C_PATH_ROOT:-}" ; then
++    JSON_C_PATH="$JSON_C_PATH_ROOT/$arch"
++  fi
+   build
+ done
+ 
+diff --git a/build-android/dependencies/cyrus-sasl/build.sh b/build-android/dependencies/cyrus-sasl/build.sh
+--- a/build-android/dependencies/cyrus-sasl/build.sh	2026-09-30 18:59:34.176511841 -0700
++++ b/build-android/dependencies/cyrus-sasl/build.sh	2026-09-30 18:59:07.936832446 -0700
+@@ -1,4 +1,5 @@
+ #!/bin/sh
++set -e
+ 
+ # 2.1.28 (vs the old 2.1.26) ships upstream support for the OpenSSL 1.1.x
+ # opaque HMAC_CTX/EVP_MD_CTX/EVP_CIPHER_CTX API. 2.1.26 predates it and fails
+diff --git a/build-android/dependencies/iconv/build.sh b/build-android/dependencies/iconv/build.sh
+--- a/build-android/dependencies/iconv/build.sh	2026-09-30 18:59:34.175572979 -0700
++++ b/build-android/dependencies/iconv/build.sh	2026-09-30 18:59:07.936774656 -0700
+@@ -1,4 +1,5 @@
+ #!/bin/sh
++set -e
+ 
+ version=1.15
+ build_version=1
+@@ -35,7 +36,7 @@
+ 
+   	# Disable HAVE_LANGINFO_CODESET
+   	cd "$current_dir/build-android/libiconv/libcharset"
+-  	sed -i '.original' 's/HAVE_LANGINFO_CODESET 1/HAVE_LANGINFO_CODESET 0/g' config.h
++  	sed -i 's/HAVE_LANGINFO_CODESET 1/HAVE_LANGINFO_CODESET 0/g' config.h
+ 
+   	cd "$current_dir"
+   fi  
+diff --git a/build-android/dependencies/openssl/build.sh b/build-android/dependencies/openssl/build.sh
+--- a/build-android/dependencies/openssl/build.sh	2026-09-30 18:59:34.174544697 -0700
++++ b/build-android/dependencies/openssl/build.sh	2026-09-30 18:59:23.540861231 -0700
+@@ -1,4 +1,5 @@
+ #!/bin/sh
++set -eu
+ 
+ build_version=3
+ # 1.1.1w is the final 1.1.1 release (same API). The old 1.1.1i tarball was
+@@ -6,13 +7,21 @@
+ version=1.1.1w
+ package_name=openssl-android
+ export MIN_SDK_VERSION=23
+-export HOST_TAG=darwin-x86_64
++export HOST_TAG=linux-x86_64
+ 
+ if test "x$ANDROID_NDK" = x ; then
+   echo should set ANDROID_NDK before running this script.
+   exit 1
+ fi
+ 
++# Stay on the NDK root passed in. Do not point ANDROID_NDK_HOME at the
++# LLVM prebuilt directory: OpenSSL treats a directory with AndroidVersion.txt
++# as a standalone toolchain, and this NDK root has source.properties only.
++if test "x${ANDROID_NDK_HOME:-}" = x ; then
++  ANDROID_NDK_HOME=$ANDROID_NDK
++fi
++export ANDROID_NDK_HOME
++
+ if test ! -f packages/openssl-$version.tar.gz; then
+   mkdir -p packages
+   cd packages
+@@ -20,128 +29,81 @@
+   cd ..
+ fi
+ 
++current_dir=`pwd`
+ rm -rf "./src"
+ mkdir -p "./src"
+ cd "./src"
+ 
+ tar xzf "../packages/openssl-$version.tar.gz"
+ 
+-
+-export TOOLCHAIN=$ANDROID_NDK/toolchains/llvm/prebuilt/$HOST_TAG
+-
+-# openssl refers to the host specific toolchain as "ANDROID_NDK_HOME"
+-export ANDROID_NDK_HOME=$TOOLCHAIN
+-PATH=$TOOLCHAIN/bin:$PATH
+-
+-# NDK r23+ removed the GNU binutils-style per-target archiver tools
+-# (<triple>-ar, <triple>-ranlib); they are now llvm-ar / llvm-ranlib. OpenSSL
+-# 1.1.1 still invokes $(CROSS_COMPILE)ar, so provide the legacy names as
+-# symlinks to the llvm tools for every target triple we build below.
+-for triple in aarch64-linux-android arm-linux-androideabi i686-linux-android x86_64-linux-android ; do
+-  ln -sfn "$TOOLCHAIN/bin/llvm-ar" "$TOOLCHAIN/bin/$triple-ar"
+-  ln -sfn "$TOOLCHAIN/bin/llvm-ranlib" "$TOOLCHAIN/bin/$triple-ranlib"
++TOOLCHAIN=$ANDROID_NDK/toolchains/llvm/prebuilt/$HOST_TAG
++# Legacy ar/ranlib/unsuffixed-clang names only in this dependency build tree.
++# Never link them into the NDK itself.
++WRAP=$current_dir/src/toolchain-wrap
++mkdir -p "$WRAP"
++for triple in aarch64-linux-android x86_64-linux-android ; do
++  ln -sfn "$TOOLCHAIN/bin/llvm-ar" "$WRAP/$triple-ar"
++  ln -sfn "$TOOLCHAIN/bin/llvm-ranlib" "$WRAP/$triple-ranlib"
++  ln -sfn "$TOOLCHAIN/bin/${triple}${MIN_SDK_VERSION}-clang" "$WRAP/$triple-clang"
+ done
++# toolchain-wrap is first, but it has no generic clang or llvm-ar, so OpenSSL
++# still resolves those inside the NDK prebuilt directory.
++export PATH="$WRAP:$TOOLCHAIN/bin:$PATH"
+ 
+-mkdir -p build/openssl
+ cd "./openssl-$version"
+ 
+-# arm64
+-export TARGET_HOST=aarch64-linux-android
+-export ANDROID_ARCH=arm64-v8a
+-
+-# openssl does not handle api suffix well
+-ln -sfn $TOOLCHAIN/bin/$TARGET_HOST$MIN_SDK_VERSION-clang $TOOLCHAIN/bin/$TARGET_HOST-clang
+-
+-./Configure android-arm64 no-shared \
+- -D__ANDROID_API__=$MIN_SDK_VERSION \
+- --prefix=$PWD/build/$ANDROID_ARCH
+-
+-make -j5
+-make install_sw
+-make clean
+-mkdir -p ../build/openssl/$ANDROID_ARCH
+-cp -R $PWD/build/$ANDROID_ARCH ../build/openssl/
+-
+-# arm
+-export TARGET_HOST=arm-linux-androideabi
+-export ANDROID_ARCH=armeabi-v7a
+-
+-# for 32-bit ARM, the compiler is prefixed with armv7a-linux-androideabi, but the binutils tools are prefixed with arm-linux-androideabi
+-ln -sfn $TOOLCHAIN/bin/armv7a-linux-androideabi$MIN_SDK_VERSION-clang $TOOLCHAIN/bin/$TARGET_HOST-clang
+-
+-./Configure android-arm no-shared \
+- -D__ANDROID_API__=$MIN_SDK_VERSION \
+- --prefix=$PWD/build/$ANDROID_ARCH
+-
+-export arch_dir_name="arm64-v8a"
+-mkdir -p "./../$package_name-$build_version"
+-mkdir -p "./../$package_name-$build_version/libs"
+-mkdir -p "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp -r "./../build/openssl/arm64-v8a/include" "./../$package_name-$build_version"
+-cp "./../build/openssl/arm64-v8a/lib/libssl.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/arm64-v8a/lib/libcrypto.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-
+-make -j5
+-make install_sw
+-make clean
+-mkdir -p ../build/openssl/$ANDROID_ARCH
+-cp -R $PWD/build/$ANDROID_ARCH ../build/openssl/
+-
+-# x86
+-export TARGET_HOST=i686-linux-android
+-export ANDROID_ARCH=x86
+-
+-ln -sfn $TOOLCHAIN/bin/$TARGET_HOST$MIN_SDK_VERSION-clang $TOOLCHAIN/bin/$TARGET_HOST-clang
+-
+-./Configure android-x86 no-shared \
+- -D__ANDROID_API__=$MIN_SDK_VERSION \
+- --prefix=$PWD/build/$ANDROID_ARCH
+-
+-export arch_dir_name="armeabi-v7a"
+-mkdir -p "./../$package_name-$build_version"
+-mkdir -p "./../$package_name-$build_version/libs"
+-mkdir -p "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libssl.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libcrypto.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-
+-make -j5
+-make install_sw
+-make clean
+-mkdir -p ../build/openssl/$ANDROID_ARCH
+-cp -R $PWD/build/$ANDROID_ARCH ../build/openssl/
+-
+-# x64
+-export TARGET_HOST=x86_64-linux-android
+-export ANDROID_ARCH=x86_64
+-
+-ln -sfn $TOOLCHAIN/bin/$TARGET_HOST$MIN_SDK_VERSION-clang $TOOLCHAIN/bin/$TARGET_HOST-clang
+-
+-./Configure android-x86_64 no-shared \
+- -D__ANDROID_API__=$MIN_SDK_VERSION \
+- --prefix=$PWD/build/$ANDROID_ARCH
+-
+-export arch_dir_name="x86"
+-mkdir -p "./../$package_name-$build_version"
+-mkdir -p "./../$package_name-$build_version/libs"
+-mkdir -p "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libssl.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libcrypto.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-
+-make -j5
+-make install_sw
+-make clean
+-mkdir -p ../build/openssl/$ANDROID_ARCH
+-cp -R $PWD/build/$ANDROID_ARCH ../build/openssl/
+-
+-export arch_dir_name="x86_64"
+-mkdir -p "./../$package_name-$build_version"
+-mkdir -p "./../$package_name-$build_version/libs"
+-mkdir -p "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libssl.a" "./../$package_name-$build_version/libs/$arch_dir_name"
+-cp "./../build/openssl/$arch_dir_name/lib/libcrypto.a" "./../$package_name-$build_version/libs/$arch_dir_name"
++build_one() {
++  target_host=$1
++  android_arch=$2
++  configure_target=$3
++
++  if test -f Makefile ; then
++    make distclean
++  fi
++
++  export TARGET_HOST=$target_host
++  export ANDROID_ARCH=$android_arch
++
++  # NDK r28 clang rejects the implicit declarations in OpenSSL 1.1.1w.
++  ./Configure "$configure_target" no-shared \
++    -D__ANDROID_API__=$MIN_SDK_VERSION \
++    -Wno-error=implicit-function-declaration \
++    -Wno-error=int-conversion \
++    -Wno-error=incompatible-function-pointer-types \
++    --prefix="$PWD/build/$ANDROID_ARCH"
++
++  make -j5
++  make install_sw
++
++  libdir="$PWD/build/$ANDROID_ARCH/lib"
++  if test ! -f "$libdir/libssl.a" ; then
++    libdir="$PWD/build/$ANDROID_ARCH/lib64"
++  fi
++  if test ! -f "$libdir/libssl.a" || test ! -f "$libdir/libcrypto.a" ; then
++    echo "missing OpenSSL archives under $PWD/build/$ANDROID_ARCH" >&2
++    exit 1
++  fi
++
++  mkdir -p "./../$package_name-$build_version/libs/$android_arch"
++  if test ! -d "./../$package_name-$build_version/include" ; then
++    cp -R "$PWD/build/$ANDROID_ARCH/include" "./../$package_name-$build_version/include"
++  fi
++  cp "$libdir/libssl.a" "./../$package_name-$build_version/libs/$android_arch/libssl.a"
++  cp "$libdir/libcrypto.a" "./../$package_name-$build_version/libs/$android_arch/libcrypto.a"
++
++  make clean
++}
++
++# arm64 and x86_64 only.
++build_one aarch64-linux-android arm64-v8a android-arm64
++build_one x86_64-linux-android x86_64 android-x86_64
+ 
+ cd ".."
+ zip -qry "$package_name-$build_version.zip" "$package_name-$build_version"
+ cd ".."
+-cp "./src/$package_name-$build_version.zip" `pwd`
++cp "./src/$package_name-$build_version.zip" "$current_dir/"
++for abi in arm64-v8a x86_64 ; do
++  unzip -l "$current_dir/$package_name-$build_version.zip" | grep -q "libs/$abi/libssl.a"
++  unzip -l "$current_dir/$package_name-$build_version.zip" | grep -q "libs/$abi/libcrypto.a"
++done
+ rm -rf "./src"
+diff --git a/build-android/jni/Android.mk b/build-android/jni/Android.mk
+--- a/build-android/jni/Android.mk	2026-09-30 18:59:34.172239298 -0700
++++ b/build-android/jni/Android.mk	2026-09-30 18:59:07.936598059 -0700
+@@ -96,6 +96,17 @@
+ ./src/low-level/imap/uidplus_parser.c \
+ ./src/low-level/imap/uidplus_sender.c \
+ ./src/low-level/imap/uidplus_types.c \
++./src/low-level/imap/unselect.c \
++./src/low-level/imap/esearch.c \
++./src/low-level/imap/list_extended.c \
++./src/low-level/imap/list_status.c \
++./src/low-level/imap/metadata.c \
++./src/low-level/imap/multiappend.c \
++./src/low-level/imap/specialuse.c \
++./src/low-level/imap/utf8.c \
++./src/low-level/imap/binary.c \
++./src/low-level/imap/clientid.c \
++./src/low-level/imap/clientid_sender.c \
+ ./src/low-level/imap/xgmlabels.c \
+ ./src/low-level/imap/xgmmsgid.c \
+ ./src/low-level/imap/xgmthrid.c \
+@@ -153,7 +164,7 @@
+ NDK_TOOLCHAIN_VERSION := clang
+ LOCAL_MODULE := etpan
+ LOCAL_SRC_FILES := $(addprefix ../../, $(src_files))
+-LOCAL_CFLAGS += -DHAVE_CONFIG_H=1 -DHAVE_ICONV=1
++LOCAL_CFLAGS += -DHAVE_CONFIG_H=1 -DHAVE_ICONV=1 -DHAVE_LIBFASTJSON=1 -DHAVE_JSON=1
+ c_includes = \
+ src \
+ src/data-types \
+@@ -170,7 +181,9 @@
+ src/driver/implementation/data-message \
+ src/driver/interface
+ 
+-LOCAL_C_INCLUDES = $(addprefix ../../, $(c_includes)) \
++LOCAL_C_INCLUDES = $(LOCAL_PATH)/../.. \
++  $(JSON_C_PATH)/include/libfastjson \
++  $(addprefix ../../, $(c_includes)) \
+   libetpan-android-7/include \
+   $(OPENSSL_PATH)/include $(CYRUS_SASL_PATH)/include $(ICONV_PATH)/include	  libetpan-android-7/include/libetpan \
+   $(JSON_C_PATH)/include \
