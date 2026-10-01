@@ -151,7 +151,9 @@ fun SettingsScreen() {
             persist(settings.copy(swipeLeading = it))
         }
         BoolField("Bounce Fcc", settings.bounceFcc) { persist(settings.copy(bounceFcc = it)) }
-        LineField("Password", password, KeyboardType.Password, password = true, persistPassword)
+        LineField("Password", password, KeyboardType.Password, password = true) {
+            persistPassword(it)
+        }
     }
 }
 

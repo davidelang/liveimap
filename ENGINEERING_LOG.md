@@ -61,3 +61,9 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/finish-app-shell-contracts-20260930-1723-plan.md
 - Work: finish settings persistence, the MailSession contract, and stub screens on efa08fc
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-09-30 - settings form password field compile fix
+
+- SettingsScreen passed a local function after a named argument; kotlinc rejected it as Unit
+- Password field now uses a trailing lambda that calls persistPassword
+- Rebuild of the settings phase after 1a8c886
