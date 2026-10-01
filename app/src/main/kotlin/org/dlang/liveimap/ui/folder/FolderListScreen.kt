@@ -174,9 +174,20 @@ private fun FolderListRow(
         Text(
             text = row.leaf,
             modifier = Modifier
-                .weight(1f)
                 .clickable(onClick = onOpen)
                 .padding(vertical = 8.dp),
         )
+        val use = row.specialUse
+        if (use != null) {
+            Text(text = use, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        }
+        val messages = row.messages
+        if (messages != null) {
+            Text(text = messages.toString(), modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        }
+        val unseen = row.unseen
+        if (unseen != null) {
+            Text(text = unseen.toString(), modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        }
     }
 }

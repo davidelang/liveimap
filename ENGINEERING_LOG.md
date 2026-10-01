@@ -243,3 +243,7 @@
 ## 2026-10-01 - Continue Cyrus 3 degradation
 
 - Start. Phase 1 makes openFailedTextIsNotConnected construct DisconnectedMailSession directly so the host JVM does not call mailSession() or load libliveimap.
+
+## 2026-10-01 - Cyrus 3 command degradation
+
+- Phase 2. Open enables QRESYNC or CONDSTORE from resyncKind and sends COMPRESS DEFLATE when that capability is advertised. A NO leaves the feature off. Extended LIST fills special-use, messages, and unseen. Plain LIST leaves those null. MOVE, copy-then-delete plus UID EXPUNGE, ESEARCH, ESORT, DISPLAY, PREVIEW, and BINARY.PEEK follow the same capability functions. The folder row shows specialUse, messages, and unseen only when they are non-null.

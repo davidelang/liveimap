@@ -130,6 +130,13 @@ class LibetpanMailSession : MailSession {
         cache.clear()
         selectedMailbox = null
         sequencesStale = false
+        when (resyncKind(line)) {
+            "Qresync" -> nativeEnable(opened, "QRESYNC")
+            "Condstore" -> nativeEnable(opened, "CONDSTORE")
+        }
+        if (hasCap(line, "COMPRESS=DEFLATE")) {
+            nativeCompress(opened)
+        }
         return OpenResult.Connected
     }
 
@@ -139,7 +146,8 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry> {
-        val rows = nativeListLevel(requireHandle(), prefix, parentMailbox) ?: throw MailFailure("list failed")
+        val rows = nativeListLevel(requireHandle(), prefix, parentMailbox, listKind(advertised()))
+            ?: throw MailFailure("list failed")
         return rows.toList()
     }
 
@@ -161,6 +169,7 @@ class LibetpanMailSession : MailSession {
             select(request.mailbox)
         }
         val settings = account
+        val useServerPreview = request.includePreview && previewKind(advertised()) == "Preview"
         val rows = nativeFetchIndex(
             h,
             request.mailbox,
@@ -172,6 +181,7 @@ class LibetpanMailSession : MailSession {
             request.previewByteLimit,
             settings?.preferHtml == true,
             settings?.showDeleted != false,
+            useServerPreview,
         ) ?: throw MailFailure("fetch failed")
         return rows.toList()
     }
@@ -181,7 +191,9 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray {
-        return nativePeekPart(requireHandle(), uid, section, offset, length) ?: throw MailFailure("fetch failed")
+        val binary = fetchKind(advertised()) == "BinaryPeek"
+        return nativePeekPart(requireHandle(), uid, section, offset, length, binary)
+            ?: throw MailFailure("fetch failed")
     }
 
     override suspend fun fetchRfc822(uid: Long): ByteArray {
@@ -197,13 +209,14 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
-        nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox)
+        nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
     }
 
     override suspend fun searchText(query: String): List<Long> {
         val h = requireHandle()
         return remember("SEARCH $query") {
-            val ids = nativeSearchText(h, query) ?: throw MailFailure("search failed")
+            val ids = nativeSearchText(h, query, searchKind(advertised()) == "Esearch")
+                ?: throw MailFailure("search failed")
             ids.toList()
         }
     }
@@ -216,9 +229,12 @@ class LibetpanMailSession : MailSession {
             throw MailFailure("use thread")
         }
         val h = requireHandle()
-        val token = sortToken(key)
+        val decided = sortKind(advertised())
+        val command = decided.substringBefore(' ')
+        val fromToken = decided.substringAfter(' ', "FROM")
+        val token = if (key == SortKey.From) fromToken else sortToken(key)
         return remember("SORT $token $newestFirst") {
-            val ids = nativeSort(h, token, newestFirst) ?: throw MailFailure("sort failed")
+            val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
             ids.toList()
         }
     }
@@ -293,6 +309,8 @@ class LibetpanMailSession : MailSession {
         watchCallback?.invoke(change)
     }
 
+    private fun advertised(): String = capSet.joinToString(" ")
+
     private fun requireHandle(): Long {
         val h = handle
         if (h == 0L) throw MailFailure("not connected")
@@ -338,9 +356,11 @@ class LibetpanMailSession : MailSession {
     ): Long
 
     private external fun nativeCapabilityLine(handle: Long): String
+    private external fun nativeEnable(handle: Long, capability: String)
+    private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
-    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?): Array<FolderEntry>?
+    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
     private external fun nativeSelect(handle: Long, mailbox: String): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeFetchIndex(
@@ -354,17 +374,25 @@ class LibetpanMailSession : MailSession {
         previewByteLimit: Int,
         preferHtml: Boolean,
         showDeleted: Boolean,
+        useServerPreview: Boolean,
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?
-    private external fun nativePeekPart(handle: Long, uid: Long, section: String, offset: Int, length: Int): ByteArray?
+    private external fun nativePeekPart(
+        handle: Long,
+        uid: Long,
+        section: String,
+        offset: Int,
+        length: Int,
+        useBinary: Boolean,
+    ): ByteArray?
     private external fun nativeFetchRfc822(handle: Long, uid: Long): ByteArray?
     private external fun nativeStoreFlags(handle: Long, uids: LongArray, add: Array<String>, remove: Array<String>)
     private external fun nativeUidExpungeDeleted(handle: Long)
-    private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String)
+    private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String)
     private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray)
-    private external fun nativeSearchText(handle: Long, query: String): LongArray?
-    private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean): LongArray?
+    private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean): LongArray?
+    private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)
     private external fun nativeStopWatch(handle: Long)
