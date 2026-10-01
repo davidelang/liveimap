@@ -12,6 +12,9 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
     androidResources {
         localeFilters += listOf("en")
@@ -40,6 +43,12 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 

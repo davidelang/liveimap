@@ -112,3 +112,17 @@
 - third_party/fetch-deps --no-bwrap build libfastjson and libetpan produced arm64-v8a and x86_64 archives.
 - file reports a current ar archive for each .a. nm on both libetpan.a files lists mailimap_unselect, a mailjmap_ symbol, and an fjson_ symbol. None of the archives is LIBETPAN_STUB.
 - Upstream /home/dlang/git/libetpan and /home/dlang/git/libfastjson were not committed. src trees are not in this commit.
+
+## 2026-09-30 - IMAP SMTP engine execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/imap-smtp-engine-20260930-1415-plan.md
+- Work: link LibEtPan into libliveimap.so, then LibetpanMailSession behind mailSession()
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD d3a392c with builds tag. Both ABI archive sets are present. No socket parser and no stand-in library.
+
+## 2026-09-30 - IMAP SMTP engine phase 1
+
+- Added app/src/main/cpp/CMakeLists.txt and liveimap_jni.cpp. CMake links libetpan.a, libsasl2.a, libssl.a, libcrypto.a, libfastjson.a, libiconv.a, then libz and libdl from third_party/libetpan/artifact for the ABI.
+- app/build.gradle.kts gains ndk abiFilters arm64-v8a and x86_64 and externalNativeBuild cmake 3.22.1. Dependencies are unchanged.
+- liveimap_jni.cpp exports Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen and the other JNI entry points. nativeUnselect calls mailimap_unselect. Connect is mailimap_socket_connect.
+- Host preflight linked both ABIs. llvm-nm shows mailimap_unselect and nativeOpen on each shared library.
