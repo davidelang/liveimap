@@ -1,0 +1,11 @@
+name = "libetpan"
+git_https = "https://github.com/dinhviethoa/libetpan.git"
+git_sha = "8c9d5e06e49feb4d4d834bd01cefe7ed77acd899"
+git_describe = "0ab9f1d"
+track_branch = "master"
+reproducible = false
+build_time = "minutes"
+requires_writable_src = false
+build = []
+consumer_note = "LibEtPan from the local git_home clone"
+
