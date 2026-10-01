@@ -11,7 +11,15 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1"
+        val rawVersion = providers.exec {
+            workingDir = project.rootDir
+            commandLine(
+                "bash",
+                "-c",
+                "BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'HEAD') && (git describe --tags --match \"${'$'}{BRANCH_NAME}-start\" 2>/dev/null || git describe --always 2>/dev/null || echo 'dev')"
+            )
+        }.standardOutput.asText.orNull?.trim() ?: "dev"
+        versionName = rawVersion
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -43,6 +51,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     externalNativeBuild {
         cmake {

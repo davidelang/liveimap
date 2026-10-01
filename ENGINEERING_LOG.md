@@ -247,3 +247,11 @@
 ## 2026-10-01 - Cyrus 3 command degradation
 
 - Phase 2. Open enables QRESYNC or CONDSTORE from resyncKind and sends COMPRESS DEFLATE when that capability is advertised. A NO leaves the feature off. Extended LIST fills special-use, messages, and unseen. Plain LIST leaves those null. MOVE, copy-then-delete plus UID EXPUNGE, ESEARCH, ESORT, DISPLAY, PREVIEW, and BINARY.PEEK follow the same capability functions. The folder row shows specialUse, messages, and unseen only when they are non-null.
+
+## 2026-10-01 - git describe version execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/git-describe-version-20261001-0822-plan.md
+- Work: versionName from the VehicleExpenses git describe command; About shows that version; Support mail is david+liveimap@lang.hm
+- versionCode stays 1. buildConfig is true. Configuration writes no file. AndroidManifest and SettingsScreen stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2d60941

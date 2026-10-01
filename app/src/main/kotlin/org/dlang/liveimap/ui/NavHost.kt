@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -11,6 +12,7 @@ import androidx.compose.runtime.setValue
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.settings.SettingsScreen
+import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
@@ -22,6 +24,7 @@ private sealed class MailRoute {
     data class Reader(val mailbox: String, val uid: Long) : MailRoute()
     data object Compose : MailRoute()
     data object Settings : MailRoute()
+    data object About : MailRoute()
 }
 
 @Composable
@@ -37,20 +40,35 @@ fun NavHost() {
         is MailRoute.Reader -> "Reader"
         MailRoute.Compose -> "Compose"
         MailRoute.Settings -> "Settings"
+        MailRoute.About -> "About"
     }
 
     LiveImapScaffold(title = title) {
         Column {
-            TextButton(
-                onClick = {
-                    route = if (route is MailRoute.Settings) {
-                        MailRoute.Folders
-                    } else {
-                        MailRoute.Settings
-                    }
-                },
-            ) {
-                Text(if (route is MailRoute.Settings) "Folders" else "Settings")
+            val onSettingsOrAbout = route is MailRoute.Settings || route is MailRoute.About
+            Row {
+                TextButton(
+                    onClick = {
+                        route = if (onSettingsOrAbout) {
+                            MailRoute.Folders
+                        } else {
+                            MailRoute.Settings
+                        }
+                    },
+                ) {
+                    Text(if (onSettingsOrAbout) "Folders" else "Settings")
+                }
+                TextButton(
+                    onClick = {
+                        route = if (route is MailRoute.About) {
+                            MailRoute.Settings
+                        } else {
+                            MailRoute.About
+                        }
+                    },
+                ) {
+                    Text(if (route is MailRoute.About) "Settings" else "About")
+                }
             }
             when (val current = route) {
                 MailRoute.Folders -> FolderListScreen(
@@ -88,6 +106,7 @@ fun NavHost() {
                     },
                 )
                 MailRoute.Settings -> SettingsScreen()
+                MailRoute.About -> AboutScreen()
             }
         }
     }
