@@ -45,6 +45,13 @@ enum class ThemeMode {
     FollowSystem,
 }
 
+enum class DateFormat {
+    Local,
+    Short,
+    Relative,
+    Custom,
+}
+
 data class SwipeBinding(
     val action: SwipeAction,
     val moveMailbox: String = "",
@@ -75,6 +82,8 @@ data class AccountSettings(
     val friendlyName: String = "",
     val theme: ThemeMode = ThemeMode.FollowSystem,
     val showUnreadCounts: Boolean = false,
+    val dateFormat: DateFormat = DateFormat.Short,
+    val datePattern: String = "",
 )
 
 private val fieldNames = listOf(
@@ -101,6 +110,8 @@ private val fieldNames = listOf(
     "friendlyName",
     "theme",
     "showUnreadCounts",
+    "dateFormat",
+    "datePattern",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -129,6 +140,8 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("friendlyName=${percentEncode(friendlyName)}")
     appendLine("theme=${theme.name}")
     appendLine("showUnreadCounts=$showUnreadCounts")
+    appendLine("dateFormat=${dateFormat.name}")
+    appendLine("datePattern=${percentEncode(datePattern)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -143,7 +156,15 @@ fun decodeAccountSettings(text: String): AccountSettings {
         values[key] = line.substring(eq + 1)
     }
     for (key in fieldNames) {
-        if (key == "friendlyName" || key == "theme" || key == "showUnreadCounts") continue
+        if (
+            key == "friendlyName" ||
+            key == "theme" ||
+            key == "showUnreadCounts" ||
+            key == "dateFormat" ||
+            key == "datePattern"
+        ) {
+            continue
+        }
         if (key !in values) throw IllegalArgumentException("missing key")
     }
     return AccountSettings(
@@ -170,6 +191,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         friendlyName = values["friendlyName"]?.let { percentDecode(it) } ?: "",
         theme = values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem,
         showUnreadCounts = values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false,
+        dateFormat = values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short,
+        datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
     )
 }
 

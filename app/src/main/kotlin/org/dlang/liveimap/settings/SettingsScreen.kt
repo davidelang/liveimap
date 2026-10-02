@@ -184,6 +184,14 @@ fun SettingsScreen() {
         ChoiceField("Density", Density.entries, settings.density, { it.name }) {
             persist(settings.copy(density = it))
         }
+        ChoiceField("Date format", DateFormat.entries, settings.dateFormat, { it.name }) {
+            persist(settings.copy(dateFormat = it))
+        }
+        if (settings.dateFormat == DateFormat.Custom) {
+            LineField("Date pattern", settings.datePattern) {
+                persist(settings.copy(datePattern = it))
+            }
+        }
         ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { it.name }) { key ->
             persist(settings.copy(defaultView = settings.defaultView.copy(key = key)))
         }

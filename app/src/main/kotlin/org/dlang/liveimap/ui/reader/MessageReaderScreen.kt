@@ -72,6 +72,7 @@ private data class AttachmentRow(
 fun MessageReaderScreen(
     mailbox: String,
     uid: Long,
+    sequence: Int,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -339,6 +340,9 @@ fun MessageReaderScreen(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                 )
+            }
+            if (sequence != 0) {
+                Text("Message $sequence")
             }
             TextButton(onClick = {
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))

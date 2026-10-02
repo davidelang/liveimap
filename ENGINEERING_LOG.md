@@ -387,3 +387,10 @@
 - Work: LIST-STATUS returns MESSAGES when unread counts are off; folder rows reserve end-aligned count columns and a faint divider
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 94870b1
+
+## 2026-10-01 - index date sequence dots execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-date-sequence-dots-20261001-2054-plan.md
+- Work: date format setting and pure index date formatter; sequence slot and reserved mark gutter; reader shows Message N
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5207104

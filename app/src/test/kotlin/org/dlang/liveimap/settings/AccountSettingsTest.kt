@@ -36,6 +36,8 @@ class AccountSettingsTest {
                 "friendlyName",
                 "theme",
                 "showUnreadCounts",
+                "dateFormat",
+                "datePattern",
             ),
             keys,
         )
@@ -100,6 +102,8 @@ class AccountSettingsTest {
         assertThrowsIae { decodeAccountSettings(brokenPort) }
         val brokenEnum = AccountSettings().encode().replace("density=Compact", "density=Huge")
         assertThrowsIae { decodeAccountSettings(brokenEnum) }
+        val brokenFormat = AccountSettings().encode().replace("dateFormat=Short", "dateFormat=Huge")
+        assertThrowsIae { decodeAccountSettings(brokenFormat) }
         val missing = AccountSettings().encode().lineSequence()
             .filterNot { it.startsWith("bounceFcc=") }
             .joinToString("\n")
@@ -137,13 +141,17 @@ class AccountSettingsTest {
                 it.isNotEmpty() &&
                     !it.startsWith("friendlyName=") &&
                     !it.startsWith("theme=") &&
-                    !it.startsWith("showUnreadCounts=")
+                    !it.startsWith("showUnreadCounts=") &&
+                    !it.startsWith("dateFormat=") &&
+                    !it.startsWith("datePattern=")
             }
             .joinToString("\n")
         assertEquals(AccountSettings(), decodeAccountSettings(older))
         assertEquals("", decodeAccountSettings(older).friendlyName)
         assertEquals(ThemeMode.FollowSystem, decodeAccountSettings(older).theme)
         assertFalse(decodeAccountSettings(older).showUnreadCounts)
+        assertEquals(DateFormat.Short, decodeAccountSettings(older).dateFormat)
+        assertEquals("", decodeAccountSettings(older).datePattern)
 
         val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
             .first { it.startsWith("friendlyName=") }

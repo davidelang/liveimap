@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -58,6 +60,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -77,9 +80,15 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.SwipeBinding
+import java.time.DateTimeException
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 private val indexFlags = listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")
 
@@ -87,6 +96,81 @@ data class IndexAppearance(
     val alpha: Float,
     val strikethrough: Boolean,
 )
+
+private val localIndexDate = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+private val sameDayIndexDate = DateTimeFormatter.ofPattern("HH:mm")
+private val sameYearIndexDate = DateTimeFormatter.ofPattern("MMM d")
+private val otherYearIndexDate = DateTimeFormatter.ofPattern("MMM yyyy")
+
+private const val relativeNowSeconds = 45L
+private const val minuteSeconds = 60L
+private const val hourSeconds = 3600L
+private const val daySeconds = 86400L
+private const val relativeDayLimit = 7L
+
+fun formatIndexDate(
+    epochSeconds: Long,
+    format: DateFormat,
+    pattern: String,
+    nowEpoch: Long,
+    zone: ZoneId,
+): String {
+    if (epochSeconds == 0L) return ""
+    val whenZoned = Instant.ofEpochSecond(epochSeconds).atZone(zone)
+    val nowZoned = Instant.ofEpochSecond(nowEpoch).atZone(zone)
+    return when (format) {
+        DateFormat.Local -> localIndexDate.format(whenZoned)
+        DateFormat.Short -> shortIndexDate(whenZoned, nowZoned)
+        DateFormat.Relative -> relativeIndexDate(epochSeconds, whenZoned, nowEpoch, nowZoned)
+        DateFormat.Custom -> customIndexDate(whenZoned, pattern)
+    }
+}
+
+private fun shortIndexDate(whenZoned: ZonedDateTime, nowZoned: ZonedDateTime): String {
+    val formatter = when {
+        whenZoned.toLocalDate() == nowZoned.toLocalDate() -> sameDayIndexDate
+        whenZoned.year == nowZoned.year -> sameYearIndexDate
+        else -> otherYearIndexDate
+    }
+    return formatter.format(whenZoned)
+}
+
+private fun relativeIndexDate(
+    epochSeconds: Long,
+    whenZoned: ZonedDateTime,
+    nowEpoch: Long,
+    nowZoned: ZonedDateTime,
+): String {
+    val delta = epochSeconds - nowEpoch
+    val magnitude = if (delta < 0L) -delta else delta
+    if (magnitude < relativeNowSeconds) return "now"
+    if (magnitude >= relativeDayLimit * daySeconds) return shortIndexDate(whenZoned, nowZoned)
+    val days = magnitude / daySeconds
+    if (days >= 1L) return relativeUnit(delta < 0L, days, "day", "days")
+    val hours = magnitude / hourSeconds
+    if (hours >= 1L) return relativeUnit(delta < 0L, hours, "hour", "hours")
+    val minutes = (magnitude / minuteSeconds).coerceAtLeast(1L)
+    return relativeUnit(delta < 0L, minutes, "min", "min")
+}
+
+private fun relativeUnit(past: Boolean, count: Long, one: String, many: String): String {
+    val unit = if (count == 1L) one else many
+    return if (past) "$count $unit ago" else "in $count $unit"
+}
+
+private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String): String {
+    if (pattern.isEmpty()) return "bad date pattern"
+    val formatter = try {
+        DateTimeFormatter.ofPattern(pattern)
+    } catch (error: IllegalArgumentException) {
+        return "bad date pattern"
+    }
+    return try {
+        formatter.format(whenZoned)
+    } catch (error: DateTimeException) {
+        "bad date pattern"
+    }
+}
 
 fun indexAppearance(flags: Set<String>): IndexAppearance {
     val seen = "\\Seen" in flags
@@ -139,7 +223,7 @@ private class SnapshotSync {
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
-    onOpen: (Long) -> Unit,
+    onOpen: (Long, Int) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -523,7 +607,7 @@ fun MessageIndexScreen(
                                 selected = if (row.uid in selected) selected - row.uid else selected + row.uid
                             } else {
                                 val seed = model.openSeed(row.uid)
-                                if (seed != null) onCompose(seed) else onOpen(row.uid)
+                                if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence)
                             }
                         },
                         onLongPress = {
@@ -632,10 +716,26 @@ private fun IndexMessageRow(
                 val textColor = MaterialTheme.colorScheme.onSurface.copy(alpha = appearance.alpha)
                 val decoration = if (appearance.strikethrough) TextDecoration.LineThrough else TextDecoration.None
                 Row(verticalAlignment = Alignment.Top) {
-                    val marks = indexMarkColors(row)
-                    if (marks.isNotEmpty()) {
-                        IndexMarkDots(marks, Modifier.padding(end = 4.dp))
+                    Box(Modifier.width(48.dp)) {
+                        if (row.sequence != 0) {
+                            Text(
+                                text = row.sequence.toString(),
+                                modifier = Modifier.fillMaxWidth(),
+                                color = textColor,
+                                textDecoration = decoration,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                textAlign = TextAlign.End,
+                            )
+                        }
                     }
+                    val marks = indexMarkColors(row)
+                    IndexMarkDots(
+                        marks,
+                        Modifier
+                            .padding(end = 4.dp)
+                            .widthIn(min = 6.dp),
+                    )
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val from = if (selected) "selected ${row.from}" else row.from
@@ -648,7 +748,13 @@ private fun IndexMessageRow(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = row.envelopeDate,
+                                text = formatIndexDate(
+                                    epochSeconds = row.internalDateEpoch,
+                                    format = account.dateFormat,
+                                    pattern = account.datePattern,
+                                    nowEpoch = Instant.now().epochSecond,
+                                    zone = ZoneId.systemDefault(),
+                                ),
                                 color = textColor,
                                 textDecoration = decoration,
                                 maxLines = 1,

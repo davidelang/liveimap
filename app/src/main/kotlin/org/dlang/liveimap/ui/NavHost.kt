@@ -23,7 +23,7 @@ import org.dlang.liveimap.ui.reader.MessageReaderScreen
 private sealed class MailRoute {
     data object Folders : MailRoute()
     data class Index(val mailbox: String) : MailRoute()
-    data class Reader(val mailbox: String, val uid: Long) : MailRoute()
+    data class Reader(val mailbox: String, val uid: Long, val sequence: Int) : MailRoute()
     data object Compose : MailRoute()
     data object Settings : MailRoute()
     data object About : MailRoute()
@@ -101,8 +101,8 @@ fun NavHost() {
                 )
                 is MailRoute.Index -> MessageIndexScreen(
                     mailbox = current.mailbox,
-                    onOpen = { uid ->
-                        route = MailRoute.Reader(current.mailbox, uid)
+                    onOpen = { uid, sequence ->
+                        route = MailRoute.Reader(current.mailbox, uid, sequence)
                     },
                     onCompose = { seed ->
                         composeSeed = seed
@@ -113,6 +113,7 @@ fun NavHost() {
                 is MailRoute.Reader -> MessageReaderScreen(
                     mailbox = current.mailbox,
                     uid = current.uid,
+                    sequence = current.sequence,
                     onCompose = { seed ->
                         composeSeed = seed
                         route = MailRoute.Compose
