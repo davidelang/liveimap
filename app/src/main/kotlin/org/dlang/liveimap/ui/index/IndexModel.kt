@@ -164,6 +164,34 @@ sealed class IndexCommand {
     data class ShowFlags(val uid: Long) : IndexCommand()
 }
 
+fun followingUid(uids: List<Long>, current: Long): Long? {
+    val index = uids.indexOf(current)
+    if (index < 0 || index + 1 >= uids.size) return null
+    return uids[index + 1]
+}
+
+internal object OpenMessageOrder {
+    var mailbox: String = ""
+        private set
+    var uids: List<Long> = emptyList()
+        private set
+    private var sequences = emptyMap<Long, Int>()
+
+    fun publish(mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
+        this.mailbox = mailbox
+        this.uids = uids.toList()
+        sequences = rows.associate { it.uid to it.sequence }
+    }
+
+    fun sequence(uid: Long): Int = sequences[uid] ?: 0
+
+    fun clear() {
+        mailbox = ""
+        uids = emptyList()
+        sequences = emptyMap()
+    }
+}
+
 class IndexModel(
     private val session: MailSession,
     private val store: SettingsStore,
@@ -368,6 +396,7 @@ class IndexModel(
         try {
             heldRows = if (threading) loadThreadPage() else pagesOf(order)
             notice = null
+            OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
@@ -443,6 +472,7 @@ class IndexModel(
             order = order.filter { it !in gone }
             heldRows = heldRows.filter { it.uid !in gone }
             notice = null
+            OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
         }
@@ -523,6 +553,7 @@ class IndexModel(
         try {
             heldRows = load()
             notice = null
+            OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {
             heldRows = previous
             pageAnchor = previousAnchor

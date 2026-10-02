@@ -478,3 +478,9 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-status-thread-20261002-0207-plan.md
 - Work: three-slot index status, on-screen sequence width, filter chips, root-plus-summary threads, confirm before threading a folder larger than 5000
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-02 - reader-advance execution start
+
+- Approved plan: sandbox/plans/reader-advance-20261002-0235-plan.md
+- Work: icon reply bar, Bounce only in the overflow, advance to the next published index uid after a successful delete, move, or spam
+- Phase 1 of 1

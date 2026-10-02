@@ -391,6 +391,24 @@ class IndexWindowTest {
         runImmediate { model.dropFiltersFrom(0) }
         assertEquals(emptyList<AppliedFilter>(), model.filters)
     }
+
+    @Test
+    fun followingUidReturnsNextAndArrivalPublishKeepsSequences() {
+        OpenMessageOrder.clear()
+        assertEquals(6L, followingUid(listOf(5L, 6L, 7L), 5L))
+        assertNull(followingUid(listOf(5L, 6L, 7L), 7L))
+        assertNull(followingUid(listOf(5L, 6L, 7L), 9L))
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(5, sequence = 11), row(6, sequence = 22))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(listOf(5L, 6L), OpenMessageOrder.uids)
+        assertEquals(rows.map { it.uid }, OpenMessageOrder.uids)
+        for (loaded in rows) {
+            assertEquals(loaded.sequence, OpenMessageOrder.sequence(loaded.uid))
+        }
+        assertEquals(0, OpenMessageOrder.sequence(9L))
+    }
 }
 
 private fun row(

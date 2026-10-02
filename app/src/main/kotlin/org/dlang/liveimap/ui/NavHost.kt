@@ -118,6 +118,13 @@ fun LiveImapNavHost() {
                         composeUids.value = seed.uids.joinToString(",")
                         navController.navigate("compose")
                     },
+                    onAdvance = { nextUid, nextSequence ->
+                        navController.navigate(
+                            "reader/${Uri.encode(mailbox)}/$nextUid/$nextSequence",
+                        ) {
+                            popUpTo("reader/{mailbox}/{uid}/{sequence}") { inclusive = true }
+                        }
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }

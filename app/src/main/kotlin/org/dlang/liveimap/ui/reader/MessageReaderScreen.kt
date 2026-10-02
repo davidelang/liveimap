@@ -18,7 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -56,6 +60,8 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
+import org.dlang.liveimap.ui.index.OpenMessageOrder
+import org.dlang.liveimap.ui.index.followingUid
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.missingPartText
 import org.dlang.liveimap.ui.compose.nextWireCount
@@ -83,6 +89,7 @@ fun MessageReaderScreen(
     uid: Long,
     sequence: Int,
     onCompose: (ComposeSeed) -> Unit,
+    onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
@@ -108,6 +115,7 @@ fun MessageReaderScreen(
     var seenStored by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
     var choosingMove by remember { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
     val saveMutex = remember { Mutex() }
 
     BackHandler(enabled = choosingMove) {
@@ -466,6 +474,16 @@ fun MessageReaderScreen(
         }
     }
 
+    fun nextAfterDeleteOrMove(): Pair<Long, Int>? {
+        if (OpenMessageOrder.mailbox != mailbox) return null
+        val next = followingUid(OpenMessageOrder.uids, uid) ?: return null
+        return next to OpenMessageOrder.sequence(next)
+    }
+
+    fun openNextOrIndex(target: Pair<Long, Int>?) {
+        if (target == null) onBack() else onAdvance(target.first, target.second)
+    }
+
     val systemDark = isSystemInDarkTheme()
     val dark = when (account.theme) {
         ThemeMode.Dark -> true
@@ -485,10 +503,36 @@ fun MessageReaderScreen(
                 )
             }
             IconButton(onClick = {
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
+            }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Reply",
+                )
+            }
+            IconButton(onClick = {
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid)))
+            }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ReplyAll,
+                    contentDescription = "Reply all",
+                )
+            }
+            IconButton(onClick = {
+                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
+            }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Forward,
+                    contentDescription = "Forward",
+                )
+            }
+            IconButton(onClick = {
                 scope.launch {
                     gate.withLock {
+                        val target = nextAfterDeleteOrMove()
                         try {
                             session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            openNextOrIndex(target)
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: MailFailure) {
@@ -513,9 +557,10 @@ fun MessageReaderScreen(
                 IconButton(onClick = {
                     scope.launch {
                         gate.withLock {
+                            val target = nextAfterDeleteOrMove()
                             try {
                                 session.copyThenDelete(listOf(uid), spamMailbox)
-                                onBack()
+                                openNextOrIndex(target)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {
@@ -533,19 +578,32 @@ fun MessageReaderScreen(
             if (sequence != 0) {
                 Text("Message $sequence")
             }
-            TextButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
-            }) { Text("Reply") }
-            TextButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid)))
-            }) { Text("Reply all") }
-            TextButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
-            }) { Text("Forward") }
-            TextButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
-            }) { Text("Bounce") }
-            MessageViewMenu(selected = selectedView, onSelect = { requestView(it) })
+            Box {
+                IconButton(onClick = { moreMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More",
+                    )
+                }
+                DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Bounce") },
+                        onClick = {
+                            moreMenu = false
+                            onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
+                        },
+                    )
+                    BodyView.entries.forEach { view ->
+                        DropdownMenuItem(
+                            text = { Text(bodyViewLabel(view)) },
+                            onClick = {
+                                moreMenu = false
+                                requestView(view)
+                            },
+                        )
+                    }
+                }
+            }
         }
         for (row in attachments) {
             TextButton(
@@ -623,9 +681,10 @@ fun MessageReaderScreen(
                 if (mailbox.isNotEmpty()) {
                     scope.launch {
                         gate.withLock {
+                            val target = nextAfterDeleteOrMove()
                             try {
                                 session.copyThenDelete(listOf(uid), mailbox)
-                                onBack()
+                                openNextOrIndex(target)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {
@@ -637,25 +696,6 @@ fun MessageReaderScreen(
             },
             onDismiss = { choosingMove = false },
         )
-    }
-}
-
-@Composable
-private fun MessageViewMenu(selected: BodyView, onSelect: (BodyView) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { expanded = true }) { Text(bodyViewLabel(selected)) }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            BodyView.entries.forEach { view ->
-                DropdownMenuItem(
-                    text = { Text(bodyViewLabel(view)) },
-                    onClick = {
-                        expanded = false
-                        onSelect(view)
-                    },
-                )
-            }
-        }
     }
 }
 
