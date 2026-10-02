@@ -607,3 +607,9 @@
 - At 840 dp and above the index keeps the list beside the open message and the drawer stays open without a menu button
 - Narrower windows still push the reader route and keep the modal drawer; IDLE on the index stops while the message pane is open
 - A reader route folds back into the index when the window becomes wide and the mailbox matches
+
+## 2026-10-02 - pinerc import execution start
+
+- Approved plan: sandbox/plans/pinerc-import-20261002-0653-plan.md
+- Work: Settings imports a user-picked .pinerc, previews changes, and Apply writes only existing account fields
+- Status set to APPROVED

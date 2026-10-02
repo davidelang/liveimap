@@ -1,12 +1,23 @@
 package org.dlang.liveimap.settings
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,8 +29,10 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +56,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,6 +87,27 @@ fun SettingsScreen() {
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
     var warnUnread by remember { mutableStateOf(false) }
+    var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
+    var importError by remember { mutableStateOf<String?>(null) }
+    val settingsState = rememberUpdatedState(settings)
+    val contextState = rememberUpdatedState(LocalContext.current)
+    val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        when (val outcome = readPinercStream(contextState.value.contentResolver, uri)) {
+            is PinercRead.Ok -> {
+                importError = null
+                importPreview = pinercPreview(outcome.text, settingsState.value)
+            }
+            PinercRead.TooLarge -> {
+                importPreview = null
+                importError = "That file is too large."
+            }
+            PinercRead.Bad -> {
+                importPreview = null
+                importError = "Could not read that file."
+            }
+        }
+    }
 
     BackHandler(enabled = picking != null || warnUnread) {
         if (picking != null) {
@@ -139,6 +181,9 @@ fun SettingsScreen() {
         }
         MailboxLine("Spam mailbox", settings.spamMailbox, { picking = MailboxPick.Spam }) {
             persist(settings.copy(spamMailbox = it))
+        }
+        TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
+            Text("Import from .pinerc…")
         }
         TextButton(
             onClick = {
@@ -304,6 +349,66 @@ fun SettingsScreen() {
             onDismiss = { picking = null },
         )
     }
+
+    val error = importError
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = { importError = null },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { importError = null }) { Text("Close") }
+            },
+        )
+    }
+
+    val preview = importPreview
+    if (preview != null) {
+        Dialog(
+            onDismissRequest = { importPreview = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars
+                                .union(WindowInsets.navigationBars)
+                                .union(WindowInsets.displayCutout),
+                        )
+                        .padding(16.dp),
+                ) {
+                    Text("Import from .pinerc", style = MaterialTheme.typography.titleLarge)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Will change")
+                        preview.rows.forEach { line -> Text(line) }
+                        Text("Not applied")
+                        preview.skipped.forEach { line -> Text(line) }
+                        Text("Ignored")
+                        if (preview.omittedCount != 0) {
+                            Text("${preview.omittedCount} other lines were left out")
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { importPreview = null }) { Text("Cancel") }
+                        TextButton(
+                            onClick = {
+                                persist(preview.next)
+                                importPreview = null
+                            },
+                            enabled = preview.next != settings,
+                        ) { Text("Apply") }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -458,5 +563,41 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         MailboxPick.LeadingMove -> base.copy(
             swipeLeading = base.swipeLeading.copy(moveMailbox = mailbox),
         )
+    }
+}
+
+private const val PINERC_MAX_BYTES = 1024 * 1024
+
+private sealed class PinercRead {
+    class Ok(val text: String) : PinercRead()
+    object TooLarge : PinercRead()
+    object Bad : PinercRead()
+}
+
+private fun readPinercStream(resolver: ContentResolver, uri: Uri): PinercRead {
+    return try {
+        val input = resolver.openInputStream(uri) ?: return PinercRead.Bad
+        input.use { stream ->
+            val buf = ByteArray(PINERC_MAX_BYTES + 1)
+            var total = 0
+            while (total < buf.size) {
+                val n = stream.read(buf, total, buf.size - total)
+                if (n < 0) break
+                total += n
+            }
+            if (total > PINERC_MAX_BYTES) return PinercRead.TooLarge
+            val decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+            try {
+                PinercRead.Ok(decoder.decode(ByteBuffer.wrap(buf, 0, total)).toString())
+            } catch (e: CharacterCodingException) {
+                PinercRead.Bad
+            }
+        }
+    } catch (e: IOException) {
+        PinercRead.Bad
+    } catch (e: SecurityException) {
+        PinercRead.Bad
     }
 }

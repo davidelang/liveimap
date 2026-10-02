@@ -1,0 +1,288 @@
+package org.dlang.liveimap.settings
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PinercImportTest {
+    @Test
+    fun parseQuotedNameUnsetAndLastWins() {
+        assertEquals("David Lang", parsePinerc("personal-name=\"David Lang\"\n")["personal-name"])
+        val unset = parsePinerc("personal-name=\n")
+        assertTrue(unset.containsKey("personal-name"))
+        assertEquals(null, unset["personal-name"])
+        assertEquals("b", parsePinerc("user-id=a\nuser-id=b\n")["user-id"])
+        assertEquals(
+            "expunge-without-confirm,expunge-only-manually",
+            parsePinerc("# c\n\nfeature-list=expunge-without-confirm,\n expunge-only-manually\n")["feature-list"],
+        )
+    }
+
+    @Test
+    fun parseQuotesEscapesCaseAndOneSpace() {
+        assertEquals("a\"b\\c", parsePinerc("personal-name=\"a\\\"b\\\\c\"\n")["personal-name"])
+        assertEquals("", parsePinerc("personal-name=\"\"\n")["personal-name"])
+        assertEquals("Ada", parsePinerc("Personal-Name=Ada\n")["personal-name"])
+        assertEquals("Ada", parsePinerc("personal-name= Ada \n")["personal-name"])
+        assertEquals(" Ada", parsePinerc("personal-name=  Ada \n")["personal-name"])
+        assertEquals("ab", parsePinerc("user-id=a\n\tb\n")["user-id"])
+    }
+
+    @Test
+    fun previewAppliesUsableFieldsAndHidesPassword() {
+        val text = """
+            inbox-path={imap.example.com:143/user=ada}INBOX
+            smtp-server=smtp.example.com:2525
+            user-domain=lang.hm
+            personal-name=Ada
+            default-fcc=INBOX.sent-mail
+            postponed-folder=INBOX.postponed
+            address-book={imap.example.com}ab, ~/abook
+            sort-key=Thread/reverse
+            feature-list=expunge-without-confirm
+            inbox-password=secret
+            """.trimIndent() + "\n"
+        val preview = pinercPreview(text, AccountSettings())
+        val next = preview.next
+        assertEquals("imap.example.com", next.imapHost)
+        assertEquals(143, next.imapPort)
+        assertEquals("smtp.example.com", next.smtpHost)
+        assertEquals(2525, next.smtpPort)
+        assertEquals("ada", next.username)
+        assertEquals("ada@lang.hm", next.email)
+        assertEquals("Ada", next.displayName)
+        assertEquals("INBOX.sent-mail", next.sentMailbox)
+        assertEquals("INBOX.postponed", next.postponedMailbox)
+        assertEquals("ab", next.addressBookMailbox)
+        assertEquals(SortKey.ThreadReferences, next.defaultView.key)
+        assertTrue(next.defaultView.newestFirst)
+        assertFalse(next.askBeforeExpunge)
+        assertEquals("", next.spamMailbox)
+        assertEquals(
+            AccountSettings(),
+            next.copy(
+                imapHost = "",
+                imapPort = 143,
+                smtpHost = "",
+                smtpPort = 25,
+                username = "",
+                displayName = "",
+                email = "",
+                sentMailbox = "",
+                postponedMailbox = "",
+                addressBookMailbox = "",
+                defaultView = FolderView(SortKey.Arrival, newestFirst = true),
+                askBeforeExpunge = true,
+            ),
+        )
+        assertTrue(preview.rows.none { "secret" in it })
+        assertTrue(preview.skipped.none { "secret" in it })
+        assertTrue(preview.skipped.contains("Local path is not a mailbox"))
+        assertTrue(preview.skipped.contains("Passwords are not imported"))
+    }
+
+    @Test
+    fun tlsSortAndLocalPathAreNotApplied() {
+        val tls = pinercPreview(
+            "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
+            AccountSettings(),
+        )
+        assertEquals("", tls.next.imapHost)
+        assertEquals("", tls.next.username)
+        assertEquals(AccountSettings(), tls.next)
+        assertTrue(tls.skipped.contains("imap.example.com: TLS is not supported"))
+
+        val sort = pinercPreview("sort-key=Score\n", AccountSettings())
+        assertEquals(AccountSettings(), sort.next)
+        assertTrue(sort.skipped.contains("Sort key is not supported"))
+
+        val sent = pinercPreview("default-fcc=~/mail/sent\n", AccountSettings())
+        assertEquals("", sent.next.sentMailbox)
+        assertTrue(sent.skipped.contains("Local path is not a mailbox"))
+    }
+
+    @Test
+    fun unmentionedFieldsStay() {
+        val current = AccountSettings(
+            spamMailbox = "Junk",
+            theme = ThemeMode.Dark,
+            swipeTrailing = SwipeBinding(SwipeAction.Move, moveMailbox = "Archive"),
+            swipeLeading = SwipeBinding(SwipeAction.Reply),
+            favorites = listOf(FolderFavorite(node = false, mailbox = "INBOX", delimiter = '.')),
+            friendlyName = "Work",
+        )
+        val preview = pinercPreview("personal-name=Ada\n", current)
+        assertEquals(current.copy(displayName = "Ada"), preview.next)
+        assertEquals(listOf("Display name:  → Ada"), preview.rows)
+    }
+
+    @Test
+    fun smtpPortsUsersAndInboxWithoutPort() {
+        val submit = pinercPreview("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        assertEquals("smtp.example.com", submit.next.smtpHost)
+        assertEquals(587, submit.next.smtpPort)
+
+        val explicit = pinercPreview("smtp-server=smtp.example.com:2525/submit\n", AccountSettings())
+        assertEquals(2525, explicit.next.smtpPort)
+
+        val plain = pinercPreview("smtp-server=smtp.example.com\n", AccountSettings())
+        assertEquals(25, plain.next.smtpPort)
+
+        val tls = pinercPreview(
+            "smtp-server={smtp.example.com/tls}\n",
+            AccountSettings(smtpHost = "old"),
+        )
+        assertEquals("old", tls.next.smtpHost)
+        assertEquals(25, tls.next.smtpPort)
+        assertTrue(tls.skipped.contains("smtp.example.com: TLS is not supported"))
+
+        val secure = pinercPreview(
+            "inbox-path={imap.example.com/Secure/user=ada}INBOX\n",
+            AccountSettings(),
+        )
+        assertEquals("", secure.next.imapHost)
+        assertTrue(secure.skipped.contains("imap.example.com: TLS is not supported"))
+
+        val inbox = pinercPreview("inbox-path={imap.example.com/user=ada}INBOX\n", AccountSettings())
+        assertEquals("imap.example.com", inbox.next.imapHost)
+        assertEquals(143, inbox.next.imapPort)
+        assertEquals("ada", inbox.next.username)
+
+        val differ = pinercPreview(
+            "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=bob}\n",
+            AccountSettings(),
+        )
+        assertEquals("ada", differ.next.username)
+        assertEquals("smtp.example.com", differ.next.smtpHost)
+        assertEquals(25, differ.next.smtpPort)
+        assertTrue(differ.skipped.contains("SMTP username is not a separate setting"))
+
+        val same = pinercPreview(
+            "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=ada}\n",
+            AccountSettings(),
+        )
+        assertTrue(same.skipped.none { it == "SMTP username is not a separate setting" })
+    }
+
+    @Test
+    fun userIdEmailAndFolders() {
+        val kept = pinercPreview(
+            "inbox-path={imap.example.com/user=ada}INBOX\nuser-id=bob\nuser-domain=lang.hm\n",
+            AccountSettings(),
+        )
+        assertEquals("ada", kept.next.username)
+        assertEquals("bob@lang.hm", kept.next.email)
+
+        val fromId = pinercPreview("user-id=bob\nuser-domain=lang.hm\n", AccountSettings())
+        assertEquals("bob", fromId.next.username)
+        assertEquals("bob@lang.hm", fromId.next.email)
+
+        val at = pinercPreview("user-id=bob@other.hm\nuser-domain=lang.hm\n", AccountSettings())
+        assertEquals("bob", at.next.username)
+        assertEquals("bob@other.hm", at.next.email)
+
+        val domainOnly = pinercPreview(
+            "user-domain=lang.hm\n",
+            AccountSettings(username = "ada", email = "keep@lang.hm"),
+        )
+        assertEquals("ada", domainOnly.next.username)
+        assertEquals("keep@lang.hm", domainOnly.next.email)
+
+        val braced = pinercPreview("default-fcc={imap.example.com}INBOX.sent\n", AccountSettings())
+        assertEquals("INBOX.sent", braced.next.sentMailbox)
+
+        val slash = pinercPreview("postponed-folder=INBOX/postponed\n", AccountSettings())
+        assertEquals("", slash.next.postponedMailbox)
+        assertTrue(slash.skipped.contains("Local path is not a mailbox"))
+
+        val book = pinercPreview(
+            "address-book=~/abook, {imap.example.com}ab\n",
+            AccountSettings(addressBookMailbox = "keep"),
+        )
+        assertEquals("ab", book.next.addressBookMailbox)
+        assertTrue(book.skipped.contains("Local path is not a mailbox"))
+
+        val localBook = pinercPreview(
+            "address-book=~/abook\n",
+            AccountSettings(addressBookMailbox = "keep"),
+        )
+        assertEquals("keep", localBook.next.addressBookMailbox)
+
+        val quoted = pinercPreview(
+            "address-book=\"{imap.example.com}ab\", \"~/abook\"\n",
+            AccountSettings(),
+        )
+        assertEquals("ab", quoted.next.addressBookMailbox)
+        assertTrue(quoted.skipped.contains("Local path is not a mailbox"))
+    }
+
+    @Test
+    fun sortFeaturesAndOmittedLines() {
+        val date = pinercPreview("sort-key=Date\n", AccountSettings())
+        assertEquals(FolderView(SortKey.Date, newestFirst = false), date.next.defaultView)
+
+        val ordered = pinercPreview("sort-key=orderedsubj/reverse\n", AccountSettings())
+        assertEquals(
+            FolderView(SortKey.ThreadOrderedSubject, newestFirst = true),
+            ordered.next.defaultView,
+        )
+
+        val manual = pinercPreview("feature-list=expunge-only-manually\n", AccountSettings())
+        assertTrue(manual.next.askBeforeExpunge)
+        assertEquals(AccountSettings(), manual.next)
+        assertTrue(manual.skipped.contains("Expunge already happens only when asked"))
+
+        val last = pinercPreview(
+            "feature-list=no-expunge-without-confirm,expunge-without-confirm-everywhere\n",
+            AccountSettings(),
+        )
+        assertFalse(last.next.askBeforeExpunge)
+
+        val back = pinercPreview(
+            "feature-list=expunge-without-confirm,no-expunge-without-confirm-everywhere\n",
+            AccountSettings(),
+        )
+        assertTrue(back.next.askBeforeExpunge)
+        assertEquals(AccountSettings(), back.next)
+
+        val mixed = pinercPreview(
+            "feature-list=expunge-without-confirm,enable-foo,expunge-only-manually\n",
+            AccountSettings(),
+        )
+        assertFalse(mixed.next.askBeforeExpunge)
+        assertEquals(1, mixed.omittedCount)
+        assertTrue(mixed.skipped.contains("Expunge already happens only when asked"))
+
+        val omitted = pinercPreview(
+            "normal-foreground-color=red\nkeymap=a\nkeybinding-style=b\nfoo=bar\ninbox-password=secret\n",
+            AccountSettings(),
+        )
+        assertEquals(4, omitted.omittedCount)
+        assertEquals(listOf("Passwords are not imported"), omitted.skipped)
+        assertTrue(omitted.rows.isEmpty())
+        assertEquals(AccountSettings(), omitted.next)
+        assertTrue(omitted.skipped.none { "secret" in it })
+
+        val notes = pinercPreview(
+            "signature-file=/tmp/sig\nliteral-signature=hi\nincoming-folders=a\nstay-open-folders=b\nfolder-collections=c\n",
+            AccountSettings(),
+        )
+        assertEquals(
+            listOf(
+                "Signature is not a setting",
+                "Signature is not a setting",
+                "Folder lists are not imported",
+                "Folder lists are not imported",
+                "Folder lists are not imported",
+            ),
+            notes.skipped,
+        )
+        assertEquals(0, notes.omittedCount)
+        assertEquals(AccountSettings(), notes.next)
+        assertEquals(listOf("Display name: Old → Ada"), pinercPreview(
+            "personal-name=Ada\n",
+            AccountSettings(displayName = "Old"),
+        ).rows)
+    }
+}
