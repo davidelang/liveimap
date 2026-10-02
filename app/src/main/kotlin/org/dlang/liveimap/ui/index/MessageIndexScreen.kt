@@ -490,7 +490,7 @@ fun MessageIndexScreen(
             val savedView = settings.folderViews[mailbox] ?: settings.defaultView
             val threading = savedView.key == SortKey.ThreadReferences ||
                 savedView.key == SortKey.ThreadOrderedSubject
-            if (threading && !threadConfirmed) {
+            if (threading) {
                 val selected = try {
                     session.select(mailbox)
                 } catch (error: CancellationException) {
@@ -499,7 +499,7 @@ fun MessageIndexScreen(
                     notice = error.text
                     return@withLock false
                 }
-                if (selected.exists > ThreadConfirmExists) {
+                if (selected.exists > ThreadConfirmExists && !threadConfirmed) {
                     pendingThread = savedView
                     pendingExists = selected.exists
                     return@withLock false
@@ -698,7 +698,7 @@ fun MessageIndexScreen(
                                     scope.launch {
                                         val threading = key == SortKey.ThreadReferences ||
                                             key == SortKey.ThreadOrderedSubject
-                                        if (threading && !threadConfirmed) {
+                                        if (threading) {
                                             val exists = try {
                                                 gate.withLock { session.select(mailbox).exists }
                                             } catch (error: CancellationException) {
@@ -707,7 +707,7 @@ fun MessageIndexScreen(
                                                 notice = error.text
                                                 return@launch
                                             }
-                                            if (exists > ThreadConfirmExists) {
+                                            if (exists > ThreadConfirmExists && !threadConfirmed) {
                                                 threadExists = exists
                                                 threadAskFromConnect = false
                                                 threadAsk = FolderView(key, view.newestFirst)
