@@ -357,7 +357,7 @@ fun MessageIndexScreen(
             if (model.notice == null) narrowArmed = false
             if (model.rows.isNotEmpty()) listState.scrollToItem(0)
         }
-    }()
+    }
 
     DisposableEffect(session) {
         onDispose { session.close() }
