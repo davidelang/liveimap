@@ -1,0 +1,33 @@
+package org.dlang.liveimap.ui.index
+
+import org.dlang.liveimap.session.ThreadNode
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ThreadOrderTest {
+    @Test
+    fun orderedThreadUidsOrdersRootsByLargestUid() {
+        val nested = ThreadNode(8L, listOf(ThreadNode(1L, emptyList()), ThreadNode(4L, emptyList())))
+        val root = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(2L, emptyList()),
+                nested,
+            ),
+        )
+        assertEquals(listOf(8L, 1L, 4L, 2L), orderedThreadUids(root, newestFirst = true))
+        assertEquals(listOf(2L, 8L, 1L, 4L), orderedThreadUids(root, newestFirst = false))
+        assertEquals(listOf(1L, 4L), nested.children.map { it.uid })
+
+        val uidless = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(null, listOf(ThreadNode(6L, emptyList()))),
+                ThreadNode(9L, emptyList()),
+            ),
+        )
+        assertEquals(listOf(9L, 6L), orderedThreadUids(uidless, newestFirst = true))
+        assertEquals(listOf(6L, 9L), orderedThreadUids(uidless, newestFirst = false))
+        assertEquals(emptyList<Long>(), orderedThreadUids(ThreadNode(null, emptyList()), newestFirst = true))
+    }
+}

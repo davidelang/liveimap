@@ -54,6 +54,40 @@ fun barMoveMailbox(settings: AccountSettings): String {
         .orEmpty()
 }
 
+fun orderedThreadUids(node: ThreadNode, newestFirst: Boolean): List<Long> {
+    fun subtreeMaxUid(current: ThreadNode): Long? {
+        var maxUid = current.uid
+        for (child in current.children) {
+            val childMax = subtreeMaxUid(child) ?: continue
+            if (maxUid == null || childMax > maxUid) maxUid = childMax
+        }
+        return maxUid
+    }
+    val children = if (node.children.isEmpty()) {
+        node.children
+    } else {
+        node.children.sortedWith { left, right ->
+            val leftKey = subtreeMaxUid(left)
+            val rightKey = subtreeMaxUid(right)
+            when {
+                leftKey == null && rightKey == null -> 0
+                leftKey == null -> 1
+                rightKey == null -> -1
+                newestFirst -> rightKey.compareTo(leftKey)
+                else -> leftKey.compareTo(rightKey)
+            }
+        }
+    }
+    val out = ArrayList<Long>()
+    fun walk(current: ThreadNode) {
+        val uid = current.uid
+        if (uid != null) out.add(uid)
+        for (child in current.children) walk(child)
+    }
+    walk(node.copy(children = children))
+    return out
+}
+
 sealed class IndexCommand {
     data object None : IndexCommand()
     data class Compose(val seed: ComposeSeed) : IndexCommand()
@@ -306,7 +340,8 @@ class IndexModel(
         pageAnchor = 0
         return when (folderView.key) {
             SortKey.Arrival -> fetchArrival(folderView.newestFirst)
-            SortKey.ThreadReferences, SortKey.ThreadOrderedSubject -> fetchThread(folderView.key)
+            SortKey.ThreadReferences, SortKey.ThreadOrderedSubject ->
+                fetchThread(folderView.key, folderView.newestFirst)
             SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size ->
                 fetchSorted(folderView.key, folderView.newestFirst)
         }
@@ -334,8 +369,8 @@ class IndexModel(
         return loaded
     }
 
-    private suspend fun fetchThread(key: SortKey): List<IndexRow> {
-        val uids = threadUids(session.thread(key))
+    private suspend fun fetchThread(key: SortKey, newestFirst: Boolean): List<IndexRow> {
+        val uids = orderedThreadUids(session.thread(key), newestFirst)
         val loaded = pagesOf(uids)
         order = uids
         return loaded
@@ -374,17 +409,6 @@ class IndexModel(
     private fun align(uids: List<Long>, fetched: List<IndexRow>): List<IndexRow> {
         val byUid = fetched.associateBy { it.uid }
         return uids.mapNotNull { byUid[it] }
-    }
-
-    private fun threadUids(node: ThreadNode): List<Long> {
-        val out = ArrayList<Long>()
-        fun walk(current: ThreadNode) {
-            val uid = current.uid
-            if (uid != null) out.add(uid)
-            for (child in current.children) walk(child)
-        }
-        walk(node)
-        return out
     }
 
     private fun orderedSubjectAdvertised(): Boolean {

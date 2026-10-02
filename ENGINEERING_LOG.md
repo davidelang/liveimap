@@ -405,3 +405,10 @@
 ## 2026-10-01 - Message view pulldown
 
 - Started message-body-view-20261001-2054. BodyView replaces Prefer HTML. The reader pulldown does not save settings. HEADER and raw use BODY.PEEK. htmlAsText quotes HTML only for Plain or HTML and Plain or text.
+
+## 2026-10-01 - thread newest first execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/thread-newest-first-20261001-2054-plan.md
+- Work: pass newestFirst into fetchThread; order thread roots by the largest uid in each thread; nested message order stays as returned
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD d920479
