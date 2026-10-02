@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.compose
 
 import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.ui.foldReaderIntoIndex
 import org.dlang.liveimap.ui.postponedDrawerMailbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,6 +57,15 @@ class ComposeChromeTest {
                 rowRemoved = true,
             ),
         )
+    }
+
+    @Test
+    fun foldReaderIntoIndex() {
+        assertTrue(foldReaderIntoIndex(true, "reader/{mailbox}/{uid}/{sequence}"))
+        assertFalse(foldReaderIntoIndex(false, "reader/{mailbox}/{uid}/{sequence}"))
+        assertFalse(foldReaderIntoIndex(true, "index/{mailbox}"))
+        assertFalse(foldReaderIntoIndex(true, "folders"))
+        assertFalse(foldReaderIntoIndex(true, null))
     }
 
     @Test

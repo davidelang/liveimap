@@ -593,3 +593,17 @@
 - Each folder row reserves a 48 dp expander and a separate open target at least 48 dp tall, indented 24 dp per depth
 - Function icons come from a settings mailbox, then Sent, Drafts, Trash, or Junk special-use, then literal INBOX; other rows use the folder icon
 - TalkBack on the open target reads the leaf, counts, and collapsed or expanded; the expander reads Expand or Collapse
+
+## 2026-10-02 - two pane mail execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/two-pane-mail-20261002-0628-plan.md
+- Work: at 840 dp and above, keep the message list beside the open message and use a permanent drawer; narrower windows keep a single screen and a modal drawer
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag fa3611e
+
+## 2026-10-02 - two pane mail phase 1
+
+- At 840 dp and above the index keeps the list beside the open message and the drawer stays open without a menu button
+- Narrower windows still push the reader route and keep the modal drawer; IDLE on the index stops while the message pane is open
+- A reader route folds back into the index when the window becomes wide and the mailbox matches

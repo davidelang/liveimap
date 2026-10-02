@@ -105,9 +105,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -348,6 +350,7 @@ fun MessageIndexScreen(
     onOpen: (Long, Int) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
+    watchMailbox: Boolean = true,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -405,6 +408,7 @@ fun MessageIndexScreen(
     var flagUid by remember { mutableStateOf<Long?>(null) }
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     val anchorState = rememberUpdatedState(anchorPage)
+    val watchMailboxNow = rememberUpdatedState(watchMailbox)
     val allowNewer = remember { mutableStateOf(true) }
 
     BackHandler(
@@ -729,19 +733,53 @@ fun MessageIndexScreen(
         } else {
             loading = false
         }
+        var watchJob: Job? = null
         try {
-            model.watch { change ->
-                scope.launch {
-                    gate.withLock {
-                        model.applyChange(change)
-                        pull()
+            snapshotFlow { watchMailboxNow.value }.collect { watching ->
+                watchJob?.cancel()
+                watchJob?.join()
+                watchJob = null
+                if (!watching) {
+                    withContext(NonCancellable) {
+                        try {
+                            model.stopWatch()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: MailFailure) {
+                        }
                     }
-                    if (change !is MailboxChange.Flags && model.rows.isNotEmpty()) {
-                        listState.scrollToItem(0)
+                    return@collect
+                }
+                watchJob = launch {
+                    try {
+                        model.watch { change ->
+                            scope.launch {
+                                gate.withLock {
+                                    model.applyChange(change)
+                                    pull()
+                                }
+                                if (change !is MailboxChange.Flags && model.rows.isNotEmpty()) {
+                                    listState.scrollToItem(0)
+                                }
+                            }
+                        }
+                        awaitCancellation()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        postSnack(error.text)
+                    } finally {
+                        withContext(NonCancellable) {
+                            try {
+                                model.stopWatch()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: MailFailure) {
+                            }
+                        }
                     }
                 }
             }
-            awaitCancellation()
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
