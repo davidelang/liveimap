@@ -433,6 +433,20 @@ class IndexWindowTest {
         assertEquals("No messages", emptyIndexText("", "INBOX"))
         assertEquals("No messages match \u201cclamp\u201d in INBOX", emptyIndexText("clamp", "INBOX"))
     }
+
+    @Test
+    fun selectionTitleFormatsPartialAllAndEmpty() {
+        assertEquals("2 selected", selectionTitle(false, 2, 0))
+        assertEquals("All 3 selected", selectionTitle(true, 0, 3))
+        assertEquals("All selected", selectionTitle(true, 0, 0))
+    }
+
+    @Test
+    fun selectAllTargetUsesFilterUidsOrEntireMailbox() {
+        val filtered = selectAllTarget(true, listOf(2L, 5L))
+        assertEquals(listOf(2L, 5L), (filtered as SelectAllTarget.Uids).uids)
+        assertEquals(SelectAllTarget.EntireMailbox, selectAllTarget(false, emptyList()))
+    }
 }
 
 private fun row(

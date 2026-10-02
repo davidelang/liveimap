@@ -54,13 +54,29 @@ class SerialMailSession(
         onLane { inner.storeFlags(uids, add, remove) }
     }
 
+    override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
+        onLane { inner.storeFlagsAll(add, remove) }
+    }
+
     override suspend fun uidExpungeDeleted() {
         onLane { inner.uidExpungeDeleted() }
+    }
+
+    override suspend fun uidExpunge(uids: List<Long>) {
+        onLane { inner.uidExpunge(uids) }
     }
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
         onLane { inner.copyThenDelete(uids, targetMailbox) }
     }
+
+    override suspend fun copyAllThenDelete(targetMailbox: String) {
+        onLane { inner.copyAllThenDelete(targetMailbox) }
+    }
+
+    override suspend fun selectedExists(): Int = onLane { inner.selectedExists() }
+
+    override suspend fun takeCopiedUids(): List<Long> = onLane { inner.takeCopiedUids() }
 
     override suspend fun searchText(query: String): List<Long> =
         onLane { inner.searchText(query) }

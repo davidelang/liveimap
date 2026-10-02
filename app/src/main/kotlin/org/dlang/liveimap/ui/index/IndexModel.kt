@@ -16,6 +16,8 @@ import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
+import org.dlang.liveimap.ui.compose.mailboxLeaf
+import java.text.NumberFormat
 import kotlin.math.abs
 
 const val IndexPageSize = 60
@@ -95,6 +97,37 @@ fun barMoveMailbox(settings: AccountSettings): String {
         .map { it.moveMailbox }
         .firstOrNull { it.isNotEmpty() }
         .orEmpty()
+}
+
+fun selectionTitle(allMailbox: Boolean, count: Int, exists: Int): String {
+    val format = NumberFormat.getIntegerInstance()
+    if (allMailbox && exists == 0) return "All selected"
+    if (allMailbox && exists > 0) return "All ${format.format(exists)} selected"
+    if (exists > 0 && count == exists) return "All ${format.format(count)} selected"
+    return "${format.format(count)} selected"
+}
+
+sealed class SelectAllTarget {
+    data class Uids(val uids: List<Long>) : SelectAllTarget()
+    data object EntireMailbox : SelectAllTarget()
+}
+
+fun selectAllTarget(filterActive: Boolean, order: List<Long>): SelectAllTarget {
+    return if (filterActive) SelectAllTarget.Uids(order) else SelectAllTarget.EntireMailbox
+}
+
+data class MailUndo(
+    val delete: Boolean,
+    val uids: List<Long>,
+    val allMailbox: Boolean = false,
+    val targetMailbox: String = "",
+    val destUids: List<Long> = emptyList(),
+    val usedMove: Boolean = false,
+)
+
+fun mailUndoText(undo: MailUndo): String {
+    if (undo.delete) return "Marked deleted"
+    return "Moved to ${mailboxLeaf(undo.targetMailbox)}"
 }
 
 fun orderedThreadUids(node: ThreadNode, newestFirst: Boolean): List<Long> {
@@ -223,7 +256,9 @@ class IndexModel(
     private val mailbox: String,
 ) {
     private var heldRows: List<IndexRow> = emptyList()
-    private var order: List<Long> = emptyList()
+    var order: List<Long> = emptyList()
+        private set
+    private var loadedWindow = false
     private var pageAnchor: Int = 0
     private var includePreview: Boolean = false
     private var activeSearch: String? = null
@@ -257,6 +292,13 @@ class IndexModel(
 
     val rows: List<IndexRow>
         get() = heldRows
+
+    var mailUndo: MailUndo? = null
+        private set
+
+    fun clearMailUndo() {
+        mailUndo = null
+    }
 
     val anchorPage: Int
         get() = pageAnchor
@@ -470,47 +512,124 @@ class IndexModel(
         return heldRows
     }
 
-    suspend fun deleteMessages(uids: List<Long>): List<IndexRow> {
-        if (uids.isEmpty()) return heldRows
+    suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
+        if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            session.storeFlags(uids, setOf("\\Deleted"), emptySet())
+            if (allMailbox) session.storeFlagsAll(setOf("\\Deleted"), emptySet())
+            else session.storeFlags(uids, setOf("\\Deleted"), emptySet())
             val idSet = uids.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
+                if (allMailbox || row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
             }
             notice = null
+            mailUndo = MailUndo(delete = true, uids = uids, allMailbox = allMailbox)
         } catch (failure: MailFailure) {
             notice = failure.text
+            mailUndo = null
         }
         return heldRows
     }
 
-    suspend fun moveMessages(uids: List<Long>, moveMailbox: String): List<IndexRow> {
+    suspend fun moveMessages(uids: List<Long>, moveMailbox: String, allMailbox: Boolean = false): List<IndexRow> {
         if (moveMailbox.isEmpty()) {
             notice = "Move folder is not set"
+            mailUndo = null
             return heldRows
         }
-        if (uids.isEmpty()) return heldRows
+        if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            session.copyThenDelete(uids, moveMailbox)
-            val gone = uids.toSet()
-            order = order.filter { it !in gone }
-            heldRows = heldRows.filter { it.uid !in gone }
+            if (allMailbox) session.copyAllThenDelete(moveMailbox)
+            else session.copyThenDelete(uids, moveMailbox)
+            val dest = session.takeCopiedUids()
+            val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+            if (allMailbox) {
+                order = emptyList()
+                heldRows = emptyList()
+            } else {
+                val gone = uids.toSet()
+                order = order.filter { it !in gone }
+                heldRows = heldRows.filter { it.uid !in gone }
+            }
             notice = null
+            mailUndo = MailUndo(
+                delete = false,
+                uids = uids,
+                allMailbox = allMailbox,
+                targetMailbox = moveMailbox,
+                destUids = dest,
+                usedMove = usedMove,
+            )
             OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
+            mailUndo = null
         }
         return heldRows
     }
 
-    suspend fun changeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>): List<IndexRow> {
-        if (uids.isEmpty() || (add.isEmpty() && remove.isEmpty())) return heldRows
+    suspend fun undoDelete(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
         try {
-            session.storeFlags(uids, add, remove)
+            if (allMailbox) session.storeFlagsAll(emptySet(), setOf("\\Deleted"))
+            else if (uids.isNotEmpty()) session.storeFlags(uids, emptySet(), setOf("\\Deleted"))
             val idSet = uids.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
+                if (allMailbox || row.uid in idSet) row.copy(flags = row.flags - "\\Deleted") else row
+            }
+            notice = null
+            mailUndo = null
+        } catch (failure: MailFailure) {
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun undoMove(
+        sourceUids: List<Long>,
+        targetMailbox: String,
+        destUids: List<Long>,
+        usedMove: Boolean,
+        allMailbox: Boolean = false,
+    ): List<IndexRow> {
+        try {
+            if (usedMove) {
+                session.select(targetMailbox)
+                session.copyThenDelete(destUids, mailbox)
+                session.select(mailbox)
+            } else {
+                if (allMailbox) session.storeFlagsAll(emptySet(), setOf("\\Deleted"))
+                else if (sourceUids.isNotEmpty()) session.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
+                if (destUids.isNotEmpty()) {
+                    session.select(targetMailbox)
+                    session.storeFlags(destUids, setOf("\\Deleted"), emptySet())
+                    session.select(mailbox)
+                }
+            }
+            notice = null
+            mailUndo = null
+            if (loadedWindow) return replaceWindow { fetchCurrent() }
+        } catch (failure: MailFailure) {
+            notice = failure.text
+        }
+        return heldRows
+    }
+
+    suspend fun changeFlags(
+        uids: List<Long>,
+        add: Set<String>,
+        remove: Set<String>,
+        allMailbox: Boolean = false,
+    ): List<IndexRow> {
+        if (allMailbox) {
+            if (add.isEmpty() && remove.isEmpty()) return heldRows
+        } else if (uids.isEmpty() || (add.isEmpty() && remove.isEmpty())) {
+            return heldRows
+        }
+        try {
+            if (allMailbox) session.storeFlagsAll(add, remove)
+            else session.storeFlags(uids, add, remove)
+            val idSet = uids.toSet()
+            heldRows = heldRows.map { row ->
+                if (allMailbox || row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
             }
             notice = null
         } catch (failure: MailFailure) {
@@ -526,6 +645,18 @@ class IndexModel(
             notice = failure.text
             return heldRows
         }
+        return replaceWindow { fetchCurrent() }
+    }
+
+    suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
+        if (uids.isEmpty()) return heldRows
+        try {
+            session.uidExpunge(uids)
+        } catch (failure: MailFailure) {
+            notice = failure.text
+            return heldRows
+        }
+        mailUndo = null
         return replaceWindow { fetchCurrent() }
     }
 
@@ -577,6 +708,7 @@ class IndexModel(
         lastVisibleIndex = 0
         try {
             heldRows = load()
+            loadedWindow = true
             notice = null
             OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {

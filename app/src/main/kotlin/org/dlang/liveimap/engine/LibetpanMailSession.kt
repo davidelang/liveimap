@@ -241,12 +241,34 @@ class LibetpanMailSession : MailSession {
         nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
     }
 
+    override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
+        nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
+    }
+
     override suspend fun uidExpungeDeleted() {
         nativeUidExpungeDeleted(requireHandle())
     }
 
+    override suspend fun uidExpunge(uids: List<Long>) {
+        if (uids.isEmpty()) return
+        nativeUidExpunge(requireHandle(), uids.toLongArray())
+    }
+
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
+        if (uids.isEmpty()) return
         nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
+    }
+
+    override suspend fun copyAllThenDelete(targetMailbox: String) {
+        nativeCopyAllThenDelete(requireHandle(), targetMailbox, moveKind(advertised()))
+    }
+
+    override suspend fun selectedExists(): Int = selected.exists
+
+    override suspend fun takeCopiedUids(): List<Long> {
+        val h = handle
+        if (h == 0L) return emptyList()
+        return nativeTakeCopiedUids(h)?.toList().orEmpty()
     }
 
     override suspend fun searchText(query: String): List<Long> {
@@ -436,8 +458,12 @@ class LibetpanMailSession : MailSession {
     ): ByteArray?
     private external fun nativeFetchRfc822(handle: Long, uid: Long): ByteArray?
     private external fun nativeStoreFlags(handle: Long, uids: LongArray, add: Array<String>, remove: Array<String>)
+    private external fun nativeStoreFlagsAll(handle: Long, add: Array<String>, remove: Array<String>)
     private external fun nativeUidExpungeDeleted(handle: Long)
+    private external fun nativeUidExpunge(handle: Long, uids: LongArray)
     private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String)
+    private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String)
+    private external fun nativeTakeCopiedUids(handle: Long): LongArray?
     private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>)
     private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean): LongArray?
     private external fun nativeSearchCriterion(

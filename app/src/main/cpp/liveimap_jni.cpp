@@ -115,6 +115,7 @@ struct LiveSession {
     jobject selfGlobal = nullptr;
     uint32_t watchUidValidity = 0;
     int watchExists = 0;
+    std::vector<uint32_t> copiedUids;
 };
 
 JavaVM * gVm = nullptr;
@@ -3712,44 +3713,25 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
     return arr;
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env, jobject, jlong handle,
-    jlongArray uids, jobjectArray add, jobjectArray remove) {
-    if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return;
-    std::vector<uint32_t> values;
-    if (uids != nullptr) {
-        jsize n = env->GetArrayLength(uids);
-        std::vector<jlong> raw(static_cast<size_t>(n));
-        if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
-        for (jlong value : raw) if (value > 0) values.push_back(static_cast<uint32_t>(value));
-    }
-    if (values.empty()) {
-        unlockSession(session);
-        return;
-    }
+bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * set,
+    jobjectArray add, jobjectArray remove) {
     struct mailimap_flag_list * addFlags = nullptr;
     struct mailimap_flag_list * removeFlags = nullptr;
     if (!flagListFromArray(env, add, &addFlags) || !flagListFromArray(env, remove, &removeFlags)) {
         if (addFlags != nullptr) mailimap_flag_list_free(addFlags);
         if (removeFlags != nullptr) mailimap_flag_list_free(removeFlags);
         throwFailure(env, "flag must be one of \\Answered, \\Flagged, \\Deleted, \\Seen, or \\Draft");
-        unlockSession(session);
-        return;
+        return false;
     }
-    struct mailimap_set * set = setFromUids(values);
     if (add != nullptr && env->GetArrayLength(add) > 0) {
         struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags(addFlags);
         addFlags = nullptr;
         int r = mailimap_uid_store(session->imap, set, att);
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
-            mailimap_set_free(set);
             if (removeFlags != nullptr) mailimap_flag_list_free(removeFlags);
             throwImap(env, session->imap, "store failed");
-            unlockSession(session);
-            return;
+            return false;
         }
     } else if (addFlags != nullptr) {
         mailimap_flag_list_free(addFlags);
@@ -3760,14 +3742,115 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env
         int r = mailimap_uid_store(session->imap, set, att);
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
-            mailimap_set_free(set);
             throwImap(env, session->imap, "store failed");
-            unlockSession(session);
-            return;
+            return false;
         }
     } else if (removeFlags != nullptr) {
         mailimap_flag_list_free(removeFlags);
     }
+    return true;
+}
+
+void rememberDestUids(LiveSession * session, struct mailimap_set * dest) {
+    session->copiedUids.clear();
+    if (dest == nullptr || dest->set_list == nullptr) return;
+    for (clistiter * cur = clist_begin(dest->set_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_set_item *>(clist_content(cur));
+        if (item == nullptr || item->set_last == 0) continue;
+        uint32_t first = item->set_first;
+        uint32_t last = item->set_last;
+        if (last < first) {
+            uint32_t swap = first;
+            first = last;
+            last = swap;
+        }
+        for (uint32_t uid = first;; ++uid) {
+            if (uid != 0) session->copiedUids.push_back(uid);
+            if (uid == last) break;
+        }
+    }
+}
+
+void freeUidSets(struct mailimap_set * source, struct mailimap_set * dest) {
+    if (source != nullptr) mailimap_set_free(source);
+    if (dest != nullptr) mailimap_set_free(dest);
+}
+
+bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * set,
+    const char * destMailbox, const char * kind) {
+    session->copiedUids.clear();
+    uint32_t uidvalidity = 0;
+    struct mailimap_set * source = nullptr;
+    struct mailimap_set * copied = nullptr;
+    bool move = kind != nullptr && strcasecmp(kind, "Move") == 0;
+    int r = move
+        ? mailimap_uidplus_uid_move(session->imap, set, destMailbox, &uidvalidity, &source, &copied)
+        : mailimap_uidplus_uid_copy(session->imap, set, destMailbox, &uidvalidity, &source, &copied);
+    if (!cmdOk(r)) {
+        freeUidSets(source, copied);
+        throwImap(env, session->imap, move ? "move failed" : "copy failed");
+        return false;
+    }
+    rememberDestUids(session, copied);
+    freeUidSets(source, copied);
+    if (move) return true;
+    struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
+    mailimap_flag_list_add(flags, mailimap_flag_new_deleted());
+    struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags(flags);
+    r = mailimap_uid_store(session->imap, set, att);
+    mailimap_store_att_flags_free(att);
+    if (!cmdOk(r)) {
+        throwImap(env, session->imap, "store failed");
+        return false;
+    }
+    return true;
+}
+
+std::vector<uint32_t> uidsFromArray(JNIEnv * env, jlongArray uids) {
+    std::vector<uint32_t> values;
+    if (uids == nullptr) return values;
+    jsize n = env->GetArrayLength(uids);
+    std::vector<jlong> raw(static_cast<size_t>(n));
+    if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
+    for (jlong value : raw) if (value > 0) values.push_back(static_cast<uint32_t>(value));
+    return values;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env, jobject, jlong handle,
+    jlongArray uids, jobjectArray add, jobjectArray remove) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    std::vector<uint32_t> values = uidsFromArray(env, uids);
+    if (values.empty()) {
+        unlockSession(session);
+        return;
+    }
+    struct mailimap_set * set = setFromUids(values);
+    if (set == nullptr) {
+        throwFailure(env, "store failed");
+        unlockSession(session);
+        return;
+    }
+    applyFlagChange(env, session, set, add, remove);
+    mailimap_set_free(set);
+    unlockSession(session);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * env, jobject, jlong handle,
+    jobjectArray add, jobjectArray remove) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    struct mailimap_set * set = mailimap_set_new_interval(1, 0);
+    if (set == nullptr) {
+        throwFailure(env, "store failed");
+        unlockSession(session);
+        return;
+    }
+    applyFlagChange(env, session, set, add, remove);
     mailimap_set_free(set);
     unlockSession(session);
 }
@@ -3785,18 +3868,35 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEn
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env, jobject, jlong handle,
+    jlongArray uids) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    std::vector<uint32_t> values = uidsFromArray(env, uids);
+    if (values.empty()) {
+        unlockSession(session);
+        return;
+    }
+    struct mailimap_set * set = setFromUids(values);
+    if (set == nullptr) {
+        throwFailure(env, "expunge failed");
+        unlockSession(session);
+        return;
+    }
+    int r = mailimap_uid_expunge(session->imap, set);
+    mailimap_set_free(set);
+    if (!cmdOk(r)) throwImap(env, session->imap, "expunge failed");
+    unlockSession(session);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv * env, jobject, jlong handle,
     jlongArray uids, jstring target, jstring moveKind) {
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
-    std::vector<uint32_t> values;
-    if (uids != nullptr) {
-        jsize n = env->GetArrayLength(uids);
-        std::vector<jlong> raw(static_cast<size_t>(n));
-        if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
-        for (jlong value : raw) if (value > 0) values.push_back(static_cast<uint32_t>(value));
-    }
+    std::vector<uint32_t> values = uidsFromArray(env, uids);
     if (values.empty()) {
         unlockSession(session);
         return;
@@ -3804,35 +3904,50 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv *
     JChars dest(env, target);
     JChars kindChars(env, moveKind);
     struct mailimap_set * set = setFromUids(values);
-    if (strcasecmp(kindChars.c(), "Move") == 0) {
-        int r = mailimap_uid_move(session->imap, set, dest.c());
-        mailimap_set_free(set);
-        if (!cmdOk(r)) throwImap(env, session->imap, "move failed");
+    if (set == nullptr) {
+        throwFailure(env, "copy failed");
         unlockSession(session);
         return;
     }
-    int r = mailimap_uid_copy(session->imap, set, dest.c());
-    if (!cmdOk(r)) {
-        mailimap_set_free(set);
-        throwImap(env, session->imap, "copy failed");
-        unlockSession(session);
-        return;
-    }
-    struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
-    mailimap_flag_list_add(flags, mailimap_flag_new_deleted());
-    struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags(flags);
-    r = mailimap_uid_store(session->imap, set, att);
-    mailimap_store_att_flags_free(att);
-    if (!cmdOk(r)) {
-        mailimap_set_free(set);
-        throwImap(env, session->imap, "store failed");
-        unlockSession(session);
-        return;
-    }
-    r = mailimap_uid_expunge(session->imap, set);
+    copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
     mailimap_set_free(set);
-    if (!cmdOk(r)) throwImap(env, session->imap, "expunge failed");
     unlockSession(session);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEnv * env, jobject, jlong handle,
+    jstring target, jstring moveKind) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    struct mailimap_set * set = mailimap_set_new_interval(1, 0);
+    if (set == nullptr) {
+        throwFailure(env, "copy failed");
+        unlockSession(session);
+        return;
+    }
+    JChars dest(env, target);
+    JChars kindChars(env, moveKind);
+    copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
+    mailimap_set_free(set);
+    unlockSession(session);
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCopiedUids(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    std::vector<jlong> raw;
+    raw.reserve(session->copiedUids.size());
+    for (uint32_t uid : session->copiedUids) raw.push_back(static_cast<jlong>(uid));
+    session->copiedUids.clear();
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(raw.size()));
+    if (arr != nullptr && !raw.empty()) {
+        env->SetLongArrayRegion(arr, 0, static_cast<jsize>(raw.size()), raw.data());
+    }
+    unlockSession(session);
+    return arr;
 }
 
 bool appendFlagsAreDraft(JNIEnv * env, jobjectArray flags) {

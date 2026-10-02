@@ -30,12 +30,17 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import androidx.compose.material3.AlertDialog
@@ -48,6 +53,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -83,6 +90,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -379,6 +387,14 @@ fun MessageIndexScreen(
     val sequenceMeasurer = rememberTextMeasurer()
     var multiSelect by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var allMailbox by remember { mutableStateOf(false) }
+    var mailboxExists by remember { mutableIntStateOf(0) }
+    var selectionMore by remember { mutableStateOf(false) }
+    var confirmExpunge by remember { mutableStateOf(false) }
+    var pendingExpungeUids by remember { mutableStateOf<List<Long>?>(null) }
+    var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
+    var undoToken by remember { mutableIntStateOf(0) }
+    var snackMode by remember { mutableStateOf("retry") }
     var flagUid by remember { mutableStateOf<Long?>(null) }
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     val anchorState = rememberUpdatedState(anchorPage)
@@ -396,6 +412,8 @@ fun MessageIndexScreen(
             multiSelect -> {
                 multiSelect = false
                 selected = emptyList()
+                allMailbox = false
+                selectionMore = false
             }
         }
     }
@@ -403,7 +421,78 @@ fun MessageIndexScreen(
     fun postSnack(text: String) {
         lastReported = text
         snackMessage = text
+        snackMode = "retry"
         snackEvent += 1
+    }
+
+    fun clearSelection() {
+        multiSelect = false
+        selected = emptyList()
+        allMailbox = false
+        selectionMore = false
+    }
+
+    fun publishUndo(undo: MailUndo) {
+        undoOffer = undo
+        snackMode = "undo"
+        undoToken += 1
+    }
+
+    fun applySelectionFlags(add: Set<String>, remove: Set<String>) {
+        val uids = selected.toList()
+        val entire = allMailbox
+        selectionMore = false
+        scope.launch {
+            gate.withLock {
+                model.changeFlags(uids, add, remove, entire)
+                sync.block()
+            }
+        }
+    }
+
+    fun runUndo(offer: MailUndo?) {
+        val current = offer ?: return
+        undoOffer = null
+        scope.launch {
+            gate.withLock {
+                if (current.delete) model.undoDelete(current.uids, current.allMailbox)
+                else model.undoMove(
+                    current.uids,
+                    current.targetMailbox,
+                    current.destUids,
+                    current.usedMove,
+                    current.allMailbox,
+                )
+                sync.block()
+            }
+            snackbarHostState.currentSnackbarData?.dismiss()
+            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }
+
+    fun finishUndoExpunge(ok: Boolean) {
+        if (!ok) return
+        undoOffer = null
+        snackbarHostState.currentSnackbarData?.dismiss()
+    }
+
+    fun runExpunge(offer: MailUndo) {
+        if (offer.uids.isEmpty()) return
+        if (account.askBeforeExpunge) {
+            pendingExpungeUids = offer.uids
+            confirmExpunge = true
+            return
+        }
+        scope.launch {
+            var ok = false
+            gate.withLock {
+                model.expungeUids(offer.uids)
+                sync.block()
+                ok = model.notice == null
+            }
+            finishUndoExpunge(ok)
+            if (ok && model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
     }
 
     sync.block = {
@@ -495,6 +584,7 @@ fun MessageIndexScreen(
 
     LaunchedEffect(snackEvent) {
         if (snackEvent == 0) return@LaunchedEffect
+        snackMode = "retry"
         val result = snackbarHostState.showSnackbar(
             message = snackMessage,
             actionLabel = "Retry",
@@ -506,6 +596,21 @@ fun MessageIndexScreen(
                 pull()
             }
             if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(undoToken) {
+        val token = undoToken
+        if (token == 0) return@LaunchedEffect
+        val offer = undoOffer ?: return@LaunchedEffect
+        snackMode = "undo"
+        snackbarHostState.showSnackbar(
+            message = mailUndoText(offer),
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (undoToken == token) {
+            undoOffer = null
+            snackMode = "retry"
         }
     }
 
@@ -823,11 +928,11 @@ fun MessageIndexScreen(
                         )
                     }
                 }
-                var confirmExpunge by remember { mutableStateOf(false) }
                 TextButton(
                     onClick = {
                         val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
                         if (account.askBeforeExpunge || !uidPlus) {
+                            pendingExpungeUids = null
                             confirmExpunge = true
                         } else {
                             scope.launch {
@@ -849,23 +954,34 @@ fun MessageIndexScreen(
                         }
                     }
                     AlertDialog(
-                        onDismissRequest = { confirmExpunge = false },
+                        onDismissRequest = {
+                            confirmExpunge = false
+                            pendingExpungeUids = null
+                        },
                         title = { Text("Expunge?") },
                         text = { Text(body) },
                         confirmButton = {
                             TextButton(onClick = {
+                                val specific = pendingExpungeUids
+                                pendingExpungeUids = null
                                 confirmExpunge = false
                                 scope.launch {
+                                    var ok = false
                                     gate.withLock {
-                                        model.expunge()
+                                        if (specific != null) model.expungeUids(specific) else model.expunge()
                                         pull()
+                                        ok = model.notice == null
                                     }
+                                    if (specific != null) finishUndoExpunge(ok)
                                     if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                                 }
                             }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { confirmExpunge = false }) { Text("Cancel") }
+                            TextButton(onClick = {
+                                confirmExpunge = false
+                                pendingExpungeUids = null
+                            }) { Text("Cancel") }
                         },
                     )
                 }
@@ -941,56 +1057,154 @@ fun MessageIndexScreen(
                 )
             }
             if (multiSelect) {
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    TextButton(
-                        onClick = {
-                            multiSelect = false
-                            selected = emptyList()
-                        },
-                    ) { Text("Cancel") }
-                    indexFlags.forEach { flag ->
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    gate.withLock {
-                                        model.changeFlags(selected, setOf(flag), emptySet())
-                                        pull()
-                                    }
-                                }
-                            },
-                        ) { Text("Set $flag") }
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    gate.withLock {
-                                        model.changeFlags(selected, emptySet(), setOf(flag))
-                                        pull()
-                                    }
-                                }
-                            },
-                        ) { Text("Clear $flag") }
+                val orderNow = model.order
+                val selectedCount = selected.size
+                val filterComplete = !allMailbox && filterActive && orderNow.isNotEmpty() &&
+                    selectedCount == orderNow.size && selected.toSet() == orderNow.toSet()
+                val titleExists = when {
+                    allMailbox -> mailboxExists
+                    filterComplete -> orderNow.size
+                    else -> 0
+                }
+                val title = selectionTitle(allMailbox, if (allMailbox) 0 else selectedCount, titleExists)
+                val loadedSelected = if (allMailbox) rows else rows.filter { it.uid in selected }
+                val markUnread = !allMailbox && loadedSelected.isNotEmpty() &&
+                    loadedSelected.all { "\\Seen" in it.flags }
+                val clearFlag = !allMailbox && loadedSelected.isNotEmpty() &&
+                    loadedSelected.all { "\\Flagged" in it.flags }
+                val showUndelete = allMailbox || rows.any { it.uid in selected && "\\Deleted" in it.flags }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { clearSelection() }) {
+                        Icon(imageVector = Icons.Filled.Close, contentDescription = "Close")
                     }
-                    TextButton(
+                    Text(
+                        text = title,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    IconButton(
                         onClick = {
+                            if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Seen"))
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
+                            contentDescription = if (markUnread) "Mark unread" else "Mark read",
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Flagged"))
+                        },
+                    ) {
+                        Icon(imageVector = Icons.Filled.Flag, contentDescription = "Flag")
+                    }
+                    IconButton(
+                        onClick = {
+                            val uids = selected.toList()
+                            val entire = allMailbox
                             scope.launch {
+                                var undo: MailUndo? = null
                                 gate.withLock {
-                                    model.moveMessages(selected, barMoveMailbox(account))
+                                    model.clearMailUndo()
+                                    model.moveMessages(uids, barMoveMailbox(account), entire)
                                     pull()
+                                    undo = model.mailUndo
                                 }
+                                val pending = undo
+                                if (pending != null) publishUndo(pending)
                             }
                         },
-                    ) { Text("Move") }
-                    TextButton(
+                    ) {
+                        Icon(imageVector = Icons.Filled.DriveFileMove, contentDescription = "Move")
+                    }
+                    IconButton(
                         onClick = {
+                            val uids = selected.toList()
+                            val entire = allMailbox
                             scope.launch {
+                                var undo: MailUndo? = null
                                 gate.withLock {
-                                    model.deleteMessages(selected)
+                                    model.clearMailUndo()
+                                    model.deleteMessages(uids, entire)
                                     pull()
+                                    undo = model.mailUndo
                                 }
+                                val pending = undo
+                                if (pending != null) publishUndo(pending)
                             }
                         },
-                    ) { Text("Delete") }
-                    TextButton(onClick = { onCompose(model.bounceSeed(selected)) }) { Text("Bounce") }
+                    ) {
+                        Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete")
+                    }
+                    Box {
+                        IconButton(onClick = { selectionMore = true }) {
+                            Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "More")
+                        }
+                        DropdownMenu(
+                            expanded = selectionMore,
+                            onDismissRequest = { selectionMore = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Mark unread") },
+                                onClick = { applySelectionFlags(emptySet(), setOf("\\Seen")) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Select all") },
+                                onClick = {
+                                    selectionMore = false
+                                    when (val target = selectAllTarget(filterActive, model.order)) {
+                                        is SelectAllTarget.Uids -> {
+                                            allMailbox = false
+                                            selected = target.uids
+                                            multiSelect = true
+                                        }
+                                        SelectAllTarget.EntireMailbox -> {
+                                            scope.launch {
+                                                val exists = gate.withLock { session.selectedExists() }
+                                                allMailbox = true
+                                                mailboxExists = exists
+                                                selected = emptyList()
+                                                multiSelect = true
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mark answered") },
+                                onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mark unanswered") },
+                                onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
+                            )
+                            if (showUndelete) {
+                                DropdownMenuItem(
+                                    text = { Text("Undelete") },
+                                    onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Bounce") },
+                                enabled = !allMailbox,
+                                onClick = {
+                                    selectionMore = false
+                                    onCompose(model.bounceSeed(selected))
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Clear selection") },
+                                onClick = { clearSelection() },
+                            )
+                        }
+                    }
                 }
             }
             val flagsFor = flagUid
@@ -1074,14 +1288,19 @@ fun MessageIndexScreen(
                             IndexMessageRow(
                                 row = row,
                                 account = account,
-                                selected = row.uid in selected,
+                                selected = allMailbox || row.uid in selected,
                                 multiSelect = multiSelect,
                                 leftToRight = leftToRight,
                                 sequenceWidth = sequenceWidth,
                                 sequenceStyle = sequenceStyle,
                                 onClick = {
                                     if (multiSelect) {
-                                        selected = if (row.uid in selected) selected - row.uid else selected + row.uid
+                                        if (allMailbox) {
+                                            allMailbox = false
+                                            selected = rows.map { it.uid }.filter { it != row.uid }
+                                        } else {
+                                            selected = if (row.uid in selected) selected - row.uid else selected + row.uid
+                                        }
                                     } else {
                                         val seed = model.openSeed(row.uid)
                                         if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence)
@@ -1089,17 +1308,22 @@ fun MessageIndexScreen(
                                 },
                                 onLongPress = {
                                     multiSelect = true
-                                    if (row.uid !in selected) selected = selected + row.uid
+                                    if (!allMailbox && row.uid !in selected) selected = selected + row.uid
                                 },
                                 onSwipe = { binding ->
+                                    var undo: MailUndo? = null
                                     gate.withLock {
+                                        model.clearMailUndo()
                                         when (val command = model.performSwipe(row.uid, binding)) {
                                             is IndexCommand.Compose -> onCompose(command.seed)
                                             is IndexCommand.ShowFlags -> flagUid = command.uid
                                             IndexCommand.None -> Unit
                                         }
                                         pull()
+                                        undo = model.mailUndo
                                     }
+                                    val pending = undo
+                                    if (pending != null) publishUndo(pending)
                                 },
                             )
                         }
@@ -1122,7 +1346,24 @@ fun MessageIndexScreen(
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        ) { data ->
+            val offer = undoOffer
+            val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+            val showExpunge = snackMode == "undo" && offer != null && offer.delete &&
+                !offer.allMailbox && offer.uids.isNotEmpty() && uidPlus
+            if (snackMode == "undo" && offer != null) {
+                Snackbar(
+                    action = {
+                        TextButton(onClick = { runUndo(offer) }) { Text("Undo") }
+                        if (showExpunge) {
+                            TextButton(onClick = { runExpunge(offer) }) { Text("Expunge") }
+                        }
+                    },
+                ) { Text(data.visuals.message) }
+            } else {
+                Snackbar(data)
+            }
+        }
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {
@@ -1287,18 +1528,22 @@ private fun IndexMessageRow(
             },
         ) {
             val statusDescription = indexStatusDescription(row.flags, row.toMe, row.hasAttachment)
+            val rowSelected = selected
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .combinedClickable(onLongClick = onLongPress, onClick = onClick)
-                    .then(
-                        if (statusDescription.isNotEmpty()) {
-                            Modifier.semantics { stateDescription = statusDescription }
+                    .background(
+                        if (rowSelected) {
+                            MaterialTheme.colorScheme.secondaryContainer
                         } else {
-                            Modifier
+                            MaterialTheme.colorScheme.surface
                         },
                     )
+                    .combinedClickable(onLongClick = onLongPress, onClick = onClick)
+                    .semantics {
+                        if (statusDescription.isNotEmpty()) stateDescription = statusDescription
+                        this.selected = rowSelected
+                    }
                     .padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
                 val appearance = indexAppearance(row.flags)
@@ -1322,9 +1567,16 @@ private fun IndexMessageRow(
                     IndexStatusColumn(row, Modifier.padding(end = 4.dp))
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val from = if (selected) "selected ${row.from}" else row.from
+                            if (rowSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 4.dp).size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                            }
                             Text(
-                                text = from,
+                                text = row.from,
                                 modifier = Modifier.weight(1f),
                                 color = textColor,
                                 textDecoration = decoration,

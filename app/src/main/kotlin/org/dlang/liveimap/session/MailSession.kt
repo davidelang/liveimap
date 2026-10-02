@@ -16,8 +16,13 @@ interface MailSession {
     suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray
     suspend fun fetchRfc822(uid: Long): ByteArray
     suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>)
+    suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {}
     suspend fun uidExpungeDeleted()
+    suspend fun uidExpunge(uids: List<Long>) {}
     suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String)
+    suspend fun copyAllThenDelete(targetMailbox: String) {}
+    suspend fun selectedExists(): Int = 0
+    suspend fun takeCopiedUids(): List<Long> = emptyList()
     suspend fun searchText(query: String): List<Long>
     suspend fun searchCriterion(kind: String, argument: String): List<Long>
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>

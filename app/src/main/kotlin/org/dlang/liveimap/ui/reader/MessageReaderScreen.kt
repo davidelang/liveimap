@@ -25,12 +25,15 @@ import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -69,8 +72,11 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
+import org.dlang.liveimap.ui.index.IndexModel
+import org.dlang.liveimap.ui.index.MailUndo
 import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.followingUid
+import org.dlang.liveimap.ui.index.mailUndoText
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.missingPartText
 import org.dlang.liveimap.ui.compose.nextWireCount
@@ -119,6 +125,13 @@ fun MessageReaderScreen(
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
+    var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
+    var undoToken by remember { mutableIntStateOf(0) }
+    var snackMode by remember { mutableStateOf("retry") }
+    var advanceAfterUndo by remember { mutableStateOf(false) }
+    var advanceTarget by remember { mutableStateOf<Pair<Long, Int>?>(null) }
+    var confirmExpunge by remember { mutableStateOf(false) }
+    var expungeUids by remember { mutableStateOf<List<Long>>(emptyList()) }
     val laterRetry = remember { LaterRetry() }
     var account by remember { mutableStateOf(AccountSettings()) }
     var structure by remember { mutableStateOf<MimePart?>(null) }
@@ -143,11 +156,13 @@ fun MessageReaderScreen(
 
     fun postSnack(text: String) {
         snackMessage = text
+        snackMode = "retry"
         snackEvent += 1
     }
 
     LaunchedEffect(snackEvent) {
         if (snackEvent == 0) return@LaunchedEffect
+        snackMode = "retry"
         val result = snackbarHostState.showSnackbar(
             message = snackMessage,
             actionLabel = "Retry",
@@ -524,6 +539,84 @@ fun MessageReaderScreen(
         if (target == null) onBack() else onAdvance(target.first, target.second)
     }
 
+    fun showActionUndo(undo: MailUndo, next: Pair<Long, Int>?) {
+        undoOffer = undo
+        advanceTarget = next
+        advanceAfterUndo = true
+        snackMode = "undo"
+        undoToken += 1
+    }
+
+    fun runReaderUndo(offer: MailUndo) {
+        advanceAfterUndo = false
+        undoOffer = null
+        scope.launch {
+            gate.withLock {
+                val helper = IndexModel(session, store, mailbox)
+                if (offer.delete) helper.undoDelete(offer.uids, offer.allMailbox)
+                else helper.undoMove(
+                    offer.uids,
+                    offer.targetMailbox,
+                    offer.destUids,
+                    offer.usedMove,
+                    offer.allMailbox,
+                )
+                val reported = helper.notice
+                if (reported != null) postSnack(reported)
+            }
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    fun runReaderExpunge(uids: List<Long>) {
+        if (uids.isEmpty()) return
+        scope.launch {
+            var failed = false
+            gate.withLock {
+                try {
+                    session.uidExpunge(uids)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    failed = true
+                    postSnack(error.text)
+                }
+            }
+            if (!failed) {
+                advanceAfterUndo = true
+                undoOffer = null
+                snackbarHostState.currentSnackbarData?.dismiss()
+            }
+        }
+    }
+
+    fun askOrExpunge(uids: List<Long>) {
+        if (account.askBeforeExpunge) {
+            expungeUids = uids
+            confirmExpunge = true
+        } else {
+            runReaderExpunge(uids)
+        }
+    }
+
+    LaunchedEffect(undoToken) {
+        val token = undoToken
+        if (token == 0) return@LaunchedEffect
+        val offer = undoOffer ?: return@LaunchedEffect
+        snackMode = "undo"
+        snackbarHostState.showSnackbar(
+            message = mailUndoText(offer),
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (undoToken != token) return@LaunchedEffect
+        val go = advanceAfterUndo
+        val next = advanceTarget
+        undoOffer = null
+        advanceAfterUndo = false
+        snackMode = "retry"
+        if (go) openNextOrIndex(next)
+    }
+
     val systemDark = isSystemInDarkTheme()
     val dark = when (account.theme) {
         ThemeMode.Dark -> true
@@ -584,7 +677,7 @@ fun MessageReaderScreen(
                         val target = nextAfterDeleteOrMove()
                         try {
                             session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                            openNextOrIndex(target)
+                            showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: MailFailure) {
@@ -612,7 +705,18 @@ fun MessageReaderScreen(
                             val target = nextAfterDeleteOrMove()
                             try {
                                 session.copyThenDelete(listOf(uid), spamMailbox)
-                                openNextOrIndex(target)
+                                val dest = session.takeCopiedUids()
+                                val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+                                showActionUndo(
+                                    MailUndo(
+                                        delete = false,
+                                        uids = listOf(uid),
+                                        targetMailbox = spamMailbox,
+                                        destUids = dest,
+                                        usedMove = usedMove,
+                                    ),
+                                    target,
+                                )
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {
@@ -724,6 +828,47 @@ fun MessageReaderScreen(
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
+        ) { data ->
+            val offer = undoOffer
+            val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+            val showExpunge = snackMode == "undo" && offer != null && offer.delete &&
+                offer.uids.isNotEmpty() && uidPlus
+            if (snackMode == "undo" && offer != null) {
+                Snackbar(
+                    action = {
+                        TextButton(onClick = { runReaderUndo(offer) }) { Text("Undo") }
+                        if (showExpunge) {
+                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text("Expunge") }
+                        }
+                    },
+                ) { Text(data.visuals.message) }
+            } else {
+                Snackbar(data)
+            }
+        }
+    }
+    if (confirmExpunge) {
+        val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+        val body = buildString {
+            append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
+            if (!uidPlus) {
+                append(" This includes messages marked deleted by other clients.")
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { confirmExpunge = false },
+            title = { Text("Expunge?") },
+            text = { Text(body) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uids = expungeUids
+                    confirmExpunge = false
+                    runReaderExpunge(uids)
+                }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExpunge = false }) { Text("Cancel") }
+            },
         )
     }
     if (choosingMove) {
@@ -733,15 +878,26 @@ fun MessageReaderScreen(
             onStored = { loaded ->
                 account = account.copy(expandedFolders = loaded.expandedFolders)
             },
-            onPick = { mailbox ->
+            onPick = { picked ->
                 choosingMove = false
-                if (mailbox.isNotEmpty()) {
+                if (picked.isNotEmpty()) {
                     scope.launch {
                         gate.withLock {
                             val target = nextAfterDeleteOrMove()
                             try {
-                                session.copyThenDelete(listOf(uid), mailbox)
-                                openNextOrIndex(target)
+                                session.copyThenDelete(listOf(uid), picked)
+                                val dest = session.takeCopiedUids()
+                                val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+                                showActionUndo(
+                                    MailUndo(
+                                        delete = false,
+                                        uids = listOf(uid),
+                                        targetMailbox = picked,
+                                        destUids = dest,
+                                        usedMove = usedMove,
+                                    ),
+                                    target,
+                                )
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {

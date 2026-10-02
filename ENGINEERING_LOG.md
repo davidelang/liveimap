@@ -532,3 +532,8 @@
 - A non-zero offset shows the action container, 24 dp icon, and human label; alpha stays 0.45 until 40 percent
 - Crossing 40 percent uses full color and one long-press haptic, then the existing confirm still runs the swipe
 - Offset 0 stays blank, and releasing early still does nothing
+
+## 2026-10-02 - Selection bar and undo
+
+- Executing sandbox/plans/selection-undo-20261002-0443-plan.md.
+- Selection uses a labeled icon row. Select all uses the filter UID list or one 1:* command. Delete and move snackbars can undo, and Expunge with UIDPLUS expunges only those UIDs.
