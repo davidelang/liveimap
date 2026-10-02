@@ -1,6 +1,10 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.ui.postponedDrawerMailbox
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,5 +56,18 @@ class ComposeChromeTest {
                 rowRemoved = true,
             ),
         )
+    }
+
+    @Test
+    fun postponedDrawerMailbox() {
+        assertNull(postponedDrawerMailbox(""))
+        assertEquals("INBOX.postponed", postponedDrawerMailbox("INBOX.postponed")!!)
+    }
+
+    @Test
+    fun postponedUidToRemove() {
+        assertEquals(8L, postponedUidToRemove(ComposeKind.ResumePostpone, true, 8L)!!)
+        assertNull(postponedUidToRemove(ComposeKind.ResumePostpone, false, 8L))
+        assertNull(postponedUidToRemove(ComposeKind.Reply, true, 8L))
     }
 }

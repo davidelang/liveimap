@@ -208,6 +208,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
+        sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
         val loaded = loadEditor(session.fetchRfc822(uid))
         if (!draftLoaded) {
@@ -280,6 +281,20 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         }
     }
 
+    suspend fun removePostponedSource() {
+        val uid = postponedUidToRemove(seed.kind, true, sourceUid) ?: return
+        val box = seed.mailbox ?: account.postponedMailbox
+        try {
+            ensureMailbox(box)
+            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+            session.uidExpunge(listOf(uid))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            notice = "Postponed copy is still in $box"
+        }
+    }
+
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
         if (copy.appendOnly) {
             if (copy.mailbox.isEmpty()) {
@@ -301,6 +316,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             deliveryDone = true
             status = "Sent · saved to ${mailboxLeaf(copy.mailbox)}"
             copies = readCopies(appContext)
+            removePostponedSource()
             return true
         }
         try {
@@ -334,6 +350,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         deliveryDone = true
         status = if (copy.mailbox.isNotEmpty()) "Sent · saved to ${mailboxLeaf(copy.mailbox)}" else null
         copies = readCopies(appContext)
+        removePostponedSource()
         return true
     }
 
@@ -425,6 +442,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             }
             notice = null
             status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
+            removePostponedSource()
             true
         }
     }
@@ -752,6 +770,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     deliveryDone = true
                     notice = null
                     status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
+                    removePostponedSource()
                     true
                 }
             }) { Text(if (held?.appendOnly == true) "Retry" else "Send") }
@@ -805,6 +824,11 @@ internal fun composeIsDirty(
         bcc != baselineBcc ||
         subject != baselineSubject ||
         body != baselineBody
+}
+
+internal fun postponedUidToRemove(kind: ComposeKind, sent: Boolean, uid: Long?): Long? {
+    if (kind == ComposeKind.ResumePostpone && sent && uid != null) return uid
+    return null
 }
 
 internal fun smtpAcceptFlags(kind: ComposeKind): Set<String> = when (kind) {

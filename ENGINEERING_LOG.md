@@ -551,3 +551,17 @@
 - A summary row toggles the hidden messages already fetched for that root and does not send UID THREAD
 - Expanded roots stay in a mailbox-keyed saveable uid list, so another mailbox starts collapsed
 - threadMessageOrder inserts a root's hidden uids only while that root is expanded
+
+## 2026-10-02 - resume postponed execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/resume-postponed-20261002-0533-plan.md
+- Work: a set postponed mailbox is a drawer row that opens that mailbox; resuming a message there removes the old copy with UID EXPUNGE only after send or postpone succeeds
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag c6fbae4
+
+## 2026-10-02 - resume postponed phase 1
+
+- The drawer shows the stored postponed mailbox between INBOX and All folders, and hides that row when the setting is empty
+- Opening a message there sets the resume uid; a successful send or postpone deletes and UID EXPUNGEs that uid
+- A failed send or append leaves the old copy, and a removal failure only sets a notice

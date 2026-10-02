@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
@@ -62,6 +64,7 @@ fun LiveImapNavHost() {
     val drawerGestures = route == "folders" || route == "settings" || route == "about"
     var header by remember { mutableStateOf("") }
     var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
+    var postponedMailbox by remember { mutableStateOf("") }
     val focusMailbox = remember { mutableStateOf<String?>(null) }
     val focusToken = remember { mutableStateOf(0) }
     val composeKindName = rememberSaveable { mutableStateOf(ComposeKind.New.name) }
@@ -72,6 +75,7 @@ fun LiveImapNavHost() {
         val account = store.load()
         header = if (account.email.isNotBlank()) account.email else account.username
         favorites = account.favorites
+        postponedMailbox = account.postponedMailbox
     }
 
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
@@ -216,6 +220,19 @@ fun LiveImapNavHost() {
                             }
                         },
                     )
+                    val postponedRow = postponedDrawerMailbox(postponedMailbox)
+                    if (postponedRow != null) {
+                        NavigationDrawerItem(
+                            label = { Text(postponedRow) },
+                            selected = false,
+                            modifier = Modifier.semantics { contentDescription = "Postponed" },
+                            onClick = {
+                                navigateFromDrawer {
+                                    navController.navigate("index/${Uri.encode(postponedRow)}")
+                                }
+                            },
+                        )
+                    }
                     NavigationDrawerItem(
                         label = { Text("All folders") },
                         selected = false,
@@ -282,4 +299,9 @@ fun LiveImapNavHost() {
             }
         }
     }
+}
+
+internal fun postponedDrawerMailbox(value: String): String? {
+    if (value.isEmpty()) return null
+    return value
 }
