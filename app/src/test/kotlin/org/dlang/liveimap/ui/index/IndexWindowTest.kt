@@ -460,6 +460,12 @@ private class FakeMailSession(
         return searchUids
     }
 
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
+        searchCalls += argument
+        throwIfArmed()
+        return searchUids
+    }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         sortCalls += key to newestFirst
         throwIfArmed()

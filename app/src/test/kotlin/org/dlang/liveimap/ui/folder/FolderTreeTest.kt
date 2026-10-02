@@ -238,6 +238,8 @@ private class FakeMailSession(
 
     override suspend fun searchText(query: String): List<Long> = unused()
 
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = unused()
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = unused()
 
     override suspend fun thread(key: SortKey): ThreadNode = unused()

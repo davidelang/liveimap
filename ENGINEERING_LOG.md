@@ -412,3 +412,10 @@
 - Work: pass newestFirst into fetchThread; order thread roots by the largest uid in each thread; nested message order stays as returned
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD d920479
+
+## 2026-10-01 - index filter narrow widen execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-filter-narrow-widen-20261001-2054-plan.md
+- Work: whitelist IMAP searchCriterion, index filter stack (narrow, widen, all), filter control between Search and Sort
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b0ac8a8

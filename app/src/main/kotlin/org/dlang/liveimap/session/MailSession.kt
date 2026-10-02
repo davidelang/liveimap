@@ -18,6 +18,7 @@ interface MailSession {
     suspend fun uidExpungeDeleted()
     suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String)
     suspend fun searchText(query: String): List<Long>
+    suspend fun searchCriterion(kind: String, argument: String): List<Long>
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
     suspend fun thread(key: SortKey): ThreadNode
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)

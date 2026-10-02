@@ -231,6 +231,15 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
+        val h = requireHandle()
+        return remember("CRITERION $kind $argument") {
+            val ids = nativeSearchCriterion(h, kind, argument, searchKind(advertised()) == "Esearch")
+                ?: throw MailFailure("search failed")
+            ids.toList()
+        }
+    }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         if (key == SortKey.Arrival) {
             throw MailFailure("use an arrival IndexMode")
@@ -403,6 +412,12 @@ class LibetpanMailSession : MailSession {
     private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String)
     private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray)
     private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean): LongArray?
+    private external fun nativeSearchCriterion(
+        handle: Long,
+        kind: String,
+        argument: String,
+        useEsearch: Boolean,
+    ): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)

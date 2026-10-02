@@ -19,7 +19,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <climits>
 #include <cstring>
+#include <ctime>
 #include <strings.h>
 #include <map>
 #include <mutex>
@@ -2628,6 +2630,259 @@ jobjectArray emptyArray(JNIEnv * env, jclass cls) {
     return env->NewObjectArray(0, cls, nullptr);
 }
 
+// libetpan has no mailimap_search_key_new_new; the type constant is that key.
+struct mailimap_search_key * searchKeyType(int type) {
+    return mailimap_search_key_new(type, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL,
+        NULL, 0, NULL,
+        NULL, NULL, NULL, NULL, NULL,
+        0, NULL, NULL, NULL);
+}
+
+struct mailimap_search_key * notKey(struct mailimap_search_key * inner) {
+    if (inner == nullptr) return nullptr;
+    struct mailimap_search_key * key = mailimap_search_key_new_not(inner);
+    if (key == nullptr) mailimap_search_key_free(inner);
+    return key;
+}
+
+struct mailimap_search_key * keyOr(struct mailimap_search_key * left, struct mailimap_search_key * right) {
+    if (left == nullptr || right == nullptr) {
+        if (left != nullptr) mailimap_search_key_free(left);
+        if (right != nullptr) mailimap_search_key_free(right);
+        return nullptr;
+    }
+    struct mailimap_search_key * key = mailimap_search_key_new_or(left, right);
+    if (key == nullptr) {
+        mailimap_search_key_free(left);
+        mailimap_search_key_free(right);
+    }
+    return key;
+}
+
+enum class TextSlot { From, To, Cc, Subject, Text, Keyword, Unkeyword };
+
+struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
+    char * copy = strdup(argument);
+    if (copy == nullptr) return nullptr;
+    struct mailimap_search_key * key = nullptr;
+    switch (slot) {
+    case TextSlot::From: key = mailimap_search_key_new_from(copy); break;
+    case TextSlot::To: key = mailimap_search_key_new_to(copy); break;
+    case TextSlot::Cc: key = mailimap_search_key_new_cc(copy); break;
+    case TextSlot::Subject: key = mailimap_search_key_new_subject(copy); break;
+    case TextSlot::Text: key = mailimap_search_key_new_text(copy); break;
+    case TextSlot::Keyword: key = mailimap_search_key_new_keyword(copy); break;
+    case TextSlot::Unkeyword: key = mailimap_search_key_new_unkeyword(copy); break;
+    }
+    if (key == nullptr) free(copy);
+    return key;
+}
+
+struct mailimap_search_key * forwardedKey(bool negated) {
+    char * literal = strdup("$Forwarded");
+    if (literal == nullptr) return nullptr;
+    struct mailimap_search_key * key = negated
+        ? mailimap_search_key_new_unkeyword(literal)
+        : mailimap_search_key_new_keyword(literal);
+    if (key == nullptr) free(literal);
+    return key;
+}
+
+bool sameKind(const char * kind, const char * name) {
+    return strcmp(kind, name) == 0;
+}
+
+bool positiveUint(const char * text, uint32_t * out) {
+    if (text == nullptr || text[0] == '\0') return false;
+    uint64_t value = 0;
+    for (const char * p = text; *p != '\0'; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        value = value * 10u + static_cast<uint64_t>(*p - '0');
+        if (value > 0xffffffffull) return false;
+    }
+    if (value == 0) return false;
+    *out = static_cast<uint32_t>(value);
+    return true;
+}
+
+bool calendarDate(const char * text, int * year, int * month, int * day) {
+    if (text == nullptr || strlen(text) != 10) return false;
+    if (text[4] != '-' || text[7] != '-') return false;
+    for (int i = 0; i < 10; ++i) {
+        if (i == 4 || i == 7) continue;
+        if (text[i] < '0' || text[i] > '9') return false;
+    }
+    *year = (text[0] - '0') * 1000 + (text[1] - '0') * 100 + (text[2] - '0') * 10 + (text[3] - '0');
+    *month = (text[5] - '0') * 10 + (text[6] - '0');
+    *day = (text[8] - '0') * 10 + (text[9] - '0');
+    if (*month < 1 || *month > 12 || *day < 1) return false;
+    static const int mdays[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int maxDay = mdays[*month];
+    bool leap = (*year % 4 == 0 && *year % 100 != 0) || (*year % 400 == 0);
+    if (*month == 2 && leap) maxDay = 29;
+    return *day <= maxDay;
+}
+
+int daysFromCivil(int y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<int>(doe) - 719468;
+}
+
+void civilFromDays(int z, int * year, int * month, int * day) {
+    z += 719468;
+    const int era = (z >= 0 ? z : z - 146096) / 146097;
+    const unsigned doe = static_cast<unsigned>(z - era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const int y = static_cast<int>(yoe) + era * 400;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    const unsigned d = doy - (153 * mp + 2) / 5 + 1;
+    const unsigned m = mp < 10 ? mp + 3 : mp - 9;
+    *year = y + (m <= 2);
+    *month = static_cast<int>(m);
+    *day = static_cast<int>(d);
+}
+
+bool ageBeforeDate(uint32_t daysBack, int * year, int * month, int * day) {
+    std::time_t now = std::time(nullptr);
+    if (now == static_cast<std::time_t>(-1)) return false;
+    std::tm tm{};
+    if (gmtime_r(&now, &tm) == nullptr) return false;
+    int64_t z = daysFromCivil(tm.tm_year + 1900, static_cast<unsigned>(tm.tm_mon + 1), static_cast<unsigned>(tm.tm_mday));
+    z -= static_cast<int64_t>(daysBack);
+    if (z < static_cast<int64_t>(INT_MIN) || z > static_cast<int64_t>(INT_MAX)) return false;
+    civilFromDays(static_cast<int>(z), year, month, day);
+    return *year >= 0 && *year <= 9999;
+}
+
+struct mailimap_search_key * dateKey(int type, int year, int month, int day) {
+    struct mailimap_date * date = mailimap_date_new(day, month, year);
+    if (date == nullptr) return nullptr;
+    struct mailimap_search_key * key = nullptr;
+    if (type == MAILIMAP_SEARCH_KEY_SINCE) key = mailimap_search_key_new_since(date);
+    else if (type == MAILIMAP_SEARCH_KEY_BEFORE) key = mailimap_search_key_new_before(date);
+    else if (type == MAILIMAP_SEARCH_KEY_ON) key = mailimap_search_key_new_on(date);
+    if (key == nullptr) mailimap_date_free(date);
+    return key;
+}
+
+bool emptyText(JNIEnv * env, const char * argument) {
+    if (argument[0] != '\0') return false;
+    throwFailure(env, "empty search");
+    return true;
+}
+
+struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument) {
+    if (sameKind(kind, "New")) return searchKeyType(MAILIMAP_SEARCH_KEY_NEW);
+    if (sameKind(kind, "NotNew")) return notKey(searchKeyType(MAILIMAP_SEARCH_KEY_NEW));
+    if (sameKind(kind, "Deleted")) return searchKeyType(MAILIMAP_SEARCH_KEY_DELETED);
+    if (sameKind(kind, "NotDeleted")) return searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED);
+    if (sameKind(kind, "Answered")) return searchKeyType(MAILIMAP_SEARCH_KEY_ANSWERED);
+    if (sameKind(kind, "NotAnswered")) return searchKeyType(MAILIMAP_SEARCH_KEY_UNANSWERED);
+    if (sameKind(kind, "Important")) return searchKeyType(MAILIMAP_SEARCH_KEY_FLAGGED);
+    if (sameKind(kind, "NotImportant")) return searchKeyType(MAILIMAP_SEARCH_KEY_UNFLAGGED);
+    if (sameKind(kind, "Forwarded")) return forwardedKey(false);
+    if (sameKind(kind, "NotForwarded")) return forwardedKey(true);
+    if (sameKind(kind, "From") || sameKind(kind, "To") || sameKind(kind, "Cc") || sameKind(kind, "Subject")
+        || sameKind(kind, "Text") || sameKind(kind, "Keyword") || sameKind(kind, "NotKeyword")
+        || sameKind(kind, "Recipient") || sameKind(kind, "Participant")) {
+        if (emptyText(env, argument)) return nullptr;
+        if (sameKind(kind, "From")) return textKey(TextSlot::From, argument);
+        if (sameKind(kind, "To")) return textKey(TextSlot::To, argument);
+        if (sameKind(kind, "Cc")) return textKey(TextSlot::Cc, argument);
+        if (sameKind(kind, "Subject")) return textKey(TextSlot::Subject, argument);
+        if (sameKind(kind, "Text")) return textKey(TextSlot::Text, argument);
+        if (sameKind(kind, "Keyword")) return textKey(TextSlot::Keyword, argument);
+        if (sameKind(kind, "NotKeyword")) return textKey(TextSlot::Unkeyword, argument);
+        if (sameKind(kind, "Recipient")) {
+            return keyOr(textKey(TextSlot::To, argument), textKey(TextSlot::Cc, argument));
+        }
+        return keyOr(
+            textKey(TextSlot::From, argument),
+            keyOr(textKey(TextSlot::To, argument), textKey(TextSlot::Cc, argument)));
+    }
+    if (sameKind(kind, "Since") || sameKind(kind, "Before") || sameKind(kind, "On")) {
+        int year = 0;
+        int month = 0;
+        int day = 0;
+        if (!calendarDate(argument, &year, &month, &day)) {
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
+        int type = MAILIMAP_SEARCH_KEY_ON;
+        if (sameKind(kind, "Since")) type = MAILIMAP_SEARCH_KEY_SINCE;
+        else if (sameKind(kind, "Before")) type = MAILIMAP_SEARCH_KEY_BEFORE;
+        return dateKey(type, year, month, day);
+    }
+    if (sameKind(kind, "Age")) {
+        uint32_t days = 0;
+        int year = 0;
+        int month = 0;
+        int day = 0;
+        if (!positiveUint(argument, &days) || !ageBeforeDate(days, &year, &month, &day)) {
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
+        return dateKey(MAILIMAP_SEARCH_KEY_BEFORE, year, month, day);
+    }
+    if (sameKind(kind, "Larger") || sameKind(kind, "Smaller")) {
+        uint32_t size = 0;
+        if (!positiveUint(argument, &size)) {
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
+        if (sameKind(kind, "Larger")) return mailimap_search_key_new_larger(size);
+        return mailimap_search_key_new_smaller(size);
+    }
+    throwFailure(env, "bad search");
+    return nullptr;
+}
+
+jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean useEsearch) {
+    if (useEsearch == JNI_TRUE) {
+        struct mailimap_response * response = nullptr;
+        int r = sendUidEsearch(session->imap, key, &response);
+        mailimap_search_key_free(key);
+        if (r != MAILIMAP_NO_ERROR) {
+            throwImap(env, session->imap, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        clist * result = takeEsearch(session->imap);
+        bool ok = taggedOk(response);
+        mailimap_response_free(response);
+        if (!ok) {
+            if (result != nullptr) mailimap_search_result_free(result);
+            throwImap(env, session->imap, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        jlongArray arr = uidArray(env, result);
+        if (result != nullptr) mailimap_search_result_free(result);
+        unlockSession(session);
+        return arr;
+    }
+    clist * result = nullptr;
+    int r = mailimap_uid_search(session->imap, "UTF-8", key, &result);
+    mailimap_search_key_free(key);
+    if (!cmdOk(r)) {
+        if (result != nullptr) mailimap_search_result_free(result);
+        throwImap(env, session->imap, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jlongArray arr = uidArray(env, result);
+    if (result != nullptr) mailimap_search_result_free(result);
+    unlockSession(session);
+    return arr;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
@@ -3421,6 +3676,24 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     if (result != nullptr) mailimap_search_result_free(result);
     unlockSession(session);
     return arr;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv * env, jobject, jlong handle,
+    jstring kind, jstring argument, jboolean useEsearch) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars kindChars(env, kind);
+    JChars argChars(env, argument);
+    struct mailimap_search_key * key = criterionKey(env, kindChars.c(), argChars.c());
+    if (env->ExceptionCheck() || key == nullptr) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    return completeSearch(env, session, key, useEsearch);
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

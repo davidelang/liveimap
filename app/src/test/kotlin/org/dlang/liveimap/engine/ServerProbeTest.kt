@@ -118,6 +118,11 @@ private class ProbeMailSession(
         return emptyList()
     }
 
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
+        searchQueries += argument
+        return emptyList()
+    }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         sortCalls += key to newestFirst
         return emptyList()

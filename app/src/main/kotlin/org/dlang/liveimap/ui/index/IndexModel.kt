@@ -104,6 +104,8 @@ class IndexModel(
     private var pageAnchor: Int = 0
     private var includePreview: Boolean = false
     private var activeSearch: String? = null
+    private var filterUids: Set<Long>? = null
+    private val filterStack = ArrayDeque<Set<Long>>()
     private var lastVisibleIndex: Int = 0
 
     var notice: String? = null
@@ -111,6 +113,12 @@ class IndexModel(
 
     var view: FolderView = FolderView(SortKey.Arrival, newestFirst = true)
         private set
+
+    val filterActive: Boolean
+        get() = filterUids != null
+
+    val canWiden: Boolean
+        get() = filterStack.isNotEmpty()
 
     var account: AccountSettings = AccountSettings()
         private set
@@ -137,14 +145,19 @@ class IndexModel(
         store.save(saved)
         account = saved
         activeSearch = null
+        filterUids = null
+        filterStack.clear()
         includePreview = saved.density != Density.Compact
         view = next
         return replaceWindow { fetchView(next) }
     }
 
     suspend fun applySearch(query: String): List<IndexRow> {
+        val hadFilter = filterUids != null
+        filterUids = null
+        filterStack.clear()
         if (query.isEmpty()) {
-            if (activeSearch == null) return heldRows
+            if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
             return replaceWindow { fetchCurrent() }
         }
@@ -152,6 +165,73 @@ class IndexModel(
         includePreview = account.density != Density.Compact
         activeSearch = query
         return replaceWindow { fetchSearch(query) }
+    }
+
+    suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean): List<IndexRow> {
+        val found = try {
+            session.searchCriterion(kind, argument)
+        } catch (failure: MailFailure) {
+            notice = failure.text
+            return heldRows
+        }
+        val loaded = store.load()
+        val savedUids = filterUids
+        val savedStack = filterStack.toList()
+        val savedSearch = activeSearch
+        account = loaded
+        includePreview = loaded.density != Density.Compact
+        activeSearch = null
+        val foundSet = found.toSet()
+        if (narrow && savedUids != null) {
+            filterStack.addLast(savedUids)
+            filterUids = savedUids.intersect(foundSet)
+        } else {
+            filterStack.clear()
+            filterUids = foundSet
+        }
+        val rows = replaceWindow { fetchCurrent() }
+        if (notice != null) {
+            filterUids = savedUids
+            filterStack.clear()
+            filterStack.addAll(savedStack)
+            activeSearch = savedSearch
+        }
+        return rows
+    }
+
+    suspend fun showAll(): List<IndexRow> {
+        val savedUids = filterUids
+        val savedStack = filterStack.toList()
+        val savedSearch = activeSearch
+        if (savedUids == null && savedStack.isEmpty() && savedSearch == null) return heldRows
+        filterUids = null
+        filterStack.clear()
+        activeSearch = null
+        val rows = replaceWindow { fetchCurrent() }
+        if (notice != null) {
+            filterUids = savedUids
+            filterStack.clear()
+            filterStack.addAll(savedStack)
+            activeSearch = savedSearch
+        }
+        return rows
+    }
+
+    suspend fun widenFilter(): List<IndexRow> {
+        if (filterStack.isEmpty()) return heldRows
+        val savedUids = filterUids
+        val savedStack = filterStack.toList()
+        val savedSearch = activeSearch
+        filterUids = filterStack.removeLast()
+        activeSearch = null
+        val rows = replaceWindow { fetchCurrent() }
+        if (notice != null) {
+            filterUids = savedUids
+            filterStack.clear()
+            filterStack.addAll(savedStack)
+            activeSearch = savedSearch
+        }
+        return rows
     }
 
     suspend fun onFirstVisible(index: Int): List<IndexRow> {
@@ -358,22 +438,34 @@ class IndexModel(
                 includePreview = includePreview,
             ),
         )
-        order = fetched.map { it.uid }
-        return fetched.take(IndexPageSize * 2)
+        val keep = filterUids
+        if (keep == null) {
+            order = fetched.map { it.uid }
+            return fetched.take(IndexPageSize * 2)
+        }
+        val restricted = fetched.map { it.uid }.filter { it in keep }
+        val loaded = pagesOf(restricted)
+        order = restricted
+        return loaded
     }
 
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean): List<IndexRow> {
-        val uids = session.sort(key, newestFirst)
+        val uids = restrict(session.sort(key, newestFirst))
         val loaded = pagesOf(uids)
         order = uids
         return loaded
     }
 
     private suspend fun fetchThread(key: SortKey, newestFirst: Boolean): List<IndexRow> {
-        val uids = orderedThreadUids(session.thread(key), newestFirst)
+        val uids = restrict(orderedThreadUids(session.thread(key), newestFirst))
         val loaded = pagesOf(uids)
         order = uids
         return loaded
+    }
+
+    private fun restrict(uids: List<Long>): List<Long> {
+        val keep = filterUids ?: return uids
+        return uids.filter { it in keep }
     }
 
     private suspend fun fetchSearch(query: String): List<IndexRow> {

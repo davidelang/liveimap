@@ -37,6 +37,8 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun searchText(query: String): List<Long> = notConnected()
 
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = notConnected()
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = notConnected()
 
     override suspend fun thread(key: SortKey): ThreadNode = notConnected()

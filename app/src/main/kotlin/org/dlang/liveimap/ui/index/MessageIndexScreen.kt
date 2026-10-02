@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -91,6 +92,51 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 private val indexFlags = listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")
+
+private enum class FilterRole {
+    Criterion,
+    All,
+    Narrow,
+    Widen,
+}
+
+private data class FilterChoice(
+    val label: String,
+    val kind: String = "",
+    val needsValue: Boolean = false,
+    val role: FilterRole = FilterRole.Criterion,
+)
+
+private val filterChoices = listOf(
+    FilterChoice("All", role = FilterRole.All),
+    FilterChoice("New", "New"),
+    FilterChoice("Not new", "NotNew"),
+    FilterChoice("Deleted", "Deleted"),
+    FilterChoice("Not deleted", "NotDeleted"),
+    FilterChoice("Answered", "Answered"),
+    FilterChoice("Not answered", "NotAnswered"),
+    FilterChoice("Important", "Important"),
+    FilterChoice("Not important", "NotImportant"),
+    FilterChoice("Forwarded", "Forwarded"),
+    FilterChoice("Not forwarded", "NotForwarded"),
+    FilterChoice("From", "From", needsValue = true),
+    FilterChoice("To", "To", needsValue = true),
+    FilterChoice("Cc", "Cc", needsValue = true),
+    FilterChoice("Subject", "Subject", needsValue = true),
+    FilterChoice("All text", "Text", needsValue = true),
+    FilterChoice("Recipient", "Recipient", needsValue = true),
+    FilterChoice("Participant", "Participant", needsValue = true),
+    FilterChoice("Since", "Since", needsValue = true),
+    FilterChoice("Before", "Before", needsValue = true),
+    FilterChoice("On", "On", needsValue = true),
+    FilterChoice("Age", "Age", needsValue = true),
+    FilterChoice("Larger", "Larger", needsValue = true),
+    FilterChoice("Smaller", "Smaller", needsValue = true),
+    FilterChoice("Keyword", "Keyword", needsValue = true),
+    FilterChoice("Not keyword", "NotKeyword", needsValue = true),
+    FilterChoice("Narrow", role = FilterRole.Narrow),
+    FilterChoice("Widen", role = FilterRole.Widen),
+)
 
 data class IndexAppearance(
     val alpha: Float,
@@ -245,6 +291,12 @@ fun MessageIndexScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var filterOpen by remember { mutableStateOf(false) }
+    var filterActive by remember { mutableStateOf(false) }
+    var canWiden by remember { mutableStateOf(false) }
+    var narrowArmed by remember { mutableStateOf(false) }
+    var prompt by remember { mutableStateOf<FilterChoice?>(null) }
+    var promptText by remember { mutableStateOf("") }
     var multiSelect by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<Long>>(emptyList()) }
     var flagUid by remember { mutableStateOf<Long?>(null) }
@@ -259,9 +311,53 @@ fun MessageIndexScreen(
         account = model.account
         menuKeys = model.menuKeys
         anchorPage = model.anchorPage
+        filterActive = model.filterActive
+        canWiden = model.canWiden
     }
 
-    fun pull() = sync.block()
+    fun pull() = sync.block
+
+    fun runCriterion(kind: String, argument: String) {
+        val narrow = narrowArmed
+        scope.launch {
+            gate.withLock {
+                model.applyCriterion(kind, argument, narrow)
+                pull()
+            }
+            if (model.notice == null) {
+                narrowArmed = false
+                query = ""
+                searchVisible = false
+            }
+            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }
+
+    fun runShowAll() {
+        scope.launch {
+            gate.withLock {
+                model.showAll()
+                pull()
+            }
+            if (model.notice == null) {
+                narrowArmed = false
+                query = ""
+                searchVisible = false
+            }
+            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }
+
+    fun runWiden() {
+        scope.launch {
+            gate.withLock {
+                model.widenFilter()
+                pull()
+            }
+            if (model.notice == null) narrowArmed = false
+            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }()
 
     DisposableEffect(session) {
         onDispose { session.close() }
@@ -409,6 +505,46 @@ fun MessageIndexScreen(
                     )
                 }
                 Box {
+                    IconButton(onClick = { filterOpen = true }) {
+                        Icon(
+                            imageVector = filterImage,
+                            contentDescription = "Filter",
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = filterOpen,
+                        onDismissRequest = { filterOpen = false },
+                    ) {
+                        filterChoices.forEach { choice ->
+                            val enabled = when (choice.role) {
+                                FilterRole.Narrow -> filterActive
+                                FilterRole.Widen -> canWiden
+                                else -> true
+                            }
+                            DropdownMenuItem(
+                                text = { Text(choice.label) },
+                                enabled = enabled,
+                                onClick = {
+                                    filterOpen = false
+                                    when (choice.role) {
+                                        FilterRole.All -> runShowAll()
+                                        FilterRole.Narrow -> if (filterActive) narrowArmed = true
+                                        FilterRole.Widen -> if (canWiden) runWiden()
+                                        FilterRole.Criterion -> {
+                                            if (choice.needsValue) {
+                                                prompt = choice
+                                                promptText = ""
+                                            } else {
+                                                runCriterion(choice.kind, "")
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                Box {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
@@ -433,6 +569,8 @@ fun MessageIndexScreen(
                                 onClick = {
                                     menuOpen = false
                                     query = ""
+                                    narrowArmed = false
+                                    prompt = null
                                     scope.launch {
                                         gate.withLock {
                                             model.applyView(FolderView(key, view.newestFirst))
@@ -448,6 +586,8 @@ fun MessageIndexScreen(
                             onClick = {
                                 menuOpen = false
                                 query = ""
+                                narrowArmed = false
+                                prompt = null
                                 scope.launch {
                                     gate.withLock {
                                         model.applyView(view.copy(newestFirst = !view.newestFirst))
@@ -479,6 +619,8 @@ fun MessageIndexScreen(
                         query = next
                         if (cleared) {
                             searchVisible = false
+                            narrowArmed = false
+                            prompt = null
                             scope.launch {
                                 gate.withLock {
                                     model.applySearch("")
@@ -493,6 +635,8 @@ fun MessageIndexScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
+                            narrowArmed = false
+                            prompt = null
                             scope.launch {
                                 gate.withLock {
                                     model.applySearch(query)
@@ -628,6 +772,31 @@ fun MessageIndexScreen(
                 }
             }
         }
+    }
+    val pendingPrompt = prompt
+    if (pendingPrompt != null) {
+        AlertDialog(
+            onDismissRequest = { prompt = null },
+            text = {
+                OutlinedTextField(
+                    value = promptText,
+                    onValueChange = { promptText = it },
+                    label = { Text(pendingPrompt.label) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val kind = pendingPrompt.kind
+                    val value = promptText
+                    prompt = null
+                    runCriterion(kind, value)
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { prompt = null }) { Text("Dismiss") }
+            },
+        )
     }
 }
 
