@@ -565,3 +565,17 @@
 - The drawer shows the stored postponed mailbox between INBOX and All folders, and hides that row when the setting is empty
 - Opening a message there sets the resume uid; a successful send or postpone deletes and UID EXPUNGEs that uid
 - A failed send or append leaves the old copy, and a removal failure only sets a notice
+
+## 2026-10-02 - unsent list execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-list-20261002-0544-plan.md
+- Work: list failed sends from the folder screen; Open and Retry use the existing send path; Discard deletes only the local copy after a confirm
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 509b1a7
+
+## 2026-10-02 - unsent list phase 1
+
+- The folder list shows Unsent and the count only when a local copy exists, and that row opens the unsent route
+- Each row shows the subject, recipients, Not sent or Sent, copy not saved, and Open, Retry, or confirmed Discard
+- Compose drops the per-copy retry buttons and opens the list from an Unsent button after a failed send

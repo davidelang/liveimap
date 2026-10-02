@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.folder
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,11 +57,13 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.UiDims
+import org.dlang.liveimap.ui.compose.readCopies
 
 @Composable
 fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
+    onOpenUnsent: () -> Unit,
     focusMailbox: String? = null,
     focusToken: Int = 0,
 ) {
@@ -80,6 +83,7 @@ fun FolderListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var stopped by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
+    var unsentCount by remember { mutableIntStateOf(0) }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -109,6 +113,7 @@ fun FolderListScreen(
     }
 
     LaunchedEffect(session, loadToken) {
+        unsentCount = readCopies(appContext).size
         loading = true
         banner = null
         stopped = false
@@ -261,6 +266,16 @@ fun FolderListScreen(
                 loading = true
                 loadToken += 1
             }
+        }
+        if (unsentCount > 0) {
+            Text(
+                text = "Unsent $unsentCount",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenUnsent)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
         }
         if (!stopped) {
             val reserveMessages = rows.any { it.messages != null }

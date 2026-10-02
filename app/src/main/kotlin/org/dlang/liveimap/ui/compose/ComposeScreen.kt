@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.compose
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -76,16 +74,14 @@ private class ForwardRow(
     )
 }
 
-private class DeviceCopy(
-    val id: String,
-    val appendOnly: Boolean,
-    val mailbox: String,
-    val recipients: List<String>,
-    val bytes: ByteArray,
-)
-
 @Composable
-fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
+fun ComposeScreen(
+    seed: ComposeSeed,
+    onDone: () -> Unit,
+    unsentId: String? = null,
+    retryOnOpen: Boolean = false,
+    onOpenUnsent: () -> Unit = {},
+) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
@@ -106,11 +102,11 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     var referencesHeader by rememberSaveable { mutableStateOf("") }
     var bounceTo by rememberSaveable { mutableStateOf("") }
     var draftLoaded by rememberSaveable { mutableStateOf(false) }
+    var retryArmedFor by rememberSaveable { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
     var deliveryDone by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
-    var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
     var discardOpen by remember { mutableStateOf(false) }
@@ -204,13 +200,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         }
     }
 
-    suspend fun loadResume() {
-        val box = seed.mailbox ?: return
-        val uid = seed.uids.firstOrNull() ?: return
-        ensureMailbox(box)
-        sourceUid = uid
-        if (draftLoaded && forwardRows.isNotEmpty()) return
-        val loaded = loadEditor(session.fetchRfc822(uid))
+    fun applyEditor(loaded: EditorLoad) {
         if (!draftLoaded) {
             toText = loaded.to
             ccText = loaded.cc
@@ -232,6 +222,15 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                 wireBase64 = part.wireBase64,
             )
         }
+    }
+
+    suspend fun loadResume() {
+        val box = seed.mailbox ?: return
+        val uid = seed.uids.firstOrNull() ?: return
+        ensureMailbox(box)
+        sourceUid = uid
+        if (draftLoaded && forwardRows.isNotEmpty()) return
+        applyEditor(loadEditor(session.fetchRfc822(uid)))
     }
 
     suspend fun assemble(settings: AccountSettings): BuiltMail {
@@ -315,7 +314,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             notice = null
             deliveryDone = true
             status = "Sent · saved to ${mailboxLeaf(copy.mailbox)}"
-            copies = readCopies(appContext)
             removePostponedSource()
             return true
         }
@@ -340,7 +338,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                 if (held?.id == copy.id) held = saved
                 notice = error.text
                 status = "Accepted but not saved"
-                copies = readCopies(appContext)
                 return false
             }
         }
@@ -349,7 +346,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         notice = null
         deliveryDone = true
         status = if (copy.mailbox.isNotEmpty()) "Sent · saved to ${mailboxLeaf(copy.mailbox)}" else null
-        copies = readCopies(appContext)
         removePostponedSource()
         return true
     }
@@ -438,7 +434,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             if (current != null && !current.appendOnly) {
                 deleteCopy(appContext, current.id)
                 held = null
-                copies = readCopies(appContext)
             }
             notice = null
             status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
@@ -447,10 +442,28 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         }
     }
 
-    LaunchedEffect(seed) {
-        if (seed.kind == ComposeKind.New && !baselineReady) {
+    fun loadStoredCopy(id: String): DeviceCopy? {
+        val copy = readCopies(appContext).firstOrNull { it.id == id }
+        if (copy == null) {
+            notice = "That unsent copy is no longer on this device."
+            return null
+        }
+        held = copy
+        if (!(draftLoaded && forwardRows.isNotEmpty())) {
+            applyEditor(loadEditor(copy.bytes))
+        }
+        if (!baselineReady) captureBaseline()
+        draftLoaded = true
+        return copy
+    }
+
+    LaunchedEffect(seed, unsentId, retryOnOpen) {
+        val storedId = unsentId?.takeIf { it.isNotEmpty() }
+        if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
             captureBaseline()
         }
+        val stored = if (storedId == null) null else loadStoredCopy(storedId)
+        var leave = false
         gate.withLock {
             val settings = try {
                 store.load()
@@ -490,25 +503,37 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             }
             connected = true
             try {
-                when (seed.kind) {
-                    ComposeKind.New -> Unit
-                    ComposeKind.Reply -> if (!draftLoaded) loadReply(settings, replyAll = false)
-                    ComposeKind.ReplyAll -> if (!draftLoaded) loadReply(settings, replyAll = true)
-                    ComposeKind.Forward -> loadForward(settings)
-                    ComposeKind.Bounce -> Unit
-                    ComposeKind.ResumePostpone -> loadResume()
+                if (storedId != null) {
+                    if (stored != null && retryOnOpen && retryArmedFor != storedId) {
+                        retryArmedFor = storedId
+                        busy = true
+                        try {
+                            leave = retryCopy(stored)
+                        } finally {
+                            if (!leave) busy = false
+                        }
+                    }
+                } else {
+                    when (seed.kind) {
+                        ComposeKind.New -> Unit
+                        ComposeKind.Reply -> if (!draftLoaded) loadReply(settings, replyAll = false)
+                        ComposeKind.ReplyAll -> if (!draftLoaded) loadReply(settings, replyAll = true)
+                        ComposeKind.Forward -> loadForward(settings)
+                        ComposeKind.Bounce -> Unit
+                        ComposeKind.ResumePostpone -> loadResume()
+                    }
+                    if (seed.kind != ComposeKind.New && !baselineReady) {
+                        captureBaseline()
+                    }
+                    draftLoaded = true
                 }
-                if (seed.kind != ComposeKind.New && !baselineReady) {
-                    captureBaseline()
-                }
-                draftLoaded = true
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
                 notice = error.text
             }
-            copies = readCopies(appContext)
         }
+        if (leave) onDone()
     }
 
     BackHandler(enabled = !pickerOpen && discardOpen) {
@@ -517,10 +542,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     BackHandler(enabled = !pickerOpen && !discardOpen) {
         requestClose()
     }
-
-    val shown = copies.toMutableList()
-    val currentHeld = held
-    if (currentHeld != null && shown.none { it.id == currentHeld.id }) shown.add(currentHeld)
 
     Column(
         Modifier
@@ -533,13 +554,15 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         if (stateText != null) Text(stateText)
         val failure = notice
         if (failure != null) Text(failure)
-        Text("From: ${formatMailbox(account.displayName, account.email)}")
-        for (copy in shown) {
-            val label = if (copy.appendOnly) "Accepted but not saved" else "Not sent"
-            TextButton(onClick = { launchLocked { retryCopy(copy) } }) {
-                Text("$label retry")
-            }
+        if (
+            failure == "Accepted but not saved" ||
+            failure == "Not sent" ||
+            stateText == "Accepted but not saved" ||
+            stateText == "Not sent"
+        ) {
+            TextButton(onClick = onOpenUnsent) { Text("Unsent") }
         }
+        Text("From: ${formatMailbox(account.displayName, account.email)}")
         if (seed.kind == ComposeKind.Bounce) {
             OutlinedTextField(
                 value = bounceTo,
@@ -603,7 +626,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                             held = copy
                             notice = error.text
                             status = "Not sent"
-                            copies = readCopies(appContext)
                             return@launchLocked false
                         }
                         storeAcceptedFlags(listOf(uid))
@@ -618,7 +640,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                             held = copy
                             notice = error.text
                             status = "Accepted but not saved"
-                            copies = readCopies(appContext)
                             return@launchLocked false
                         }
                     }
@@ -747,7 +768,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         held = copy
                         notice = error.text
                         status = "Not sent"
-                        copies = readCopies(appContext)
                         return@launchLocked false
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
@@ -761,12 +781,10 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         held = copy
                         notice = error.text
                         status = "Accepted but not saved"
-                        copies = readCopies(appContext)
                         return@launchLocked false
                     }
                     deleteCopy(appContext, id)
                     held = null
-                    copies = readCopies(appContext)
                     deliveryDone = true
                     notice = null
                     status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
@@ -849,58 +867,4 @@ private fun appendAddress(current: String, next: String): String {
     val trimmed = current.trim()
     if (trimmed.isEmpty()) return next
     return "$trimmed, $next"
-}
-
-private fun copyDir(context: Context): File = File(context.filesDir, "unsent")
-
-private fun readCopies(context: Context): List<DeviceCopy> {
-    val dir = copyDir(context)
-    if (!dir.isDirectory) return emptyList()
-    val metas = dir.listFiles { file -> file.isFile && file.name.endsWith(".meta") } ?: return emptyList()
-    return metas.sortedBy { it.name }.mapNotNull { meta ->
-        try {
-            val lines = meta.readLines(Charsets.UTF_8)
-            if (lines.size < 2) return@mapNotNull null
-            val id = meta.name.removeSuffix(".meta")
-            val bytesFile = File(dir, "$id.rfc822")
-            if (!bytesFile.isFile) return@mapNotNull null
-            DeviceCopy(
-                id = id,
-                appendOnly = lines[0] == "append-only",
-                mailbox = lines[1],
-                recipients = lines.drop(2).filter { it.isNotEmpty() },
-                bytes = bytesFile.readBytes(),
-            )
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            null
-        }
-    }
-}
-
-private fun writeCopy(context: Context, copy: DeviceCopy) {
-    try {
-        val dir = copyDir(context)
-        dir.mkdirs()
-        File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
-        val text = buildString {
-            appendLine(if (copy.appendOnly) "append-only" else "unsent")
-            appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
-            for (recipient in copy.recipients) {
-                appendLine(recipient.replace("\n", "").replace("\r", ""))
-            }
-        }
-        File(dir, "${copy.id}.meta").writeText(text, Charsets.UTF_8)
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
-        // The screen keeps the same bytes in memory when the file write fails.
-    }
-}
-
-private fun deleteCopy(context: Context, id: String) {
-    val dir = copyDir(context)
-    File(dir, "$id.rfc822").delete()
-    File(dir, "$id.meta").delete()
 }

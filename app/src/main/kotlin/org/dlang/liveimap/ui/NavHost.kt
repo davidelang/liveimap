@@ -47,6 +47,7 @@ import org.dlang.liveimap.settings.SettingsScreen
 import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
+import org.dlang.liveimap.ui.compose.UnsentScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
@@ -70,6 +71,8 @@ fun LiveImapNavHost() {
     val composeKindName = rememberSaveable { mutableStateOf(ComposeKind.New.name) }
     val composeMailbox = rememberSaveable { mutableStateOf("") }
     val composeUids = rememberSaveable { mutableStateOf("") }
+    val composeUnsentId = rememberSaveable { mutableStateOf("") }
+    val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(route, drawerState.currentValue) {
         val account = store.load()
@@ -90,8 +93,11 @@ fun LiveImapNavHost() {
                         composeKindName.value = seed.kind.name
                         composeMailbox.value = seed.mailbox.orEmpty()
                         composeUids.value = seed.uids.joinToString(",")
+                        composeUnsentId.value = ""
+                        composeRetryOnOpen.value = false
                         navController.navigate("compose")
                     },
+                    onOpenUnsent = { navController.navigate("unsent") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                 )
@@ -113,6 +119,8 @@ fun LiveImapNavHost() {
                         composeKindName.value = seed.kind.name
                         composeMailbox.value = seed.mailbox.orEmpty()
                         composeUids.value = seed.uids.joinToString(",")
+                        composeUnsentId.value = ""
+                        composeRetryOnOpen.value = false
                         navController.navigate("compose")
                     },
                     onBack = { navController.popBackStack() },
@@ -137,6 +145,8 @@ fun LiveImapNavHost() {
                         composeKindName.value = seed.kind.name
                         composeMailbox.value = seed.mailbox.orEmpty()
                         composeUids.value = seed.uids.joinToString(",")
+                        composeUnsentId.value = ""
+                        composeRetryOnOpen.value = false
                         navController.navigate("compose")
                     },
                     onAdvance = { nextUid, nextSequence ->
@@ -163,6 +173,22 @@ fun LiveImapNavHost() {
                 ComposeScreen(
                     seed = seed,
                     onDone = { navController.popBackStack() },
+                    unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
+                    retryOnOpen = composeRetryOnOpen.value,
+                    onOpenUnsent = { navController.navigate("unsent") },
+                )
+            }
+            composable("unsent") {
+                UnsentScreen(
+                    onOpenCopy = { id, retry ->
+                        composeKindName.value = ComposeKind.New.name
+                        composeMailbox.value = ""
+                        composeUids.value = ""
+                        composeUnsentId.value = id
+                        composeRetryOnOpen.value = retry
+                        navController.navigate("compose")
+                    },
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable("settings") {

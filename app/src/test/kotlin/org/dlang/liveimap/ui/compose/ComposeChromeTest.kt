@@ -65,6 +65,14 @@ class ComposeChromeTest {
     }
 
     @Test
+    fun unsentSubjectAndLabel() {
+        assertEquals("Hello", unsentSubject("Subject: Hello\r\n\r\nBody".encodeToByteArray()))
+        assertEquals("No subject", unsentSubject("From: a@example.com\r\n\r\nHi".encodeToByteArray()))
+        assertEquals("Sent, copy not saved", unsentLabel(true))
+        assertEquals("Not sent", unsentLabel(false))
+    }
+
+    @Test
     fun postponedUidToRemove() {
         assertEquals(8L, postponedUidToRemove(ComposeKind.ResumePostpone, true, 8L)!!)
         assertNull(postponedUidToRemove(ComposeKind.ResumePostpone, false, 8L))
