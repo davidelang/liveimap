@@ -1,6 +1,6 @@
 name = "libetpan"
 git_https = "https://github.com/davidelang/libetpan.git"
-git_sha = "8c9d5e06e49feb4d4d834bd01cefe7ed77acd899"
+git_sha = "fea126faf0c53cf5b7f56ada04ddd55491f679da"
 reproducible = false
 build_time = "minutes"
 requires_writable_src = true

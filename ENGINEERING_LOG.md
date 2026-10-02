@@ -690,3 +690,17 @@
 - More lists the other actions, body views, folder sort keys, and newest or oldest. Choosing one stays on this message
 - A drawer favorite long-press renames, reorders, or deletes. A blank name falls back to favoriteLabel
 - TODO: more than one account, and keep the account and password in the Android secure store
+
+## 2026-10-02 - libetpan pipeline helpers execution start
+
+- Approved plan: sandbox/plans/libetpan-pipeline-helpers-20261002-1552-plan.md
+- Work: pin libetpan fea126faf0c53cf5b7f56ada04ddd55491f679da and send pipelined STATUS and UID FETCH through mailimap_status_multiple and mailimap_uid_fetch_multiple
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Start builds tag 59bf418
+- Host: /home/dlang/git/liveimap/master. Do not edit /home/dlang/git/libetpan. Do not send, append, or expunge.
+
+## 2026-10-02 - libetpan pipeline helpers phase 1
+
+- Pin is fea126faf0c53cf5b7f56ada04ddd55491f679da. Both Android libetpan.a archives export mailimap_status_multiple and mailimap_uid_fetch_multiple
+- Pipelined STATUS and UID FETCH use those helpers. Stream, fatal, and a desynchronized session return MAILIMAP_ERROR_STREAM. One command at a time is unchanged
+- Host burst tests exit 0 against /home/dlang/git/libetpan/src/.libs/libetpan.so at that sha
