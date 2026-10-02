@@ -45,6 +45,8 @@ int mailimap_response_data_parse(mailstream * fd, MMAPString * buffer,
     struct mailimap_response_data ** result, size_t progr_rate,
     progress_function * progr_fun);
 int mailimap_crlf_send(mailstream * fd);
+int mailimap_uid_fetch_send(mailstream * fd, struct mailimap_set * set,
+    struct mailimap_fetch_type * fetch_type);
 int mailimap_status_send(mailstream * fd, const char * mb,
     struct mailimap_status_att_list * status_att_list);
 int mailimap_space_send(mailstream * fd);
@@ -1068,62 +1070,41 @@ int fetchRows(mailimap * imap, struct mailimap_set * set, bool uidFetch, bool wi
     return r;
 }
 
-std::string previewText(mailimap * imap, uint32_t uid, const PartWant & want, int byteLimit) {
-    if (!want.found || byteLimit <= 0) {
-        return "";
-    }
-    struct mailimap_section * section = sectionFromSpec(want.section);
-    if (section == nullptr) {
-        return "";
-    }
-    struct mailimap_fetch_att * att = mailimap_fetch_att_new_body_peek_section_partial(
-        section, 0, static_cast<uint32_t>(byteLimit));
-    struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
-    if (att == nullptr || fetch == nullptr) {
-        if (fetch != nullptr) mailimap_fetch_type_free(fetch);
-        if (att == nullptr && section != nullptr) mailimap_section_free(section);
-        return "";
-    }
-    mailimap_fetch_type_new_fetch_att_list_add(fetch, att);
-    struct mailimap_set * set = mailimap_set_new_single(uid);
-    clist * list = nullptr;
-    int r = mailimap_uid_fetch(imap, set, fetch, &list);
-    mailimap_set_free(set);
-    mailimap_fetch_type_free(fetch);
+std::string previewSectionText(clist * list, const std::string & charsetName) {
     std::string text;
-    if (r == MAILIMAP_NO_ERROR && list != nullptr) {
-        for (clistiter * cur = clist_begin(list); cur != nullptr && text.empty(); cur = clist_next(cur)) {
-            auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
-            if (msg == nullptr || msg->att_list == nullptr) continue;
-            for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
-                auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
-                if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) {
-                    continue;
-                }
-                struct mailimap_msg_att_static * st = item->att_data.att_static;
-                if (st->att_type != MAILIMAP_MSG_ATT_BODY_SECTION || st->att_data.att_body_section == nullptr) {
-                    continue;
-                }
-                struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
-                if (body->sec_body_part == nullptr || body->sec_length == 0) continue;
-                char * converted = nullptr;
-                size_t convertedLen = 0;
-                const char * charset = want.charset.empty() ? "UTF-8" : want.charset.c_str();
-                int cr = charconv_buffer("UTF-8", charset, body->sec_body_part, body->sec_length, &converted, &convertedLen);
-                if (cr != MAIL_CHARCONV_NO_ERROR || converted == nullptr) {
-                    if (converted != nullptr) charconv_buffer_free(converted);
-                    converted = nullptr;
-                    cr = charconv_buffer("UTF-8", "ISO-8859-1", body->sec_body_part, body->sec_length, &converted, &convertedLen);
-                }
-                if (cr == MAIL_CHARCONV_NO_ERROR && converted != nullptr) {
-                    text.assign(converted, convertedLen);
-                    charconv_buffer_free(converted);
-                } else if (converted != nullptr) {
-                    charconv_buffer_free(converted);
-                }
+    if (list == nullptr) {
+        return text;
+    }
+    const char * charset = charsetName.empty() ? "UTF-8" : charsetName.c_str();
+    for (clistiter * cur = clist_begin(list); cur != nullptr && text.empty(); cur = clist_next(cur)) {
+        auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
+        if (msg == nullptr || msg->att_list == nullptr) continue;
+        for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
+            auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
+            if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) {
+                continue;
+            }
+            struct mailimap_msg_att_static * st = item->att_data.att_static;
+            if (st->att_type != MAILIMAP_MSG_ATT_BODY_SECTION || st->att_data.att_body_section == nullptr) {
+                continue;
+            }
+            struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
+            if (body->sec_body_part == nullptr || body->sec_length == 0) continue;
+            char * converted = nullptr;
+            size_t convertedLen = 0;
+            int cr = charconv_buffer("UTF-8", charset, body->sec_body_part, body->sec_length, &converted, &convertedLen);
+            if (cr != MAIL_CHARCONV_NO_ERROR || converted == nullptr) {
+                if (converted != nullptr) charconv_buffer_free(converted);
+                converted = nullptr;
+                cr = charconv_buffer("UTF-8", "ISO-8859-1", body->sec_body_part, body->sec_length, &converted, &convertedLen);
+            }
+            if (cr == MAIL_CHARCONV_NO_ERROR && converted != nullptr) {
+                text.assign(converted, convertedLen);
+                charconv_buffer_free(converted);
+            } else if (converted != nullptr) {
+                charconv_buffer_free(converted);
             }
         }
-        mailimap_fetch_list_free(list);
     }
     return text;
 }
@@ -3030,6 +3011,100 @@ int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mai
     return MAILIMAP_NO_ERROR;
 }
 
+struct PreviewAsk {
+    uint32_t uid = 0;
+    std::string section;
+    std::string charset;
+};
+
+// Null the list after free so the next parse_response can drop response_info once.
+void dropFetchList(mailimap * imap) {
+    if (imap == nullptr || imap->imap_response_info == nullptr) return;
+    clist * fetch = imap->imap_response_info->rsp_fetch_list;
+    if (fetch == nullptr) return;
+    mailimap_fetch_list_free(fetch);
+    imap->imap_response_info->rsp_fetch_list = nullptr;
+}
+
+// One BODY.PEEK burst. A tag is kept only after crlf; parse matches imap_tag.
+int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byteLimit,
+    std::vector<std::string> & previews) {
+    previews.assign(asks.size(), std::string());
+    if (asks.empty() || byteLimit <= 0) return MAILIMAP_NO_ERROR;
+    if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
+    struct Sent {
+        int tag;
+        size_t index;
+    };
+    std::vector<Sent> sent;
+    sent.reserve(asks.size());
+    int sendError = MAILIMAP_NO_ERROR;
+    for (size_t i = 0; i < asks.size(); ++i) {
+        struct mailimap_section * section = sectionFromSpec(asks[i].section);
+        if (section == nullptr) continue;
+        struct mailimap_fetch_att * att = mailimap_fetch_att_new_body_peek_section_partial(
+            section, 0, static_cast<uint32_t>(byteLimit));
+        struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
+        if (att == nullptr || fetch == nullptr) {
+            if (fetch != nullptr) mailimap_fetch_type_free(fetch);
+            if (att == nullptr) mailimap_section_free(section);
+            else mailimap_fetch_att_free(att);
+            continue;
+        }
+        mailimap_fetch_type_new_fetch_att_list_add(fetch, att);
+        struct mailimap_set * set = mailimap_set_new_single(asks[i].uid);
+        if (set == nullptr) {
+            mailimap_fetch_type_free(fetch);
+            continue;
+        }
+        int r = mailimap_send_current_tag(imap);
+        if (r != MAILIMAP_NO_ERROR) {
+            mailimap_set_free(set);
+            mailimap_fetch_type_free(fetch);
+            sendError = r;
+            break;
+        }
+        r = mailimap_uid_fetch_send(imap->imap_stream, set, fetch);
+        if (r != MAILIMAP_NO_ERROR) {
+            mailimap_set_free(set);
+            mailimap_fetch_type_free(fetch);
+            sendError = r;
+            break;
+        }
+        r = mailimap_crlf_send(imap->imap_stream);
+        mailimap_set_free(set);
+        mailimap_fetch_type_free(fetch);
+        if (r != MAILIMAP_NO_ERROR) {
+            sendError = r;
+            break;
+        }
+        sent.push_back(Sent{imap->imap_tag, i});
+    }
+    if (sent.empty()) return sendError;
+    if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    for (const Sent & item : sent) {
+        dropFetchList(imap);
+        imap->imap_tag = item.tag;
+        if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+        struct mailimap_response * response = nullptr;
+        int r = mailimap_parse_response(imap, &response);
+        if (r != MAILIMAP_NO_ERROR) {
+            dropFetchList(imap);
+            if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_FATAL) return r;
+            continue;
+        }
+        if (taggedOk(response)) {
+            clist * fetched = imap->imap_response_info != nullptr
+                ? imap->imap_response_info->rsp_fetch_list : nullptr;
+            previews[item.index] = previewSectionText(fetched, asks[item.index].charset);
+        }
+        dropFetchList(imap);
+        mailimap_response_free(response);
+    }
+    imap->imap_tag = sent.back().tag;
+    return sendError;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
@@ -3408,13 +3483,27 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 havePreview[i] = 1;
             }
         } else if (bodyPreview) {
+            std::vector<PreviewAsk> asks;
+            std::vector<size_t> at;
             for (size_t i = 0; i < rows.size(); ++i) {
                 if (rows[i].structure == nullptr) continue;
                 PartWant want;
                 findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
                 if (!want.found) continue;
-                previews[i] = previewText(session->imap, rows[i].uid, want, peekLimit);
+                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset});
+                at.push_back(i);
                 havePreview[i] = 1;
+            }
+            std::vector<std::string> got;
+            int br = previewBurst(session->imap, asks, peekLimit, got);
+            if (br != MAILIMAP_NO_ERROR) {
+                if (list != nullptr) mailimap_fetch_list_free(list);
+                throwImap(env, session->imap, "fetch failed");
+                unlockSession(session);
+                return nullptr;
+            }
+            for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
+                previews[at[n]] = got[n];
             }
         }
         if (list != nullptr) mailimap_fetch_list_free(list);
@@ -3465,13 +3554,27 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 havePreview[i] = 1;
             }
         } else if (bodyPreview) {
+            std::vector<PreviewAsk> asks;
+            std::vector<size_t> at;
             for (size_t i = 0; i < rows.size(); ++i) {
                 if (rows[i].structure == nullptr) continue;
                 PartWant want;
                 findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
                 if (!want.found) continue;
-                previews[i] = previewText(session->imap, rows[i].uid, want, peekLimit);
+                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset});
+                at.push_back(i);
                 havePreview[i] = 1;
+            }
+            std::vector<std::string> got;
+            int br = previewBurst(session->imap, asks, peekLimit, got);
+            if (br != MAILIMAP_NO_ERROR) {
+                if (list != nullptr) mailimap_fetch_list_free(list);
+                throwImap(env, session->imap, "fetch failed");
+                unlockSession(session);
+                return nullptr;
+            }
+            for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
+                previews[at[n]] = got[n];
             }
         }
         if (list != nullptr) mailimap_fetch_list_free(list);

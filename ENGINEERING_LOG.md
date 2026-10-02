@@ -613,3 +613,12 @@
 - Approved plan: sandbox/plans/pinerc-import-20261002-0653-plan.md
 - Work: Settings imports a user-picked .pinerc, previews changes, and Apply writes only existing account fields
 - Status set to APPROVED
+
+## 2026-10-02 - preview fetch pipeline execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/preview-fetch-pipeline-20261002-0723-plan.md
+- Work: send one index window of body previews as a single UID FETCH burst and read every tag before the next IMAP command
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 0c5a29e
