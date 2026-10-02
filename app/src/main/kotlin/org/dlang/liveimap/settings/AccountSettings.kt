@@ -119,6 +119,7 @@ data class FolderFavorite(
     val node: Boolean,
     val mailbox: String,
     val delimiter: Char,
+    val label: String = "",
 )
 
 fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
@@ -127,6 +128,34 @@ fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
     }
     return if (node) "$mailbox$delimiter[]" else mailbox
 }
+
+enum class ReaderAction {
+    Reply,
+    ReplyAll,
+    Forward,
+    Delete,
+    Move,
+    Spam,
+    Bounce,
+}
+
+fun readerActionLabel(action: ReaderAction): String = when (action) {
+    ReaderAction.Reply -> "Reply"
+    ReaderAction.ReplyAll -> "Reply all"
+    ReaderAction.Forward -> "Forward"
+    ReaderAction.Delete -> "Delete"
+    ReaderAction.Move -> "Move"
+    ReaderAction.Spam -> "Spam"
+    ReaderAction.Bounce -> "Bounce"
+}
+
+val defaultReaderBar: List<ReaderAction> = listOf(
+    ReaderAction.Reply,
+    ReaderAction.ReplyAll,
+    ReaderAction.Forward,
+    ReaderAction.Delete,
+    ReaderAction.Move,
+)
 
 data class AccountSettings(
     val imapHost: String = "",
@@ -160,6 +189,7 @@ data class AccountSettings(
     val askBeforeExpunge: Boolean = true,
     val pipelineCommands: Boolean = true,
     val logImapTraffic: Boolean = false,
+    val readerBar: List<ReaderAction> = defaultReaderBar,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -198,6 +228,7 @@ private val fieldNames = listOf(
     "askBeforeExpunge",
     "pipelineCommands",
     "logImapTraffic",
+    "readerBar",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -235,6 +266,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("askBeforeExpunge=$askBeforeExpunge")
     appendLine("pipelineCommands=$pipelineCommands")
     appendLine("logImapTraffic=$logImapTraffic")
+    appendLine("readerBar=${encodeReaderBar(readerBar)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -262,7 +294,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "includeForwardAttachments" ||
             key == "askBeforeExpunge" ||
             key == "pipelineCommands" ||
-            key == "logImapTraffic"
+            key == "logImapTraffic" ||
+            key == "readerBar"
         ) {
             continue
         }
@@ -300,6 +333,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
         pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,
         logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
+        readerBar = values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar,
     )
 }
 
@@ -319,7 +353,7 @@ fun emailDefaultedFromUsername(username: String, email: String): String {
 }
 
 private fun encodeFavorite(favorite: FolderFavorite): String =
-    "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}"
+    "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}|${percentEncode(favorite.label)}"
 
 private fun encodeFavorites(favorites: List<FolderFavorite>): String =
     favorites.joinToString(";") { encodeFavorite(it) }
@@ -330,7 +364,7 @@ private fun parseFavorites(value: String): List<FolderFavorite> {
     val seen = mutableSetOf<Pair<Boolean, String>>()
     for (part in value.split(';')) {
         val bits = part.split('|')
-        if (bits.size != 3) throw IllegalArgumentException("bad favorites")
+        if (bits.size != 3 && bits.size != 4) throw IllegalArgumentException("bad favorites")
         val node = when (bits[0]) {
             "1" -> true
             "0" -> false
@@ -339,8 +373,28 @@ private fun parseFavorites(value: String): List<FolderFavorite> {
         val mailbox = percentDecode(bits[1])
         val delimText = percentDecode(bits[2])
         if (delimText.length != 1) throw IllegalArgumentException("bad favorites")
+        val label = if (bits.size == 4) percentDecode(bits[3]) else ""
         if (!seen.add(node to mailbox)) throw IllegalArgumentException("duplicate favorite")
-        out += FolderFavorite(node, mailbox, delimText[0])
+        out += FolderFavorite(node, mailbox, delimText[0], label)
+    }
+    return out
+}
+
+private fun encodeReaderBar(actions: List<ReaderAction>): String =
+    actions.joinToString(";") { it.name }
+
+private fun parseReaderBar(value: String): List<ReaderAction> {
+    if (value.isEmpty()) return emptyList()
+    val out = mutableListOf<ReaderAction>()
+    val seen = mutableSetOf<ReaderAction>()
+    for (part in value.split(';')) {
+        val action = try {
+            enumValueOf<ReaderAction>(part)
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("bad readerBar")
+        }
+        if (!seen.add(action)) throw IllegalArgumentException("bad readerBar")
+        out += action
     }
     return out
 }

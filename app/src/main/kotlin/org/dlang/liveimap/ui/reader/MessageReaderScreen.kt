@@ -6,7 +6,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.CloudOff
@@ -69,8 +69,13 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.FolderView
+import org.dlang.liveimap.settings.ReaderAction
+import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.bodyViewLabel
+import org.dlang.liveimap.settings.readerActionLabel
+import org.dlang.liveimap.settings.sortKeyLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailUndo
@@ -110,6 +115,7 @@ fun MessageReaderScreen(
     onCompose: (ComposeSeed) -> Unit,
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
+    onFolderViewSaved: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -150,8 +156,11 @@ fun MessageReaderScreen(
     var moreMenu by remember { mutableStateOf(false) }
     val saveMutex = remember { Mutex() }
 
-    BackHandler(enabled = choosingMove) {
+    BackHandler(enabled = choosingMove && !moreMenu) {
         choosingMove = false
+    }
+    BackHandler(enabled = moreMenu) {
+        moreMenu = false
     }
 
     fun postSnack(text: String) {
@@ -617,6 +626,88 @@ fun MessageReaderScreen(
         if (go) openNextOrIndex(next)
     }
 
+    fun runDelete() {
+        scope.launch {
+            gate.withLock {
+                val target = nextAfterDeleteOrMove()
+                try {
+                    session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                    showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+
+    fun runSpam() {
+        val spamMailbox = account.spamMailbox
+        if (spamMailbox.isEmpty()) return
+        scope.launch {
+            gate.withLock {
+                val target = nextAfterDeleteOrMove()
+                try {
+                    session.copyThenDelete(listOf(uid), spamMailbox)
+                    val dest = session.takeCopiedUids()
+                    val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+                    showActionUndo(
+                        MailUndo(
+                            delete = false,
+                            uids = listOf(uid),
+                            targetMailbox = spamMailbox,
+                            destUids = dest,
+                            usedMove = usedMove,
+                        ),
+                        target,
+                    )
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+
+    fun runReaderAction(action: ReaderAction) {
+        when (action) {
+            ReaderAction.Reply ->
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
+            ReaderAction.ReplyAll ->
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid)))
+            ReaderAction.Forward ->
+                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
+            ReaderAction.Delete -> runDelete()
+            ReaderAction.Move -> choosingMove = true
+            ReaderAction.Spam -> runSpam()
+            ReaderAction.Bounce ->
+                onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
+        }
+    }
+
+    fun saveMailboxView(transform: (FolderView) -> FolderView) {
+        scope.launch {
+            try {
+                saveMutex.withLock {
+                    val loaded = store.load()
+                    val current = loaded.folderViews[mailbox] ?: loaded.defaultView
+                    val updated = loaded.copy(
+                        folderViews = loaded.folderViews + (mailbox to transform(current)),
+                    )
+                    store.save(updated)
+                    account = updated
+                }
+                onFolderViewSaved()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                postSnack(error.message ?: "not connected")
+            }
+        }
+    }
+
     val systemDark = isSystemInDarkTheme()
     val dark = when (account.theme) {
         ThemeMode.Dark -> true
@@ -640,126 +731,81 @@ fun MessageReaderScreen(
                 loadToken += 1
             }
         }
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                )
-            }
-            IconButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
-            }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = "Reply",
-                )
-            }
-            IconButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid)))
-            }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ReplyAll,
-                    contentDescription = "Reply all",
-                )
-            }
-            IconButton(onClick = {
-                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
-            }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Forward,
-                    contentDescription = "Forward",
-                )
-            }
-            IconButton(onClick = {
-                scope.launch {
-                    gate.withLock {
-                        val target = nextAfterDeleteOrMove()
-                        try {
-                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                            showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: MailFailure) {
-                            postSnack(error.text)
-                        }
-                    }
-                }
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                )
-            }
-            IconButton(onClick = { choosingMove = true }) {
-                Icon(
-                    imageVector = moveImage,
-                    contentDescription = "Move",
-                )
-            }
-            val spamMailbox = account.spamMailbox
-            if (spamMailbox.isNotEmpty()) {
-                IconButton(onClick = {
-                    scope.launch {
-                        gate.withLock {
-                            val target = nextAfterDeleteOrMove()
-                            try {
-                                session.copyThenDelete(listOf(uid), spamMailbox)
-                                val dest = session.takeCopiedUids()
-                                val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
-                                showActionUndo(
-                                    MailUndo(
-                                        delete = false,
-                                        uids = listOf(uid),
-                                        targetMailbox = spamMailbox,
-                                        destUids = dest,
-                                        usedMove = usedMove,
-                                    ),
-                                    target,
-                                )
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (error: MailFailure) {
-                                postSnack(error.text)
-                            }
-                        }
-                    }
-                }) {
+        val barActions = readerBarActions(account.readerBar, account.spamMailbox)
+        val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
                     Icon(
-                        imageVector = spamImage,
-                        contentDescription = "Spam",
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
                     )
                 }
-            }
-            if (sequence != 0) {
-                Text("Message $sequence")
-            }
-            Box {
+                for (action in barActions) {
+                    IconButton(onClick = { runReaderAction(action) }) {
+                        Icon(
+                            imageVector = readerActionImage(action),
+                            contentDescription = readerActionLabel(action),
+                        )
+                    }
+                }
                 IconButton(onClick = { moreMenu = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = "More",
                     )
                 }
-                DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+            }
+            DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Close") },
+                    onClick = { moreMenu = false },
+                )
+                for (action in menuActions) {
                     DropdownMenuItem(
-                        text = { Text("Bounce") },
+                        text = { Text(readerActionLabel(action)) },
                         onClick = {
                             moreMenu = false
-                            onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
+                            runReaderAction(action)
                         },
                     )
-                    BodyView.entries.forEach { view ->
-                        DropdownMenuItem(
-                            text = { Text(bodyViewLabel(view)) },
-                            onClick = {
-                                moreMenu = false
-                                requestView(view)
-                            },
-                        )
-                    }
                 }
+                BodyView.entries.forEach { view ->
+                    DropdownMenuItem(
+                        text = { Text(bodyViewLabel(view)) },
+                        onClick = {
+                            moreMenu = false
+                            requestView(view)
+                        },
+                    )
+                }
+                SortKey.entries.forEach { key ->
+                    DropdownMenuItem(
+                        text = { Text(sortKeyLabel(key)) },
+                        onClick = {
+                            moreMenu = false
+                            saveMailboxView { current -> current.copy(key = key) }
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Newest first") },
+                    onClick = {
+                        moreMenu = false
+                        saveMailboxView { current -> current.copy(newestFirst = true) }
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Oldest first") },
+                    onClick = {
+                        moreMenu = false
+                        saveMailboxView { current -> current.copy(newestFirst = false) }
+                    },
+                )
             }
+        }
+        if (sequence != 0) {
+            Text("Message $sequence", modifier = Modifier.padding(horizontal = 8.dp))
         }
         for (row in attachments) {
             TextButton(
@@ -943,6 +989,31 @@ private fun applyHtmlDark(settings: WebSettings, dark: Boolean) {
         @Suppress("DEPRECATION")
         settings.forceDark = if (dark) WebSettings.FORCE_DARK_ON else WebSettings.FORCE_DARK_OFF
     }
+}
+
+internal fun readerBarActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {
+    return saved.filter { action ->
+        action != ReaderAction.Spam || spamMailbox.isNotEmpty()
+    }.take(4)
+}
+
+internal fun readerMenuActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {
+    val onBar = readerBarActions(saved, spamMailbox).toSet()
+    val overflow = saved.filter { action ->
+        action !in onBar && (action != ReaderAction.Spam || spamMailbox.isNotEmpty())
+    }
+    val off = ReaderAction.entries.filter { action -> action !in saved }
+    return overflow + off
+}
+
+private fun readerActionImage(action: ReaderAction) = when (action) {
+    ReaderAction.Reply -> Icons.AutoMirrored.Filled.Reply
+    ReaderAction.ReplyAll -> Icons.AutoMirrored.Filled.ReplyAll
+    ReaderAction.Forward -> Icons.AutoMirrored.Filled.Forward
+    ReaderAction.Delete -> Icons.Filled.Delete
+    ReaderAction.Move -> moveImage
+    ReaderAction.Spam -> spamImage
+    ReaderAction.Bounce -> Icons.AutoMirrored.Filled.Redo
 }
 
 private fun attachmentCaption(row: AttachmentRow): String {

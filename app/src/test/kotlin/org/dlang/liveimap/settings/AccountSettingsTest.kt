@@ -45,6 +45,7 @@ class AccountSettingsTest {
                 "askBeforeExpunge",
                 "pipelineCommands",
                 "logImapTraffic",
+                "readerBar",
             ),
             keys,
         )
@@ -62,6 +63,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("askBeforeExpunge=true"))
         assertTrue(text.lines().contains("pipelineCommands=true"))
         assertTrue(text.lines().contains("logImapTraffic=false"))
+        assertTrue(text.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 
@@ -234,6 +236,30 @@ class AccountSettingsTest {
         assertTrue(text.contains("0|IN%20BOX|."))
         assertTrue(text.contains("1|INBOX|."))
         assertEquals(saved.favorites, decodeAccountSettings(text).favorites)
+        val named = FolderFavorite(false, "IN BOX", '.', "Mine/Box")
+        val second = FolderFavorite(true, "INBOX", '.', "")
+        val namedSaved = AccountSettings(favorites = listOf(named, second))
+        val namedText = namedSaved.encode()
+        assertTrue(namedText.contains("0|IN%20BOX|.|Mine%2FBox"))
+        assertEquals(listOf(named, second), decodeAccountSettings(namedText).favorites)
+        val swapped = namedSaved.copy(favorites = listOf(second, named))
+        assertEquals(listOf(second, named), decodeAccountSettings(swapped.encode()).favorites)
+        val threeField = AccountSettings().encode().lineSequence()
+            .map { line ->
+                if (line.startsWith("favorites=")) "favorites=0|IN%20BOX|.;1|INBOX|." else line
+            }
+            .joinToString("\n")
+        assertEquals(
+            listOf(
+                FolderFavorite(false, "IN BOX", '.', ""),
+                FolderFavorite(true, "INBOX", '.', ""),
+            ),
+            decodeAccountSettings(threeField).favorites,
+        )
+        val missingBar = AccountSettings().encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("readerBar=") }
+            .joinToString("\n")
+        assertEquals(defaultReaderBar, decodeAccountSettings(missingBar).readerBar)
     }
 
     @Test

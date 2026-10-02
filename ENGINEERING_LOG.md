@@ -677,3 +677,16 @@
 
 - MessageIndexScreen.pull now calls sync.block() so the compose list copies model.rows after load, watch, and the other pull sites
 - Fetch, parser, and the empty-state sentence are unchanged
+
+## 2026-10-02 - reader menu and favorite edit execution start
+
+- Approved plan: sandbox/plans/reader-menu-and-favorite-edit-20261002-1527-plan.md
+- Work: message menu closes on the same message; the bar keeps at most four saved actions; long-press edits a drawer favorite
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+
+## 2026-10-02 - reader menu and favorite edit phase 1
+
+- Message bar shows Back and at most four saved actions, then More. Close, Back, and outside tap leave the message open
+- More lists the other actions, body views, folder sort keys, and newest or oldest. Choosing one stays on this message
+- A drawer favorite long-press renames, reorders, or deletes. A blank name falls back to favoriteLabel
+- TODO: more than one account, and keep the account and password in the Android secure store

@@ -2,6 +2,9 @@ package org.dlang.liveimap.ui
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.PermanentDrawerSheet
@@ -28,6 +34,7 @@ import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -52,6 +60,8 @@ import androidx.navigation.navArgument
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
@@ -91,11 +101,14 @@ fun LiveImapNavHost() {
     val composeUids = rememberSaveable { mutableStateOf("") }
     val composeUnsentId = rememberSaveable { mutableStateOf("") }
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
+    var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
+    var favoriteDraft by remember { mutableStateOf("") }
+    val favoriteMutex = remember { Mutex() }
 
     LaunchedEffect(route, drawerState.currentValue) {
         val account = store.load()
         header = if (account.email.isNotBlank()) account.email else account.username
-        favorites = account.favorites
+        if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
     }
 
@@ -147,6 +160,19 @@ fun LiveImapNavHost() {
                 val expanded = expandedNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
                 var paneSequence by rememberSaveable { mutableIntStateOf(0) }
+                val folderViewToken by entry.savedStateHandle
+                    .getStateFlow("folderViewToken", 0)
+                    .collectAsState()
+                var shownViewToken by remember {
+                    mutableIntStateOf(entry.savedStateHandle.get<Int>("folderViewToken") ?: 0)
+                }
+                LaunchedEffect(folderViewToken, paneUid) {
+                    if (paneUid < 0L) shownViewToken = folderViewToken
+                }
+                fun noteFolderView() {
+                    val next = (entry.savedStateHandle.get<Int>("folderViewToken") ?: 0) + 1
+                    entry.savedStateHandle["folderViewToken"] = next
+                }
                 LaunchedEffect(entry) {
                     val handle = entry.savedStateHandle
                     if (!handle.contains("paneUid")) return@LaunchedEffect
@@ -165,14 +191,16 @@ fun LiveImapNavHost() {
                     }
                 }
                 if (!expanded) {
-                    MessageIndexScreen(
-                        mailbox = mailbox,
-                        onOpen = { uid, sequence ->
-                            navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
-                        },
-                        onCompose = { seed -> openCompose(seed) },
-                        onBack = { navController.popBackStack() },
-                    )
+                    key(folderViewToken) {
+                        MessageIndexScreen(
+                            mailbox = mailbox,
+                            onOpen = { uid, sequence ->
+                                navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
+                            },
+                            onCompose = { seed -> openCompose(seed) },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
                 } else {
                     BackHandler(enabled = expanded && paneUid >= 0L) {
                         paneUid = -1L
@@ -194,16 +222,18 @@ fun LiveImapNavHost() {
                         directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo()),
                         value = scaffoldValue,
                         listPane = {
-                            MessageIndexScreen(
-                                mailbox = mailbox,
-                                onOpen = { uid, sequence ->
-                                    paneUid = uid
-                                    paneSequence = sequence
-                                },
-                                onCompose = { seed -> openCompose(seed) },
-                                onBack = { navController.popBackStack() },
-                                watchMailbox = paneUid < 0L,
-                            )
+                            key(shownViewToken) {
+                                MessageIndexScreen(
+                                    mailbox = mailbox,
+                                    onOpen = { uid, sequence ->
+                                        paneUid = uid
+                                        paneSequence = sequence
+                                    },
+                                    onCompose = { seed -> openCompose(seed) },
+                                    onBack = { navController.popBackStack() },
+                                    watchMailbox = paneUid < 0L,
+                                )
+                            }
                         },
                         detailPane = {
                             key(paneUid) {
@@ -218,6 +248,7 @@ fun LiveImapNavHost() {
                                             paneSequence = nextSequence
                                         },
                                         onBack = { paneUid = -1L },
+                                        onFolderViewSaved = { noteFolderView() },
                                     )
                                 }
                             }
@@ -249,6 +280,15 @@ fun LiveImapNavHost() {
                         }
                     },
                     onBack = { navController.popBackStack() },
+                    onFolderViewSaved = {
+                        val previous = navController.previousBackStackEntry
+                        val indexMailbox = previous?.arguments?.getString("mailbox")?.let(Uri::decode)
+                        if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
+                            val handle = previous.savedStateHandle
+                            val next = (handle.get<Int>("folderViewToken") ?: 0) + 1
+                            handle["folderViewToken"] = next
+                        }
+                    },
                 )
             }
             composable("compose") {
@@ -299,6 +339,55 @@ fun LiveImapNavHost() {
         }
     }
 
+    fun persistFavorites(next: List<FolderFavorite>) {
+        favorites = next
+        scope.launch {
+            favoriteMutex.withLock {
+                val loaded = store.load()
+                store.save(loaded.copy(favorites = next))
+            }
+        }
+    }
+
+    fun openFavoriteEditor(favorite: FolderFavorite) {
+        editingFavorite = favorite
+        favoriteDraft = favoriteDrawerLabel(favorite)
+    }
+
+    fun moveEditingFavorite(delta: Int) {
+        val current = editingFavorite ?: return
+        val index = favorites.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
+        if (index < 0) return
+        val target = index + delta
+        if (target !in favorites.indices) return
+        val next = favorites.toMutableList()
+        val swap = next[target]
+        next[target] = next[index]
+        next[index] = swap
+        persistFavorites(next)
+    }
+
+    fun saveEditingFavorite() {
+        val current = editingFavorite ?: return
+        val trimmed = favoriteDraft.trim()
+        val next = favorites.map { item ->
+            if (item.node == current.node && item.mailbox == current.mailbox) {
+                item.copy(label = trimmed)
+            } else {
+                item
+            }
+        }
+        persistFavorites(next)
+        editingFavorite = null
+    }
+
+    fun deleteEditingFavorite() {
+        val current = editingFavorite ?: return
+        val next = favorites.filterNot { it.node == current.node && it.mailbox == current.mailbox }
+        persistFavorites(next)
+        editingFavorite = null
+    }
+
     fun openFavorite(favorite: FolderFavorite) {
         scope.launch {
             drawerState.close()
@@ -345,6 +434,7 @@ fun LiveImapNavHost() {
                 }
             },
             onFavorite = { favorite -> openFavorite(favorite) },
+            onEditFavorite = { favorite -> openFavoriteEditor(favorite) },
             onSettings = {
                 navigateFromDrawer {
                     navController.navigate("settings") {
@@ -400,9 +490,25 @@ fun LiveImapNavHost() {
                 }
             }
         }
+        val editing = editingFavorite
+        if (editing != null) {
+            BackHandler {
+                editingFavorite = null
+            }
+            FavoriteEditDialog(
+                name = favoriteDraft,
+                onName = { favoriteDraft = it },
+                onMoveUp = { moveEditingFavorite(-1) },
+                onMoveDown = { moveEditingFavorite(1) },
+                onSave = { saveEditingFavorite() },
+                onDelete = { deleteEditingFavorite() },
+                onDismiss = { editingFavorite = null },
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ColumnScope.DrawerSheetContent(
     header: String,
@@ -412,6 +518,7 @@ private fun ColumnScope.DrawerSheetContent(
     onPostponed: (String) -> Unit,
     onAllFolders: () -> Unit,
     onFavorite: (FolderFavorite) -> Unit,
+    onEditFavorite: (FolderFavorite) -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit,
 ) {
@@ -439,11 +546,24 @@ private fun ColumnScope.DrawerSheetContent(
         onClick = onAllFolders,
     )
     for (favorite in favorites) {
-        NavigationDrawerItem(
-            label = { Text(favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)) },
-            selected = false,
-            onClick = { onFavorite(favorite) },
-        )
+        val shown = favoriteDrawerLabel(favorite)
+        Box(Modifier.fillMaxWidth()) {
+            NavigationDrawerItem(
+                label = { Text(shown) },
+                selected = false,
+                onClick = {},
+                modifier = Modifier.clearAndSetSemantics { },
+            )
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .combinedClickable(
+                        onClick = { onFavorite(favorite) },
+                        onLongClick = { onEditFavorite(favorite) },
+                    )
+                    .semantics { contentDescription = shown },
+            )
+        }
     }
     HorizontalDivider()
     NavigationDrawerItem(
@@ -456,6 +576,46 @@ private fun ColumnScope.DrawerSheetContent(
         selected = false,
         onClick = onAbout,
     )
+}
+
+@Composable
+private fun FavoriteEditDialog(
+    name: String,
+    onName: (String) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Favorite") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = onName,
+                label = { Text("Name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Column {
+                TextButton(onClick = onMoveUp) { Text("Move up") }
+                TextButton(onClick = onMoveDown) { Text("Move down") }
+                TextButton(onClick = onSave) { Text("Save") }
+                TextButton(onClick = onDelete) { Text("Delete") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+internal fun favoriteDrawerLabel(favorite: FolderFavorite): String {
+    if (favorite.label.isNotBlank()) return favorite.label
+    return favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
 }
 
 internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {

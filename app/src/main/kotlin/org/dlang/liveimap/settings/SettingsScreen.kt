@@ -230,6 +230,17 @@ fun SettingsScreen() {
         ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
             persist(settings.copy(bodyView = view))
         }
+        Text("Message bar")
+        ReaderAction.entries.forEach { action ->
+            BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
+                val next = if (enabled) {
+                    ReaderAction.entries.filter { it == action || settings.readerBar.contains(it) }
+                } else {
+                    settings.readerBar.filterNot { it == action }
+                }
+                persist(settings.copy(readerBar = next))
+            }
+        }
         ChoiceField("Density", Density.entries, settings.density, { densityLabel(it) }) {
             persist(settings.copy(density = it))
         }
