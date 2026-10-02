@@ -50,6 +50,33 @@ fun swipeReached(offsetPx: Float, widthPx: Float): Boolean {
     return abs(offsetPx) * 100f >= widthPx * SwipeWidthPercent
 }
 
+data class SwipeVisual(
+    val container: String,
+    val icon: String,
+)
+
+fun swipeBindingForOffset(
+    offsetPx: Float,
+    leftToRight: Boolean,
+    trailing: SwipeBinding,
+    leading: SwipeBinding,
+): SwipeBinding? {
+    if (offsetPx == 0f) return null
+    val swipeLeft = offsetPx < 0f
+    val trailingSwipe = if (leftToRight) swipeLeft else !swipeLeft
+    return if (trailingSwipe) trailing else leading
+}
+
+fun swipeVisual(action: SwipeAction): SwipeVisual = when (action) {
+    SwipeAction.Delete -> SwipeVisual("errorContainer", "delete")
+    SwipeAction.Move -> SwipeVisual("tertiaryContainer", "drive_file_move")
+    SwipeAction.Reply -> SwipeVisual("primaryContainer", "reply")
+    SwipeAction.ReplyAll -> SwipeVisual("primaryContainer", "reply_all")
+    SwipeAction.SetFlag -> SwipeVisual("secondaryContainer", "flag")
+    SwipeAction.ClearFlag -> SwipeVisual("secondaryContainer", "outlined_flag")
+    SwipeAction.FlagScreen -> SwipeVisual("secondaryContainer", "flag")
+}
+
 fun indexSwipeBinding(
     offsetPx: Float,
     widthPx: Float,
@@ -59,9 +86,7 @@ fun indexSwipeBinding(
     leading: SwipeBinding,
 ): SwipeBinding? {
     if (multiSelect || !swipeReached(offsetPx, widthPx)) return null
-    val swipeLeft = offsetPx < 0f
-    val trailingSwipe = if (leftToRight) swipeLeft else !swipeLeft
-    return if (trailingSwipe) trailing else leading
+    return swipeBindingForOffset(offsetPx, leftToRight, trailing, leading)
 }
 
 fun barMoveMailbox(settings: AccountSettings): String {

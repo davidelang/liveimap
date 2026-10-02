@@ -28,11 +28,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -55,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,8 +78,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -106,7 +114,9 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
+import org.dlang.liveimap.settings.swipeActionLabel
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.ZoneId
@@ -1187,6 +1197,20 @@ private fun IndexMessageRow(
         },
     )
     holder.state = dismissState
+    val haptic = LocalHapticFeedback.current
+    var crossed by remember { mutableStateOf(false) }
+    val dragOffset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+    val crossedNow = swipeReached(dragOffset, width.toFloat())
+    SideEffect {
+        if (crossedNow) {
+            if (!crossed) {
+                crossed = true
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        } else if (crossed) {
+            crossed = false
+        }
+    }
     LaunchedEffect(dismissState.currentValue) {
         val value = dismissState.currentValue
         if (value == SwipeToDismissBoxValue.Settled || multiSelect) return@LaunchedEffect
@@ -1208,26 +1232,56 @@ private fun IndexMessageRow(
             enableDismissFromEndToStart = !multiSelect,
             gesturesEnabled = !multiSelect,
             backgroundContent = {
-                val direction = dismissState.targetValue
-                val binding = when (direction) {
-                    SwipeToDismissBoxValue.StartToEnd -> account.swipeLeading
-                    SwipeToDismissBoxValue.EndToStart -> account.swipeTrailing
-                    SwipeToDismissBoxValue.Settled -> null
-                }
+                val offset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+                val binding = swipeBindingForOffset(
+                    offsetPx = offset,
+                    leftToRight = leftToRight,
+                    trailing = account.swipeTrailing,
+                    leading = account.swipeLeading,
+                )
                 if (binding != null) {
-                    Box(Modifier.fillMaxSize()) {
-                        Text(
-                            text = binding.action.name,
-                            modifier = Modifier
-                                .align(
-                                    if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                                        Alignment.CenterStart
-                                    } else {
-                                        Alignment.CenterEnd
-                                    },
+                    val visual = swipeVisual(binding.action)
+                    val tint = if (binding.action == SwipeAction.Delete) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                    val atStart = if (leftToRight) offset > 0f else offset < 0f
+                    val reached = swipeReached(offset, width.toFloat())
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                swipeContainerColor(visual.container).copy(
+                                    alpha = if (reached) 1f else 0.45f,
+                                ),
+                            )
+                            .padding(
+                                start = if (atStart) 24.dp else 0.dp,
+                                end = if (atStart) 0.dp else 24.dp,
+                            ),
+                        contentAlignment = if (atStart) Alignment.CenterStart else Alignment.CenterEnd,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (atStart) {
+                                SwipeActionIcon(visual.icon, tint)
+                                Text(
+                                    text = swipeActionLabel(binding.action),
+                                    color = tint,
+                                    style = MaterialTheme.typography.labelLarge,
                                 )
-                                .padding(horizontal = 8.dp),
-                        )
+                            } else {
+                                Text(
+                                    text = swipeActionLabel(binding.action),
+                                    color = tint,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                                SwipeActionIcon(visual.icon, tint)
+                            }
+                        }
                     }
                 }
             },
@@ -1348,6 +1402,31 @@ private fun sortShortLabel(key: SortKey): String = when (key) {
 
 private class SwipeBoxHolder {
     var state: SwipeToDismissBoxState? = null
+}
+
+@Composable
+private fun swipeContainerColor(name: String): Color = when (name) {
+    "errorContainer" -> MaterialTheme.colorScheme.errorContainer
+    "tertiaryContainer" -> MaterialTheme.colorScheme.tertiaryContainer
+    "primaryContainer" -> MaterialTheme.colorScheme.primaryContainer
+    else -> MaterialTheme.colorScheme.secondaryContainer
+}
+
+@Composable
+private fun SwipeActionIcon(name: String, tint: Color) {
+    Icon(
+        imageVector = when (name) {
+            "delete" -> Icons.Filled.Delete
+            "drive_file_move" -> Icons.Filled.DriveFileMove
+            "reply" -> Icons.AutoMirrored.Filled.Reply
+            "reply_all" -> Icons.AutoMirrored.Filled.ReplyAll
+            "flag" -> Icons.Filled.Flag
+            else -> Icons.Outlined.OutlinedFlag
+        },
+        contentDescription = null,
+        modifier = Modifier.size(24.dp),
+        tint = tint,
+    )
 }
 
 private fun dismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, leftToRight: Boolean): Float {

@@ -357,6 +357,24 @@ class IndexWindowTest {
     }
 
     @Test
+    fun swipeBindingForOffsetAndVisual() {
+        val trailing = SwipeBinding(SwipeAction.Delete)
+        val leading = SwipeBinding(SwipeAction.ReplyAll)
+        assertNull(swipeBindingForOffset(0f, leftToRight = true, trailing, leading))
+        assertEquals(trailing, swipeBindingForOffset(-1f, leftToRight = true, trailing, leading))
+        assertEquals(leading, swipeBindingForOffset(1f, leftToRight = true, trailing, leading))
+        assertEquals(trailing, swipeBindingForOffset(1f, leftToRight = false, trailing, leading))
+        assertEquals(leading, swipeBindingForOffset(-1f, leftToRight = false, trailing, leading))
+        assertEquals(SwipeVisual("errorContainer", "delete"), swipeVisual(SwipeAction.Delete))
+        assertEquals(SwipeVisual("tertiaryContainer", "drive_file_move"), swipeVisual(SwipeAction.Move))
+        assertEquals(SwipeVisual("primaryContainer", "reply"), swipeVisual(SwipeAction.Reply))
+        assertEquals(SwipeVisual("primaryContainer", "reply_all"), swipeVisual(SwipeAction.ReplyAll))
+        assertEquals(SwipeVisual("secondaryContainer", "flag"), swipeVisual(SwipeAction.SetFlag))
+        assertEquals(SwipeVisual("secondaryContainer", "outlined_flag"), swipeVisual(SwipeAction.ClearFlag))
+        assertEquals(SwipeVisual("secondaryContainer", "flag"), swipeVisual(SwipeAction.FlagScreen))
+    }
+
+    @Test
     fun indexStatusDescriptionAndSequenceWidth() {
         assertEquals(
             "forwarded, flagged",

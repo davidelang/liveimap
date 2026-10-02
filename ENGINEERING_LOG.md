@@ -518,3 +518,17 @@
 - Index, folder list, and reader use a 4 dp progress bar, an errorContainer banner with Retry, and a bottom snackbar for later failures
 - Empty index uses emptyIndexText; empty folder list says No folders; the top notice line is gone
 - Expunge confirm is unchanged
+
+## 2026-10-02 - swipe background execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/swipe-background-20261002-0423-plan.md
+- Work: show swipe color, icon, and label from the first pixel; commit still requires 40 percent
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag e40698c
+
+## 2026-10-02 - swipe background phase 1
+
+- A non-zero offset shows the action container, 24 dp icon, and human label; alpha stays 0.45 until 40 percent
+- Crossing 40 percent uses full color and one long-press haptic, then the existing confirm still runs the swipe
+- Offset 0 stays blank, and releasing early still does nothing
