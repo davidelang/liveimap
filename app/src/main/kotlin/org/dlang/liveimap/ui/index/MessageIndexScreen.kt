@@ -363,6 +363,7 @@ fun MessageIndexScreen(
     var rows by remember { mutableStateOf<List<IndexRow>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var banner by remember { mutableStateOf<String?>(null) }
+    var fetchNotice by remember { mutableStateOf<String?>(null) }
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
@@ -508,6 +509,7 @@ fun MessageIndexScreen(
 
     sync.block = {
         rows = model.rows
+        fetchNotice = model.notice
         if (connected) {
             val reported = model.notice
             if (reported == null) {
@@ -1342,7 +1344,7 @@ fun MessageIndexScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = emptyIndexText(query, mailbox),
+                        text = fetchNotice ?: emptyIndexText(query, mailbox),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }

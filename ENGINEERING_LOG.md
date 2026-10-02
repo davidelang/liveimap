@@ -643,3 +643,22 @@
 - Plan: /home/dlang/git/liveimap/sandbox/plans/burst-desync-and-imap-log-20261002-1333-plan.md
 - Status set to APPROVED. Phase 1: move STATUS and preview bursts so a failed pipeline restores the high IMAP tag and drops the session, and keep the redacted IMAP transcript in the app cache log.
 - Host: /home/dlang/git/liveimap/master. Do not deploy. Do not edit libetpan.
+
+## 2026-10-02 - index show fetched rows execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-show-fetched-rows-20261002-1445-plan.md
+- Work: reassemble split IMAP log lines, throw when an index FETCH parses no rows for a non-empty mailbox, and show that notice instead of "No messages"
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 37cd4ec
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not edit libetpan.
+
+## 2026-10-02 - index show fetched rows phase 1
+
+- Split socket reads stay one C or S disk line; a private send still logs only C <private> and is not appended to the tail
+- The tail is flushed when the logger is turned off and when the session is freed; the 4 MiB rotation and INFO/DEBUG logcat lines stay
+- An index FETCH logs parsed <count> from rowsFromList before the deleted-row filter
+- When EXISTS is greater than 0, the requested range is non-empty, and that count is 0, nativeFetchIndex throws fetch returned no rows instead of an empty array
+- pull copies model.notice, and the index shows that text instead of No messages
+- Host /tmp/fetch_row_test exited 0: one item, att_number 16, uid 16

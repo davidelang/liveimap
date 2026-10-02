@@ -109,6 +109,9 @@ struct LiveSession {
     bool pipelineCommands = true;
     bool logImapTraffic = false;
     std::string trafficLogPath;
+    std::mutex trafficTailMu;
+    std::string trafficSentTail;
+    std::string trafficRecvTail;
     std::string capabilityLine;
     std::map<std::string, char> delims;
     bool qresync = false;
@@ -1770,7 +1773,6 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     return fd;
 }
 
-constexpr int kLogPiece = 3500;
 constexpr size_t kTrafficRotate = 4u * 1024u * 1024u;
 std::mutex gTrafficMu;
 
@@ -1806,65 +1808,107 @@ void emitTrafficLine(const std::string & line, const std::string & path) {
     appendTrafficLine(path, line);
 }
 
-void logImapLine(const char * prefix, const char * bytes, size_t len, const std::string & path) {
-    if (len == 0) {
-        emitTrafficLine(prefix, path);
-        return;
-    }
-    std::string piece;
-    piece.reserve(len < static_cast<size_t>(kLogPiece) ? len : static_cast<size_t>(kLogPiece));
-    for (size_t i = 0; i < len; ++i) {
-        unsigned char c = static_cast<unsigned char>(bytes[i]);
-        char shown = (c == '\t' || (c >= 0x20 && c <= 0x7E)) ? static_cast<char>(c) : '.';
-        piece.push_back(shown);
-        if (piece.size() == static_cast<size_t>(kLogPiece)) {
-            emitTrafficLine(std::string(prefix) + piece, path);
-            piece.clear();
+std::string trafficShown(const std::string & raw) {
+    std::string shown;
+    shown.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(raw[i]);
+        if (c == '\t' || (c >= 0x20 && c <= 0x7E)) {
+            shown.push_back(static_cast<char>(c));
+        } else {
+            shown.push_back('.');
         }
     }
-    if (!piece.empty()) {
-        emitTrafficLine(std::string(prefix) + piece, path);
+    return shown;
+}
+
+void writeTrafficTail(std::string * tail, const char * prefix, const std::string & path) {
+    emitTrafficLine(std::string(prefix) + trafficShown(*tail), path);
+    tail->clear();
+}
+
+void consumeTrafficChunk(std::string * tail, const char * prefix, const char * str, size_t size,
+    const std::string & path) {
+    for (size_t i = 0; i < size; ++i) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+        if (c == '\n') {
+            if (!tail->empty() && static_cast<unsigned char>(tail->back()) == '\r') {
+                tail->pop_back();
+            }
+            writeTrafficTail(tail, prefix, path);
+        } else {
+            tail->push_back(static_cast<char>(c));
+        }
     }
 }
 
-void logImapBuffer(int log_type, const char * str, size_t size, const std::string & path) {
+// Sent and received are separate streams, so a split FETCH is not cut by the other direction.
+void logImapBuffer(LiveSession * live, int log_type, const char * str, size_t size) {
+    if (live == nullptr) return;
+    std::lock_guard<std::mutex> lock(live->trafficTailMu);
     if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE) {
-        emitTrafficLine("C <private>", path);
+        emitTrafficLine("C <private>", live->trafficLogPath);
         return;
     }
     const char * prefix = nullptr;
-    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT) prefix = "C ";
-    else if (log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED) prefix = "S ";
-    else return;
-    if (str == nullptr || size == 0) return;
-    size_t start = 0;
-    while (start < size) {
-        size_t end = start;
-        while (end < size && str[end] != '\n') ++end;
-        size_t lineEnd = end;
-        if (lineEnd > start && str[lineEnd - 1] == '\r') --lineEnd;
-        logImapLine(prefix, str + start, lineEnd - start, path);
-        if (end >= size) break;
-        start = end + 1;
+    std::string * tail = nullptr;
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT) {
+        prefix = "C ";
+        tail = &live->trafficSentTail;
+    } else if (log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
+        prefix = "S ";
+        tail = &live->trafficRecvTail;
+    } else {
+        return;
     }
+    if (str == nullptr || size == 0) return;
+    consumeTrafficChunk(tail, prefix, str, size, live->trafficLogPath);
+}
+
+void flushTrafficTail(LiveSession * live) {
+    if (live == nullptr) return;
+    std::lock_guard<std::mutex> lock(live->trafficTailMu);
+    if (!live->trafficSentTail.empty()) {
+        writeTrafficTail(&live->trafficSentTail, "C ", live->trafficLogPath);
+    }
+    if (!live->trafficRecvTail.empty()) {
+        writeTrafficTail(&live->trafficRecvTail, "S ", live->trafficLogPath);
+    }
+}
+
+void noteParsedRows(LiveSession * session, size_t count) {
+    if (session == nullptr || !session->logImapTraffic) return;
+    emitTrafficLine("parsed " + std::to_string(count), session->trafficLogPath);
+}
+
+bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
+    if (list != nullptr) mailimap_fetch_list_free(list);
+    if (session != nullptr && session->imap != nullptr) {
+        // Tagged OK text would replace this fallback.
+        session->imap->imap_response = nullptr;
+    }
+    throwImap(env, session != nullptr ? session->imap : nullptr, "fetch returned no rows");
+    unlockSession(session);
+    return true;
 }
 
 void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_t size, void * context) {
     (void)session;
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(log_type, str, size, live->trafficLogPath);
+    logImapBuffer(live, log_type, str, size);
 }
 
 void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
     (void)stream;
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(log_type, str, size, live->trafficLogPath);
+    logImapBuffer(live, log_type, str, size);
 }
 
 void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
     if (imap == nullptr) return;
+    if (!on) flushTrafficTail(live);
     if (on) {
         mailimap_set_logger(imap, imapTrafficLogger, live);
         if (imap->imap_stream != nullptr) {
@@ -1941,6 +1985,7 @@ void freeSession(LiveSession * session, JNIEnv * env) {
         mailimap_free(session->imap);
         session->imap = nullptr;
     }
+    flushTrafficTail(session);
     session->mu.unlock();
     if (tlsWatch != session) {
         delete session;
@@ -3008,6 +3053,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     std::string address;
     mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
     if (imap == nullptr) {
+        flushTrafficTail(session);
         delete session;
         setLastError(error);
         return 0;
@@ -3018,6 +3064,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         setLastError(serviceLabel("IMAP", h.c(), port) + " (" + address + "): capability failed: "
             + imapText(imap, "capability failed"));
         mailimap_free(imap);
+        flushTrafficTail(session);
         delete session;
         return 0;
     }
@@ -3365,6 +3412,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             return nullptr;
         }
         std::vector<Row> rows = rowsFromList(list, accountEmailChars.c());
+        noteParsedRows(session, rows.size());
+        if (exists > 0 && first <= last && rows.empty()) {
+            abortEmptyIndexFetch(env, session, list);
+            return nullptr;
+        }
         std::vector<std::string> previews(rows.size());
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
@@ -3435,6 +3487,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             return nullptr;
         }
         std::vector<Row> rows = rowsFromList(list, accountEmailChars.c());
+        noteParsedRows(session, rows.size());
+        if (exists > 0 && !page.empty() && rows.empty()) {
+            abortEmptyIndexFetch(env, session, list);
+            return nullptr;
+        }
         std::vector<std::string> previews(rows.size());
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
