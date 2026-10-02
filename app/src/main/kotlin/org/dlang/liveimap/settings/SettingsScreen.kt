@@ -31,10 +31,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -237,15 +239,16 @@ fun SettingsScreen() {
             persist(settings.copy(expandedFolders = settings.expandedFolders + draftExpanded))
             draftExpanded = ""
         }) { Text("Add expanded folder") }
+        val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
         SwipeEditor(
-            "Trailing swipe",
+            if (leftToRight) "Swipe left" else "Swipe right",
             settings.swipeTrailing,
             { picking = MailboxPick.TrailingMove },
         ) {
             persist(settings.copy(swipeTrailing = it))
         }
         SwipeEditor(
-            "Leading swipe",
+            if (leftToRight) "Swipe right" else "Swipe left",
             settings.swipeLeading,
             { picking = MailboxPick.LeadingMove },
         ) {
@@ -401,10 +404,14 @@ private fun SwipeEditor(
     ChoiceField("Action", SwipeAction.entries, binding.action, { it.name }) { action ->
         onChange(binding.copy(action = action))
     }
-    MailboxLine("Move mailbox", binding.moveMailbox, onChooseMove) {
-        onChange(binding.copy(moveMailbox = it))
+    if (binding.action == SwipeAction.Move) {
+        MailboxLine("Move mailbox", binding.moveMailbox, onChooseMove) {
+            onChange(binding.copy(moveMailbox = it))
+        }
     }
-    LineField("Flag", binding.flag) { onChange(binding.copy(flag = it)) }
+    if (binding.action == SwipeAction.SetFlag || binding.action == SwipeAction.ClearFlag) {
+        LineField("Flag", binding.flag) { onChange(binding.copy(flag = it)) }
+    }
 }
 
 @Composable

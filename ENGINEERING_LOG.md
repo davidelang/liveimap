@@ -419,3 +419,11 @@
 - Work: whitelist IMAP searchCriterion, index filter stack (narrow, widen, all), filter control between Search and Sort
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD b0ac8a8
+
+## 2026-10-01 - swipe left and right fields execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/swipe-left-right-fields-20261001-2054-plan.md
+- Work: label the trailing and leading editors Swipe left and Swipe right from LocalLayoutDirection; show the move mailbox only for Move and the flag only for SetFlag or ClearFlag
+- Stored keys stay swipeTrailing and swipeLeading. Defaults stay delete on trailing and reply-all on leading. Hiding a line does not clear the stored mailbox or flag
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 09fdbd4
