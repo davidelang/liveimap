@@ -530,7 +530,7 @@ fun MessageIndexScreen(
         threadHidden = model.threadHidden
     }
 
-    fun pull() = sync.block
+    fun pull() { sync.block() }
 
     fun toggleThread(rootUid: Long) {
         scope.launch {

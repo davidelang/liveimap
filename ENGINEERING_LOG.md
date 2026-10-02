@@ -662,3 +662,18 @@
 - When EXISTS is greater than 0, the requested range is non-empty, and that count is 0, nativeFetchIndex throws fetch returned no rows instead of an empty array
 - pull copies model.notice, and the index shows that text instead of No messages
 - Host /tmp/fetch_row_test exited 0: one item, att_number 16, uid 16
+
+## 2026-10-02 - index pull invokes refresh execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-pull-invokes-refresh-20261002-1510-plan.md
+- Work: change MessageIndexScreen.pull so it calls sync.block instead of returning the function
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 9519fa4
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - index pull invokes refresh phase 1
+
+- MessageIndexScreen.pull now calls sync.block() so the compose list copies model.rows after load, watch, and the other pull sites
+- Fetch, parser, and the empty-state sentence are unchanged
