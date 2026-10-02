@@ -8,7 +8,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 private val Context.accountSettingsDataStore by preferencesDataStore(name = "account_settings")
@@ -20,6 +23,7 @@ interface SettingsStore {
     suspend fun save(settings: AccountSettings)
     suspend fun password(): String
     suspend fun setPassword(value: String)
+    fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
 
 class DataStoreSettingsStore(context: Context) : SettingsStore {
@@ -61,4 +65,14 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             if (!saved) error("password not saved")
         }
     }
+
+    override fun theme(): Flow<ThemeMode> =
+        appContext.accountSettingsDataStore.data.map { prefs ->
+            val text = prefs[accountKey]
+            if (text == null) {
+                ThemeMode.FollowSystem
+            } else {
+                decodeAccountSettings(text).theme
+            }
+        }
 }

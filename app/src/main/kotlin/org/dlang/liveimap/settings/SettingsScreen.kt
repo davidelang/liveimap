@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,14 @@ fun SettingsScreen() {
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
     var warnUnread by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = picking != null || warnUnread) {
+        if (picking != null) {
+            picking = null
+        } else {
+            warnUnread = false
+        }
+    }
 
     LaunchedEffect(store) {
         settings = store.load()

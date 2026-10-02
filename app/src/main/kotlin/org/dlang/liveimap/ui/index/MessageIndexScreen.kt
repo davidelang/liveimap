@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.index
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -288,8 +290,8 @@ fun MessageIndexScreen(
     var anchorPage by remember { mutableStateOf(0) }
     var connected by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    var searchVisible by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
+    var searchVisible by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
     var filterOpen by remember { mutableStateOf(false) }
     var filterActive by remember { mutableStateOf(false) }
     var canWiden by remember { mutableStateOf(false) }
@@ -302,6 +304,22 @@ fun MessageIndexScreen(
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     val anchorState = rememberUpdatedState(anchorPage)
     val allowNewer = remember { mutableStateOf(true) }
+
+    BackHandler(
+        enabled = prompt != null || filterOpen || menuOpen || flagUid != null || searchVisible || multiSelect,
+    ) {
+        when {
+            prompt != null -> prompt = null
+            filterOpen -> filterOpen = false
+            menuOpen -> menuOpen = false
+            flagUid != null -> flagUid = null
+            searchVisible -> searchVisible = false
+            multiSelect -> {
+                multiSelect = false
+                selected = emptyList()
+            }
+        }
+    }
 
     sync.block = {
         rows = model.rows

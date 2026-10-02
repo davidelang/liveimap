@@ -5,6 +5,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -108,6 +109,10 @@ fun MessageReaderScreen(
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
     var choosingMove by remember { mutableStateOf(false) }
     val saveMutex = remember { Mutex() }
+
+    BackHandler(enabled = choosingMove) {
+        choosingMove = false
+    }
 
     // peekPart is BODY.PEEK. \Seen is a separate STORE after the first successful peek.
     suspend fun noteSeen(markSeen: Boolean) {

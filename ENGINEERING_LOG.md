@@ -466,3 +466,9 @@
 - Work: decode RFC 2047 words for index from and subject, and for parsed header text used by reply and forward; leave a failed word unchanged; Headers and Raw stay peeked bytes
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 6ae05ec
+
+## 2026-10-02 - app shell navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/app-shell-navigation-20261002-0140-plan.md
+- Work: navigation-compose stack and drawer replace the tab row; theme flow recolors live; system Back closes overlays before pop; search and compose fields are saveable
+- Phase 1 edits the plan critical files, then ./build_app runs testDebugUnitTest and assembleDebug

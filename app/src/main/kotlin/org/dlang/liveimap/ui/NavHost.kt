@@ -1,18 +1,43 @@
 package org.dlang.liveimap.ui
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsScreen
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
@@ -20,119 +45,187 @@ import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 
-private sealed class MailRoute {
-    data object Folders : MailRoute()
-    data class Index(val mailbox: String) : MailRoute()
-    data class Reader(val mailbox: String, val uid: Long, val sequence: Int) : MailRoute()
-    data object Compose : MailRoute()
-    data object Settings : MailRoute()
-    data object About : MailRoute()
-}
-
 @Composable
-fun NavHost() {
-    var route by remember { mutableStateOf<MailRoute>(MailRoute.Folders) }
-    var composeSeed by remember {
-        mutableStateOf(ComposeSeed(kind = ComposeKind.New, mailbox = null))
+fun LiveImapNavHost() {
+    val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    val navController = rememberNavController()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val currentEntry by navController.currentBackStackEntryAsState()
+    val route = currentEntry?.destination?.route
+    val drawerGestures = route == "folders" || route == "settings" || route == "about"
+    var header by remember { mutableStateOf("") }
+    val composeKindName = rememberSaveable { mutableStateOf(ComposeKind.New.name) }
+    val composeMailbox = rememberSaveable { mutableStateOf("") }
+    val composeUids = rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(route) {
+        val account = store.load()
+        header = if (account.email.isNotBlank()) account.email else account.username
     }
 
-    val foldersHighlighted = route is MailRoute.Folders ||
-        route is MailRoute.Index ||
-        route is MailRoute.Reader ||
-        route is MailRoute.Compose
+    // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
+    val navGraph: NavGraphBuilder.() -> Unit = remember {
+        {
+            composable("folders") {
+                FolderListScreen(
+                    onOpenMailbox = { mailbox ->
+                        navController.navigate("index/${Uri.encode(mailbox)}")
+                    },
+                )
+            }
+            composable(
+                route = "index/{mailbox}",
+                arguments = listOf(
+                    navArgument("mailbox") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                val encoded = entry.arguments?.getString("mailbox") ?: return@composable
+                val mailbox = Uri.decode(encoded)
+                MessageIndexScreen(
+                    mailbox = mailbox,
+                    onOpen = { uid, sequence ->
+                        navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
+                    },
+                    onCompose = { seed ->
+                        composeKindName.value = seed.kind.name
+                        composeMailbox.value = seed.mailbox.orEmpty()
+                        composeUids.value = seed.uids.joinToString(",")
+                        navController.navigate("compose")
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "reader/{mailbox}/{uid}/{sequence}",
+                arguments = listOf(
+                    navArgument("mailbox") { type = NavType.StringType },
+                    navArgument("uid") { type = NavType.LongType },
+                    navArgument("sequence") { type = NavType.IntType },
+                ),
+            ) { entry ->
+                val args = entry.arguments ?: return@composable
+                val encoded = args.getString("mailbox") ?: return@composable
+                val mailbox = Uri.decode(encoded)
+                MessageReaderScreen(
+                    mailbox = mailbox,
+                    uid = args.getLong("uid"),
+                    sequence = args.getInt("sequence"),
+                    onCompose = { seed ->
+                        composeKindName.value = seed.kind.name
+                        composeMailbox.value = seed.mailbox.orEmpty()
+                        composeUids.value = seed.uids.joinToString(",")
+                        navController.navigate("compose")
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("compose") {
+                val uidText = composeUids.value
+                val seed = ComposeSeed(
+                    kind = enumValueOf(composeKindName.value),
+                    mailbox = composeMailbox.value.takeIf { it.isNotEmpty() },
+                    uids = if (uidText.isEmpty()) {
+                        emptyList()
+                    } else {
+                        uidText.split(',').map { it.toLong() }
+                    },
+                )
+                ComposeScreen(
+                    seed = seed,
+                    onDone = { navController.popBackStack() },
+                )
+            }
+            composable("settings") {
+                SettingsScreen()
+            }
+            composable("about") {
+                AboutScreen()
+            }
+        }
+    }
+
+    fun navigateFromDrawer(go: () -> Unit) {
+        scope.launch {
+            drawerState.close()
+            go()
+        }
+    }
 
     LiveImapScaffold {
-        Column {
-            Row {
-                TextButton(
-                    onClick = {
-                        if (route !is MailRoute.Folders) {
-                            route = MailRoute.Folders
-                        }
-                    },
-                    colors = if (foldersHighlighted) {
-                        ButtonDefaults.textButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        )
-                    } else {
-                        ButtonDefaults.textButtonColors()
-                    },
-                ) {
-                    Text("Folders")
+        ModalNavigationDrawer(
+            drawerContent = {
+                ModalDrawerSheet {
+                    Text(
+                        text = header,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("INBOX") },
+                        selected = false,
+                        onClick = {
+                            navigateFromDrawer {
+                                navController.navigate("index/${Uri.encode("INBOX")}")
+                            }
+                        },
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("All folders") },
+                        selected = false,
+                        onClick = {
+                            navigateFromDrawer {
+                                navController.navigate("folders") {
+                                    popUpTo("folders")
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                    )
+                    HorizontalDivider()
+                    NavigationDrawerItem(
+                        label = { Text("Settings") },
+                        selected = false,
+                        onClick = {
+                            navigateFromDrawer {
+                                navController.navigate("settings") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("About") },
+                        selected = false,
+                        onClick = {
+                            navigateFromDrawer {
+                                navController.navigate("about") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                    )
                 }
-                TextButton(
-                    onClick = {
-                        if (route !is MailRoute.Settings) {
-                            route = MailRoute.Settings
-                        }
-                    },
-                    colors = if (route is MailRoute.Settings) {
-                        ButtonDefaults.textButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        )
-                    } else {
-                        ButtonDefaults.textButtonColors()
-                    },
-                ) {
-                    Text("Settings")
+            },
+            modifier = Modifier.fillMaxSize(),
+            drawerState = drawerState,
+            gesturesEnabled = drawerGestures,
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                    Icon(
+                        imageVector = Icons.Filled.Menu,
+                        contentDescription = "Menu",
+                    )
                 }
-                TextButton(
-                    onClick = {
-                        if (route !is MailRoute.About) {
-                            route = MailRoute.About
-                        }
-                    },
-                    colors = if (route is MailRoute.About) {
-                        ButtonDefaults.textButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        )
-                    } else {
-                        ButtonDefaults.textButtonColors()
-                    },
-                ) {
-                    Text("About")
-                }
-            }
-            when (val current = route) {
-                MailRoute.Folders -> FolderListScreen(
-                    onOpenMailbox = { mailbox ->
-                        route = MailRoute.Index(mailbox)
-                    },
+                NavHost(
+                    navController = navController,
+                    startDestination = "folders",
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    builder = navGraph,
                 )
-                is MailRoute.Index -> MessageIndexScreen(
-                    mailbox = current.mailbox,
-                    onOpen = { uid, sequence ->
-                        route = MailRoute.Reader(current.mailbox, uid, sequence)
-                    },
-                    onCompose = { seed ->
-                        composeSeed = seed
-                        route = MailRoute.Compose
-                    },
-                    onBack = { route = MailRoute.Folders },
-                )
-                is MailRoute.Reader -> MessageReaderScreen(
-                    mailbox = current.mailbox,
-                    uid = current.uid,
-                    sequence = current.sequence,
-                    onCompose = { seed ->
-                        composeSeed = seed
-                        route = MailRoute.Compose
-                    },
-                    onBack = { route = MailRoute.Index(current.mailbox) },
-                )
-                MailRoute.Compose -> ComposeScreen(
-                    seed = composeSeed,
-                    onDone = {
-                        val mailbox = composeSeed.mailbox
-                        route = if (mailbox != null) {
-                            MailRoute.Index(mailbox)
-                        } else {
-                            MailRoute.Folders
-                        }
-                    },
-                )
-                MailRoute.Settings -> SettingsScreen()
-                MailRoute.About -> AboutScreen()
             }
         }
     }

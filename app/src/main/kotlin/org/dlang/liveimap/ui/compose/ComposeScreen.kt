@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.compose
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -88,14 +90,15 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     var connected by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
-    var toText by remember { mutableStateOf("") }
-    var ccText by remember { mutableStateOf("") }
-    var bccText by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
-    var inReplyTo by remember { mutableStateOf("") }
-    var referencesHeader by remember { mutableStateOf("") }
-    var bounceTo by remember { mutableStateOf("") }
+    var toText by rememberSaveable { mutableStateOf("") }
+    var ccText by rememberSaveable { mutableStateOf("") }
+    var bccText by rememberSaveable { mutableStateOf("") }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var body by rememberSaveable { mutableStateOf("") }
+    var inReplyTo by rememberSaveable { mutableStateOf("") }
+    var referencesHeader by rememberSaveable { mutableStateOf("") }
+    var bounceTo by rememberSaveable { mutableStateOf("") }
+    var draftLoaded by rememberSaveable { mutableStateOf(false) }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
     var deliveryDone by remember { mutableStateOf(false) }
@@ -103,6 +106,10 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
+
+    BackHandler(enabled = pickerOpen) {
+        pickerOpen = false
+    }
 
     fun applyDraft(draft: ReplyDraft) {
         toText = draft.to.joinToString(", ")
@@ -158,10 +165,15 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
         sourceUid = uid
-        val parsed = parseRfc822(session.fetchRfc822(uid))
-        val tree = session.fetchStructure(uid)
-        val quote = quotedBody(tree, settings.bodyView, uid)
-        applyDraft(forwardDraft(parsed, quote))
+        val tree = if (draftLoaded) {
+            session.fetchStructure(uid)
+        } else {
+            val parsed = parseRfc822(session.fetchRfc822(uid))
+            val fetched = session.fetchStructure(uid)
+            val quote = quotedBody(fetched, settings.bodyView, uid)
+            applyDraft(forwardDraft(parsed, quote))
+            fetched
+        }
         forwardRows = attachmentParts(tree).mapIndexed { index, item ->
             ForwardRow(
                 key = "${item.section}:$index",
@@ -181,13 +193,15 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
         val loaded = loadEditor(session.fetchRfc822(uid))
-        toText = loaded.to
-        ccText = loaded.cc
-        bccText = ""
-        subject = loaded.subject
-        body = loaded.body
-        inReplyTo = loaded.inReplyTo
-        referencesHeader = loaded.references
+        if (!draftLoaded) {
+            toText = loaded.to
+            ccText = loaded.cc
+            bccText = ""
+            subject = loaded.subject
+            body = loaded.body
+            inReplyTo = loaded.inReplyTo
+            referencesHeader = loaded.references
+        }
         forwardRows = loaded.attachments.mapIndexed { index, part ->
             ForwardRow(
                 key = "resume:$index",
@@ -373,12 +387,13 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             try {
                 when (seed.kind) {
                     ComposeKind.New -> Unit
-                    ComposeKind.Reply -> loadReply(settings, replyAll = false)
-                    ComposeKind.ReplyAll -> loadReply(settings, replyAll = true)
+                    ComposeKind.Reply -> if (!draftLoaded) loadReply(settings, replyAll = false)
+                    ComposeKind.ReplyAll -> if (!draftLoaded) loadReply(settings, replyAll = true)
                     ComposeKind.Forward -> loadForward(settings)
                     ComposeKind.Bounce -> Unit
                     ComposeKind.ResumePostpone -> loadResume()
                 }
+                draftLoaded = true
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
