@@ -126,11 +126,22 @@ class IndexWindowTest {
         )
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf(3L, 5L, 1L, 9L, 4L, 2L), rows.map { it.uid })
+        assertEquals(listOf(3L, 5L, 9L), rows.map { it.uid })
         assertEquals(listOf(SortKey.ThreadReferences), session.threadCalls)
         assertTrue(session.sortCalls.isEmpty())
-        assertEquals(IndexMode.ByUid, session.fetchRequests.single().mode)
-        assertEquals(listOf(3L, 5L, 1L, 9L, 4L, 2L), session.fetchRequests.single().uids)
+        assertEquals(2, session.fetchRequests.size)
+        assertEquals(IndexMode.ByUid, session.fetchRequests[0].mode)
+        assertEquals(listOf(3L, 5L, 9L), session.fetchRequests[0].uids)
+        val hidden = session.fetchRequests[1]
+        assertEquals(IndexMode.ByUid, hidden.mode)
+        assertEquals(listOf(1L, 4L, 2L), hidden.uids)
+        assertTrue(!hidden.includePreview)
+        assertNull(model.summaries[3L])
+        assertEquals(1, model.summaries.getValue(5L).hidden)
+        assertEquals(2, model.summaries.getValue(9L).hidden)
+        assertEquals(0, session.rfc822Count)
+        assertEquals(0, session.structureCount)
+        assertEquals(0, session.peekCount)
     }
 
     @Test
@@ -146,7 +157,8 @@ class IndexWindowTest {
         )
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf(8L, 1L, 2L), rows.map { it.uid })
+        assertEquals(listOf(8L, 2L), rows.map { it.uid })
+        assertEquals(1, model.summaries.getValue(8L).hidden)
         assertTrue(session.sortCalls.isEmpty())
         assertEquals(listOf(SortKey.ThreadOrderedSubject), session.threadCalls)
     }
@@ -342,6 +354,42 @@ class IndexWindowTest {
             swipeLeading = SwipeBinding(SwipeAction.Move, moveMailbox = "Archive"),
         )
         assertEquals("Archive", barMoveMailbox(move))
+    }
+
+    @Test
+    fun indexStatusDescriptionAndSequenceWidth() {
+        assertEquals(
+            "forwarded, flagged",
+            indexStatusDescription(
+                setOf("\$Forwarded", "\\Answered", "\\Flagged"),
+                toMe = false,
+                hasAttachment = false,
+            ),
+        )
+        assertEquals(
+            "replied, to me",
+            indexStatusDescription(setOf("\\Answered"), toMe = true, hasAttachment = false),
+        )
+        assertEquals(2, sequenceColumnChars(listOf(4, 80, 0)))
+    }
+
+    @Test
+    fun filterChipsNarrowAndDrop() {
+        val session = FakeMailSession()
+        session.searchUids = listOf(1L, 2L)
+        session.arrivalRows = listOf(row(1), row(2))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        runImmediate { model.applyCriterion("Subject", "x", narrow = true, label = "Subject") }
+        assertEquals(
+            listOf(AppliedFilter("From", "ada"), AppliedFilter("Subject", "x")),
+            model.filters,
+        )
+        runImmediate { model.dropFiltersFrom(model.filters.lastIndex) }
+        assertEquals(listOf(AppliedFilter("From", "ada")), model.filters)
+        runImmediate { model.dropFiltersFrom(0) }
+        assertEquals(emptyList<AppliedFilter>(), model.filters)
     }
 }
 

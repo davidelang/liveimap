@@ -472,3 +472,9 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/app-shell-navigation-20261002-0140-plan.md
 - Work: navigation-compose stack and drawer replace the tab row; theme flow recolors live; system Back closes overlays before pop; search and compose fields are saveable
 - Phase 1 edits the plan critical files, then ./build_app runs testDebugUnitTest and assembleDebug
+
+## 2026-10-02 - index row status thread execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-status-thread-20261002-0207-plan.md
+- Work: three-slot index status, on-screen sequence width, filter chips, root-plus-summary threads, confirm before threading a folder larger than 5000
+- First action per standard-plan-compliance-block.md; commits stay on master

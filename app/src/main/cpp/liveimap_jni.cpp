@@ -887,15 +887,28 @@ bool sameMailbox(const char * mailbox, const char * host, const char * email) {
     return strcasecmp(combined.c_str(), email) == 0;
 }
 
-bool envelopeToMatches(struct mailimap_envelope * env, const char * email) {
-    if (env == nullptr || env->env_to == nullptr || env->env_to->to_list == nullptr) {
+bool addressListMatches(clist * list, const char * email) {
+    if (list == nullptr) {
         return false;
     }
-    for (clistiter * cur = clist_begin(env->env_to->to_list); cur != nullptr; cur = clist_next(cur)) {
+    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
         auto * addr = static_cast<struct mailimap_address *>(clist_content(cur));
         if (addr != nullptr && sameMailbox(addr->ad_mailbox_name, addr->ad_host_name, email)) {
             return true;
         }
+    }
+    return false;
+}
+
+bool envelopeToMatches(struct mailimap_envelope * env, const char * email) {
+    if (env == nullptr || email == nullptr || email[0] == 0) {
+        return false;
+    }
+    if (env->env_to != nullptr && addressListMatches(env->env_to->to_list, email)) {
+        return true;
+    }
+    if (env->env_cc != nullptr && addressListMatches(env->env_cc->cc_list, email)) {
+        return true;
     }
     return false;
 }

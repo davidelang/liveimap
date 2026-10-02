@@ -30,4 +30,33 @@ class ThreadOrderTest {
         assertEquals(listOf(6L, 9L), orderedThreadUids(uidless, newestFirst = false))
         assertEquals(emptyList<Long>(), orderedThreadUids(ThreadNode(null, emptyList()), newestFirst = true))
     }
+
+    @Test
+    fun collapsedThreadsOrdersRootsAndHidden() {
+        val tree = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(5L, listOf(ThreadNode(1L, emptyList()))),
+                ThreadNode(3L, emptyList()),
+                ThreadNode(9L, listOf(ThreadNode(4L, emptyList()), ThreadNode(2L, emptyList()))),
+            ),
+        )
+        val oldest = collapsedThreads(tree, newestFirst = false)
+        assertEquals(listOf(3L, 5L, 9L), oldest.map { it.rootUid })
+        assertEquals(emptyList<Long>(), oldest[0].hiddenUids)
+        assertEquals(listOf(1L), oldest[1].hiddenUids)
+        assertEquals(listOf(4L, 2L), oldest[2].hiddenUids)
+        assertEquals(listOf(9L, 5L, 3L), collapsedThreads(tree, newestFirst = true).map { it.rootUid })
+        val wrapped = collapsedThreads(
+            ThreadNode(null, listOf(ThreadNode(6L, emptyList()))),
+            newestFirst = true,
+        )
+        assertEquals(6L, wrapped.single().rootUid)
+        assertEquals(emptyList<Long>(), wrapped.single().hiddenUids)
+        val dropped = collapsedThreads(
+            ThreadNode(null, listOf(ThreadNode(null, emptyList()), ThreadNode(4L, emptyList()))),
+            newestFirst = false,
+        )
+        assertEquals(listOf(4L), dropped.map { it.rootUid })
+    }
 }

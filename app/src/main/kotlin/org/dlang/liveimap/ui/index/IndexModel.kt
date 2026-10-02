@@ -20,6 +20,24 @@ import kotlin.math.abs
 
 const val IndexPageSize = 60
 const val SwipeWidthPercent = 40
+const val ThreadConfirmExists = 5000
+
+data class AppliedFilter(
+    val label: String,
+    val argument: String,
+)
+
+data class CollapsedThread(
+    val rootUid: Long,
+    val hiddenUids: List<Long>,
+)
+
+data class ThreadSummary(
+    val hidden: Int,
+    val unread: Int,
+    val froms: List<String>,
+    val extraFroms: Int,
+)
 
 fun previewLineCount(density: Density): Int = when (density) {
     Density.Compact -> 0
@@ -88,6 +106,58 @@ fun orderedThreadUids(node: ThreadNode, newestFirst: Boolean): List<Long> {
     return out
 }
 
+private fun subtreeMaxUid(current: ThreadNode): Long? {
+    var maxUid = current.uid
+    for (child in current.children) {
+        val childMax = subtreeMaxUid(child) ?: continue
+        if (maxUid == null || childMax > maxUid) maxUid = childMax
+    }
+    return maxUid
+}
+
+private fun preorderUids(current: ThreadNode): List<Long> {
+    val out = ArrayList<Long>()
+    fun walk(node: ThreadNode) {
+        val uid = node.uid
+        if (uid != null) out.add(uid)
+        for (child in node.children) walk(child)
+    }
+    walk(current)
+    return out
+}
+
+fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThread> {
+    val children = node.children.sortedWith { left, right ->
+        val leftKey = subtreeMaxUid(left)
+        val rightKey = subtreeMaxUid(right)
+        when {
+            leftKey == null && rightKey == null -> 0
+            leftKey == null -> 1
+            rightKey == null -> -1
+            newestFirst -> rightKey.compareTo(leftKey)
+            else -> leftKey.compareTo(rightKey)
+        }
+    }
+    val out = ArrayList<CollapsedThread>()
+    for (child in children) {
+        val uids = preorderUids(child)
+        if (uids.isEmpty()) continue
+        out.add(CollapsedThread(uids.first(), uids.drop(1)))
+    }
+    return out
+}
+
+fun threadSummaryLine(summary: ThreadSummary): String {
+    var line = "${summary.hidden} more · ${summary.unread} unread"
+    if (summary.froms.isNotEmpty()) {
+        line = line + " · " + summary.froms.joinToString(", ")
+    }
+    if (summary.extraFroms != 0) {
+        line = line + " +" + summary.extraFroms
+    }
+    return line
+}
+
 sealed class IndexCommand {
     data object None : IndexCommand()
     data class Compose(val seed: ComposeSeed) : IndexCommand()
@@ -106,7 +176,10 @@ class IndexModel(
     private var activeSearch: String? = null
     private var filterUids: Set<Long>? = null
     private val filterStack = ArrayDeque<Set<Long>>()
+    private val appliedFilters = ArrayList<AppliedFilter>()
     private var lastVisibleIndex: Int = 0
+    private var threading = false
+    private var threadPlan: List<CollapsedThread> = emptyList()
 
     var notice: String? = null
         private set
@@ -119,6 +192,12 @@ class IndexModel(
 
     val canWiden: Boolean
         get() = filterStack.isNotEmpty()
+
+    val filters: List<AppliedFilter>
+        get() = appliedFilters.toList()
+
+    var summaries: Map<Long, ThreadSummary> = emptyMap()
+        private set
 
     var account: AccountSettings = AccountSettings()
         private set
@@ -147,6 +226,7 @@ class IndexModel(
         activeSearch = null
         filterUids = null
         filterStack.clear()
+        appliedFilters.clear()
         includePreview = saved.density != Density.Compact
         view = next
         return replaceWindow { fetchView(next) }
@@ -156,6 +236,7 @@ class IndexModel(
         val hadFilter = filterUids != null
         filterUids = null
         filterStack.clear()
+        appliedFilters.clear()
         if (query.isEmpty()) {
             if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
@@ -167,7 +248,7 @@ class IndexModel(
         return replaceWindow { fetchSearch(query) }
     }
 
-    suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean): List<IndexRow> {
+    suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean, label: String): List<IndexRow> {
         val found = try {
             session.searchCriterion(kind, argument)
         } catch (failure: MailFailure) {
@@ -178,16 +259,21 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedFilters = appliedFilters.toList()
         account = loaded
         includePreview = loaded.density != Density.Compact
         activeSearch = null
         val foundSet = found.toSet()
+        val chip = AppliedFilter(label, argument)
         if (narrow && savedUids != null) {
             filterStack.addLast(savedUids)
             filterUids = savedUids.intersect(foundSet)
+            appliedFilters.add(chip)
         } else {
             filterStack.clear()
             filterUids = foundSet
+            appliedFilters.clear()
+            appliedFilters.add(chip)
         }
         val rows = replaceWindow { fetchCurrent() }
         if (notice != null) {
@@ -195,6 +281,8 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            appliedFilters.clear()
+            appliedFilters.addAll(savedFilters)
         }
         return rows
     }
@@ -203,16 +291,20 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
-        if (savedUids == null && savedStack.isEmpty() && savedSearch == null) return heldRows
+        val savedFilters = appliedFilters.toList()
+        if (savedUids == null && savedStack.isEmpty() && savedSearch == null && savedFilters.isEmpty()) return heldRows
         filterUids = null
         filterStack.clear()
         activeSearch = null
+        appliedFilters.clear()
         val rows = replaceWindow { fetchCurrent() }
         if (notice != null) {
             filterUids = savedUids
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            appliedFilters.clear()
+            appliedFilters.addAll(savedFilters)
         }
         return rows
     }
@@ -222,7 +314,9 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedFilters = appliedFilters.toList()
         filterUids = filterStack.removeLast()
+        if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
         activeSearch = null
         val rows = replaceWindow { fetchCurrent() }
         if (notice != null) {
@@ -230,6 +324,32 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            appliedFilters.clear()
+            appliedFilters.addAll(savedFilters)
+        }
+        return rows
+    }
+
+    suspend fun dropFiltersFrom(index: Int): List<IndexRow> {
+        if (index < 0 || index >= appliedFilters.size) return heldRows
+        if (index == 0) return showAll()
+        val savedUids = filterUids
+        val savedStack = filterStack.toList()
+        val savedSearch = activeSearch
+        val savedFilters = appliedFilters.toList()
+        repeat(appliedFilters.size - index) {
+            if (filterStack.isNotEmpty()) filterUids = filterStack.removeLast()
+        }
+        appliedFilters.subList(index, appliedFilters.size).clear()
+        activeSearch = null
+        val rows = replaceWindow { fetchCurrent() }
+        if (notice != null) {
+            filterUids = savedUids
+            filterStack.clear()
+            filterStack.addAll(savedStack)
+            activeSearch = savedSearch
+            appliedFilters.clear()
+            appliedFilters.addAll(savedFilters)
         }
         return rows
     }
@@ -243,14 +363,16 @@ class IndexModel(
         if (next >= order.size) return heldRows
         val previous = heldRows
         val previousAnchor = pageAnchor
+        val previousSummaries = summaries
         pageAnchor += 1
         try {
-            heldRows = pagesOf(order)
+            heldRows = if (threading) loadThreadPage() else pagesOf(order)
             notice = null
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
             heldRows = previous
+            summaries = previousSummaries
             notice = failure.text
         }
         return heldRows
@@ -261,15 +383,17 @@ class IndexModel(
         val previous = heldRows
         val previousAnchor = pageAnchor
         val previousIndex = lastVisibleIndex
+        val previousSummaries = summaries
         pageAnchor -= 1
         lastVisibleIndex = 0
         try {
-            heldRows = pagesOf(order)
+            heldRows = if (threading) loadThreadPage() else pagesOf(order)
             notice = null
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
             heldRows = previous
+            summaries = previousSummaries
             notice = failure.text
         }
         return heldRows
@@ -391,6 +515,9 @@ class IndexModel(
         val previous = heldRows
         val previousAnchor = pageAnchor
         val previousIndex = lastVisibleIndex
+        val previousSummaries = summaries
+        val previousThreading = threading
+        val previousPlan = threadPlan
         pageAnchor = 0
         lastVisibleIndex = 0
         try {
@@ -400,6 +527,9 @@ class IndexModel(
             heldRows = previous
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
+            summaries = previousSummaries
+            threading = previousThreading
+            threadPlan = previousPlan
             notice = failure.text
         }
         return heldRows
@@ -428,6 +558,7 @@ class IndexModel(
     }
 
     private suspend fun fetchArrival(newestFirst: Boolean): List<IndexRow> {
+        clearThreads()
         val mode = if (newestFirst) IndexMode.ArrivalNewest else IndexMode.ArrivalOldest
         val fetched = session.fetchIndex(
             IndexRequest(
@@ -450,6 +581,7 @@ class IndexModel(
     }
 
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean): List<IndexRow> {
+        clearThreads()
         val uids = restrict(session.sort(key, newestFirst))
         val loaded = pagesOf(uids)
         order = uids
@@ -457,10 +589,12 @@ class IndexModel(
     }
 
     private suspend fun fetchThread(key: SortKey, newestFirst: Boolean): List<IndexRow> {
-        val uids = restrict(orderedThreadUids(session.thread(key), newestFirst))
-        val loaded = pagesOf(uids)
-        order = uids
-        return loaded
+        val collapsed = collapsedThreads(session.thread(key), newestFirst)
+        val kept = restrictThreads(collapsed)
+        threading = true
+        threadPlan = kept
+        order = kept.map { it.rootUid }
+        return loadThreadPage()
     }
 
     private fun restrict(uids: List<Long>): List<Long> {
@@ -469,6 +603,7 @@ class IndexModel(
     }
 
     private suspend fun fetchSearch(query: String): List<IndexRow> {
+        clearThreads()
         val uids = session.searchText(query)
         pageAnchor = 0
         val loaded = pagesOf(uids)
@@ -485,7 +620,7 @@ class IndexModel(
         return loaded
     }
 
-    private suspend fun fetchByUid(uids: List<Long>): List<IndexRow> {
+    private suspend fun fetchByUid(uids: List<Long>, preview: Boolean = includePreview): List<IndexRow> {
         return session.fetchIndex(
             IndexRequest(
                 mailbox = mailbox,
@@ -493,9 +628,68 @@ class IndexModel(
                 uids = uids,
                 limit = IndexPageSize,
                 prefetch = IndexPageSize,
-                includePreview = includePreview,
+                includePreview = preview,
             ),
         )
+    }
+
+    private fun clearThreads() {
+        threading = false
+        threadPlan = emptyList()
+        summaries = emptyMap()
+    }
+
+    private fun restrictThreads(threads: List<CollapsedThread>): List<CollapsedThread> {
+        val keep = filterUids ?: return threads
+        return threads.filter { it.rootUid in keep }
+    }
+
+    private suspend fun loadThreadPage(): List<IndexRow> {
+        val visible = order.drop(pageAnchor * IndexPageSize).take(IndexPageSize)
+        val prefetch = order.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize)
+        val pageRoots = ArrayList<Long>(visible.size + prefetch.size)
+        pageRoots.addAll(visible)
+        pageRoots.addAll(prefetch)
+        val loaded = ArrayList<IndexRow>(pageRoots.size)
+        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible, includePreview))
+        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch, includePreview))
+        val byRoot = threadPlan.associateBy { it.rootUid }
+        val hiddenUids = pageRoots.flatMap { byRoot[it]?.hiddenUids.orEmpty() }
+        val hiddenRows = if (hiddenUids.isEmpty()) {
+            emptyList()
+        } else {
+            fetchByUid(hiddenUids, preview = false)
+        }
+        summaries = summariesFor(pageRoots, byRoot, hiddenRows)
+        return loaded
+    }
+
+    private fun summariesFor(
+        roots: List<Long>,
+        byRoot: Map<Long, CollapsedThread>,
+        hiddenRows: List<IndexRow>,
+    ): Map<Long, ThreadSummary> {
+        val byUid = hiddenRows.associateBy { it.uid }
+        val out = LinkedHashMap<Long, ThreadSummary>()
+        for (root in roots) {
+            val hiddenUids = byRoot[root]?.hiddenUids.orEmpty()
+            if (hiddenUids.isEmpty()) continue
+            val froms = LinkedHashSet<String>()
+            var unread = 0
+            for (uid in hiddenUids) {
+                val row = byUid[uid]
+                if (row == null || "\\Seen" !in row.flags) unread += 1
+                val from = row?.from?.trim().orEmpty()
+                if (from.isNotEmpty()) froms.add(from)
+            }
+            out[root] = ThreadSummary(
+                hidden = hiddenUids.size,
+                unread = unread,
+                froms = froms.take(3),
+                extraFroms = (froms.size - 3).coerceAtLeast(0),
+            )
+        }
+        return out
     }
 
     private fun align(uids: List<Long>, fetched: List<IndexRow>): List<IndexRow> {
