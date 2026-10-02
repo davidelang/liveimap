@@ -170,6 +170,11 @@ class LibetpanMailSession : MailSession {
         return rows.toList()
     }
 
+    override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
+        if (mailboxes.isEmpty()) return emptyMap()
+        return nativeStatusMessages(requireHandle(), mailboxes.toTypedArray())
+    }
+
     override suspend fun select(mailbox: String): SelectResult {
         val current = selectedMailbox
         if (current != null && current != mailbox && hasCap(advertised(), "UNSELECT")) {
@@ -402,6 +407,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeClose(handle: Long)
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
     private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
+    private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
     private external fun nativeSelect(handle: Long, mailbox: String): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeFetchIndex(

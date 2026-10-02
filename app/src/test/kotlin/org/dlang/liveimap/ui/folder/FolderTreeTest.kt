@@ -58,11 +58,11 @@ class FolderTreeTest {
         assertTrue(rows.none { it.leaf == "Other Users" || it.leaf == "Shared Mailboxes" })
         assertEquals(
             listOf(
-                FolderRow("INBOX", "INBOX", true, 0, null, true),
-                FolderRow("INBOX.sent-mail", "sent-mail", false, 1, "INBOX", false),
-                FolderRow("Archive", "Archive", false, 0, null, false),
-                FolderRow("user.", "user.", true, 0, null, false),
-                FolderRow("#shared.", "#shared.", true, 0, null, false),
+                FolderRow("INBOX", "INBOX", true, 0, null, true, delimiter = '.'),
+                FolderRow("INBOX.sent-mail", "sent-mail", false, 1, "INBOX", false, delimiter = '.'),
+                FolderRow("Archive", "Archive", false, 0, null, false, delimiter = '.'),
+                FolderRow("user.", "user.", true, 0, null, false, namespaceRoot = true, delimiter = '.'),
+                FolderRow("#shared.", "#shared.", true, 0, null, false, namespaceRoot = true, delimiter = '.'),
             ),
             rows,
         )
@@ -100,9 +100,9 @@ class FolderTreeTest {
         assertEquals("sent-mail", sent.leaf)
         assertEquals(
             listOf(
-                FolderRow("INBOX", "INBOX", true, 0, null, true),
-                FolderRow("INBOX.sent-mail", "sent-mail", false, 1, "INBOX", false),
-                FolderRow("#shared.", "#shared.", true, 0, null, false),
+                FolderRow("INBOX", "INBOX", true, 0, null, true, delimiter = '.'),
+                FolderRow("INBOX.sent-mail", "sent-mail", false, 1, "INBOX", false, delimiter = '.'),
+                FolderRow("#shared.", "#shared.", true, 0, null, false, namespaceRoot = true, delimiter = '.'),
             ),
             rows,
         )
@@ -173,6 +173,31 @@ class FolderTreeTest {
         assertEquals(listOf("INBOX", "alpha", "zeta"), rows.filter { it.depth == 0 }.map { it.mailbox })
         assertEquals(listOf("a", "b"), rows.filter { it.parentMailbox == "zeta" }.map { it.leaf })
     }
+
+    @Test
+    fun refreshVisibleCounts() {
+        var now = 5_000L
+        val session = FakeMailSession(namespaces = emptyList(), levels = emptyMap())
+        session.statusCounts = mapOf("INBOX" to 12)
+        val model = FolderListModel(session, MemorySettingsStore(AccountSettings())) { now }
+        val visible = listOf(
+            FolderRow("user.", "user.", true, 0, null, false, namespaceRoot = true, delimiter = '.'),
+            FolderRow("INBOX", "INBOX", true, 0, null, false, unseen = 3, delimiter = '.'),
+        )
+        val first = runImmediate { model.refreshVisibleCounts(visible) }
+        assertEquals(listOf(listOf("INBOX")), session.statusCalls)
+        assertEquals(12, first.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(3, first.single { it.mailbox == "INBOX" }.unseen)
+        assertEquals(null, first.single { it.namespaceRoot }.messages)
+        val second = runImmediate { model.refreshVisibleCounts(visible) }
+        assertEquals(listOf(listOf("INBOX")), session.statusCalls)
+        assertEquals(12, second.single { it.mailbox == "INBOX" }.messages)
+        now += 300_000L
+        val third = runImmediate { model.refreshVisibleCounts(visible) }
+        assertEquals(listOf(listOf("INBOX"), listOf("INBOX")), session.statusCalls)
+        assertEquals(12, third.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(3, third.single { it.mailbox == "INBOX" }.unseen)
+    }
 }
 
 private data class ListCall(val prefix: String, val parentMailbox: String?)
@@ -199,6 +224,8 @@ private class FakeMailSession(
     private val listFailure: MailFailure? = null,
 ) : MailSession {
     val listCalls = mutableListOf<ListCall>()
+    val statusCalls = mutableListOf<List<String>>()
+    var statusCounts: Map<String, Int> = emptyMap()
     var namespaceCalls: Int = 0
 
     override val capabilities: Set<String> = emptySet()
@@ -216,6 +243,11 @@ private class FakeMailSession(
         val failure = listFailure
         if (failure != null) throw failure
         return levels[call] ?: emptyList()
+    }
+
+    override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
+        statusCalls += mailboxes.toList()
+        return statusCounts.filterKeys { it in mailboxes }
     }
 
     override suspend fun select(mailbox: String): SelectResult = unused()

@@ -6,6 +6,8 @@ import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.settings.SettingsStore
 
+internal const val CountFreshMillis = 300_000L
+
 data class FolderRow(
     val mailbox: String,
     val leaf: String,
@@ -16,12 +18,17 @@ data class FolderRow(
     val specialUse: String? = null,
     val messages: Int? = null,
     val unseen: Int? = null,
+    val namespaceRoot: Boolean = false,
+    val delimiter: Char = '\u0000',
 )
 
 class FolderListModel(
     private val session: MailSession,
     private val store: SettingsStore,
+    private val nowMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) {
+    private val countedAt = mutableMapOf<String, Long>()
+
     suspend fun loadLevel(): List<FolderRow> {
         val settings = store.load()
         val expanded = settings.expandedFolders
@@ -34,10 +41,12 @@ class FolderListModel(
         val inboxChildren = mutableListOf<LevelNode>()
         var inbox: LevelNode? = null
         var inboxPrefix: String? = null
+        var inboxDelimiter: Char = '\u0000'
         var sawInboxPrefixLevel = false
         var inboxFromSiblingLevel = false
 
         for (ns in personal) {
+            if (inboxDelimiter == '\u0000') inboxDelimiter = ns.delimiter
             val level = session.listLevel(ns.prefix, null, settings.showUnreadCounts)
             val mark = inboxChildPrefix(ns.delimiter)
             // Prefix "INBOX." lists that mailbox's children. Do not show them as roots.
@@ -92,6 +101,7 @@ class FolderListModel(
                 namespaceRoot = false,
                 cachedChildren = inboxChildren.toList(),
                 childrenComplete = childrenComplete,
+                delimiter = inboxDelimiter,
             )
         } else {
             null
@@ -108,6 +118,33 @@ class FolderListModel(
             appendVisible(root, 0, null, expanded, emptySet(), rows)
         }
         return rows
+    }
+
+    suspend fun refreshVisibleCounts(visible: List<FolderRow>): List<FolderRow> {
+        val now = nowMillis()
+        val due = visible.filter { row ->
+            if (row.namespaceRoot) return@filter false
+            val at = countedAt[row.mailbox]
+            at == null || now - at >= CountFreshMillis
+        }
+        if (due.isEmpty()) return visible
+        val counts = session.statusMessages(due.map { it.mailbox })
+        for (row in due) {
+            countedAt[row.mailbox] = now
+        }
+        return visible.map { row ->
+            val count = counts[row.mailbox]
+            if (count != null) row.copy(messages = count) else row
+        }
+    }
+
+    suspend fun showCollapsed(mailbox: String) {
+        val settings = store.load()
+        val ancestors = ancestorMailboxes(mailbox, session.namespaces())
+        val next = settings.expandedFolders.toMutableSet()
+        next.addAll(ancestors)
+        next.remove(mailbox)
+        store.save(settings.copy(expandedFolders = next))
     }
 
     suspend fun toggleExpanded(mailbox: String) {
@@ -138,6 +175,8 @@ class FolderListModel(
             specialUse = node.specialUse,
             messages = node.messages,
             unseen = node.unseen,
+            namespaceRoot = node.namespaceRoot,
+            delimiter = node.delimiter,
         )
         if (!showChildren) return
         val nextAncestors = ancestors + node.mailbox
@@ -190,6 +229,7 @@ class FolderListModel(
         specialUse = entry.specialUse,
         messages = entry.messages,
         unseen = entry.unseen,
+        delimiter = entry.delimiter,
     )
 
     private fun namespaceNode(ns: Namespace) = LevelNode(
@@ -200,7 +240,51 @@ class FolderListModel(
         namespaceRoot = true,
         cachedChildren = null,
         childrenComplete = false,
+        delimiter = ns.delimiter,
     )
+
+    private fun ancestorMailboxes(mailbox: String, namespaces: List<Namespace>): List<String> {
+        val ns = owningNamespace(mailbox, namespaces) ?: return emptyList()
+        if (mailbox.isEmpty() || mailbox == ns.prefix) return emptyList()
+        val ancestors = mutableListOf<String>()
+        val inboxMark = inboxChildPrefix(ns.delimiter)
+        val inboxNamespace = inboxMark != null && ns.prefix == inboxMark
+        if (inboxNamespace) {
+            if (mailbox != "INBOX") ancestors += "INBOX"
+        } else if (ns.prefix.isNotEmpty()) {
+            ancestors += ns.prefix
+        }
+        val delim = ns.delimiter
+        if (delim == '\u0000') return ancestors.filter { it != mailbox }
+        val floor = when {
+            inboxNamespace -> "INBOX"
+            ns.prefix.endsWith(delim) -> ns.prefix.dropLast(1)
+            else -> null
+        }
+        val parents = mutableListOf<String>()
+        var rest = mailbox
+        while (true) {
+            val cut = rest.lastIndexOf(delim)
+            if (cut <= 0) break
+            val parent = rest.substring(0, cut)
+            if (floor != null && parent == floor) break
+            parents += parent
+            rest = parent
+        }
+        parents.reverse()
+        for (parent in parents) {
+            if (parent != mailbox && parent !in ancestors) ancestors += parent
+        }
+        return ancestors
+    }
+
+    private fun owningNamespace(mailbox: String, namespaces: List<Namespace>): Namespace? {
+        val prefixed = namespaces.filter { ns ->
+            ns.prefix.isNotEmpty() && (mailbox == ns.prefix || mailbox.startsWith(ns.prefix))
+        }
+        if (prefixed.isNotEmpty()) return prefixed.maxBy { it.prefix.length }
+        return namespaces.firstOrNull { it.prefix.isEmpty() } ?: namespaces.firstOrNull()
+    }
 
     private data class LevelNode(
         val mailbox: String,
@@ -213,5 +297,6 @@ class FolderListModel(
         val specialUse: String? = null,
         val messages: Int? = null,
         val unseen: Int? = null,
+        val delimiter: Char = '\u0000',
     )
 }

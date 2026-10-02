@@ -45,6 +45,8 @@ int mailimap_response_data_parse(mailstream * fd, MMAPString * buffer,
     struct mailimap_response_data ** result, size_t progr_rate,
     progress_function * progr_fun);
 int mailimap_crlf_send(mailstream * fd);
+int mailimap_status_send(mailstream * fd, const char * mb,
+    struct mailimap_status_att_list * status_att_list);
 int mailimap_space_send(mailstream * fd);
 int mailimap_token_send(mailstream * fd, const char * atom);
 int mailimap_mailbox_send(mailstream * fd, const char * mb);
@@ -2948,6 +2950,85 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
     return arr;
 }
 
+void dropStatus(mailimap * imap) {
+    if (imap->imap_response_info == nullptr || imap->imap_response_info->rsp_status == nullptr) return;
+    mailimap_mailbox_data_status_free(imap->imap_response_info->rsp_status);
+    imap->imap_response_info->rsp_status = nullptr;
+}
+
+void takeMessages(mailimap * imap, std::map<std::string, int> * out) {
+    if (imap->imap_response_info == nullptr) return;
+    struct mailimap_mailbox_data_status * status = imap->imap_response_info->rsp_status;
+    imap->imap_response_info->rsp_status = nullptr;
+    if (status == nullptr) return;
+    if (status->st_mailbox != nullptr && status->st_info_list != nullptr) {
+        for (clistiter * cur = clist_begin(status->st_info_list); cur != nullptr; cur = clist_next(cur)) {
+            auto * info = static_cast<struct mailimap_status_info *>(clist_content(cur));
+            if (info == nullptr || info->st_att != MAILIMAP_STATUS_ATT_MESSAGES) continue;
+            if (info->st_value > static_cast<uint32_t>(INT_MAX)) continue;
+            (*out)[status->st_mailbox] = static_cast<int>(info->st_value);
+        }
+    }
+    mailimap_mailbox_data_status_free(status);
+}
+
+// One MESSAGES burst. mailimap_parse_response matches whatever imap_tag is set to.
+int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mailboxes,
+    std::map<std::string, int> * out) {
+    out->clear();
+    if (mailboxes.empty()) return MAILIMAP_NO_ERROR;
+    if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
+    struct mailimap_status_att_list * atts = mailimap_status_att_list_new_empty();
+    if (atts == nullptr) return MAILIMAP_ERROR_MEMORY;
+    int r = mailimap_status_att_list_add(atts, MAILIMAP_STATUS_ATT_MESSAGES);
+    if (r != MAILIMAP_NO_ERROR) {
+        mailimap_status_att_list_free(atts);
+        return r;
+    }
+    int const remembered = imap->imap_tag;
+    std::vector<int> tags;
+    tags.reserve(mailboxes.size());
+    for (size_t i = 0; i < mailboxes.size(); ++i) {
+        r = mailimap_send_current_tag(imap);
+        if (r != MAILIMAP_NO_ERROR) {
+            mailimap_status_att_list_free(atts);
+            return r;
+        }
+        r = mailimap_status_send(imap->imap_stream, mailboxes[i].c_str(), atts);
+        if (r != MAILIMAP_NO_ERROR) {
+            mailimap_status_att_list_free(atts);
+            return r;
+        }
+        r = mailimap_crlf_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) {
+            mailimap_status_att_list_free(atts);
+            return r;
+        }
+        int tag = remembered + static_cast<int>(i) + 1;
+        if (imap->imap_tag != tag) tag = imap->imap_tag;
+        tags.push_back(tag);
+    }
+    mailimap_status_att_list_free(atts);
+    if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    for (int tag : tags) {
+        dropStatus(imap);
+        imap->imap_tag = tag;
+        if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+        struct mailimap_response * response = nullptr;
+        r = mailimap_parse_response(imap, &response);
+        if (r != MAILIMAP_NO_ERROR) {
+            dropStatus(imap);
+            if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_FATAL) return r;
+            continue;
+        }
+        if (taggedOk(response)) takeMessages(imap, out);
+        else dropStatus(imap);
+        mailimap_response_free(response);
+    }
+    if (!tags.empty()) imap->imap_tag = tags.back();
+    return MAILIMAP_NO_ERROR;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
@@ -3088,6 +3169,78 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
     mailimap_namespace_data_free(data);
     unlockSession(session);
     return arr;
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv * env, jobject, jlong handle,
+    jobjectArray mailboxes) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    std::vector<std::string> names;
+    if (mailboxes != nullptr) {
+        jsize n = env->GetArrayLength(mailboxes);
+        names.reserve(static_cast<size_t>(n));
+        for (jsize i = 0; i < n; ++i) {
+            jstring item = static_cast<jstring>(env->GetObjectArrayElement(mailboxes, i));
+            if (item == nullptr) continue;
+            {
+                JChars chars(env, item);
+                names.emplace_back(chars.c());
+            }
+            env->DeleteLocalRef(item);
+        }
+    }
+    std::map<std::string, int> counts;
+    int r = MAILIMAP_NO_ERROR;
+    if (!names.empty()) {
+        if (session->imap == nullptr) {
+            throwFailure(env, "not connected");
+            unlockSession(session);
+            return nullptr;
+        }
+        r = statusMessagesPipeline(session->imap, names, &counts);
+    }
+    if (r != MAILIMAP_NO_ERROR) {
+        throwImap(env, session->imap, "status failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jclass mapClass = env->FindClass("java/util/HashMap");
+    if (mapClass == nullptr) {
+        unlockSession(session);
+        return nullptr;
+    }
+    jmethodID init = env->GetMethodID(mapClass, "<init>", "()V");
+    jmethodID put = env->GetMethodID(mapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    if (init == nullptr || put == nullptr) {
+        env->DeleteLocalRef(mapClass);
+        unlockSession(session);
+        return nullptr;
+    }
+    jobject map = env->NewObject(mapClass, init);
+    if (map == nullptr) {
+        env->DeleteLocalRef(mapClass);
+        unlockSession(session);
+        return nullptr;
+    }
+    for (const auto & entry : counts) {
+        jstring key = newString(env, entry.first.c_str());
+        jobject value = env->CallStaticObjectMethod(gJni.integerCls, gJni.integerValueOf, entry.second);
+        jobject previous = env->CallObjectMethod(map, put, key, value);
+        if (previous != nullptr) env->DeleteLocalRef(previous);
+        if (key != nullptr) env->DeleteLocalRef(key);
+        if (value != nullptr) env->DeleteLocalRef(value);
+        if (env->ExceptionCheck()) {
+            env->DeleteLocalRef(map);
+            env->DeleteLocalRef(mapClass);
+            unlockSession(session);
+            return nullptr;
+        }
+    }
+    env->DeleteLocalRef(mapClass);
+    unlockSession(session);
+    return map;
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL

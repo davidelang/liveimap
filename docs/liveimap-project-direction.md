@@ -15,7 +15,7 @@ IMAP `10.0.0.100:143` and SMTP port 25, both plaintext. The settings screen hold
 
 After `LOGIN`, the session requires `NAMESPACE`, `UIDPLUS`, `LITERAL+`, `CHILDREN`, `SORT`, `THREAD=REFERENCES`, and `IDLE`. `UNSELECT` is not required. A missing `UNSELECT` does not stop the session. The client never sends `CLOSE`. If any required capability is missing, show the capability list and stop. There is one implementation. There is no second command path for a poorer server.
 
-This server does not advertise `CONDSTORE`, `QRESYNC`, `ESEARCH`, `MOVE`, `SPECIAL-USE`, `LIST-EXTENDED`, `LIST-STATUS`, `METADATA`, or `UTF8=ACCEPT`. v1 does not call them and does not invent substitutes. A later client may talk to other servers. If a command is absent there, the feature is absent. The phone does not compute it.
+This server does not advertise `CONDSTORE`, `QRESYNC`, `ESEARCH`, `MOVE`, `SPECIAL-USE`, `LIST-EXTENDED`, `LIST-STATUS`, `METADATA`, or `UTF8=ACCEPT`. v1 does not call them and does not invent substitutes. A later client may talk to other servers. If a command is absent there, the feature is absent. The phone does not compute it. When `LIST-STATUS` is absent, totals for the rows on screen come from pipelined `STATUS (MESSAGES)`, and `UNSEEN` is not sent.
 
 Scale that has to work: about 1000 folders, about 500,000 messages, and more than 200,000 in one folder. The user will not read all of them here. The client must still move through that tree.
 
@@ -31,7 +31,7 @@ While the session is open, `EXISTS`, `EXPUNGE`, a UIDVALIDITY change, and `IDLE`
 
 ## Folders
 
-This account is not a single `INBOX.` tree. Folders nest, and folders sit beside `INBOX`. After login, `NAMESPACE`, then one level: `LIST "" "<prefix>%"`. Expanding a row is `LIST "" "<mailbox><delim>%"`. Never `LIST "" "*"`. `INBOX` is first among personal mailboxes. Siblings stay siblings. Children render under the parent. The label is the server's leaf name. Do not strip `INBOX.` and promote those names to roots. Do not label a namespace "Other Users" or "Shared Mailboxes". `\HasChildren` and `\HasNoChildren` decide the expander. The list starts collapsed. Expansion is config.
+This account is not a single `INBOX.` tree. Folders nest, and folders sit beside `INBOX`. After login, `NAMESPACE`, then one level: `LIST "" "<prefix>%"`. Expanding a row is `LIST "" "<mailbox><delim>%"`. Never `LIST "" "*"`. `INBOX` is first among personal mailboxes. Siblings stay siblings. Children render under the parent. The label is the server's leaf name. An empty namespace prefix is shown as `(empty prefix)`, and that is the only stand-in label. Do not strip `INBOX.` and promote those names to roots. Do not label a namespace "Other Users" or "Shared Mailboxes". `\HasChildren` and `\HasNoChildren` decide the expander. The list starts collapsed. Expansion is config.
 
 The expander column is a fixed width. Flag marks sit on the header line and take no vertical space when they are off. A screen with its own top bar does not also pad for the status bar.
 

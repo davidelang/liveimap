@@ -40,6 +40,7 @@ class AccountSettingsTest {
                 "showUnreadCounts",
                 "dateFormat",
                 "datePattern",
+                "favorites",
             ),
             keys,
         )
@@ -187,6 +188,28 @@ class AccountSettingsTest {
         assertTrue(headers.contains("preferHtml=false"))
         assertEquals(BodyView.Headers, decodeAccountSettings(headers).bodyView)
         assertFalse(decodeAccountSettings(headers).preferHtml)
+    }
+
+    @Test
+    fun favoriteLabel() {
+        assertEquals("INBOX", favoriteLabel(false, "INBOX", '.'))
+        assertEquals("INBOX.[]", favoriteLabel(true, "INBOX", '.'))
+        assertEquals("(empty prefix)", favoriteLabel(false, "", '.'))
+        assertEquals("(empty prefix)[]", favoriteLabel(true, "", '.'))
+        val older = AccountSettings().encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("favorites=") }
+            .joinToString("\n")
+        assertEquals(emptyList<FolderFavorite>(), decodeAccountSettings(older).favorites)
+        val saved = AccountSettings(
+            favorites = listOf(
+                FolderFavorite(false, "IN BOX", '.'),
+                FolderFavorite(true, "INBOX", '.'),
+            ),
+        )
+        val text = saved.encode()
+        assertTrue(text.contains("0|IN%20BOX|."))
+        assertTrue(text.contains("1|INBOX|."))
+        assertEquals(saved.favorites, decodeAccountSettings(text).favorites)
     }
 
     @Test

@@ -34,13 +34,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.SettingsScreen
+import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
+import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
@@ -56,13 +61,17 @@ fun LiveImapNavHost() {
     val route = currentEntry?.destination?.route
     val drawerGestures = route == "folders" || route == "settings" || route == "about"
     var header by remember { mutableStateOf("") }
+    var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
+    val focusMailbox = remember { mutableStateOf<String?>(null) }
+    val focusToken = remember { mutableStateOf(0) }
     val composeKindName = rememberSaveable { mutableStateOf(ComposeKind.New.name) }
     val composeMailbox = rememberSaveable { mutableStateOf("") }
     val composeUids = rememberSaveable { mutableStateOf("") }
 
-    LaunchedEffect(route) {
+    LaunchedEffect(route, drawerState.currentValue) {
         val account = store.load()
         header = if (account.email.isNotBlank()) account.email else account.username
+        favorites = account.favorites
     }
 
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
@@ -73,6 +82,8 @@ fun LiveImapNavHost() {
                     onOpenMailbox = { mailbox ->
                         navController.navigate("index/${Uri.encode(mailbox)}")
                     },
+                    focusMailbox = focusMailbox.value,
+                    focusToken = focusToken.value,
                 )
             }
             composable(
@@ -160,6 +171,28 @@ fun LiveImapNavHost() {
         }
     }
 
+    fun openFavorite(favorite: FolderFavorite) {
+        scope.launch {
+            drawerState.close()
+            if (favorite.node) {
+                try {
+                    FolderListModel(mailSession(), store).showCollapsed(favorite.mailbox)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                }
+                focusMailbox.value = favorite.mailbox
+                focusToken.value = focusToken.value + 1
+                navController.navigate("folders") {
+                    popUpTo("folders")
+                    launchSingleTop = true
+                }
+            } else {
+                navController.navigate("index/${Uri.encode(favorite.mailbox)}")
+            }
+        }
+    }
+
     LiveImapScaffold {
         ModalNavigationDrawer(
             drawerContent = {
@@ -189,6 +222,13 @@ fun LiveImapNavHost() {
                             }
                         },
                     )
+                    for (favorite in favorites) {
+                        NavigationDrawerItem(
+                            label = { Text(favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)) },
+                            selected = false,
+                            onClick = { openFavorite(favorite) },
+                        )
+                    }
                     HorizontalDivider()
                     NavigationDrawerItem(
                         label = { Text("Settings") },

@@ -484,3 +484,9 @@
 - Approved plan: sandbox/plans/reader-advance-20261002-0235-plan.md
 - Work: icon reply bar, Bounce only in the overflow, advance to the next published index uid after a successful delete, move, or spam
 - Phase 1 of 1
+
+## 2026-10-02 - folder counts and favorites execution start
+
+- Approved plan: sandbox/plans/folder-counts-favorites-20261002-0255-plan.md
+- Work: on-screen message totals from one pipelined STATUS (MESSAGES) burst when LIST-STATUS is absent, and folder favorites in the drawer
+- Phase 1 of 1

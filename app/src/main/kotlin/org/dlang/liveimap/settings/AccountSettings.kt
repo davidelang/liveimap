@@ -74,6 +74,19 @@ data class SwipeBinding(
     val flag: String = "",
 )
 
+data class FolderFavorite(
+    val node: Boolean,
+    val mailbox: String,
+    val delimiter: Char,
+)
+
+fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
+    if (mailbox.isEmpty()) {
+        return if (node) "(empty prefix)[]" else "(empty prefix)"
+    }
+    return if (node) "$mailbox$delimiter[]" else mailbox
+}
+
 data class AccountSettings(
     val imapHost: String = "",
     val imapPort: Int = 143,
@@ -101,6 +114,7 @@ data class AccountSettings(
     val showUnreadCounts: Boolean = false,
     val dateFormat: DateFormat = DateFormat.Short,
     val datePattern: String = "",
+    val favorites: List<FolderFavorite> = emptyList(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -134,6 +148,7 @@ private val fieldNames = listOf(
     "showUnreadCounts",
     "dateFormat",
     "datePattern",
+    "favorites",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -166,6 +181,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("showUnreadCounts=$showUnreadCounts")
     appendLine("dateFormat=${dateFormat.name}")
     appendLine("datePattern=${percentEncode(datePattern)}")
+    appendLine("favorites=${encodeFavorites(favorites)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -186,6 +202,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "showUnreadCounts" ||
             key == "dateFormat" ||
             key == "datePattern" ||
+            key == "favorites" ||
             key == "spamMailbox" ||
             key == "bodyView" ||
             key == "preferHtml"
@@ -221,6 +238,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         showUnreadCounts = values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false,
         dateFormat = values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short,
         datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
+        favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
     )
 }
 
@@ -237,6 +255,33 @@ fun emailDefaultedFromUsername(username: String, email: String): String {
     if (email.isNotEmpty()) return email
     if (looksLikeEmail(username)) return username
     return email
+}
+
+private fun encodeFavorite(favorite: FolderFavorite): String =
+    "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}"
+
+private fun encodeFavorites(favorites: List<FolderFavorite>): String =
+    favorites.joinToString(";") { encodeFavorite(it) }
+
+private fun parseFavorites(value: String): List<FolderFavorite> {
+    if (value.isEmpty()) return emptyList()
+    val out = mutableListOf<FolderFavorite>()
+    val seen = mutableSetOf<Pair<Boolean, String>>()
+    for (part in value.split(';')) {
+        val bits = part.split('|')
+        if (bits.size != 3) throw IllegalArgumentException("bad favorites")
+        val node = when (bits[0]) {
+            "1" -> true
+            "0" -> false
+            else -> throw IllegalArgumentException("bad favorites")
+        }
+        val mailbox = percentDecode(bits[1])
+        val delimText = percentDecode(bits[2])
+        if (delimText.length != 1) throw IllegalArgumentException("bad favorites")
+        if (!seen.add(node to mailbox)) throw IllegalArgumentException("duplicate favorite")
+        out += FolderFavorite(node, mailbox, delimText[0])
+    }
+    return out
 }
 
 private fun encodeView(view: FolderView): String =
