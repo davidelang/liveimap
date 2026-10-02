@@ -43,6 +43,8 @@ class AccountSettingsTest {
                 "favorites",
                 "includeForwardAttachments",
                 "askBeforeExpunge",
+                "pipelineCommands",
+                "logImapTraffic",
             ),
             keys,
         )
@@ -58,6 +60,8 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("theme=FollowSystem"))
         assertTrue(text.lines().contains("includeForwardAttachments=true"))
         assertTrue(text.lines().contains("askBeforeExpunge=true"))
+        assertTrue(text.lines().contains("pipelineCommands=true"))
+        assertTrue(text.lines().contains("logImapTraffic=false"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 
@@ -90,6 +94,8 @@ class AccountSettingsTest {
             showUnreadCounts = true,
             includeForwardAttachments = false,
             askBeforeExpunge = false,
+            pipelineCommands = false,
+            logImapTraffic = true,
         )
         val text = original.encode()
         assertTrue(text.contains("username=user%20name"))
@@ -100,6 +106,8 @@ class AccountSettingsTest {
         assertTrue(text.contains("swipeLeading=SetFlag||%5CFlagged"))
         assertTrue(text.contains("includeForwardAttachments=false"))
         assertTrue(text.contains("askBeforeExpunge=false"))
+        assertTrue(text.contains("pipelineCommands=false"))
+        assertTrue(text.contains("logImapTraffic=true"))
         assertEquals(original, decodeAccountSettings(text))
         assertEquals(text, decodeAccountSettings(text).encode())
     }
@@ -159,7 +167,9 @@ class AccountSettingsTest {
                     !it.startsWith("datePattern=") &&
                     !it.startsWith("spamMailbox=") &&
                     !it.startsWith("includeForwardAttachments=") &&
-                    !it.startsWith("askBeforeExpunge=")
+                    !it.startsWith("askBeforeExpunge=") &&
+                    !it.startsWith("pipelineCommands=") &&
+                    !it.startsWith("logImapTraffic=")
             }
             .joinToString("\n")
         assertEquals(AccountSettings(), decodeAccountSettings(older))
@@ -171,6 +181,8 @@ class AccountSettingsTest {
         assertEquals("", decodeAccountSettings(older).spamMailbox)
         assertTrue(decodeAccountSettings(older).includeForwardAttachments)
         assertTrue(decodeAccountSettings(older).askBeforeExpunge)
+        assertTrue(decodeAccountSettings(older).pipelineCommands)
+        assertFalse(decodeAccountSettings(older).logImapTraffic)
 
         val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
             .first { it.startsWith("friendlyName=") }

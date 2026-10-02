@@ -77,6 +77,7 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var capSet: Set<String> = emptySet()
     private var account: AccountSettings? = null
+    private var compressed = false
     private var selectedMailbox: String? = null
     private var selected = SelectResult(0, 0, 0)
 
@@ -105,7 +106,17 @@ class LibetpanMailSession : MailSession {
     override suspend fun open(account: AccountSettings): OpenResult {
         val held = this.account
         if (handle != 0L && held != null && sameImapIdentity(held, account)) {
-            return OpenResult.Connected
+            val logTurnedOn = account.logImapTraffic && !held.logImapTraffic
+            if (logTurnedOn && compressed) {
+                close()
+            } else {
+                nativeSetSessionFlags(handle, account.pipelineCommands, account.logImapTraffic)
+                this.account = held.copy(
+                    pipelineCommands = account.pipelineCommands,
+                    logImapTraffic = account.logImapTraffic,
+                )
+                return OpenResult.Connected
+            }
         }
         if (handle != 0L) {
             close()
@@ -125,6 +136,8 @@ class LibetpanMailSession : MailSession {
             account.smtpHost,
             account.smtpPort,
             from,
+            account.pipelineCommands,
+            account.logImapTraffic,
         )
         if (opened == 0L) {
             return OpenResult.Failed(nativeTakeError())
@@ -145,8 +158,9 @@ class LibetpanMailSession : MailSession {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
-        if (hasCap(line, "COMPRESS=DEFLATE")) {
+        if (hasCap(line, "COMPRESS=DEFLATE") && !account.logImapTraffic) {
             nativeCompress(opened)
+            compressed = true
         }
         return OpenResult.Connected
     }
@@ -353,6 +367,7 @@ class LibetpanMailSession : MailSession {
         handle = 0
         capSet = emptySet()
         account = null
+        compressed = false
         selectedMailbox = null
         sequencesStale = false
         watchCallback = null
@@ -421,7 +436,11 @@ class LibetpanMailSession : MailSession {
         smtpHost: String,
         smtpPort: Int,
         from: String,
+        pipeline: Boolean,
+        log: Boolean,
     ): Long
+
+    private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean)
 
     private external fun nativeCapabilityLine(handle: Long): String
     private external fun nativeEnable(handle: Long, capability: String)

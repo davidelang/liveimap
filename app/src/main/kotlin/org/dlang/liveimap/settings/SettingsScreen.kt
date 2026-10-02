@@ -216,6 +216,9 @@ fun SettingsScreen() {
         BoolField("Ask before expunge", settings.askBeforeExpunge) {
             persist(settings.copy(askBeforeExpunge = it))
         }
+        BoolField("Pipeline IMAP commands", settings.pipelineCommands) {
+            persist(settings.copy(pipelineCommands = it))
+        }
         BoolField("Show unread counts", settings.showUnreadCounts || warnUnread) { enabled ->
             if (enabled) {
                 warnUnread = true
@@ -306,6 +309,11 @@ fun SettingsScreen() {
         ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
             persist(settings.copy(theme = it))
         }
+        Text("Debug")
+        BoolField("Log IMAP traffic", settings.logImapTraffic) {
+            persist(settings.copy(logImapTraffic = it))
+        }
+        Text("Commands and server replies go to logcat under LiveIMAP. The password is omitted. Message text is included.")
     }
 
     if (warnUnread) {

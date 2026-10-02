@@ -17,11 +17,12 @@ target_include_directories(liveimap PRIVATE "${ETPAN_INCLUDE}")
 
 find_library(z-lib z)
 find_library(dl-lib dl)
-if(NOT z-lib OR NOT dl-lib)
-    message(FATAL_ERROR "libz or libdl not found")
+find_library(log-lib log)
+if(NOT z-lib OR NOT dl-lib OR NOT log-lib)
+    message(FATAL_ERROR "libz, libdl, or liblog not found")
 endif()
 
-# Archive order is the plan contract: etpan, sasl2, ssl, crypto, fastjson, iconv, then z and dl.
+# Archive order is the plan contract: etpan, sasl2, ssl, crypto, fastjson, iconv, then z, dl, and log.
 target_link_libraries(liveimap
     "${ART}/libetpan.a"
     "${ART}/libsasl2.a"
@@ -31,4 +32,5 @@ target_link_libraries(liveimap
     "${ART}/libiconv.a"
     ${z-lib}
     ${dl-lib}
+    ${log-lib}
 )

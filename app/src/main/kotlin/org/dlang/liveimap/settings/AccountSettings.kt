@@ -158,6 +158,8 @@ data class AccountSettings(
     val favorites: List<FolderFavorite> = emptyList(),
     val includeForwardAttachments: Boolean = true,
     val askBeforeExpunge: Boolean = true,
+    val pipelineCommands: Boolean = true,
+    val logImapTraffic: Boolean = false,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -194,6 +196,8 @@ private val fieldNames = listOf(
     "favorites",
     "includeForwardAttachments",
     "askBeforeExpunge",
+    "pipelineCommands",
+    "logImapTraffic",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -229,6 +233,8 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("favorites=${encodeFavorites(favorites)}")
     appendLine("includeForwardAttachments=$includeForwardAttachments")
     appendLine("askBeforeExpunge=$askBeforeExpunge")
+    appendLine("pipelineCommands=$pipelineCommands")
+    appendLine("logImapTraffic=$logImapTraffic")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -254,7 +260,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "bodyView" ||
             key == "preferHtml" ||
             key == "includeForwardAttachments" ||
-            key == "askBeforeExpunge"
+            key == "askBeforeExpunge" ||
+            key == "pipelineCommands" ||
+            key == "logImapTraffic"
         ) {
             continue
         }
@@ -290,6 +298,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
         includeForwardAttachments = values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true,
         askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
+        pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,
+        logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
     )
 }
 

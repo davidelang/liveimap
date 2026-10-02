@@ -622,3 +622,18 @@
 - Status set to APPROVED
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start builds tag 0c5a29e
+
+## 2026-10-02 - settings pipeline and IMAP log execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-pipeline-and-imap-log-20261002-1231-plan.md
+- Work: Settings can turn IMAP pipelining off and can log IMAP traffic to logcat without the password
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 2f3ef77
+
+## 2026-10-02 - settings pipeline and IMAP log phase 1
+
+- Settings stores pipelineCommands (default on) and logImapTraffic (default off); both switches save immediately
+- Pipeline off reads each STATUS or preview tag before the next send; log on writes IMAP traffic to logcat tag LiveIMAP and skips COMPRESS
+- A LOGIN buffer is logged as C <private>; SMTP is not logged

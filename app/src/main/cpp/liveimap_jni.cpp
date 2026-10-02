@@ -2,6 +2,7 @@
 #include <libetpan/unselect.h>
 
 #include <jni.h>
+#include <android/log.h>
 
 #include <poll.h>
 #include <arpa/inet.h>
@@ -102,6 +103,8 @@ struct LiveSession {
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
+    bool pipelineCommands = true;
+    bool logImapTraffic = false;
     std::string capabilityLine;
     std::map<std::string, char> delims;
     bool qresync = false;
@@ -1850,8 +1853,80 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     return fd;
 }
 
+constexpr int kLogPiece = 3500;
+
+void logImapLine(const char * prefix, const char * bytes, size_t len) {
+    if (len == 0) {
+        __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s", prefix);
+        return;
+    }
+    std::string piece;
+    piece.reserve(len < static_cast<size_t>(kLogPiece) ? len : static_cast<size_t>(kLogPiece));
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = static_cast<unsigned char>(bytes[i]);
+        char shown = (c == '\t' || (c >= 0x20 && c <= 0x7E)) ? static_cast<char>(c) : '.';
+        piece.push_back(shown);
+        if (piece.size() == static_cast<size_t>(kLogPiece)) {
+            __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s%s", prefix, piece.c_str());
+            piece.clear();
+        }
+    }
+    if (!piece.empty()) {
+        __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s%s", prefix, piece.c_str());
+    }
+}
+
+void logImapBuffer(int log_type, const char * str, size_t size) {
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE) {
+        __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "C <private>");
+        return;
+    }
+    const char * prefix = nullptr;
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT) prefix = "C ";
+    else if (log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED) prefix = "S ";
+    else return;
+    if (str == nullptr || size == 0) return;
+    size_t start = 0;
+    while (start < size) {
+        size_t end = start;
+        while (end < size && str[end] != '\n') ++end;
+        size_t lineEnd = end;
+        if (lineEnd > start && str[lineEnd - 1] == '\r') --lineEnd;
+        logImapLine(prefix, str + start, lineEnd - start);
+        if (end >= size) break;
+        start = end + 1;
+    }
+}
+
+void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_t size, void * context) {
+    (void)session;
+    (void)context;
+    logImapBuffer(log_type, str, size);
+}
+
+void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
+    (void)stream;
+    (void)context;
+    logImapBuffer(log_type, str, size);
+}
+
+void setImapTrafficLogger(mailimap * imap, bool on) {
+    if (imap == nullptr) return;
+    if (on) {
+        mailimap_set_logger(imap, imapTrafficLogger, nullptr);
+        if (imap->imap_stream != nullptr) {
+            mailstream_set_logger(imap->imap_stream, streamTrafficLogger, nullptr);
+        }
+    } else {
+        mailimap_set_logger(imap, nullptr, nullptr);
+        if (imap->imap_stream != nullptr) {
+            mailstream_set_logger(imap->imap_stream, nullptr, nullptr);
+        }
+    }
+}
+
 mailimap * openPlain(const char * host, int port, const char * user, const char * password,
-    std::string * error, std::string * connectedAddress) {
+    bool logTraffic, std::string * error, std::string * connectedAddress) {
     mailimap * imap = mailimap_new(0, nullptr);
     if (imap == nullptr) {
         *error = "imap error";
@@ -1870,6 +1945,9 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
         *error = connectFailure("IMAP", host, port, address, "connection failed");
         mailimap_free(imap);
         return nullptr;
+    }
+    if (logTraffic) {
+        mailimap_set_logger(imap, imapTrafficLogger, nullptr);
     }
     int r = mailimap_connect(imap, stream);
     if (!connectOk(r)) {
@@ -2118,6 +2196,8 @@ void enableNamed(LiveSession * session, const char * capName) {
 void compressSession(LiveSession * session) {
     if (session == nullptr || session->imap == nullptr) return;
     (void)mailimap_compress(session->imap);
+    if (!session->logImapTraffic || session->imap->imap_stream == nullptr) return;
+    mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, nullptr);
 }
 
 int sendWord(mailstream * fd, const char * word, bool leadSpace) {
@@ -2956,7 +3036,7 @@ void takeMessages(mailimap * imap, std::map<std::string, int> * out) {
 
 // One MESSAGES burst. mailimap_parse_response matches whatever imap_tag is set to.
 int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mailboxes,
-    std::map<std::string, int> * out) {
+    std::map<std::string, int> * out, bool pipeline) {
     out->clear();
     if (mailboxes.empty()) return MAILIMAP_NO_ERROR;
     if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
@@ -2966,6 +3046,51 @@ int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mai
     if (r != MAILIMAP_NO_ERROR) {
         mailimap_status_att_list_free(atts);
         return r;
+    }
+    if (!pipeline) {
+        for (size_t i = 0; i < mailboxes.size(); ++i) {
+            r = mailimap_send_current_tag(imap);
+            if (r != MAILIMAP_NO_ERROR) {
+                mailimap_status_att_list_free(atts);
+                return r;
+            }
+            r = mailimap_status_send(imap->imap_stream, mailboxes[i].c_str(), atts);
+            if (r != MAILIMAP_NO_ERROR) {
+                mailimap_status_att_list_free(atts);
+                return r;
+            }
+            r = mailimap_crlf_send(imap->imap_stream);
+            if (r != MAILIMAP_NO_ERROR) {
+                mailimap_status_att_list_free(atts);
+                return r;
+            }
+            int tag = imap->imap_tag;
+            if (mailstream_flush(imap->imap_stream) == -1) {
+                mailimap_status_att_list_free(atts);
+                return MAILIMAP_ERROR_STREAM;
+            }
+            dropStatus(imap);
+            imap->imap_tag = tag;
+            if (mailimap_read_line(imap) == nullptr) {
+                mailimap_status_att_list_free(atts);
+                return MAILIMAP_ERROR_STREAM;
+            }
+            struct mailimap_response * response = nullptr;
+            r = mailimap_parse_response(imap, &response);
+            if (r != MAILIMAP_NO_ERROR) {
+                dropStatus(imap);
+                if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_FATAL) {
+                    mailimap_status_att_list_free(atts);
+                    return r;
+                }
+                continue;
+            }
+            if (taggedOk(response)) takeMessages(imap, out);
+            else dropStatus(imap);
+            mailimap_response_free(response);
+        }
+        mailimap_status_att_list_free(atts);
+        return MAILIMAP_NO_ERROR;
     }
     int const remembered = imap->imap_tag;
     std::vector<int> tags;
@@ -3028,7 +3153,7 @@ void dropFetchList(mailimap * imap) {
 
 // One BODY.PEEK burst. A tag is kept only after crlf; parse matches imap_tag.
 int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byteLimit,
-    std::vector<std::string> & previews) {
+    std::vector<std::string> & previews, bool pipeline) {
     previews.assign(asks.size(), std::string());
     if (asks.empty() || byteLimit <= 0) return MAILIMAP_NO_ERROR;
     if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
@@ -3078,7 +3203,29 @@ int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byte
             sendError = r;
             break;
         }
-        sent.push_back(Sent{imap->imap_tag, i});
+        int tag = imap->imap_tag;
+        if (!pipeline) {
+            if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+            dropFetchList(imap);
+            imap->imap_tag = tag;
+            if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+            struct mailimap_response * response = nullptr;
+            int pr = mailimap_parse_response(imap, &response);
+            if (pr != MAILIMAP_NO_ERROR) {
+                dropFetchList(imap);
+                if (pr == MAILIMAP_ERROR_STREAM || pr == MAILIMAP_ERROR_FATAL) return pr;
+                continue;
+            }
+            if (taggedOk(response)) {
+                clist * fetched = imap->imap_response_info != nullptr
+                    ? imap->imap_response_info->rsp_fetch_list : nullptr;
+                previews[i] = previewSectionText(fetched, asks[i].charset);
+            }
+            dropFetchList(imap);
+            mailimap_response_free(response);
+            continue;
+        }
+        sent.push_back(Sent{tag, i});
     }
     if (sent.empty()) return sendError;
     if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
@@ -3123,7 +3270,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeError(JNIEnv * env,
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
-    jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from) {
+    jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
+    jboolean pipelineFlag, jboolean logFlag) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -3133,7 +3281,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars fr(env, from);
     std::string error;
     std::string address;
-    mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), &error, &address);
+    mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), logFlag == JNI_TRUE, &error, &address);
     if (imap == nullptr) {
         setLastError(error);
         return 0;
@@ -3155,6 +3303,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->smtpHost = sh.c();
     session->smtpPort = smtpPort;
     session->from = fr.c()[0] != 0 ? fr.c() : u.c();
+    session->pipelineCommands = pipelineFlag == JNI_TRUE;
+    session->logImapTraffic = logFlag == JNI_TRUE;
     session->capabilityLine = joinCapabilities(caps);
     mailimap_capability_data_free(caps);
     std::lock_guard<std::mutex> lock(gLiveMu);
@@ -3179,6 +3329,19 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeEnable(JNIEnv * env, jo
     if (session == nullptr) return;
     JChars name(env, capability);
     enableNamed(session, name.c());
+    unlockSession(session);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetSessionFlags(JNIEnv * env, jobject, jlong handle,
+    jboolean pipelineFlag, jboolean logFlag) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    session->pipelineCommands = pipelineFlag == JNI_TRUE;
+    session->logImapTraffic = logFlag == JNI_TRUE;
+    setImapTrafficLogger(session->imap, session->logImapTraffic);
+    setImapTrafficLogger(session->watch, session->logImapTraffic);
     unlockSession(session);
 }
 
@@ -3275,7 +3438,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv *
             unlockSession(session);
             return nullptr;
         }
-        r = statusMessagesPipeline(session->imap, names, &counts);
+        r = statusMessagesPipeline(session->imap, names, &counts, session->pipelineCommands);
     }
     if (r != MAILIMAP_NO_ERROR) {
         throwImap(env, session->imap, "status failed");
@@ -3495,7 +3658,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 havePreview[i] = 1;
             }
             std::vector<std::string> got;
-            int br = previewBurst(session->imap, asks, peekLimit, got);
+            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
             if (br != MAILIMAP_NO_ERROR) {
                 if (list != nullptr) mailimap_fetch_list_free(list);
                 throwImap(env, session->imap, "fetch failed");
@@ -3566,7 +3729,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 havePreview[i] = 1;
             }
             std::vector<std::string> got;
-            int br = previewBurst(session->imap, asks, peekLimit, got);
+            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
             if (br != MAILIMAP_NO_ERROR) {
                 if (list != nullptr) mailimap_fetch_list_free(list);
                 throwImap(env, session->imap, "fetch failed");
@@ -4294,7 +4457,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     stopWatchLocked(session, env);
     JChars mb(env, mailbox);
     std::string error;
-    mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), &error, nullptr);
+    mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session->logImapTraffic, &error, nullptr);
     if (watch == nullptr) {
         throwFailure(env, error);
         unlockSession(session);
