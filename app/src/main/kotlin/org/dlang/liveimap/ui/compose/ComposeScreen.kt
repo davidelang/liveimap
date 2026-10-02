@@ -236,19 +236,16 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         )
     }
 
-    suspend fun markForwarded(): Boolean {
-        if (seed.kind != ComposeKind.Forward) return true
-        val uid = sourceUid ?: return true
-        val box = seed.mailbox ?: return true
-        return try {
+    suspend fun storeAcceptedFlags(uids: List<Long>) {
+        val flags = smtpAcceptFlags(seed.kind)
+        val box = seed.mailbox
+        if (flags.isEmpty() || box == null || uids.isEmpty()) return
+        try {
             ensureMailbox(box)
-            session.storeFlags(listOf(uid), setOf("\$Forwarded"), emptySet())
-            true
+            session.storeFlags(uids, flags, emptySet())
         } catch (error: CancellationException) {
             throw error
-        } catch (error: MailFailure) {
-            notice = error.text
-            false
+        } catch (_: MailFailure) {
         }
     }
 
@@ -270,7 +267,8 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             deleteCopy(appContext, copy.id)
             if (held?.id == copy.id) held = null
             notice = null
-            status = null
+            deliveryDone = true
+            status = "Sent · saved to ${mailboxLeaf(copy.mailbox)}"
             copies = readCopies(appContext)
             return true
         }
@@ -283,6 +281,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             status = "Not sent"
             return false
         }
+        storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
         if (copy.mailbox.isNotEmpty()) {
             try {
                 session.append(copy.mailbox, copy.bytes)
@@ -301,7 +300,8 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         deleteCopy(appContext, copy.id)
         if (held?.id == copy.id) held = null
         notice = null
-        status = null
+        deliveryDone = true
+        status = if (copy.mailbox.isNotEmpty()) "Sent · saved to ${mailboxLeaf(copy.mailbox)}" else null
         copies = readCopies(appContext)
         return true
     }
@@ -476,6 +476,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                             copies = readCopies(appContext)
                             return@launchLocked false
                         }
+                        storeAcceptedFlags(listOf(uid))
                         if (!account.bounceFcc) continue
                         try {
                             session.append(account.sentMailbox, bounced)
@@ -492,7 +493,8 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         }
                     }
                     notice = null
-                    status = null
+                    deliveryDone = true
+                    status = if (account.bounceFcc) "Sent · saved to ${mailboxLeaf(account.sentMailbox)}" else null
                     true
                 }
             }) { Text("Bounce") }
@@ -575,9 +577,8 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         return@launchLocked retryCopy(saved)
                     }
                     if (deliveryDone) {
-                        status = null
-                        if (!markForwarded()) return@launchLocked false
                         notice = null
+                        status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
@@ -610,6 +611,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         copies = readCopies(appContext)
                         return@launchLocked false
                     }
+                    storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
                     try {
                         session.append(account.sentMailbox, built.rfc822)
                     } catch (error: CancellationException) {
@@ -627,13 +629,12 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     held = null
                     copies = readCopies(appContext)
                     deliveryDone = true
-                    status = null
-                    if (!markForwarded()) return@launchLocked false
                     notice = null
+                    status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
                     true
                 }
-            }) { Text(if (held?.appendOnly == true) "Save sent copy" else "Send") }
-            TextButton(onClick = {
+            }) { Text(if (held?.appendOnly == true) "Retry" else "Send") }
+            if (!deliveryDone) TextButton(onClick = {
                 launchLocked {
                     if (account.postponedMailbox.isEmpty()) {
                         notice = "Postponed mailbox is not set"
@@ -648,7 +649,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         return@launchLocked false
                     }
                     try {
-                        session.append(account.postponedMailbox, built.rfc822)
+                        session.append(account.postponedMailbox, built.rfc822, setOf("\\Draft"))
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
@@ -662,12 +663,26 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                         copies = readCopies(appContext)
                     }
                     notice = null
-                    status = null
+                    status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
                     true
                 }
             }) { Text("Postpone") }
         }
     }
+}
+
+internal fun smtpAcceptFlags(kind: ComposeKind): Set<String> = when (kind) {
+    ComposeKind.Reply, ComposeKind.ReplyAll -> setOf("\\Answered")
+    ComposeKind.Forward, ComposeKind.Bounce -> setOf("\$Forwarded")
+    ComposeKind.New, ComposeKind.ResumePostpone -> emptySet()
+}
+
+internal fun mailboxLeaf(mailbox: String): String {
+    val slash = mailbox.lastIndexOf('/')
+    if (slash >= 0) return mailbox.substring(slash + 1)
+    val dot = mailbox.lastIndexOf('.')
+    if (dot >= 0) return mailbox.substring(dot + 1)
+    return mailbox
 }
 
 private fun appendAddress(current: String, next: String): String {

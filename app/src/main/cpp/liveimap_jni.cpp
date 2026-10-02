@@ -48,6 +48,7 @@ int mailimap_crlf_send(mailstream * fd);
 int mailimap_space_send(mailstream * fd);
 int mailimap_token_send(mailstream * fd, const char * atom);
 int mailimap_mailbox_send(mailstream * fd, const char * mb);
+int mailimap_flag_list_send(mailstream * fd, struct mailimap_flag_list * flag_list);
 int mailimap_astring_send(mailstream * fd, const char * astring);
 int mailimap_select_send(mailstream * fd, const char * mb, int condstore);
 int mailimap_oparenth_send(mailstream * fd);
@@ -1454,7 +1455,43 @@ bool taggedOk(struct mailimap_response * response) {
     return tagged->rsp_cond_state->rsp_type == MAILIMAP_RESP_COND_STATE_OK;
 }
 
-int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes, size_t size) {
+int taggedCondAt(const char * line) {
+    if (line == nullptr || line[0] == 0 || line[0] == '*' || line[0] == '+') return 0;
+    const char * p = line;
+    while (*p != 0 && *p != ' ' && *p != '\r' && *p != '\n') p++;
+    if (p == line || *p != ' ') return 0;
+    ++p;
+    if (strncasecmp(p, "OK", 2) == 0) {
+        char n = p[2];
+        if (n == 0 || n == ' ' || n == '\r' || n == '\n') return 1;
+    }
+    if (strncasecmp(p, "NO", 2) == 0) {
+        char n = p[2];
+        if (n == 0 || n == ' ' || n == '\r' || n == '\n') return 2;
+    }
+    if (strncasecmp(p, "BAD", 3) == 0) {
+        char n = p[3];
+        if (n == 0 || n == ' ' || n == '\r' || n == '\n') return 3;
+    }
+    return 0;
+}
+
+int taggedCondInBuffer(mailimap * imap) {
+    if (imap == nullptr || imap->imap_stream_buffer == nullptr || imap->imap_stream_buffer->str == nullptr) return 0;
+    const char * p = imap->imap_stream_buffer->str;
+    int found = 0;
+    while (*p != 0) {
+        int kind = taggedCondAt(p);
+        if (kind != 0) found = kind;
+        const char * nl = strchr(p, '\n');
+        if (nl == nullptr) break;
+        p = nl + 1;
+    }
+    return found;
+}
+
+int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes, size_t size,
+    struct mailimap_flag_list * flags) {
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_token_send(imap->imap_stream, "APPEND");
@@ -1463,6 +1500,12 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_mailbox_send(imap->imap_stream, mailbox);
     if (r != MAILIMAP_NO_ERROR) return r;
+    if (flags != nullptr) {
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_flag_list_send(imap->imap_stream, flags);
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
     char marker[64];
@@ -1479,13 +1522,22 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
         off += static_cast<size_t>(wrote);
     }
     if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    imap->imap_response = nullptr;
     if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    int seen = taggedCondInBuffer(imap);
+    // Tagged OK, including APPENDUID, is already buffered. Parsing would read another line.
+    if (seen == 1) return MAILIMAP_NO_ERROR;
+    if (seen == 2 || seen == 3) return MAILIMAP_ERROR_APPEND;
     struct mailimap_response * response = nullptr;
     r = mailimap_parse_response(imap, &response);
-    if (r != MAILIMAP_NO_ERROR) return r;
+    if (r != MAILIMAP_NO_ERROR) {
+        if (taggedCondInBuffer(imap) == 1) return MAILIMAP_NO_ERROR;
+        return r;
+    }
     bool ok = taggedOk(response);
     mailimap_response_free(response);
-    return ok ? MAILIMAP_NO_ERROR : MAILIMAP_ERROR_APPEND;
+    if (ok || taggedCondInBuffer(imap) == 1) return MAILIMAP_NO_ERROR;
+    return MAILIMAP_ERROR_APPEND;
 }
 
 void stopWatchLocked(LiveSession * session, JNIEnv * env) {
@@ -3617,17 +3669,64 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv *
     unlockSession(session);
 }
 
+bool appendFlagsAreDraft(JNIEnv * env, jobjectArray flags) {
+    if (flags == nullptr) return true;
+    jsize n = env->GetArrayLength(flags);
+    for (jsize i = 0; i < n; ++i) {
+        auto js = static_cast<jstring>(env->GetObjectArrayElement(flags, i));
+        bool draft = false;
+        {
+            JChars chars(env, js);
+            draft = strcmp(chars.c(), "\\Draft") == 0;
+        }
+        if (js != nullptr) env->DeleteLocalRef(js);
+        if (!draft) return false;
+    }
+    return true;
+}
+
+struct mailimap_flag_list * draftFlagList(JNIEnv * env, jobjectArray flags) {
+    if (flags == nullptr) return nullptr;
+    jsize n = env->GetArrayLength(flags);
+    if (n <= 0) return nullptr;
+    struct mailimap_flag_list * list = mailimap_flag_list_new_empty();
+    if (list == nullptr) {
+        throwFailure(env, "append failed");
+        return nullptr;
+    }
+    struct mailimap_flag * flag = mailimap_flag_new_draft();
+    if (flag == nullptr || mailimap_flag_list_add(list, flag) != MAILIMAP_NO_ERROR) {
+        if (flag != nullptr) mailimap_flag_free(flag);
+        mailimap_flag_list_free(list);
+        throwFailure(env, "append failed");
+        return nullptr;
+    }
+    return list;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jobject, jlong handle,
-    jstring mailbox, jbyteArray message) {
+    jstring mailbox, jbyteArray message, jobjectArray flags) {
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
+    if (!appendFlagsAreDraft(env, flags)) {
+        throwFailure(env, "unsupported append flag");
+        unlockSession(session);
+        return;
+    }
+    struct mailimap_flag_list * flagList = draftFlagList(env, flags);
+    if (env->ExceptionCheck()) {
+        unlockSession(session);
+        return;
+    }
     JChars mb(env, mailbox);
     jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
     jbyte * bytes = n > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
-    int r = appendLiteralPlus(session->imap, mb.c(), bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n));
+    int r = appendLiteralPlus(session->imap, mb.c(),
+        bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n), flagList);
     if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
+    if (flagList != nullptr) mailimap_flag_list_free(flagList);
     if (!cmdOk(r)) throwImap(env, session->imap, "append failed");
     unlockSession(session);
 }

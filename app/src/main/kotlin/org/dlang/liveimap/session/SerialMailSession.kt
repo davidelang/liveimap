@@ -79,8 +79,8 @@ class SerialMailSession(
         onLane { inner.stopWatch() }
     }
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray) {
-        onLane { inner.append(mailbox, rfc822) }
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
+        onLane { inner.append(mailbox, rfc822, flags) }
     }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {

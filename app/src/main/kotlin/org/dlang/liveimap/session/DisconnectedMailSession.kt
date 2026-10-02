@@ -48,7 +48,7 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun stopWatch(): Unit = notConnected()
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray): Unit = notConnected()
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>): Unit = notConnected()
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>): Unit =
         notConnected()

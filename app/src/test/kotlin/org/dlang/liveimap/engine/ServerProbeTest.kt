@@ -138,7 +138,7 @@ private class ProbeMailSession(
         stopWatchCalls += 1
     }
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray) {
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         refuse("append")
     }
 

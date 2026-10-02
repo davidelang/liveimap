@@ -486,7 +486,7 @@ private class FakeMailSession(
         stopWatchCount += 1
     }
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray) {
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         appendCount += 1
     }
 

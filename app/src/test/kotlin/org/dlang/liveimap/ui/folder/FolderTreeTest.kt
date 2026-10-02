@@ -248,7 +248,7 @@ private class FakeMailSession(
 
     override suspend fun stopWatch() = unused()
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray) = unused()
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
 

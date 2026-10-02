@@ -23,7 +23,7 @@ interface MailSession {
     suspend fun thread(key: SortKey): ThreadNode
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)
     suspend fun stopWatch()
-    suspend fun append(mailbox: String, rfc822: ByteArray)
+    suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String> = emptySet())
     suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>)
     fun close()
 }

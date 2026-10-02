@@ -249,7 +249,7 @@ private class FakeBookSession : MailSession {
 
     override suspend fun stopWatch() = Unit
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray) {
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         appendCount += 1
     }
 
