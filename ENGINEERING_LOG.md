@@ -637,3 +637,9 @@
 - Settings stores pipelineCommands (default on) and logImapTraffic (default off); both switches save immediately
 - Pipeline off reads each STATUS or preview tag before the next send; log on writes IMAP traffic to logcat tag LiveIMAP and skips COMPRESS
 - A LOGIN buffer is logged as C <private>; SMTP is not logged
+
+## 2026-10-02 - Execution start: burst desync and IMAP log
+
+- Plan: /home/dlang/git/liveimap/sandbox/plans/burst-desync-and-imap-log-20261002-1333-plan.md
+- Status set to APPROVED. Phase 1: move STATUS and preview bursts so a failed pipeline restores the high IMAP tag and drops the session, and keep the redacted IMAP transcript in the app cache log.
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not edit libetpan.

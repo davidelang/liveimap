@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import android.content.Context
+import java.io.File
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -106,16 +107,25 @@ class LibetpanMailSession : MailSession {
     override suspend fun open(account: AccountSettings): OpenResult {
         val held = this.account
         if (handle != 0L && held != null && sameImapIdentity(held, account)) {
-            val logTurnedOn = account.logImapTraffic && !held.logImapTraffic
-            if (logTurnedOn && compressed) {
+            if (nativeSessionDead(handle)) {
                 close()
             } else {
-                nativeSetSessionFlags(handle, account.pipelineCommands, account.logImapTraffic)
-                this.account = held.copy(
-                    pipelineCommands = account.pipelineCommands,
-                    logImapTraffic = account.logImapTraffic,
-                )
-                return OpenResult.Connected
+                val logTurnedOn = account.logImapTraffic && !held.logImapTraffic
+                if (logTurnedOn && compressed) {
+                    close()
+                } else {
+                    nativeSetSessionFlags(
+                        handle,
+                        account.pipelineCommands,
+                        account.logImapTraffic,
+                        imapTrafficLogPath(currentApplication()),
+                    )
+                    this.account = held.copy(
+                        pipelineCommands = account.pipelineCommands,
+                        logImapTraffic = account.logImapTraffic,
+                    )
+                    return OpenResult.Connected
+                }
             }
         }
         if (handle != 0L) {
@@ -138,6 +148,7 @@ class LibetpanMailSession : MailSession {
             from,
             account.pipelineCommands,
             account.logImapTraffic,
+            imapTrafficLogPath(context),
         )
         if (opened == 0L) {
             return OpenResult.Failed(nativeTakeError())
@@ -438,9 +449,12 @@ class LibetpanMailSession : MailSession {
         from: String,
         pipeline: Boolean,
         log: Boolean,
+        logPath: String,
     ): Long
 
-    private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean)
+    private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
+
+    private external fun nativeSessionDead(handle: Long): Boolean
 
     private external fun nativeCapabilityLine(handle: Long): String
     private external fun nativeEnable(handle: Long, capability: String)
@@ -505,6 +519,11 @@ class LibetpanMailSession : MailSession {
         @JvmStatic
         private external fun nativeTakeError(): String
     }
+}
+
+private fun imapTrafficLogPath(context: Context?): String {
+    if (context == null) return ""
+    return File(context.cacheDir, "imap-traffic.log").absolutePath
 }
 
 private fun currentApplication(): Context? {
