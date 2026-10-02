@@ -12,6 +12,12 @@ enum class Density {
     Large,
 }
 
+fun densityLabel(density: Density): String = when (density) {
+    Density.Compact -> "Compact"
+    Density.Medium -> "Comfortable"
+    Density.Large -> "Large"
+}
+
 enum class SortKey {
     Arrival,
     Date,
@@ -22,6 +28,18 @@ enum class SortKey {
     Size,
     ThreadReferences,
     ThreadOrderedSubject,
+}
+
+fun sortKeyLabel(key: SortKey): String = when (key) {
+    SortKey.Arrival -> "Arrival"
+    SortKey.Date -> "Date"
+    SortKey.From -> "From"
+    SortKey.Subject -> "Subject"
+    SortKey.To -> "To"
+    SortKey.Cc -> "Cc"
+    SortKey.Size -> "Size"
+    SortKey.ThreadReferences -> "Thread"
+    SortKey.ThreadOrderedSubject -> "Ordered subject"
 }
 
 data class FolderView(
@@ -39,10 +57,26 @@ enum class SwipeAction {
     FlagScreen,
 }
 
+fun swipeActionLabel(action: SwipeAction): String = when (action) {
+    SwipeAction.Delete -> "Delete"
+    SwipeAction.Move -> "Move"
+    SwipeAction.Reply -> "Reply"
+    SwipeAction.ReplyAll -> "Reply all"
+    SwipeAction.SetFlag -> "Set flag"
+    SwipeAction.ClearFlag -> "Clear flag"
+    SwipeAction.FlagScreen -> "Flag screen"
+}
+
 enum class ThemeMode {
     Dark,
     Light,
     FollowSystem,
+}
+
+fun themeLabel(mode: ThemeMode): String = when (mode) {
+    ThemeMode.Dark -> "Dark"
+    ThemeMode.Light -> "Light"
+    ThemeMode.FollowSystem -> "System default"
 }
 
 enum class DateFormat {
@@ -50,6 +84,13 @@ enum class DateFormat {
     Short,
     Relative,
     Custom,
+}
+
+fun dateFormatLabel(format: DateFormat): String = when (format) {
+    DateFormat.Local -> "Local"
+    DateFormat.Short -> "Short"
+    DateFormat.Relative -> "Relative"
+    DateFormat.Custom -> "Custom"
 }
 
 enum class BodyView {
@@ -116,6 +157,7 @@ data class AccountSettings(
     val datePattern: String = "",
     val favorites: List<FolderFavorite> = emptyList(),
     val includeForwardAttachments: Boolean = true,
+    val askBeforeExpunge: Boolean = true,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -151,6 +193,7 @@ private val fieldNames = listOf(
     "datePattern",
     "favorites",
     "includeForwardAttachments",
+    "askBeforeExpunge",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -185,6 +228,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("datePattern=${percentEncode(datePattern)}")
     appendLine("favorites=${encodeFavorites(favorites)}")
     appendLine("includeForwardAttachments=$includeForwardAttachments")
+    appendLine("askBeforeExpunge=$askBeforeExpunge")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -209,7 +253,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "spamMailbox" ||
             key == "bodyView" ||
             key == "preferHtml" ||
-            key == "includeForwardAttachments"
+            key == "includeForwardAttachments" ||
+            key == "askBeforeExpunge"
         ) {
             continue
         }
@@ -244,6 +289,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
         favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
         includeForwardAttachments = values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true,
+        askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
     )
 }
 

@@ -748,17 +748,52 @@ fun MessageIndexScreen(
                         )
                     }
                 }
+                var confirmExpunge by remember { mutableStateOf(false) }
                 TextButton(
                     onClick = {
-                        scope.launch {
-                            gate.withLock {
-                                model.expunge()
-                                pull()
+                        val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+                        if (account.askBeforeExpunge || !uidPlus) {
+                            confirmExpunge = true
+                        } else {
+                            scope.launch {
+                                gate.withLock {
+                                    model.expunge()
+                                    pull()
+                                }
+                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                             }
-                            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                         }
                     },
                 ) { Text("Expunge") }
+                if (confirmExpunge) {
+                    val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+                    val body = buildString {
+                        append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
+                        if (!uidPlus) {
+                            append(" This includes messages marked deleted by other clients.")
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = { confirmExpunge = false },
+                        title = { Text("Expunge?") },
+                        text = { Text(body) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmExpunge = false
+                                scope.launch {
+                                    gate.withLock {
+                                        model.expunge()
+                                        pull()
+                                    }
+                                    if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                }
+                            }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmExpunge = false }) { Text("Cancel") }
+                        },
+                    )
+                }
             }
             if (filters.isNotEmpty()) {
                 Row(

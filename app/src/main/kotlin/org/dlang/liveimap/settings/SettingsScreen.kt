@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -16,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -33,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -165,30 +168,24 @@ fun SettingsScreen() {
             persist(settings.copy(markSeenOnOpen = it))
         }
         BoolField("Show deleted", settings.showDeleted) { persist(settings.copy(showDeleted = it)) }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Show unread counts", modifier = Modifier.weight(1f))
-            Switch(
-                checked = settings.showUnreadCounts || warnUnread,
-                onCheckedChange = { enabled ->
-                    if (enabled) {
-                        warnUnread = true
-                    } else {
-                        warnUnread = false
-                        persist(settings.copy(showUnreadCounts = false))
-                    }
-                },
-            )
+        BoolField("Ask before expunge", settings.askBeforeExpunge) {
+            persist(settings.copy(askBeforeExpunge = it))
+        }
+        BoolField("Show unread counts", settings.showUnreadCounts || warnUnread) { enabled ->
+            if (enabled) {
+                warnUnread = true
+            } else {
+                warnUnread = false
+                persist(settings.copy(showUnreadCounts = false))
+            }
         }
         ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
             persist(settings.copy(bodyView = view))
         }
-        ChoiceField("Density", Density.entries, settings.density, { it.name }) {
+        ChoiceField("Density", Density.entries, settings.density, { densityLabel(it) }) {
             persist(settings.copy(density = it))
         }
-        ChoiceField("Date format", DateFormat.entries, settings.dateFormat, { it.name }) {
+        ChoiceField("Date format", DateFormat.entries, settings.dateFormat, { dateFormatLabel(it) }) {
             persist(settings.copy(dateFormat = it))
         }
         if (settings.dateFormat == DateFormat.Custom) {
@@ -196,22 +193,17 @@ fun SettingsScreen() {
                 persist(settings.copy(datePattern = it))
             }
         }
-        ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { it.name }) { key ->
+        ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { sortKeyLabel(it) }) { key ->
             persist(settings.copy(defaultView = settings.defaultView.copy(key = key)))
         }
-        ChoiceField(
-            "Default view newest first",
-            listOf(true, false),
-            settings.defaultView.newestFirst,
-            { if (it) "newest" else "oldest" },
-        ) { newest ->
+        BoolField("Newest first", settings.defaultView.newestFirst) { newest ->
             persist(settings.copy(defaultView = settings.defaultView.copy(newestFirst = newest)))
         }
         Text("Folder views")
         settings.folderViews.forEach { (mailbox, view) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "$mailbox ${view.key.name} ${if (view.newestFirst) "newest" else "oldest"}",
+                    "$mailbox ${sortKeyLabel(view.key)} ${if (view.newestFirst) "Newest first" else "Oldest first"}",
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = {
@@ -220,7 +212,7 @@ fun SettingsScreen() {
             }
         }
         LineField("Folder view mailbox", draftFolder) { draftFolder = it }
-        ChoiceField("Folder view sort", SortKey.entries, draftSort, { it.name }) { draftSort = it }
+        ChoiceField("Folder view sort", SortKey.entries, draftSort, { sortKeyLabel(it) }) { draftSort = it }
         BoolField("Folder view newest first", draftNewest) { draftNewest = it }
         TextButton(onClick = {
             if (draftFolder.isEmpty()) return@TextButton
@@ -266,7 +258,7 @@ fun SettingsScreen() {
         BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
             persist(settings.copy(includeForwardAttachments = it))
         }
-        ChoiceField("Theme", ThemeMode.entries, settings.theme, { it.name }) {
+        ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
             persist(settings.copy(theme = it))
         }
     }
@@ -352,13 +344,15 @@ private fun PortField(label: String, value: Int, onValue: (Int) -> Unit) {
 
 @Composable
 private fun BoolField(label: String, value: Boolean, onValue: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = value, onCheckedChange = onValue)
-    }
+    ListItem(
+        headlineContent = { Text(label) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = value, role = Role.Switch, onValueChange = onValue),
+        trailingContent = {
+            Switch(checked = value, onCheckedChange = null)
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -412,7 +406,7 @@ private fun SwipeEditor(
     onChange: (SwipeBinding) -> Unit,
 ) {
     Text(label)
-    ChoiceField("Action", SwipeAction.entries, binding.action, { it.name }) { action ->
+    ChoiceField("Action", SwipeAction.entries, binding.action, { swipeActionLabel(it) }) { action ->
         onChange(binding.copy(action = action))
     }
     if (binding.action == SwipeAction.Move) {

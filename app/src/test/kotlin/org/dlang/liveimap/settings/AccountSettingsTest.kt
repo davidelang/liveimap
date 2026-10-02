@@ -42,6 +42,7 @@ class AccountSettingsTest {
                 "datePattern",
                 "favorites",
                 "includeForwardAttachments",
+                "askBeforeExpunge",
             ),
             keys,
         )
@@ -56,6 +57,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("friendlyName="))
         assertTrue(text.lines().contains("theme=FollowSystem"))
         assertTrue(text.lines().contains("includeForwardAttachments=true"))
+        assertTrue(text.lines().contains("askBeforeExpunge=true"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 
@@ -87,6 +89,7 @@ class AccountSettingsTest {
             bounceFcc = true,
             showUnreadCounts = true,
             includeForwardAttachments = false,
+            askBeforeExpunge = false,
         )
         val text = original.encode()
         assertTrue(text.contains("username=user%20name"))
@@ -96,6 +99,7 @@ class AccountSettingsTest {
         assertTrue(text.contains("A%3BB"))
         assertTrue(text.contains("swipeLeading=SetFlag||%5CFlagged"))
         assertTrue(text.contains("includeForwardAttachments=false"))
+        assertTrue(text.contains("askBeforeExpunge=false"))
         assertEquals(original, decodeAccountSettings(text))
         assertEquals(text, decodeAccountSettings(text).encode())
     }
@@ -154,7 +158,8 @@ class AccountSettingsTest {
                     !it.startsWith("dateFormat=") &&
                     !it.startsWith("datePattern=") &&
                     !it.startsWith("spamMailbox=") &&
-                    !it.startsWith("includeForwardAttachments=")
+                    !it.startsWith("includeForwardAttachments=") &&
+                    !it.startsWith("askBeforeExpunge=")
             }
             .joinToString("\n")
         assertEquals(AccountSettings(), decodeAccountSettings(older))
@@ -165,6 +170,7 @@ class AccountSettingsTest {
         assertEquals("", decodeAccountSettings(older).datePattern)
         assertEquals("", decodeAccountSettings(older).spamMailbox)
         assertTrue(decodeAccountSettings(older).includeForwardAttachments)
+        assertTrue(decodeAccountSettings(older).askBeforeExpunge)
 
         val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
             .first { it.startsWith("friendlyName=") }
@@ -238,6 +244,19 @@ class AccountSettingsTest {
         assertEquals("", emailDefaultedFromUsername("dlang", ""))
         assertEquals("", emailDefaultedFromUsername("a@b", ""))
         assertEquals("  dlang@lang.hm  ", emailDefaultedFromUsername("  dlang@lang.hm  ", ""))
+    }
+
+    @Test
+    fun labels() {
+        assertEquals("Comfortable", densityLabel(Density.Medium))
+        assertEquals("System default", themeLabel(ThemeMode.FollowSystem))
+        assertEquals("Reply all", swipeActionLabel(SwipeAction.ReplyAll))
+        assertEquals("Thread", sortKeyLabel(SortKey.ThreadReferences))
+        assertEquals("Ordered subject", sortKeyLabel(SortKey.ThreadOrderedSubject))
+        val older = AccountSettings().encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("askBeforeExpunge=") }
+            .joinToString("\n")
+        assertTrue(decodeAccountSettings(older).askBeforeExpunge)
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

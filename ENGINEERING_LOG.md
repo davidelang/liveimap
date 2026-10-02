@@ -496,3 +496,11 @@
 - Approved plan: sandbox/plans/compose-chrome-20261002-0325-plan.md
 - Work: Compose from the index and folder list, discard confirmation, and forward attachment chips
 - Phase 1 of 1
+
+## 2026-10-02 - settings labels and expunge execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-labels-expunge-20261002-0344-plan.md
+- Work: human labels and switch rows in Settings, ask-before-expunge default on, expunge confirms when that setting is on or UIDPLUS is absent
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD f87c2d9
