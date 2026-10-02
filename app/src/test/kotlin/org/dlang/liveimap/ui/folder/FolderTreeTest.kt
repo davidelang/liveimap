@@ -189,11 +189,12 @@ class FolderTreeTest {
         assertEquals(12, first.single { it.mailbox == "INBOX" }.messages)
         assertEquals(3, first.single { it.mailbox == "INBOX" }.unseen)
         assertEquals(null, first.single { it.namespaceRoot }.messages)
-        val second = runImmediate { model.refreshVisibleCounts(visible) }
+        val second = runImmediate { model.refreshVisibleCounts(first) }
         assertEquals(listOf(listOf("INBOX")), session.statusCalls)
         assertEquals(12, second.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(3, second.single { it.mailbox == "INBOX" }.unseen)
         now += 300_000L
-        val third = runImmediate { model.refreshVisibleCounts(visible) }
+        val third = runImmediate { model.refreshVisibleCounts(second) }
         assertEquals(listOf(listOf("INBOX"), listOf("INBOX")), session.statusCalls)
         assertEquals(12, third.single { it.mailbox == "INBOX" }.messages)
         assertEquals(3, third.single { it.mailbox == "INBOX" }.unseen)
