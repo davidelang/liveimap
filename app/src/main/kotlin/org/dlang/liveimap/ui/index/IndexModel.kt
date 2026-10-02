@@ -216,6 +216,19 @@ fun threadSummaryLine(summary: ThreadSummary): String {
     return line
 }
 
+fun threadMessageOrder(
+    roots: List<Long>,
+    hidden: Map<Long, List<Long>>,
+    expanded: Set<Long>,
+): List<Long> {
+    val out = ArrayList<Long>(roots.size)
+    for (root in roots) {
+        out.add(root)
+        if (root in expanded) out.addAll(hidden[root].orEmpty())
+    }
+    return out
+}
+
 sealed class IndexCommand {
     data object None : IndexCommand()
     data class Compose(val seed: ComposeSeed) : IndexCommand()
@@ -286,6 +299,46 @@ class IndexModel(
 
     var summaries: Map<Long, ThreadSummary> = emptyMap()
         private set
+
+    var threadMembers: Map<Long, IndexRow> = emptyMap()
+        private set
+
+    private var openExpanded: Set<Long> = emptySet()
+
+    val threadHidden: Map<Long, List<Long>>
+        get() = threadPlan.associate { it.rootUid to it.hiddenUids }
+
+    fun noteExpanded(expanded: Set<Long>) {
+        openExpanded = expanded
+    }
+
+    fun messageOrder(expanded: Set<Long>): List<Long> {
+        if (!threading) return order
+        return threadMessageOrder(order, threadHidden, expanded)
+    }
+
+    suspend fun cacheThreadMembers(rootUid: Long): Boolean {
+        val missing = threadHidden[rootUid].orEmpty().filter { it !in threadMembers }
+        if (missing.isEmpty()) return true
+        val fetched = try {
+            fetchByUid(missing, preview = false)
+        } catch (failure: MailFailure) {
+            notice = failure.text
+            return false
+        }
+        val merged = LinkedHashMap(threadMembers)
+        for (row in fetched) merged[row.uid] = row
+        threadMembers = merged
+        notice = null
+        return true
+    }
+
+    fun publishMessageOrder() {
+        val byUid = LinkedHashMap<Long, IndexRow>()
+        for (row in threadMembers.values) byUid[row.uid] = row
+        for (row in heldRows) byUid[row.uid] = row
+        OpenMessageOrder.publish(mailbox, messageOrder(openExpanded), byUid.values.toList())
+    }
 
     var account: AccountSettings = AccountSettings()
         private set
@@ -459,16 +512,18 @@ class IndexModel(
         val previous = heldRows
         val previousAnchor = pageAnchor
         val previousSummaries = summaries
+        val previousMembers = threadMembers
         pageAnchor += 1
         try {
             heldRows = if (threading) loadThreadPage() else pagesOf(order)
             notice = null
-            OpenMessageOrder.publish(mailbox, order, heldRows)
+            publishMessageOrder()
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
             heldRows = previous
             summaries = previousSummaries
+            threadMembers = previousMembers
             notice = failure.text
         }
         return heldRows
@@ -480,16 +535,19 @@ class IndexModel(
         val previousAnchor = pageAnchor
         val previousIndex = lastVisibleIndex
         val previousSummaries = summaries
+        val previousMembers = threadMembers
         pageAnchor -= 1
         lastVisibleIndex = 0
         try {
             heldRows = if (threading) loadThreadPage() else pagesOf(order)
             notice = null
+            if (threading) publishMessageOrder()
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
             heldRows = previous
             summaries = previousSummaries
+            threadMembers = previousMembers
             notice = failure.text
         }
         return heldRows
@@ -702,6 +760,7 @@ class IndexModel(
         val previousAnchor = pageAnchor
         val previousIndex = lastVisibleIndex
         val previousSummaries = summaries
+        val previousMembers = threadMembers
         val previousThreading = threading
         val previousPlan = threadPlan
         pageAnchor = 0
@@ -710,12 +769,13 @@ class IndexModel(
             heldRows = load()
             loadedWindow = true
             notice = null
-            OpenMessageOrder.publish(mailbox, order, heldRows)
+            publishMessageOrder()
         } catch (failure: MailFailure) {
             heldRows = previous
             pageAnchor = previousAnchor
             lastVisibleIndex = previousIndex
             summaries = previousSummaries
+            threadMembers = previousMembers
             threading = previousThreading
             threadPlan = previousPlan
             notice = failure.text
@@ -781,6 +841,7 @@ class IndexModel(
         val kept = restrictThreads(collapsed)
         threading = true
         threadPlan = kept
+        threadMembers = emptyMap()
         order = kept.map { it.rootUid }
         return loadThreadPage()
     }
@@ -825,6 +886,7 @@ class IndexModel(
         threading = false
         threadPlan = emptyList()
         summaries = emptyMap()
+        threadMembers = emptyMap()
     }
 
     private fun restrictThreads(threads: List<CollapsedThread>): List<CollapsedThread> {
@@ -847,6 +909,11 @@ class IndexModel(
             emptyList()
         } else {
             fetchByUid(hiddenUids, preview = false)
+        }
+        if (hiddenRows.isNotEmpty()) {
+            val merged = LinkedHashMap(threadMembers)
+            for (row in hiddenRows) merged[row.uid] = row
+            threadMembers = merged
         }
         summaries = summariesFor(pageRoots, byRoot, hiddenRows)
         return loaded

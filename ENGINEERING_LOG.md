@@ -537,3 +537,17 @@
 
 - Executing sandbox/plans/selection-undo-20261002-0443-plan.md.
 - Selection uses a labeled icon row. Select all uses the filter UID list or one 1:* command. Delete and move snackbars can undo, and Expunge with UIDPLUS expunges only those UIDs.
+
+## 2026-10-02 - thread expand execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/thread-expand-20261002-0513-plan.md
+- Work: a thread summary toggles the hidden messages already fetched for that root; expanding does not send UID THREAD
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 1e88da1
+
+## 2026-10-02 - thread expand phase 1
+
+- A summary row toggles the hidden messages already fetched for that root and does not send UID THREAD
+- Expanded roots stay in a mailbox-keyed saveable uid list, so another mailbox starts collapsed
+- threadMessageOrder inserts a root's hidden uids only while that root is expanded

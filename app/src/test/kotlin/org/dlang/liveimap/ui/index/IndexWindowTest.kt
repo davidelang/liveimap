@@ -447,6 +447,15 @@ class IndexWindowTest {
         assertEquals(listOf(2L, 5L), (filtered as SelectAllTarget.Uids).uids)
         assertEquals(SelectAllTarget.EntireMailbox, selectAllTarget(false, emptyList()))
     }
+
+    @Test
+    fun threadMessageOrderInsertsExpandedHiddenUids() {
+        val roots = listOf(3L, 5L, 9L)
+        val hidden = mapOf(5L to listOf(1L), 9L to listOf(4L, 2L))
+        assertEquals(listOf(3L, 5L, 9L), threadMessageOrder(roots, hidden, emptySet()))
+        assertEquals(listOf(3L, 5L, 1L, 9L), threadMessageOrder(roots, hidden, setOf(5L)))
+        assertEquals(listOf(3L, 5L, 9L, 4L, 2L), threadMessageOrder(roots, hidden, setOf(9L)))
+    }
 }
 
 private fun row(

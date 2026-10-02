@@ -90,6 +90,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -379,10 +381,15 @@ fun MessageIndexScreen(
     var promptText by remember { mutableStateOf("") }
     var filters by remember { mutableStateOf<List<AppliedFilter>>(emptyList()) }
     var summaries by remember { mutableStateOf<Map<Long, ThreadSummary>>(emptyMap()) }
+    var threadMembers by remember { mutableStateOf<Map<Long, IndexRow>>(emptyMap()) }
+    var threadHidden by remember { mutableStateOf<Map<Long, List<Long>>>(emptyMap()) }
     var threadAsk by remember { mutableStateOf<FolderView?>(null) }
     var threadAskFromConnect by remember { mutableStateOf(false) }
     var threadExists by remember { mutableIntStateOf(0) }
     var threadConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
+    var expandedText by rememberSaveable(mailbox) { mutableStateOf("") }
+    val expandedThreads = parseExpandedThreads(expandedText)
+    model.noteExpanded(expandedThreads)
     val threadChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
     val sequenceMeasurer = rememberTextMeasurer()
     var multiSelect by remember { mutableStateOf(false) }
@@ -513,9 +520,30 @@ fun MessageIndexScreen(
         canWiden = model.canWiden
         filters = model.filters
         summaries = model.summaries
+        threadMembers = model.threadMembers
+        threadHidden = model.threadHidden
     }
 
     fun pull() = sync.block
+
+    fun toggleThread(rootUid: Long) {
+        scope.launch {
+            gate.withLock {
+                val current = parseExpandedThreads(expandedText)
+                val opening = rootUid !in current
+                if (opening && !model.cacheThreadMembers(rootUid)) {
+                    pull()
+                    return@withLock
+                }
+                val next = LinkedHashSet(current)
+                if (opening) next.add(rootUid) else next.remove(rootUid)
+                model.noteExpanded(next)
+                model.publishMessageOrder()
+                expandedText = formatExpandedThreads(next)
+                pull()
+            }
+        }
+    }
 
     fun runCriterion(kind: String, argument: String, label: String) {
         val narrow = narrowArmed
@@ -730,7 +758,13 @@ fun MessageIndexScreen(
         }
     }
 
-    val indexEntries = buildIndexEntries(rows, summaries)
+    val indexEntries = buildIndexEntries(
+        rows,
+        summaries,
+        expandedThreads,
+        threadMembers,
+        threadHidden,
+    )
     val indexEntryState = rememberUpdatedState(indexEntries)
     LaunchedEffect(listState, connected) {
         if (!connected) return@LaunchedEffect
@@ -1287,6 +1321,7 @@ fun MessageIndexScreen(
                             val row = entry.row
                             IndexMessageRow(
                                 row = row,
+                                member = entry.member,
                                 account = account,
                                 selected = allMailbox || row.uid in selected,
                                 multiSelect = multiSelect,
@@ -1327,7 +1362,12 @@ fun MessageIndexScreen(
                                 },
                             )
                         }
-                        is IndexEntry.Summary -> IndexSummaryRow(entry.text, sequenceWidth)
+                        is IndexEntry.Summary -> IndexSummaryRow(
+                            text = entry.text,
+                            sequenceWidth = sequenceWidth,
+                            expanded = entry.rootUid in expandedThreads,
+                            onClick = { toggleThread(entry.rootUid) },
+                        )
                     }
                 }
             }
@@ -1411,6 +1451,7 @@ fun MessageIndexScreen(
 @Composable
 private fun IndexMessageRow(
     row: IndexRow,
+    member: Boolean = false,
     account: AccountSettings,
     selected: Boolean,
     multiSelect: Boolean,
@@ -1466,7 +1507,12 @@ private fun IndexMessageRow(
         if (binding != null) onSwipe(binding)
         dismissState.reset()
     }
-    Box(Modifier.onSizeChanged { width = it.width }.fillMaxWidth()) {
+    Box(
+        Modifier
+            .padding(start = if (member) 24.dp else 0.dp)
+            .onSizeChanged { width = it.width }
+            .fillMaxWidth(),
+    ) {
         SwipeToDismissBox(
             state = dismissState,
             enableDismissFromStartToEnd = !multiSelect,
@@ -1691,10 +1737,18 @@ private fun dismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, leftToR
 }
 
 @Composable
-private fun IndexSummaryRow(text: String, sequenceWidth: Dp) {
+private fun IndexSummaryRow(
+    text: String,
+    sequenceWidth: Dp,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val description = if (expanded) "Hide messages" else "Show messages"
     Row(
         Modifier
             .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1711,7 +1765,7 @@ private fun IndexSummaryRow(text: String, sequenceWidth: Dp) {
 private sealed class IndexEntry {
     abstract val key: String
 
-    data class Message(val row: IndexRow) : IndexEntry() {
+    data class Message(val row: IndexRow, val member: Boolean = false) : IndexEntry() {
         override val key: String = "m${row.uid}"
     }
 
@@ -1720,15 +1774,35 @@ private sealed class IndexEntry {
     }
 }
 
+private fun parseExpandedThreads(text: String): LinkedHashSet<Long> {
+    val out = LinkedHashSet<Long>()
+    if (text.isEmpty()) return out
+    for (part in text.split(',')) {
+        val uid = part.toLongOrNull() ?: continue
+        out.add(uid)
+    }
+    return out
+}
+
+private fun formatExpandedThreads(uids: Collection<Long>): String = uids.joinToString(",")
+
 private fun buildIndexEntries(
     rows: List<IndexRow>,
     summaries: Map<Long, ThreadSummary>,
+    expanded: Set<Long>,
+    threadMembers: Map<Long, IndexRow>,
+    threadHidden: Map<Long, List<Long>>,
 ): List<IndexEntry> {
     val entries = ArrayList<IndexEntry>(rows.size)
     for (row in rows) {
         entries.add(IndexEntry.Message(row))
         val summary = summaries[row.uid]
         if (summary != null) entries.add(IndexEntry.Summary(row.uid, threadSummaryLine(summary)))
+        if (row.uid !in expanded) continue
+        for (uid in threadHidden[row.uid].orEmpty()) {
+            val member = threadMembers[uid] ?: continue
+            entries.add(IndexEntry.Message(member, member = true))
+        }
     }
     return entries
 }
@@ -1739,7 +1813,7 @@ private fun rootRowIndex(entries: List<IndexEntry>, lazyIndex: Int): Int {
     val last = minOf(lazyIndex, entries.lastIndex)
     for (index in 0..last) {
         val entry = entries[index]
-        if (entry is IndexEntry.Message) {
+        if (entry is IndexEntry.Message && !entry.member) {
             if (index == lazyIndex) return roots
             roots += 1
         } else if (index == lazyIndex) {
