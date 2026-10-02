@@ -13,7 +13,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,10 +44,6 @@ fun FolderListScreen(onOpenMailbox: (String) -> Unit) {
     var rows by remember { mutableStateOf<List<FolderRow>>(emptyList()) }
     var notice by remember { mutableStateOf<String?>(null) }
     var stopped by remember { mutableStateOf(false) }
-
-    DisposableEffect(session) {
-        onDispose { session.close() }
-    }
 
     LaunchedEffect(session) {
         gate.withLock {

@@ -138,7 +138,6 @@ fun SettingsScreen() {
                         try {
                             serverReport = probeServer(session, account)
                         } finally {
-                            session.close()
                             probing = false
                         }
                     }

@@ -434,3 +434,10 @@
 - Work: rename the two IndexWindowTest thread tests; oldest first expects 3, 5, 1, 9, 4, 2 and newest first expects 8, 1, 2
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 0b02a95
+
+## 2026-10-02 - shared mail session execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/shared-mail-session-20261002-0032-plan.md
+- Work: one process-wide SerialMailSession on thread liveimap-imap; reuse an open handle when the IMAP identity matches; screens and Test server do not close the session
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6ea6854

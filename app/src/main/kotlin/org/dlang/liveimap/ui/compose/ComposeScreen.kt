@@ -11,7 +11,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -330,10 +329,6 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             }
             if (leave) onDone()
         }
-    }
-
-    DisposableEffect(session) {
-        onDispose { session.close() }
     }
 
     LaunchedEffect(seed) {

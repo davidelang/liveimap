@@ -12,6 +12,7 @@ import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
+import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SortKey
@@ -72,6 +73,8 @@ fun fetchKind(serverList: String): String =
 
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
+
+    @Volatile
     private var capSet: Set<String> = emptySet()
     private var account: AccountSettings? = null
     private var selectedMailbox: String? = null
@@ -100,6 +103,13 @@ class LibetpanMailSession : MailSession {
         get() = capSet
 
     override suspend fun open(account: AccountSettings): OpenResult {
+        val held = this.account
+        if (handle != 0L && held != null && sameImapIdentity(held, account)) {
+            return OpenResult.Connected
+        }
+        if (handle != 0L) {
+            close()
+        }
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
         val password = try {
             DataStoreSettingsStore(context).password()

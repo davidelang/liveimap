@@ -9,7 +9,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +31,6 @@ fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit
     val session = remember { mailSession() }
     var notice by remember { mutableStateOf<String?>(null) }
     var entries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
-
-    DisposableEffect(session) {
-        onDispose { session.close() }
-    }
 
     LaunchedEffect(session) {
         val settings = try {

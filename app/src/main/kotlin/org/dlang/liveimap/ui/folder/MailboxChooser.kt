@@ -15,7 +15,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,10 +51,6 @@ internal fun MailboxChooser(
     var rows by remember { mutableStateOf<List<FolderRow>>(emptyList()) }
     var notice by remember { mutableStateOf<String?>(null) }
     var stopped by remember { mutableStateOf(false) }
-
-    DisposableEffect(session) {
-        onDispose { session.close() }
-    }
 
     LaunchedEffect(session) {
         gate.withLock {
