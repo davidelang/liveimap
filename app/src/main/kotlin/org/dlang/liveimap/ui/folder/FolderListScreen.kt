@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,9 +18,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Report
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,6 +52,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -56,7 +67,6 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
-import org.dlang.liveimap.ui.UiDims
 import org.dlang.liveimap.ui.compose.readCopies
 
 @Composable
@@ -84,6 +94,10 @@ fun FolderListScreen(
     var stopped by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
     var unsentCount by remember { mutableIntStateOf(0) }
+    var sentMailbox by remember { mutableStateOf("") }
+    var postponedMailbox by remember { mutableStateOf("") }
+    var spamMailbox by remember { mutableStateOf("") }
+    var addressBookMailbox by remember { mutableStateOf("") }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -128,6 +142,10 @@ fun FolderListScreen(
                 loading = false
                 return@withLock
             }
+            sentMailbox = settings.sentMailbox
+            postponedMailbox = settings.postponedMailbox
+            spamMailbox = settings.spamMailbox
+            addressBookMailbox = settings.addressBookMailbox
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -309,6 +327,10 @@ fun FolderListScreen(
                         row = row,
                         reserveMessages = reserveMessages,
                         reserveUnseen = reserveUnseen,
+                        sentMailbox = sentMailbox,
+                        postponedMailbox = postponedMailbox,
+                        spamMailbox = spamMailbox,
+                        addressBookMailbox = addressBookMailbox,
                         onOpen = { if (!row.namespaceRoot) onOpenMailbox(row.mailbox) },
                         onToggle = {
                             scope.launch {
@@ -385,64 +407,143 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
     }
 }
 
+internal fun folderIconKey(
+    mailbox: String,
+    sentMailbox: String,
+    postponedMailbox: String,
+    spamMailbox: String,
+    addressBookMailbox: String,
+    specialUse: String?,
+): String {
+    if (sentMailbox.isNotEmpty() && mailbox == sentMailbox) return "send"
+    if (postponedMailbox.isNotEmpty() && mailbox == postponedMailbox) return "drafts"
+    if (spamMailbox.isNotEmpty() && mailbox == spamMailbox) return "report"
+    if (addressBookMailbox.isNotEmpty() && mailbox == addressBookMailbox) return "contacts"
+    val tokens = specialUse.orEmpty().split(' ').filter { it.isNotEmpty() }
+    for (token in listOf("\\Sent", "\\Drafts", "\\Trash", "\\Junk")) {
+        if (token in tokens) {
+            return when (token) {
+                "\\Sent" -> "send"
+                "\\Drafts" -> "drafts"
+                "\\Trash" -> "delete"
+                else -> "report"
+            }
+        }
+    }
+    if (mailbox == "INBOX") return "inbox"
+    return "folder"
+}
+
+internal fun folderRowDescription(
+    shownLeaf: String,
+    messages: Int?,
+    unseen: Int?,
+    hasChildren: Boolean,
+    expanded: Boolean,
+): String {
+    val text = StringBuilder(shownLeaf)
+    if (messages != null) text.append(", ").append(messages).append(" messages")
+    if (unseen != null) text.append(", ").append(unseen).append(" unread")
+    if (hasChildren) text.append(", ").append(if (expanded) "expanded" else "collapsed")
+    return text.toString()
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderListRow(
     row: FolderRow,
     reserveMessages: Boolean,
     reserveUnseen: Boolean,
+    sentMailbox: String,
+    postponedMailbox: String,
+    spamMailbox: String,
+    addressBookMailbox: String,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onLeafLongPress: () -> Unit,
     onNodeLongPress: () -> Unit,
 ) {
     val shownLeaf = if (row.namespaceRoot && row.mailbox.isEmpty()) "(empty prefix)" else row.leaf
+    val description = folderRowDescription(
+        shownLeaf,
+        row.messages,
+        row.unseen,
+        row.hasChildren,
+        row.expanded,
+    )
+    val icon = when (
+        folderIconKey(
+            row.mailbox,
+            sentMailbox,
+            postponedMailbox,
+            spamMailbox,
+            addressBookMailbox,
+            row.specialUse,
+        )
+    ) {
+        "inbox" -> Icons.Filled.Inbox
+        "send" -> Icons.AutoMirrored.Filled.Send
+        "drafts" -> Icons.Filled.Drafts
+        "report" -> Icons.Filled.Report
+        "contacts" -> Icons.Filled.Contacts
+        "delete" -> Icons.Filled.Delete
+        else -> Icons.Filled.Folder
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = UiDims.expanderWidth * row.depth),
+            .padding(start = 24.dp * row.depth),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val slot = if (row.hasChildren) {
             Modifier
-                .width(UiDims.expanderWidth)
+                .size(48.dp)
                 .combinedClickable(onClick = onToggle, onLongClick = onNodeLongPress)
         } else {
-            Modifier.width(UiDims.expanderWidth)
+            Modifier.size(48.dp)
         }
         Box(modifier = slot, contentAlignment = Alignment.Center) {
             if (row.hasChildren) {
-                Text(if (row.expanded) "-" else "+")
+                Icon(
+                    imageVector = if (row.expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                    contentDescription = if (row.expanded) "Collapse $shownLeaf" else "Expand $shownLeaf",
+                )
             }
         }
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp)
+                .combinedClickable(onClick = onOpen, onLongClick = onLeafLongPress)
+                .clearAndSetSemantics { contentDescription = description },
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
             Text(
                 text = shownLeaf,
                 modifier = Modifier
-                    .combinedClickable(onClick = onOpen, onLongClick = onLeafLongPress)
-                    .padding(vertical = 8.dp),
+                    .weight(1f)
+                    .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
             )
-            val use = row.specialUse
-            if (use != null) {
-                Text(text = use, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
-            }
-        }
-        if (reserveMessages) {
-            Box(modifier = Modifier.width(56.dp), contentAlignment = Alignment.CenterEnd) {
-                val messages = row.messages
-                if (messages != null) {
-                    Text(text = messages.toString(), modifier = Modifier.padding(vertical = 8.dp))
+            if (reserveMessages) {
+                Box(modifier = Modifier.width(56.dp), contentAlignment = Alignment.CenterEnd) {
+                    val messages = row.messages
+                    if (messages != null) {
+                        Text(text = messages.toString(), modifier = Modifier.padding(vertical = 8.dp))
+                    }
                 }
             }
-        }
-        if (reserveUnseen) {
-            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
-                val unseen = row.unseen
-                if (unseen != null) {
-                    Text(text = unseen.toString(), modifier = Modifier.padding(vertical = 8.dp))
+            if (reserveUnseen) {
+                Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
+                    val unseen = row.unseen
+                    if (unseen != null) {
+                        Text(text = unseen.toString(), modifier = Modifier.padding(vertical = 8.dp))
+                    }
                 }
             }
         }

@@ -579,3 +579,17 @@
 - The folder list shows Unsent and the count only when a local copy exists, and that row opens the unsent route
 - Each row shows the subject, recipients, Not sent or Sent, copy not saved, and Open, Retry, or confirmed Discard
 - Compose drops the per-copy retry buttons and opens the list from an Unsent button after a failed send
+
+## 2026-10-02 - folder row icons execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-row-icons-20261002-0609-plan.md
+- Work: 48 dp folder open target and expander, function icons from settings or SPECIAL-USE, TalkBack description without raw special-use text
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 7e68661
+
+## 2026-10-02 - folder row icons phase 1
+
+- Each folder row reserves a 48 dp expander and a separate open target at least 48 dp tall, indented 24 dp per depth
+- Function icons come from a settings mailbox, then Sent, Drafts, Trash, or Junk special-use, then literal INBOX; other rows use the folder icon
+- TalkBack on the open target reads the leaf, counts, and collapsed or expanded; the expander reads Expand or Collapse

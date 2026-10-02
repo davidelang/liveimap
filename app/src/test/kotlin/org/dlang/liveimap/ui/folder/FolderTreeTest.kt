@@ -199,6 +199,39 @@ class FolderTreeTest {
         assertEquals(12, third.single { it.mailbox == "INBOX" }.messages)
         assertEquals(3, third.single { it.mailbox == "INBOX" }.unseen)
     }
+
+    @Test
+    fun folderIconKeyPrefersSettingsThenSpecialUseThenInbox() {
+        assertEquals("inbox", folderIconKey("INBOX", "", "", "", "", null))
+        assertEquals("send", folderIconKey("INBOX", "INBOX", "", "", "", null))
+        assertEquals("send", folderIconKey("INBOX.sent-mail", "INBOX.sent-mail", "", "", "", null))
+        assertEquals("folder", folderIconKey("", "", "", "", "", null))
+        assertEquals("drafts", folderIconKey("INBOX.Drafts", "", "INBOX.Drafts", "", "", null))
+        assertEquals("report", folderIconKey("INBOX.Junk", "", "", "INBOX.Junk", "", null))
+        assertEquals("contacts", folderIconKey("INBOX.contacts", "", "", "", "INBOX.contacts", null))
+        assertEquals("folder", folderIconKey("Sent", "", "", "", "", null))
+        assertEquals("folder", folderIconKey("Inbox", "", "", "", "", null))
+        assertEquals("delete", folderIconKey("INBOX.Trash", "", "", "", "", "\\Trash"))
+        assertEquals("send", folderIconKey("INBOX.sent-mail", "", "", "", "", "\\Sent"))
+        assertEquals("drafts", folderIconKey("INBOX.Drafts", "", "", "", "", "\\Drafts"))
+        assertEquals("report", folderIconKey("INBOX.Junk", "", "", "", "", "\\Junk"))
+        assertEquals("folder", folderIconKey("Archive", "", "", "", "", "\\Archive"))
+        assertEquals("drafts", folderIconKey("INBOX.sent-mail", "", "INBOX.sent-mail", "", "", "\\Sent"))
+        assertEquals("send", folderIconKey("box", "", "", "", "", "\\Junk \\Sent"))
+    }
+
+    @Test
+    fun folderRowDescriptionIncludesCountsAndExpansion() {
+        assertEquals(
+            "kernel, 97625 messages, 97608 unread, collapsed",
+            folderRowDescription("kernel", 97625, 97608, true, false),
+        )
+        assertEquals("INBOX", folderRowDescription("INBOX", null, null, false, false))
+        assertEquals(
+            "(empty prefix), expanded",
+            folderRowDescription("(empty prefix)", null, null, true, true),
+        )
+    }
 }
 
 private data class ListCall(val prefix: String, val parentMailbox: String?)
