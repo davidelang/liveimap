@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,12 +22,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -75,6 +84,10 @@ private class ScrollBridge {
     var onNearEnd: () -> Unit = {}
 }
 
+private class LaterRetry {
+    var block: () -> Unit = {}
+}
+
 private data class AttachmentRow(
     val section: String,
     val label: String,
@@ -100,7 +113,13 @@ fun MessageReaderScreen(
     val carry = remember { Utf8Carry() }
     val bridge = remember { ScrollBridge() }
     val scroll = rememberScrollState()
-    var notice by remember { mutableStateOf<String?>(null) }
+    var loading by remember(mailbox, uid) { mutableStateOf(true) }
+    var banner by remember(mailbox, uid) { mutableStateOf<String?>(null) }
+    var loadToken by remember { mutableIntStateOf(0) }
+    var snackEvent by remember { mutableIntStateOf(0) }
+    var snackMessage by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val laterRetry = remember { LaterRetry() }
     var account by remember { mutableStateOf(AccountSettings()) }
     var structure by remember { mutableStateOf<MimePart?>(null) }
     var selectedView by remember { mutableStateOf(BodyView.PlainOrError) }
@@ -122,6 +141,22 @@ fun MessageReaderScreen(
         choosingMove = false
     }
 
+    fun postSnack(text: String) {
+        snackMessage = text
+        snackEvent += 1
+    }
+
+    LaunchedEffect(snackEvent) {
+        if (snackEvent == 0) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = snackMessage,
+            actionLabel = "Retry",
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            laterRetry.block()
+        }
+    }
+
     // peekPart is BODY.PEEK. \Seen is a separate STORE after the first successful peek.
     suspend fun noteSeen(markSeen: Boolean) {
         if (markSeen && !seenStored && account.markSeenOnOpen) {
@@ -131,7 +166,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                postSnack(error.text)
             }
         }
     }
@@ -159,7 +194,7 @@ fun MessageReaderScreen(
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
-            notice = error.text
+            postSnack(error.text)
             return
         }
         noteSeen(markSeen)
@@ -189,7 +224,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                postSnack(error.text)
                 return
             }
             if (!marked) {
@@ -219,7 +254,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                postSnack(error.text)
                 return null
             }
             if (!marked) {
@@ -357,7 +392,7 @@ fun MessageReaderScreen(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        notice = error.message ?: "not connected"
+                        postSnack(error.message ?: "not connected")
                     }
                     val fetchedNow = offset
                     attachments = attachments.map { item ->
@@ -370,13 +405,17 @@ fun MessageReaderScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
-                    notice = error.text
+                    postSnack(error.text)
                 }
             }
         }
     }
 
-    LaunchedEffect(session, mailbox, uid) {
+    laterRetry.block = { requestView(selectedView) }
+
+    LaunchedEffect(session, mailbox, uid, loadToken) {
+        loading = true
+        banner = null
         var initialView = BodyView.PlainOrError
         var openOk = false
         gate.withLock {
@@ -385,7 +424,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 return@withLock
             }
             account = settings
@@ -396,7 +435,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 return@withLock
             }
             val opened = try {
@@ -404,16 +443,16 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                banner = error.text
                 return@withLock
             }
             when (opened) {
                 is OpenResult.Rejected -> {
-                    notice = opened.capabilities
+                    banner = opened.capabilities
                     return@withLock
                 }
                 is OpenResult.Failed -> {
-                    notice = opened.text
+                    banner = opened.text
                     return@withLock
                 }
                 OpenResult.Connected -> Unit
@@ -438,9 +477,10 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                banner = error.text
             }
         }
+        loading = false
         if (openOk) requestView(initialView)
     }
 
@@ -490,10 +530,22 @@ fun MessageReaderScreen(
         ThemeMode.Light -> false
         ThemeMode.FollowSystem -> systemDark
     }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        val status = notice
-        if (status != null) {
-            Text(text = status, modifier = Modifier.padding(8.dp))
+        if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                loading = true
+                loadToken += 1
+            }
         }
         Row(Modifier.horizontalScroll(rememberScrollState())) {
             IconButton(onClick = onBack) {
@@ -536,7 +588,7 @@ fun MessageReaderScreen(
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: MailFailure) {
-                            notice = error.text
+                            postSnack(error.text)
                         }
                     }
                 }
@@ -564,7 +616,7 @@ fun MessageReaderScreen(
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {
-                                notice = error.text
+                                postSnack(error.text)
                             }
                         }
                     }
@@ -669,6 +721,11 @@ fun MessageReaderScreen(
             }
         }
     }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
     if (choosingMove) {
         MailboxChooser(
             store = store,
@@ -688,7 +745,7 @@ fun MessageReaderScreen(
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: MailFailure) {
-                                notice = error.text
+                                postSnack(error.text)
                             }
                         }
                     }
@@ -696,6 +753,30 @@ fun MessageReaderScreen(
             },
             onDismiss = { choosingMove = false },
         )
+    }
+}
+
+@Composable
+private fun FailureBanner(message: String, onRetry: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CloudOff,
+                contentDescription = null,
+            )
+            Text(
+                text = message,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+            )
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
     }
 }
 

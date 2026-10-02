@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +29,9 @@ import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -37,8 +40,13 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -309,6 +317,11 @@ private class SnapshotSync {
     var block: () -> Unit = {}
 }
 
+fun emptyIndexText(query: String, mailbox: String): String {
+    if (query.isBlank()) return "No messages"
+    return "No messages match \u201c$query\u201d in $mailbox"
+}
+
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
@@ -325,7 +338,13 @@ fun MessageIndexScreen(
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
     var rows by remember { mutableStateOf<List<IndexRow>>(emptyList()) }
-    var notice by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var banner by remember { mutableStateOf<String?>(null) }
+    var loadToken by remember { mutableIntStateOf(0) }
+    var snackEvent by remember { mutableIntStateOf(0) }
+    var snackMessage by remember { mutableStateOf("") }
+    var lastReported by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var view by remember { mutableStateOf(FolderView(SortKey.Arrival, true)) }
     var account by remember { mutableStateOf(AccountSettings()) }
     var menuKeys by remember { mutableStateOf(model.menuKeys) }
@@ -371,9 +390,22 @@ fun MessageIndexScreen(
         }
     }
 
+    fun postSnack(text: String) {
+        lastReported = text
+        snackMessage = text
+        snackEvent += 1
+    }
+
     sync.block = {
         rows = model.rows
-        notice = model.notice
+        if (connected) {
+            val reported = model.notice
+            if (reported == null) {
+                lastReported = null
+            } else if (reported != lastReported) {
+                postSnack(reported)
+            }
+        }
         view = model.view
         account = model.account
         menuKeys = model.menuKeys
@@ -451,7 +483,25 @@ fun MessageIndexScreen(
         }
     }
 
-    LaunchedEffect(session, mailbox) {
+    LaunchedEffect(snackEvent) {
+        if (snackEvent == 0) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = snackMessage,
+            actionLabel = "Retry",
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            lastReported = null
+            gate.withLock {
+                model.loadWindow()
+                pull()
+            }
+            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(session, mailbox, loadToken) {
+        loading = true
+        banner = null
         var pendingThread: FolderView? = null
         var pendingExists = 0
         val watchNow = gate.withLock {
@@ -460,7 +510,7 @@ fun MessageIndexScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 return@withLock false
             }
             try {
@@ -468,7 +518,7 @@ fun MessageIndexScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 return@withLock false
             }
             val opened = try {
@@ -476,16 +526,16 @@ fun MessageIndexScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                banner = error.text
                 return@withLock false
             }
             when (opened) {
                 is OpenResult.Rejected -> {
-                    notice = opened.capabilities
+                    banner = opened.capabilities
                     return@withLock false
                 }
                 is OpenResult.Failed -> {
-                    notice = opened.text
+                    banner = opened.text
                     return@withLock false
                 }
                 OpenResult.Connected -> Unit
@@ -499,7 +549,7 @@ fun MessageIndexScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
-                    notice = error.text
+                    banner = error.text
                     return@withLock false
                 }
                 if (selected.exists > ThreadConfirmExists && !threadConfirmed) {
@@ -509,8 +559,8 @@ fun MessageIndexScreen(
                 }
             }
             model.loadWindow()
-            pull()
             connected = true
+            pull()
             true
         }
         val chosen = pendingThread
@@ -525,12 +575,16 @@ fun MessageIndexScreen(
                 } else {
                     model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                 }
-                pull()
                 connected = true
+                pull()
             }
+            loading = false
             if (model.rows.isNotEmpty()) listState.scrollToItem(0)
         } else if (!watchNow) {
+            loading = false
             return@LaunchedEffect
+        } else {
+            loading = false
         }
         try {
             model.watch { change ->
@@ -548,7 +602,7 @@ fun MessageIndexScreen(
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
-            notice = error.text
+            postSnack(error.text)
         } finally {
             withContext(NonCancellable) {
                 try {
@@ -608,9 +662,20 @@ fun MessageIndexScreen(
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        val message = notice
-        if (message != null) {
-            Text(text = message, modifier = Modifier.padding(8.dp))
+        if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                loading = true
+                loadToken += 1
+            }
         }
         if (connected) {
             Row(
@@ -708,7 +773,7 @@ fun MessageIndexScreen(
                                             } catch (error: CancellationException) {
                                                 throw error
                                             } catch (error: MailFailure) {
-                                                notice = error.text
+                                                postSnack(error.text)
                                                 return@launch
                                             }
                                             if (exists > ThreadConfirmExists && !threadConfirmed) {
@@ -966,6 +1031,26 @@ fun MessageIndexScreen(
                     style = sequenceStyle,
                 ).size.width.toDp()
             }
+            if (!loading && banner == null && rows.isEmpty() && threadAsk == null) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Inbox,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = emptyIndexText(query, mailbox),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            } else {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -1012,6 +1097,7 @@ fun MessageIndexScreen(
                     }
                 }
             }
+            }
         }
     }
         ExtendedFloatingActionButton(
@@ -1022,6 +1108,10 @@ fun MessageIndexScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
+        )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
     val pendingPrompt = prompt
@@ -1222,6 +1312,30 @@ private fun IndexMessageRow(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FailureBanner(message: String, onRetry: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CloudOff,
+                contentDescription = null,
+            )
+            Text(
+                text = message,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+            )
+            TextButton(onClick = onRetry) { Text("Retry") }
         }
     }
 }

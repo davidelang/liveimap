@@ -409,6 +409,12 @@ class IndexWindowTest {
         }
         assertEquals(0, OpenMessageOrder.sequence(9L))
     }
+
+    @Test
+    fun emptyIndexTextBlankAndQuery() {
+        assertEquals("No messages", emptyIndexText("", "INBOX"))
+        assertEquals("No messages match \u201cclamp\u201d in INBOX", emptyIndexText("clamp", "INBOX"))
+    }
 }
 
 private fun row(

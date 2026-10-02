@@ -2,26 +2,38 @@ package org.dlang.liveimap.ui.folder
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,19 +72,55 @@ fun FolderListScreen(
     val gate = remember { Mutex() }
     val listState = rememberLazyListState()
     var rows by remember { mutableStateOf<List<FolderRow>>(emptyList()) }
-    var notice by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var banner by remember { mutableStateOf<String?>(null) }
+    var loadToken by remember { mutableIntStateOf(0) }
+    var snackEvent by remember { mutableIntStateOf(0) }
+    var snackMessage by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
     var stopped by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
 
-    LaunchedEffect(session) {
+    fun postSnack(text: String) {
+        snackMessage = text
+        snackEvent += 1
+    }
+
+    LaunchedEffect(snackEvent) {
+        if (snackEvent == 0) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = snackMessage,
+            actionLabel = "Retry",
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            gate.withLock {
+                if (stopped) return@withLock
+                val listed = try {
+                    model.loadLevel()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (listed != null) rows = listed
+            }
+        }
+    }
+
+    LaunchedEffect(session, loadToken) {
+        loading = true
+        banner = null
+        stopped = false
         gate.withLock {
             val settings = try {
                 store.load()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 stopped = true
+                loading = false
                 return@withLock
             }
             try {
@@ -80,8 +128,9 @@ fun FolderListScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                banner = error.message ?: "not connected"
                 stopped = true
+                loading = false
                 return@withLock
             }
             val opened = try {
@@ -89,19 +138,22 @@ fun FolderListScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                banner = error.text
                 stopped = true
+                loading = false
                 return@withLock
             }
             when (opened) {
                 is OpenResult.Rejected -> {
-                    notice = opened.capabilities
+                    banner = opened.capabilities
                     stopped = true
+                    loading = false
                     return@withLock
                 }
                 is OpenResult.Failed -> {
-                    notice = opened.text
+                    banner = opened.text
                     stopped = true
+                    loading = false
                     return@withLock
                 }
                 OpenResult.Connected -> Unit
@@ -112,8 +164,9 @@ fun FolderListScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                postSnack(error.text)
             }
+            loading = false
         }
     }
 
@@ -128,12 +181,11 @@ fun FolderListScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                notice = error.text
+                postSnack(error.text)
                 null
             }
             if (listed != null) {
                 rows = listed
-                notice = null
                 scrollIndex = listed.indexOfFirst { it.mailbox == target }
             }
         }
@@ -156,7 +208,7 @@ fun FolderListScreen(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        notice = error.text
+                        postSnack(error.text)
                         return@withLock
                     }
                     val byMailbox = updated.associateBy { it.mailbox }
@@ -178,7 +230,7 @@ fun FolderListScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
-                    notice = error.message ?: "not connected"
+                    postSnack(error.message ?: "not connected")
                     return@withLock
                 }
                 val favorite = FolderFavorite(node, row.mailbox, row.delimiter)
@@ -194,13 +246,45 @@ fun FolderListScreen(
 
     Box(Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
-        val message = notice
-        if (message != null) {
-            Text(text = message, modifier = Modifier.padding(8.dp))
+        if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                stopped = false
+                loading = true
+                loadToken += 1
+            }
         }
         if (!stopped) {
             val reserveMessages = rows.any { it.messages != null }
             val reserveUnseen = rows.any { it.unseen != null }
+            if (!loading && banner == null && rows.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Inbox,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "No folders",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            } else {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
@@ -220,7 +304,7 @@ fun FolderListScreen(
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {
-                                        notice = error.text
+                                        postSnack(error.text)
                                         return@withLock
                                     }
                                     val listed = try {
@@ -228,12 +312,11 @@ fun FolderListScreen(
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {
-                                        notice = error.text
+                                        postSnack(error.text)
                                         null
                                     }
                                     if (listed != null) {
                                         rows = listed
-                                        notice = null
                                     }
                                 }
                             }
@@ -243,6 +326,7 @@ fun FolderListScreen(
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 }
+            }
             }
         }
     }
@@ -255,6 +339,34 @@ fun FolderListScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
         )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+@Composable
+private fun FailureBanner(message: String, onRetry: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CloudOff,
+                contentDescription = null,
+            )
+            Text(
+                text = message,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+            )
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
     }
 }
 

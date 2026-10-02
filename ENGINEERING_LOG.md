@@ -504,3 +504,17 @@
 - Phase 1 of 1
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD f87c2d9
+
+## 2026-10-02 - loading empty error execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/loading-empty-error-20261002-0351-plan.md
+- Work: progress, empty, banner, and snackbar states on the index, folder list, and reader
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 73d2b42
+
+## 2026-10-02 - loading empty error phase 1
+
+- Index, folder list, and reader use a 4 dp progress bar, an errorContainer banner with Retry, and a bottom snackbar for later failures
+- Empty index uses emptyIndexText; empty folder list says No folders; the top notice line is gone
+- Expunge confirm is unchanged
