@@ -172,7 +172,9 @@ fun SettingsScreen() {
                 },
             )
         }
-        BoolField("Prefer HTML", settings.preferHtml) { persist(settings.copy(preferHtml = it)) }
+        ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
+            persist(settings.copy(bodyView = view))
+        }
         ChoiceField("Density", Density.entries, settings.density, { it.name }) {
             persist(settings.copy(density = it))
         }

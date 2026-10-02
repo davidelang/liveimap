@@ -30,10 +30,13 @@ import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
 
 private enum class AddressTarget {
@@ -120,16 +123,26 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         }
     }
 
-    suspend fun peekedText(uid: Long, html: Boolean): String {
-        val tree = session.fetchStructure(uid)
-        val part = textPart(tree, if (html) "html" else "plain")
-        if (part == null) {
-            notice = missingPartText(html)
+    suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
+        val plain = textPart(tree, "plain")
+        if (plain != null) {
+            return peekWireBytes(plain.size, 4096, false) { offset, length ->
+                session.peekPart(uid, plain.section, offset, length)
+            }.toString(Charsets.UTF_8)
+        }
+        if (view == BodyView.PlainOrHtml || view == BodyView.PlainOrText) {
+            val html = textPart(tree, "html")
+            if (html != null) {
+                val bytes = peekWireBytes(html.size, 4096, false) { offset, length ->
+                    session.peekPart(uid, html.section, offset, length)
+                }
+                return htmlAsText(bytes.toString(Charsets.UTF_8))
+            }
+            notice = missingPartText(true)
             return ""
         }
-        return peekWireBytes(part.size, 4096, false) { offset, length ->
-            session.peekPart(uid, part.section, offset, length)
-        }.toString(Charsets.UTF_8)
+        notice = missingPartText(false)
+        return ""
     }
 
     suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
@@ -137,7 +150,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
         val parsed = parseRfc822(session.fetchRfc822(uid))
-        val quote = peekedText(uid, settings.preferHtml)
+        val quote = quotedBody(session.fetchStructure(uid), settings.bodyView, uid)
         applyDraft(replyDraft(replyAll, parsed, settings.email, quote))
     }
 
@@ -148,15 +161,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         sourceUid = uid
         val parsed = parseRfc822(session.fetchRfc822(uid))
         val tree = session.fetchStructure(uid)
-        val part = textPart(tree, if (settings.preferHtml) "html" else "plain")
-        val quote = if (part == null) {
-            notice = missingPartText(settings.preferHtml)
-            ""
-        } else {
-            peekWireBytes(part.size, 4096, false) { offset, length ->
-                session.peekPart(uid, part.section, offset, length)
-            }.toString(Charsets.UTF_8)
-        }
+        val quote = quotedBody(tree, settings.bodyView, uid)
         applyDraft(forwardDraft(parsed, quote))
         forwardRows = attachmentParts(tree).mapIndexed { index, item ->
             ForwardRow(

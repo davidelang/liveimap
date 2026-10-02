@@ -1,10 +1,12 @@
 package org.dlang.liveimap.ui.reader
 
+import android.os.Build
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -47,7 +51,10 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.ThemeMode
+import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.missingPartText
@@ -89,7 +96,8 @@ fun MessageReaderScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     var account by remember { mutableStateOf(AccountSettings()) }
     var structure by remember { mutableStateOf<MimePart?>(null) }
-    var showHtml by remember { mutableStateOf(false) }
+    var selectedView by remember { mutableStateOf(BodyView.PlainOrError) }
+    var renderedHtml by remember { mutableStateOf(false) }
     var bodyText by remember { mutableStateOf("") }
     var bodyOffset by remember { mutableIntStateOf(0) }
     var bodySize by remember { mutableIntStateOf(0) }
@@ -103,6 +111,19 @@ fun MessageReaderScreen(
     val saveMutex = remember { Mutex() }
 
     // peekPart is BODY.PEEK. \Seen is a separate STORE after the first successful peek.
+    suspend fun noteSeen(markSeen: Boolean) {
+        if (markSeen && !seenStored && account.markSeenOnOpen) {
+            seenStored = true
+            try {
+                session.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+            }
+        }
+    }
+
     suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean) {
         if (reset) {
             bodyText = ""
@@ -129,16 +150,7 @@ fun MessageReaderScreen(
             notice = error.text
             return
         }
-        if (markSeen && !seenStored && account.markSeenOnOpen) {
-            seenStored = true
-            try {
-                session.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: MailFailure) {
-                notice = error.text
-            }
-        }
+        noteSeen(markSeen)
         if (chunk.isEmpty()) {
             bodyOffset = if (part.size > 0) part.size else bodyOffset + length
             return
@@ -149,24 +161,144 @@ fun MessageReaderScreen(
         bodyText += text
     }
 
-    fun requestPart(html: Boolean) {
-        scope.launch {
-            gate.withLock {
-                if (!connected) return@withLock
-                showHtml = html
-                val root = structure ?: return@withLock
-                val part = textPart(root, if (html) "html" else "plain")
-                if (part == null) {
-                    missing = missingPartText(html)
+    suspend fun pullUnbounded(section: String, markSeen: Boolean) {
+        missing = null
+        renderedHtml = false
+        bodyText = ""
+        bodyOffset = 0
+        bodySize = 0
+        bodySection = section
+        carry.pending = ByteArray(0)
+        var marked = false
+        while (true) {
+            val length = 4096
+            val chunk = try {
+                session.peekPart(uid, section, bodyOffset, length)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return
+            }
+            if (!marked) {
+                marked = true
+                noteSeen(markSeen)
+            }
+            if (chunk.isEmpty()) break
+            bodyOffset += chunk.size
+            val (text, rest) = appendUtf8(carry.pending, chunk)
+            carry.pending = rest
+            bodyText += text
+            if (chunk.size < length) break
+        }
+        if (carry.pending.isNotEmpty()) {
+            bodyText += carry.pending.toString(Charsets.UTF_8)
+            carry.pending = ByteArray(0)
+        }
+    }
+
+    suspend fun readPart(part: MimePart, markSeen: Boolean): ByteArray? {
+        val out = ByteArrayOutputStream()
+        var offset = 0
+        var marked = false
+        suspend fun take(length: Int): ByteArray? {
+            val chunk = try {
+                session.peekPart(uid, part.section, offset, length)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return null
+            }
+            if (!marked) {
+                marked = true
+                noteSeen(markSeen)
+            }
+            return chunk
+        }
+        if (part.size > 0) {
+            while (offset < part.size) {
+                val length = nextWireCount(offset, part.size, 4096, false)
+                if (length <= 0) break
+                val chunk = take(length) ?: return null
+                if (chunk.isEmpty()) break
+                out.write(chunk)
+                offset += chunk.size
+            }
+        } else {
+            while (true) {
+                val chunk = take(4096) ?: return null
+                if (chunk.isEmpty()) break
+                out.write(chunk)
+                offset += chunk.size
+                if (chunk.size < 4096) break
+            }
+        }
+        return out.toByteArray()
+    }
+
+    fun showMissing(text: String) {
+        missing = text
+        renderedHtml = false
+        bodyText = ""
+        bodySection = null
+        bodyOffset = 0
+        bodySize = 0
+        carry.pending = ByteArray(0)
+    }
+
+    suspend fun loadPreferred(view: BodyView) {
+        val root = structure ?: return
+        val plain = textPart(root, "plain")
+        if (plain != null) {
+            missing = null
+            renderedHtml = false
+            pullBody(plain, reset = true, markSeen = !seenStored)
+            return
+        }
+        when (view) {
+            BodyView.PlainOrHtml -> {
+                val html = textPart(root, "html")
+                if (html == null) {
+                    showMissing(missingPartText(true))
+                } else {
+                    missing = null
+                    renderedHtml = true
+                    pullBody(html, reset = true, markSeen = !seenStored)
+                }
+            }
+            BodyView.PlainOrText -> {
+                val html = textPart(root, "html")
+                if (html == null) {
+                    showMissing(missingPartText(true))
+                } else {
+                    renderedHtml = false
+                    missing = null
                     bodyText = ""
                     bodySection = null
                     bodyOffset = 0
-                    bodySize = 0
+                    bodySize = html.size
                     carry.pending = ByteArray(0)
-                    return@withLock
+                    val bytes = readPart(html, markSeen = !seenStored) ?: return
+                    bodyOffset = bytes.size
+                    bodyText = htmlAsText(bytes.toString(Charsets.UTF_8))
                 }
-                missing = null
-                pullBody(part, reset = true, markSeen = !seenStored)
+            }
+            BodyView.PlainOrError -> showMissing(missingPartText(false))
+            BodyView.Headers, BodyView.Raw -> Unit
+        }
+    }
+
+    fun requestView(view: BodyView) {
+        selectedView = view
+        scope.launch {
+            gate.withLock {
+                if (!connected) return@withLock
+                when (view) {
+                    BodyView.Headers -> pullUnbounded("HEADER", markSeen = !seenStored)
+                    BodyView.Raw -> pullUnbounded("*", markSeen = !seenStored)
+                    else -> loadPreferred(view)
+                }
             }
         }
     }
@@ -237,7 +369,7 @@ fun MessageReaderScreen(
     }
 
     LaunchedEffect(session, mailbox, uid) {
-        var html = false
+        var initialView = BodyView.PlainOrError
         var openOk = false
         gate.withLock {
             val settings = try {
@@ -249,7 +381,8 @@ fun MessageReaderScreen(
                 return@withLock
             }
             account = settings
-            html = settings.preferHtml
+            selectedView = settings.bodyView
+            initialView = settings.bodyView
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -300,7 +433,7 @@ fun MessageReaderScreen(
                 notice = error.text
             }
         }
-        if (openOk) requestPart(html)
+        if (openOk) requestView(initialView)
     }
 
     LaunchedEffect(connected, bodySection) {
@@ -308,7 +441,7 @@ fun MessageReaderScreen(
         snapshotFlow { scroll.value to scroll.maxValue }.collect { (value, max) ->
             if (value > 0 && max - value <= 64) {
                 gate.withLock {
-                    if (showHtml) return@withLock
+                    if (renderedHtml) return@withLock
                     val root = structure ?: return@withLock
                     val part = textPart(root, "plain") ?: return@withLock
                     if (part.section != bodySection) return@withLock
@@ -323,7 +456,7 @@ fun MessageReaderScreen(
     bridge.onNearEnd = {
         scope.launch {
             gate.withLock {
-                if (!showHtml) return@withLock
+                if (!renderedHtml) return@withLock
                 val root = structure ?: return@withLock
                 val part = textPart(root, "html") ?: return@withLock
                 if (part.section == bodySection && part.size > 0 && bodyOffset < part.size) {
@@ -333,6 +466,12 @@ fun MessageReaderScreen(
         }
     }
 
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (account.theme) {
+        ThemeMode.Dark -> true
+        ThemeMode.Light -> false
+        ThemeMode.FollowSystem -> systemDark
+    }
     Column(Modifier.fillMaxSize()) {
         val status = notice
         if (status != null) {
@@ -406,9 +545,7 @@ fun MessageReaderScreen(
             TextButton(onClick = {
                 onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
             }) { Text("Bounce") }
-            TextButton(onClick = { requestPart(!showHtml) }) {
-                Text(if (showHtml) "Plain" else "HTML")
-            }
+            MessageViewMenu(selected = selectedView, onSelect = { requestView(it) })
         }
         for (row in attachments) {
             TextButton(
@@ -427,7 +564,7 @@ fun MessageReaderScreen(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            if (absent == null && showHtml) {
+            if (absent == null && renderedHtml) {
                 AndroidView(
                     factory = { context ->
                         WebView(context).apply {
@@ -437,6 +574,7 @@ fun MessageReaderScreen(
                             settings.allowFileAccess = false
                             settings.allowContentAccess = false
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            applyHtmlDark(settings, dark)
                             webViewClient = object : WebViewClient() {
                                 @Deprecated("Deprecated in API 24")
                                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
@@ -453,6 +591,7 @@ fun MessageReaderScreen(
                         }
                     },
                     update = { view ->
+                        applyHtmlDark(view.settings, dark)
                         val page = bodyText
                         if (view.tag != page) {
                             view.tag = page
@@ -498,6 +637,34 @@ fun MessageReaderScreen(
             },
             onDismiss = { choosingMove = false },
         )
+    }
+}
+
+@Composable
+private fun MessageViewMenu(selected: BodyView, onSelect: (BodyView) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) { Text(bodyViewLabel(selected)) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            BodyView.entries.forEach { view ->
+                DropdownMenuItem(
+                    text = { Text(bodyViewLabel(view)) },
+                    onClick = {
+                        expanded = false
+                        onSelect(view)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun applyHtmlDark(settings: WebSettings, dark: Boolean) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        settings.isAlgorithmicDarkeningAllowed = dark
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        @Suppress("DEPRECATION")
+        settings.forceDark = if (dark) WebSettings.FORCE_DARK_ON else WebSettings.FORCE_DARK_OFF
     }
 }
 

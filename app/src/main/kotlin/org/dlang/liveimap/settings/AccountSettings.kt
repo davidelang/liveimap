@@ -52,6 +52,22 @@ enum class DateFormat {
     Custom,
 }
 
+enum class BodyView {
+    PlainOrHtml,
+    PlainOrText,
+    PlainOrError,
+    Headers,
+    Raw,
+}
+
+fun bodyViewLabel(view: BodyView): String = when (view) {
+    BodyView.PlainOrHtml -> "Plain or HTML"
+    BodyView.PlainOrText -> "Plain or text"
+    BodyView.PlainOrError -> "Plain or error"
+    BodyView.Headers -> "Headers"
+    BodyView.Raw -> "Raw"
+}
+
 data class SwipeBinding(
     val action: SwipeAction,
     val moveMailbox: String = "",
@@ -72,7 +88,7 @@ data class AccountSettings(
     val spamMailbox: String = "",
     val markSeenOnOpen: Boolean = true,
     val showDeleted: Boolean = true,
-    val preferHtml: Boolean = false,
+    val bodyView: BodyView = BodyView.PlainOrError,
     val density: Density = Density.Compact,
     val defaultView: FolderView = FolderView(SortKey.Arrival, newestFirst = true),
     val folderViews: Map<String, FolderView> = emptyMap(),
@@ -85,7 +101,10 @@ data class AccountSettings(
     val showUnreadCounts: Boolean = false,
     val dateFormat: DateFormat = DateFormat.Short,
     val datePattern: String = "",
-)
+) {
+    val preferHtml: Boolean
+        get() = bodyView == BodyView.PlainOrHtml
+}
 
 private val fieldNames = listOf(
     "imapHost",
@@ -102,6 +121,7 @@ private val fieldNames = listOf(
     "markSeenOnOpen",
     "showDeleted",
     "preferHtml",
+    "bodyView",
     "density",
     "defaultView",
     "folderViews",
@@ -133,6 +153,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("markSeenOnOpen=$markSeenOnOpen")
     appendLine("showDeleted=$showDeleted")
     appendLine("preferHtml=$preferHtml")
+    appendLine("bodyView=${bodyView.name}")
     appendLine("density=${density.name}")
     appendLine("defaultView=${encodeView(defaultView)}")
     appendLine("folderViews=${encodeFolderViews(folderViews)}")
@@ -165,7 +186,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "showUnreadCounts" ||
             key == "dateFormat" ||
             key == "datePattern" ||
-            key == "spamMailbox"
+            key == "spamMailbox" ||
+            key == "bodyView" ||
+            key == "preferHtml"
         ) {
             continue
         }
@@ -185,7 +208,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         spamMailbox = values["spamMailbox"]?.let { percentDecode(it) } ?: "",
         markSeenOnOpen = parseBoolean(values.getValue("markSeenOnOpen")),
         showDeleted = parseBoolean(values.getValue("showDeleted")),
-        preferHtml = parseBoolean(values.getValue("preferHtml")),
+        bodyView = decodeBodyView(values),
         density = enumValueOf(values.getValue("density")),
         defaultView = parseView(values.getValue("defaultView")),
         folderViews = parseFolderViews(values.getValue("folderViews")),
@@ -270,6 +293,13 @@ private fun parseNewest(value: String): Boolean = when (value) {
     "newest" -> true
     "oldest" -> false
     else -> throw IllegalArgumentException("bad enum")
+}
+
+private fun decodeBodyView(values: Map<String, String>): BodyView {
+    val named = values["bodyView"]
+    if (named != null) return enumValueOf(named)
+    if (values["preferHtml"]?.let { parseBoolean(it) } == true) return BodyView.PlainOrHtml
+    return BodyView.PlainOrError
 }
 
 private fun parseBoolean(value: String): Boolean = when (value) {

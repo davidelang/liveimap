@@ -401,3 +401,7 @@
 - Work: spam mailbox stays empty until chosen; reader Delete stores \Deleted and stays open; Move and Spam use copyThenDelete, and Spam is hidden until that mailbox is set
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 4c2e510
+
+## 2026-10-01 - Message view pulldown
+
+- Started message-body-view-20261001-2054. BodyView replaces Prefer HTML. The reader pulldown does not save settings. HEADER and raw use BODY.PEEK. htmlAsText quotes HTML only for Plain or HTML and Plain or text.

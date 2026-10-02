@@ -27,6 +27,7 @@ class AccountSettingsTest {
                 "markSeenOnOpen",
                 "showDeleted",
                 "preferHtml",
+                "bodyView",
                 "density",
                 "defaultView",
                 "folderViews",
@@ -70,7 +71,7 @@ class AccountSettingsTest {
             addressBookMailbox = "Contacts",
             markSeenOnOpen = false,
             showDeleted = false,
-            preferHtml = true,
+            bodyView = BodyView.PlainOrHtml,
             density = Density.Large,
             defaultView = FolderView(SortKey.Subject, newestFirst = false),
             folderViews = mapOf(
@@ -105,6 +106,8 @@ class AccountSettingsTest {
         assertThrowsIae { decodeAccountSettings(brokenEnum) }
         val brokenFormat = AccountSettings().encode().replace("dateFormat=Short", "dateFormat=Huge")
         assertThrowsIae { decodeAccountSettings(brokenFormat) }
+        val brokenView = AccountSettings().encode().replace("bodyView=PlainOrError", "bodyView=Nope")
+        assertThrowsIae { decodeAccountSettings(brokenView) }
         val missing = AccountSettings().encode().lineSequence()
             .filterNot { it.startsWith("bounceFcc=") }
             .joinToString("\n")
@@ -165,6 +168,25 @@ class AccountSettingsTest {
         val themeOnly = decodeAccountSettings(older + "\ntheme=Light")
         assertEquals("", themeOnly.friendlyName)
         assertEquals(ThemeMode.Light, themeOnly.theme)
+
+        val withoutBodyView = AccountSettings().encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("bodyView=") }
+            .joinToString("\n")
+        assertEquals(BodyView.PlainOrError, decodeAccountSettings(withoutBodyView).bodyView)
+        assertFalse(decodeAccountSettings(withoutBodyView).preferHtml)
+        val neither = withoutBodyView.lineSequence()
+            .filter { !it.startsWith("preferHtml=") }
+            .joinToString("\n")
+        assertEquals(BodyView.PlainOrError, decodeAccountSettings(neither).bodyView)
+        assertFalse(decodeAccountSettings(neither).preferHtml)
+        val oldHtml = withoutBodyView.replace("preferHtml=false", "preferHtml=true")
+        assertEquals(BodyView.PlainOrHtml, decodeAccountSettings(oldHtml).bodyView)
+        assertTrue(decodeAccountSettings(oldHtml).preferHtml)
+        val headers = AccountSettings(bodyView = BodyView.Headers).encode()
+        assertTrue(headers.contains("bodyView=Headers"))
+        assertTrue(headers.contains("preferHtml=false"))
+        assertEquals(BodyView.Headers, decodeAccountSettings(headers).bodyView)
+        assertFalse(decodeAccountSettings(headers).preferHtml)
     }
 
     @Test

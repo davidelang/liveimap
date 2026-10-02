@@ -3050,6 +3050,54 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
     return obj;
 }
 
+bool numericSection(const std::string & spec) {
+    if (spec.empty()) {
+        return false;
+    }
+    bool digit = false;
+    for (unsigned char c : spec) {
+        if (c >= '0' && c <= '9') {
+            digit = true;
+        } else if (c != '.') {
+            return false;
+        }
+    }
+    return digit;
+}
+
+struct mailimap_section * headerPeekSection() {
+    struct mailimap_section_msgtext * msgtext =
+        mailimap_section_msgtext_new(MAILIMAP_SECTION_MSGTEXT_HEADER, nullptr);
+    if (msgtext == nullptr) {
+        return nullptr;
+    }
+    struct mailimap_section_spec * spec = mailimap_section_spec_new(
+        MAILIMAP_SECTION_SPEC_SECTION_MSGTEXT, msgtext, nullptr, nullptr);
+    if (spec == nullptr) {
+        mailimap_section_msgtext_free(msgtext);
+        return nullptr;
+    }
+    struct mailimap_section * section = mailimap_section_new(spec);
+    if (section == nullptr) {
+        mailimap_section_spec_free(spec);
+    }
+    return section;
+}
+
+struct mailimap_fetch_att * peekSectionAtt(struct mailimap_section * sec, jint offset, jint length) {
+    struct mailimap_fetch_att * att;
+    if (length > 0) {
+        att = mailimap_fetch_att_new_body_peek_section_partial(
+            sec, static_cast<uint32_t>(offset), static_cast<uint32_t>(length));
+    } else {
+        att = mailimap_fetch_att_new_body_peek_section(sec);
+    }
+    if (att == nullptr) {
+        mailimap_section_free(sec);
+    }
+    return att;
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, jobject, jlong handle,
     jlong uid, jstring section, jint offset, jint length, jboolean useBinary) {
@@ -3057,10 +3105,20 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars spec(env, section);
+    const std::string text = spec.c();
     struct mailimap_fetch_att * att = nullptr;
-    if (useBinary == JNI_TRUE) {
+    if (text == "HEADER" || text == "*") {
+        struct mailimap_section * sec = text == "HEADER" ? headerPeekSection() : mailimap_section_new(nullptr);
+        if (sec != nullptr) {
+            att = peekSectionAtt(sec, offset, length);
+        }
+    } else if (!numericSection(text)) {
+        throwFailure(env, "bad section");
+        unlockSession(session);
+        return nullptr;
+    } else if (useBinary == JNI_TRUE) {
         std::string token = "BINARY.PEEK[";
-        token += spec.c();
+        token += text;
         token += "]";
         if (length > 0) {
             token += "<";
