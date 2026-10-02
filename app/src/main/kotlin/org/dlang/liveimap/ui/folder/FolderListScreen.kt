@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -110,9 +112,13 @@ fun FolderListScreen(onOpenMailbox: (String) -> Unit) {
             Text(text = message, modifier = Modifier.padding(8.dp))
         }
         if (!stopped) {
+            val reserveMessages = rows.any { it.messages != null }
+            val reserveUnseen = rows.any { it.unseen != null }
             for (row in rows) {
                 FolderListRow(
                     row = row,
+                    reserveMessages = reserveMessages,
+                    reserveUnseen = reserveUnseen,
                     onOpen = { onOpenMailbox(row.mailbox) },
                     onToggle = {
                         scope.launch {
@@ -142,6 +148,7 @@ fun FolderListScreen(onOpenMailbox: (String) -> Unit) {
                         }
                     },
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
             }
         }
     }
@@ -150,6 +157,8 @@ fun FolderListScreen(onOpenMailbox: (String) -> Unit) {
 @Composable
 private fun FolderListRow(
     row: FolderRow,
+    reserveMessages: Boolean,
+    reserveUnseen: Boolean,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
 ) {
@@ -171,23 +180,36 @@ private fun FolderListRow(
                 Text(if (row.expanded) "-" else "+")
             }
         }
-        Text(
-            text = row.leaf,
-            modifier = Modifier
-                .clickable(onClick = onOpen)
-                .padding(vertical = 8.dp),
-        )
-        val use = row.specialUse
-        if (use != null) {
-            Text(text = use, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = row.leaf,
+                modifier = Modifier
+                    .clickable(onClick = onOpen)
+                    .padding(vertical = 8.dp),
+            )
+            val use = row.specialUse
+            if (use != null) {
+                Text(text = use, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+            }
         }
-        val messages = row.messages
-        if (messages != null) {
-            Text(text = messages.toString(), modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        if (reserveMessages) {
+            Box(modifier = Modifier.width(56.dp), contentAlignment = Alignment.CenterEnd) {
+                val messages = row.messages
+                if (messages != null) {
+                    Text(text = messages.toString(), modifier = Modifier.padding(vertical = 8.dp))
+                }
+            }
         }
-        val unseen = row.unseen
-        if (unseen != null) {
-            Text(text = unseen.toString(), modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp))
+        if (reserveUnseen) {
+            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
+                val unseen = row.unseen
+                if (unseen != null) {
+                    Text(text = unseen.toString(), modifier = Modifier.padding(vertical = 8.dp))
+                }
+            }
         }
     }
 }

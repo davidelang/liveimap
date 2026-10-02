@@ -2200,7 +2200,7 @@ std::string specialUseOf(struct mailimap_mailbox_list * mb) {
     return out;
 }
 
-int listMailboxes(mailimap * imap, const char * reference, bool extended, bool withStatus, clist ** result, std::string * raw) {
+int listMailboxes(mailimap * imap, const char * reference, bool extended, bool withMessages, bool withUnseen, clist ** result, std::string * raw) {
     *result = nullptr;
     if (raw != nullptr) raw->clear();
     const char * ref = reference != nullptr ? reference : "";
@@ -2225,15 +2225,17 @@ int listMailboxes(mailimap * imap, const char * reference, bool extended, bool w
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "SPECIAL-USE", true);
     if (r != MAILIMAP_NO_ERROR) return r;
-    if (withStatus) {
+    if (withMessages) {
         r = sendWord(imap->imap_stream, "STATUS", true);
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "(", true);
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "MESSAGES", false);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, "UNSEEN", true);
-        if (r != MAILIMAP_NO_ERROR) return r;
+        if (withUnseen) {
+            r = sendWord(imap->imap_stream, "UNSEEN", true);
+            if (r != MAILIMAP_NO_ERROR) return r;
+        }
         r = sendWord(imap->imap_stream, ")", false);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
@@ -2778,7 +2780,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     JChars par(env, parent);
     JChars kindChars(env, kind);
     bool extended = strcmp(kindChars.c(), "Plain") != 0;
-    bool withStatus = strcmp(kindChars.c(), "ExtendedWithStatus") == 0;
+    bool withMessages = strcmp(kindChars.c(), "ExtendedWithMessages") == 0
+        || strcmp(kindChars.c(), "ExtendedWithStatus") == 0;
+    bool withUnseen = strcmp(kindChars.c(), "ExtendedWithStatus") == 0;
     std::string reference;
     if (parent != nullptr && par.c()[0] != 0) {
         reference = par.c();
@@ -2789,7 +2793,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     }
     clist * list = nullptr;
     std::string raw;
-    int r = listMailboxes(session->imap, reference.c_str(), extended, withStatus, &list, &raw);
+    int r = listMailboxes(session->imap, reference.c_str(), extended, withMessages, withUnseen, &list, &raw);
     if (!cmdOk(r)) {
         if (list != nullptr) mailimap_list_result_free(list);
         throwImap(env, session->imap, "list failed");
@@ -2797,7 +2801,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
         return nullptr;
     }
     std::map<std::string, FolderCounts> counts;
-    if (withStatus) collectStatus(raw, &counts);
+    if (withMessages) collectStatus(raw, &counts);
     std::vector<jobject> built;
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
@@ -2811,7 +2815,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
             jstring juse = use.empty() ? nullptr : newString(env, use.c_str());
             jobject jmessages = nullptr;
             jobject junseen = nullptr;
-            if (withStatus) {
+            if (withMessages) {
                 auto found = counts.find(mb->mb_name);
                 if (found != counts.end()) {
                     if (found->second.hasMessages) {

@@ -380,3 +380,10 @@
 - Work: showUnreadCounts defaults off and gates LIST-STATUS; a repeat QRESYNC select sends the modifier list
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 690b8ef
+
+## 2026-10-01 - folder message count columns execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-message-count-columns-20261001-2054-plan.md
+- Work: LIST-STATUS returns MESSAGES when unread counts are off; folder rows reserve end-aligned count columns and a faint divider
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 94870b1

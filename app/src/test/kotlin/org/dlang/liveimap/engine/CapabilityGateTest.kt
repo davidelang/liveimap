@@ -28,6 +28,7 @@ class CapabilityGateTest {
         assertEquals("BodyPeek", previewKind(line))
         assertEquals("BodyPeek", fetchKind(line))
         assertEquals("Extended", listKind("$line LIST-EXTENDED", false))
+        assertEquals("Extended", listKind("$line LIST-EXTENDED", true))
         assertEquals("Condstore", resyncKind("$line CONDSTORE"))
     }
 
@@ -45,7 +46,7 @@ class CapabilityGateTest {
         assertTrue(result is OpenResult.Connected)
         assertEquals("Move", moveKind(line))
         assertEquals("ExtendedWithStatus", listKind(line, true))
-        assertEquals("Extended", listKind(line, false))
+        assertEquals("ExtendedWithMessages", listKind(line, false))
         assertEquals("Qresync", resyncKind(line))
         assertEquals("Esearch", searchKind(line))
         assertEquals("Esort DISPLAY", sortKind(line))

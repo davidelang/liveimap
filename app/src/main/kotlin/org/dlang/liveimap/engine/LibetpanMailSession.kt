@@ -44,8 +44,9 @@ fun moveKind(serverList: String): String =
 
 fun listKind(serverList: String, unreadCounts: Boolean): String = when {
     !hasCap(serverList, "LIST-EXTENDED") -> "Plain"
-    unreadCounts && hasCap(serverList, "LIST-STATUS") -> "ExtendedWithStatus"
-    else -> "Extended"
+    !hasCap(serverList, "LIST-STATUS") -> "Extended"
+    unreadCounts -> "ExtendedWithStatus"
+    else -> "ExtendedWithMessages"
 }
 
 fun resyncKind(serverList: String): String = when {
