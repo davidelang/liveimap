@@ -16,6 +16,7 @@ import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
 internal fun capabilityTokens(serverList: String): List<String> =
     serverList.split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -209,7 +210,12 @@ class LibetpanMailSession : MailSession {
             useServerPreview,
             settings?.email.orEmpty(),
         ) ?: throw MailFailure("fetch failed")
-        return rows.toList()
+        return rows.map { row ->
+            row.copy(
+                from = decodeHeaderWords(row.from),
+                subject = decodeHeaderWords(row.subject),
+            )
+        }
     }
 
     override suspend fun fetchStructure(uid: Long): MimePart {

@@ -590,25 +590,76 @@ private fun unfoldHeaderLines(headerBytes: ByteArray): List<String> {
     return out
 }
 
-private val encodedWord = Regex("=\\?([^?\\s]+)\\?([BbQq])\\?([^?]+)\\?=")
+private class EncodedWord(val end: Int, val text: String)
 
-private fun decodeHeaderWords(value: String): String =
-    encodedWord.replace(value) { match ->
-        val charset = try {
-            Charset.forName(match.groupValues[1])
-        } catch (_: Exception) {
-            return@replace match.value
+/** Linear whitespace between two encoded-words is removed. A word that fails stays intact. */
+internal fun decodeHeaderWords(value: String): String {
+    val out = StringBuilder()
+    var i = 0
+    while (i < value.length) {
+        val word = scanEncodedWord(value, i)
+        if (word == null) {
+            out.append(value[i])
+            i++
+            continue
         }
-        try {
-            if (match.groupValues[2].equals("B", ignoreCase = true)) {
-                Base64.getDecoder().decode(match.groupValues[3]).toString(charset)
-            } else {
-                decodeQEncoding(match.groupValues[3], charset)
-            }
-        } catch (_: Exception) {
-            match.value
-        }
+        out.append(word.text)
+        i = word.end
+        val gap = linearWhitespaceEnd(value, i)
+        if (gap > i && scanEncodedWord(value, gap) != null) i = gap
     }
+    return out.toString()
+}
+
+private fun scanEncodedWord(value: String, start: Int): EncodedWord? {
+    if (!value.startsWith("=?", start)) return null
+    var i = start + 2
+    val charsetStart = i
+    while (i < value.length && value[i] != '?' && !isLinearWhitespace(value[i])) i++
+    if (i >= value.length || value[i] != '?' || i == charsetStart) return null
+    val charsetName = value.substring(charsetStart, i)
+    i++
+    if (i >= value.length) return null
+    val encoding = value[i]
+    if (encoding != 'B' && encoding != 'b' && encoding != 'Q' && encoding != 'q') return null
+    i++
+    if (i >= value.length || value[i] != '?') return null
+    i++
+    val payloadStart = i
+    while (i < value.length && value[i] != '?' && !isLinearWhitespace(value[i])) i++
+    if (i >= value.length || value[i] != '?' || i == payloadStart) return null
+    if (i + 1 >= value.length || value[i + 1] != '=') return null
+    val end = i + 2
+    val raw = value.substring(start, end)
+    val decoded = decodeEncodedWord(charsetName, encoding, value.substring(payloadStart, i))
+    return EncodedWord(end, decoded ?: raw)
+}
+
+private fun decodeEncodedWord(charsetName: String, encoding: Char, payload: String): String? {
+    val charset = try {
+        Charset.forName(charsetName)
+    } catch (_: Exception) {
+        return null
+    }
+    return try {
+        if (encoding == 'B' || encoding == 'b') {
+            Base64.getDecoder().decode(payload).toString(charset)
+        } else {
+            decodeQEncoding(payload, charset)
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun isLinearWhitespace(ch: Char): Boolean =
+    ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
+
+private fun linearWhitespaceEnd(value: String, start: Int): Int {
+    var i = start
+    while (i < value.length && isLinearWhitespace(value[i])) i++
+    return i
+}
 
 private fun decodeQEncoding(data: String, charset: Charset): String {
     val out = ByteArrayOutputStream()

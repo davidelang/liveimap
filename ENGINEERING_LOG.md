@@ -459,3 +459,10 @@
 - Work: drop UNSELECT from required capabilities; send UNSELECT only when advertised, and only before SELECT of a different mailbox; never send CLOSE
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD c84225b
+
+## 2026-10-02 - RFC 2047 display execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/rfc2047-display-20261002-0124-plan.md
+- Work: decode RFC 2047 words for index from and subject, and for parsed header text used by reply and forward; leave a failed word unchanged; Headers and Raw stay peeked bytes
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6ae05ec
