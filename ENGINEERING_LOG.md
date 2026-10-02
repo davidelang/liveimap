@@ -427,3 +427,10 @@
 - Stored keys stay swipeTrailing and swipeLeading. Defaults stay delete on trailing and reply-all on leading. Hiding a line does not clear the stored mailbox or flag
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 09fdbd4
+
+## 2026-10-01 - fix thread order tests execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-thread-order-tests-20261001-2228-plan.md
+- Work: rename the two IndexWindowTest thread tests; oldest first expects 3, 5, 1, 9, 4, 2 and newest first expects 8, 1, 2
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 0b02a95

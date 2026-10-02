@@ -109,7 +109,7 @@ class IndexWindowTest {
     }
 
     @Test
-    fun threadViewKeepsServerOrder() {
+    fun threadViewOldestFirst() {
         val session = FakeMailSession()
         val tree = ThreadNode(
             uid = null,
@@ -126,15 +126,15 @@ class IndexWindowTest {
         )
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf(5L, 1L, 3L, 9L, 4L, 2L), rows.map { it.uid })
+        assertEquals(listOf(3L, 5L, 1L, 9L, 4L, 2L), rows.map { it.uid })
         assertEquals(listOf(SortKey.ThreadReferences), session.threadCalls)
         assertTrue(session.sortCalls.isEmpty())
         assertEquals(IndexMode.ByUid, session.fetchRequests.single().mode)
-        assertEquals(listOf(5L, 1L, 3L, 9L, 4L, 2L), session.fetchRequests.single().uids)
+        assertEquals(listOf(3L, 5L, 1L, 9L, 4L, 2L), session.fetchRequests.single().uids)
     }
 
     @Test
-    fun threadNewestFirstDoesNotReorder() {
+    fun threadNewestFirstPutsLargestRootFirst() {
         val session = FakeMailSession(capabilities = setOf("THREAD=ORDEREDSUBJECT"))
         session.threadNode = ThreadNode(
             uid = null,
@@ -146,7 +146,7 @@ class IndexWindowTest {
         )
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf(2L, 8L, 1L), rows.map { it.uid })
+        assertEquals(listOf(8L, 1L, 2L), rows.map { it.uid })
         assertTrue(session.sortCalls.isEmpty())
         assertEquals(listOf(SortKey.ThreadOrderedSubject), session.threadCalls)
     }
