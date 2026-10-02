@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -47,6 +48,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.missingPartText
 import org.dlang.liveimap.ui.compose.nextWireCount
@@ -97,6 +99,8 @@ fun MessageReaderScreen(
     var connected by remember { mutableStateOf(false) }
     var seenStored by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
+    var choosingMove by remember { mutableStateOf(false) }
+    val saveMutex = remember { Mutex() }
 
     // peekPart is BODY.PEEK. \Seen is a separate STORE after the first successful peek.
     suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean) {
@@ -341,6 +345,52 @@ fun MessageReaderScreen(
                     contentDescription = "Back",
                 )
             }
+            IconButton(onClick = {
+                scope.launch {
+                    gate.withLock {
+                        try {
+                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: MailFailure) {
+                            notice = error.text
+                        }
+                    }
+                }
+            }) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = "Delete",
+                )
+            }
+            IconButton(onClick = { choosingMove = true }) {
+                Icon(
+                    imageVector = moveImage,
+                    contentDescription = "Move",
+                )
+            }
+            val spamMailbox = account.spamMailbox
+            if (spamMailbox.isNotEmpty()) {
+                IconButton(onClick = {
+                    scope.launch {
+                        gate.withLock {
+                            try {
+                                session.copyThenDelete(listOf(uid), spamMailbox)
+                                onBack()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: MailFailure) {
+                                notice = error.text
+                            }
+                        }
+                    }
+                }) {
+                    Icon(
+                        imageVector = spamImage,
+                        contentDescription = "Spam",
+                    )
+                }
+            }
             if (sequence != 0) {
                 Text("Message $sequence")
             }
@@ -421,6 +471,33 @@ fun MessageReaderScreen(
                 }
             }
         }
+    }
+    if (choosingMove) {
+        MailboxChooser(
+            store = store,
+            saveMutex = saveMutex,
+            onStored = { loaded ->
+                account = account.copy(expandedFolders = loaded.expandedFolders)
+            },
+            onPick = { mailbox ->
+                choosingMove = false
+                if (mailbox.isNotEmpty()) {
+                    scope.launch {
+                        gate.withLock {
+                            try {
+                                session.copyThenDelete(listOf(uid), mailbox)
+                                onBack()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: MailFailure) {
+                                notice = error.text
+                            }
+                        }
+                    }
+                }
+            },
+            onDismiss = { choosingMove = false },
+        )
     }
 }
 

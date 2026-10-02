@@ -69,6 +69,7 @@ data class AccountSettings(
     val sentMailbox: String = "",
     val postponedMailbox: String = "",
     val addressBookMailbox: String = "",
+    val spamMailbox: String = "",
     val markSeenOnOpen: Boolean = true,
     val showDeleted: Boolean = true,
     val preferHtml: Boolean = false,
@@ -97,6 +98,7 @@ private val fieldNames = listOf(
     "sentMailbox",
     "postponedMailbox",
     "addressBookMailbox",
+    "spamMailbox",
     "markSeenOnOpen",
     "showDeleted",
     "preferHtml",
@@ -127,6 +129,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("sentMailbox=${percentEncode(sentMailbox)}")
     appendLine("postponedMailbox=${percentEncode(postponedMailbox)}")
     appendLine("addressBookMailbox=${percentEncode(addressBookMailbox)}")
+    appendLine("spamMailbox=${percentEncode(spamMailbox)}")
     appendLine("markSeenOnOpen=$markSeenOnOpen")
     appendLine("showDeleted=$showDeleted")
     appendLine("preferHtml=$preferHtml")
@@ -161,7 +164,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "theme" ||
             key == "showUnreadCounts" ||
             key == "dateFormat" ||
-            key == "datePattern"
+            key == "datePattern" ||
+            key == "spamMailbox"
         ) {
             continue
         }
@@ -178,6 +182,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         sentMailbox = percentDecode(values.getValue("sentMailbox")),
         postponedMailbox = percentDecode(values.getValue("postponedMailbox")),
         addressBookMailbox = percentDecode(values.getValue("addressBookMailbox")),
+        spamMailbox = values["spamMailbox"]?.let { percentDecode(it) } ?: "",
         markSeenOnOpen = parseBoolean(values.getValue("markSeenOnOpen")),
         showDeleted = parseBoolean(values.getValue("showDeleted")),
         preferHtml = parseBoolean(values.getValue("preferHtml")),

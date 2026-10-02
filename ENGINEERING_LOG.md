@@ -394,3 +394,10 @@
 - Work: date format setting and pure index date formatter; sequence slot and reserved mark gutter; reader shows Message N
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 5207104
+
+## 2026-10-01 - reader delete move spam execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-delete-move-spam-20261001-2054-plan.md
+- Work: spam mailbox stays empty until chosen; reader Delete stores \Deleted and stays open; Move and Spam use copyThenDelete, and Spam is hidden until that mailbox is set
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 4c2e510

@@ -23,6 +23,7 @@ class AccountSettingsTest {
                 "sentMailbox",
                 "postponedMailbox",
                 "addressBookMailbox",
+                "spamMailbox",
                 "markSeenOnOpen",
                 "showDeleted",
                 "preferHtml",
@@ -143,7 +144,8 @@ class AccountSettingsTest {
                     !it.startsWith("theme=") &&
                     !it.startsWith("showUnreadCounts=") &&
                     !it.startsWith("dateFormat=") &&
-                    !it.startsWith("datePattern=")
+                    !it.startsWith("datePattern=") &&
+                    !it.startsWith("spamMailbox=")
             }
             .joinToString("\n")
         assertEquals(AccountSettings(), decodeAccountSettings(older))
@@ -152,6 +154,7 @@ class AccountSettingsTest {
         assertFalse(decodeAccountSettings(older).showUnreadCounts)
         assertEquals(DateFormat.Short, decodeAccountSettings(older).dateFormat)
         assertEquals("", decodeAccountSettings(older).datePattern)
+        assertEquals("", decodeAccountSettings(older).spamMailbox)
 
         val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
             .first { it.startsWith("friendlyName=") }
