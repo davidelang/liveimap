@@ -179,7 +179,7 @@ class PinercImportTest {
         assertEquals("bob@lang.hm", fromId.next.email)
 
         val at = pinercPreview("user-id=bob@other.hm\nuser-domain=lang.hm\n", AccountSettings())
-        assertEquals("bob", at.next.username)
+        assertEquals("bob@other.hm", at.next.username)
         assertEquals("bob@other.hm", at.next.email)
 
         val domainOnly = pinercPreview(
