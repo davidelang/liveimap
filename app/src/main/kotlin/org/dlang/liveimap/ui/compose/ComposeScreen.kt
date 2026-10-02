@@ -3,11 +3,18 @@ package org.dlang.liveimap.ui.compose
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,6 +113,14 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
     var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
+    var discardOpen by remember { mutableStateOf(false) }
+    var baseTo by rememberSaveable { mutableStateOf("") }
+    var baseCc by rememberSaveable { mutableStateOf("") }
+    var baseBcc by rememberSaveable { mutableStateOf("") }
+    var baseSubject by rememberSaveable { mutableStateOf("") }
+    var baseBody by rememberSaveable { mutableStateOf("") }
+    var baseRowKeyText by rememberSaveable { mutableStateOf("") }
+    var baselineReady by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = pickerOpen) {
         pickerOpen = false
@@ -165,6 +180,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
         sourceUid = uid
+        if (draftLoaded && forwardRows.isNotEmpty()) return
         val tree = if (draftLoaded) {
             session.fetchStructure(uid)
         } else {
@@ -181,7 +197,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                 filename = item.filename?.takeIf { it.isNotEmpty() } ?: "${item.type}/${item.subtype}",
                 mediaType = "${item.type}/${item.subtype}",
                 size = item.size,
-                included = false,
+                included = settings.includeForwardAttachments,
                 bytes = null,
                 wireBase64 = false,
             )
@@ -192,6 +208,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
+        if (draftLoaded && forwardRows.isNotEmpty()) return
         val loaded = loadEditor(session.fetchRfc822(uid))
         if (!draftLoaded) {
             toText = loaded.to
@@ -345,7 +362,77 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
         }
     }
 
+    fun captureBaseline() {
+        baseTo = toText
+        baseCc = ccText
+        baseBcc = bccText
+        baseSubject = subject
+        baseBody = body
+        baseRowKeyText = forwardRows.joinToString("\n") { it.key }
+        baselineReady = true
+    }
+
+    fun attachmentRowRemoved(): Boolean {
+        if (baseRowKeyText.isEmpty()) return false
+        val present = forwardRows.map { it.key }.toSet()
+        return baseRowKeyText.split('\n').any { it !in present }
+    }
+
+    fun requestClose() {
+        val dirty = composeIsDirty(
+            to = toText,
+            cc = ccText,
+            bcc = bccText,
+            subject = subject,
+            body = body,
+            baselineTo = baseTo,
+            baselineCc = baseCc,
+            baselineBcc = baseBcc,
+            baselineSubject = baseSubject,
+            baselineBody = baseBody,
+            rowRemoved = attachmentRowRemoved(),
+        )
+        if (dirty) discardOpen = true else onDone()
+    }
+
+    fun postponeDraft() {
+        launchLocked {
+            if (account.postponedMailbox.isEmpty()) {
+                notice = "Postponed mailbox is not set"
+                return@launchLocked false
+            }
+            val built = try {
+                assemble(account)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return@launchLocked false
+            }
+            try {
+                session.append(account.postponedMailbox, built.rfc822, setOf("\\Draft"))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return@launchLocked false
+            }
+            val current = held
+            if (current != null && !current.appendOnly) {
+                deleteCopy(appContext, current.id)
+                held = null
+                copies = readCopies(appContext)
+            }
+            notice = null
+            status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
+            true
+        }
+    }
+
     LaunchedEffect(seed) {
+        if (seed.kind == ComposeKind.New && !baselineReady) {
+            captureBaseline()
+        }
         gate.withLock {
             val settings = try {
                 store.load()
@@ -393,6 +480,9 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     ComposeKind.Bounce -> Unit
                     ComposeKind.ResumePostpone -> loadResume()
                 }
+                if (seed.kind != ComposeKind.New && !baselineReady) {
+                    captureBaseline()
+                }
                 draftLoaded = true
             } catch (error: CancellationException) {
                 throw error
@@ -401,6 +491,13 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             }
             copies = readCopies(appContext)
         }
+    }
+
+    BackHandler(enabled = !pickerOpen && discardOpen) {
+        discardOpen = false
+    }
+    BackHandler(enabled = !pickerOpen && !discardOpen) {
+        requestClose()
     }
 
     val shown = copies.toMutableList()
@@ -413,7 +510,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
-        TextButton(onClick = onDone) { Text("Close") }
+        TextButton(onClick = requestClose) { Text("Close") }
         val stateText = status
         if (stateText != null) Text(stateText)
         val failure = notice
@@ -571,13 +668,22 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                 TextButton(onClick = { pickerOpen = false }) { Text("Close") }
             }
             for (row in forwardRows) {
-                TextButton(onClick = {
-                    forwardRows = forwardRows.map { item ->
-                        if (item.key == row.key) item.toggle() else item
-                    }
-                }) {
-                    Text(if (row.included) "Included ${row.filename}" else "Include ${row.filename}")
-                }
+                FilterChip(
+                    selected = row.included,
+                    onClick = {
+                        forwardRows = forwardRows.map { item ->
+                            if (item.key == row.key) item.toggle() else item
+                        }
+                    },
+                    label = { Text("${row.filename} ${row.size}") },
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            forwardRows = forwardRows.filter { it.key != row.key }
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Remove")
+                        }
+                    },
+                )
             }
             OutlinedTextField(
                 value = body,
@@ -649,41 +755,56 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
                     true
                 }
             }) { Text(if (held?.appendOnly == true) "Retry" else "Send") }
-            if (!deliveryDone) TextButton(onClick = {
-                launchLocked {
-                    if (account.postponedMailbox.isEmpty()) {
-                        notice = "Postponed mailbox is not set"
-                        return@launchLocked false
-                    }
-                    val built = try {
-                        assemble(account)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        notice = error.text
-                        return@launchLocked false
-                    }
-                    try {
-                        session.append(account.postponedMailbox, built.rfc822, setOf("\\Draft"))
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        notice = error.text
-                        return@launchLocked false
-                    }
-                    val current = held
-                    if (current != null && !current.appendOnly) {
-                        deleteCopy(appContext, current.id)
-                        held = null
-                        copies = readCopies(appContext)
-                    }
-                    notice = null
-                    status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
-                    true
-                }
-            }) { Text("Postpone") }
+            if (!deliveryDone) {
+                TextButton(
+                    onClick = { postponeDraft() },
+                    enabled = account.postponedMailbox.isNotEmpty(),
+                ) { Text("Postpone") }
+            }
         }
     }
+    if (discardOpen) {
+        AlertDialog(
+            onDismissRequest = { discardOpen = false },
+            title = { Text("Discard draft?") },
+            confirmButton = {
+                TextButton(onClick = { onDone() }) { Text("Discard") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { discardOpen = false }) { Text("Keep editing") }
+                    TextButton(
+                        onClick = {
+                            discardOpen = false
+                            postponeDraft()
+                        },
+                        enabled = account.postponedMailbox.isNotEmpty(),
+                    ) { Text("Postpone") }
+                }
+            },
+        )
+    }
+}
+
+internal fun composeIsDirty(
+    to: String,
+    cc: String,
+    bcc: String,
+    subject: String,
+    body: String,
+    baselineTo: String,
+    baselineCc: String,
+    baselineBcc: String,
+    baselineSubject: String,
+    baselineBody: String,
+    rowRemoved: Boolean,
+): Boolean {
+    if (rowRemoved) return true
+    return to != baselineTo ||
+        cc != baselineCc ||
+        bcc != baselineBcc ||
+        subject != baselineSubject ||
+        body != baselineBody
 }
 
 internal fun smtpAcceptFlags(kind: ComposeKind): Set<String> = when (kind) {

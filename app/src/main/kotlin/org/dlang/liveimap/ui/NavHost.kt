@@ -82,6 +82,12 @@ fun LiveImapNavHost() {
                     onOpenMailbox = { mailbox ->
                         navController.navigate("index/${Uri.encode(mailbox)}")
                     },
+                    onCompose = { seed ->
+                        composeKindName.value = seed.kind.name
+                        composeMailbox.value = seed.mailbox.orEmpty()
+                        composeUids.value = seed.uids.joinToString(",")
+                        navController.navigate("compose")
+                    },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                 )

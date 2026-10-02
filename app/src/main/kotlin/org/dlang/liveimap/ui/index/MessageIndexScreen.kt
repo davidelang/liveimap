@@ -28,10 +28,12 @@ import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,6 +86,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
@@ -603,6 +606,7 @@ fun MessageIndexScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         val message = notice
         if (message != null) {
@@ -974,6 +978,16 @@ fun MessageIndexScreen(
                 }
             }
         }
+    }
+        ExtendedFloatingActionButton(
+            text = { Text("Compose") },
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = "Compose") },
+            onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
+            expanded = !listState.isScrollInProgress,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+        )
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {

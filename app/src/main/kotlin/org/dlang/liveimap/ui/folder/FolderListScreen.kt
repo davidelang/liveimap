@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +36,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
@@ -42,6 +48,7 @@ import org.dlang.liveimap.ui.UiDims
 @Composable
 fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
+    onCompose: (ComposeSeed) -> Unit,
     focusMailbox: String? = null,
     focusToken: Int = 0,
 ) {
@@ -185,6 +192,7 @@ fun FolderListScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         val message = notice
         if (message != null) {
@@ -237,6 +245,16 @@ fun FolderListScreen(
                 }
             }
         }
+    }
+        ExtendedFloatingActionButton(
+            text = { Text("Compose") },
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = "Compose") },
+            onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
+            expanded = !listState.isScrollInProgress,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+        )
     }
 }
 

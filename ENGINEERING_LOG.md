@@ -490,3 +490,9 @@
 - Approved plan: sandbox/plans/folder-counts-favorites-20261002-0255-plan.md
 - Work: on-screen message totals from one pipelined STATUS (MESSAGES) burst when LIST-STATUS is absent, and folder favorites in the drawer
 - Phase 1 of 1
+
+## 2026-10-02 - compose chrome execution start
+
+- Approved plan: sandbox/plans/compose-chrome-20261002-0325-plan.md
+- Work: Compose from the index and folder list, discard confirmation, and forward attachment chips
+- Phase 1 of 1

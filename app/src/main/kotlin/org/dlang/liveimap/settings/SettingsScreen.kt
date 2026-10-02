@@ -263,6 +263,9 @@ fun SettingsScreen() {
             persist(settings.copy(swipeLeading = it))
         }
         BoolField("Bounce Fcc", settings.bounceFcc) { persist(settings.copy(bounceFcc = it)) }
+        BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
+            persist(settings.copy(includeForwardAttachments = it))
+        }
         ChoiceField("Theme", ThemeMode.entries, settings.theme, { it.name }) {
             persist(settings.copy(theme = it))
         }

@@ -115,6 +115,7 @@ data class AccountSettings(
     val dateFormat: DateFormat = DateFormat.Short,
     val datePattern: String = "",
     val favorites: List<FolderFavorite> = emptyList(),
+    val includeForwardAttachments: Boolean = true,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -149,6 +150,7 @@ private val fieldNames = listOf(
     "dateFormat",
     "datePattern",
     "favorites",
+    "includeForwardAttachments",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -182,6 +184,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("dateFormat=${dateFormat.name}")
     appendLine("datePattern=${percentEncode(datePattern)}")
     appendLine("favorites=${encodeFavorites(favorites)}")
+    appendLine("includeForwardAttachments=$includeForwardAttachments")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -205,7 +208,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "favorites" ||
             key == "spamMailbox" ||
             key == "bodyView" ||
-            key == "preferHtml"
+            key == "preferHtml" ||
+            key == "includeForwardAttachments"
         ) {
             continue
         }
@@ -239,6 +243,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         dateFormat = values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short,
         datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
         favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
+        includeForwardAttachments = values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true,
     )
 }
 
