@@ -17,18 +17,27 @@ class SerialMailSessionTest {
     fun overlap() = runBlocking {
         val inner = OverlapInner()
         val session = SerialMailSession(inner)
-        val first = async(Dispatchers.Default) { session.open(AccountSettings()) }
-        assertTrue(inner.entered.await(5, TimeUnit.SECONDS))
-        val second = async(Dispatchers.Default) { session.open(AccountSettings()) }
-        Thread.sleep(300)
-        assertEquals(listOf("liveimap-imap"), inner.names())
-        assertEquals(1, inner.maxDepth.get())
-        inner.release.countDown()
-        assertEquals(OpenResult.Connected, first.await())
-        assertEquals(OpenResult.Connected, second.await())
-        assertEquals(listOf("liveimap-imap", "liveimap-imap"), inner.names())
-        assertEquals(1, inner.maxDepth.get())
+        try {
+            val first = async(Dispatchers.Default) { session.open(AccountSettings()) }
+            assertTrue(inner.entered.await(5, TimeUnit.SECONDS))
+            val second = async(Dispatchers.Default) { session.open(AccountSettings()) }
+            Thread.sleep(300)
+            assertEquals(listOf("liveimap-imap"), inner.names().map { imapThread(it) })
+            assertEquals(1, inner.maxDepth.get())
+            inner.release.countDown()
+            assertEquals(OpenResult.Connected, first.await())
+            assertEquals(OpenResult.Connected, second.await())
+            assertEquals(listOf("liveimap-imap", "liveimap-imap"), inner.names().map { imapThread(it) })
+            assertEquals(1, inner.maxDepth.get())
+        } finally {
+            inner.release.countDown()
+        }
     }
+}
+
+private fun imapThread(name: String): String {
+    val suffix = name.indexOf(" @coroutine#")
+    return if (suffix < 0) name else name.substring(0, suffix)
 }
 
 private class OverlapInner : MailSession {

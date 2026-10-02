@@ -441,3 +441,7 @@
 - Work: one process-wide SerialMailSession on thread liveimap-imap; reuse an open handle when the IMAP identity matches; screens and Test server do not close the session
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 6ea6854
+
+## 2026-10-02 - shared mail session overlap thread name
+
+- SerialMailSessionTest saw liveimap-imap @coroutine#N because unit tests enable coroutines debug naming. The factory name is still liveimap-imap. The test compares the name before that suffix.
