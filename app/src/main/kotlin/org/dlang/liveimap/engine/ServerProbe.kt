@@ -61,7 +61,7 @@ private suspend fun addNamespaces(session: MailSession, lines: MutableList<Strin
 
 private suspend fun addList(session: MailSession, lines: MutableList<String>) {
     val (passed, detail) = try {
-        true to "${session.listLevel("", null).size} mailboxes"
+        true to "${session.listLevel("", null, true).size} mailboxes"
     } catch (error: MailFailure) {
         false to error.text
     }

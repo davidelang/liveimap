@@ -7,7 +7,7 @@ interface MailSession {
     val capabilities: Set<String>
     suspend fun open(account: AccountSettings): OpenResult
     suspend fun namespaces(): List<Namespace>
-    suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry>
+    suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry>
     suspend fun select(mailbox: String): SelectResult
     suspend fun unselect()
     suspend fun fetchIndex(request: IndexRequest): List<IndexRow>

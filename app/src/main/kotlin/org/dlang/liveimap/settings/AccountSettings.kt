@@ -74,6 +74,7 @@ data class AccountSettings(
     val bounceFcc: Boolean = false,
     val friendlyName: String = "",
     val theme: ThemeMode = ThemeMode.FollowSystem,
+    val showUnreadCounts: Boolean = false,
 )
 
 private val fieldNames = listOf(
@@ -99,6 +100,7 @@ private val fieldNames = listOf(
     "bounceFcc",
     "friendlyName",
     "theme",
+    "showUnreadCounts",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -126,6 +128,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("bounceFcc=$bounceFcc")
     appendLine("friendlyName=${percentEncode(friendlyName)}")
     appendLine("theme=${theme.name}")
+    appendLine("showUnreadCounts=$showUnreadCounts")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -140,7 +143,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         values[key] = line.substring(eq + 1)
     }
     for (key in fieldNames) {
-        if (key == "friendlyName" || key == "theme") continue
+        if (key == "friendlyName" || key == "theme" || key == "showUnreadCounts") continue
         if (key !in values) throw IllegalArgumentException("missing key")
     }
     return AccountSettings(
@@ -166,6 +169,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         bounceFcc = parseBoolean(values.getValue("bounceFcc")),
         friendlyName = values["friendlyName"]?.let { percentDecode(it) } ?: "",
         theme = values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem,
+        showUnreadCounts = values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false,
     )
 }
 

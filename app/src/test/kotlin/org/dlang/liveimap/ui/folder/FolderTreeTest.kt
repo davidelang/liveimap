@@ -210,7 +210,7 @@ private class FakeMailSession(
         return namespaces
     }
 
-    override suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry> {
+    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
         val call = ListCall(prefix, parentMailbox)
         listCalls += call
         val failure = listFailure

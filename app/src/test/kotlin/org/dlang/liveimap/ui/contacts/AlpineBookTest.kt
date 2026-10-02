@@ -197,7 +197,8 @@ private class FakeBookSession : MailSession {
 
     override suspend fun namespaces(): List<Namespace> = unused()
 
-    override suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry> = unused()
+    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
+        unused()
 
     override suspend fun select(mailbox: String): SelectResult {
         throwIfArmed()

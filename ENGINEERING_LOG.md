@@ -373,3 +373,10 @@
 - Work: contentWindowInsets is statusBars union navigationBars union displayCutout; enableEdgeToEdge stays; no TopAppBar and no second tab-row padding
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 30e3aca
+
+## 2026-10-01 - unread counts and qresync select execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unread-counts-and-qresync-select-20261001-1707-plan.md
+- Work: showUnreadCounts defaults off and gates LIST-STATUS; a repeat QRESYNC select sends the modifier list
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 690b8ef

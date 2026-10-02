@@ -35,6 +35,7 @@ class AccountSettingsTest {
                 "bounceFcc",
                 "friendlyName",
                 "theme",
+                "showUnreadCounts",
             ),
             keys,
         )
@@ -77,6 +78,7 @@ class AccountSettingsTest {
             swipeTrailing = SwipeBinding(SwipeAction.Move, moveMailbox = "Trash Can", flag = ""),
             swipeLeading = SwipeBinding(SwipeAction.SetFlag, moveMailbox = "", flag = "\\Flagged"),
             bounceFcc = true,
+            showUnreadCounts = true,
         )
         val text = original.encode()
         assertTrue(text.contains("username=user%20name"))
@@ -131,11 +133,17 @@ class AccountSettingsTest {
     @Test
     fun olderBlobMissingNewKeysDecodes() {
         val older = AccountSettings().encode().lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("friendlyName=") && !it.startsWith("theme=") }
+            .filter {
+                it.isNotEmpty() &&
+                    !it.startsWith("friendlyName=") &&
+                    !it.startsWith("theme=") &&
+                    !it.startsWith("showUnreadCounts=")
+            }
             .joinToString("\n")
         assertEquals(AccountSettings(), decodeAccountSettings(older))
         assertEquals("", decodeAccountSettings(older).friendlyName)
         assertEquals(ThemeMode.FollowSystem, decodeAccountSettings(older).theme)
+        assertFalse(decodeAccountSettings(older).showUnreadCounts)
 
         val nameLine = AccountSettings(friendlyName = "Ada/Lane").encode().lineSequence()
             .first { it.startsWith("friendlyName=") }

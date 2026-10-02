@@ -42,9 +42,9 @@ private fun hasCap(serverList: String, name: String): Boolean =
 fun moveKind(serverList: String): String =
     if (hasCap(serverList, "MOVE")) "Move" else "CopyThenDelete"
 
-fun listKind(serverList: String): String = when {
+fun listKind(serverList: String, unreadCounts: Boolean): String = when {
     !hasCap(serverList, "LIST-EXTENDED") -> "Plain"
-    hasCap(serverList, "LIST-STATUS") -> "ExtendedWithStatus"
+    unreadCounts && hasCap(serverList, "LIST-STATUS") -> "ExtendedWithStatus"
     else -> "Extended"
 }
 
@@ -145,9 +145,17 @@ class LibetpanMailSession : MailSession {
         return rows.toList()
     }
 
-    override suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry> {
-        val rows = nativeListLevel(requireHandle(), prefix, parentMailbox, listKind(advertised()))
-            ?: throw MailFailure("list failed")
+    override suspend fun listLevel(
+        prefix: String,
+        parentMailbox: String?,
+        unreadCounts: Boolean,
+    ): List<FolderEntry> {
+        val rows = nativeListLevel(
+            requireHandle(),
+            prefix,
+            parentMailbox,
+            listKind(advertised(), unreadCounts),
+        ) ?: throw MailFailure("list failed")
         return rows.toList()
     }
 

@@ -23,7 +23,8 @@ class FolderListModel(
     private val store: SettingsStore,
 ) {
     suspend fun loadLevel(): List<FolderRow> {
-        val expanded = store.load().expandedFolders
+        val settings = store.load()
+        val expanded = settings.expandedFolders
         val namespaces = session.namespaces()
         val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
         val other = namespaces.filter { it.kind == NamespaceKind.Other }
@@ -37,7 +38,7 @@ class FolderListModel(
         var inboxFromSiblingLevel = false
 
         for (ns in personal) {
-            val level = session.listLevel(ns.prefix, null)
+            val level = session.listLevel(ns.prefix, null, settings.showUnreadCounts)
             val mark = inboxChildPrefix(ns.delimiter)
             // Prefix "INBOX." lists that mailbox's children. Do not show them as roots.
             val levelIsInboxChildren = mark != null && ns.prefix == mark
@@ -149,13 +150,15 @@ class FolderListModel(
     }
 
     private suspend fun childrenOf(node: LevelNode): List<LevelNode> {
+        val unreadCounts = store.load().showUnreadCounts
         if (node.namespaceRoot) {
-            return session.listLevel(node.namespacePrefix, null).map { entryNode(it, node.namespacePrefix) }
+            return session.listLevel(node.namespacePrefix, null, unreadCounts)
+                .map { entryNode(it, node.namespacePrefix) }
         }
         if (node.childrenComplete) {
             return node.cachedChildren.orEmpty()
         }
-        val fetched = session.listLevel(node.namespacePrefix, node.mailbox)
+        val fetched = session.listLevel(node.namespacePrefix, node.mailbox, unreadCounts)
             .map { entryNode(it, node.namespacePrefix) }
         val seen = fetched.map { it.mailbox }.toSet()
         val extra = node.cachedChildren.orEmpty().filter { it.mailbox !in seen }

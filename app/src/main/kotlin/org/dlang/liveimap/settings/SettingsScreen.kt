@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -69,6 +70,7 @@ fun SettingsScreen() {
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
+    var warnUnread by remember { mutableStateOf(false) }
 
     LaunchedEffect(store) {
         settings = store.load()
@@ -161,6 +163,23 @@ fun SettingsScreen() {
             persist(settings.copy(markSeenOnOpen = it))
         }
         BoolField("Show deleted", settings.showDeleted) { persist(settings.copy(showDeleted = it)) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Show unread counts", modifier = Modifier.weight(1f))
+            Switch(
+                checked = settings.showUnreadCounts || warnUnread,
+                onCheckedChange = { enabled ->
+                    if (enabled) {
+                        warnUnread = true
+                    } else {
+                        warnUnread = false
+                        persist(settings.copy(showUnreadCounts = false))
+                    }
+                },
+            )
+        }
         BoolField("Prefer HTML", settings.preferHtml) { persist(settings.copy(preferHtml = it)) }
         ChoiceField("Density", Density.entries, settings.density, { it.name }) {
             persist(settings.copy(density = it))
@@ -234,6 +253,26 @@ fun SettingsScreen() {
         ChoiceField("Theme", ThemeMode.entries, settings.theme, { it.name }) {
             persist(settings.copy(theme = it))
         }
+    }
+
+    if (warnUnread) {
+        AlertDialog(
+            onDismissRequest = { warnUnread = false },
+            text = {
+                Text(
+                    "Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    warnUnread = false
+                    persist(settings.copy(showUnreadCounts = true))
+                }) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { warnUnread = false }) { Text("Dismiss") }
+            },
+        )
     }
 
     val field = picking

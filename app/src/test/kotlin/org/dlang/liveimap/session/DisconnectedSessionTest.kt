@@ -26,7 +26,7 @@ class DisconnectedSessionTest {
     fun otherMethodsThrowNotConnected() {
         val session = DisconnectedMailSession()
         assertThrowsNotConnected { runImmediate { session.namespaces() } }
-        assertThrowsNotConnected { runImmediate { session.listLevel("", null) } }
+        assertThrowsNotConnected { runImmediate { session.listLevel("", null, false) } }
         assertThrowsNotConnected { runImmediate { session.select("INBOX") } }
         assertThrowsNotConnected { runImmediate { session.unselect() } }
         assertThrowsNotConnected {

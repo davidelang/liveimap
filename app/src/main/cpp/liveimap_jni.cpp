@@ -48,6 +48,10 @@ int mailimap_token_send(mailstream * fd, const char * atom);
 int mailimap_mailbox_send(mailstream * fd, const char * mb);
 int mailimap_astring_send(mailstream * fd, const char * astring);
 int mailimap_select_send(mailstream * fd, const char * mb, int condstore);
+int mailimap_oparenth_send(mailstream * fd);
+int mailimap_cparenth_send(mailstream * fd);
+int mailimap_number_send(mailstream * fd, uint32_t number);
+int mailimap_uint64_send(mailstream * fd, uint64_t number);
 int mailimap_list_mailbox_send(mailstream * fd, const char * pattern);
 int mailimap_search_key_send(mailstream * fd, struct mailimap_search_key * key);
 int mailimap_nstring_parse(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * parser_ctx,
@@ -1145,6 +1149,8 @@ std::vector<Row> rowsFromList(clist * list, const char * accountEmail) {
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq);
+int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
+    uint64_t knownModseq, uint64_t * modseq);
 
 bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox) {
     int r;
@@ -1154,12 +1160,7 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox) {
     bool haveStored = stored != session->resyncByMailbox.end()
         && stored->second.uidvalidity != 0 && stored->second.modseq != 0;
     if (session->qresync && haveStored) {
-        clist * fetch = nullptr;
-        struct mailimap_qresync_vanished * vanished = nullptr;
-        r = mailimap_select_qresync(session->imap, mailbox, stored->second.uidvalidity, stored->second.modseq,
-            nullptr, nullptr, nullptr, &fetch, &vanished, &mod);
-        if (fetch != nullptr) mailimap_fetch_list_free(fetch);
-        if (vanished != nullptr) mailimap_qresync_vanished_free(vanished);
+        r = selectQresyncCapture(session->imap, mailbox, stored->second.uidvalidity, stored->second.modseq, &mod);
     } else if (session->qresync) {
         r = selectFullCapture(session->imap, mailbox, &mod);
     } else {
@@ -1937,6 +1938,65 @@ void freeExtensionList(mailimap * imap) {
         reinterpret_cast<clist_func>(mailimap_extension_data_free), nullptr);
     clist_free(imap->imap_response_info->rsp_extension_list);
     imap->imap_response_info->rsp_extension_list = nullptr;
+}
+
+int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
+    uint64_t knownModseq, uint64_t * modseq) {
+    *modseq = 0;
+    int r = mailimap_send_current_tag(imap);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_token_send(imap->imap_stream, "SELECT");
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_mailbox_send(imap->imap_stream, mailbox);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_oparenth_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_token_send(imap->imap_stream, "QRESYNC");
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_oparenth_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_number_send(imap->imap_stream, uidvalidity);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_uint64_send(imap->imap_stream, knownModseq);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_cparenth_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_cparenth_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_crlf_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    if (imap->imap_selection_info != nullptr) {
+        mailimap_selection_info_free(imap->imap_selection_info);
+    }
+    imap->imap_selection_info = mailimap_selection_info_new();
+    struct mailimap_response * response = nullptr;
+    r = mailimap_parse_response(imap, &response);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    uint64_t parsed = highestModseq(imap);
+    freeExtensionList(imap);
+    bool ok = taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok) {
+        if (imap->imap_selection_info != nullptr) {
+            mailimap_selection_info_free(imap->imap_selection_info);
+            imap->imap_selection_info = nullptr;
+        }
+        imap->imap_state = MAILIMAP_STATE_AUTHENTICATED;
+        return MAILIMAP_ERROR_SELECT;
+    }
+    imap->imap_state = MAILIMAP_STATE_SELECTED;
+    *modseq = parsed;
+    return MAILIMAP_NO_ERROR;
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq) {

@@ -78,7 +78,7 @@ private class ProbeMailSession(
 
     override suspend fun namespaces(): List<Namespace> = emptyList()
 
-    override suspend fun listLevel(prefix: String, parentMailbox: String?): List<FolderEntry> {
+    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
         listCalls += 1
         listPrefix = prefix
         listParent = parentMailbox
