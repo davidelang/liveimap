@@ -510,7 +510,7 @@ fun ComposeScreen(seed: ComposeSeed, onDone: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
-        TextButton(onClick = requestClose) { Text("Close") }
+        TextButton(onClick = { requestClose() }) { Text("Close") }
         val stateText = status
         if (stateText != null) Text(stateText)
         val failure = notice
