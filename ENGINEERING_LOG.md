@@ -452,3 +452,10 @@
 - Work: tagged APPEND OK including APPENDUID is success; send stores Answered or Forwarded after SMTP then appends the sent copy; postpone appends with Draft
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD b1f575c
+
+## 2026-10-02 - UNSELECT optional execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unselect-optional-20261002-0114-plan.md
+- Work: drop UNSELECT from required capabilities; send UNSELECT only when advertised, and only before SELECT of a different mailbox; never send CLOSE
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c84225b

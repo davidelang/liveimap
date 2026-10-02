@@ -188,6 +188,10 @@ private fun leafPart(part: MimePart): MimePart {
 }
 
 private suspend fun addUnselect(session: MailSession, lines: MutableList<String>) {
+    if (!advertised(session, "UNSELECT")) {
+        lines += skipLine("UNSELECT", "not advertised")
+        return
+    }
     lines += try {
         session.unselect()
         okLine("UNSELECT", "unselected")

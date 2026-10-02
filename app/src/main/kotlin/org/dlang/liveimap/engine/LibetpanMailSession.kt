@@ -25,7 +25,6 @@ internal val requiredCapabilities = listOf(
     "UIDPLUS",
     "LITERAL+",
     "CHILDREN",
-    "UNSELECT",
     "SORT",
     "THREAD=REFERENCES",
     "IDLE",
@@ -171,6 +170,12 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun select(mailbox: String): SelectResult {
+        val current = selectedMailbox
+        if (current != null && current != mailbox && hasCap(advertised(), "UNSELECT")) {
+            nativeUnselect(requireHandle())
+            selectedMailbox = null
+            selected = SelectResult(0, 0, 0)
+        }
         val result = nativeSelect(requireHandle(), mailbox) ?: throw MailFailure("select failed")
         selectedMailbox = mailbox
         selected = result
@@ -179,6 +184,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun unselect() {
+        if (capSet.none { it.equals("UNSELECT", ignoreCase = true) }) return
         nativeUnselect(requireHandle())
     }
 

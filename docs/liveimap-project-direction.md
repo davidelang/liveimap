@@ -13,7 +13,7 @@ One account, one server. Asgard answered this before login on 2026-09-29:
 
 IMAP `10.0.0.100:143` and SMTP port 25, both plaintext. The settings screen holds host, username, password, and the mailbox names for sent mail, postponed mail, and the address book. Those mailbox names start empty. The example `~/.pinerc` uses a top-level `Drafts` and `inbox.sent-mail`. The client does not guess them. That file has no password. Do not put one in the source.
 
-After `LOGIN`, the session requires `NAMESPACE`, `UIDPLUS`, `LITERAL+`, `CHILDREN`, `UNSELECT`, `SORT`, `THREAD=REFERENCES`, and `IDLE`. If any of those is missing, show the capability list and stop. There is one implementation. There is no second command path for a poorer server.
+After `LOGIN`, the session requires `NAMESPACE`, `UIDPLUS`, `LITERAL+`, `CHILDREN`, `SORT`, `THREAD=REFERENCES`, and `IDLE`. `UNSELECT` is not required. A missing `UNSELECT` does not stop the session. The client never sends `CLOSE`. If any required capability is missing, show the capability list and stop. There is one implementation. There is no second command path for a poorer server.
 
 This server does not advertise `CONDSTORE`, `QRESYNC`, `ESEARCH`, `MOVE`, `SPECIAL-USE`, `LIST-EXTENDED`, `LIST-STATUS`, `METADATA`, or `UTF8=ACCEPT`. v1 does not call them and does not invent substitutes. A later client may talk to other servers. If a command is absent there, the feature is absent. The phone does not compute it.
 
@@ -43,7 +43,7 @@ Arrival order uses that sequence range. Other orders are `UID SORT`. Thread view
 
 Opening a message fetches `BODYSTRUCTURE` for that UID, then `BODY.PEEK` of the preferred part for the first 4096 bytes, then more only as the user scrolls. An attachment is fetched only after a tap, 65536 bytes at a time. Plain versus HTML is a setting, default plain, overridable on that message. HTML is a WebView with JavaScript off and network loads blocked. The Message-ID is the header from the server.
 
-`\Deleted` stays visible until an explicit expunge. That is the default. A setting may hide them. Leaving a folder is `UNSELECT`, then `SELECT` of the next, so the change does not expunge. Move is `UID COPY` to the configured mailbox, then `\Deleted` on the source. Swipe calls those same commands.
+`\Deleted` stays visible until an explicit expunge. That is the default. A setting may hide them. When `UNSELECT` is advertised, leaving a mailbox sends `UNSELECT` before `SELECT` of the next. When it is not, `SELECT` of the next mailbox is the switch. Move is `UID COPY` to the configured mailbox, then `\Deleted` on the source. Swipe calls those same commands.
 
 ## Compose and the address book
 

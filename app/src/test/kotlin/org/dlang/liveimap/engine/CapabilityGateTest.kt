@@ -16,6 +16,13 @@ class CapabilityGateTest {
     }
 
     @Test
+    fun missingUnselectConnects() {
+        val line = "IMAP4rev1 NAMESPACE UIDPLUS LITERAL+ CHILDREN SORT THREAD=REFERENCES IDLE"
+        val result = capabilityGate(line)
+        assertTrue(result is OpenResult.Connected)
+    }
+
+    @Test
     fun cyrus22Connects() {
         val line = "IMAP4rev1 NAMESPACE UIDPLUS LITERAL+ CHILDREN UNSELECT SORT THREAD=REFERENCES IDLE"
         val result = capabilityGate(line)
