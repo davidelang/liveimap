@@ -7,8 +7,14 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -29,6 +35,23 @@ internal fun mailBarInsets(): WindowInsets =
     TopAppBarDefaults.windowInsets.union(
         WindowInsets.displayCutout.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     )
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
+    TopAppBar(
+        title = { Text(title) },
+        navigationIcon = {
+            IconButton(onClick = onUp) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Navigate up",
+                )
+            }
+        },
+        windowInsets = mailBarInsets(),
+    )
+}
 
 @Composable
 fun LiveImapScaffold(content: @Composable () -> Unit) {

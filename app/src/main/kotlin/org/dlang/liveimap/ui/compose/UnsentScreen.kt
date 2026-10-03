@@ -43,7 +43,6 @@ fun UnsentScreen(
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
-        TextButton(onClick = onBack) { Text("Close") }
         for (copy in copies) {
             Text(unsentSubject(copy.bytes))
             Text(copy.recipients.joinToString(", "))

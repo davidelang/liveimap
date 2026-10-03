@@ -946,3 +946,20 @@
 - coder-next.txt was idle (nonce 0), not status run for reader-brief-gaps. This dispatch names the approved plan. No other execute child.
 - Phase 1: newest message at the newest end in every time-ordered view; arrival pages by sequence range; newest-first sort sends REVERSE; new mail tails instead of reloading the window
 - Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - up navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/up-navigation-20261003-1630-plan.md
+- Status: APPROVED
+- builds before edit: 810d9db
+- settings-subscreens-and-about-20261003-0018: stash dropped (10 unused imports), nothing of that plan remains
+- Phase 0 done: stash list empty, no tracked changes, SettingsScreen.kt has no NavHost import
+- Phase 1: Up bar on Settings, About and Unsent; drawer edge swipe only on the folder list; remove Unsent Close
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - up navigation phase 1
+
+- Settings, About and Unsent use UpPage and UpTopAppBar. The Up icon content description is Navigate up. Settings and About call navigateUp. Unsent calls popBackStack and still passes onBack
+- Drawer edge swipe is enabled only when the route is folders
+- Unsent no longer shows a Close button. Open, Retry and Discard stay
+- No new dependency. No deploy. No send, append, or expunge

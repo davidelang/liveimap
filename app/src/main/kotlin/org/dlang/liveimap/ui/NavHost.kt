@@ -7,8 +7,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
@@ -16,6 +18,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -87,7 +90,7 @@ fun LiveImapNavHost() {
     val scope = rememberCoroutineScope()
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
-    val drawerGestures = route == "folders" || route == "settings" || route == "about"
+    val drawerGestures = route == "folders"
     var header by remember { mutableStateOf("") }
     var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var postponedMailbox by remember { mutableStateOf("") }
@@ -316,7 +319,7 @@ fun LiveImapNavHost() {
                 )
             }
             composable("unsent") {
-                InsetPage {
+                UpPage("Unsent", onUp = { navController.popBackStack() }) {
                     UnsentScreen(
                         onOpenCopy = { id, retry ->
                             composeKindName.value = ComposeKind.New.name
@@ -331,12 +334,12 @@ fun LiveImapNavHost() {
                 }
             }
             composable("settings") {
-                InsetPage {
+                UpPage("Settings", onUp = { navController.navigateUp() }) {
                     SettingsScreen()
                 }
             }
             composable("about") {
-                InsetPage {
+                UpPage("About", onUp = { navController.navigateUp() }) {
                     AboutScreen()
                 }
             }
@@ -636,6 +639,21 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 internal fun postponedDrawerMailbox(value: String): String? {
     if (value.isEmpty()) return null
     return value
+}
+
+@Composable
+private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> Unit) {
+    Scaffold(topBar = { UpTopAppBar(title, onUp) }) { innerPadding ->
+        Box(
+            Modifier
+                .padding(innerPadding)
+                .windowInsetsPadding(
+                    mailScreenInsets().only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                ),
+        ) {
+            content()
+        }
+    }
 }
 
 @Composable
