@@ -723,7 +723,7 @@ private fun FolderListRow(
             maxLines = 1,
             softWrap = false,
             modifier = Modifier
-                .padding(start = 8.dp, vertical = 8.dp)
+                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp)
                 .width(unreadWidth),
         )
     }
