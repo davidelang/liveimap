@@ -839,3 +839,20 @@
 - A reply keeps one attribution line and `> ` quotes. The cursor starts on the line below the quote. AccountSettings.replyAboveQuote defaults to false; a missing key stays false. Settings switch "Reply above the quote" persists immediately and puts the cursor on the line above the quote
 - A forward shows From, Date, and Subject, then the quoted body. Attachments still follow includeForwardAttachments and can be removed before send
 - AccountSettingsTest key list includes replyAboveQuote so the encode round-trip stays true. No deploy. No send, append, or expunge
+
+## 2026-10-02 - settings categories and about execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-categories-and-about-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: 424db1c
+- Phase 1 of 1: five settings groups, dynamicColor default true, theme uses dynamic color only on API 31 when the switch is on, About already shows LiveIMAP and versionName
+- Theme path is MainActivity.kt. About path is app/src/main/kotlin/org/dlang/liveimap/ui/about/AboutScreen.kt
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - settings categories and about phase 1
+
+- Settings controls sit under Account, Mailboxes, Display, Message bar, and Debug. Labels and save calls are unchanged. Reply above the quote stays in Display
+- AccountSettings.dynamicColor defaults to true. A missing key decodes to true. Display shows Dynamic color only on API 31 and above
+- The activity theme uses the system dynamic scheme only when that switch is on and the device is API 31 or newer. Otherwise it keeps the static scheme
+- About already shows LiveIMAP and BuildConfig.VERSION_NAME at ui/about/AboutScreen.kt. No license text added
+- No deploy. No send, append, or expunge

@@ -2,6 +2,7 @@ package org.dlang.liveimap.settings
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,7 +28,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
@@ -148,13 +148,12 @@ fun SettingsScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Text("Account")
         Text("IMAP port 143 and SMTP port 25 are plaintext.")
-        Text("Server")
         LineField("IMAP host", settings.imapHost) { persist(settings.copy(imapHost = it)) }
         PortField("IMAP port", settings.imapPort) { persist(settings.copy(imapPort = it)) }
         LineField("SMTP host", settings.smtpHost) { persist(settings.copy(smtpHost = it)) }
         PortField("SMTP port", settings.smtpPort) { persist(settings.copy(smtpPort = it)) }
-        Text("Account")
         LineField("Friendly name", settings.friendlyName) {
             persist(settings.copy(friendlyName = it))
         }
@@ -170,18 +169,6 @@ fun SettingsScreen() {
         }
         LineField("Email", settings.email, KeyboardType.Email) { persist(settings.copy(email = it)) }
         LineField("Display name", settings.displayName) { persist(settings.copy(displayName = it)) }
-        MailboxLine("Sent mailbox", settings.sentMailbox, { picking = MailboxPick.Sent }) {
-            persist(settings.copy(sentMailbox = it))
-        }
-        MailboxLine("Postponed mailbox", settings.postponedMailbox, { picking = MailboxPick.Postponed }) {
-            persist(settings.copy(postponedMailbox = it))
-        }
-        MailboxLine("Address book mailbox", settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
-            persist(settings.copy(addressBookMailbox = it))
-        }
-        MailboxLine("Spam mailbox", settings.spamMailbox, { picking = MailboxPick.Spam }) {
-            persist(settings.copy(spamMailbox = it))
-        }
         TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
             Text("Import from .pinerc…")
         }
@@ -207,7 +194,34 @@ fun SettingsScreen() {
         for (line in serverReport) {
             Text(text = line, fontFamily = FontFamily.Monospace)
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text("Mailboxes")
+        MailboxLine("Sent mailbox", settings.sentMailbox, { picking = MailboxPick.Sent }) {
+            persist(settings.copy(sentMailbox = it))
+        }
+        MailboxLine("Postponed mailbox", settings.postponedMailbox, { picking = MailboxPick.Postponed }) {
+            persist(settings.copy(postponedMailbox = it))
+        }
+        MailboxLine("Address book mailbox", settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
+            persist(settings.copy(addressBookMailbox = it))
+        }
+        MailboxLine("Spam mailbox", settings.spamMailbox, { picking = MailboxPick.Spam }) {
+            persist(settings.copy(spamMailbox = it))
+        }
+        Text("Expanded folders")
+        settings.expandedFolders.forEach { mailbox ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(mailbox, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    persist(settings.copy(expandedFolders = settings.expandedFolders - mailbox))
+                }) { Text("Remove") }
+            }
+        }
+        LineField("Expanded folder", draftExpanded) { draftExpanded = it }
+        TextButton(onClick = {
+            if (draftExpanded.isEmpty()) return@TextButton
+            persist(settings.copy(expandedFolders = settings.expandedFolders + draftExpanded))
+            draftExpanded = ""
+        }) { Text("Add expanded folder") }
         Text("Display")
         BoolField("Mark seen on open", settings.markSeenOnOpen) {
             persist(settings.copy(markSeenOnOpen = it))
@@ -215,9 +229,6 @@ fun SettingsScreen() {
         BoolField("Show deleted", settings.showDeleted) { persist(settings.copy(showDeleted = it)) }
         BoolField("Ask before expunge", settings.askBeforeExpunge) {
             persist(settings.copy(askBeforeExpunge = it))
-        }
-        BoolField("Pipeline IMAP commands", settings.pipelineCommands) {
-            persist(settings.copy(pipelineCommands = it))
         }
         BoolField("Show unread counts", settings.showUnreadCounts || warnUnread) { enabled ->
             if (enabled) {
@@ -229,17 +240,6 @@ fun SettingsScreen() {
         }
         ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
             persist(settings.copy(bodyView = view))
-        }
-        Text("Message bar")
-        ReaderAction.entries.forEach { action ->
-            BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
-                val next = if (enabled) {
-                    ReaderAction.entries.filter { it == action || settings.readerBar.contains(it) }
-                } else {
-                    settings.readerBar.filterNot { it == action }
-                }
-                persist(settings.copy(readerBar = next))
-            }
         }
         ChoiceField("Density", Density.entries, settings.density, { densityLabel(it) }) {
             persist(settings.copy(density = it))
@@ -283,21 +283,6 @@ fun SettingsScreen() {
             )
             draftFolder = ""
         }) { Text("Add folder view") }
-        Text("Expanded folders")
-        settings.expandedFolders.forEach { mailbox ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(mailbox, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
-                    persist(settings.copy(expandedFolders = settings.expandedFolders - mailbox))
-                }) { Text("Remove") }
-            }
-        }
-        LineField("Expanded folder", draftExpanded) { draftExpanded = it }
-        TextButton(onClick = {
-            if (draftExpanded.isEmpty()) return@TextButton
-            persist(settings.copy(expandedFolders = settings.expandedFolders + draftExpanded))
-            draftExpanded = ""
-        }) { Text("Add expanded folder") }
         val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
         SwipeEditor(
             if (leftToRight) "Swipe left" else "Swipe right",
@@ -323,7 +308,26 @@ fun SettingsScreen() {
         ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
             persist(settings.copy(theme = it))
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            BoolField("Dynamic color", settings.dynamicColor) {
+                persist(settings.copy(dynamicColor = it))
+            }
+        }
+        Text("Message bar")
+        ReaderAction.entries.forEach { action ->
+            BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
+                val next = if (enabled) {
+                    ReaderAction.entries.filter { it == action || settings.readerBar.contains(it) }
+                } else {
+                    settings.readerBar.filterNot { it == action }
+                }
+                persist(settings.copy(readerBar = next))
+            }
+        }
         Text("Debug")
+        BoolField("Pipeline IMAP commands", settings.pipelineCommands) {
+            persist(settings.copy(pipelineCommands = it))
+        }
         BoolField("Log IMAP traffic", settings.logImapTraffic) {
             persist(settings.copy(logImapTraffic = it))
         }

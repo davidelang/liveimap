@@ -181,6 +181,7 @@ data class AccountSettings(
     val bounceFcc: Boolean = false,
     val friendlyName: String = "",
     val theme: ThemeMode = ThemeMode.FollowSystem,
+    val dynamicColor: Boolean = true,
     val showUnreadCounts: Boolean = false,
     val dateFormat: DateFormat = DateFormat.Short,
     val datePattern: String = "",
@@ -231,6 +232,7 @@ private val fieldNames = listOf(
     "pipelineCommands",
     "logImapTraffic",
     "readerBar",
+    "dynamicColor",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -270,6 +272,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pipelineCommands=$pipelineCommands")
     appendLine("logImapTraffic=$logImapTraffic")
     appendLine("readerBar=${encodeReaderBar(readerBar)}")
+    appendLine("dynamicColor=$dynamicColor")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -299,7 +302,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "askBeforeExpunge" ||
             key == "pipelineCommands" ||
             key == "logImapTraffic" ||
-            key == "readerBar"
+            key == "readerBar" ||
+            key == "dynamicColor"
         ) {
             continue
         }
@@ -339,6 +343,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,
         logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
         readerBar = values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar,
+        dynamicColor = values["dynamicColor"]?.let { parseBoolean(it) } ?: true,
     )
 }
 

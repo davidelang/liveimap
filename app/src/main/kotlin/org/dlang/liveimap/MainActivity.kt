@@ -1,5 +1,6 @@
 package org.dlang.liveimap
 
+import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
 import androidx.activity.ComponentActivity
@@ -8,13 +9,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
@@ -35,18 +40,32 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appContext = LocalContext.current.applicationContext
             val store = remember { DataStoreSettingsStore(appContext) }
-            val theme by store.theme().collectAsStateWithLifecycle(ThemeMode.FollowSystem)
+            var theme by remember { mutableStateOf(ThemeMode.FollowSystem) }
+            var dynamicColor by remember { mutableStateOf(true) }
+            LaunchedEffect(store) {
+                store.theme().collect {
+                    val loaded = store.load()
+                    theme = loaded.theme
+                    dynamicColor = loaded.dynamicColor
+                }
+            }
             val dark = when (theme) {
                 ThemeMode.Dark -> true
                 ThemeMode.Light -> false
                 ThemeMode.FollowSystem -> isSystemInDarkTheme()
+            }
+            val context = LocalContext.current
+            val colorScheme = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            } else {
+                if (dark) darkColorScheme() else lightColorScheme()
             }
             SideEffect {
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.isAppearanceLightStatusBars = !dark
                 controller.isAppearanceLightNavigationBars = !dark
             }
-            MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = colorScheme) {
                 LiveImapNavHost()
             }
         }
