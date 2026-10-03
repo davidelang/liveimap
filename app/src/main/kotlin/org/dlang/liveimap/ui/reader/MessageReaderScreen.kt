@@ -7,8 +7,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +30,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -56,17 +61,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.IndexMode
+import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
@@ -84,6 +102,7 @@ import org.dlang.liveimap.settings.sortKeyLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
+import org.dlang.liveimap.ui.index.formatIndexDate
 import org.dlang.liveimap.ui.index.MailboxTitleLines
 import org.dlang.liveimap.ui.index.mailboxTitleFor
 import org.dlang.liveimap.ui.mailBarInsets
@@ -117,7 +136,7 @@ private data class AttachmentRow(
     val done: Boolean,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MessageReaderScreen(
     mailbox: String,
@@ -160,6 +179,11 @@ fun MessageReaderScreen(
     var bodySection by remember { mutableStateOf<String?>(null) }
     var missing by remember { mutableStateOf<String?>(null) }
     var attachments by remember { mutableStateOf<List<AttachmentRow>>(emptyList()) }
+    var headerFrom by remember(mailbox, uid) { mutableStateOf("") }
+    var headerDate by remember(mailbox, uid) { mutableStateOf("") }
+    var headerSubject by remember(mailbox, uid) { mutableStateOf("") }
+    var headerReady by remember(mailbox, uid) { mutableStateOf(false) }
+    var noTextPart by remember(mailbox, uid) { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
     var seenStored by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
@@ -246,6 +270,7 @@ fun MessageReaderScreen(
 
     suspend fun pullUnbounded(section: String, markSeen: Boolean) {
         missing = null
+        noTextPart = false
         renderedHtml = false
         bodyText = ""
         bodyOffset = 0
@@ -320,8 +345,9 @@ fun MessageReaderScreen(
         return out.toByteArray()
     }
 
-    fun showMissing(text: String) {
+    fun showMissing(text: String, noText: Boolean = false) {
         missing = text
+        noTextPart = noText
         renderedHtml = false
         bodyText = ""
         bodySection = null
@@ -333,6 +359,12 @@ fun MessageReaderScreen(
     suspend fun loadPreferred(view: BodyView) {
         val root = structure ?: return
         val plain = textPart(root, "plain")
+        val html = textPart(root, "html")
+        if (plain == null && html == null) {
+            showMissing("There is no text part", noText = true)
+            return
+        }
+        noTextPart = false
         if (plain != null) {
             missing = null
             renderedHtml = false
@@ -341,7 +373,6 @@ fun MessageReaderScreen(
         }
         when (view) {
             BodyView.PlainOrHtml -> {
-                val html = textPart(root, "html")
                 if (html == null) {
                     showMissing(missingPartText(true))
                 } else {
@@ -351,7 +382,6 @@ fun MessageReaderScreen(
                 }
             }
             BodyView.PlainOrText -> {
-                val html = textPart(root, "html")
                 if (html == null) {
                     showMissing(missingPartText(true))
                 } else {
@@ -453,6 +483,11 @@ fun MessageReaderScreen(
         heading = MailboxTitle(mailbox, "")
         loading = true
         banner = null
+        headerFrom = ""
+        headerDate = ""
+        headerSubject = ""
+        headerReady = false
+        noTextPart = false
         var initialView = BodyView.PlainOrError
         var openOk = false
         gate.withLock {
@@ -510,6 +545,36 @@ fun MessageReaderScreen(
                         done = false,
                     )
                 }
+                val row = try {
+                    session.fetchIndex(
+                        IndexRequest(
+                            mailbox = mailbox,
+                            mode = IndexMode.ByUid,
+                            uids = listOf(uid),
+                            limit = 1,
+                            prefetch = 0,
+                            includePreview = false,
+                        ),
+                    ).firstOrNull { it.uid == uid }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (row != null) {
+                    headerFrom = row.from
+                    headerSubject = row.subject
+                    val formatted = formatIndexDate(
+                        epochSeconds = row.internalDateEpoch,
+                        format = account.dateFormat,
+                        pattern = account.datePattern,
+                        nowEpoch = Instant.now().epochSecond,
+                        zone = ZoneId.systemDefault(),
+                    )
+                    headerDate = formatted.ifEmpty { row.envelopeDate }
+                }
+                headerReady = true
                 connected = true
                 openOk = true
             } catch (error: CancellationException) {
@@ -728,6 +793,13 @@ fun MessageReaderScreen(
         ThemeMode.Light -> false
         ThemeMode.FollowSystem -> systemDark
     }
+    val quoteColor = MaterialTheme.colorScheme.secondary
+    val linkColor = MaterialTheme.colorScheme.primary
+    val htmlBackground = MaterialTheme.colorScheme.background.toArgb()
+    val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
+    val plainBody = remember(bodyText, quoteColor, linkColor) {
+        plainBodyText(bodyText, quoteColor, linkColor)
+    }
     val barActions = readerBarActions(account.readerBar, account.spamMailbox)
     val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
     Scaffold(
@@ -839,18 +911,7 @@ fun MessageReaderScreen(
         if (sequence != 0) {
             Text("Message $sequence", modifier = Modifier.padding(horizontal = 8.dp))
         }
-        for (row in attachments) {
-            TextButton(
-                onClick = { fetchAttachment(row) },
-                modifier = Modifier.padding(horizontal = 8.dp),
-            ) {
-                Text(attachmentCaption(row))
-            }
-        }
         val absent = missing
-        if (absent != null) {
-            Text(text = absent, modifier = Modifier.padding(8.dp))
-        }
         PullToRefreshBox(
             isRefreshing = loading,
             onRefresh = { if (!loading) loadToken += 1 },
@@ -858,49 +919,97 @@ fun MessageReaderScreen(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            if (absent == null && renderedHtml) {
-                AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = false
-                            settings.javaScriptCanOpenWindowsAutomatically = false
-                            settings.blockNetworkLoads = true
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            applyHtmlDark(settings, dark)
-                            webViewClient = object : WebViewClient() {
-                                @Deprecated("Deprecated in API 24")
-                                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+            Column(Modifier.fillMaxSize()) {
+                if (headerReady) {
+                    ReaderHeaderCard(
+                        from = headerFrom,
+                        date = headerDate,
+                        subject = headerSubject,
+                    )
+                }
+                if (attachments.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        for (row in attachments) {
+                            AssistChip(
+                                onClick = { fetchAttachment(row) },
+                                label = { Text(row.label) },
+                            )
+                        }
+                    }
+                }
+                when {
+                    noTextPart -> {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                        ) {
+                            Text(
+                                text = "There is no text part",
+                                modifier = Modifier.padding(12.dp),
+                            )
+                        }
+                    }
+                    absent == null && renderedHtml -> {
+                        AndroidView(
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = false
+                                    settings.javaScriptCanOpenWindowsAutomatically = false
+                                    settings.blockNetworkLoads = true
+                                    settings.allowFileAccess = false
+                                    settings.allowContentAccess = false
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                    setBackgroundColor(htmlBackground)
+                                    applyHtmlDark(settings)
+                                    webViewClient = object : WebViewClient() {
+                                        @Deprecated("Deprecated in API 24")
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
 
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                ): Boolean = true
-                            }
-                            setOnScrollChangeListener { _, _, scrollY, _, _ ->
-                                val extent = (contentHeight * scale) - height
-                                if (scrollY > 0 && extent - scrollY < 48f) bridge.onNearEnd()
-                            }
+                                        override fun shouldOverrideUrlLoading(
+                                            view: WebView?,
+                                            request: WebResourceRequest?,
+                                        ): Boolean = true
+                                    }
+                                    setOnScrollChangeListener { _, _, scrollY, _, _ ->
+                                        val extent = (contentHeight * scale) - height
+                                        if (scrollY > 0 && extent - scrollY < 48f) bridge.onNearEnd()
+                                    }
+                                }
+                            },
+                            update = { view ->
+                                view.setBackgroundColor(htmlBackground)
+                                applyHtmlDark(view.settings)
+                                val page = themedHtml(bodyText, dark, htmlBackground, htmlForeground)
+                                if (view.tag != page) {
+                                    view.tag = page
+                                    view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                        )
+                    }
+                    absent == null -> {
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(scroll),
+                        ) {
+                            Text(text = plainBody, modifier = Modifier.padding(8.dp))
                         }
-                    },
-                    update = { view ->
-                        applyHtmlDark(view.settings, dark)
-                        val page = bodyText
-                        if (view.tag != page) {
-                            view.tag = page
-                            view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else if (absent == null) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scroll),
-                ) {
-                    Text(text = bodyText, modifier = Modifier.padding(8.dp))
+                    }
+                    else -> {
+                        Text(text = absent, modifier = Modifier.padding(8.dp))
+                    }
                 }
             }
         }
@@ -1017,12 +1126,12 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
     }
 }
 
-private fun applyHtmlDark(settings: WebSettings, dark: Boolean) {
+private fun applyHtmlDark(settings: WebSettings) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        settings.isAlgorithmicDarkeningAllowed = dark
+        settings.isAlgorithmicDarkeningAllowed = false
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         @Suppress("DEPRECATION")
-        settings.forceDark = if (dark) WebSettings.FORCE_DARK_ON else WebSettings.FORCE_DARK_OFF
+        settings.forceDark = WebSettings.FORCE_DARK_OFF
     }
 }
 
@@ -1051,9 +1160,111 @@ private fun readerActionImage(action: ReaderAction) = when (action) {
     ReaderAction.Bounce -> Icons.AutoMirrored.Filled.Redo
 }
 
-private fun attachmentCaption(row: AttachmentRow): String {
-    val progress = "${row.label} ${row.fetched}/${row.size}"
-    return if (row.done) "$progress fetched" else progress
+@Composable
+private fun ReaderHeaderCard(from: String, date: String, subject: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text("From: $from")
+            Text(date)
+            Text(subject, style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+private fun themedHtml(page: String, dark: Boolean, background: Int, foreground: Int): String {
+    if (!dark) return page
+    val css = "<style>html,body,body *{background-color:${cssColor(background)} !important;color:${cssColor(foreground)} !important;}</style>"
+    val lower = page.lowercase()
+    val head = lower.indexOf("<head")
+    if (head >= 0) {
+        val close = page.indexOf('>', head)
+        if (close >= 0) return page.substring(0, close + 1) + css + page.substring(close + 1)
+    }
+    return css + page
+}
+
+private fun cssColor(argb: Int): String = "#%06X".format(argb and 0xFFFFFF)
+
+private val httpLink = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
+private val mailLink = Regex("""[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}""")
+
+private data class PlainLink(val start: Int, val end: Int, val url: String)
+
+private fun plainBodyText(text: String, quote: Color, link: Color): AnnotatedString {
+    return buildAnnotatedString {
+        var index = 0
+        while (index <= text.length) {
+            val newline = text.indexOf('\n', index)
+            val end = if (newline < 0) text.length else newline
+            val line = text.substring(index, end)
+            val quoted = line.startsWith(">")
+            appendLinkedLine(line, if (quoted) quote else null, if (quoted) quote else link)
+            if (newline < 0) break
+            append("\n")
+            index = newline + 1
+        }
+    }
+}
+
+private fun AnnotatedString.Builder.appendLinkedLine(line: String, textColor: Color?, linkColor: Color) {
+    var cursor = 0
+    for (link in findPlainLinks(line)) {
+        if (link.start > cursor) appendStyled(line.substring(cursor, link.start), textColor)
+        withLink(
+            LinkAnnotation.Url(
+                link.url,
+                TextLinkStyles(
+                    style = SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                ),
+            ),
+        ) {
+            append(line.substring(link.start, link.end))
+        }
+        cursor = link.end
+    }
+    if (cursor < line.length) appendStyled(line.substring(cursor), textColor)
+}
+
+private fun AnnotatedString.Builder.appendStyled(value: String, color: Color?) {
+    if (color == null) {
+        append(value)
+        return
+    }
+    val from = length
+    append(value)
+    addStyle(SpanStyle(color = color), from, length)
+}
+
+private fun findPlainLinks(line: String): List<PlainLink> {
+    val found = ArrayList<PlainLink>()
+    for (match in httpLink.findAll(line)) {
+        val trimmed = trimLinkEnd(match.value)
+        if (trimmed.isEmpty()) continue
+        found.add(PlainLink(match.range.first, match.range.first + trimmed.length, trimmed))
+    }
+    for (match in mailLink.findAll(line)) {
+        val start = match.range.first
+        val rawEnd = match.range.last + 1
+        if (found.any { start < it.end && rawEnd > it.start }) continue
+        val trimmed = trimLinkEnd(match.value)
+        if (trimmed.isEmpty() || !trimmed.contains('@')) continue
+        found.add(PlainLink(start, start + trimmed.length, "mailto:$trimmed"))
+    }
+    found.sortBy { it.start }
+    return found
+}
+
+private fun trimLinkEnd(raw: String): String {
+    var end = raw.length
+    while (end > 0 && raw[end - 1] in ".,;:!?)]") end -= 1
+    return raw.substring(0, end)
 }
 
 private fun appendUtf8(pending: ByteArray, chunk: ByteArray): Pair<String, ByteArray> {

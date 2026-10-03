@@ -816,3 +816,10 @@
 - A star in front of the counts toggles the same favorite as a long-press: a leaf uses the name record, a collapsed node uses the node record, and an expanded row uses the mailbox record. A filled star is that favorite. The star does not open the folder. Long-press still works
 - The top bar search field filters loaded display names and does not send LIST. Clearing it shows the loaded level again
 - No deploy. No send, append, or expunge
+
+## 2026-10-02 - Reader body chrome execution start
+
+- Plan: sandbox/plans/reader-body-chrome-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: 2040cbc
+- Phase 1: header card, plain-text links and quote color, theme HTML, attachment chips, no-text card in MessageReaderScreen.kt
