@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Delete
@@ -31,6 +32,9 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -40,6 +44,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -59,8 +64,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -109,6 +121,9 @@ fun FolderListScreen(
     var postponedMailbox by remember { mutableStateOf("") }
     var spamMailbox by remember { mutableStateOf("") }
     var addressBookMailbox by remember { mutableStateOf("") }
+    var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
+    var showUnreadCounts by remember { mutableStateOf(false) }
+    var folderQuery by remember { mutableStateOf("") }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -157,6 +172,8 @@ fun FolderListScreen(
             postponedMailbox = settings.postponedMailbox
             spamMailbox = settings.spamMailbox
             addressBookMailbox = settings.addressBookMailbox
+            favorites = settings.favorites
+            showUnreadCounts = settings.showUnreadCounts
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -220,13 +237,13 @@ fun FolderListScreen(
             }
             if (listed != null) {
                 rows = listed
-                scrollIndex = listed.indexOfFirst { it.mailbox == target }
+                scrollIndex = folderRowsMatchingName(listed, folderQuery).indexOfFirst { it.mailbox == target }
             }
         }
         if (scrollIndex >= 0) listState.scrollToItem(scrollIndex)
     }
 
-    LaunchedEffect(rows, stopped) {
+    LaunchedEffect(rows, stopped, folderQuery) {
         if (stopped || rows.isEmpty()) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }
             .distinctUntilChanged()
@@ -235,7 +252,8 @@ fun FolderListScreen(
                 gate.withLock {
                     if (stopped) return@withLock
                     val current = rows
-                    val visible = indices.mapNotNull { current.getOrNull(it) }.filter { !it.namespaceRoot }
+                    val listed = folderRowsMatchingName(current, folderQuery)
+                    val visible = indices.mapNotNull { listed.getOrNull(it) }.filter { !it.namespaceRoot }
                     if (visible.isEmpty()) return@withLock
                     val updated = try {
                         model.refreshVisibleCounts(visible)
@@ -268,12 +286,13 @@ fun FolderListScreen(
                     return@withLock
                 }
                 val favorite = FolderFavorite(node, row.mailbox, row.delimiter)
-                val favorites = if (settings.favorites.any { it.node == node && it.mailbox == row.mailbox }) {
+                val nextFavorites = if (settings.favorites.any { it.node == node && it.mailbox == row.mailbox }) {
                     settings.favorites.filterNot { it.node == node && it.mailbox == row.mailbox }
                 } else {
                     settings.favorites + favorite
                 }
-                store.save(settings.copy(favorites = favorites))
+                store.save(settings.copy(favorites = nextFavorites))
+                favorites = nextFavorites
             }
         }
     }
@@ -281,28 +300,57 @@ fun FolderListScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = { Text("Folders") },
-                navigationIcon = {
-                    if (onOpenDrawer != null) {
-                        IconButton(onClick = onOpenDrawer) {
+            Column {
+                TopAppBar(
+                    title = { Text("Folders") },
+                    navigationIcon = {
+                        if (onOpenDrawer != null) {
+                            IconButton(onClick = onOpenDrawer) {
+                                Icon(
+                                    imageVector = Icons.Filled.Menu,
+                                    contentDescription = "Menu",
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { if (!loading) loadToken += 1 }) {
                             Icon(
-                                imageVector = Icons.Filled.Menu,
-                                contentDescription = "Menu",
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Refresh",
                             )
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
-                        )
-                    }
-                },
-                windowInsets = mailBarInsets(),
-            )
+                    },
+                    windowInsets = mailBarInsets(),
+                )
+                Surface(color = MaterialTheme.colorScheme.surface) {
+                    OutlinedTextField(
+                        value = folderQuery,
+                        onValueChange = { folderQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        singleLine = true,
+                        placeholder = { Text("Search folders") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = null,
+                            )
+                        },
+                        trailingIcon = {
+                            if (folderQuery.isNotEmpty()) {
+                                IconButton(onClick = { folderQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Clear search",
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         },
         contentWindowInsets = mailScreenInsets(),
     ) { padding ->
@@ -335,8 +383,23 @@ fun FolderListScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
         }
         if (!stopped) {
-            val reserveMessages = rows.any { it.messages != null }
-            val reserveUnseen = rows.any { it.unseen != null }
+            // Names already loaded. Does not send LIST.
+            val shown = folderRowsMatchingName(rows, folderQuery)
+            val countStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
+            val countMeasurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val totalWidth = folderCountColumnWidth(
+                countMeasurer,
+                countStyle,
+                shown.mapNotNull { it.messages?.toString() },
+                density,
+            )
+            val unreadWidth = folderCountColumnWidth(
+                countMeasurer,
+                countStyle,
+                shown.mapNotNull { folderUnreadLabel(showUnreadCounts, it.unseen) },
+                density,
+            )
             PullToRefreshBox(
                 isRefreshing = loading,
                 onRefresh = { if (!loading) loadToken += 1 },
@@ -361,21 +424,37 @@ fun FolderListScreen(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
+            } else if (!loading && shown.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = "No matching folders",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
             } else {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(rows) { row ->
+                items(shown) { row ->
+                    val starNode = folderFavoriteNode(row)
                     FolderListRow(
                         row = row,
-                        reserveMessages = reserveMessages,
-                        reserveUnseen = reserveUnseen,
+                        totalWidth = totalWidth,
+                        unreadWidth = unreadWidth,
+                        countStyle = countStyle,
+                        showUnread = showUnreadCounts,
+                        favorite = favorites.any { it.node == starNode && it.mailbox == row.mailbox },
                         sentMailbox = sentMailbox,
                         postponedMailbox = postponedMailbox,
                         spamMailbox = spamMailbox,
                         addressBookMailbox = addressBookMailbox,
                         onOpen = { if (!row.namespaceRoot) onOpenMailbox(row.mailbox) },
+                        onStar = { toggleFavorite(starNode, row) },
                         onToggle = {
                             scope.launch {
                                 gate.withLock {
@@ -480,6 +559,40 @@ internal fun folderIconKey(
     return "folder"
 }
 
+internal fun folderDisplayName(row: FolderRow): String =
+    if (row.namespaceRoot && row.mailbox.isEmpty()) "(empty prefix)" else row.leaf
+
+internal fun folderRowsMatchingName(rows: List<FolderRow>, query: String): List<FolderRow> {
+    if (query.isBlank()) return rows
+    return rows.filter { folderDisplayName(it).contains(query.trim(), ignoreCase = true) }
+}
+
+internal fun folderFavoriteNode(row: FolderRow): Boolean = when {
+    !row.hasChildren -> row.namespaceRoot
+    row.expanded -> false
+    else -> true
+}
+
+internal fun folderUnreadLabel(showUnreadCounts: Boolean, unseen: Int?): String? {
+    if (!showUnreadCounts) return null
+    if (unseen == null || unseen <= 0) return null
+    return unseen.toString()
+}
+
+internal fun folderCountColumnWidth(
+    measurer: TextMeasurer,
+    style: TextStyle,
+    labels: List<String>,
+    density: Density,
+): Dp {
+    var widest = measurer.measure(text = "0", style = style).size.width
+    for (label in labels) {
+        val width = measurer.measure(text = label, style = style).size.width
+        if (width > widest) widest = width
+    }
+    return with(density) { widest.toDp() }
+}
+
 internal fun folderRowDescription(
     shownLeaf: String,
     messages: Int?,
@@ -498,22 +611,27 @@ internal fun folderRowDescription(
 @Composable
 private fun FolderListRow(
     row: FolderRow,
-    reserveMessages: Boolean,
-    reserveUnseen: Boolean,
+    totalWidth: Dp,
+    unreadWidth: Dp,
+    countStyle: TextStyle,
+    showUnread: Boolean,
+    favorite: Boolean,
     sentMailbox: String,
     postponedMailbox: String,
     spamMailbox: String,
     addressBookMailbox: String,
     onOpen: () -> Unit,
+    onStar: () -> Unit,
     onToggle: () -> Unit,
     onLeafLongPress: () -> Unit,
     onNodeLongPress: () -> Unit,
 ) {
-    val shownLeaf = if (row.namespaceRoot && row.mailbox.isEmpty()) "(empty prefix)" else row.leaf
+    val shownLeaf = folderDisplayName(row)
+    val unreadLabel = folderUnreadLabel(showUnread, row.unseen)
     val description = folderRowDescription(
         shownLeaf,
         row.messages,
-        row.unseen,
+        if (unreadLabel == null) null else row.unseen,
         row.hasChildren,
         row.expanded,
     )
@@ -538,7 +656,7 @@ private fun FolderListRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp * row.depth),
+            .padding(start = 24.dp * row.depth, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val slot = if (row.hasChildren) {
@@ -576,22 +694,37 @@ private fun FolderListRow(
                     .weight(1f)
                     .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
             )
-            if (reserveMessages) {
-                Box(modifier = Modifier.width(56.dp), contentAlignment = Alignment.CenterEnd) {
-                    val messages = row.messages
-                    if (messages != null) {
-                        Text(text = messages.toString(), modifier = Modifier.padding(vertical = 8.dp))
-                    }
-                }
-            }
-            if (reserveUnseen) {
-                Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
-                    val unseen = row.unseen
-                    if (unseen != null) {
-                        Text(text = unseen.toString(), modifier = Modifier.padding(vertical = 8.dp))
-                    }
-                }
-            }
         }
+        IconButton(onClick = onStar) {
+            Icon(
+                imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                contentDescription = if (favorite) "Remove favorite" else "Add favorite",
+                tint = if (favorite) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        Text(
+            text = row.messages?.toString().orEmpty(),
+            style = countStyle,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier
+                .padding(vertical = 8.dp)
+                .width(totalWidth),
+        )
+        Text(
+            text = unreadLabel.orEmpty(),
+            style = countStyle,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier
+                .padding(start = 8.dp, vertical = 8.dp)
+                .width(unreadWidth),
+        )
     }
 }

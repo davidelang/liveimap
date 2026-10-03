@@ -799,3 +799,20 @@
 - More still dismisses without changing the selection. Its items are Select all, Mark answered, Mark unanswered, Undelete when a selected row is deleted or the whole folder is selected, Bounce, and Clear selection. The extra Mark unread item is gone. Item text has no raw flag names
 - Select all, undo, and the store and copy calls are unchanged. With nothing selected, the normal top bar returns
 - No deploy. No send, append, or expunge
+
+## 2026-10-02 - folder count columns execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-count-columns-20261002-2312-plan.md
+- Work: folder rows show an aligned total, unread only when nonzero, a favorite star, faint dividers, and a search of names already loaded
+- Phase 1 of 1. This tree's ./build_app runs assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 4d4def2
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - folder count columns phase 1
+
+- Each folder row ends with a total and an unread column. Both are right-aligned, tabular (fontFeatureSettings tnum), and one measured width for every row on screen. Unread is blank when the setting is off or the count is zero, not 0. The faint row divider stays
+- A star in front of the counts toggles the same favorite as a long-press: a leaf uses the name record, a collapsed node uses the node record, and an expanded row uses the mailbox record. A filled star is that favorite. The star does not open the folder. Long-press still works
+- The top bar search field filters loaded display names and does not send LIST. Clearing it shows the loaded level again
+- No deploy. No send, append, or expunge
