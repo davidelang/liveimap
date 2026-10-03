@@ -30,8 +30,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -78,6 +81,11 @@ import org.dlang.liveimap.settings.readerActionLabel
 import org.dlang.liveimap.settings.sortKeyLabel
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
+import org.dlang.liveimap.ui.index.MailboxTitle
+import org.dlang.liveimap.ui.index.MailboxTitleLines
+import org.dlang.liveimap.ui.index.mailboxTitleFor
+import org.dlang.liveimap.ui.mailBarInsets
+import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.index.MailUndo
 import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.followingUid
@@ -107,6 +115,7 @@ private data class AttachmentRow(
     val done: Boolean,
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageReaderScreen(
     mailbox: String,
@@ -154,6 +163,7 @@ fun MessageReaderScreen(
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
     var choosingMove by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
+    var heading by remember(mailbox) { mutableStateOf(MailboxTitle(mailbox, "")) }
     val saveMutex = remember { Mutex() }
 
     BackHandler(enabled = choosingMove && !moreMenu) {
@@ -438,6 +448,7 @@ fun MessageReaderScreen(
     laterRetry.block = { requestView(selectedView) }
 
     LaunchedEffect(session, mailbox, uid, loadToken) {
+        heading = MailboxTitle(mailbox, "")
         loading = true
         banner = null
         var initialView = BodyView.PlainOrError
@@ -481,6 +492,7 @@ fun MessageReaderScreen(
                 }
                 OpenResult.Connected -> Unit
             }
+            heading = mailboxTitleFor(session, mailbox)
             try {
                 session.select(mailbox)
                 selectedMailbox = mailbox
@@ -714,33 +726,22 @@ fun MessageReaderScreen(
         ThemeMode.Light -> false
         ThemeMode.FollowSystem -> systemDark
     }
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize()) {
-        if (loading && banner == null) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-            )
-        }
-        val shownBanner = banner
-        if (shownBanner != null) {
-            FailureBanner(message = shownBanner) {
-                banner = null
-                loading = true
-                loadToken += 1
-            }
-        }
-        val barActions = readerBarActions(account.readerBar, account.spamMailbox)
-        val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
-        Box {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                    )
-                }
+    val barActions = readerBarActions(account.readerBar, account.spamMailbox)
+    val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { MailboxTitleLines(heading.leaf, heading.parent) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+                actions = {
                 for (action in barActions) {
                     IconButton(onClick = { runReaderAction(action) }) {
                         Icon(
@@ -749,13 +750,13 @@ fun MessageReaderScreen(
                         )
                     }
                 }
+                    Box {
                 IconButton(onClick = { moreMenu = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = "More",
                     )
                 }
-            }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                 DropdownMenuItem(
                     text = { Text("Close") },
@@ -802,6 +803,29 @@ fun MessageReaderScreen(
                         saveMailboxView { current -> current.copy(newestFirst = false) }
                     },
                 )
+            }
+                    }
+                },
+                windowInsets = mailBarInsets(),
+            )
+        },
+        contentWindowInsets = mailScreenInsets(),
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding)) {
+    Column(Modifier.fillMaxSize()) {
+        if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                loading = true
+                loadToken += 1
             }
         }
         if (sequence != 0) {
@@ -892,6 +916,7 @@ fun MessageReaderScreen(
                 Snackbar(data)
             }
         }
+    }
     }
     if (confirmExpunge) {
         val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }

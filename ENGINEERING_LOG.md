@@ -723,3 +723,26 @@
 - The sort menu checks the active key, puts a divider before the thread keys, and disables a missing capability with Not advertised. The button uses Icons.Filled.Sort. Newest first is a checkbox
 - menuKeys keeps every SortKey, including ordered subject when that capability is absent
 - IndexWindowTest.orderedSubjectHiddenUnlessAdvertised still expects ordered subject to be omitted. That file is not a Critical File, so it was not edited
+
+## 2026-10-02 - screen top bars execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/screen-top-bars-20261002-1810-plan.md
+- Work: top bars on the folder list, index, reader, and compose screens. The outer scaffold stops padding content. Index title is the mailbox leaf with the parent under it. Settings, About, Unsent, and the drawer keep their own insets.
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 914f451
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - screen top bars phase 1
+
+- LiveImapScaffold content insets are empty and the padded box is gone, so the status inset is not applied twice
+- Folder list, index, reader, and compose each use a Scaffold top bar. The bar owns the top inset and the page clears the navigation bar and cutout
+- Folder list title is Folders. Menu is shown only for the modal drawer and opens it. The menu button above the NavHost is gone. The permanent drawer passes a null callback
+- Index title is the leaf after the personal namespace delimiter, with the parent on the next line when that parent is not empty. Search, filter, and sort, with their menus, are bar actions. The sort label stays beside the sort icon. Expunge stays under the bar
+- Reader bar holds Back, the same actions, and More. The menus are unchanged. The title uses the same leaf and parent
+- Compose title is Compose. Back closes through the existing dirty check. Send and Postpone, where those buttons already exist, are bar actions
+- The delimiter is the personal namespace whose prefix is a prefix of the mailbox, longest prefix first, otherwise the first personal namespace. A failed namespaces call leaves the mailbox as the title with no parent line
+- Settings, About, and Unsent are not Critical Files. Their status, navigation, and cutout insets are applied at the NavHost call sites. The drawer sheets use the same union
+- The remembered nav graph is unchanged, so an open back stack entry stays open
+- No deploy. No send, append, or expunge

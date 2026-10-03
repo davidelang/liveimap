@@ -53,8 +53,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -121,7 +124,10 @@ import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
@@ -132,6 +138,8 @@ import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.settings.swipeActionLabel
+import org.dlang.liveimap.ui.mailBarInsets
+import org.dlang.liveimap.ui.mailScreenInsets
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.ZoneId
@@ -347,6 +355,7 @@ fun emptyIndexText(query: String, mailbox: String): String {
     return "No messages match \u201c$query\u201d in $mailbox"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
@@ -378,6 +387,7 @@ fun MessageIndexScreen(
     var anchorPage by remember { mutableStateOf(0) }
     var connected by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var heading by remember(mailbox) { mutableStateOf(MailboxTitle(mailbox, "")) }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var filterOpen by remember { mutableStateOf(false) }
@@ -652,6 +662,7 @@ fun MessageIndexScreen(
     }
 
     LaunchedEffect(session, mailbox, loadToken) {
+        heading = MailboxTitle(mailbox, "")
         loading = true
         banner = null
         var pendingThread: FolderView? = null
@@ -692,6 +703,7 @@ fun MessageIndexScreen(
                 }
                 OpenResult.Connected -> Unit
             }
+            heading = mailboxTitleFor(session, mailbox)
             val savedView = settings.folderViews[mailbox] ?: settings.defaultView
             val threading = savedView.key == SortKey.ThreadReferences ||
                 savedView.key == SortKey.ThreadOrderedSubject
@@ -852,40 +864,21 @@ fun MessageIndexScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize()) {
-        if (loading && banner == null) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-            )
-        }
-        val shownBanner = banner
-        if (shownBanner != null) {
-            FailureBanner(message = shownBanner) {
-                banner = null
-                loading = true
-                loadToken += 1
-            }
-        }
-        if (connected) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                    )
-                }
-                Text(
-                    text = mailbox,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { MailboxTitleLines(heading.leaf, heading.parent) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+                actions = {
+                    if (connected) {
                 IconButton(onClick = { searchVisible = true }) {
                     Icon(
                         imageVector = Icons.Filled.Search,
@@ -1027,6 +1020,31 @@ fun MessageIndexScreen(
                         )
                     }
                 }
+                    }
+                },
+                windowInsets = mailBarInsets(),
+            )
+        },
+        contentWindowInsets = mailScreenInsets(),
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding)) {
+    Column(Modifier.fillMaxSize()) {
+        if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                loading = true
+                loadToken += 1
+            }
+        }
+        if (connected) {
                 TextButton(
                     onClick = {
                         val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
@@ -1084,7 +1102,6 @@ fun MessageIndexScreen(
                         },
                     )
                 }
-            }
             if (filters.isNotEmpty()) {
                 Row(
                     Modifier
@@ -1469,6 +1486,7 @@ fun MessageIndexScreen(
                 Snackbar(data)
             }
         }
+    }
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {
@@ -1916,4 +1934,56 @@ private fun rootRowIndex(entries: List<IndexEntry>, lazyIndex: Int): Int {
         }
     }
     return roots
+}
+
+internal data class MailboxTitle(val leaf: String, val parent: String)
+
+internal fun mailboxTitle(mailbox: String, delimiter: Char): MailboxTitle {
+    val cut = mailbox.lastIndexOf(delimiter)
+    if (cut < 0) return MailboxTitle(mailbox, "")
+    return MailboxTitle(
+        leaf = mailbox.substring(cut + 1),
+        parent = mailbox.substring(0, cut),
+    )
+}
+
+internal fun personalDelimiter(mailbox: String, namespaces: List<Namespace>): Char? {
+    val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
+    val matched = personal.filter { mailbox.startsWith(it.prefix) }
+    val chosen = if (matched.isNotEmpty()) {
+        matched.maxBy { it.prefix.length }
+    } else {
+        personal.firstOrNull()
+    }
+    return chosen?.delimiter
+}
+
+internal suspend fun mailboxTitleFor(session: MailSession, mailbox: String): MailboxTitle {
+    val delimiter = try {
+        personalDelimiter(mailbox, session.namespaces())
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
+    } ?: return MailboxTitle(mailbox, "")
+    return mailboxTitle(mailbox, delimiter)
+}
+
+@Composable
+internal fun MailboxTitleLines(leaf: String, parent: String) {
+    Column {
+        Text(
+            text = leaf,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (parent.isNotEmpty()) {
+            Text(
+                text = parent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
 }

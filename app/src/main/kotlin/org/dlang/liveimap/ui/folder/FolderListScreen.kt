@@ -28,11 +28,16 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Report
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -68,7 +73,10 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.compose.readCopies
+import org.dlang.liveimap.ui.mailBarInsets
+import org.dlang.liveimap.ui.mailScreenInsets
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
@@ -76,6 +84,7 @@ fun FolderListScreen(
     onOpenUnsent: () -> Unit,
     focusMailbox: String? = null,
     focusToken: Int = 0,
+    onOpenDrawer: (() -> Unit)? = null,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -267,7 +276,27 @@ fun FolderListScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("Folders") },
+                navigationIcon = {
+                    if (onOpenDrawer != null) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Menu",
+                            )
+                        }
+                    }
+                },
+                windowInsets = mailBarInsets(),
+            )
+        },
+        contentWindowInsets = mailScreenInsets(),
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding)) {
     Column(modifier = Modifier.fillMaxSize()) {
         if (loading && banner == null) {
             LinearProgressIndicator(
@@ -380,6 +409,7 @@ fun FolderListScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
     }
 }
 

@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
@@ -104,6 +101,13 @@ fun LiveImapNavHost() {
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     val favoriteMutex = remember { Mutex() }
+    val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
+        if (expandedWindow) {
+            null
+        } else {
+            { scope.launch { drawerState.open() } }
+        },
+    )
 
     LaunchedEffect(route, drawerState.currentValue) {
         val account = store.load()
@@ -147,6 +151,7 @@ fun LiveImapNavHost() {
                     onOpenUnsent = { navController.navigate("unsent") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
+                    onOpenDrawer = openDrawerState.value,
                 )
             }
             composable(
@@ -311,23 +316,29 @@ fun LiveImapNavHost() {
                 )
             }
             composable("unsent") {
-                UnsentScreen(
-                    onOpenCopy = { id, retry ->
-                        composeKindName.value = ComposeKind.New.name
-                        composeMailbox.value = ""
-                        composeUids.value = ""
-                        composeUnsentId.value = id
-                        composeRetryOnOpen.value = retry
-                        navController.navigate("compose")
-                    },
-                    onBack = { navController.popBackStack() },
-                )
+                InsetPage {
+                    UnsentScreen(
+                        onOpenCopy = { id, retry ->
+                            composeKindName.value = ComposeKind.New.name
+                            composeMailbox.value = ""
+                            composeUids.value = ""
+                            composeUnsentId.value = id
+                            composeRetryOnOpen.value = retry
+                            navController.navigate("compose")
+                        },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
             composable("settings") {
-                SettingsScreen()
+                InsetPage {
+                    SettingsScreen()
+                }
             }
             composable("about") {
-                AboutScreen()
+                InsetPage {
+                    AboutScreen()
+                }
             }
         }
     }
@@ -455,7 +466,12 @@ fun LiveImapNavHost() {
     LiveImapScaffold {
         if (expandedWindow) {
             PermanentNavigationDrawer(
-                drawerContent = { PermanentDrawerSheet(content = drawerSheet) },
+                drawerContent = {
+                    PermanentDrawerSheet(
+                        windowInsets = mailScreenInsets(),
+                        content = drawerSheet,
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 NavHost(
@@ -467,27 +483,22 @@ fun LiveImapNavHost() {
             }
         } else {
             ModalNavigationDrawer(
-                drawerContent = { ModalDrawerSheet(content = drawerSheet) },
+                drawerContent = {
+                    ModalDrawerSheet(
+                        windowInsets = mailScreenInsets(),
+                        content = drawerSheet,
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
                 drawerState = drawerState,
                 gesturesEnabled = drawerGestures,
             ) {
-                Column(Modifier.fillMaxSize()) {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(
-                            imageVector = Icons.Filled.Menu,
-                            contentDescription = "Menu",
-                        )
-                    }
-                    NavHost(
-                        navController = navController,
-                        startDestination = "folders",
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        builder = navGraph,
-                    )
-                }
+                NavHost(
+                    navController = navController,
+                    startDestination = "folders",
+                    modifier = Modifier.fillMaxSize(),
+                    builder = navGraph,
+                )
             }
         }
         val editing = editingFavorite
@@ -625,4 +636,15 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 internal fun postponedDrawerMailbox(value: String): String? {
     if (value.isEmpty()) return null
     return value
+}
+
+@Composable
+private fun InsetPage(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(mailScreenInsets()),
+    ) {
+        content()
+    }
 }

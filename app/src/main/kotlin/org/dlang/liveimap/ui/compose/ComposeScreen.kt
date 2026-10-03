@@ -9,12 +9,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +48,8 @@ import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
+import org.dlang.liveimap.ui.mailBarInsets
+import org.dlang.liveimap.ui.mailScreenInsets
 
 private enum class AddressTarget {
     To,
@@ -74,6 +80,7 @@ private class ForwardRow(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComposeScreen(
     seed: ComposeSeed,
@@ -543,13 +550,107 @@ fun ComposeScreen(
         requestClose()
     }
 
+    fun sendMessage() {
+                launchLocked {
+                    val saved = held
+                    if (saved != null && saved.appendOnly) {
+                        return@launchLocked retryCopy(saved)
+                    }
+                    if (deliveryDone) {
+                        notice = null
+                        status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
+                        return@launchLocked true
+                    }
+                    if (account.email.isEmpty()) {
+                        notice = "From address is not set"
+                        return@launchLocked false
+                    }
+                    if (account.sentMailbox.isEmpty()) {
+                        notice = "Sent mailbox is not set"
+                        return@launchLocked false
+                    }
+                    val built = try {
+                        assemble(account)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        notice = error.text
+                        return@launchLocked false
+                    }
+                    val id = saved?.id ?: UUID.randomUUID().toString()
+                    try {
+                        session.smtpSend(built.rfc822, built.recipients)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                        writeCopy(appContext, copy)
+                        held = copy
+                        notice = error.text
+                        status = "Not sent"
+                        return@launchLocked false
+                    }
+                    storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                    try {
+                        session.append(account.sentMailbox, built.rfc822)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, built.rfc822)
+                        writeCopy(appContext, copy)
+                        held = copy
+                        notice = error.text
+                        status = "Accepted but not saved"
+                        return@launchLocked false
+                    }
+                    deleteCopy(appContext, id)
+                    held = null
+                    deliveryDone = true
+                    notice = null
+                    status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
+                    removePostponedSource()
+                    true
+                }
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("Compose") },
+                navigationIcon = {
+                    IconButton(onClick = { requestClose() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+                actions = {
+                    if (seed.kind != ComposeKind.Bounce) {
+                        TextButton(onClick = { sendMessage() }) {
+                            Text(if (held?.appendOnly == true) "Retry" else "Send")
+                        }
+                        if (!deliveryDone) {
+                            TextButton(
+                                onClick = { postponeDraft() },
+                                enabled = account.postponedMailbox.isNotEmpty(),
+                            ) { Text("Postpone") }
+                        }
+                    }
+                },
+                windowInsets = mailBarInsets(),
+            )
+        },
+        contentWindowInsets = mailScreenInsets(),
+    ) { padding ->
     Column(
         Modifier
             .fillMaxSize()
+            .padding(padding)
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
-        TextButton(onClick = { requestClose() }) { Text("Close") }
         val stateText = status
         if (stateText != null) Text(stateText)
         val failure = notice
@@ -730,75 +831,8 @@ fun ComposeScreen(
                 label = { Text("Body") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            TextButton(onClick = {
-                launchLocked {
-                    val saved = held
-                    if (saved != null && saved.appendOnly) {
-                        return@launchLocked retryCopy(saved)
-                    }
-                    if (deliveryDone) {
-                        notice = null
-                        status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
-                        return@launchLocked true
-                    }
-                    if (account.email.isEmpty()) {
-                        notice = "From address is not set"
-                        return@launchLocked false
-                    }
-                    if (account.sentMailbox.isEmpty()) {
-                        notice = "Sent mailbox is not set"
-                        return@launchLocked false
-                    }
-                    val built = try {
-                        assemble(account)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        notice = error.text
-                        return@launchLocked false
-                    }
-                    val id = saved?.id ?: UUID.randomUUID().toString()
-                    try {
-                        session.smtpSend(built.rfc822, built.recipients)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
-                        writeCopy(appContext, copy)
-                        held = copy
-                        notice = error.text
-                        status = "Not sent"
-                        return@launchLocked false
-                    }
-                    storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-                    try {
-                        session.append(account.sentMailbox, built.rfc822)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, built.rfc822)
-                        writeCopy(appContext, copy)
-                        held = copy
-                        notice = error.text
-                        status = "Accepted but not saved"
-                        return@launchLocked false
-                    }
-                    deleteCopy(appContext, id)
-                    held = null
-                    deliveryDone = true
-                    notice = null
-                    status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
-                    removePostponedSource()
-                    true
-                }
-            }) { Text(if (held?.appendOnly == true) "Retry" else "Send") }
-            if (!deliveryDone) {
-                TextButton(
-                    onClick = { postponeDraft() },
-                    enabled = account.postponedMailbox.isNotEmpty(),
-                ) { Text("Postpone") }
-            }
         }
+    }
     }
     if (discardOpen) {
         AlertDialog(
