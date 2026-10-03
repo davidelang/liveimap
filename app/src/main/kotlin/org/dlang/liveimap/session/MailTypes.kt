@@ -34,6 +34,7 @@ enum class IndexMode {
     ArrivalNewest,
     ArrivalOldest,
     ByUid,
+    ArrivalRange,
 }
 
 data class IndexRequest(
@@ -44,6 +45,8 @@ data class IndexRequest(
     val prefetch: Int = 60,
     val includePreview: Boolean = false,
     val previewByteLimit: Int = 2048,
+    val firstSequence: Int = 0,
+    val lastSequence: Int = 0,
 )
 
 data class IndexRow(

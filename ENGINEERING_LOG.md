@@ -927,3 +927,22 @@
 - An unset address-book mailbox or a failed book load shows no chip and does not fail compose. Bounce is unchanged
 - Empty Cc and Bcc still collapse. Forward as message/rfc822 and the leave prompt are unchanged
 - No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug
+
+## 2026-10-03 - settings sub-screens execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-subscreens-and-about-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: d10e68e
+- Phase 1 of 1: five settings groups each with a back stack entry, switch rows stay one ListItem, About plaintext notice and library names
+- Host: /home/dlang/git/liveimap/master. Critical files: SettingsScreen.kt and AboutScreen.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - critical UI fixes execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/critical-ui-fixes-20261003-1505-plan.md
+- Status: APPROVED
+- builds before edit: d10e68e
+- Stash ref: stash@{0} On master: pre-critical-ui-fixes 2026-10-03: settings-subscreens-and-about-20261003-0018 partial work (unused SettingsScreen imports)
+- settings-subscreens-and-about-20261003-0018: stopped at start, SettingsScreen.kt imports stashed, not resumed
+- coder-next.txt was idle (nonce 0), not status run for reader-brief-gaps. This dispatch names the approved plan. No other execute child.
+- Phase 1: newest message at the newest end in every time-ordered view; arrival pages by sequence range; newest-first sort sends REVERSE; new mail tails instead of reloading the window
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge.

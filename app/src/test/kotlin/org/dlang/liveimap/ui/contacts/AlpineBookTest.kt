@@ -216,6 +216,7 @@ private class FakeBookSession : MailSession {
             IndexMode.ArrivalOldest -> listOf(rows.first())
             IndexMode.ArrivalNewest -> listOf(rows.last())
             IndexMode.ByUid -> emptyList()
+            IndexMode.ArrivalRange -> emptyList()
         }
     }
 

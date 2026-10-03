@@ -38,7 +38,7 @@ class IndexWindowTest {
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
         val request = session.fetchRequests.single()
-        assertEquals(IndexMode.ArrivalNewest, request.mode)
+        assertEquals(IndexMode.ArrivalRange, request.mode)
         assertEquals("INBOX", request.mailbox)
         assertEquals(IndexPageSize, request.limit)
         assertEquals(IndexPageSize, request.prefetch)
@@ -46,7 +46,7 @@ class IndexWindowTest {
         assertTrue(!request.includePreview)
         assertTrue(session.sortCalls.isEmpty())
         assertTrue(session.threadCalls.isEmpty())
-        assertEquals(listOf(3L, 8L), rows.map { it.uid })
+        assertEquals(listOf(8L, 3L), rows.map { it.uid })
         assertEquals(0, session.rfc822Count)
         assertEquals(0, session.structureCount)
         assertEquals(0, session.peekCount)
@@ -60,7 +60,7 @@ class IndexWindowTest {
         )
         val model = IndexModel(session, store, "INBOX")
         runImmediate { model.loadWindow() }
-        assertEquals(IndexMode.ArrivalOldest, session.fetchRequests.single().mode)
+        assertEquals(IndexMode.ArrivalRange, session.fetchRequests.single().mode)
         assertTrue(session.sortCalls.isEmpty())
     }
 
@@ -262,7 +262,7 @@ class IndexWindowTest {
         runImmediate { model.applySearch("") }
         assertTrue(session.searchCalls.isEmpty())
         assertEquals(fetches, session.fetchRequests.size)
-        assertEquals(listOf(1L, 2L, 3L), model.rows.map { it.uid })
+        assertEquals(listOf(3L, 2L, 1L), model.rows.map { it.uid })
         val searched = runImmediate { model.applySearch("needle") }
         assertEquals(listOf("needle"), session.searchCalls)
         assertEquals(IndexMode.ByUid, session.fetchRequests.last().mode)
@@ -270,7 +270,7 @@ class IndexWindowTest {
         assertEquals(listOf(9L, 8L), searched.map { it.uid })
         runImmediate { model.applySearch("") }
         assertEquals(listOf("needle"), session.searchCalls)
-        assertEquals(listOf(1L, 2L, 3L), model.rows.map { it.uid })
+        assertEquals(listOf(3L, 2L, 1L), model.rows.map { it.uid })
     }
 
     @Test
@@ -295,9 +295,11 @@ class IndexWindowTest {
         runImmediate { model.applyChange(MailboxChange.Flags(7L, setOf("\\Flagged"))) }
         assertEquals(setOf("\\Flagged"), model.rows.single().flags)
         assertEquals(4, model.rows.single().sequence)
-        session.arrivalRows = listOf(row(7, sequence = 1, flags = setOf("\\Flagged")))
-        runImmediate { model.applyChange(MailboxChange.Exists(2)) }
-        assertEquals(1, model.rows.single().sequence)
+        session.exists = 6
+        session.rows[8L] = row(8L, sequence = 5)
+        session.rows[9L] = row(9L, sequence = 6)
+        runImmediate { model.applyChange(MailboxChange.Exists(6)) }
+        assertEquals(4, model.rows.first { it.uid == 7L }.sequence)
         assertEquals(IndexMode.ArrivalNewest, session.fetchRequests.last().mode)
     }
 
@@ -420,7 +422,7 @@ class IndexWindowTest {
         session.arrivalRows = listOf(row(5, sequence = 11), row(6, sequence = 22))
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf(5L, 6L), OpenMessageOrder.uids)
+        assertEquals(listOf(6L, 5L), OpenMessageOrder.uids)
         assertEquals(rows.map { it.uid }, OpenMessageOrder.uids)
         for (loaded in rows) {
             assertEquals(loaded.sequence, OpenMessageOrder.sequence(loaded.uid))
@@ -456,6 +458,202 @@ class IndexWindowTest {
         assertEquals(listOf(3L, 5L, 1L, 9L), threadMessageOrder(roots, hidden, setOf(5L)))
         assertEquals(listOf(3L, 5L, 9L, 4L, 2L), threadMessageOrder(roots, hidden, setOf(9L)))
     }
+
+    @Test
+    fun arrivalNewestFirstRowZeroIsHighestSequence() {
+        val session = folder(300)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        val request = session.fetchRequests.single()
+        assertEquals(IndexMode.ArrivalRange, request.mode)
+        assertEquals(181, request.firstSequence)
+        assertEquals(300, request.lastSequence)
+        assertEquals(300, rows.first().sequence)
+        assertEquals(181, rows.last().sequence)
+        assertEquals(0, model.initialIndex)
+    }
+
+    @Test
+    fun arrivalOldestFirstOpensAtNewestEnd() {
+        val session = folder(300)
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.Arrival, newestFirst = false)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(181, rows.first().sequence)
+        assertEquals(300, rows.last().sequence)
+        assertTrue(rows.zipWithNext().all { (left, right) -> left.sequence < right.sequence })
+        assertEquals(rows.lastIndex, model.initialIndex)
+    }
+
+    @Test
+    fun arrivalPagesPastFirst120() {
+        val session = folder(300)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        val first = runImmediate { model.loadWindow() }
+        assertTrue(first.none { it.sequence < 181 })
+        var guard = 0
+        while (model.rows.none { it.sequence == 1 } && guard < 10) {
+            runImmediate { model.onFirstVisible(0) }
+            runImmediate { model.onFirstVisible(IndexPageSize) }
+            guard += 1
+        }
+        assertTrue(model.rows.any { it.sequence < 181 })
+        assertTrue(model.rows.any { it.sequence == 1 })
+    }
+
+    @Test
+    fun arrivalFilterSearchesWholeFolder() {
+        val session = folder(300)
+        session.searchUids = listOf(4L, 20L, 290L)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        val rows = runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        assertTrue(rows.any { it.uid == 4L })
+        assertTrue(rows.any { it.uid == 20L })
+        assertTrue(rows.any { it.uid == 290L })
+        assertTrue(session.fetchRequests.none { it.mode == IndexMode.ArrivalNewest || it.mode == IndexMode.ArrivalOldest })
+    }
+
+    @Test
+    fun newMailAtNewestEndInsertsWithoutReload() {
+        val newestSession = folder(10)
+        val newest = IndexModel(newestSession, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { newest.loadWindow() }
+        val newestFetches = newestSession.fetchRequests.size
+        newestSession.exists = 12
+        newestSession.rows[11L] = row(11L)
+        newestSession.rows[12L] = row(12L)
+        runImmediate { newest.applyChange(MailboxChange.Exists(12)) }
+        assertEquals(newestFetches + 1, newestSession.fetchRequests.size)
+        assertEquals(IndexMode.ArrivalNewest, newestSession.fetchRequests.last().mode)
+        assertEquals(2, newestSession.fetchRequests.last().limit)
+        assertEquals((12L downTo 1L).toList(), newest.rows.map { it.uid })
+        assertEquals(0, newest.pendingNew)
+
+        val oldestSession = folder(10)
+        val oldest = IndexModel(
+            oldestSession,
+            MemorySettingsStore(AccountSettings(defaultView = FolderView(SortKey.Arrival, newestFirst = false))),
+            "INBOX",
+        )
+        runImmediate { oldest.loadWindow() }
+        val oldestFetches = oldestSession.fetchRequests.size
+        oldestSession.exists = 12
+        oldestSession.rows[11L] = row(11L)
+        oldestSession.rows[12L] = row(12L)
+        runImmediate { oldest.applyChange(MailboxChange.Exists(12)) }
+        assertEquals(oldestFetches + 1, oldestSession.fetchRequests.size)
+        assertEquals(IndexMode.ArrivalNewest, oldestSession.fetchRequests.last().mode)
+        assertEquals((1L..12L).toList(), oldest.rows.map { it.uid })
+        assertEquals(0, oldest.pendingNew)
+    }
+
+    @Test
+    fun newMailAwayFromNewestEndKeepsWindow() {
+        val session = folder(300)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.onFirstVisible(0) }
+        runImmediate { model.onFirstVisible(IndexPageSize) }
+        assertTrue(model.anchorPage > 0)
+        val before = model.rows.map { it.uid }
+        val fetches = session.fetchRequests.size
+        session.exists = 302
+        session.rows[301L] = row(301L)
+        session.rows[302L] = row(302L)
+        runImmediate { model.applyChange(MailboxChange.Exists(302)) }
+        assertEquals(before, model.rows.map { it.uid })
+        assertEquals(2, model.pendingNew)
+        assertEquals(fetches, session.fetchRequests.size)
+    }
+
+    @Test
+    fun searchFollowsDirection() {
+        val session = FakeMailSession()
+        session.searchUids = listOf(1L, 5L, 3L)
+        listOf(1L, 3L, 5L).forEach { session.rows[it] = row(it) }
+        val newest = IndexModel(
+            session,
+            MemorySettingsStore(AccountSettings(defaultView = FolderView(SortKey.Arrival, newestFirst = true))),
+            "INBOX",
+        )
+        runImmediate { newest.loadWindow() }
+        val newestRows = runImmediate { newest.applySearch("a") }
+        assertEquals(listOf(5L, 3L, 1L), newestRows.map { it.uid })
+        assertEquals(0, newest.initialIndex)
+
+        val oldestSession = FakeMailSession()
+        oldestSession.searchUids = listOf(1L, 5L, 3L)
+        listOf(1L, 3L, 5L).forEach { oldestSession.rows[it] = row(it) }
+        val oldest = IndexModel(
+            oldestSession,
+            MemorySettingsStore(AccountSettings(defaultView = FolderView(SortKey.Arrival, newestFirst = false))),
+            "INBOX",
+        )
+        runImmediate { oldest.loadWindow() }
+        val oldestRows = runImmediate { oldest.applySearch("a") }
+        assertEquals(listOf(1L, 3L, 5L), oldestRows.map { it.uid })
+        assertEquals(oldestRows.lastIndex, oldest.initialIndex)
+    }
+
+    @Test
+    fun newestAtEndRuleTable() {
+        val timeOrdered = setOf(
+            SortKey.Arrival,
+            SortKey.Date,
+            SortKey.ThreadReferences,
+            SortKey.ThreadOrderedSubject,
+        )
+        for (key in SortKey.entries) {
+            for (newestFirst in listOf(true, false)) {
+                val session = FakeMailSession()
+                when (key) {
+                    SortKey.Arrival -> {
+                        session.exists = 3
+                        session.arrivalRows = listOf(row(1L), row(2L), row(3L))
+                    }
+                    SortKey.ThreadReferences, SortKey.ThreadOrderedSubject -> {
+                        session.threadNode = ThreadNode(
+                            uid = null,
+                            children = listOf(
+                                ThreadNode(1L, emptyList()),
+                                ThreadNode(2L, emptyList()),
+                                ThreadNode(3L, emptyList()),
+                            ),
+                        )
+                        listOf(1L, 2L, 3L).forEach { session.rows[it] = row(it) }
+                    }
+                    else -> {
+                        session.sortUids = listOf(1L, 2L, 3L)
+                        listOf(1L, 2L, 3L).forEach { session.rows[it] = row(it) }
+                    }
+                }
+                val model = IndexModel(
+                    session,
+                    MemorySettingsStore(AccountSettings(defaultView = FolderView(key, newestFirst))),
+                    "INBOX",
+                )
+                val loaded = runImmediate { model.loadWindow() }
+                assertEquals(!newestFirst, newestAtEnd(model.view))
+                if (!newestFirst && key in timeOrdered) {
+                    assertEquals(loaded.lastIndex, model.initialIndex)
+                } else {
+                    assertEquals(0, model.initialIndex)
+                }
+                assertTrue(loaded.isNotEmpty())
+            }
+        }
+    }
+}
+
+private fun folder(exists: Int): FakeMailSession {
+    val session = FakeMailSession()
+    session.exists = exists
+    for (sequence in 1..exists) {
+        session.rows[sequence.toLong()] = row(sequence.toLong())
+    }
+    return session
 }
 
 private fun row(
@@ -505,6 +703,7 @@ private class FakeMailSession(
     val copies = mutableListOf<CopyWrite>()
     val rows = HashMap<Long, IndexRow>()
     var arrivalRows: List<IndexRow> = emptyList()
+    var exists: Int = -1
     var sortUids: List<Long> = emptyList()
     var searchUids: List<Long> = emptyList()
     var threadNode: ThreadNode = ThreadNode(null, emptyList())
@@ -528,13 +727,46 @@ private class FakeMailSession(
 
     override suspend fun unselect() = Unit
 
+    override suspend fun selectedExists(): Int {
+        if (exists >= 0) return exists
+        return sequencePool().maxOfOrNull { it.sequence } ?: 0
+    }
+
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
         fetchRequests += request
         throwIfArmed()
         return when (request.mode) {
             IndexMode.ByUid -> request.uids.asReversed().map { uid -> rows[uid] ?: row(uid) }
-            IndexMode.ArrivalNewest, IndexMode.ArrivalOldest -> arrivalRows
+            IndexMode.ArrivalRange -> {
+                val first = request.firstSequence
+                val last = request.lastSequence
+                if (first <= 0 || last <= 0 || first > last) {
+                    emptyList()
+                } else {
+                    sequencePool().filter { it.sequence in first..last }
+                }
+            }
+            IndexMode.ArrivalNewest -> {
+                val pool = sequencePool().sortedByDescending { it.sequence }
+                if (request.limit in 1 until pool.size) {
+                    pool.take(request.limit)
+                } else if (arrivalRows.isNotEmpty()) {
+                    arrivalRows
+                } else {
+                    pool
+                }
+            }
+            IndexMode.ArrivalOldest -> arrivalRows
         }
+    }
+
+    private fun sequencePool(): List<IndexRow> {
+        val bySequence = LinkedHashMap<Int, IndexRow>()
+        for (row in arrivalRows) bySequence[row.sequence] = row
+        for (row in rows.values) {
+            if (row.sequence !in bySequence) bySequence[row.sequence] = row
+        }
+        return bySequence.values.toList()
     }
 
     override suspend fun fetchStructure(uid: Long): MimePart {

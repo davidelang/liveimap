@@ -399,6 +399,8 @@ fun MessageIndexScreen(
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
+    var newMailToken by remember { mutableIntStateOf(0) }
+    var newMailCount by remember { mutableIntStateOf(0) }
     var lastReported by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     var view by remember { mutableStateOf(FolderView(SortKey.Arrival, true)) }
@@ -498,6 +500,35 @@ fun MessageIndexScreen(
         }
     }
 
+    suspend fun scrollToNewest() {
+        if (model.rows.isEmpty()) return
+        val rowIndex = model.initialIndex.coerceIn(0, model.rows.lastIndex)
+        var lazyIndex = 0
+        var seen = 0
+        for (row in model.rows) {
+            if (seen == rowIndex) break
+            lazyIndex += 1
+            if (model.summaries.containsKey(row.uid)) lazyIndex += 1
+            if (row.uid in expandedThreads) {
+                for (uid in model.threadHidden[row.uid].orEmpty()) {
+                    if (model.threadMembers.containsKey(uid)) lazyIndex += 1
+                }
+            }
+            seen += 1
+        }
+        listState.scrollToItem(lazyIndex)
+    }
+
+    fun userAtNewestEnd(): Boolean {
+        if (model.view.newestFirst) return listState.firstVisibleItemIndex == 0
+        val info = listState.layoutInfo
+        val visible = info.visibleItemsInfo
+        if (visible.isEmpty()) return model.rows.isEmpty()
+        val total = info.totalItemsCount
+        if (total <= 0) return true
+        return visible.last().index >= total - 1
+    }
+
     fun runUndo(offer: MailUndo?) {
         val current = offer ?: return
         undoOffer = null
@@ -514,7 +545,7 @@ fun MessageIndexScreen(
                 sync.block()
             }
             snackbarHostState.currentSnackbarData?.dismiss()
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -539,7 +570,7 @@ fun MessageIndexScreen(
                 ok = model.notice == null
             }
             finishUndoExpunge(ok)
-            if (ok && model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (ok && model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -600,7 +631,7 @@ fun MessageIndexScreen(
                 query = ""
                 searchVisible = false
             }
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -615,7 +646,7 @@ fun MessageIndexScreen(
                 query = ""
                 searchVisible = false
             }
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -626,7 +657,7 @@ fun MessageIndexScreen(
                 pull()
             }
             if (model.notice == null) narrowArmed = false
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -649,7 +680,7 @@ fun MessageIndexScreen(
                 model.applyView(pending)
                 pull()
             }
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -666,7 +697,7 @@ fun MessageIndexScreen(
                 model.loadWindow()
                 pull()
             }
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -682,6 +713,25 @@ fun MessageIndexScreen(
         if (undoToken == token) {
             undoOffer = null
             snackMode = "retry"
+        }
+    }
+
+    LaunchedEffect(newMailToken) {
+        if (newMailToken == 0) return@LaunchedEffect
+        val count = newMailCount
+        if (count <= 0) return@LaunchedEffect
+        val text = if (count == 1) "1 new message" else "$count new messages"
+        snackMode = "new"
+        val result = snackbarHostState.showSnackbar(
+            message = text,
+            actionLabel = "Show",
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            gate.withLock {
+                model.loadWindow()
+                pull()
+            }
+            scrollToNewest()
         }
     }
 
@@ -768,12 +818,13 @@ fun MessageIndexScreen(
                 pull()
             }
             loading = false
-            if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+            if (model.rows.isNotEmpty()) scrollToNewest()
         } else if (!watchNow) {
             loading = false
             return@LaunchedEffect
         } else {
             loading = false
+            if (model.rows.isNotEmpty()) scrollToNewest()
         }
         var watchJob: Job? = null
         try {
@@ -796,6 +847,7 @@ fun MessageIndexScreen(
                     try {
                         model.watch { change ->
                             scope.launch {
+                                val atNewest = userAtNewestEnd()
                                 when (change) {
                                     is MailboxChange.Exists -> folderExists = change.exists
                                     is MailboxChange.Expunge -> folderExists = change.exists
@@ -805,8 +857,12 @@ fun MessageIndexScreen(
                                     model.applyChange(change)
                                     pull()
                                 }
-                                if (change !is MailboxChange.Flags && model.rows.isNotEmpty()) {
-                                    listState.scrollToItem(0)
+                                if (change !is MailboxChange.Flags && model.rows.isNotEmpty() && atNewest) {
+                                    scrollToNewest()
+                                }
+                                if (model.pendingNew > 0 && !atNewest) {
+                                    newMailCount = model.pendingNew
+                                    newMailToken += 1
                                 }
                             }
                         }
@@ -894,9 +950,12 @@ fun MessageIndexScreen(
             rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex)
         }.collect { index ->
             val before = model.anchorPage
+            val holdNewest = !model.view.newestFirst && model.showsNewestEnd && userAtNewestEnd()
             gate.withLock {
-                model.onFirstVisible(index)
-                pull()
+                if (!holdNewest) {
+                    model.onFirstVisible(index)
+                    pull()
+                }
             }
             if (model.anchorPage != before && model.rows.isNotEmpty()) {
                 listState.scrollToItem(0)
@@ -1227,7 +1286,7 @@ fun MessageIndexScreen(
                                     model.applyView(FolderView(key, view.newestFirst))
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                if (model.rows.isNotEmpty()) scrollToNewest()
                             }
                         }
                         fieldKeys.forEach { key ->
@@ -1259,7 +1318,7 @@ fun MessageIndexScreen(
                                         model.applyView(view.copy(newestFirst = !view.newestFirst))
                                         pull()
                                     }
-                                    if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                    if (model.rows.isNotEmpty()) scrollToNewest()
                                 }
                             },
                             trailingIcon = {
@@ -1309,7 +1368,7 @@ fun MessageIndexScreen(
                                     model.expunge()
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                if (model.rows.isNotEmpty()) scrollToNewest()
                             }
                         }
                     },
@@ -1342,7 +1401,7 @@ fun MessageIndexScreen(
                                         ok = model.notice == null
                                     }
                                     if (specific != null) finishUndoExpunge(ok)
-                                    if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                    if (model.rows.isNotEmpty()) scrollToNewest()
                                 }
                             }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
                         },
@@ -1384,7 +1443,7 @@ fun MessageIndexScreen(
                                             pull()
                                         }
                                         if (model.notice == null) narrowArmed = false
-                                        if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                        if (model.rows.isNotEmpty()) scrollToNewest()
                                     }
                                 },
                                 label = { Text(chipText) },
@@ -1413,7 +1472,7 @@ fun MessageIndexScreen(
                                     model.applySearch("")
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                if (model.rows.isNotEmpty()) scrollToNewest()
                             }
                         }
                     },
@@ -1429,7 +1488,7 @@ fun MessageIndexScreen(
                                     model.applySearch(query)
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                                if (model.rows.isNotEmpty()) scrollToNewest()
                             }
                         },
                     ),

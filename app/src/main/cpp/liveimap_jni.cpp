@@ -3368,9 +3368,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env, jobject, jlong handle,
-    jstring mailbox, jint mode, jlongArray uids, jint limit, jint prefetch, jboolean includePreview,
-    jint previewByteLimit, jboolean preferHtml, jboolean showDeleted, jboolean useServerPreview,
-    jstring accountEmail) {
+    jstring mailbox, jint mode, jint firstSequence, jint lastSequence, jlongArray uids, jint limit,
+    jint prefetch, jboolean includePreview, jint previewByteLimit, jboolean preferHtml, jboolean showDeleted,
+    jboolean useServerPreview, jstring accountEmail) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -3396,7 +3396,19 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         }
         uint32_t first = 1;
         uint32_t last = exists;
-        if (mode == 0) {
+        if (mode == 3) {
+            uint32_t reqFirst = firstSequence < 1 ? 1 : static_cast<uint32_t>(firstSequence);
+            uint32_t reqLast = lastSequence < 1 ? 1 : static_cast<uint32_t>(lastSequence);
+            if (reqFirst > exists) reqFirst = exists;
+            if (reqLast > exists) reqLast = exists;
+            first = reqFirst;
+            last = reqLast;
+            if (first > last) {
+                uint32_t swap = first;
+                first = last;
+                last = swap;
+            }
+        } else if (mode == 0) {
             last = exists;
             first = exists > static_cast<uint32_t>(count) ? exists - static_cast<uint32_t>(count) + 1 : 1;
         } else {
@@ -4145,7 +4157,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     }
     if (useEsort == JNI_TRUE || displayName) {
         bool esort = useEsort == JNI_TRUE;
-        bool reverse = newestFirst != JNI_TRUE;
+        bool reverse = newestFirst == JNI_TRUE;
         struct mailimap_response * response = nullptr;
         int r = sendUidSortChoice(session->imap, name.c(), reverse, esort, &response);
         if (r != MAILIMAP_NO_ERROR) {
@@ -4167,7 +4179,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
         unlockSession(session);
         return arr;
     }
-    int rev = newestFirst == JNI_TRUE ? 0 : 1;
+    int rev = newestFirst == JNI_TRUE ? 1 : 0;
     struct mailimap_sort_key * key = nullptr;
     if (strcasecmp(name.c(), "DATE") == 0) key = mailimap_sort_key_new_date(rev);
     else if (strcasecmp(name.c(), "FROM") == 0) key = mailimap_sort_key_new_from(rev);
