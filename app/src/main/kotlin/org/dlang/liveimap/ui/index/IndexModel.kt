@@ -32,6 +32,7 @@ data class AppliedFilter(
 data class CollapsedThread(
     val rootUid: Long,
     val hiddenUids: List<Long>,
+    val depthByUid: Map<Long, Int> = emptyMap(),
 )
 
 data class ThreadSummary(
@@ -173,6 +174,23 @@ private fun subtreeMaxUid(current: ThreadNode): Long? {
     return maxUid
 }
 
+private fun threadDepths(root: ThreadNode): Map<Long, Int> {
+    val out = LinkedHashMap<Long, Int>()
+    var seenRoot = false
+    fun walk(current: ThreadNode, depth: Int) {
+        val uid = current.uid
+        val next = if (uid != null) {
+            if (seenRoot) out[uid] = depth else seenRoot = true
+            depth + 1
+        } else {
+            depth
+        }
+        for (child in current.children) walk(child, next)
+    }
+    walk(root, 0)
+    return out
+}
+
 private fun preorderUids(current: ThreadNode): List<Long> {
     val out = ArrayList<Long>()
     fun walk(node: ThreadNode) {
@@ -200,10 +218,12 @@ fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThre
     for (child in children) {
         val uids = preorderUids(child)
         if (uids.isEmpty()) continue
-        out.add(CollapsedThread(uids.first(), uids.drop(1)))
+        out.add(CollapsedThread(uids.first(), uids.drop(1), threadDepths(child)))
     }
     return out
 }
+
+fun threadCountMark(messageCount: Int, unread: Int): String = "$messageCount · $unread unread"
 
 fun threadSummaryLine(summary: ThreadSummary): String {
     var line = "${summary.hidden} more · ${summary.unread} unread"
@@ -281,6 +301,7 @@ class IndexModel(
     private var lastVisibleIndex: Int = 0
     private var threading = false
     private var threadPlan: List<CollapsedThread> = emptyList()
+    private var knownExists: Int = 0
 
     var notice: String? = null
         private set
@@ -307,6 +328,13 @@ class IndexModel(
 
     val threadHidden: Map<Long, List<Long>>
         get() = threadPlan.associate { it.rootUid to it.hiddenUids }
+
+    val threadDepth: Map<Long, Int>
+        get() {
+            val out = LinkedHashMap<Long, Int>()
+            for (part in threadPlan) out.putAll(part.depthByUid)
+            return out
+        }
 
     fun noteExpanded(expanded: Set<Long>) {
         openExpanded = expanded
@@ -551,6 +579,48 @@ class IndexModel(
         return heldRows
     }
 
+    suspend fun refreshShown(shownUids: List<Long>, reportedExists: Int): List<IndexRow> {
+        if (!loadedWindow) return heldRows
+        val previousRows = heldRows
+        val previousOrder = order
+        val previousMembers = threadMembers
+        val previousSummaries = summaries
+        val existsNow = maxOf(reportedExists, session.selectedExists())
+        try {
+            val shown = shownUids.distinct()
+            if (shown.isNotEmpty()) {
+                val flagsByUid = fetchByUid(shown, preview = false).associate { it.uid to it.flags }
+                heldRows = heldRows.map { row ->
+                    val flags = flagsByUid[row.uid]
+                    if (flags == null) row else row.copy(flags = flags)
+                }
+                if (threadMembers.isNotEmpty()) {
+                    val merged = LinkedHashMap(threadMembers)
+                    for ((uid, row) in threadMembers) {
+                        val flags = flagsByUid[uid] ?: continue
+                        merged[uid] = row.copy(flags = flags)
+                    }
+                    threadMembers = merged
+                }
+                refreshSummaryUnread()
+            }
+            val baseline = knownExists
+            if (baseline > 0 && existsNow > baseline) {
+                addNewTail(existsNow - baseline)
+            }
+            if (existsNow > 0) knownExists = existsNow
+            notice = null
+            publishMessageOrder()
+        } catch (failure: MailFailure) {
+            heldRows = previousRows
+            order = previousOrder
+            threadMembers = previousMembers
+            summaries = previousSummaries
+            notice = failure.text
+        }
+        return heldRows
+    }
+
     suspend fun applyChange(change: MailboxChange): List<IndexRow> {
         when (change) {
             is MailboxChange.Flags -> {
@@ -767,6 +837,7 @@ class IndexModel(
             heldRows = load()
             loadedWindow = true
             notice = null
+            rememberExists()
             publishMessageOrder()
         } catch (failure: MailFailure) {
             heldRows = previous
@@ -878,6 +949,56 @@ class IndexModel(
                 includePreview = preview,
             ),
         )
+    }
+
+    private suspend fun rememberExists() {
+        val exists = session.selectedExists()
+        if (exists > 0) knownExists = exists
+    }
+
+    private suspend fun addNewTail(growth: Int) {
+        if (growth <= 0) return
+        val fetched = session.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = IndexMode.ArrivalNewest,
+                limit = growth,
+                prefetch = 0,
+                includePreview = includePreview,
+            ),
+        )
+        val known = HashSet<Long>(order.size + threadMembers.size)
+        known.addAll(order)
+        known.addAll(threadMembers.keys)
+        val fresh = fetched.filter { it.uid !in known }
+        if (fresh.isEmpty()) return
+        val placed = if (view.newestFirst) {
+            fresh.sortedByDescending { it.sequence }
+        } else {
+            fresh.sortedBy { it.sequence }
+        }
+        if (view.newestFirst) {
+            order = placed.map { it.uid } + order
+            heldRows = placed + heldRows
+        } else {
+            order = order + placed.map { it.uid }
+            heldRows = heldRows + placed
+        }
+    }
+
+    private fun refreshSummaryUnread() {
+        if (summaries.isEmpty()) return
+        val hiddenByRoot = threadHidden
+        val byUid = threadMembers
+        summaries = summaries.mapValues { (root, summary) ->
+            val hiddenUids = hiddenByRoot[root].orEmpty()
+            var unread = 0
+            for (uid in hiddenUids) {
+                val row = byUid[uid]
+                if (row == null || "\\Seen" !in row.flags) unread += 1
+            }
+            summary.copy(unread = unread)
+        }
     }
 
     private fun clearThreads() {

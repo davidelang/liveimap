@@ -309,7 +309,12 @@ fun sequenceColumnChars(sequences: Iterable<Int>): Int {
 }
 
 @Composable
-private fun IndexStatusColumn(row: IndexRow, description: String, modifier: Modifier = Modifier) {
+private fun IndexStatusColumn(
+    row: IndexRow,
+    description: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val forwarded = "\$Forwarded" in row.flags
     val answered = "\\Answered" in row.flags
     val flagged = "\\Flagged" in row.flags
@@ -321,6 +326,14 @@ private fun IndexStatusColumn(row: IndexRow, description: String, modifier: Modi
         modifier.semantics { contentDescription = description }
     }
     Row(columnModifier, verticalAlignment = Alignment.Top) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
             val icon = when {
                 forwarded -> Icons.AutoMirrored.Filled.Forward
@@ -407,6 +420,8 @@ fun MessageIndexScreen(
     var summaries by remember { mutableStateOf<Map<Long, ThreadSummary>>(emptyMap()) }
     var threadMembers by remember { mutableStateOf<Map<Long, IndexRow>>(emptyMap()) }
     var threadHidden by remember { mutableStateOf<Map<Long, List<Long>>>(emptyMap()) }
+    var threadDepth by remember { mutableStateOf<Map<Long, Int>>(emptyMap()) }
+    var refreshing by remember { mutableStateOf(false) }
     var threadAsk by remember { mutableStateOf<FolderView?>(null) }
     var threadAskFromConnect by remember { mutableStateOf(false) }
     var threadExists by remember { mutableIntStateOf(0) }
@@ -549,6 +564,7 @@ fun MessageIndexScreen(
         summaries = model.summaries
         threadMembers = model.threadMembers
         threadHidden = model.threadHidden
+        threadDepth = model.threadDepth
     }
 
     fun pull() { sync.block() }
@@ -833,8 +849,45 @@ fun MessageIndexScreen(
         expandedThreads,
         threadMembers,
         threadHidden,
+        threadDepth,
     )
     val indexEntryState = rememberUpdatedState(indexEntries)
+
+    fun visibleMessageUids(): List<Long> {
+        val entries = indexEntryState.value
+        val info = listState.layoutInfo.visibleItemsInfo
+        if (info.isEmpty()) return rows.map { it.uid }
+        val uids = ArrayList<Long>()
+        for (item in info) {
+            val entry = entries.getOrNull(item.index) ?: continue
+            if (entry is IndexEntry.Message) uids.add(entry.row.uid)
+        }
+        return if (uids.isEmpty()) rows.map { it.uid } else uids
+    }
+
+    fun refreshIndex() {
+        if (loading || refreshing) return
+        val shown = visibleMessageUids()
+        val exists = folderExists
+        refreshing = true
+        scope.launch {
+            try {
+                gate.withLock {
+                    model.refreshShown(shown, exists)
+                    val failed = model.notice
+                    if (failed != null) {
+                        lastReported = failed
+                        banner = failed
+                    } else if (connected) {
+                        banner = null
+                    }
+                    pull()
+                }
+            } finally {
+                refreshing = false
+            }
+        }
+    }
     LaunchedEffect(listState, connected) {
         if (!connected) return@LaunchedEffect
         snapshotFlow {
@@ -1069,7 +1122,7 @@ fun MessageIndexScreen(
                             }
                         }
                     } else {
-                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                    IconButton(onClick = { refreshIndex() }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "Refresh",
@@ -1451,8 +1504,8 @@ fun MessageIndexScreen(
             }
             val dateWidth = with(LocalDensity.current) { dateWidthPx.toDp() }
             PullToRefreshBox(
-                isRefreshing = loading,
-                onRefresh = { if (!loading) loadToken += 1 },
+                isRefreshing = loading || refreshing,
+                onRefresh = { refreshIndex() },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
@@ -1487,8 +1540,8 @@ fun MessageIndexScreen(
                             val row = entry.row
                             IndexMessageRow(
                                 row = row,
-                                member = entry.member,
                                 account = account,
+                                depth = entry.depth,
                                 selected = allMailbox || row.uid in selected,
                                 multiSelect = multiSelect,
                                 leftToRight = leftToRight,
@@ -1623,8 +1676,8 @@ fun MessageIndexScreen(
 @Composable
 private fun IndexMessageRow(
     row: IndexRow,
-    member: Boolean = false,
     account: AccountSettings,
+    depth: Int = 0,
     selected: Boolean,
     multiSelect: Boolean,
     leftToRight: Boolean,
@@ -1685,7 +1738,7 @@ private fun IndexMessageRow(
     }
     Box(
         Modifier
-            .padding(start = if (member) 24.dp else 0.dp)
+            .padding(start = (depth.coerceAtMost(6) * 16).dp)
             .onSizeChanged { width = it.width }
             .fillMaxWidth(),
     ) {
@@ -1785,15 +1838,20 @@ private fun IndexMessageRow(
                             )
                         }
                     }
-                    IndexStatusColumn(row, statusDescription, Modifier.padding(end = 4.dp))
+                    IndexStatusColumn(
+                        row,
+                        statusDescription,
+                        selected = rowSelected,
+                        modifier = Modifier.padding(end = 4.dp),
+                    )
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (rowSelected) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 4.dp).size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            if (depth > 6) {
+                                Text(
+                                    text = depth.toString(),
+                                    modifier = Modifier.padding(end = 4.dp),
+                                    color = textColor,
+                                    style = MaterialTheme.typography.labelLarge,
                                 )
                             }
                             Text(
@@ -1973,7 +2031,7 @@ private fun IndexSummaryRow(
 private sealed class IndexEntry {
     abstract val key: String
 
-    data class Message(val row: IndexRow, val member: Boolean = false) : IndexEntry() {
+    data class Message(val row: IndexRow, val member: Boolean = false, val depth: Int = 0) : IndexEntry() {
         override val key: String = "m${row.uid}"
     }
 
@@ -2000,16 +2058,25 @@ private fun buildIndexEntries(
     expanded: Set<Long>,
     threadMembers: Map<Long, IndexRow>,
     threadHidden: Map<Long, List<Long>>,
+    threadDepth: Map<Long, Int>,
 ): List<IndexEntry> {
     val entries = ArrayList<IndexEntry>(rows.size)
     for (row in rows) {
         entries.add(IndexEntry.Message(row))
         val summary = summaries[row.uid]
-        if (summary != null) entries.add(IndexEntry.Summary(row.uid, threadSummaryLine(summary)))
+        if (summary != null) {
+            val text = if (row.uid in expanded) {
+                threadSummaryLine(summary)
+            } else {
+                val unread = summary.unread + if ("\\Seen" !in row.flags) 1 else 0
+                threadCountMark(summary.hidden + 1, unread)
+            }
+            entries.add(IndexEntry.Summary(row.uid, text))
+        }
         if (row.uid !in expanded) continue
         for (uid in threadHidden[row.uid].orEmpty()) {
             val member = threadMembers[uid] ?: continue
-            entries.add(IndexEntry.Message(member, member = true))
+            entries.add(IndexEntry.Message(member, member = true, depth = threadDepth[uid] ?: 1))
         }
     }
     return entries

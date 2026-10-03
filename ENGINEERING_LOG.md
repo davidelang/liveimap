@@ -894,3 +894,20 @@
 
 - Collapse all clears expandedFolders and shows the already loaded top-level rows. It does not call loadLevel and does not send LIST
 - No deploy. No send, append, or expunge
+
+## 2026-10-03 - index refresh and thread marks execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-refresh-and-thread-marks-20261003-0018-plan.md
+- Work: pull-to-refresh and the Refresh button update on-screen flags and add a grown tail without reloading the window. A collapsed thread shows its count and unread count. A selected row shows a check.
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 66d858a
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - index refresh and thread marks phase 1
+
+- Pull and Refresh call refreshShown. It fetches flags for the on-screen UIDs and copies those flags onto the loaded rows. A larger EXISTS adds the newest tail. An unchanged EXISTS does not replace the rows. Failure uses the existing banner.
+- MailSession has no NOOP, and that file is not a Critical File, so this phase does not send one. The count is selectedExists or the folder EXISTS already on screen. Refresh does not SELECT and does not reload the window.
+- A collapsed thread mark is the message count and the unread count, such as 7 · 2 unread. Expanded replies indent 16 dp per level, capped at 6, and a deeper row shows its depth number.
+- A selected row keeps secondaryContainer and shows check_circle in the status column, tinted primary. The one-shot forward choice is unchanged.
