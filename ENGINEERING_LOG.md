@@ -781,3 +781,21 @@
 - IndexStatusColumn takes indexStatusDescription. An empty string sets no description. Flagged is colorScheme.error and to-me is colorScheme.primary. The three slots and sizes stay. Icons stay unlabeled
 - An active filter row under the bar shows the filter chips and N of M. N is the index message rows listed. M is EXISTS already received by this screen, otherwise N. All messages clears the filters and removes the row. No new count request
 - No deploy. No send, append, or expunge
+
+## 2026-10-02 - selection contextual bar execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/selection-contextual-bar-20261002-2307-plan.md
+- Work: while messages are selected, the index TopAppBar is the selection bar and the extra row is not composed
+- Phase 1 of 1. build_app runs assembleDebug on this tree. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 13cd3f9
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - selection contextual bar phase 1
+
+- While messages are selected, the index TopAppBar title is selectionTitle, navigation is Close and clears the selection, and the actions are mark read or unread, flag or unflag, move, delete, and More. The extra selection row is not composed
+- The flag action says Unflag when every loaded selected row is flagged, otherwise Flag. The read action still says Mark unread or Mark read
+- More still dismisses without changing the selection. Its items are Select all, Mark answered, Mark unanswered, Undelete when a selected row is deleted or the whole folder is selected, Bounce, and Clear selection. The extra Mark unread item is gone. Item text has no raw flag names
+- Select all, undo, and the store and copy calls are unchanged. With nothing selected, the normal top bar returns
+- No deploy. No send, append, or expunge

@@ -879,17 +879,181 @@ fun MessageIndexScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
+            val selectionOrder = if (multiSelect) model.order else emptyList()
+            val selectionCount = if (multiSelect) selected.size else 0
+            val filterComplete = multiSelect && !allMailbox && filterActive && selectionOrder.isNotEmpty() &&
+                selectionCount == selectionOrder.size && selected.toSet() == selectionOrder.toSet()
+            val titleExists = when {
+                !multiSelect -> 0
+                allMailbox -> mailboxExists
+                filterComplete -> selectionOrder.size
+                else -> 0
+            }
+            val selectionLabel = if (multiSelect) {
+                selectionTitle(allMailbox, if (allMailbox) 0 else selectionCount, titleExists)
+            } else {
+                ""
+            }
+            val loadedSelected = when {
+                !multiSelect -> emptyList()
+                allMailbox -> rows
+                else -> rows.filter { it.uid in selected }
+            }
+            val markUnread = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
+                loadedSelected.all { "\\Seen" in it.flags }
+            val clearFlag = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
+                loadedSelected.all { "\\Flagged" in it.flags }
+            val showUndelete = multiSelect && (
+                allMailbox || rows.any { it.uid in selected && "\\Deleted" in it.flags }
+            )
             TopAppBar(
-                title = { MailboxTitleLines(heading.leaf, heading.parent) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                title = {
+                    if (multiSelect) {
+                        Text(
+                            text = selectionLabel,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                    } else {
+                        MailboxTitleLines(heading.leaf, heading.parent)
+                    }
+                },
+                navigationIcon = {
+                    if (multiSelect) {
+                        IconButton(onClick = { clearSelection() }) {
+                            Icon(imageVector = Icons.Filled.Close, contentDescription = "Close")
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
+                        }
                     }
                 },
                 actions = {
+                    if (multiSelect) {
+                        IconButton(
+                            onClick = {
+                                if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
+                                else applySelectionFlags(emptySet(), setOf("\\Seen"))
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
+                                contentDescription = if (markUnread) "Mark unread" else "Mark read",
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
+                                else applySelectionFlags(emptySet(), setOf("\\Flagged"))
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Flag,
+                                contentDescription = if (clearFlag) "Unflag" else "Flag",
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                val uids = selected.toList()
+                                val entire = allMailbox
+                                scope.launch {
+                                    var undo: MailUndo? = null
+                                    gate.withLock {
+                                        model.clearMailUndo()
+                                        model.moveMessages(uids, barMoveMailbox(account), entire)
+                                        pull()
+                                        undo = model.mailUndo
+                                    }
+                                    val pending = undo
+                                    if (pending != null) publishUndo(pending)
+                                }
+                            },
+                        ) {
+                            Icon(imageVector = Icons.Filled.DriveFileMove, contentDescription = "Move")
+                        }
+                        IconButton(
+                            onClick = {
+                                val uids = selected.toList()
+                                val entire = allMailbox
+                                scope.launch {
+                                    var undo: MailUndo? = null
+                                    gate.withLock {
+                                        model.clearMailUndo()
+                                        model.deleteMessages(uids, entire)
+                                        pull()
+                                        undo = model.mailUndo
+                                    }
+                                    val pending = undo
+                                    if (pending != null) publishUndo(pending)
+                                }
+                            },
+                        ) {
+                            Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete")
+                        }
+                        Box {
+                            IconButton(onClick = { selectionMore = true }) {
+                                Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "More")
+                            }
+                            DropdownMenu(
+                                expanded = selectionMore,
+                                onDismissRequest = { selectionMore = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Select all") },
+                                    onClick = {
+                                        selectionMore = false
+                                        when (val target = selectAllTarget(filterActive, model.order)) {
+                                            is SelectAllTarget.Uids -> {
+                                                allMailbox = false
+                                                selected = target.uids
+                                                multiSelect = true
+                                            }
+                                            SelectAllTarget.EntireMailbox -> {
+                                                scope.launch {
+                                                    val exists = gate.withLock { session.selectedExists() }
+                                                    allMailbox = true
+                                                    mailboxExists = exists
+                                                    folderExists = exists
+                                                    selected = emptyList()
+                                                    multiSelect = true
+                                                }
+                                            }
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Mark answered") },
+                                    onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Mark unanswered") },
+                                    onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
+                                )
+                                if (showUndelete) {
+                                    DropdownMenuItem(
+                                        text = { Text("Undelete") },
+                                        onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Bounce") },
+                                    enabled = !allMailbox,
+                                    onClick = {
+                                        selectionMore = false
+                                        onCompose(model.bounceSeed(selected))
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Clear selection") },
+                                    onClick = { clearSelection() },
+                                )
+                            }
+                        }
+                    } else {
                     IconButton(onClick = { if (!loading) loadToken += 1 }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
@@ -1039,6 +1203,7 @@ fun MessageIndexScreen(
                         )
                     }
                 }
+                    }
                     }
                 },
                 windowInsets = mailBarInsets(),
@@ -1204,158 +1369,6 @@ fun MessageIndexScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp),
                 )
-            }
-            if (multiSelect) {
-                val orderNow = model.order
-                val selectedCount = selected.size
-                val filterComplete = !allMailbox && filterActive && orderNow.isNotEmpty() &&
-                    selectedCount == orderNow.size && selected.toSet() == orderNow.toSet()
-                val titleExists = when {
-                    allMailbox -> mailboxExists
-                    filterComplete -> orderNow.size
-                    else -> 0
-                }
-                val title = selectionTitle(allMailbox, if (allMailbox) 0 else selectedCount, titleExists)
-                val loadedSelected = if (allMailbox) rows else rows.filter { it.uid in selected }
-                val markUnread = !allMailbox && loadedSelected.isNotEmpty() &&
-                    loadedSelected.all { "\\Seen" in it.flags }
-                val clearFlag = !allMailbox && loadedSelected.isNotEmpty() &&
-                    loadedSelected.all { "\\Flagged" in it.flags }
-                val showUndelete = allMailbox || rows.any { it.uid in selected && "\\Deleted" in it.flags }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = { clearSelection() }) {
-                        Icon(imageVector = Icons.Filled.Close, contentDescription = "Close")
-                    }
-                    Text(
-                        text = title,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    IconButton(
-                        onClick = {
-                            if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
-                            else applySelectionFlags(emptySet(), setOf("\\Seen"))
-                        },
-                    ) {
-                        Icon(
-                            imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
-                            contentDescription = if (markUnread) "Mark unread" else "Mark read",
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
-                            else applySelectionFlags(emptySet(), setOf("\\Flagged"))
-                        },
-                    ) {
-                        Icon(imageVector = Icons.Filled.Flag, contentDescription = "Flag")
-                    }
-                    IconButton(
-                        onClick = {
-                            val uids = selected.toList()
-                            val entire = allMailbox
-                            scope.launch {
-                                var undo: MailUndo? = null
-                                gate.withLock {
-                                    model.clearMailUndo()
-                                    model.moveMessages(uids, barMoveMailbox(account), entire)
-                                    pull()
-                                    undo = model.mailUndo
-                                }
-                                val pending = undo
-                                if (pending != null) publishUndo(pending)
-                            }
-                        },
-                    ) {
-                        Icon(imageVector = Icons.Filled.DriveFileMove, contentDescription = "Move")
-                    }
-                    IconButton(
-                        onClick = {
-                            val uids = selected.toList()
-                            val entire = allMailbox
-                            scope.launch {
-                                var undo: MailUndo? = null
-                                gate.withLock {
-                                    model.clearMailUndo()
-                                    model.deleteMessages(uids, entire)
-                                    pull()
-                                    undo = model.mailUndo
-                                }
-                                val pending = undo
-                                if (pending != null) publishUndo(pending)
-                            }
-                        },
-                    ) {
-                        Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete")
-                    }
-                    Box {
-                        IconButton(onClick = { selectionMore = true }) {
-                            Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "More")
-                        }
-                        DropdownMenu(
-                            expanded = selectionMore,
-                            onDismissRequest = { selectionMore = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Mark unread") },
-                                onClick = { applySelectionFlags(emptySet(), setOf("\\Seen")) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Select all") },
-                                onClick = {
-                                    selectionMore = false
-                                    when (val target = selectAllTarget(filterActive, model.order)) {
-                                        is SelectAllTarget.Uids -> {
-                                            allMailbox = false
-                                            selected = target.uids
-                                            multiSelect = true
-                                        }
-                                        SelectAllTarget.EntireMailbox -> {
-                                            scope.launch {
-                                                val exists = gate.withLock { session.selectedExists() }
-                                                allMailbox = true
-                                                mailboxExists = exists
-                                                folderExists = exists
-                                                selected = emptyList()
-                                                multiSelect = true
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Mark answered") },
-                                onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Mark unanswered") },
-                                onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
-                            )
-                            if (showUndelete) {
-                                DropdownMenuItem(
-                                    text = { Text("Undelete") },
-                                    onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Bounce") },
-                                enabled = !allMailbox,
-                                onClick = {
-                                    selectionMore = false
-                                    onCompose(model.bounceSeed(selected))
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Clear selection") },
-                                onClick = { clearSelection() },
-                            )
-                        }
-                    }
-                }
             }
             val flagsFor = flagUid
             if (flagsFor != null) {
