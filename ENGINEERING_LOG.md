@@ -764,3 +764,20 @@
 - Each of those three TopAppBars has a Refresh icon button that increments the same loadToken and stays visible. Search, filter, sort, reader actions, and More are unchanged. Compose has no refresh control
 - A failure still uses the existing banner. The pull indicator is the Material3 default, which hides when loading is false and the control is not pulled
 - No deploy. No send, append, or expunge
+
+## 2026-10-02 - index row details execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-details-20261002-1856-plan.md
+- Work: date column width from the widest formatIndexDate on screen, one status description with theme colors, and an active filter row showing N of M
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 49ecd48
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - index row details phase 1
+
+- The date column uses one measured width, the widest formatIndexDate among the index rows listed, with the same format, pattern, zone, and instant. Tabular figures are fontFeatureSettings tnum because Compose BOM 2024.10.00 has no FontFeature type. Empty dates keep that width. TextAlign.End. Sequence width is unchanged
+- IndexStatusColumn takes indexStatusDescription. An empty string sets no description. Flagged is colorScheme.error and to-me is colorScheme.primary. The three slots and sizes stay. Icons stay unlabeled
+- An active filter row under the bar shows the filter chips and N of M. N is the index message rows listed. M is EXISTS already received by this screen, otherwise N. All messages clears the filters and removes the row. No new count request
+- No deploy. No send, append, or expunge

@@ -102,7 +102,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -284,9 +283,6 @@ fun indexAppearance(flags: Set<String>): IndexAppearance {
     )
 }
 
-private val statusFlagged = Color(0xFFD32F2F)
-private val statusToMe = Color(0xFF1976D2)
-
 fun indexStatusDescription(flags: Set<String>, toMe: Boolean, hasAttachment: Boolean): String {
     val parts = ArrayList<String>(4)
     if ("\$Forwarded" in flags) {
@@ -311,11 +307,18 @@ fun sequenceColumnChars(sequences: Iterable<Int>): Int {
 }
 
 @Composable
-private fun IndexStatusColumn(row: IndexRow, modifier: Modifier = Modifier) {
+private fun IndexStatusColumn(row: IndexRow, description: String, modifier: Modifier = Modifier) {
     val forwarded = "\$Forwarded" in row.flags
     val answered = "\\Answered" in row.flags
     val flagged = "\\Flagged" in row.flags
-    Row(modifier, verticalAlignment = Alignment.Top) {
+    val flaggedColor = MaterialTheme.colorScheme.error
+    val toMeColor = MaterialTheme.colorScheme.primary
+    val columnModifier = if (description.isEmpty()) {
+        modifier
+    } else {
+        modifier.semantics { contentDescription = description }
+    }
+    Row(columnModifier, verticalAlignment = Alignment.Top) {
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
             val icon = when {
                 forwarded -> Icons.AutoMirrored.Filled.Forward
@@ -329,11 +332,11 @@ private fun IndexStatusColumn(row: IndexRow, modifier: Modifier = Modifier) {
         Box(Modifier.size(10.dp), contentAlignment = Alignment.Center) {
             when {
                 flagged && row.toMe -> {
-                    Box(Modifier.size(10.dp).background(statusToMe, CircleShape))
-                    Box(Modifier.size(6.dp).background(statusFlagged, CircleShape))
+                    Box(Modifier.size(10.dp).background(toMeColor, CircleShape))
+                    Box(Modifier.size(6.dp).background(flaggedColor, CircleShape))
                 }
-                flagged -> Box(Modifier.size(10.dp).background(statusFlagged, CircleShape))
-                row.toMe -> Box(Modifier.size(10.dp).background(statusToMe, CircleShape))
+                flagged -> Box(Modifier.size(10.dp).background(flaggedColor, CircleShape))
+                row.toMe -> Box(Modifier.size(10.dp).background(toMeColor, CircleShape))
             }
         }
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
@@ -415,6 +418,7 @@ fun MessageIndexScreen(
     var selected by remember { mutableStateOf<List<Long>>(emptyList()) }
     var allMailbox by remember { mutableStateOf(false) }
     var mailboxExists by remember { mutableIntStateOf(0) }
+    var folderExists by remember(mailbox) { mutableIntStateOf(0) }
     var selectionMore by remember { mutableStateOf(false) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var pendingExpungeUids by remember { mutableStateOf<List<Long>?>(null) }
@@ -718,9 +722,9 @@ fun MessageIndexScreen(
                     banner = error.text
                     return@withLock false
                 }
+                pendingExists = selected.exists
                 if (selected.exists > ThreadConfirmExists && !threadConfirmed) {
                     pendingThread = savedView
-                    pendingExists = selected.exists
                     return@withLock false
                 }
             }
@@ -729,6 +733,7 @@ fun MessageIndexScreen(
             pull()
             true
         }
+        if (pendingExists > 0) folderExists = pendingExists
         val chosen = pendingThread
         if (chosen != null) {
             threadExists = pendingExists
@@ -773,6 +778,11 @@ fun MessageIndexScreen(
                     try {
                         model.watch { change ->
                             scope.launch {
+                                when (change) {
+                                    is MailboxChange.Exists -> folderExists = change.exists
+                                    is MailboxChange.Expunge -> folderExists = change.exists
+                                    else -> Unit
+                                }
                                 gate.withLock {
                                     model.applyChange(change)
                                     pull()
@@ -970,6 +980,7 @@ fun MessageIndexScreen(
                                         postSnack(error.text)
                                         return@launch
                                     }
+                                    folderExists = exists
                                     if (exists > ThreadConfirmExists && !threadConfirmed) {
                                         threadExists = exists
                                         threadAskFromConnect = false
@@ -1110,34 +1121,48 @@ fun MessageIndexScreen(
                         },
                     )
                 }
-            if (filters.isNotEmpty()) {
+            if (filterActive && filters.isNotEmpty()) {
+                val shown = indexEntries.count { it is IndexEntry.Message }
+                val total = if (folderExists > 0) folderExists else shown
                 Row(
                     Modifier
-                        .horizontalScroll(rememberScrollState())
+                        .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    filters.forEachIndexed { index, filter ->
-                        val chipText = if (filter.argument.isEmpty()) {
-                            filter.label
-                        } else {
-                            "${filter.label} ${filter.argument}"
-                        }
-                        FilterChip(
-                            selected = true,
-                            onClick = {
-                                scope.launch {
-                                    gate.withLock {
-                                        model.dropFiltersFrom(index)
-                                        pull()
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        filters.forEachIndexed { index, filter ->
+                            val chipText = if (filter.argument.isEmpty()) {
+                                filter.label
+                            } else {
+                                "${filter.label} ${filter.argument}"
+                            }
+                            FilterChip(
+                                selected = true,
+                                onClick = {
+                                    scope.launch {
+                                        gate.withLock {
+                                            model.dropFiltersFrom(index)
+                                            pull()
+                                        }
+                                        if (model.notice == null) narrowArmed = false
+                                        if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                                     }
-                                    if (model.notice == null) narrowArmed = false
-                                    if (model.rows.isNotEmpty()) listState.scrollToItem(0)
-                                }
-                            },
-                            label = { Text(chipText) },
-                        )
+                                },
+                                label = { Text(chipText) },
+                            )
+                        }
                     }
+                    Text(
+                        text = "$shown of $total",
+                        modifier = Modifier.padding(start = 8.dp),
+                        maxLines = 1,
+                    )
                 }
             }
             if (searchVisible) {
@@ -1294,6 +1319,7 @@ fun MessageIndexScreen(
                                                 val exists = gate.withLock { session.selectedExists() }
                                                 allMailbox = true
                                                 mailboxExists = exists
+                                                folderExists = exists
                                                 selected = emptyList()
                                                 multiSelect = true
                                             }
@@ -1379,6 +1405,23 @@ fun MessageIndexScreen(
                     style = sequenceStyle,
                 ).size.width.toDp()
             }
+            val nowEpoch = Instant.now().epochSecond
+            val dateZone = ZoneId.systemDefault()
+            val dateStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
+            var dateWidthPx = 0
+            for (entry in indexEntries) {
+                if (entry !is IndexEntry.Message) continue
+                val formatted = formatIndexDate(
+                    epochSeconds = entry.row.internalDateEpoch,
+                    format = account.dateFormat,
+                    pattern = account.datePattern,
+                    nowEpoch = nowEpoch,
+                    zone = dateZone,
+                )
+                val measured = sequenceMeasurer.measure(text = formatted, style = dateStyle).size.width
+                if (measured > dateWidthPx) dateWidthPx = measured
+            }
+            val dateWidth = with(LocalDensity.current) { dateWidthPx.toDp() }
             PullToRefreshBox(
                 isRefreshing = loading,
                 onRefresh = { if (!loading) loadToken += 1 },
@@ -1423,6 +1466,10 @@ fun MessageIndexScreen(
                                 leftToRight = leftToRight,
                                 sequenceWidth = sequenceWidth,
                                 sequenceStyle = sequenceStyle,
+                                dateWidth = dateWidth,
+                                dateStyle = dateStyle,
+                                nowEpoch = nowEpoch,
+                                zone = dateZone,
                                 onClick = {
                                     if (multiSelect) {
                                         if (allMailbox) {
@@ -1555,6 +1602,10 @@ private fun IndexMessageRow(
     leftToRight: Boolean,
     sequenceWidth: Dp,
     sequenceStyle: TextStyle,
+    dateWidth: Dp,
+    dateStyle: TextStyle,
+    nowEpoch: Long,
+    zone: ZoneId,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onSwipe: suspend (SwipeBinding) -> Unit,
@@ -1684,7 +1735,6 @@ private fun IndexMessageRow(
                     )
                     .combinedClickable(onLongClick = onLongPress, onClick = onClick)
                     .semantics {
-                        if (statusDescription.isNotEmpty()) stateDescription = statusDescription
                         this.selected = rowSelected
                     }
                     .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -1707,7 +1757,7 @@ private fun IndexMessageRow(
                             )
                         }
                     }
-                    IndexStatusColumn(row, Modifier.padding(end = 4.dp))
+                    IndexStatusColumn(row, statusDescription, Modifier.padding(end = 4.dp))
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (rowSelected) {
@@ -1731,13 +1781,16 @@ private fun IndexMessageRow(
                                     epochSeconds = row.internalDateEpoch,
                                     format = account.dateFormat,
                                     pattern = account.datePattern,
-                                    nowEpoch = Instant.now().epochSecond,
-                                    zone = ZoneId.systemDefault(),
+                                    nowEpoch = nowEpoch,
+                                    zone = zone,
                                 ),
+                                modifier = Modifier.width(dateWidth),
+                                style = dateStyle,
                                 color = textColor,
                                 textDecoration = decoration,
                                 maxLines = 1,
                                 overflow = TextOverflow.Clip,
+                                textAlign = TextAlign.End,
                             )
                         }
                         Text(
