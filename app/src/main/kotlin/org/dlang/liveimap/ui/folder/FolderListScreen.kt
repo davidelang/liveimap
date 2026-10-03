@@ -314,15 +314,10 @@ fun FolderListScreen(
                     return@withLock
                 }
                 store.save(settings.copy(expandedFolders = emptySet()))
-                val listed = try {
-                    model.loadLevel()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    postSnack(error.text)
-                    null
+                // Names already loaded. Does not send LIST.
+                rows = rows.filter { it.depth == 0 }.map { row ->
+                    if (row.expanded) row.copy(expanded = false) else row
                 }
-                if (listed != null) rows = listed
             }
         }
     }

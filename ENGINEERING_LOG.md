@@ -889,3 +889,8 @@
 - Unsent is in that menu only when unsentCount is greater than zero, and it opens the existing Unsent screen. The existing list row is unchanged
 - An empty namespace prefix keeps the visible server label. TalkBack on that row is "Namespace, empty prefix". Other namespace rows still use folderRowDescription
 - No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug
+
+## 2026-10-03 - folder overflow a11y collapse does not list
+
+- Collapse all clears expandedFolders and shows the already loaded top-level rows. It does not call loadLevel and does not send LIST
+- No deploy. No send, append, or expunge
