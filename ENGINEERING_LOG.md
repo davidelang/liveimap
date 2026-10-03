@@ -911,3 +911,19 @@
 - MailSession has no NOOP, and that file is not a Critical File, so this phase does not send one. The count is selectedExists or the folder EXISTS already on screen. Refresh does not SELECT and does not reload the window.
 - A collapsed thread mark is the message count and the unread count, such as 7 · 2 unread. Expanded replies indent 16 dp per level, capped at 6, and a deeper row shows its depth number.
 - A selected row keeps secondaryContainer and shows check_circle in the status column, tinted primary. The one-shot forward choice is unchanged.
+
+## 2026-10-03 - plaintext recipient chip execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/plaintext-recipient-chip-20261003-0018-gap-plan.md
+- Status set to APPROVED
+- builds before edit: bfff03d
+- Phase 1 of 1: show Plain text only when a To, Cc, or Bcc address matches an Alpine entry marked [plaintext]
+- Host: /home/dlang/git/liveimap/master. Critical files: ComposeScreen.kt and AlpineBook.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - plaintext recipient chip phase 1
+
+- A To, Cc, or Bcc address that matches an Alpine book entry whose address or comments contain [plaintext] shows an AssistChip labeled Plain text only. The chip does not remove the recipient
+- Matching strips [plaintext] from the address and uses that mark only. An entry without the mark does not show the chip
+- An unset address-book mailbox or a failed book load shows no chip and does not fail compose. Bounce is unchanged
+- Empty Cc and Bcc still collapse. Forward as message/rfc822 and the leave prompt are unchanged
+- No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug

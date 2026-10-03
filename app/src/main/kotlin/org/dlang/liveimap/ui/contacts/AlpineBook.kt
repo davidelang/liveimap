@@ -97,6 +97,32 @@ fun pickedAddresses(entry: AlpineEntry): List<SelectedAddress> {
     return listOf(SelectedAddress(entry.fullname, email))
 }
 
+/** True when [recipient] matches a book entry whose address or comments contain [PlaintextMark]. */
+fun addressMarkedPlaintext(entries: List<AlpineEntry>, recipient: String): Boolean {
+    val wanted = emailOf(recipient)
+    if (wanted.isEmpty()) return false
+    for (entry in entries) {
+        if (!entry.address.contains(PlaintextMark) && !entry.comments.contains(PlaintextMark)) continue
+        for (email in emailsOf(entry)) {
+            if (email.equals(wanted, ignoreCase = true)) return true
+        }
+    }
+    return false
+}
+
+private fun emailsOf(entry: AlpineEntry): List<String> {
+    val picked = ArrayList<String>()
+    for (address in pickedAddresses(entry)) {
+        val email = emailOf(address.email)
+        if (email.isNotEmpty()) picked.add(email)
+    }
+    if (picked.isNotEmpty()) return picked
+    if (isDistributionList(entry.address.trim())) return emptyList()
+    val direct = emailOf(entry.address)
+    if (direct.isEmpty()) return emptyList()
+    return listOf(direct)
+}
+
 private fun emailOf(value: String): String =
     addrSpec(value).replace(PlaintextMark, "").trim()
 

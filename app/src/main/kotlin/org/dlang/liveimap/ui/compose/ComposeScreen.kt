@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,6 +52,9 @@ import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
+import org.dlang.liveimap.ui.contacts.AlpineEntry
+import org.dlang.liveimap.ui.contacts.addressMarkedPlaintext
+import org.dlang.liveimap.ui.contacts.loadAlpineBook
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 
@@ -121,6 +125,7 @@ fun ComposeScreen(
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
+    var plaintextEntries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
     var discardOpen by remember { mutableStateOf(false) }
     var baseTo by rememberSaveable { mutableStateOf("") }
     var baseCc by rememberSaveable { mutableStateOf("") }
@@ -157,6 +162,29 @@ fun ComposeScreen(
             session.select(box)
             selectedMailbox = box
         }
+    }
+
+    suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
+        if (mailbox.isEmpty()) return emptyList()
+        val restore = selectedMailbox
+        val entries = try {
+            val loaded = loadAlpineBook(session, mailbox)
+            if (loaded.notice != null) emptyList() else loaded.entries
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            emptyList()
+        }
+        if (restore != null && restore != mailbox) {
+            try {
+                session.select(restore)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+                selectedMailbox = null
+            }
+        }
+        return entries
     }
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
@@ -590,6 +618,9 @@ fun ComposeScreen(
                     }
                     draftLoaded = true
                 }
+                if (seed.kind != ComposeKind.Bounce) {
+                    plaintextEntries = readPlaintextBook(settings.addressBookMailbox)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -842,6 +873,12 @@ fun ComposeScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            if (showsPlaintextChip(plaintextEntries, toText, ccText, bccText)) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text("Plain text only") },
+                )
+            }
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it },
@@ -991,6 +1028,20 @@ internal fun mailboxLeaf(mailbox: String): String {
     val dot = mailbox.lastIndexOf('.')
     if (dot >= 0) return mailbox.substring(dot + 1)
     return mailbox
+}
+
+private fun showsPlaintextChip(
+    entries: List<AlpineEntry>,
+    to: String,
+    cc: String,
+    bcc: String,
+): Boolean {
+    for (line in listOf(to, cc, bcc)) {
+        for (address in splitAddresses(line)) {
+            if (addressMarkedPlaintext(entries, address)) return true
+        }
+    }
+    return false
 }
 
 private fun appendAddress(current: String, next: String): String {
