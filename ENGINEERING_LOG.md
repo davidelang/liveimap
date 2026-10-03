@@ -823,3 +823,19 @@
 - Status set to APPROVED
 - builds before edit: 2040cbc
 - Phase 1: header card, plain-text links and quote color, theme HTML, attachment chips, no-text card in MessageReaderScreen.kt
+
+## 2026-10-02 - compose reply chrome execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-reply-chrome-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: cac0e0b
+- Phase 1 of 1: leave prompt, labeled recipients, reply cursor, reply-above-quote setting, forward header block
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - compose reply chrome phase 1
+
+- A changed body, subject, or recipient asks Discard, Postpone, or Keep editing. Postpone in that dialog stays disabled when no postponed mailbox is set. An unchanged compose leaves without the dialog
+- To, Cc, and Bcc stay separate labeled fields. Empty Cc and Bcc are omitted from the message
+- A reply keeps one attribution line and `> ` quotes. The cursor starts on the line below the quote. AccountSettings.replyAboveQuote defaults to false; a missing key stays false. Settings switch "Reply above the quote" persists immediately and puts the cursor on the line above the quote
+- A forward shows From, Date, and Subject, then the quoted body. Attachments still follow includeForwardAttachments and can be removed before send
+- AccountSettingsTest key list includes replyAboveQuote so the encode round-trip stays true. No deploy. No send, append, or expunge

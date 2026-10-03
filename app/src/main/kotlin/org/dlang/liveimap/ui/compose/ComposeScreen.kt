@@ -31,6 +31,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -104,7 +106,9 @@ fun ComposeScreen(
     var ccText by rememberSaveable { mutableStateOf("") }
     var bccText by rememberSaveable { mutableStateOf("") }
     var subject by rememberSaveable { mutableStateOf("") }
-    var body by rememberSaveable { mutableStateOf("") }
+    var bodyField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     var inReplyTo by rememberSaveable { mutableStateOf("") }
     var referencesHeader by rememberSaveable { mutableStateOf("") }
     var bounceTo by rememberSaveable { mutableStateOf("") }
@@ -129,12 +133,13 @@ fun ComposeScreen(
         pickerOpen = false
     }
 
-    fun applyDraft(draft: ReplyDraft) {
+    fun applyDraft(draft: ReplyDraft, cursor: Int = draft.body.length) {
         toText = draft.to.joinToString(", ")
         ccText = draft.cc.joinToString(", ")
         bccText = ""
         subject = draft.subject
-        body = draft.body
+        val at = cursor.coerceIn(0, draft.body.length)
+        bodyField = TextFieldValue(draft.body, TextRange(at))
         inReplyTo = draft.inReplyTo
         referencesHeader = draft.references
     }
@@ -175,7 +180,12 @@ fun ComposeScreen(
         ensureMailbox(box)
         val parsed = parseRfc822(session.fetchRfc822(uid))
         val quote = quotedBody(session.fetchStructure(uid), settings.bodyView, uid)
-        applyDraft(replyDraft(replyAll, parsed, settings.email, quote))
+        val draft = replyDraft(replyAll, parsed, settings.email, quote)
+        val shown = replyCursorBody(draft.body, settings.replyAboveQuote)
+        applyDraft(
+            ReplyDraft(draft.to, draft.cc, draft.subject, draft.inReplyTo, draft.references, shown),
+            cursor = if (settings.replyAboveQuote) 0 else shown.length,
+        )
     }
 
     suspend fun loadForward(settings: AccountSettings) {
@@ -190,7 +200,17 @@ fun ComposeScreen(
             val parsed = parseRfc822(session.fetchRfc822(uid))
             val fetched = session.fetchStructure(uid)
             val quote = quotedBody(fetched, settings.bodyView, uid)
-            applyDraft(forwardDraft(parsed, quote))
+            val draft = forwardDraft(parsed, quote)
+            val shown = "\n" + forwardHeaderBody(
+                headerValues(parsed, "From").firstOrNull().orEmpty(),
+                headerValues(parsed, "Date").firstOrNull().orEmpty(),
+                headerValues(parsed, "Subject").firstOrNull().orEmpty(),
+                quote,
+            )
+            applyDraft(
+                ReplyDraft(draft.to, draft.cc, draft.subject, draft.inReplyTo, draft.references, shown),
+                cursor = 0,
+            )
             fetched
         }
         forwardRows = attachmentParts(tree).mapIndexed { index, item ->
@@ -213,7 +233,7 @@ fun ComposeScreen(
             ccText = loaded.cc
             bccText = ""
             subject = loaded.subject
-            body = loaded.body
+            bodyField = TextFieldValue(loaded.body, TextRange(loaded.body.length))
             inReplyTo = loaded.inReplyTo
             referencesHeader = loaded.references
         }
@@ -264,7 +284,7 @@ fun ComposeScreen(
                 cc = splitAddresses(ccText),
                 bcc = splitAddresses(bccText),
                 subject = subject,
-                body = body,
+                body = bodyField.text,
                 messageId = newMessageId(settings.email),
                 date = rfc822Date(),
                 inReplyTo = inReplyTo,
@@ -387,7 +407,7 @@ fun ComposeScreen(
         baseCc = ccText
         baseBcc = bccText
         baseSubject = subject
-        baseBody = body
+        baseBody = bodyField.text
         baseRowKeyText = forwardRows.joinToString("\n") { it.key }
         baselineReady = true
     }
@@ -404,7 +424,7 @@ fun ComposeScreen(
             cc = ccText,
             bcc = bccText,
             subject = subject,
-            body = body,
+            body = bodyField.text,
             baselineTo = baseTo,
             baselineCc = baseCc,
             baselineBcc = baseBcc,
@@ -412,7 +432,7 @@ fun ComposeScreen(
             baselineBody = baseBody,
             rowRemoved = attachmentRowRemoved(),
         )
-        if (dirty) discardOpen = true else onDone()
+        if (dirty || bounceTo.isNotEmpty()) discardOpen = true else onDone()
     }
 
     fun postponeDraft() {
@@ -826,8 +846,8 @@ fun ComposeScreen(
                 )
             }
             OutlinedTextField(
-                value = body,
-                onValueChange = { body = it },
+                value = bodyField,
+                onValueChange = { bodyField = it },
                 label = { Text("Body") },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -855,6 +875,16 @@ fun ComposeScreen(
             },
         )
     }
+}
+
+internal fun replyCursorBody(quoted: String, above: Boolean): String {
+    val block = quoted.trimEnd('\n')
+    return if (above) "\n$block" else "$block\n"
+}
+
+internal fun forwardHeaderBody(from: String, date: String, subject: String, peeked: String): String {
+    val header = "From: ${from.trim()}\nDate: ${date.trim()}\nSubject: ${subject.trim()}"
+    return quotePart(header, peeked)
 }
 
 internal fun composeIsDirty(

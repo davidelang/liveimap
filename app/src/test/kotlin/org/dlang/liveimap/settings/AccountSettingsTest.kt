@@ -42,6 +42,7 @@ class AccountSettingsTest {
                 "datePattern",
                 "favorites",
                 "includeForwardAttachments",
+                "replyAboveQuote",
                 "askBeforeExpunge",
                 "pipelineCommands",
                 "logImapTraffic",
@@ -60,6 +61,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("friendlyName="))
         assertTrue(text.lines().contains("theme=FollowSystem"))
         assertTrue(text.lines().contains("includeForwardAttachments=true"))
+        assertTrue(text.lines().contains("replyAboveQuote=false"))
         assertTrue(text.lines().contains("askBeforeExpunge=true"))
         assertTrue(text.lines().contains("pipelineCommands=true"))
         assertTrue(text.lines().contains("logImapTraffic=false"))
@@ -95,6 +97,7 @@ class AccountSettingsTest {
             bounceFcc = true,
             showUnreadCounts = true,
             includeForwardAttachments = false,
+            replyAboveQuote = true,
             askBeforeExpunge = false,
             pipelineCommands = false,
             logImapTraffic = true,
@@ -107,6 +110,7 @@ class AccountSettingsTest {
         assertTrue(text.contains("A%3BB"))
         assertTrue(text.contains("swipeLeading=SetFlag||%5CFlagged"))
         assertTrue(text.contains("includeForwardAttachments=false"))
+        assertTrue(text.contains("replyAboveQuote=true"))
         assertTrue(text.contains("askBeforeExpunge=false"))
         assertTrue(text.contains("pipelineCommands=false"))
         assertTrue(text.contains("logImapTraffic=true"))
@@ -169,6 +173,7 @@ class AccountSettingsTest {
                     !it.startsWith("datePattern=") &&
                     !it.startsWith("spamMailbox=") &&
                     !it.startsWith("includeForwardAttachments=") &&
+                    !it.startsWith("replyAboveQuote=") &&
                     !it.startsWith("askBeforeExpunge=") &&
                     !it.startsWith("pipelineCommands=") &&
                     !it.startsWith("logImapTraffic=")
@@ -182,6 +187,7 @@ class AccountSettingsTest {
         assertEquals("", decodeAccountSettings(older).datePattern)
         assertEquals("", decodeAccountSettings(older).spamMailbox)
         assertTrue(decodeAccountSettings(older).includeForwardAttachments)
+        assertFalse(decodeAccountSettings(older).replyAboveQuote)
         assertTrue(decodeAccountSettings(older).askBeforeExpunge)
         assertTrue(decodeAccountSettings(older).pipelineCommands)
         assertFalse(decodeAccountSettings(older).logImapTraffic)

@@ -317,6 +317,9 @@ fun SettingsScreen() {
         BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
             persist(settings.copy(includeForwardAttachments = it))
         }
+        BoolField("Reply above the quote", settings.replyAboveQuote) {
+            persist(settings.copy(replyAboveQuote = it))
+        }
         ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
             persist(settings.copy(theme = it))
         }
