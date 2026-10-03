@@ -729,7 +729,8 @@ private class FakeMailSession(
 
     override suspend fun selectedExists(): Int {
         if (exists >= 0) return exists
-        return sequencePool().maxOfOrNull { it.sequence } ?: 0
+        if (arrivalRows.isNotEmpty()) return arrivalRows.maxOf { it.sequence }
+        return rows.values.maxOfOrNull { it.sequence } ?: 0
     }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
@@ -740,10 +741,11 @@ private class FakeMailSession(
             IndexMode.ArrivalRange -> {
                 val first = request.firstSequence
                 val last = request.lastSequence
+                val pool = if (arrivalRows.isNotEmpty()) arrivalRows else rows.values.toList()
                 if (first <= 0 || last <= 0 || first > last) {
                     emptyList()
                 } else {
-                    sequencePool().filter { it.sequence in first..last }
+                    pool.filter { it.sequence in first..last }
                 }
             }
             IndexMode.ArrivalNewest -> {
