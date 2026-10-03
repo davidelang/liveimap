@@ -746,3 +746,21 @@
 - Settings, About, and Unsent are not Critical Files. Their status, navigation, and cutout insets are applied at the NavHost call sites. The drawer sheets use the same union
 - The remembered nav graph is unchanged, so an open back stack entry stays open
 - No deploy. No send, append, or expunge
+
+## 2026-10-02 - pull to refresh execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/pull-to-refresh-20261002-1831-plan.md
+- Work: PullToRefreshBox and a Refresh bar button on the folder list, index, and reader. Each increments loadToken. No second load while loading. Compose is unchanged.
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 003dd24
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+- androidx.compose.material3.pulltorefresh.PullToRefreshBox is in material3 1.3.0 already on the classpath
+
+## 2026-10-02 - pull to refresh phase 1
+
+- Folder list, index, and reader wrap their scrolling content in PullToRefreshBox. isRefreshing is that screen's loading flag. onRefresh increments loadToken only when loading is false, so a pull during a load does not start another
+- Each of those three TopAppBars has a Refresh icon button that increments the same loadToken and stays visible. Search, filter, sort, reader actions, and More are unchanged. Compose has no refresh control
+- A failure still uses the existing banner. The pull indicator is the Material3 default, which hides when loading is false and the control is not pulled
+- No deploy. No send, append, or expunge

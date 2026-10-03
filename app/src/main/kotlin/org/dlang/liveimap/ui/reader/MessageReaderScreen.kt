@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +44,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -742,6 +744,12 @@ fun MessageReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh",
+                        )
+                    }
                 for (action in barActions) {
                     IconButton(onClick = { runReaderAction(action) }) {
                         Icon(
@@ -843,8 +851,10 @@ fun MessageReaderScreen(
         if (absent != null) {
             Text(text = absent, modifier = Modifier.padding(8.dp))
         }
-        Box(
-            Modifier
+        PullToRefreshBox(
+            isRefreshing = loading,
+            onRefresh = { if (!loading) loadToken += 1 },
+            modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {

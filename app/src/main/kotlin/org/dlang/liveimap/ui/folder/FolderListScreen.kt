@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -45,6 +46,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -291,6 +293,14 @@ fun FolderListScreen(
                         }
                     }
                 },
+                actions = {
+                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh",
+                        )
+                    }
+                },
                 windowInsets = mailBarInsets(),
             )
         },
@@ -327,11 +337,16 @@ fun FolderListScreen(
         if (!stopped) {
             val reserveMessages = rows.any { it.messages != null }
             val reserveUnseen = rows.any { it.unseen != null }
+            PullToRefreshBox(
+                isRefreshing = loading,
+                onRefresh = { if (!loading) loadToken += 1 },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
             if (!loading && banner == null && rows.isEmpty()) {
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -349,7 +364,7 @@ fun FolderListScreen(
             } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 items(rows) { row ->
                     FolderListRow(
@@ -392,6 +407,7 @@ fun FolderListScreen(
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 }
+            }
             }
             }
         }

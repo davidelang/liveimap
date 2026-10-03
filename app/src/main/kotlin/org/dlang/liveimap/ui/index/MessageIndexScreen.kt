@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
@@ -70,6 +71,7 @@ import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -878,6 +880,12 @@ fun MessageIndexScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh",
+                        )
+                    }
                     if (connected) {
                 IconButton(onClick = { searchVisible = true }) {
                     Icon(
@@ -1371,11 +1379,16 @@ fun MessageIndexScreen(
                     style = sequenceStyle,
                 ).size.width.toDp()
             }
+            PullToRefreshBox(
+                isRefreshing = loading,
+                onRefresh = { if (!loading) loadToken += 1 },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
             if (!loading && banner == null && rows.isEmpty() && threadAsk == null) {
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -1394,7 +1407,7 @@ fun MessageIndexScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxSize()
                     .nestedScroll(newerConnection),
             ) {
                 items(indexEntries, key = { it.key }) { entry ->
@@ -1452,6 +1465,7 @@ fun MessageIndexScreen(
                         )
                     }
                 }
+            }
             }
             }
         }
