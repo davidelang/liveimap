@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
@@ -128,6 +129,12 @@ fun ComposeScreen(
     var baseBody by rememberSaveable { mutableStateOf("") }
     var baseRowKeyText by rememberSaveable { mutableStateOf("") }
     var baselineReady by rememberSaveable { mutableStateOf(false) }
+    var copiesOpen by rememberSaveable { mutableStateOf(false) }
+    val forwardOnce = rememberSaveable {
+        val code = ForwardOnce.code
+        ForwardOnce.code = -1
+        code
+    }
 
     BackHandler(enabled = pickerOpen) {
         pickerOpen = false
@@ -194,6 +201,35 @@ fun ComposeScreen(
         ensureMailbox(box)
         sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
+        val asAttachment = when (forwardOnce) {
+            1 -> true
+            0 -> false
+            else -> settings.forwardAsAttachment
+        }
+        if (asAttachment) {
+            val original = session.fetchRfc822(uid)
+            if (!draftLoaded) {
+                val parsed = parseRfc822(original)
+                val draft = forwardDraft(parsed, "")
+                applyDraft(
+                    ReplyDraft(draft.to, draft.cc, draft.subject, "", "", ""),
+                    cursor = 0,
+                )
+            }
+            forwardRows = listOf(
+                ForwardRow(
+                    key = "rfc822:$uid",
+                    section = "",
+                    filename = "forwarded.eml",
+                    mediaType = "message/rfc822",
+                    size = original.size,
+                    included = true,
+                    bytes = original,
+                    wireBase64 = false,
+                ),
+            )
+            return
+        }
         val tree = if (draftLoaded) {
             session.fetchStructure(uid)
         } else {
@@ -771,27 +807,41 @@ fun ComposeScreen(
                 }
             }) { Text("Bounce") }
         } else {
-            OutlinedTextField(
-                value = toText,
-                onValueChange = { toText = it },
-                label = { Text("To") },
-                singleLine = true,
+            val showCc = copiesOpen || ccText.isNotBlank()
+            val showBcc = copiesOpen || bccText.isNotBlank()
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = ccText,
-                onValueChange = { ccText = it },
-                label = { Text("Cc") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = bccText,
-                onValueChange = { bccText = it },
-                label = { Text("Bcc") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = toText,
+                    onValueChange = { toText = it },
+                    label = { Text("To") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { copiesOpen = !copiesOpen }) {
+                    Text(if (copiesOpen) "Hide Cc/Bcc" else "Cc/Bcc")
+                }
+            }
+            if (showCc) {
+                OutlinedTextField(
+                    value = ccText,
+                    onValueChange = { ccText = it },
+                    label = { Text("Cc") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (showBcc) {
+                OutlinedTextField(
+                    value = bccText,
+                    onValueChange = { bccText = it },
+                    label = { Text("Bcc") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it },
@@ -803,14 +853,18 @@ fun ComposeScreen(
                 pickerTarget = AddressTarget.To
                 pickerOpen = true
             }) { Text("To address book") }
-            TextButton(onClick = {
-                pickerTarget = AddressTarget.Cc
-                pickerOpen = true
-            }) { Text("Cc address book") }
-            TextButton(onClick = {
-                pickerTarget = AddressTarget.Bcc
-                pickerOpen = true
-            }) { Text("Bcc address book") }
+            if (showCc) {
+                TextButton(onClick = {
+                    pickerTarget = AddressTarget.Cc
+                    pickerOpen = true
+                }) { Text("Cc address book") }
+            }
+            if (showBcc) {
+                TextButton(onClick = {
+                    pickerTarget = AddressTarget.Bcc
+                    pickerOpen = true
+                }) { Text("Bcc address book") }
+            }
             if (pickerOpen) {
                 AddressBookPicker(
                     onPicked = { picked ->
@@ -876,6 +930,18 @@ fun ComposeScreen(
         )
     }
 }
+
+/** Next compose only. -1 uses the setting, 0 is inline, 1 is message/rfc822. */
+internal object ForwardOnce {
+    var code: Int = -1
+}
+
+internal fun armForwardOnce(asAttachment: Boolean) {
+    ForwardOnce.code = if (asAttachment) 1 else 0
+}
+
+internal fun oppositeForwardLabel(settingOn: Boolean): String =
+    if (settingOn) "Forward inline" else "Forward as attachment"
 
 internal fun replyCursorBody(quoted: String, above: Boolean): String {
     val block = quoted.trimEnd('\n')

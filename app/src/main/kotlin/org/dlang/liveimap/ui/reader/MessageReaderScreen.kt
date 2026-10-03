@@ -82,6 +82,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.ui.compose.armForwardOnce
+import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
@@ -851,6 +853,14 @@ fun MessageReaderScreen(
                         },
                     )
                 }
+                DropdownMenuItem(
+                    text = { Text(oppositeForwardLabel(account.forwardAsAttachment)) },
+                    onClick = {
+                        moreMenu = false
+                        armForwardOnce(!account.forwardAsAttachment)
+                        onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
+                    },
+                )
                 BodyView.entries.forEach { view ->
                     DropdownMenuItem(
                         text = { Text(bodyViewLabel(view)) },

@@ -123,6 +123,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.ui.compose.armForwardOnce
+import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
@@ -1047,6 +1049,19 @@ fun MessageIndexScreen(
                                         onCompose(model.bounceSeed(selected))
                                     },
                                 )
+                                if (!allMailbox && selected.size == 1) {
+                                    val oneUid = selected.single()
+                                    DropdownMenuItem(
+                                        text = { Text(oppositeForwardLabel(account.forwardAsAttachment)) },
+                                        onClick = {
+                                            selectionMore = false
+                                            armForwardOnce(!account.forwardAsAttachment)
+                                            onCompose(
+                                                ComposeSeed(ComposeKind.Forward, mailbox, listOf(oneUid)),
+                                            )
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Clear selection") },
                                     onClick = { clearSelection() },

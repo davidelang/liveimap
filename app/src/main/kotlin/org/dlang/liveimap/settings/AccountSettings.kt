@@ -187,6 +187,7 @@ data class AccountSettings(
     val datePattern: String = "",
     val favorites: List<FolderFavorite> = emptyList(),
     val includeForwardAttachments: Boolean = true,
+    val forwardAsAttachment: Boolean = false,
     val replyAboveQuote: Boolean = false,
     val askBeforeExpunge: Boolean = true,
     val pipelineCommands: Boolean = true,
@@ -227,6 +228,7 @@ private val fieldNames = listOf(
     "datePattern",
     "favorites",
     "includeForwardAttachments",
+    "forwardAsAttachment",
     "replyAboveQuote",
     "askBeforeExpunge",
     "pipelineCommands",
@@ -267,6 +269,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("datePattern=${percentEncode(datePattern)}")
     appendLine("favorites=${encodeFavorites(favorites)}")
     appendLine("includeForwardAttachments=$includeForwardAttachments")
+    appendLine("forwardAsAttachment=$forwardAsAttachment")
     appendLine("replyAboveQuote=$replyAboveQuote")
     appendLine("askBeforeExpunge=$askBeforeExpunge")
     appendLine("pipelineCommands=$pipelineCommands")
@@ -298,6 +301,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "bodyView" ||
             key == "preferHtml" ||
             key == "includeForwardAttachments" ||
+            key == "forwardAsAttachment" ||
             key == "replyAboveQuote" ||
             key == "askBeforeExpunge" ||
             key == "pipelineCommands" ||
@@ -338,6 +342,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
         favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
         includeForwardAttachments = values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true,
+        forwardAsAttachment = values["forwardAsAttachment"]?.let { parseBoolean(it) } ?: false,
         replyAboveQuote = values["replyAboveQuote"]?.let { parseBoolean(it) } ?: false,
         askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
         pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,

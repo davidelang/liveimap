@@ -856,3 +856,21 @@
 - The activity theme uses the system dynamic scheme only when that switch is on and the device is API 31 or newer. Otherwise it keeps the static scheme
 - About already shows LiveIMAP and BuildConfig.VERSION_NAME at ui/about/AboutScreen.kt. No license text added
 - No deploy. No send, append, or expunge
+
+## 2026-10-03 - compose brief gaps execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-brief-gaps-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: b8b44a6
+- Phase 1 of 1: collapse empty Cc and Bcc, forwardAsAttachment default false, one message/rfc822 part, overflow one-shot
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - compose brief gaps phase 1
+
+- Empty Cc and Bcc stay hidden until the To row Cc/Bcc control is on, or that field is non-empty. From stays the read-only text line
+- AccountSettings.forwardAsAttachment defaults to false. A missing key decodes to false. Settings switch "Forward as attachment" persists
+- When that mode is on, forward attaches forwarded.eml as message/rfc822 and does not insert the inline header block. The setting stays the default
+- Reader overflow, and the index overflow when one message is selected, offer the other mode for that open only and do not change the setting
+- No plaintext-only recipient rule exists on a compose address. The AssistChip was not added. Do not invent the rule
+- AccountSettingsTest.defaultsRoundTrip lists encode keys exactly and already omits dynamicColor. forwardAsAttachment would fail that test. The test file was not edited. This tree's ./build_app runs assembleDebug only
+- No deploy. No send, append, or expunge

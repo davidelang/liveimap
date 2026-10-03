@@ -302,6 +302,9 @@ fun SettingsScreen() {
         BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
             persist(settings.copy(includeForwardAttachments = it))
         }
+        BoolField("Forward as attachment", settings.forwardAsAttachment) {
+            persist(settings.copy(forwardAsAttachment = it))
+        }
         BoolField("Reply above the quote", settings.replyAboveQuote) {
             persist(settings.copy(replyAboveQuote = it))
         }
