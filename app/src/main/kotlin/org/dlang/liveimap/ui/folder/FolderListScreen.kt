@@ -30,11 +30,14 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -124,6 +127,7 @@ fun FolderListScreen(
     var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var showUnreadCounts by remember { mutableStateOf(false) }
     var folderQuery by remember { mutableStateOf("") }
+    var moreMenu by remember { mutableStateOf(false) }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -297,6 +301,32 @@ fun FolderListScreen(
         }
     }
 
+    fun collapseAll() {
+        scope.launch {
+            gate.withLock {
+                if (stopped) return@withLock
+                val settings = try {
+                    store.load()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    postSnack(error.message ?: "not connected")
+                    return@withLock
+                }
+                store.save(settings.copy(expandedFolders = emptySet()))
+                val listed = try {
+                    model.loadLevel()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (listed != null) rows = listed
+            }
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -319,6 +349,35 @@ fun FolderListScreen(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "Refresh",
                             )
+                        }
+                        Box {
+                            IconButton(onClick = { moreMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "More",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = moreMenu,
+                                onDismissRequest = { moreMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Collapse all") },
+                                    onClick = {
+                                        moreMenu = false
+                                        collapseAll()
+                                    },
+                                )
+                                if (unsentCount > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("Unsent") },
+                                        onClick = {
+                                            moreMenu = false
+                                            onOpenUnsent()
+                                        },
+                                    )
+                                }
+                            }
                         }
                     },
                     windowInsets = mailBarInsets(),
@@ -628,13 +687,17 @@ private fun FolderListRow(
 ) {
     val shownLeaf = folderDisplayName(row)
     val unreadLabel = folderUnreadLabel(showUnread, row.unseen)
-    val description = folderRowDescription(
-        shownLeaf,
-        row.messages,
-        if (unreadLabel == null) null else row.unseen,
-        row.hasChildren,
-        row.expanded,
-    )
+    val description = if (row.namespaceRoot && row.mailbox.isEmpty()) {
+        "Namespace, empty prefix"
+    } else {
+        folderRowDescription(
+            shownLeaf,
+            row.messages,
+            if (unreadLabel == null) null else row.unseen,
+            row.hasChildren,
+            row.expanded,
+        )
+    }
     val icon = when (
         folderIconKey(
             row.mailbox,

@@ -874,3 +874,18 @@
 - No plaintext-only recipient rule exists on a compose address. The AssistChip was not added. Do not invent the rule
 - AccountSettingsTest.defaultsRoundTrip lists encode keys exactly and already omits dynamicColor. forwardAsAttachment would fail that test. The test file was not edited. This tree's ./build_app runs assembleDebug only
 - No deploy. No send, append, or expunge
+
+## 2026-10-03 - folder overflow a11y execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-overflow-a11y-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: 5021493
+- Phase 1 of 1: folder bar More with Collapse all, Unsent when copies exist, empty-prefix announcement
+- Host: /home/dlang/git/liveimap/master. Critical file: FolderListScreen.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - folder overflow a11y phase 1
+
+- Folder top bar More menu has Collapse all. It clears expandedFolders and reloads the top level
+- Unsent is in that menu only when unsentCount is greater than zero, and it opens the existing Unsent screen. The existing list row is unchanged
+- An empty namespace prefix keeps the visible server label. TalkBack on that row is "Namespace, empty prefix". Other namespace rows still use folderRowDescription
+- No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug
