@@ -31,7 +31,7 @@ class CapabilityGateTest {
         assertEquals("Plain", listKind(line, false))
         assertEquals("FullSelect", resyncKind(line))
         assertEquals("UidSearch", searchKind(line))
-        assertEquals("UidSort FROM", sortKind(line))
+        assertEquals("UidSort", sortKind(line))
         assertEquals("BodyPeek", previewKind(line))
         assertEquals("BodyPeek", fetchKind(line))
         assertEquals("Extended", listKind("$line LIST-EXTENDED", false))
@@ -56,7 +56,7 @@ class CapabilityGateTest {
         assertEquals("ExtendedWithMessages", listKind(line, false))
         assertEquals("Qresync", resyncKind(line))
         assertEquals("Esearch", searchKind(line))
-        assertEquals("Esort DISPLAY", sortKind(line))
+        assertEquals("Esort", sortKind(line))
         assertEquals("Preview", previewKind(line))
         assertEquals("BinaryPeek", fetchKind(line))
     }

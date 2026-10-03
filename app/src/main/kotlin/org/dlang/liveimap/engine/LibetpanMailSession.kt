@@ -60,10 +60,16 @@ fun resyncKind(serverList: String): String = when {
 fun searchKind(serverList: String): String =
     if (hasCap(serverList, "ESEARCH")) "Esearch" else "UidSearch"
 
-fun sortKind(serverList: String): String {
-    val command = if (hasCap(serverList, "ESORT")) "Esort" else "UidSort"
-    val from = if (hasCap(serverList, "SORT=DISPLAY")) "DISPLAY" else "FROM"
-    return "$command $from"
+fun sortKind(serverList: String): String =
+    if (hasCap(serverList, "ESORT")) "Esort" else "UidSort"
+
+fun imapSortKey(serverList: String, token: String): String {
+    if (!hasCap(serverList, "SORT=DISPLAY")) return token
+    return when (token) {
+        "FROM" -> "DISPLAYFROM"
+        "TO" -> "DISPLAYTO"
+        else -> token
+    }
 }
 
 fun previewKind(serverList: String): String =
@@ -322,10 +328,8 @@ class LibetpanMailSession : MailSession {
             throw MailFailure("use thread")
         }
         val h = requireHandle()
-        val decided = sortKind(advertised())
-        val command = decided.substringBefore(' ')
-        val fromToken = decided.substringAfter(' ', "FROM")
-        val token = if (key == SortKey.From) fromToken else sortToken(key)
+        val command = sortKind(advertised())
+        val token = imapSortKey(advertised(), sortToken(key))
         return remember("SORT $token $newestFirst") {
             val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
             ids.toList()

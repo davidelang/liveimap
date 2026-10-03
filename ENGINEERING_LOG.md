@@ -704,3 +704,22 @@
 - Pin is fea126faf0c53cf5b7f56ada04ddd55491f679da. Both Android libetpan.a archives export mailimap_status_multiple and mailimap_uid_fetch_multiple
 - Pipelined STATUS and UID FETCH use those helpers. Stream, fatal, and a desynchronized session return MAILIMAP_ERROR_STREAM. One command at a time is unchanged
 - Host burst tests exit 0 against /home/dlang/git/libetpan/src/.libs/libetpan.so at that sha
+
+## 2026-10-02 - sort display keys and menu execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sort-display-keys-and-menu-20261002-1742-plan.md
+- Work: From and To use DISPLAYFROM and DISPLAYTO when SORT=DISPLAY is advertised; the sort menu checks the current key and disables missing capabilities
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 5caa096
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge. Do not edit libetpan.
+- Icons.Filled.Sort is in material-icons-extended already on the classpath
+
+## 2026-10-02 - sort display keys and menu phase 1
+
+- sortKind returns Esort or UidSort. imapSortKey maps FROM to DISPLAYFROM and TO to DISPLAYTO only when SORT=DISPLAY is advertised
+- sort sends that key. nativeSort and sendUidSortChoice accept those two keys, reject DISPLAY, and hand-send a display-name key even when ESORT is off. Parentheses stay tight
+- The sort menu checks the active key, puts a divider before the thread keys, and disables a missing capability with Not advertised. The button uses Icons.Filled.Sort. Newest first is a checkbox
+- menuKeys keeps every SortKey, including ordered subject when that capability is absent
+- IndexWindowTest.orderedSubjectHiddenUnlessAdvertised still expects ordered subject to be omitted. That file is not a Critical File, so it was not edited

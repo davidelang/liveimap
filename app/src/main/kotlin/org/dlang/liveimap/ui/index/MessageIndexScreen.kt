@@ -26,10 +26,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
@@ -42,12 +42,15 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -933,7 +936,7 @@ fun MessageIndexScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.List,
+                                imageVector = Icons.Filled.Sort,
                                 contentDescription = "Sort",
                             )
                         }
@@ -946,46 +949,62 @@ fun MessageIndexScreen(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                     ) {
-                        menuKeys.forEach { key ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(if (key == view.key) "[${sortShortLabel(key)}]" else sortShortLabel(key))
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    scope.launch {
-                                        val threading = key == SortKey.ThreadReferences ||
-                                            key == SortKey.ThreadOrderedSubject
-                                        if (threading) {
-                                            val exists = try {
-                                                gate.withLock { session.select(mailbox).exists }
-                                            } catch (error: CancellationException) {
-                                                throw error
-                                            } catch (error: MailFailure) {
-                                                postSnack(error.text)
-                                                return@launch
-                                            }
-                                            if (exists > ThreadConfirmExists && !threadConfirmed) {
-                                                threadExists = exists
-                                                threadAskFromConnect = false
-                                                threadAsk = FolderView(key, view.newestFirst)
-                                                return@launch
-                                            }
-                                        }
-                                        query = ""
-                                        narrowArmed = false
-                                        prompt = null
-                                        gate.withLock {
-                                            model.applyView(FolderView(key, view.newestFirst))
-                                            pull()
-                                        }
-                                        if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                        val fieldKeys = menuKeys.filter { key ->
+                            key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject
+                        }
+                        val threadKeys = menuKeys.filter { key ->
+                            key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject
+                        }
+                        val chooseSort: (SortKey) -> Unit = { key ->
+                            menuOpen = false
+                            scope.launch {
+                                val threading = key == SortKey.ThreadReferences ||
+                                    key == SortKey.ThreadOrderedSubject
+                                if (threading) {
+                                    val exists = try {
+                                        gate.withLock { session.select(mailbox).exists }
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: MailFailure) {
+                                        postSnack(error.text)
+                                        return@launch
                                     }
-                                },
+                                    if (exists > ThreadConfirmExists && !threadConfirmed) {
+                                        threadExists = exists
+                                        threadAskFromConnect = false
+                                        threadAsk = FolderView(key, view.newestFirst)
+                                        return@launch
+                                    }
+                                }
+                                query = ""
+                                narrowArmed = false
+                                prompt = null
+                                gate.withLock {
+                                    model.applyView(FolderView(key, view.newestFirst))
+                                    pull()
+                                }
+                                if (model.rows.isNotEmpty()) listState.scrollToItem(0)
+                            }
+                        }
+                        fieldKeys.forEach { key ->
+                            SortMenuChoice(
+                                key = key,
+                                selected = key == view.key,
+                                enabled = sortKeyAdvertised(session.capabilities, key),
+                                onClick = { chooseSort(key) },
+                            )
+                        }
+                        HorizontalDivider()
+                        threadKeys.forEach { key ->
+                            SortMenuChoice(
+                                key = key,
+                                selected = key == view.key,
+                                enabled = sortKeyAdvertised(session.capabilities, key),
+                                onClick = { chooseSort(key) },
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(if (view.newestFirst) "Newest first" else "Oldest first") },
+                            text = { Text("Newest first") },
                             onClick = {
                                 menuOpen = false
                                 query = ""
@@ -998,6 +1017,12 @@ fun MessageIndexScreen(
                                     }
                                     if (model.rows.isNotEmpty()) listState.scrollToItem(0)
                                 }
+                            },
+                            trailingIcon = {
+                                Checkbox(
+                                    checked = view.newestFirst,
+                                    onCheckedChange = null,
+                                )
                             },
                         )
                     }
@@ -1736,6 +1761,36 @@ private fun sortShortLabel(key: SortKey): String = when (key) {
     SortKey.ThreadReferences -> "Thread"
     SortKey.ThreadOrderedSubject -> "Ordered"
     else -> key.name
+}
+
+private fun sortKeyAdvertised(capabilities: Set<String>, key: SortKey): Boolean {
+    fun has(name: String) = capabilities.any { it.equals(name, ignoreCase = true) }
+    return when (key) {
+        SortKey.Arrival -> true
+        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size -> has("SORT")
+        SortKey.ThreadReferences -> has("THREAD=REFERENCES")
+        SortKey.ThreadOrderedSubject -> has("THREAD=ORDEREDSUBJECT")
+    }
+}
+
+@Composable
+private fun SortMenuChoice(
+    key: SortKey,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = sortShortLabel(key)
+    DropdownMenuItem(
+        text = { Text(if (enabled) label else "$label Not advertised") },
+        onClick = onClick,
+        leadingIcon = if (selected) {
+            { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
+        } else {
+            null
+        },
+        enabled = enabled,
+    )
 }
 
 private class SwipeBoxHolder {

@@ -2715,7 +2715,8 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
         else if (strcasecmp(keyName, "TO") == 0) key = "TO";
         else if (strcasecmp(keyName, "CC") == 0) key = "CC";
         else if (strcasecmp(keyName, "SIZE") == 0) key = "SIZE";
-        else if (strcasecmp(keyName, "DISPLAY") == 0) key = "DISPLAY";
+        else if (strcasecmp(keyName, "DISPLAYFROM") == 0) key = "DISPLAYFROM";
+        else if (strcasecmp(keyName, "DISPLAYTO") == 0) key = "DISPLAYTO";
     }
     if (key == nullptr) return MAILIMAP_ERROR_INVAL;
     int r = mailimap_send_current_tag(imap);
@@ -4132,16 +4133,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars name(env, keyName);
+    bool displayName = strcasecmp(name.c(), "DISPLAYFROM") == 0 || strcasecmp(name.c(), "DISPLAYTO") == 0;
     bool known = strcasecmp(name.c(), "DATE") == 0 || strcasecmp(name.c(), "FROM") == 0
         || strcasecmp(name.c(), "SUBJECT") == 0 || strcasecmp(name.c(), "TO") == 0
         || strcasecmp(name.c(), "CC") == 0 || strcasecmp(name.c(), "SIZE") == 0
-        || strcasecmp(name.c(), "DISPLAY") == 0;
+        || displayName;
     if (!known) {
         throwFailure(env, "use an arrival IndexMode");
         unlockSession(session);
         return nullptr;
     }
-    if (useEsort == JNI_TRUE || strcasecmp(name.c(), "DISPLAY") == 0) {
+    if (useEsort == JNI_TRUE || displayName) {
         bool esort = useEsort == JNI_TRUE;
         bool reverse = newestFirst != JNI_TRUE;
         struct mailimap_response * response = nullptr;

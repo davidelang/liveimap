@@ -357,9 +357,7 @@ class IndexModel(
         get() = pageAnchor
 
     val menuKeys: List<SortKey>
-        get() = SortKey.entries.filter { key ->
-            key != SortKey.ThreadOrderedSubject || orderedSubjectAdvertised()
-        }
+        get() = SortKey.entries
 
     suspend fun loadWindow(): List<IndexRow> {
         activeSearch = null
@@ -950,9 +948,5 @@ class IndexModel(
     private fun align(uids: List<Long>, fetched: List<IndexRow>): List<IndexRow> {
         val byUid = fetched.associateBy { it.uid }
         return uids.mapNotNull { byUid[it] }
-    }
-
-    private fun orderedSubjectAdvertised(): Boolean {
-        return session.capabilities.any { it.equals("THREAD=ORDEREDSUBJECT", ignoreCase = true) }
     }
 }
