@@ -6,6 +6,7 @@ import android.os.StrictMode
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -20,7 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
+import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
@@ -69,5 +73,14 @@ class MainActivity : ComponentActivity() {
                 LiveImapNavHost()
             }
         }
+    }
+
+    override fun onStop() {
+        if (!isChangingConfigurations) {
+            lifecycleScope.launch(NonCancellable) {
+                mailSession().suspendConnections()
+            }
+        }
+        super.onStop()
     }
 }

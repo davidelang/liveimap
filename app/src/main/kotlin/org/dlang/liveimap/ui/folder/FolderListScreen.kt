@@ -57,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +90,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
+import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.compose.readCopies
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
@@ -106,6 +108,7 @@ fun FolderListScreen(
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
+    val connectionState by session.connectionState.collectAsState()
     val model = remember(session, store) { FolderListModel(session, store) }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
@@ -410,6 +413,17 @@ fun FolderListScreen(
     ) { padding ->
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(modifier = Modifier.fillMaxSize()) {
+        ConnectionStatusStrip(connectionState) {
+            scope.launch {
+                try {
+                    session.resume()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                }
+                loadToken += 1
+            }
+        }
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier

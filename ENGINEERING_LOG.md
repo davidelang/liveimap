@@ -972,3 +972,9 @@
 - Phase 0: no tracked changes, stash empty, up-navigation already landed on that builds tag
 - Phase 1: real IMAP error text, keepalive, IDLE renewal and lost-watch notification
 - Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge except as the plan's manual checks describe.
+
+## 2026-10-03 - connection recovery phase 3 landed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/connection-recovery-20261003-1645-plan.md
+- Phase 3: ConnectionStatusStrip on the index, folder list, and reader. Index Retry calls resume then refreshIndex, or bumps loadToken when not yet connected. Reconnected refreshes the index. WatchLost resumes after 2 s, then 10 s, then 60 s, and then stops. LifecycleStartEffect resumes and refreshes on every start after the first. MainActivity onStop suspends the session unless a configuration change is in progress.
+- Manual checks on 10.0.0.1 stay with the human. No deploy.

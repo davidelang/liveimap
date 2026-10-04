@@ -52,6 +52,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +102,7 @@ import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.settings.readerActionLabel
 import org.dlang.liveimap.settings.sortKeyLabel
+import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
@@ -152,6 +154,7 @@ fun MessageReaderScreen(
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
+    val connectionState by session.connectionState.collectAsState()
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
     val carry = remember { Utf8Carry() }
@@ -903,6 +906,17 @@ fun MessageReaderScreen(
     ) { padding ->
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
+        ConnectionStatusStrip(connectionState) {
+            scope.launch {
+                try {
+                    session.resume()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                }
+                loadToken += 1
+            }
+        }
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier

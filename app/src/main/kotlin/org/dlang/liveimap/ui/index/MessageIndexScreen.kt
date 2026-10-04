@@ -75,6 +75,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -112,15 +113,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.compose.LifecycleStartEffect
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.compose.armForwardOnce
@@ -133,6 +137,7 @@ import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
@@ -387,8 +392,10 @@ fun MessageIndexScreen(
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
+    val connectionState by session.connectionState.collectAsState()
     val model = remember(session, store, mailbox) { IndexModel(session, store, mailbox) }
     val scope = rememberCoroutineScope()
+    val watchRecovery = remember { WatchBackoff() }
     val gate = remember { Mutex() }
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
@@ -846,23 +853,27 @@ fun MessageIndexScreen(
                 watchJob = launch {
                     try {
                         model.watch { change ->
-                            scope.launch {
-                                val atNewest = userAtNewestEnd()
-                                when (change) {
-                                    is MailboxChange.Exists -> folderExists = change.exists
-                                    is MailboxChange.Expunge -> folderExists = change.exists
-                                    else -> Unit
-                                }
-                                gate.withLock {
-                                    model.applyChange(change)
-                                    pull()
-                                }
-                                if (change !is MailboxChange.Flags && model.rows.isNotEmpty() && atNewest) {
-                                    scrollToNewest()
-                                }
-                                if (model.pendingNew > 0 && !atNewest) {
-                                    newMailCount = model.pendingNew
-                                    newMailToken += 1
+                            when (change) {
+                                MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
+                                MailboxChange.WatchLost -> watchRecovery.onWatchLost(scope, session)
+                                else -> scope.launch {
+                                    val atNewest = userAtNewestEnd()
+                                    when (change) {
+                                        is MailboxChange.Exists -> folderExists = change.exists
+                                        is MailboxChange.Expunge -> folderExists = change.exists
+                                        else -> Unit
+                                    }
+                                    gate.withLock {
+                                        model.applyChange(change)
+                                        pull()
+                                    }
+                                    if (change !is MailboxChange.Flags && model.rows.isNotEmpty() && atNewest) {
+                                        scrollToNewest()
+                                    }
+                                    if (model.pendingNew > 0 && !atNewest) {
+                                        newMailCount = model.pendingNew
+                                        newMailToken += 1
+                                    }
                                 }
                             }
                         }
@@ -943,6 +954,40 @@ fun MessageIndexScreen(
                 refreshing = false
             }
         }
+    }
+    watchRecovery.onRefresh = { refreshIndex() }
+
+    fun retryConnection() {
+        watchRecovery.cancel()
+        scope.launch {
+            try {
+                session.resume()
+                watchRecovery.attempt = 0
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+            }
+            if (connected) refreshIndex() else loadToken += 1
+        }
+    }
+
+    LifecycleStartEffect(Unit) {
+        if (watchRecovery.skipFirstStart) {
+            watchRecovery.skipFirstStart = false
+        } else {
+            watchRecovery.cancel()
+            scope.launch {
+                try {
+                    session.resume()
+                    watchRecovery.attempt = 0
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                }
+                refreshIndex()
+            }
+        }
+        onStopOrDispose { }
     }
     LaunchedEffect(listState, connected) {
         if (!connected) return@LaunchedEffect
@@ -1340,6 +1385,7 @@ fun MessageIndexScreen(
     ) { padding ->
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
+        ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier
@@ -2025,6 +2071,38 @@ private fun SortMenuChoice(
 
 private class SwipeBoxHolder {
     var state: SwipeToDismissBoxState? = null
+}
+
+private class WatchBackoff {
+    var onRefresh: () -> Unit = {}
+    var job: Job? = null
+    var attempt: Int = 0
+    var skipFirstStart: Boolean = true
+
+    fun onWatchLost(scope: CoroutineScope, session: MailSession) {
+        if (job?.isActive == true) return
+        attempt = 0
+        job = scope.launch {
+            val delays = longArrayOf(2_000L, 10_000L, 60_000L)
+            while (attempt < delays.size) {
+                delay(delays[attempt])
+                try {
+                    session.resume()
+                    attempt = 0
+                    return@launch
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    attempt += 1
+                }
+            }
+        }
+    }
+
+    fun cancel() {
+        job?.cancel()
+        job = null
+    }
 }
 
 @Composable
