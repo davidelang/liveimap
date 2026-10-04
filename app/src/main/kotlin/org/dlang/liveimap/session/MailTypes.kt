@@ -1,6 +1,15 @@
 package org.dlang.liveimap.session
 
-class MailFailure(val text: String) : Exception(text)
+open class MailFailure(val text: String) : Exception(text)
+
+class ConnectionLost(text: String) : MailFailure(text)
+
+sealed interface ConnectionState {
+    data object Connected : ConnectionState
+    data object Reconnecting : ConnectionState
+    data object Suspended : ConnectionState
+    data class Lost(val text: String) : ConnectionState
+}
 
 sealed class OpenResult {
     data object Connected : OpenResult()
@@ -78,6 +87,8 @@ sealed class MailboxChange {
     data class Expunge(val exists: Int) : MailboxChange()
     data class Flags(val uid: Long, val flags: Set<String>) : MailboxChange()
     data object UidValidityReset : MailboxChange()
+    data object WatchLost : MailboxChange()
+    data object Reconnected : MailboxChange()
 }
 
 data class SelectResult(

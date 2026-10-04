@@ -2,6 +2,8 @@ package org.dlang.liveimap.engine
 
 import android.content.Context
 import java.io.File
+import kotlinx.coroutines.flow.StateFlow
+import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -98,6 +100,12 @@ class LibetpanMailSession : MailSession {
     private var watchMailbox: String? = null
 
     private val cache = mutableMapOf<CacheKey, Any>()
+    private val link = SessionLink()
+    private val keeper = ConnectionKeeper(
+        link,
+        clock = { System.nanoTime() / 1_000_000L },
+        sleep = { Thread.sleep(it) },
+    )
 
     private data class CacheKey(
         val mailbox: String,
@@ -109,6 +117,17 @@ class LibetpanMailSession : MailSession {
 
     override val capabilities: Set<String>
         get() = capSet
+
+    override val connectionState: StateFlow<ConnectionState>
+        get() = keeper.connectionState
+
+    override suspend fun resume() {
+        keeper.resume()
+    }
+
+    override suspend fun suspendConnections() {
+        keeper.suspendConnections()
+    }
 
     override suspend fun open(account: AccountSettings): OpenResult {
         val held = this.account
@@ -137,6 +156,17 @@ class LibetpanMailSession : MailSession {
         if (handle != 0L) {
             close()
         }
+        val opened = login(account)
+        if (opened is OpenResult.Connected) {
+            selectedMailbox = null
+            sequencesStale = false
+            keeper.forgetFolder()
+            keeper.markUsed()
+        }
+        return opened
+    }
+
+    private fun login(account: AccountSettings): OpenResult {
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
         val password = try {
             DataStoreSettingsStore(context).password()
@@ -169,8 +199,7 @@ class LibetpanMailSession : MailSession {
         this.account = account
         capSet = capabilityTokens(line).toSet()
         cache.clear()
-        selectedMailbox = null
-        sequencesStale = false
+        compressed = false
         when (resyncKind(line)) {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
@@ -182,31 +211,16 @@ class LibetpanMailSession : MailSession {
         return OpenResult.Connected
     }
 
-    override suspend fun namespaces(): List<Namespace> {
-        val rows = nativeNamespaces(requireHandle()) ?: throw MailFailure("namespace failed")
-        return rows.toList()
+    private fun closeSockets() {
+        val h = handle
+        handle = 0
+        compressed = false
+        if (h != 0L) {
+            nativeClose(h)
+        }
     }
 
-    override suspend fun listLevel(
-        prefix: String,
-        parentMailbox: String?,
-        unreadCounts: Boolean,
-    ): List<FolderEntry> {
-        val rows = nativeListLevel(
-            requireHandle(),
-            prefix,
-            parentMailbox,
-            listKind(advertised(), unreadCounts),
-        ) ?: throw MailFailure("list failed")
-        return rows.toList()
-    }
-
-    override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
-        if (mailboxes.isEmpty()) return emptyMap()
-        return nativeStatusMessages(requireHandle(), mailboxes.toTypedArray())
-    }
-
-    override suspend fun select(mailbox: String): SelectResult {
+    private fun selectNow(mailbox: String): SelectResult {
         val current = selectedMailbox
         if (current != null && current != mailbox && hasCap(advertised(), "UNSELECT")) {
             nativeUnselect(requireHandle())
@@ -217,7 +231,38 @@ class LibetpanMailSession : MailSession {
         selectedMailbox = mailbox
         selected = result
         sequencesStale = false
+        keeper.noteSelected(result)
         return result
+    }
+
+    override suspend fun namespaces(): List<Namespace> = keeper.read("namespace") {
+        val rows = nativeNamespaces(requireHandle()) ?: throw MailFailure("namespace failed")
+        rows.toList()
+    }
+
+    override suspend fun listLevel(
+        prefix: String,
+        parentMailbox: String?,
+        unreadCounts: Boolean,
+    ): List<FolderEntry> = keeper.read("list") {
+        val rows = nativeListLevel(
+            requireHandle(),
+            prefix,
+            parentMailbox,
+            listKind(advertised(), unreadCounts),
+        ) ?: throw MailFailure("list failed")
+        rows.toList()
+    }
+
+    override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
+        if (mailboxes.isEmpty()) return emptyMap()
+        return keeper.read("status") {
+            nativeStatusMessages(requireHandle(), mailboxes.toTypedArray())
+        }
+    }
+
+    override suspend fun select(mailbox: String): SelectResult = keeper.read("select") {
+        selectNow(mailbox)
     }
 
     override suspend fun unselect() {
@@ -225,11 +270,11 @@ class LibetpanMailSession : MailSession {
         nativeUnselect(requireHandle())
     }
 
-    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
-        val h = requireHandle()
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = keeper.read("fetch") {
         if (sequencesStale || selectedMailbox != request.mailbox) {
-            select(request.mailbox)
+            selectNow(request.mailbox)
         }
+        val h = requireHandle()
         val settings = account
         val useServerPreview = request.includePreview && previewKind(advertised()) == "Preview"
         val rows = nativeFetchIndex(
@@ -248,7 +293,7 @@ class LibetpanMailSession : MailSession {
             useServerPreview,
             settings?.email.orEmpty(),
         ) ?: throw MailFailure("fetch failed")
-        return rows.map { row ->
+        rows.map { row ->
             row.copy(
                 from = decodeHeaderWords(row.from),
                 subject = decodeHeaderWords(row.subject),
@@ -256,44 +301,57 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    override suspend fun fetchStructure(uid: Long): MimePart {
-        return nativeFetchStructure(requireHandle(), uid) ?: throw MailFailure("fetch failed")
+    override suspend fun fetchStructure(uid: Long): MimePart = keeper.read("fetch") {
+        nativeFetchStructure(requireHandle(), uid) ?: throw MailFailure("fetch failed")
     }
 
-    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray {
-        val binary = fetchKind(advertised()) == "BinaryPeek"
-        return nativePeekPart(requireHandle(), uid, section, offset, length, binary)
-            ?: throw MailFailure("fetch failed")
-    }
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
+        keeper.read("fetch") {
+            val binary = fetchKind(advertised()) == "BinaryPeek"
+            nativePeekPart(requireHandle(), uid, section, offset, length, binary)
+                ?: throw MailFailure("fetch failed")
+        }
 
-    override suspend fun fetchRfc822(uid: Long): ByteArray {
-        return nativeFetchRfc822(requireHandle(), uid) ?: throw MailFailure("fetch failed")
+    override suspend fun fetchRfc822(uid: Long): ByteArray = keeper.read("fetch") {
+        nativeFetchRfc822(requireHandle(), uid) ?: throw MailFailure("fetch failed")
     }
 
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
-        nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
+        keeper.write("store") {
+            nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
+        }
     }
 
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
-        nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
+        keeper.write("store") {
+            nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
+        }
     }
 
     override suspend fun uidExpungeDeleted() {
-        nativeUidExpungeDeleted(requireHandle())
+        keeper.write("expunge") {
+            nativeUidExpungeDeleted(requireHandle())
+        }
     }
 
     override suspend fun uidExpunge(uids: List<Long>) {
         if (uids.isEmpty()) return
-        nativeUidExpunge(requireHandle(), uids.toLongArray())
+        keeper.write("expunge") {
+            nativeUidExpunge(requireHandle(), uids.toLongArray())
+        }
     }
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
         if (uids.isEmpty()) return
-        nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
+        keeper.write("copy") {
+            nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
+        }
     }
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
-        nativeCopyAllThenDelete(requireHandle(), targetMailbox, moveKind(advertised()))
+        keeper.write("copy") {
+            nativeCopyAllThenDelete(requireHandle(), targetMailbox, moveKind(advertised()))
+        }
     }
 
     override suspend fun selectedExists(): Int = selected.exists
@@ -304,18 +362,18 @@ class LibetpanMailSession : MailSession {
         return nativeTakeCopiedUids(h)?.toList().orEmpty()
     }
 
-    override suspend fun searchText(query: String): List<Long> {
+    override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
-        return remember("SEARCH $query") {
+        remember("SEARCH $query") {
             val ids = nativeSearchText(h, query, searchKind(advertised()) == "Esearch")
                 ?: throw MailFailure("search failed")
             ids.toList()
         }
     }
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
-        return remember("CRITERION $kind $argument") {
+        remember("CRITERION $kind $argument") {
             val ids = nativeSearchCriterion(h, kind, argument, searchKind(advertised()) == "Esearch")
                 ?: throw MailFailure("search failed")
             ids.toList()
@@ -329,12 +387,14 @@ class LibetpanMailSession : MailSession {
         if (key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject) {
             throw MailFailure("use thread")
         }
-        val h = requireHandle()
-        val command = sortKind(advertised())
-        val token = imapSortKey(advertised(), sortToken(key))
-        return remember("SORT $token $newestFirst") {
-            val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
-            ids.toList()
+        return keeper.read("sort") {
+            val h = requireHandle()
+            val command = sortKind(advertised())
+            val token = imapSortKey(advertised(), sortToken(key))
+            remember("SORT $token $newestFirst") {
+                val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
+                ids.toList()
+            }
         }
     }
 
@@ -350,17 +410,20 @@ class LibetpanMailSession : MailSession {
             }
             else -> throw MailFailure("use thread")
         }
-        val h = requireHandle()
-        return remember("THREAD $algorithm") {
-            nativeThread(h, algorithm) ?: throw MailFailure("thread failed")
+        return keeper.read("thread") {
+            val h = requireHandle()
+            remember("THREAD $algorithm") {
+                nativeThread(h, algorithm) ?: throw MailFailure("thread failed")
+            }
         }
     }
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
-        val h = requireHandle()
-        watchMailbox = mailbox
-        watchCallback = onChange
-        nativeWatch(h, mailbox)
+        keeper.read("watch") {
+            watchMailbox = mailbox
+            watchCallback = onChange
+            nativeWatch(requireHandle(), mailbox)
+        }
     }
 
     override suspend fun stopWatch() {
@@ -372,26 +435,26 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
-        nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
+        keeper.write("append") {
+            nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
+        }
     }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
-        nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray())
+        keeper.write("send") {
+            nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray())
+        }
     }
 
     override fun close() {
-        val h = handle
-        handle = 0
+        closeSockets()
         capSet = emptySet()
         account = null
-        compressed = false
         selectedMailbox = null
         sequencesStale = false
         watchCallback = null
         cache.clear()
-        if (h != 0L) {
-            nativeClose(h)
-        }
+        keeper.onSessionClosed()
     }
 
     fun onNativeWatch(kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
@@ -400,6 +463,10 @@ class LibetpanMailSession : MailSession {
             0 -> MailboxChange.Exists(exists)
             1 -> MailboxChange.Expunge(exists)
             2 -> MailboxChange.Flags(uid, flags?.toSet() ?: emptySet())
+            4 -> {
+                keeper.markWatchLost()
+                MailboxChange.WatchLost
+            }
             else -> MailboxChange.UidValidityReset
         }
         if (change !is MailboxChange.Flags && mailbox != null) {
@@ -407,6 +474,64 @@ class LibetpanMailSession : MailSession {
         }
         sequencesStale = true
         watchCallback?.invoke(change)
+    }
+
+    private inner class SessionLink : Link {
+        override fun dead(): Boolean {
+            val h = handle
+            if (h == 0L) return true
+            return nativeSessionDead(h)
+        }
+
+        override fun connect() {
+            val saved = account ?: throw MailFailure("not connected")
+            val opened = login(saved)
+            if (opened !is OpenResult.Connected) {
+                val text = when (opened) {
+                    is OpenResult.Failed -> opened.text
+                    is OpenResult.Rejected -> opened.capabilities
+                    OpenResult.Connected -> "connection failed"
+                }
+                throw MailFailure(text)
+            }
+            cache.clear()
+            sequencesStale = true
+        }
+
+        override fun noop() {
+            nativeNoop(requireHandle())
+        }
+
+        override fun reselect(): SelectResult? {
+            val mailbox = selectedMailbox ?: return null
+            val result = nativeSelect(requireHandle(), mailbox) ?: throw MailFailure("select failed")
+            selectedMailbox = mailbox
+            selected = result
+            cache.clear()
+            sequencesStale = true
+            return result
+        }
+
+        override fun rewatch() {
+            val mailbox = watchMailbox ?: return
+            if (watchCallback == null) return
+            nativeWatch(requireHandle(), mailbox)
+        }
+
+        override fun close() {
+            closeSockets()
+        }
+
+        override fun emit(change: MailboxChange) {
+            if (change !is MailboxChange.Flags) {
+                val mailbox = selectedMailbox
+                if (mailbox != null) {
+                    cache.keys.retainAll { it.mailbox != mailbox }
+                }
+                sequencesStale = true
+            }
+            watchCallback?.invoke(change)
+        }
     }
 
     private fun advertised(): String = capSet.joinToString(" ")
@@ -461,6 +586,8 @@ class LibetpanMailSession : MailSession {
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
 
     private external fun nativeSessionDead(handle: Long): Boolean
+
+    private external fun nativeNoop(handle: Long)
 
     private external fun nativeCapabilityLine(handle: Long): String
     private external fun nativeEnable(handle: Long, capability: String)

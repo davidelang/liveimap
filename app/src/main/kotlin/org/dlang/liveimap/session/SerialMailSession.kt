@@ -2,6 +2,7 @@ package org.dlang.liveimap.session
 
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
@@ -15,6 +16,17 @@ class SerialMailSession(
 
     override val capabilities: Set<String>
         get() = inner.capabilities
+
+    override val connectionState: StateFlow<ConnectionState>
+        get() = inner.connectionState
+
+    override suspend fun resume() {
+        onLane { inner.resume() }
+    }
+
+    override suspend fun suspendConnections() {
+        onLane { inner.suspendConnections() }
+    }
 
     override suspend fun open(account: AccountSettings): OpenResult =
         onLane { inner.open(account) }

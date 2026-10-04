@@ -669,6 +669,9 @@ class IndexModel(
             -> {
                 replaceWindow { fetchCurrent() }
             }
+            MailboxChange.WatchLost,
+            MailboxChange.Reconnected,
+            -> Unit
         }
         return heldRows
     }

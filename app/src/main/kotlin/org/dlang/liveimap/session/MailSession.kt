@@ -1,10 +1,18 @@
 package org.dlang.liveimap.session
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 
+val connectedConnection: StateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Connected)
+
 interface MailSession {
     val capabilities: Set<String>
+    val connectionState: StateFlow<ConnectionState>
+        get() = connectedConnection
+    suspend fun resume() {}
+    suspend fun suspendConnections() {}
     suspend fun open(account: AccountSettings): OpenResult
     suspend fun namespaces(): List<Namespace>
     suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry>
