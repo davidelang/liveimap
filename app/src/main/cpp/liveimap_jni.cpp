@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -140,6 +141,7 @@ int (* gKeepUnselect)(mailimap *) = mailimap_unselect;
 struct JniCache {
     bool ready = false;
     jclass mailFailure = nullptr;
+    jclass connectionLost = nullptr;
     jclass indexRow = nullptr;
     jclass folderEntry = nullptr;
     jclass ns = nullptr;
@@ -258,8 +260,53 @@ void throwFailure(JNIEnv * env, const std::string & text) {
     env->ThrowNew(gJni.mailFailure, text.c_str());
 }
 
-void throwImap(JNIEnv * env, mailimap * session, const char * fallback) {
-    throwFailure(env, imapText(session, fallback));
+void cacheConnectionLost(JNIEnv * env) {
+    if (gJni.connectionLost != nullptr) {
+        return;
+    }
+    jclass local = env->FindClass("org/dlang/liveimap/session/ConnectionLost");
+    if (local != nullptr) {
+        gJni.connectionLost = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+    } else {
+        env->ExceptionClear();
+    }
+}
+
+void throwConnectionLost(JNIEnv * env, const std::string & text) {
+    if (env->ExceptionCheck()) {
+        return;
+    }
+    cacheConnectionLost(env);
+    jclass cls = gJni.connectionLost != nullptr ? gJni.connectionLost : gJni.mailFailure;
+    if (cls == nullptr) {
+        return;
+    }
+    env->ThrowNew(cls, text.c_str());
+}
+
+void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback) {
+    if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
+        std::string host;
+        int port = 0;
+        if (session != nullptr) {
+            host = session->host;
+            port = session->imapPort;
+            if (session->imap != nullptr) {
+                mailimap_free(session->imap);
+                session->imap = nullptr;
+            }
+        }
+        const char * why = fallback != nullptr && fallback[0] != 0 ? fallback : "imap error";
+        throwConnectionLost(env, "IMAP connection to " + host + ":" + std::to_string(port) + " lost (" + why + ")");
+        return;
+    }
+    mailimap * imap = session != nullptr ? session->imap : nullptr;
+    std::string text = imapText(imap, fallback);
+    if (text == "Completed") {
+        text = fallback != nullptr ? fallback : "imap error";
+    }
+    throwFailure(env, text);
 }
 
 bool ensureJni(JNIEnv * env) {
@@ -270,6 +317,7 @@ bool ensureJni(JNIEnv * env) {
     local = env->FindClass("org/dlang/liveimap/session/MailFailure");
     gJni.mailFailure = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
+    cacheConnectionLost(env);
     local = env->FindClass("org/dlang/liveimap/session/IndexRow");
     gJni.indexRow = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
@@ -425,11 +473,7 @@ void unlockSession(LiveSession * session) {
 }
 
 void releaseBurstFailure(JNIEnv * env, LiveSession * session, int r, const char * fallback) {
-    throwImap(env, session->imap, fallback);
-    if (r == MAILIMAP_ERROR_STREAM && session->imap != nullptr) {
-        mailimap_free(session->imap);
-        session->imap = nullptr;
-    }
+    throwImap(env, session, r, fallback);
     unlockSession(session);
 }
 
@@ -1098,7 +1142,7 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox) {
         r = mailimap_select(session->imap, mailbox);
     }
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "select failed");
+        throwImap(env, session, r, "select failed");
         return false;
     }
     if (session->qresync) {
@@ -1592,14 +1636,31 @@ void watchMain(LiveSession * session) {
         return;
     }
     int fd = mailimap_idle_get_fd(session->watch);
+    bool watchLost = false;
     while (!session->watchStop.load()) {
+        if (mailimap_idle_get_done_delay(session->watch) == 0) {
+            int doneR = mailimap_idle_done(session->watch);
+            int idleR = doneR == MAILIMAP_NO_ERROR ? mailimap_idle(session->watch) : doneR;
+            if (doneR != MAILIMAP_NO_ERROR || idleR != MAILIMAP_NO_ERROR) {
+                emitWatch(session, 4, session->watchExists, 0, nullptr);
+                watchLost = true;
+                break;
+            }
+            fd = mailimap_idle_get_fd(session->watch);
+        }
         struct pollfd pfd{};
         pfd.fd = fd;
         pfd.events = POLLIN;
         int pr = poll(&pfd, 1, 500);
         if (session->watchStop.load()) break;
         if (pr <= 0) continue;
-        if (mailimap_read_line(session->watch) == nullptr) break;
+        if (mailimap_read_line(session->watch) == nullptr) {
+            if (!session->watchStop.load()) {
+                emitWatch(session, 4, session->watchExists, 0, nullptr);
+            }
+            watchLost = true;
+            break;
+        }
         size_t indx = 0;
         struct mailimap_parser_context * ctx = mailimap_parser_context_new(session->watch);
         struct mailimap_response_data * data = nullptr;
@@ -1611,12 +1672,34 @@ void watchMain(LiveSession * session) {
         if (data != nullptr) mailimap_response_data_free(data);
         if (ctx != nullptr) mailimap_parser_context_free(ctx);
     }
-    mailimap_idle_done(session->watch);
+    if (!watchLost) {
+        mailimap_idle_done(session->watch);
+    }
     tlsWatch = nullptr;
     gVm->DetachCurrentThread();
 }
 
-const int kConnectTimeoutSec = 60;
+const int kConnectTimeoutSec = 30;
+const int kReadTimeoutSec = 60;
+
+void enableKeepalive(int fd) {
+    int on = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on)) < 0) {
+        __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "SO_KEEPALIVE failed: %s", strerror(errno));
+    }
+    int idle = 120;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)) < 0) {
+        __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "TCP_KEEPIDLE failed: %s", strerror(errno));
+    }
+    int interval = 30;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval)) < 0) {
+        __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "TCP_KEEPINTVL failed: %s", strerror(errno));
+    }
+    int count = 4;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count)) < 0) {
+        __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "TCP_KEEPCNT failed: %s", strerror(errno));
+    }
+}
 
 std::string serviceLabel(const char * proto, const char * host, int port) {
     std::string label = proto != nullptr ? proto : "";
@@ -1729,6 +1812,7 @@ int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
         close(fd);
         return -1;
     }
+    enableKeepalive(fd);
     return fd;
 }
 
@@ -1887,7 +1971,7 @@ bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
         // Tagged OK text would replace this fallback.
         session->imap->imap_response = nullptr;
     }
-    throwImap(env, session != nullptr ? session->imap : nullptr, "fetch returned no rows");
+    throwImap(env, session, MAILIMAP_NO_ERROR, "fetch returned no rows");
     unlockSession(session);
     return true;
 }
@@ -1929,14 +2013,14 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
         *error = "imap error";
         return nullptr;
     }
-    mailimap_set_timeout(imap, kConnectTimeoutSec);
+    mailimap_set_timeout(imap, kReadTimeoutSec);
     std::string address;
     int fd = tcpConnect("IMAP", host, port, &address, error);
     if (fd < 0) {
         mailimap_free(imap);
         return nullptr;
     }
-    mailstream * stream = mailstream_socket_open_timeout(fd, kConnectTimeoutSec);
+    mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
     if (stream == nullptr) {
         close(fd);
         *error = connectFailure("IMAP", host, port, address, "connection failed");
@@ -2978,7 +3062,7 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
         int r = sendUidEsearch(session->imap, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
-            throwImap(env, session->imap, "search failed");
+            throwImap(env, session, r, "search failed");
             unlockSession(session);
             return nullptr;
         }
@@ -2987,7 +3071,7 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
         mailimap_response_free(response);
         if (!ok) {
             if (result != nullptr) mailimap_search_result_free(result);
-            throwImap(env, session->imap, "search failed");
+            throwImap(env, session, r, "search failed");
             unlockSession(session);
             return nullptr;
         }
@@ -3001,7 +3085,7 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
     mailimap_search_key_free(key);
     if (!cmdOk(r)) {
         if (result != nullptr) mailimap_search_result_free(result);
-        throwImap(env, session->imap, "search failed");
+        throwImap(env, session, r, "search failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3123,6 +3207,23 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSessionDead(JNIEnv * en
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    if (session->imap == nullptr) {
+        throwImap(env, session, MAILIMAP_ERROR_STREAM, "noop failed");
+        unlockSession(session);
+        return;
+    }
+    int r = mailimap_noop(session->imap);
+    if (!cmdOk(r)) {
+        throwImap(env, session, r, "noop failed");
+    }
+    unlockSession(session);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCompress(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
@@ -3151,7 +3252,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
     struct mailimap_namespace_data * data = nullptr;
     int r = mailimap_namespace(session->imap, &data);
     if (!cmdOk(r) || data == nullptr) {
-        throwImap(env, session->imap, "namespace failed");
+        throwImap(env, session, r, "namespace failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3284,7 +3385,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     int r = listMailboxes(session->imap, reference.c_str(), extended, withMessages, withUnseen, &list, &raw);
     if (!cmdOk(r)) {
         if (list != nullptr) mailimap_list_result_free(list);
-        throwImap(env, session->imap, "list failed");
+        throwImap(env, session, r, "list failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3361,7 +3462,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
     if (session == nullptr) return;
     int r = mailimap_unselect(session->imap);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "unselect failed");
+        throwImap(env, session, r, "unselect failed");
     }
     unlockSession(session);
 }
@@ -3420,7 +3521,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         int r = fetchRows(session->imap, set, false, true, serverPreview, &list);
         mailimap_set_free(set);
         if (!cmdOk(r)) {
-            throwImap(env, session->imap, "fetch failed");
+            throwImap(env, session, r, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
@@ -3495,7 +3596,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         int r = fetchRows(session->imap, set, true, true, serverPreview, &list);
         if (set != nullptr) mailimap_set_free(set);
         if (!cmdOk(r)) {
-            throwImap(env, session->imap, "fetch failed");
+            throwImap(env, session, r, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
@@ -3565,7 +3666,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
     mailimap_set_free(set);
     mailimap_fetch_type_free(fetch);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "fetch failed");
+        throwImap(env, session, r, "fetch failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3580,7 +3681,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
     jobject obj = mimeFromBody(env, body, "");
     if (list != nullptr) mailimap_fetch_list_free(list);
     if (obj == nullptr && !env->ExceptionCheck()) {
-        throwImap(env, session->imap, "fetch failed");
+        throwImap(env, session, r, "fetch failed");
     }
     unlockSession(session);
     return obj;
@@ -3688,7 +3789,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     mailimap_set_free(set);
     mailimap_fetch_type_free(fetch);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "fetch failed");
+        throwImap(env, session, r, "fetch failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3745,7 +3846,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
     mailimap_set_free(set);
     mailimap_fetch_type_free(fetch);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "fetch failed");
+        throwImap(env, session, r, "fetch failed");
         unlockSession(session);
         return nullptr;
     }
@@ -3792,7 +3893,7 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
             if (removeFlags != nullptr) mailimap_flag_list_free(removeFlags);
-            throwImap(env, session->imap, "store failed");
+            throwImap(env, session, r, "store failed");
             return false;
         }
     } else if (addFlags != nullptr) {
@@ -3804,7 +3905,7 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
         int r = mailimap_uid_store(session->imap, set, att);
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
-            throwImap(env, session->imap, "store failed");
+            throwImap(env, session, r, "store failed");
             return false;
         }
     } else if (removeFlags != nullptr) {
@@ -3850,7 +3951,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
         : mailimap_uidplus_uid_copy(session->imap, set, destMailbox, &uidvalidity, &source, &copied);
     if (!cmdOk(r)) {
         freeUidSets(source, copied);
-        throwImap(env, session->imap, move ? "move failed" : "copy failed");
+        throwImap(env, session, r, move ? "move failed" : "copy failed");
         return false;
     }
     rememberDestUids(session, copied);
@@ -3862,7 +3963,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
     r = mailimap_uid_store(session->imap, set, att);
     mailimap_store_att_flags_free(att);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "store failed");
+        throwImap(env, session, r, "store failed");
         return false;
     }
     return true;
@@ -3925,7 +4026,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEn
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
     int r = mailimap_uid_expunge(session->imap, set);
     mailimap_set_free(set);
-    if (!cmdOk(r)) throwImap(env, session->imap, "expunge failed");
+    if (!cmdOk(r)) throwImap(env, session, r, "expunge failed");
     unlockSession(session);
 }
 
@@ -3948,7 +4049,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env
     }
     int r = mailimap_uid_expunge(session->imap, set);
     mailimap_set_free(set);
-    if (!cmdOk(r)) throwImap(env, session->imap, "expunge failed");
+    if (!cmdOk(r)) throwImap(env, session, r, "expunge failed");
     unlockSession(session);
 }
 
@@ -4070,7 +4171,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
         bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n), flagList);
     if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
     if (flagList != nullptr) mailimap_flag_list_free(flagList);
-    if (!cmdOk(r)) throwImap(env, session->imap, "append failed");
+    if (!cmdOk(r)) throwImap(env, session, r, "append failed");
     unlockSession(session);
 }
 
@@ -4087,7 +4188,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
         int r = sendUidEsearch(session->imap, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
-            throwImap(env, session->imap, "search failed");
+            throwImap(env, session, r, "search failed");
             unlockSession(session);
             return nullptr;
         }
@@ -4096,7 +4197,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
         mailimap_response_free(response);
         if (!ok) {
             if (result != nullptr) mailimap_search_result_free(result);
-            throwImap(env, session->imap, "search failed");
+            throwImap(env, session, r, "search failed");
             unlockSession(session);
             return nullptr;
         }
@@ -4110,7 +4211,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     mailimap_search_key_free(key);
     if (!cmdOk(r)) {
         if (result != nullptr) mailimap_search_result_free(result);
-        throwImap(env, session->imap, "search failed");
+        throwImap(env, session, r, "search failed");
         unlockSession(session);
         return nullptr;
     }
@@ -4161,7 +4262,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
         struct mailimap_response * response = nullptr;
         int r = sendUidSortChoice(session->imap, name.c(), reverse, esort, &response);
         if (r != MAILIMAP_NO_ERROR) {
-            throwImap(env, session->imap, "sort failed");
+            throwImap(env, session, r, "sort failed");
             unlockSession(session);
             return nullptr;
         }
@@ -4170,7 +4271,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
         mailimap_response_free(response);
         if (!ok) {
             if (result != nullptr) mailimap_sort_result_free(result);
-            throwImap(env, session->imap, "sort failed");
+            throwImap(env, session, r, "sort failed");
             unlockSession(session);
             return nullptr;
         }
@@ -4198,7 +4299,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     mailimap_sort_key_free(key);
     mailimap_search_key_free(all);
     if (!cmdOk(r)) {
-        throwImap(env, session->imap, "sort failed");
+        throwImap(env, session, r, "sort failed");
         unlockSession(session);
         return nullptr;
     }
@@ -4222,7 +4323,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     struct mailimap_response * response = nullptr;
     int r = sendUidThread(session->imap, alg.c(), &response);
     if (r != MAILIMAP_NO_ERROR) {
-        throwImap(env, session->imap, "thread failed");
+        throwImap(env, session, r, "thread failed");
         unlockSession(session);
         return nullptr;
     }
@@ -4231,7 +4332,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     mailimap_response_free(response);
     if (!ok) {
         live_thread_free(tree);
-        throwImap(env, session->imap, "thread failed");
+        throwImap(env, session, r, "thread failed");
         unlockSession(session);
         return nullptr;
     }
@@ -4262,8 +4363,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     }
     int r = mailimap_select(watch, mb.c());
     if (!cmdOk(r)) {
-        throwImap(env, watch, "select failed");
-        mailimap_free(watch);
+        if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
+            mailimap_free(watch);
+            throwImap(env, session, r, "select failed");
+        } else {
+            mailimap * main = session->imap;
+            session->imap = watch;
+            throwImap(env, session, r, "select failed");
+            session->imap = main;
+            mailimap_free(watch);
+        }
         unlockSession(session);
         return;
     }
@@ -4317,7 +4426,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
-    mailsmtp_set_timeout(smtp, kConnectTimeoutSec);
+    mailsmtp_set_timeout(smtp, kReadTimeoutSec);
     std::string address;
     std::string dialError;
     int fd = tcpConnect("SMTP", session->smtpHost.c_str(), session->smtpPort, &address, &dialError);
@@ -4327,7 +4436,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
-    mailstream * stream = mailstream_socket_open_timeout(fd, kConnectTimeoutSec);
+    mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
     if (stream == nullptr) {
         close(fd);
         mailsmtp_free(smtp);

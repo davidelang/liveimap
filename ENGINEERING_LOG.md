@@ -963,3 +963,12 @@
 - Drawer edge swipe is enabled only when the route is folders
 - Unsent no longer shows a Close button. Open, Retry and Discard stay
 - No new dependency. No deploy. No send, append, or expunge
+
+## 2026-10-03 - connection recovery execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/connection-recovery-20261003-1645-plan.md
+- Status: APPROVED
+- builds before edit: 8921769
+- Phase 0: no tracked changes, stash empty, up-navigation already landed on that builds tag
+- Phase 1: real IMAP error text, keepalive, IDLE renewal and lost-watch notification
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge except as the plan's manual checks describe.
