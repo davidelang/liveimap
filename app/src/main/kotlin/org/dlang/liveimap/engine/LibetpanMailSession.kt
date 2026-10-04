@@ -3,6 +3,7 @@ package org.dlang.liveimap.engine
 import android.content.Context
 import java.io.File
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -169,7 +170,10 @@ class LibetpanMailSession : MailSession {
     private fun login(account: AccountSettings): OpenResult {
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
         val password = try {
-            DataStoreSettingsStore(context).password()
+            // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
+            runBlocking {
+                DataStoreSettingsStore(context).password()
+            }
         } catch (error: Exception) {
             return OpenResult.Failed(error.message ?: "keystore unavailable")
         }
