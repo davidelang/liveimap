@@ -1,22 +1,33 @@
 package org.dlang.liveimap.ui.compose
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -34,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import java.util.UUID
@@ -87,6 +99,54 @@ private class ForwardRow(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AddressChips(
+    label: String,
+    stored: String,
+    buffer: String,
+    onStored: (String) -> Unit,
+    onBuffer: (String) -> Unit,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        for (address in splitAddresses(stored)) {
+            InputChip(
+                selected = false,
+                onClick = { onStored(removeChipAddress(stored, address)) },
+                label = { Text(address) },
+                trailingIcon = {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove")
+                },
+            )
+        }
+        OutlinedTextField(
+            value = buffer,
+            onValueChange = { next ->
+                val edited = commitChip(stored, next)
+                onStored(edited.stored)
+                onBuffer(edited.buffer)
+            },
+            label = { Text(label) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    val edited = commitChip(stored, "$buffer\n")
+                    onStored(edited.stored)
+                    onBuffer(edited.buffer)
+                },
+            ),
+            modifier = Modifier
+                .defaultMinSize(minWidth = 160.dp)
+                .weight(1f),
+        )
+        if (trailing != null) trailing()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComposeScreen(
@@ -135,6 +195,10 @@ fun ComposeScreen(
     var baseRowKeyText by rememberSaveable { mutableStateOf("") }
     var baselineReady by rememberSaveable { mutableStateOf(false) }
     var copiesOpen by rememberSaveable { mutableStateOf(false) }
+    var toBuffer by rememberSaveable { mutableStateOf("") }
+    var ccBuffer by rememberSaveable { mutableStateOf("") }
+    var bccBuffer by rememberSaveable { mutableStateOf("") }
+    var overflow by remember { mutableStateOf(false) }
     val forwardOnce = rememberSaveable {
         val code = ForwardOnce.code
         ForwardOnce.code = -1
@@ -149,6 +213,9 @@ fun ComposeScreen(
         toText = draft.to.joinToString(", ")
         ccText = draft.cc.joinToString(", ")
         bccText = ""
+        toBuffer = ""
+        ccBuffer = ""
+        bccBuffer = ""
         subject = draft.subject
         val at = cursor.coerceIn(0, draft.body.length)
         bodyField = TextFieldValue(draft.body, TextRange(at))
@@ -296,6 +363,9 @@ fun ComposeScreen(
             toText = loaded.to
             ccText = loaded.cc
             bccText = ""
+            toBuffer = ""
+            ccBuffer = ""
+            bccBuffer = ""
             subject = loaded.subject
             bodyField = TextFieldValue(loaded.body, TextRange(loaded.body.length))
             inReplyTo = loaded.inReplyTo
@@ -704,7 +774,7 @@ fun ComposeScreen(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Compose") },
+                title = { Text(composeTitle(seed.kind)) },
                 navigationIcon = {
                     IconButton(onClick = { requestClose() }) {
                         Icon(
@@ -715,14 +785,34 @@ fun ComposeScreen(
                 },
                 actions = {
                     if (seed.kind != ComposeKind.Bounce) {
-                        TextButton(onClick = { sendMessage() }) {
-                            Text(if (held?.appendOnly == true) "Retry" else "Send")
+                        IconButton(onClick = { sendMessage() }) {
+                            Icon(
+                                imageVector = Icons.Filled.Send,
+                                contentDescription = if (held?.appendOnly == true) "Retry" else "Send",
+                            )
                         }
                         if (!deliveryDone) {
-                            TextButton(
-                                onClick = { postponeDraft() },
-                                enabled = account.postponedMailbox.isNotEmpty(),
-                            ) { Text("Postpone") }
+                            Box {
+                                IconButton(onClick = { overflow = true }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MoreVert,
+                                        contentDescription = "More",
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = overflow,
+                                    onDismissRequest = { overflow = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Postpone") },
+                                        onClick = {
+                                            overflow = false
+                                            postponeDraft()
+                                        },
+                                        enabled = account.postponedMailbox.isNotEmpty(),
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -838,42 +928,46 @@ fun ComposeScreen(
                 }
             }) { Text("Bounce") }
         } else {
-            val showCc = copiesOpen || ccText.isNotBlank()
-            val showBcc = copiesOpen || bccText.isNotBlank()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = toText,
-                    onValueChange = { toText = it },
-                    label = { Text("To") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { copiesOpen = !copiesOpen }) {
-                    Text(if (copiesOpen) "Hide Cc/Bcc" else "Cc/Bcc")
-                }
-            }
+            val showCc = copiesOpen || ccText.isNotBlank() || ccBuffer.isNotBlank()
+            val showBcc = copiesOpen || bccText.isNotBlank() || bccBuffer.isNotBlank()
+            AddressChips(
+                label = "To",
+                stored = toText,
+                buffer = toBuffer,
+                onStored = { toText = it },
+                onBuffer = { toBuffer = it },
+                trailing = {
+                    TextButton(onClick = { copiesOpen = !copiesOpen }) {
+                        Text(if (copiesOpen) "Hide Cc/Bcc" else "Cc/Bcc")
+                    }
+                },
+            )
             if (showCc) {
-                OutlinedTextField(
-                    value = ccText,
-                    onValueChange = { ccText = it },
-                    label = { Text("Cc") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                AddressChips(
+                    label = "Cc",
+                    stored = ccText,
+                    buffer = ccBuffer,
+                    onStored = { ccText = it },
+                    onBuffer = { ccBuffer = it },
                 )
             }
             if (showBcc) {
-                OutlinedTextField(
-                    value = bccText,
-                    onValueChange = { bccText = it },
-                    label = { Text("Bcc") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                AddressChips(
+                    label = "Bcc",
+                    stored = bccText,
+                    buffer = bccBuffer,
+                    onStored = { bccText = it },
+                    onBuffer = { bccBuffer = it },
                 )
             }
-            if (showsPlaintextChip(plaintextEntries, toText, ccText, bccText)) {
+            if (
+                showsPlaintextChip(
+                    plaintextEntries,
+                    chipProbe(toText, toBuffer),
+                    chipProbe(ccText, ccBuffer),
+                    chipProbe(bccText, bccBuffer),
+                )
+            ) {
                 AssistChip(
                     onClick = {},
                     label = { Text("Plain text only") },
@@ -1020,6 +1114,64 @@ internal fun smtpAcceptFlags(kind: ComposeKind): Set<String> = when (kind) {
     ComposeKind.Reply, ComposeKind.ReplyAll -> setOf("\\Answered")
     ComposeKind.Forward, ComposeKind.Bounce -> setOf("\$Forwarded")
     ComposeKind.New, ComposeKind.ResumePostpone -> emptySet()
+}
+
+internal fun composeTitle(kind: ComposeKind): String = when (kind) {
+    ComposeKind.Reply -> "Reply"
+    ComposeKind.ReplyAll -> "Reply all"
+    ComposeKind.Forward -> "Forward"
+    ComposeKind.New, ComposeKind.Bounce, ComposeKind.ResumePostpone -> "Compose"
+}
+
+internal data class ChipCommit(val stored: String, val buffer: String)
+
+internal fun commitChip(stored: String, buffer: String): ChipCommit {
+    val cut = chipSeparatorAt(buffer)
+    if (cut < 0) return ChipCommit(stored, buffer)
+    val token = buffer.substring(0, cut).trim()
+    var rest = buffer.substring(cut + 1)
+    if (buffer[cut] == '\r' && rest.startsWith("\n")) rest = rest.substring(1)
+    rest = rest.trimStart(' ', '\t')
+    val next = if (token.isEmpty()) stored else appendAddress(stored, token)
+    return commitChip(next, rest)
+}
+
+internal fun removeChipAddress(stored: String, address: String): String {
+    val parts = splitAddresses(stored)
+    val drop = parts.indexOfFirst { it == address }
+    if (drop < 0) return stored
+    return parts.filterIndexed { index, _ -> index != drop }.joinToString(", ")
+}
+
+private fun chipSeparatorAt(buffer: String): Int {
+    var quoted = false
+    var angle = 0
+    var escaped = false
+    for (i in buffer.indices) {
+        val ch = buffer[i]
+        if (escaped) {
+            escaped = false
+            continue
+        }
+        if (ch == '\\' && quoted) {
+            escaped = true
+            continue
+        }
+        if (ch == '"') {
+            quoted = !quoted
+            continue
+        }
+        if (!quoted && ch == '<') angle++
+        if (!quoted && ch == '>' && angle > 0) angle--
+        if (!quoted && angle == 0 && (ch == ',' || ch == '\n' || ch == '\r')) return i
+    }
+    return -1
+}
+
+private fun chipProbe(stored: String, buffer: String): String {
+    val pending = buffer.trim()
+    if (pending.isEmpty()) return stored
+    return appendAddress(stored, pending)
 }
 
 internal fun mailboxLeaf(mailbox: String): String {

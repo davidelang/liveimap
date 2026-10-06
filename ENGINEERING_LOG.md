@@ -1116,3 +1116,10 @@
 - An attachment chip shows the filename, the BODYSTRUCTURE size, and an image, PDF, or generic icon. Nothing is fetched until the first tap. While the 65536-byte fetch runs, the chip shows the fetched count. When it is done, Open, Share, and Save use the cache file and do not fetch again.
 - AttachmentFileProvider serves only a read-only cache file named liveimap-<uid>-<safe>. It does not serve the traffic log. Leaving the message deletes that UID's cache files and leaves imap-traffic.log.
 - Show images is shown while HTML is on screen. It turns off blockNetworkLoads for this message only. The next message starts blocked. JavaScript stays off. No install.
+
+## 2026-10-06 - compose-polish execution start
+
+- Approved plan: sandbox/plans/compose-polish-20261006-0040-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: 575db68
+- Phases: chips and Send/Postpone chrome; alt-addresses, Reply-To chip, sent name, to-me; background draft hook and APPENDUID
+- Do not install. Device checks stay David's
