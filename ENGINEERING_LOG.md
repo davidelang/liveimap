@@ -1042,3 +1042,8 @@
 ## 2026-10-05 - Settings screens phase 1 compiles
 
 - One settings state, and mailbox lines pass onCommit. The field commit now compiles.
+
+## 2026-10-05 - Settings screens phase 2
+
+- Settings opens a group list, then one screen per group. The first section starts open. Up returns to the list, and the folder lists are their own screens.
+- About shows the plaintext card when an IMAP host is set, and Open-source licenses reads the notices. No new setting and no session restart. No install.

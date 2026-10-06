@@ -66,10 +66,16 @@ import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
-import org.dlang.liveimap.settings.SettingsScreen
+import org.dlang.liveimap.settings.FolderStartsScreen
+import org.dlang.liveimap.settings.FolderViewsScreen
+import org.dlang.liveimap.settings.SettingsGroup
+import org.dlang.liveimap.settings.SettingsGroupList
+import org.dlang.liveimap.settings.SettingsGroupScreen
 import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
+import org.dlang.liveimap.ui.about.LicensesScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
 import org.dlang.liveimap.ui.compose.UnsentScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
@@ -335,12 +341,63 @@ fun LiveImapNavHost() {
             }
             composable("settings") {
                 UpPage("Settings", onUp = { navController.navigateUp() }) {
-                    SettingsScreen()
+                    SettingsGroupList(onOpen = { group ->
+                        navController.navigate("settings/${group.route}")
+                    })
+                }
+            }
+            composable("settings/folders/expanded") {
+                UpPage("Expanded folders", onUp = {
+                    navController.popBackStack("settings/{group}", inclusive = false)
+                }) {
+                    ExpandedFoldersScreen()
+                }
+            }
+            composable("settings/folders/views") {
+                UpPage("Folder views", onUp = {
+                    navController.popBackStack("settings/{group}", inclusive = false)
+                }) {
+                    FolderViewsScreen()
+                }
+            }
+            composable("settings/folders/starts") {
+                UpPage("Start position per folder", onUp = {
+                    navController.popBackStack("settings/{group}", inclusive = false)
+                }) {
+                    FolderStartsScreen()
+                }
+            }
+            composable(
+                route = "settings/{group}",
+                arguments = listOf(navArgument("group") { type = NavType.StringType }),
+            ) { entry ->
+                val name = entry.arguments?.getString("group")
+                val group = name?.let(SettingsGroup::fromRoute)
+                if (group == null) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                } else {
+                    UpPage(group.title, onUp = {
+                        navController.popBackStack("settings", inclusive = false)
+                    }) {
+                        SettingsGroupScreen(
+                            group = group,
+                            onOpenExpanded = { navController.navigate("settings/folders/expanded") },
+                            onOpenViews = { navController.navigate("settings/folders/views") },
+                            onOpenStarts = { navController.navigate("settings/folders/starts") },
+                        )
+                    }
                 }
             }
             composable("about") {
                 UpPage("About", onUp = { navController.navigateUp() }) {
-                    AboutScreen()
+                    AboutScreen(onOpenLicenses = { navController.navigate("about/licenses") })
+                }
+            }
+            composable("about/licenses") {
+                UpPage("Open-source licenses", onUp = {
+                    navController.popBackStack("about", inclusive = false)
+                }) {
+                    LicensesScreen()
                 }
             }
         }

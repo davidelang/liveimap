@@ -13,6 +13,7 @@ import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -92,30 +95,242 @@ import org.dlang.liveimap.ui.folder.MailboxChooser
 private val settingsIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 private val settingsMutex = Mutex()
 
-@Composable
-fun SettingsScreen() {
-    val appContext = LocalContext.current.applicationContext
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val scope = rememberCoroutineScope()
-    val settingsState = remember { mutableStateOf(AccountSettings()) }
+enum class SettingsGroup(val route: String, val title: String) {
+    Account("account", "Account"),
+    Mailboxes("mailboxes", "Mailboxes"),
+    Folders("folders", "Folders"),
+    Reading("reading", "Reading"),
+    Compose("compose", "Compose"),
+    Appearance("appearance", "Appearance"),
+    Debug("debug", "Debug"),
+    ;
+
+    companion object {
+        fun fromRoute(route: String): SettingsGroup? = entries.firstOrNull { it.route == route }
+    }
+}
+
+private class SettingsEditor(
+    val store: DataStoreSettingsStore,
+    val appContext: Context,
+    val ui: CoroutineScope,
+) {
+    val settingsState = mutableStateOf(AccountSettings())
+    val passwordState = mutableStateOf("")
+    var ready by mutableStateOf(false)
     var settings by settingsState
-    val passwordState = remember { mutableStateOf("") }
     var password by passwordState
-    var ready by remember { mutableStateOf(false) }
+
+    fun persist(next: AccountSettings) {
+        if (!ready) return
+        settings = next
+        settingsIo.launch {
+            settingsMutex.withLock { store.save(settingsState.value) }
+        }
+    }
+
+    fun persistPassword(value: String) {
+        if (!ready) return
+        password = value
+        settingsIo.launch {
+            settingsMutex.withLock { store.setPassword(passwordState.value) }
+        }
+    }
+
+    fun load() {
+        settingsIo.launch {
+            settingsMutex.withLock {
+                settings = store.load()
+                password = store.password()
+                ready = true
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberSettingsEditor(): SettingsEditor {
+    val appContext = LocalContext.current.applicationContext
+    val ui = rememberCoroutineScope()
+    val store = remember { DataStoreSettingsStore(appContext) }
+    val editor = remember(store) { SettingsEditor(store, appContext, ui) }
+    LaunchedEffect(store) { editor.load() }
+    return editor
+}
+
+private class SectionOpen(private val selected: MutableState<String>) {
+    val open: Set<String>
+        get() = if (selected.value.isEmpty()) emptySet() else setOf(selected.value)
+
+    fun toggle(id: String) {
+        selected.value = if (id in open) "" else id
+    }
+}
+
+@Composable
+private fun rememberSectionOpen(first: String): SectionOpen {
+    val selected = rememberSaveable { mutableStateOf(first) }
+    return remember(selected) { SectionOpen(selected) }
+}
+
+@Composable
+fun SettingsGroupList(onOpen: (SettingsGroup) -> Unit) {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
+    val settings = editor.settings
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        SettingsGroup.entries.forEach { group ->
+            ListItem(
+                headlineContent = { Text(group.title) },
+                supportingContent = { Text(groupSummary(group, settings)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpen(group) },
+            )
+        }
+    }
+}
+
+@Composable
+fun SettingsGroupScreen(
+    group: SettingsGroup,
+    onOpenExpanded: () -> Unit,
+    onOpenViews: () -> Unit,
+    onOpenStarts: () -> Unit,
+) {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
+    when (group) {
+        SettingsGroup.Account -> AccountGroup(editor)
+        SettingsGroup.Mailboxes -> MailboxesGroup(editor)
+        SettingsGroup.Folders -> FoldersGroup(editor, onOpenExpanded, onOpenViews, onOpenStarts)
+        SettingsGroup.Reading -> ReadingGroup(editor)
+        SettingsGroup.Compose -> ComposeGroup(editor)
+        SettingsGroup.Appearance -> AppearanceGroup(editor)
+        SettingsGroup.Debug -> DebugGroup(editor)
+    }
+}
+
+@Composable
+fun ExpandedFoldersScreen() {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
+    var draftExpanded by remember { mutableStateOf("") }
+    val settings = editor.settings
+    SettingsPage {
+        settings.expandedFolders.forEach { mailbox ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(mailbox, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    editor.persist(editor.settings.copy(expandedFolders = editor.settings.expandedFolders - mailbox))
+                }) { Text("Remove") }
+            }
+        }
+        LineField(
+            "Expanded folder",
+            draftExpanded,
+            ready = editor.ready,
+            commitOnLeave = false,
+            onDraft = { draftExpanded = it },
+        ) { draftExpanded = it }
+        TextButton(onClick = {
+            if (draftExpanded.isEmpty()) return@TextButton
+            editor.persist(editor.settings.copy(expandedFolders = editor.settings.expandedFolders + draftExpanded))
+            draftExpanded = ""
+        }) { Text("Add expanded folder") }
+    }
+}
+
+@Composable
+fun FolderViewsScreen() {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
     var draftFolder by remember { mutableStateOf("") }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
-    var editingStarts by remember { mutableStateOf(false) }
+    val settings = editor.settings
+    SettingsPage {
+        settings.folderViews.forEach { (mailbox, view) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "$mailbox ${sortKeyLabel(view.key)} ${if (view.newestFirst) "Newest first" else "Oldest first"}",
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    editor.persist(editor.settings.copy(folderViews = editor.settings.folderViews - mailbox))
+                }) { Text("Remove") }
+            }
+        }
+        LineField(
+            "Folder view mailbox",
+            draftFolder,
+            ready = editor.ready,
+            commitOnLeave = false,
+            onDraft = { draftFolder = it },
+        ) { draftFolder = it }
+        ChoiceField("Folder view sort", SortKey.entries, draftSort, { sortKeyLabel(it) }) { draftSort = it }
+        BoolField("Folder view newest first", draftNewest) { draftNewest = it }
+        TextButton(onClick = {
+            if (draftFolder.isEmpty()) return@TextButton
+            editor.persist(
+                editor.settings.copy(
+                    folderViews = editor.settings.folderViews +
+                        (draftFolder to FolderView(draftSort, draftNewest)),
+                ),
+            )
+            draftFolder = ""
+        }) { Text("Add folder view") }
+    }
+}
+
+@Composable
+fun FolderStartsScreen() {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
     var draftStartMailbox by remember { mutableStateOf("") }
     var draftStartRule by remember { mutableStateOf(StartRule.Newest) }
-    var draftExpanded by remember { mutableStateOf("") }
-    var picking by remember { mutableStateOf<MailboxPick?>(null) }
+    val settings = editor.settings
+    SettingsPage {
+        settings.folderStarts.forEach { (mailbox, rule) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("$mailbox: ${startRuleLabel(rule)}")
+                    if (startRuleIsRecent(rule)) Text(recentRuleNote)
+                }
+                TextButton(onClick = {
+                    editor.persist(withFolderStart(editor.settings, mailbox, null))
+                }) { Text("Default") }
+            }
+        }
+        LineField(
+            "Mailbox",
+            draftStartMailbox,
+            ready = editor.ready,
+            commitOnLeave = false,
+            onDraft = { draftStartMailbox = it },
+        ) { draftStartMailbox = it }
+        StartRuleField("Opens at", draftStartRule, settings.showRecentRules) { draftStartRule = it }
+        TextButton(onClick = {
+            if (draftStartMailbox.isEmpty()) return@TextButton
+            editor.persist(withFolderStart(editor.settings, draftStartMailbox, draftStartRule))
+            draftStartMailbox = ""
+        }) { Text("Add") }
+    }
+}
+
+@Composable
+private fun AccountGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("server")
+    val settings = editor.settings
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
-    var warnUnread by remember { mutableStateOf(false) }
-    var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
+    val settingsState = editor.settingsState
     val contextState = rememberUpdatedState(LocalContext.current)
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -134,295 +349,490 @@ fun SettingsScreen() {
             }
         }
     }
-
-    BackHandler(enabled = picking != null || warnUnread || editingStarts || reportLines != null) {
-        when {
-            reportLines != null -> reportLines = null
-            picking != null -> picking = null
-            editingStarts -> editingStarts = false
-            else -> warnUnread = false
+    SettingsPage {
+        SettingsSection(
+            title = "Server",
+            summary = hostAndPort(settings.imapHost, settings.imapPort, "No server"),
+            expanded = "server" in sections.open,
+            onToggle = { sections.toggle("server") },
+        ) {
+            Text("IMAP port 143 and SMTP port 25 are plaintext.")
+            LineField("IMAP host", settings.imapHost, ready = editor.ready) {
+                editor.persist(editor.settings.copy(imapHost = it))
+            }
+            PortField("IMAP port", settings.imapPort, ready = editor.ready) {
+                editor.persist(editor.settings.copy(imapPort = it))
+            }
         }
-    }
-
-    LaunchedEffect(store) {
-        settings = store.load()
-        password = store.password()
-        ready = true
-    }
-
-    fun persist(next: AccountSettings) {
-        if (!ready) return
-        settings = next
-        settingsIo.launch {
-            settingsMutex.withLock { store.save(settingsState.value) }
+        SettingsSection(
+            title = "Identity",
+            summary = settings.username.ifBlank { "No user" },
+            expanded = "identity" in sections.open,
+            onToggle = { sections.toggle("identity") },
+        ) {
+            LineField("Friendly name", settings.friendlyName, ready = editor.ready) {
+                editor.persist(editor.settings.copy(friendlyName = it))
+            }
+            LineField("Username", settings.username, ready = editor.ready) { draft ->
+                editor.persist(
+                    editor.settings.copy(
+                        username = draft,
+                        email = emailDefaultedFromUsername(draft, editor.settings.email),
+                    ),
+                )
+            }
+            LineField(
+                "Password",
+                editor.password,
+                KeyboardType.Password,
+                password = true,
+                ready = editor.ready,
+            ) { editor.persistPassword(it) }
+            LineField("Email", settings.email, KeyboardType.Email, ready = editor.ready) {
+                editor.persist(editor.settings.copy(email = it))
+            }
+            LineField("Display name", settings.displayName, ready = editor.ready) {
+                editor.persist(editor.settings.copy(displayName = it))
+            }
         }
-    }
-
-    fun persistPassword(value: String) {
-        if (!ready) return
-        password = value
-        settingsIo.launch {
-            settingsMutex.withLock { store.setPassword(passwordState.value) }
+        SettingsSection(
+            title = "Sending",
+            summary = hostAndPort(settings.smtpHost, settings.smtpPort, "No SMTP server"),
+            expanded = "sending" in sections.open,
+            onToggle = { sections.toggle("sending") },
+        ) {
+            LineField("SMTP host", settings.smtpHost, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpHost = it))
+            }
+            PortField("SMTP port", settings.smtpPort, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpPort = it))
+            }
         }
-    }
-
-    if (!ready) return
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Account")
-        Text("IMAP port 143 and SMTP port 25 are plaintext.")
-        LineField("IMAP host", settings.imapHost) { persist(settings.copy(imapHost = it)) }
-        PortField("IMAP port", settings.imapPort) { persist(settings.copy(imapPort = it)) }
-        LineField("SMTP host", settings.smtpHost) { persist(settings.copy(smtpHost = it)) }
-        PortField("SMTP port", settings.smtpPort) { persist(settings.copy(smtpPort = it)) }
-        LineField("Friendly name", settings.friendlyName) {
-            persist(settings.copy(friendlyName = it))
+        SettingsSection(
+            title = "Import",
+            summary = "Import from .pinerc…",
+            expanded = "import" in sections.open,
+            onToggle = { sections.toggle("import") },
+        ) {
+            TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
+                Text("Import from .pinerc…")
+            }
         }
-        LineField("Username", settings.username) { draft ->
-            persist(
-                settings.copy(
-                    username = draft,
-                    email = emailDefaultedFromUsername(draft, settings.email),
-                ),
-            )
-        }
-        LineField("Password", password, KeyboardType.Password, password = true) {
-            persistPassword(it)
-        }
-        LineField("Email", settings.email, KeyboardType.Email) { persist(settings.copy(email = it)) }
-        LineField("Display name", settings.displayName) { persist(settings.copy(displayName = it)) }
-        TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
-            Text("Import from .pinerc…")
-        }
-        TextButton(
-            onClick = {
-                if (!probing) {
-                    val account = settings
-                    probing = true
-                    scope.launch {
-                        val session = mailSession()
-                        try {
-                            serverReport = probeServer(session, account)
-                        } finally {
-                            probing = false
+        SettingsSection(
+            title = "Advanced",
+            summary = "Test server",
+            expanded = "advanced" in sections.open,
+            onToggle = { sections.toggle("advanced") },
+        ) {
+            TextButton(
+                onClick = {
+                    if (!probing) {
+                        val account = editor.settings
+                        probing = true
+                        editor.ui.launch {
+                            val session = mailSession()
+                            try {
+                                serverReport = probeServer(session, account)
+                            } finally {
+                                probing = false
+                            }
                         }
                     }
-                }
-            },
-            enabled = !probing,
-        ) {
-            Text(if (probing) "Testing…" else "Test server")
-        }
-        for (line in serverReport) {
-            Text(text = line, fontFamily = FontFamily.Monospace)
-        }
-        Text("Mailboxes")
-        MailboxLine("Sent mailbox", settings.sentMailbox, { picking = MailboxPick.Sent }) {
-            persist(settings.copy(sentMailbox = it))
-        }
-        MailboxLine("Postponed mailbox", settings.postponedMailbox, { picking = MailboxPick.Postponed }) {
-            persist(settings.copy(postponedMailbox = it))
-        }
-        MailboxLine("Address book mailbox", settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
-            persist(settings.copy(addressBookMailbox = it))
-        }
-        MailboxLine("Spam mailbox", settings.spamMailbox, { picking = MailboxPick.Spam }) {
-            persist(settings.copy(spamMailbox = it))
-        }
-        Text("Expanded folders")
-        settings.expandedFolders.forEach { mailbox ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(mailbox, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
-                    persist(settings.copy(expandedFolders = settings.expandedFolders - mailbox))
-                }) { Text("Remove") }
+                },
+                enabled = !probing,
+            ) {
+                Text(if (probing) "Testing…" else "Test server")
             }
-        }
-        LineField(
-            "Expanded folder",
-            draftExpanded,
-            commitOnLeave = false,
-            onDraft = { draftExpanded = it },
-        ) { draftExpanded = it }
-        TextButton(onClick = {
-            if (draftExpanded.isEmpty()) return@TextButton
-            persist(settings.copy(expandedFolders = settings.expandedFolders + draftExpanded))
-            draftExpanded = ""
-        }) { Text("Add expanded folder") }
-        Text("Display")
-        BoolField("Mark seen on open", settings.markSeenOnOpen) {
-            persist(settings.copy(markSeenOnOpen = it))
-        }
-        BoolField("Show deleted", settings.showDeleted) { persist(settings.copy(showDeleted = it)) }
-        BoolField("Ask before expunge", settings.askBeforeExpunge) {
-            persist(settings.copy(askBeforeExpunge = it))
-        }
-        BoolField("Show unread counts", settings.showUnreadCounts || warnUnread) { enabled ->
-            if (enabled) {
-                warnUnread = true
-            } else {
-                warnUnread = false
-                persist(settings.copy(showUnreadCounts = false))
+            for (line in serverReport) {
+                Text(text = line, fontFamily = FontFamily.Monospace)
             }
-        }
-        ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
-            persist(settings.copy(bodyView = view))
-        }
-        ChoiceField("Density", Density.entries, settings.density, { densityLabel(it) }) {
-            persist(settings.copy(density = it))
-        }
-        ChoiceField("Date format", DateFormat.entries, settings.dateFormat, { dateFormatLabel(it) }) {
-            persist(settings.copy(dateFormat = it))
-        }
-        if (settings.dateFormat == DateFormat.Custom) {
-            LineField("Date pattern", settings.datePattern) {
-                persist(settings.copy(datePattern = it))
-            }
-        }
-        ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { sortKeyLabel(it) }) { key ->
-            persist(settings.copy(defaultView = settings.defaultView.copy(key = key)))
-        }
-        BoolField("Newest first", settings.defaultView.newestFirst) { newest ->
-            persist(settings.copy(defaultView = settings.defaultView.copy(newestFirst = newest)))
-        }
-        Text("Folder views")
-        settings.folderViews.forEach { (mailbox, view) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "$mailbox ${sortKeyLabel(view.key)} ${if (view.newestFirst) "Newest first" else "Oldest first"}",
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = {
-                    persist(settings.copy(folderViews = settings.folderViews - mailbox))
-                }) { Text("Remove") }
-            }
-        }
-        LineField(
-            "Folder view mailbox",
-            draftFolder,
-            commitOnLeave = false,
-            onDraft = { draftFolder = it },
-        ) { draftFolder = it }
-        ChoiceField("Folder view sort", SortKey.entries, draftSort, { sortKeyLabel(it) }) { draftSort = it }
-        BoolField("Folder view newest first", draftNewest) { draftNewest = it }
-        TextButton(onClick = {
-            if (draftFolder.isEmpty()) return@TextButton
-            persist(
-                settings.copy(
-                    folderViews = settings.folderViews +
-                        (draftFolder to FolderView(draftSort, draftNewest)),
-                ),
-            )
-            draftFolder = ""
-        }) { Text("Add folder view") }
-        Text("Start position")
-        StartRuleField("INBOX opens at", settings.inboxStart, settings.showRecentRules) { rule ->
-            persist(settings.copy(inboxStart = rule))
-        }
-        StartRuleField("Other folders open at", settings.folderStart, settings.showRecentRules) { rule ->
-            persist(settings.copy(folderStart = rule))
-        }
-        TextButton(onClick = { editingStarts = true }) { Text("Start position per folder") }
-        ChoiceField(
-            "After a sort, direction, filter or search change",
-            StartAfterChange.entries,
-            settings.startAfterChange,
-            { startAfterChangeLabel(it) },
-        ) { value ->
-            persist(settings.copy(startAfterChange = value))
-        }
-        BoolField("Show \\Recent-based rules", settings.showRecentRules) { enabled ->
-            persist(settings.copy(showRecentRules = enabled))
-        }
-        BoolField("'Open at' in the index menu", settings.openAtInIndexMenu) { enabled ->
-            persist(settings.copy(openAtInIndexMenu = enabled))
-        }
-        ChoiceField(
-            "When a pinerc has no incoming-startup-rule",
-            PinercStartDefault.entries,
-            settings.pinercStartDefault,
-            { pinercStartDefaultLabel(it) },
-        ) { value ->
-            persist(settings.copy(pinercStartDefault = value))
-        }
-        val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
-        SwipeEditor(
-            if (leftToRight) "Swipe left" else "Swipe right",
-            settings.swipeTrailing,
-            { picking = MailboxPick.TrailingMove },
-        ) {
-            persist(settings.copy(swipeTrailing = it))
-        }
-        SwipeEditor(
-            if (leftToRight) "Swipe right" else "Swipe left",
-            settings.swipeLeading,
-            { picking = MailboxPick.LeadingMove },
-        ) {
-            persist(settings.copy(swipeLeading = it))
-        }
-        BoolField("Bounce Fcc", settings.bounceFcc) { persist(settings.copy(bounceFcc = it)) }
-        BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
-            persist(settings.copy(includeForwardAttachments = it))
-        }
-        BoolField("Forward as attachment", settings.forwardAsAttachment) {
-            persist(settings.copy(forwardAsAttachment = it))
-        }
-        BoolField("Reply above the quote", settings.replyAboveQuote) {
-            persist(settings.copy(replyAboveQuote = it))
-        }
-        ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
-            persist(settings.copy(theme = it))
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            BoolField("Dynamic color", settings.dynamicColor) {
-                persist(settings.copy(dynamicColor = it))
-            }
-        }
-        Text("Message bar")
-        ReaderAction.entries.forEach { action ->
-            BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
-                val next = if (enabled) {
-                    ReaderAction.entries.filter { it == action || settings.readerBar.contains(it) }
-                } else {
-                    settings.readerBar.filterNot { it == action }
-                }
-                persist(settings.copy(readerBar = next))
-            }
-        }
-        Text("Debug")
-        BoolField("Pipeline IMAP commands", settings.pipelineCommands) {
-            persist(settings.copy(pipelineCommands = it))
-        }
-        BoolField("Log IMAP traffic", settings.logImapTraffic) {
-            persist(settings.copy(logImapTraffic = it))
-        }
-        Text("Commands and server replies go to logcat under LiveIMAP. The password is omitted.")
-        TextButton(onClick = {
-            val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
-            log.shareFile(contextState.value)
-        }) { Text("Share log") }
-        TextButton(onClick = {
-            val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
-            val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
-            reportLines = log.debugReport(
-                versionName = BuildConfig.VERSION_NAME,
-                versionCode = BuildConfig.VERSION_CODE,
-                androidVersion = Build.VERSION.RELEASE,
-                device = device,
-                settings = settings,
-            ).lines()
-        }) { Text("Debug report") }
-        BoolField("Show user name in the debug report", settings.showUserInDebugReport) {
-            persist(settings.copy(showUserInDebugReport = it))
         }
     }
+    val error = importError
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = { importError = null },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { importError = null }) { Text("Close") }
+            },
+        )
+    }
+    val preview = importPreview
+    if (preview != null) {
+        Dialog(
+            onDismissRequest = { importPreview = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars
+                                .union(WindowInsets.navigationBars)
+                                .union(WindowInsets.displayCutout),
+                        )
+                        .padding(16.dp),
+                ) {
+                    Text("Import from .pinerc", style = MaterialTheme.typography.titleLarge)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Will change")
+                        preview.rows.forEach { line -> Text(line) }
+                        Text("Not applied")
+                        preview.skipped.forEach { line -> Text(line) }
+                        Text("Ignored")
+                        if (preview.omittedCount != 0) {
+                            Text("${preview.omittedCount} other lines were left out")
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { importPreview = null }) { Text("Cancel") }
+                        TextButton(
+                            onClick = {
+                                editor.persist(preview.next)
+                                importPreview = null
+                            },
+                            enabled = preview.next != editor.settings,
+                        ) { Text("Apply") }
+                    }
+                }
+            }
+        }
+    }
+}
 
+@Composable
+private fun MailboxesGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("special")
+    val settings = editor.settings
+    var picking by remember { mutableStateOf<MailboxPick?>(null) }
+    BackHandler(enabled = picking != null) { picking = null }
+    SettingsPage {
+        SettingsSection(
+            title = "Special-use",
+            summary = mailboxSetCount(settings),
+            expanded = "special" in sections.open,
+            onToggle = { sections.toggle("special") },
+        ) {
+            MailboxLine("Sent mailbox", settings.sentMailbox, { picking = MailboxPick.Sent }) {
+                editor.persist(editor.settings.copy(sentMailbox = it))
+            }
+            MailboxLine("Postponed mailbox", settings.postponedMailbox, { picking = MailboxPick.Postponed }) {
+                editor.persist(editor.settings.copy(postponedMailbox = it))
+            }
+            MailboxLine("Address book mailbox", settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
+                editor.persist(editor.settings.copy(addressBookMailbox = it))
+            }
+            MailboxLine("Spam mailbox", settings.spamMailbox, { picking = MailboxPick.Spam }) {
+                editor.persist(editor.settings.copy(spamMailbox = it))
+            }
+        }
+    }
+    MailboxPickDialog(editor, picking) { picking = it }
+}
+
+@Composable
+private fun FoldersGroup(
+    editor: SettingsEditor,
+    onOpenExpanded: () -> Unit,
+    onOpenViews: () -> Unit,
+    onOpenStarts: () -> Unit,
+) {
+    val sections = rememberSectionOpen("list")
+    val settings = editor.settings
+    SettingsPage {
+        SettingsSection(
+            title = "Folder list",
+            summary = "${settings.expandedFolders.size} expanded",
+            expanded = "list" in sections.open,
+            onToggle = { sections.toggle("list") },
+        ) {
+            OpenRow("Expanded folders", onOpenExpanded)
+        }
+        SettingsSection(
+            title = "Folder views",
+            summary = sortDirection(settings),
+            expanded = "views" in sections.open,
+            onToggle = { sections.toggle("views") },
+        ) {
+            ChoiceField("Default view", SortKey.entries, settings.defaultView.key, { sortKeyLabel(it) }) { key ->
+                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = key)))
+            }
+            BoolField("Newest first", settings.defaultView.newestFirst) { newest ->
+                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
+            }
+            OpenRow("Folder views", onOpenViews)
+        }
+        SettingsSection(
+            title = "Start position",
+            summary = "INBOX ${startRuleLabel(settings.inboxStart)}",
+            expanded = "start" in sections.open,
+            onToggle = { sections.toggle("start") },
+        ) {
+            StartRuleField("INBOX opens at", settings.inboxStart, settings.showRecentRules) { rule ->
+                editor.persist(editor.settings.copy(inboxStart = rule))
+            }
+            StartRuleField("Other folders open at", settings.folderStart, settings.showRecentRules) { rule ->
+                editor.persist(editor.settings.copy(folderStart = rule))
+            }
+            ChoiceField(
+                "After a sort, direction, filter or search change",
+                StartAfterChange.entries,
+                settings.startAfterChange,
+                { startAfterChangeLabel(it) },
+            ) { value ->
+                editor.persist(editor.settings.copy(startAfterChange = value))
+            }
+            BoolField("Show \\Recent-based rules", settings.showRecentRules) { enabled ->
+                editor.persist(editor.settings.copy(showRecentRules = enabled))
+            }
+            BoolField("'Open at' in the index menu", settings.openAtInIndexMenu) { enabled ->
+                editor.persist(editor.settings.copy(openAtInIndexMenu = enabled))
+            }
+            ChoiceField(
+                "When a pinerc has no incoming-startup-rule",
+                PinercStartDefault.entries,
+                settings.pinercStartDefault,
+                { pinercStartDefaultLabel(it) },
+            ) { value ->
+                editor.persist(editor.settings.copy(pinercStartDefault = value))
+            }
+            OpenRow("Start position per folder", onOpenStarts)
+        }
+    }
+}
+
+@Composable
+private fun ReadingGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("opening")
+    val settings = editor.settings
+    var picking by remember { mutableStateOf<MailboxPick?>(null) }
+    var warnUnread by remember { mutableStateOf(false) }
+    BackHandler(enabled = picking != null || warnUnread) {
+        if (picking != null) picking = null else warnUnread = false
+    }
+    val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
+    SettingsPage {
+        SettingsSection(
+            title = "Opening",
+            summary = bodyViewLabel(settings.bodyView),
+            expanded = "opening" in sections.open,
+            onToggle = { sections.toggle("opening") },
+        ) {
+            BoolField("Mark seen on open", settings.markSeenOnOpen) {
+                editor.persist(editor.settings.copy(markSeenOnOpen = it))
+            }
+            BoolField("Show deleted", settings.showDeleted) {
+                editor.persist(editor.settings.copy(showDeleted = it))
+            }
+            ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
+                editor.persist(editor.settings.copy(bodyView = view))
+            }
+        }
+        SettingsSection(
+            title = "Deleting",
+            summary = if (settings.askBeforeExpunge) "Ask before expunge" else "Expunge without asking",
+            expanded = "deleting" in sections.open,
+            onToggle = { sections.toggle("deleting") },
+        ) {
+            BoolField("Ask before expunge", settings.askBeforeExpunge) {
+                editor.persist(editor.settings.copy(askBeforeExpunge = it))
+            }
+        }
+        SettingsSection(
+            title = "Counts",
+            summary = if (settings.showUnreadCounts) "Unread counts on" else "Unread counts off",
+            expanded = "counts" in sections.open,
+            onToggle = { sections.toggle("counts") },
+        ) {
+            BoolField("Show unread counts", settings.showUnreadCounts || warnUnread) { enabled ->
+                if (enabled) {
+                    warnUnread = true
+                } else {
+                    warnUnread = false
+                    editor.persist(editor.settings.copy(showUnreadCounts = false))
+                }
+            }
+        }
+        SettingsSection(
+            title = "Actions",
+            summary = "${swipeActionLabel(settings.swipeTrailing.action)} / ${swipeActionLabel(settings.swipeLeading.action)}",
+            expanded = "actions" in sections.open,
+            onToggle = { sections.toggle("actions") },
+        ) {
+            SwipeEditor(
+                if (leftToRight) "Swipe left" else "Swipe right",
+                settings.swipeTrailing,
+                { picking = MailboxPick.TrailingMove },
+            ) { editor.persist(editor.settings.copy(swipeTrailing = it)) }
+            SwipeEditor(
+                if (leftToRight) "Swipe right" else "Swipe left",
+                settings.swipeLeading,
+                { picking = MailboxPick.LeadingMove },
+            ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
+            Text("Message bar")
+            ReaderAction.entries.forEach { action ->
+                BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
+                    val next = if (enabled) {
+                        ReaderAction.entries.filter { it == action || editor.settings.readerBar.contains(it) }
+                    } else {
+                        editor.settings.readerBar.filterNot { it == action }
+                    }
+                    editor.persist(editor.settings.copy(readerBar = next))
+                }
+            }
+        }
+    }
+    if (warnUnread) {
+        AlertDialog(
+            onDismissRequest = { warnUnread = false },
+            text = {
+                Text(
+                    "Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    warnUnread = false
+                    editor.persist(editor.settings.copy(showUnreadCounts = true))
+                }) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { warnUnread = false }) { Text("Dismiss") }
+            },
+        )
+    }
+    MailboxPickDialog(editor, picking) { picking = it }
+}
+
+@Composable
+private fun ComposeGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("replying")
+    val settings = editor.settings
+    SettingsPage {
+        SettingsSection(
+            title = "Replying",
+            summary = if (settings.replyAboveQuote) "Reply above the quote" else "Reply below the quote",
+            expanded = "replying" in sections.open,
+            onToggle = { sections.toggle("replying") },
+        ) {
+            BoolField("Reply above the quote", settings.replyAboveQuote) {
+                editor.persist(editor.settings.copy(replyAboveQuote = it))
+            }
+        }
+        SettingsSection(
+            title = "Forwarding",
+            summary = forwardSummary(settings),
+            expanded = "forwarding" in sections.open,
+            onToggle = { sections.toggle("forwarding") },
+        ) {
+            BoolField("Include attachments when forwarding", settings.includeForwardAttachments) {
+                editor.persist(editor.settings.copy(includeForwardAttachments = it))
+            }
+            BoolField("Forward as attachment", settings.forwardAsAttachment) {
+                editor.persist(editor.settings.copy(forwardAsAttachment = it))
+            }
+        }
+        SettingsSection(
+            title = "Fcc",
+            summary = if (settings.bounceFcc) "Bounce Fcc on" else "Bounce Fcc off",
+            expanded = "fcc" in sections.open,
+            onToggle = { sections.toggle("fcc") },
+        ) {
+            BoolField("Bounce Fcc", settings.bounceFcc) { editor.persist(editor.settings.copy(bounceFcc = it)) }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("theme")
+    val settings = editor.settings
+    SettingsPage {
+        SettingsSection(
+            title = "Theme",
+            summary = themeSummary(settings),
+            expanded = "theme" in sections.open,
+            onToggle = { sections.toggle("theme") },
+        ) {
+            ChoiceField("Theme", ThemeMode.entries, settings.theme, { themeLabel(it) }) {
+                editor.persist(editor.settings.copy(theme = it))
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                BoolField("Dynamic color", settings.dynamicColor) {
+                    editor.persist(editor.settings.copy(dynamicColor = it))
+                }
+            }
+        }
+        SettingsSection(
+            title = "Display",
+            summary = "${densityLabel(settings.density)}, ${dateFormatLabel(settings.dateFormat)}",
+            expanded = "display" in sections.open,
+            onToggle = { sections.toggle("display") },
+        ) {
+            ChoiceField("Density", Density.entries, settings.density, { densityLabel(it) }) {
+                editor.persist(editor.settings.copy(density = it))
+            }
+            ChoiceField("Date format", DateFormat.entries, settings.dateFormat, { dateFormatLabel(it) }) {
+                editor.persist(editor.settings.copy(dateFormat = it))
+            }
+            if (settings.dateFormat == DateFormat.Custom) {
+                LineField("Date pattern", settings.datePattern, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(datePattern = it))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen("logging")
+    val settings = editor.settings
+    var reportLines by remember { mutableStateOf<List<String>?>(null) }
+    val contextState = rememberUpdatedState(LocalContext.current)
+    BackHandler(enabled = reportLines != null) { reportLines = null }
+    SettingsPage {
+        SettingsSection(
+            title = "Logging",
+            summary = loggingSummary(settings),
+            expanded = "logging" in sections.open,
+            onToggle = { sections.toggle("logging") },
+        ) {
+            BoolField("Pipeline IMAP commands", settings.pipelineCommands) {
+                editor.persist(editor.settings.copy(pipelineCommands = it))
+            }
+            BoolField("Log IMAP traffic", settings.logImapTraffic) {
+                editor.persist(editor.settings.copy(logImapTraffic = it))
+            }
+            Text("Commands and server replies go to logcat under LiveIMAP. The password is omitted.")
+            TextButton(onClick = {
+                val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
+                log.shareFile(contextState.value)
+            }) { Text("Share log") }
+            TextButton(onClick = {
+                val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
+                val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
+                reportLines = log.debugReport(
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                    androidVersion = Build.VERSION.RELEASE,
+                    device = device,
+                    settings = editor.settings,
+                ).lines()
+            }) { Text("Debug report") }
+            BoolField("Show user name in the debug report", settings.showUserInDebugReport) {
+                editor.persist(editor.settings.copy(showUserInDebugReport = it))
+            }
+        }
+    }
     val shownReport = reportLines
     if (shownReport != null) {
         Dialog(
@@ -474,165 +884,134 @@ fun SettingsScreen() {
             }
         }
     }
+}
 
-    if (warnUnread) {
-        AlertDialog(
-            onDismissRequest = { warnUnread = false },
-            text = {
-                Text(
-                    "Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    warnUnread = false
-                    persist(settings.copy(showUnreadCounts = true))
-                }) { Text("Confirm") }
-            },
-            dismissButton = {
-                TextButton(onClick = { warnUnread = false }) { Text("Dismiss") }
-            },
-        )
-    }
-
-    val field = picking
-    if (field != null) {
-        MailboxChooser(
-            store = store,
-            saveMutex = settingsMutex,
-            onStored = { loaded ->
-                settings = settings.copy(expandedFolders = loaded.expandedFolders)
-            },
-            onPick = { mailbox ->
-                settingsIo.launch {
-                    settingsMutex.withLock {
-                        val next = assignMailbox(store.load(), field, mailbox)
-                        store.save(next)
-                        settings = next
-                    }
-                    picking = null
+@Composable
+private fun MailboxPickDialog(
+    editor: SettingsEditor,
+    picking: MailboxPick?,
+    onPicking: (MailboxPick?) -> Unit,
+) {
+    val field = picking ?: return
+    MailboxChooser(
+        store = editor.store,
+        saveMutex = settingsMutex,
+        onStored = { loaded ->
+            editor.settings = editor.settings.copy(expandedFolders = loaded.expandedFolders)
+        },
+        onPick = { mailbox ->
+            settingsIo.launch {
+                settingsMutex.withLock {
+                    val next = assignMailbox(editor.store.load(), field, mailbox)
+                    editor.store.save(next)
+                    editor.settings = next
                 }
-            },
-            onDismiss = { picking = null },
-        )
-    }
-
-    if (editingStarts) {
-        Dialog(
-            onDismissRequest = { editingStarts = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Surface(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(
-                            WindowInsets.statusBars
-                                .union(WindowInsets.navigationBars)
-                                .union(WindowInsets.displayCutout),
-                        )
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Start position per folder", style = MaterialTheme.typography.titleLarge)
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        settings.folderStarts.forEach { (mailbox, rule) ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("$mailbox: ${startRuleLabel(rule)}")
-                                    if (startRuleIsRecent(rule)) Text(recentRuleNote)
-                                }
-                                TextButton(onClick = {
-                                    persist(withFolderStart(settings, mailbox, null))
-                                }) { Text("Default") }
-                            }
-                        }
-                        LineField(
-                            "Mailbox",
-                            draftStartMailbox,
-                            commitOnLeave = false,
-                            onDraft = { draftStartMailbox = it },
-                        ) { draftStartMailbox = it }
-                        StartRuleField("Opens at", draftStartRule, settings.showRecentRules) {
-                            draftStartRule = it
-                        }
-                        TextButton(onClick = {
-                            if (draftStartMailbox.isEmpty()) return@TextButton
-                            persist(withFolderStart(settings, draftStartMailbox, draftStartRule))
-                            draftStartMailbox = ""
-                        }) { Text("Add") }
-                    }
-                    TextButton(onClick = { editingStarts = false }) { Text("Close") }
-                }
+                onPicking(null)
             }
-        }
-    }
+        },
+        onDismiss = { onPicking(null) },
+    )
+}
 
-    val error = importError
-    if (error != null) {
-        AlertDialog(
-            onDismissRequest = { importError = null },
-            text = { Text(error) },
-            confirmButton = {
-                TextButton(onClick = { importError = null }) { Text("Close") }
-            },
+@Composable
+private fun SettingsPage(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    summary: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    rows: @Composable () -> Unit,
+) {
+    val description = if (expanded) "Expanded" else "Collapsed"
+    val headerModifier = Modifier
+        .fillMaxWidth()
+        .clickable(onClick = onToggle)
+        .semantics { stateDescription = description }
+    if (expanded) {
+        ListItem(
+            headlineContent = { Text(title) },
+            modifier = headerModifier,
+        )
+        rows()
+    } else {
+        ListItem(
+            headlineContent = { Text(title) },
+            supportingContent = { Text(summary) },
+            modifier = headerModifier,
         )
     }
+}
 
-    val preview = importPreview
-    if (preview != null) {
-        Dialog(
-            onDismissRequest = { importPreview = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Surface(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(
-                            WindowInsets.statusBars
-                                .union(WindowInsets.navigationBars)
-                                .union(WindowInsets.displayCutout),
-                        )
-                        .padding(16.dp),
-                ) {
-                    Text("Import from .pinerc", style = MaterialTheme.typography.titleLarge)
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("Will change")
-                        preview.rows.forEach { line -> Text(line) }
-                        Text("Not applied")
-                        preview.skipped.forEach { line -> Text(line) }
-                        Text("Ignored")
-                        if (preview.omittedCount != 0) {
-                            Text("${preview.omittedCount} other lines were left out")
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { importPreview = null }) { Text("Cancel") }
-                        TextButton(
-                            onClick = {
-                                persist(preview.next)
-                                importPreview = null
-                            },
-                            enabled = preview.next != settings,
-                        ) { Text("Apply") }
-                    }
-                }
-            }
-        }
+@Composable
+private fun OpenRow(title: String, onOpen: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(title) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
+    )
+}
+
+private fun groupSummary(group: SettingsGroup, settings: AccountSettings): String = when (group) {
+    SettingsGroup.Account -> settings.imapHost.ifBlank { "No server" }
+    SettingsGroup.Mailboxes -> mailboxSetCount(settings)
+    SettingsGroup.Folders -> sortDirection(settings)
+    SettingsGroup.Reading -> bodyViewLabel(settings.bodyView)
+    SettingsGroup.Compose -> if (settings.replyAboveQuote) "Reply above the quote" else "Reply below the quote"
+    SettingsGroup.Appearance -> themeLabel(settings.theme)
+    SettingsGroup.Debug -> if (settings.logImapTraffic) "Traffic log on" else "Traffic log off"
+}
+
+private fun mailboxSetCount(settings: AccountSettings): String {
+    val count = listOf(
+        settings.sentMailbox,
+        settings.postponedMailbox,
+        settings.addressBookMailbox,
+        settings.spamMailbox,
+    ).count { it.isNotEmpty() }
+    return "$count of 4 set"
+}
+
+private fun sortDirection(settings: AccountSettings): String {
+    val direction = if (settings.defaultView.newestFirst) "Newest first" else "Oldest first"
+    return "${sortKeyLabel(settings.defaultView.key)}, $direction"
+}
+
+private fun hostAndPort(host: String, port: Int, empty: String): String {
+    if (host.isBlank()) return empty
+    return "$host:$port"
+}
+
+private fun forwardSummary(settings: AccountSettings): String = when {
+    settings.forwardAsAttachment -> "Forward as attachment"
+    settings.includeForwardAttachments -> "Include attachments"
+    else -> "Attachments off"
+}
+
+private fun themeSummary(settings: AccountSettings): String {
+    val base = themeLabel(settings.theme)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && settings.dynamicColor) {
+        return "$base · Dynamic color"
     }
+    return base
+}
+
+private fun loggingSummary(settings: AccountSettings): String {
+    val pipeline = if (settings.pipelineCommands) "Pipeline on" else "Pipeline off"
+    val log = if (settings.logImapTraffic) ", log on" else ", log off"
+    return pipeline + log
 }
 
 private class LineCommitter {
