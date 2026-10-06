@@ -11,7 +11,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ConnectionState
 
 @Composable
@@ -28,7 +30,7 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
                         .height(4.dp),
                 )
                 Text(
-                    text = "Reconnecting…",
+                    text = stringResource(R.string.status_reconnecting),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
@@ -45,7 +47,7 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                 )
                 TextButton(onClick = onRetry) {
-                    Text("Retry")
+                    Text(stringResource(R.string.reader_retry))
                 }
             }
         }

@@ -439,4 +439,8 @@
     <string name="copy_home">Home</string>
     <string name="copy_work">Work</string>
     <string name="copy_phone">Phone</string>
+    <string name="chooser_title">Choose mailbox</string>
+    <string name="picker_missing">Address book mailbox is not set</string>
+    <string name="status_reconnecting">Reconnecting…</string>
+    <string name="scaffold_up">Navigate up</string>
 </resources>

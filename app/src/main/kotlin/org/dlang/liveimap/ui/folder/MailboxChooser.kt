@@ -23,12 +23,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
@@ -44,6 +46,7 @@ internal fun MailboxChooser(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val notConnected = stringResource(R.string.reader_not_connected)
     val session = remember { mailSession() }
     val model = remember(session, store) { FolderListModel(session, store) }
     val scope = rememberCoroutineScope()
@@ -59,7 +62,7 @@ internal fun MailboxChooser(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                notice = error.message ?: notConnected
                 stopped = true
                 rows = emptyList()
                 return@withLock
@@ -111,7 +114,7 @@ internal fun MailboxChooser(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Choose mailbox")
+                Text(stringResource(R.string.chooser_title))
                 val message = notice
                 if (message != null) {
                     Text(text = message)
@@ -158,7 +161,7 @@ internal fun MailboxChooser(
                         )
                     }
                 }
-                TextButton(onClick = onDismiss) { Text("Close") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
             }
         }
     }

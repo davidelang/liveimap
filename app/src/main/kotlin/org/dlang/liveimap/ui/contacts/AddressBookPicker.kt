@@ -16,8 +16,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectedAddress
@@ -26,6 +28,8 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 @Composable
 fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit) {
+    val notConnected = stringResource(R.string.reader_not_connected)
+    val missingMailbox = stringResource(R.string.picker_missing)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
@@ -38,12 +42,12 @@ fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            notice = error.message ?: "not connected"
+            notice = error.message ?: notConnected
             return@LaunchedEffect
         }
         val mailbox = settings.addressBookMailbox
         if (mailbox.isEmpty()) {
-            notice = "Address book mailbox is not set"
+            notice = missingMailbox
             return@LaunchedEffect
         }
         try {
@@ -51,7 +55,7 @@ fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            notice = error.message ?: "not connected"
+            notice = error.message ?: notConnected
             return@LaunchedEffect
         }
         val opened = try {
@@ -93,7 +97,7 @@ fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit
         if (message != null) {
             Text(text = message, modifier = Modifier.padding(8.dp))
         }
-        TextButton(onClick = onDismiss) { Text("Close") }
+        TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
         for (entry in entries) {
             Text(
                 text = entryLabel(entry),

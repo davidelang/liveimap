@@ -17,7 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import org.dlang.liveimap.R
 
 object UiDims {
     val expanderWidth = 30.dp
@@ -45,7 +47,7 @@ internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
             IconButton(onClick = onUp) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Navigate up",
+                    contentDescription = stringResource(R.string.scaffold_up),
                 )
             }
         },

@@ -1430,3 +1430,15 @@
 - The contact-copy screen buttons, notices, and field labels come from strings.xml. Wording stays the same.
 - Reused reader_back, settings_confirm, settings_pine, settings_contacts_denied, and reader_not_connected. copy_reading and copy_to keep the ellipsis. copy_name_email is one space between the two values.
 - contactLabel and phoneLabel are not composable and read the words with context.getString. connectAccount receives the not-connected words. Query clauses and the photo marker stay. ContactCopyScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Chrome strings execution start
+
+- Approved plan: sandbox/plans/chrome-strings-20261006-1505-plan.md
+- Phase 1: the mailbox chooser, address-book picker, connection status, and up button read their words from strings.xml. Wording stays the same. reader_retry, reader_not_connected, and compose_close are reused. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Chrome strings phase 1
+
+- The mailbox chooser, address-book picker, connection status, and up button read their words from strings.xml. Wording stays the same.
+- Added chooser_title, picker_missing, status_reconnecting, and scaffold_up at the end. status_reconnecting keeps the ellipsis. Reused reader_retry, reader_not_connected, and compose_close.
+- The four Kotlin files have no Text(" and no contentDescription = ". Expander marks and the address label template stay. No install.
