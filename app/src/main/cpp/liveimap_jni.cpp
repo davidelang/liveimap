@@ -1658,7 +1658,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data)
             emitWatch(session, 1, session->watchExists, 0, nullptr);
         } else if (msg->mdt_type == MAILIMAP_MESSAGE_DATA_FETCH) {
             Row row;
-            readAtt(msg->mdt_msg_att, &row, nullptr);
+            readAtt(msg->mdt_msg_att, &row, nullptr, nullptr);
             if (row.uid != 0) {
                 JNIEnv * env = nullptr;
                 gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
@@ -3878,7 +3878,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr && body == nullptr; cur = clist_next(cur)) {
             Row row;
-            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, nullptr);
+            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, nullptr, nullptr);
             body = row.structure;
         }
     }
