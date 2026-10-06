@@ -695,7 +695,7 @@ private fun decodeQEncoding(data: String, charset: Charset): String {
     return out.toByteArray().toString(charset)
 }
 
-private fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray {
+internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray {
     val token = encoding.substringBefore(';').trim().lowercase()
     return try {
         when (token) {
@@ -739,13 +739,13 @@ private fun decodeQuotedPrintable(bytes: ByteArray): ByteArray {
     return out.toByteArray()
 }
 
-private fun charsetOf(contentType: String): Charset {
+internal fun charsetOf(contentType: String): Charset {
     val name = headerParam(contentType, "charset")
-    if (name.isEmpty()) return Charsets.UTF_8
+    if (name.isEmpty()) return Charsets.ISO_8859_1
     return try {
         Charset.forName(name)
-    } catch (_: Exception) {
-        Charsets.UTF_8
+    } catch (_: IllegalArgumentException) {
+        Charsets.ISO_8859_1
     }
 }
 

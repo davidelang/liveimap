@@ -65,7 +65,9 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
+import org.dlang.liveimap.ui.reader.unknownCharsetNote
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
 import org.dlang.liveimap.ui.contacts.AlpineEntry
 import org.dlang.liveimap.ui.contacts.addressMarkedPlaintext
@@ -260,20 +262,23 @@ fun ComposeScreen(
     }
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
-        val plain = textPart(tree, "plain")
-        if (plain != null) {
-            return peekWireBytes(plain.size, 4096, false) { offset, length ->
-                session.peekPart(uid, plain.section, offset, length)
-            }.toString(Charsets.UTF_8)
+        fun decodedQuote(part: MimePart, html: Boolean): String {
+            val bytes = peekWireBytes(
+                part.size,
+                4096,
+                part.encoding.equals("base64", ignoreCase = true),
+            ) { offset, length ->
+                session.peekPart(uid, part.section, offset, length)
+            }
+            val decoded = decodePart(bytes, part.charset, part.encoding)
+            if (decoded.unknownCharset && notice.isNullOrEmpty()) notice = unknownCharsetNote
+            return if (html) htmlAsText(decoded.text) else decoded.text
         }
+        val plain = textPart(tree, "plain")
+        if (plain != null) return decodedQuote(plain, html = false)
         if (view == BodyView.PlainOrHtml || view == BodyView.PlainOrText) {
             val html = textPart(tree, "html")
-            if (html != null) {
-                val bytes = peekWireBytes(html.size, 4096, false) { offset, length ->
-                    session.peekPart(uid, html.section, offset, length)
-                }
-                return htmlAsText(bytes.toString(Charsets.UTF_8))
-            }
+            if (html != null) return decodedQuote(html, html = true)
             notice = missingPartText(true)
             return ""
         }

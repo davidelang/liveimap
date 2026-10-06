@@ -87,6 +87,8 @@ data class MimePart(
     val filename: String?,
     val size: Int,
     val children: List<MimePart>,
+    val charset: String = "",
+    val encoding: String = "",
 )
 
 sealed class MailboxChange {

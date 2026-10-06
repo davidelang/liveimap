@@ -368,7 +368,7 @@ bool ensureJni(JNIEnv * env) {
         "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V");
     gJni.selectInit = env->GetMethodID(gJni.selectResult, "<init>", "(JJI)V");
     gJni.mimeInit = env->GetMethodID(gJni.mimePart, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;)V");
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;)V");
     gJni.threadInit = env->GetMethodID(gJni.threadNode, "<init>",
         "(Ljava/lang/Long;Ljava/util/List;)V");
     gJni.listInit = env->GetMethodID(gJni.arrayList, "<init>", "()V");
@@ -822,6 +822,25 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     want->charset = charset != nullptr ? charset : "UTF-8";
 }
 
+std::string partCharset(struct mailimap_body_fields * fields) {
+    const char * charset = fields != nullptr ? paramValue(fields->bd_parameter, "charset") : nullptr;
+    return charset != nullptr ? charset : "";
+}
+
+std::string partEncoding(struct mailimap_body_fields * fields) {
+    if (fields == nullptr || fields->bd_encoding == nullptr) {
+        return "";
+    }
+    switch (fields->bd_encoding->enc_type) {
+    case MAILIMAP_BODY_FLD_ENC_BASE64:
+        return "base64";
+    case MAILIMAP_BODY_FLD_ENC_QUOTED_PRINTABLE:
+        return "quoted-printable";
+    default:
+        return "";
+    }
+}
+
 jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section);
 
 jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const std::string & section) {
@@ -849,12 +868,17 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
     jstring jSubtype = newString(env, subtype.c_str());
     jstring jDisp = newString(env, dispType != nullptr ? dispType : "");
     jstring jFile = filename != nullptr ? newString(env, filename) : nullptr;
-    jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, size, children);
+    jstring jCharset = newString(env, partCharset(fields).c_str());
+    jstring jEncoding = newString(env, partEncoding(fields).c_str());
+    jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, size, children,
+        jCharset, jEncoding);
     env->DeleteLocalRef(jSection);
     env->DeleteLocalRef(jType);
     env->DeleteLocalRef(jSubtype);
     env->DeleteLocalRef(jDisp);
     if (jFile != nullptr) env->DeleteLocalRef(jFile);
+    env->DeleteLocalRef(jCharset);
+    env->DeleteLocalRef(jEncoding);
     env->DeleteLocalRef(children);
     return obj;
 }
@@ -884,12 +908,17 @@ jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::strin
         jstring jSubtype = newString(env, mpart->bd_media_subtype != nullptr ? mpart->bd_media_subtype : "mixed");
         jstring jDisp = newString(env, disp != nullptr && disp->dsp_type != nullptr ? disp->dsp_type : "");
         jstring jFile = filename != nullptr ? newString(env, filename) : nullptr;
-        jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children);
+        jstring jCharset = newString(env, "");
+        jstring jEncoding = newString(env, "");
+        jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
+            jCharset, jEncoding);
         env->DeleteLocalRef(jSection);
         env->DeleteLocalRef(jType);
         env->DeleteLocalRef(jSubtype);
         env->DeleteLocalRef(jDisp);
         if (jFile != nullptr) env->DeleteLocalRef(jFile);
+        env->DeleteLocalRef(jCharset);
+        env->DeleteLocalRef(jEncoding);
         env->DeleteLocalRef(children);
         return obj;
     }

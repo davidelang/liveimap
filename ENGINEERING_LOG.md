@@ -1139,3 +1139,17 @@
 ## 2026-10-06 - compose-polish phase 4 test double
 
 - AppendUidInner is its own MailSession so the lane test compiles. OverlapInner stays unchanged. The test still expects UID 3955, no append call, and thread liveimap-imap. No install.
+
+## 2026-10-06 - reader body decoding execution start
+
+- Approved plan: sandbox/plans/reader-body-decoding-20261006-0117-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: b7dc9e3
+- Phase 1: MimePart charset and encoding, decodePart, WireTextDecoder, reader body paths, charsetOf, compose quoting
+- Phase 2: jsoup, desugaring, htmlAsText, preview path, NOTICES.txt
+- Do not install. Device checks stay David's
+
+## 2026-10-06 - reader body decoding phase 1
+
+- MimePart carries charset and encoding, both default empty. The JNI constructor passes the BODYSTRUCTURE charset and base64 or quoted-printable, or empty for 7bit, 8bit, binary, and multipart.
+- decodePart undoes that transfer encoding, then java.nio.charset. An empty or unknown charset is ISO-8859-1 with unknownCharset set. WireTextDecoder holds a split base64 quantum, a quoted-printable tail, and an incomplete character until finish.
+- Plain bodies stream through that decoder. HTML and HTML-as-text read the whole part, then decode. The WebView page starts with a UTF-8 meta. The reader shows "Unknown charset; shown as ISO-8859-1." above the body. Compose quoting uses the same decode and sets that sentence when the notice is empty. No install.

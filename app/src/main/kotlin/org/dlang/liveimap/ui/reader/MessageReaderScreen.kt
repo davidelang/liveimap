@@ -139,6 +139,7 @@ import org.dlang.liveimap.ui.compose.textPart
 
 private class Utf8Carry {
     var pending: ByteArray = ByteArray(0)
+    var decoder: WireTextDecoder? = null
 }
 
 private class ScrollBridge {
@@ -210,6 +211,7 @@ fun MessageReaderScreen(
     var selectedView by remember { mutableStateOf(BodyView.PlainOrError) }
     var renderedHtml by remember { mutableStateOf(false) }
     var bodyText by remember { mutableStateOf("") }
+    var charsetNote by remember { mutableStateOf<String?>(null) }
     var bodyOffset by remember { mutableIntStateOf(0) }
     var bodySize by remember { mutableIntStateOf(0) }
     var bodySection by remember { mutableStateOf<String?>(null) }
@@ -308,11 +310,14 @@ fun MessageReaderScreen(
             bodySize = part.size
             bodySection = part.section
             carry.pending = ByteArray(0)
+            val decoder = WireTextDecoder(part.charset, part.encoding)
+            carry.decoder = decoder
+            charsetNote = if (decoder.unknownCharset) unknownCharsetNote else null
         }
         if (bodySection != part.section) return
         if (part.size > 0 && bodyOffset >= part.size) return
         val length = if (part.size > 0) {
-            nextWireCount(bodyOffset, part.size, 4096, false)
+            nextWireCount(bodyOffset, part.size, 4096, part.encoding.equals("base64", ignoreCase = true))
         } else if (bodyOffset == 0) {
             4096
         } else {
@@ -328,14 +333,15 @@ fun MessageReaderScreen(
             return
         }
         noteSeen(markSeen)
+        val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
         if (chunk.isEmpty()) {
             bodyOffset = if (part.size > 0) part.size else bodyOffset + length
+            bodyText += decoder.finish()
             return
         }
         bodyOffset += chunk.size
-        val (text, rest) = appendUtf8(carry.pending, chunk)
-        carry.pending = rest
-        bodyText += text
+        bodyText += decoder.take(chunk)
+        if (part.size <= 0 || bodyOffset >= part.size) bodyText += decoder.finish()
     }
 
     suspend fun pullUnbounded(section: String, markSeen: Boolean) {
@@ -424,7 +430,9 @@ fun MessageReaderScreen(
         bodySection = null
         bodyOffset = 0
         bodySize = 0
+        charsetNote = null
         carry.pending = ByteArray(0)
+        carry.decoder = null
     }
 
     suspend fun readSectionText(section: String): String {
@@ -470,7 +478,18 @@ fun MessageReaderScreen(
                     noTextPart = false
                     missing = null
                     renderedHtml = true
-                    pullBody(html, reset = true, markSeen = !seenStored)
+                    bodyText = ""
+                    bodySection = html.section
+                    bodyOffset = 0
+                    bodySize = html.size
+                    charsetNote = null
+                    carry.pending = ByteArray(0)
+                    carry.decoder = null
+                    val bytes = readPart(html, markSeen = !seenStored) ?: return
+                    val decoded = decodePart(bytes, html.charset, html.encoding)
+                    bodyOffset = bytes.size
+                    charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
+                    bodyText = decoded.text
                 }
             }
             BodyView.PlainOrText -> {
@@ -482,13 +501,17 @@ fun MessageReaderScreen(
                     noTextPart = false
                     missing = null
                     bodyText = ""
-                    bodySection = null
+                    bodySection = html.section
                     bodyOffset = 0
                     bodySize = html.size
+                    charsetNote = null
                     carry.pending = ByteArray(0)
+                    carry.decoder = null
                     val bytes = readPart(html, markSeen = !seenStored) ?: return
+                    val decoded = decodePart(bytes, html.charset, html.encoding)
                     bodyOffset = bytes.size
-                    bodyText = htmlAsText(bytes.toString(Charsets.UTF_8))
+                    charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
+                    bodyText = htmlAsText(decoded.text)
                 }
             }
             BodyView.Headers, BodyView.Raw -> Unit
@@ -501,8 +524,14 @@ fun MessageReaderScreen(
             gate.withLock {
                 if (!connected) return@withLock
                 when (view) {
-                    BodyView.Headers -> pullUnbounded("HEADER", markSeen = !seenStored)
-                    BodyView.Raw -> pullUnbounded("*", markSeen = !seenStored)
+                    BodyView.Headers -> {
+                        charsetNote = null
+                        pullUnbounded("HEADER", markSeen = !seenStored)
+                    }
+                    BodyView.Raw -> {
+                        charsetNote = null
+                        pullUnbounded("*", markSeen = !seenStored)
+                    }
                     else -> loadPreferred(view)
                 }
             }
@@ -1154,6 +1183,8 @@ fun MessageReaderScreen(
                     }
                     absent == null && renderedHtml -> {
                         Column(Modifier.weight(1f).fillMaxWidth()) {
+                        val note = charsetNote
+                        if (note != null) Text(note, modifier = Modifier.padding(horizontal = 8.dp))
                         TextButton(onClick = { allowImages = true }) { Text("Show images") }
                         AndroidView(
                             factory = { webContext ->
@@ -1217,6 +1248,8 @@ fun MessageReaderScreen(
                                 .verticalScroll(scroll)
                                 .padding(8.dp),
                         ) {
+                            val note = charsetNote
+                            if (note != null) Text(note)
                             for ((quoted, line) in plainLines) {
                                 if (quoted) {
                                     QuotedReaderLine(line, quoteTint, quoteBorder, plainFont)
@@ -1462,15 +1495,20 @@ private fun QuotedReaderLine(
 }
 
 private fun themedHtml(page: String, dark: Boolean, background: Int, foreground: Int): String {
-    if (!dark) return page
-    val css = "<style>html,body,body *{background-color:${cssColor(background)} !important;color:${cssColor(foreground)} !important;}</style>"
-    val lower = page.lowercase()
-    val head = lower.indexOf("<head")
-    if (head >= 0) {
-        val close = page.indexOf('>', head)
-        if (close >= 0) return page.substring(0, close + 1) + css + page.substring(close + 1)
+    val styled = if (!dark) {
+        page
+    } else {
+        val css = "<style>html,body,body *{background-color:${cssColor(background)} !important;color:${cssColor(foreground)} !important;}</style>"
+        val lower = page.lowercase()
+        val head = lower.indexOf("<head")
+        if (head >= 0) {
+            val close = page.indexOf('>', head)
+            if (close >= 0) page.substring(0, close + 1) + css + page.substring(close + 1) else css + page
+        } else {
+            css + page
+        }
     }
-    return css + page
+    return "<meta charset=\"utf-8\">$styled"
 }
 
 private fun cssColor(argb: Int): String = "#%06X".format(argb and 0xFFFFFF)
