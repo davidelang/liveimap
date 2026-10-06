@@ -1346,3 +1346,14 @@
 
 - IndexWindowTest at 2026-10-06 04:20:45 MST: 54 tests, 1 failed, 0 errors, 0 skipped. The failure is the known orderedSubjectHiddenUnlessAdvertised at IndexWindowTest.kt:175. emptyIndexTextBlankAndQuery passed. No install.
 - assembleDebug follows so the builds tag can move. The earlier testDebugUnitTest exit left the tag unmoved.
+
+## 2026-10-06 - Known test failures execution start
+
+- Approved plan: sandbox/plans/known-test-failures-20261006-1144-plan.md
+- Phase 1: sortKeyAdvertised becomes internal; rename orderedSubjectStaysListedWhenNotAdvertised; defaultsRoundTrip matches a default encode(); omit comment only. Menu behavior and encoded defaults stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Known test failures phase 1
+
+- sortKeyAdvertised is internal. The menu still lists every SortKey and disables a missing capability. orderedSubjectStaysListedWhenNotAdvertised checks listing and advertisement separately.
+- defaultsRoundTrip lists the keys a default encode writes. completionSources, addressBookHistory, and addressBookNeverTrim stay omitted. The omit comment names those three defaults. Encoded defaults are unchanged. No install.

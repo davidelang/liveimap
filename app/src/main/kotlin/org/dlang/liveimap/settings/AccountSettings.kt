@@ -386,11 +386,10 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Missing key decodes to pine, so the default list is not written.
+    // The three defaults completionSources, addressBookHistory, and addressBookNeverTrim are omitted.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
-    // Missing keys stay 3 and false, so defaults are omitted and defaultsRoundTrip's key list is unchanged.
     if (addressBookHistory != 3) appendLine("addressBookHistory=$addressBookHistory")
     if (addressBookNeverTrim) appendLine("addressBookNeverTrim=true")
 }

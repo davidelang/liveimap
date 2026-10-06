@@ -2206,7 +2206,7 @@ private fun sortShortLabel(key: SortKey): String = stringResource(
     },
 )
 
-private fun sortKeyAdvertised(capabilities: Set<String>, key: SortKey): Boolean {
+internal fun sortKeyAdvertised(capabilities: Set<String>, key: SortKey): Boolean {
     fun has(name: String) = capabilities.any { it.equals(name, ignoreCase = true) }
     return when (key) {
         SortKey.Arrival -> true

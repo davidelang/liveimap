@@ -42,11 +42,23 @@ class AccountSettingsTest {
                 "datePattern",
                 "favorites",
                 "includeForwardAttachments",
+                "forwardAsAttachment",
                 "replyAboveQuote",
                 "askBeforeExpunge",
                 "pipelineCommands",
                 "logImapTraffic",
+                "showUserInDebugReport",
                 "readerBar",
+                "dynamicColor",
+                "inboxStart",
+                "folderStart",
+                "folderStarts",
+                "startAfterChange",
+                "showRecentRules",
+                "openAtInIndexMenu",
+                "pinercStartDefault",
+                "plainTextMonospace",
+                "altAddresses",
             ),
             keys,
         )
@@ -66,6 +78,21 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("pipelineCommands=true"))
         assertTrue(text.lines().contains("logImapTraffic=false"))
         assertTrue(text.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
+        assertTrue(text.lines().contains("forwardAsAttachment=false"))
+        assertTrue(text.lines().contains("showUserInDebugReport=false"))
+        assertTrue(text.lines().contains("dynamicColor=true"))
+        assertTrue(text.lines().contains("inboxStart=Newest"))
+        assertTrue(text.lines().contains("folderStart=Newest"))
+        assertTrue(text.lines().contains("folderStarts="))
+        assertTrue(text.lines().contains("startAfterChange=RerunRule"))
+        assertTrue(text.lines().contains("showRecentRules=true"))
+        assertTrue(text.lines().contains("openAtInIndexMenu=false"))
+        assertTrue(text.lines().contains("pinercStartDefault=LeaveUnchanged"))
+        assertTrue(text.lines().contains("plainTextMonospace=false"))
+        assertTrue(text.lines().contains("altAddresses="))
+        assertFalse(keys.contains("completionSources"))
+        assertFalse(keys.contains("addressBookHistory"))
+        assertFalse(keys.contains("addressBookNeverTrim"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 

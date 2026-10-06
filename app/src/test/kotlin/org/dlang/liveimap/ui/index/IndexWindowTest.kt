@@ -170,15 +170,17 @@ class IndexWindowTest {
     }
 
     @Test
-    fun orderedSubjectHiddenUnlessAdvertised() {
-        val hidden = IndexModel(FakeMailSession(capabilities = setOf("THREAD=REFERENCES")), MemorySettingsStore(AccountSettings()), "INBOX")
-        assertTrue(SortKey.ThreadOrderedSubject !in hidden.menuKeys)
-        assertTrue(SortKey.ThreadReferences in hidden.menuKeys)
-        val shown = IndexModel(
-            FakeMailSession(capabilities = setOf("thread=orderedsubject")),
-            MemorySettingsStore(AccountSettings()),
-            "INBOX",
-        )
+    fun orderedSubjectStaysListedWhenNotAdvertised() {
+        val references = FakeMailSession(capabilities = setOf("THREAD=REFERENCES"))
+        val hidden = IndexModel(references, MemorySettingsStore(AccountSettings()), "INBOX")
+        assertEquals(SortKey.entries, hidden.menuKeys)
+        assertFalse(sortKeyAdvertised(references.capabilities, SortKey.ThreadOrderedSubject))
+        assertTrue(sortKeyAdvertised(references.capabilities, SortKey.ThreadReferences))
+        assertTrue(SortKey.ThreadOrderedSubject in hidden.menuKeys)
+        val ordered = FakeMailSession(capabilities = setOf("thread=orderedsubject"))
+        val shown = IndexModel(ordered, MemorySettingsStore(AccountSettings()), "INBOX")
+        assertTrue(sortKeyAdvertised(ordered.capabilities, SortKey.ThreadOrderedSubject))
+        assertEquals(SortKey.entries, shown.menuKeys)
         assertTrue(SortKey.ThreadOrderedSubject in shown.menuKeys)
     }
 
