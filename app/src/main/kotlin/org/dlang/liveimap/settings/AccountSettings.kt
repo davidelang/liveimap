@@ -242,6 +242,8 @@ data class AccountSettings(
     val sentMailbox: String = "",
     val postponedMailbox: String = "",
     val addressBookMailbox: String = "",
+    val addressBookHistory: Int = 3,
+    val addressBookNeverTrim: Boolean = false,
     val spamMailbox: String = "",
     val markSeenOnOpen: Boolean = true,
     val showDeleted: Boolean = true,
@@ -331,6 +333,8 @@ private val fieldNames = listOf(
     "plainTextMonospace",
     "altAddresses",
     "completionSources",
+    "addressBookHistory",
+    "addressBookNeverTrim",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -386,6 +390,9 @@ fun AccountSettings.encode(): String = buildString {
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
+    // Missing keys stay 3 and false, so defaults are omitted and defaultsRoundTrip's key list is unchanged.
+    if (addressBookHistory != 3) appendLine("addressBookHistory=$addressBookHistory")
+    if (addressBookNeverTrim) appendLine("addressBookNeverTrim=true")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -428,7 +435,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "pinercStartDefault" ||
             key == "plainTextMonospace" ||
             key == "altAddresses" ||
-            key == "completionSources"
+            key == "completionSources" ||
+            key == "addressBookHistory" ||
+            key == "addressBookNeverTrim"
         ) {
             continue
         }
@@ -483,6 +492,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
         altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
         completionSources = decodeCompletionSources(values["completionSources"]),
+        addressBookHistory = values["addressBookHistory"]?.let { parseIntField(it) } ?: 3,
+        addressBookNeverTrim = values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false,
     )
 }
 

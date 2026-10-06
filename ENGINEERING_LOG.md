@@ -1199,3 +1199,10 @@
 ## 2026-10-06 - contacts copy phase 1 name
 
 - isPineListAddress avoids the private isDistributionAddress already in Completion.kt. The mapping is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 2
+
+- formatAlpineBook writes five tab fields per entry. An empty nickname stays empty. A tab or newline in a field becomes a space. [plaintext] stays in the comment.
+- revisionsToExpunge keeps the header out. History 3 on UIDs 1 through 6 returns 2. Never trim and a missing UIDPLUS return nothing.
+- addressBookHistory defaults to 3 and addressBookNeverTrim to false. Both keys are omitted at those defaults. Pinerc remote-abook-history sets the number only when it is all digits, and does not turn on never-trim.
+- loadAlpineBook is unchanged. No install.

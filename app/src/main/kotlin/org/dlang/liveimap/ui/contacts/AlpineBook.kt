@@ -80,6 +80,49 @@ fun parseAlpineBook(body: String): List<AlpineEntry> {
     return out
 }
 
+fun formatAlpineBook(entries: List<AlpineEntry>): String = buildString {
+    for (entry in entries) {
+        val addressHadPlaintext = entry.address.contains(PlaintextMark)
+        val address = entry.address.replace(PlaintextMark, "").trim()
+        var comments = entry.comments
+        if (addressHadPlaintext && !comments.contains(PlaintextMark)) {
+            comments = if (comments.isEmpty()) PlaintextMark else "$comments $PlaintextMark"
+        }
+        append(alpineField(entry.nickname))
+        append('\t')
+        append(alpineField(entry.fullname))
+        append('\t')
+        append(alpineField(address))
+        append('\t')
+        append(alpineField(entry.fcc))
+        append('\t')
+        append(alpineField(comments))
+        append('\n')
+    }
+}
+
+fun revisionsToExpunge(
+    uids: List<Long>,
+    headerUid: Long,
+    history: Int,
+    neverTrim: Boolean,
+    uidPlus: Boolean,
+): List<Long> {
+    if (neverTrim || !uidPlus) return emptyList()
+    val revisions = ArrayList<Long>()
+    for (uid in uids) {
+        if (uid != headerUid) revisions.add(uid)
+    }
+    if (revisions.size <= 1) return emptyList()
+    val older = revisions.subList(0, revisions.size - 1)
+    val keep = if (history < 0) 0 else history
+    if (older.size <= keep) return emptyList()
+    return older.subList(0, older.size - keep).toList()
+}
+
+private fun alpineField(value: String): String =
+    value.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+
 fun pickedAddresses(entry: AlpineEntry): List<SelectedAddress> {
     val address = entry.address.trim()
     if (isDistributionList(address)) {

@@ -119,6 +119,14 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         if (chosen != null) next = next.copy(addressBookMailbox = chosen)
     }
 
+    val history = entries["remote-abook-history"]
+    if (history != null) {
+        val raw = history.decoded?.trim().orEmpty()
+        val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
+        if (number == null) skipped.add("Address book history is not a number.")
+        else next = next.copy(addressBookHistory = number)
+    }
+
     val sort = entries["sort-key"]?.decoded
     if (sort != null) {
         val view = parseSort(sort)
@@ -207,6 +215,7 @@ private val appliedNames = setOf(
     "default-fcc",
     "postponed-folder",
     "address-book",
+    "remote-abook-history",
     "sort-key",
     "feature-list",
     "incoming-startup-rule",
@@ -466,6 +475,7 @@ private fun diffRows(current: AccountSettings, next: AccountSettings): List<Stri
     add("Sent mailbox", current.sentMailbox, next.sentMailbox)
     add("Postponed mailbox", current.postponedMailbox, next.postponedMailbox)
     add("Address book mailbox", current.addressBookMailbox, next.addressBookMailbox)
+    add("Address book history", current.addressBookHistory, next.addressBookHistory)
     add("Default view", sortKeyLabel(current.defaultView.key), sortKeyLabel(next.defaultView.key))
     add("Newest first", current.defaultView.newestFirst, next.defaultView.newestFirst)
     add("Ask before expunge", current.askBeforeExpunge, next.askBeforeExpunge)
