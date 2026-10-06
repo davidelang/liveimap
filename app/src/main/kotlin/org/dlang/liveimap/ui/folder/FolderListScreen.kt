@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -69,6 +70,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -93,14 +99,47 @@ import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.compose.readCopies
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
+
+internal class FolderScreenHeld : ViewModel() {
+    var model: FolderListModel? = null
+    val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
+    var levelReady: Boolean = false
+
+    fun bind(session: MailSession, store: SettingsStore): FolderListModel {
+        val current = model
+        if (current != null) return current
+        val created = FolderListModel(session, store)
+        model = created
+        return created
+    }
+
+    fun dropLoaded() {
+        model = null
+        rowsState.value = emptyList()
+        levelReady = false
+    }
+}
+
+private fun Context.hostActivity(): Activity? {
+    var current: Context = this
+    while (true) {
+        if (current is Activity) return current
+        if (current !is ContextWrapper) return null
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,19 +157,26 @@ fun FolderListScreen(
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
-    val model = remember(session, store) { FolderListModel(session, store) }
+    val held = viewModel<FolderScreenHeld>()
+    val model = held.bind(session, store)
+    val host = LocalContext.current.hostActivity()
+    DisposableEffect(held) {
+        onDispose {
+            if (host?.isChangingConfigurations != true) held.dropLoaded()
+        }
+    }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
     val listState = rememberLazyListState()
-    var rows by remember { mutableStateOf<List<FolderRow>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    var rows by held.rowsState
+    var loading by remember { mutableStateOf(!held.levelReady) }
     var banner by remember { mutableStateOf<String?>(null) }
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
     var stopped by remember { mutableStateOf(false) }
-    var ready by remember { mutableStateOf(false) }
+    var ready by remember { mutableStateOf(held.levelReady) }
     var unsentCount by remember { mutableIntStateOf(0) }
     var sentMailbox by remember { mutableStateOf("") }
     var postponedMailbox by remember { mutableStateOf("") }
@@ -174,10 +220,13 @@ fun FolderListScreen(
     }
 
     LaunchedEffect(session, loadToken) {
+        val reuse = held.levelReady && !refreshListed && loadToken == 0
         unsentCount = readCopies(appContext).size
-        loading = true
-        banner = null
-        stopped = false
+        if (!reuse) {
+            loading = true
+            banner = null
+            stopped = false
+        }
         gate.withLock {
             val settings = try {
                 store.load()
@@ -233,11 +282,14 @@ fun FolderListScreen(
                 OpenResult.Connected -> Unit
             }
             try {
-                if (refreshListed) {
-                    model.refreshLevels()
-                    refreshListed = false
+                if (!reuse) {
+                    if (refreshListed) {
+                        model.refreshLevels()
+                        refreshListed = false
+                    }
+                    rows = model.loadLevel()
+                    held.levelReady = true
                 }
-                rows = model.loadLevel()
                 ready = true
             } catch (error: CancellationException) {
                 throw error

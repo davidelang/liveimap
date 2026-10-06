@@ -1,7 +1,10 @@
 package org.dlang.liveimap.ui.reader
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -91,6 +94,8 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Instant
@@ -168,6 +173,88 @@ private data class AttachmentRow(
     val busy: Boolean = false,
 )
 
+internal class ReaderHeld : ViewModel() {
+    var openUid: Long = -1L
+    var openMailbox: String = ""
+    var ready: Boolean = false
+    var recordScroll: Boolean = true
+    val carry = Utf8Carry()
+    val scrollOffsetState = mutableIntStateOf(0)
+    var webScroll: Int = 0
+    val accountState = mutableStateOf(AccountSettings())
+    val structureState = mutableStateOf<MimePart?>(null)
+    val selectedViewState = mutableStateOf(BodyView.PlainOrError)
+    val renderedHtmlState = mutableStateOf(false)
+    val bodyTextState = mutableStateOf("")
+    val charsetNoteState = mutableStateOf<String?>(null)
+    val bodyOffsetState = mutableIntStateOf(0)
+    val bodySizeState = mutableIntStateOf(0)
+    val bodySectionState = mutableStateOf<String?>(null)
+    val missingState = mutableStateOf<String?>(null)
+    val attachmentsState = mutableStateOf<List<AttachmentRow>>(emptyList())
+    val headerFromState = mutableStateOf("")
+    val headerToState = mutableStateOf("")
+    val headerCcState = mutableStateOf("")
+    val headerDateState = mutableStateOf("")
+    val headerSubjectState = mutableStateOf("")
+    val headerReadyState = mutableStateOf(false)
+    val rowFlagsState = mutableStateOf(emptySet<String>())
+    val showHtmlButtonState = mutableStateOf(false)
+    val allowImagesState = mutableStateOf(false)
+    val noTextPartState = mutableStateOf(false)
+    val connectedState = mutableStateOf(false)
+    val seenStoredState = mutableStateOf(false)
+    val selectedMailboxState = mutableStateOf<String?>(null)
+    val headingState = mutableStateOf(MailboxTitle("", ""))
+
+    fun dropLoaded() {
+        openUid = -1L
+        openMailbox = ""
+        ready = false
+        recordScroll = true
+        carry.pending = ByteArray(0)
+        carry.decoder = null
+        scrollOffsetState.intValue = 0
+        webScroll = 0
+        accountState.value = AccountSettings()
+        structureState.value = null
+        selectedViewState.value = BodyView.PlainOrError
+        renderedHtmlState.value = false
+        bodyTextState.value = ""
+        charsetNoteState.value = null
+        bodyOffsetState.intValue = 0
+        bodySizeState.intValue = 0
+        bodySectionState.value = null
+        missingState.value = null
+        attachmentsState.value = emptyList()
+        headerFromState.value = ""
+        headerToState.value = ""
+        headerCcState.value = ""
+        headerDateState.value = ""
+        headerSubjectState.value = ""
+        headerReadyState.value = false
+        rowFlagsState.value = emptySet()
+        showHtmlButtonState.value = false
+        allowImagesState.value = false
+        noTextPartState.value = false
+        connectedState.value = false
+        seenStoredState.value = false
+        selectedMailboxState.value = null
+        headingState.value = MailboxTitle("", "")
+    }
+}
+
+private fun Context.hostActivity(): Activity? {
+    var current: Context = this
+    while (true) {
+        if (current is Activity) return current
+        if (current !is ContextWrapper) return null
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MessageReaderScreen(
@@ -200,13 +287,25 @@ fun MessageReaderScreen(
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
+    val held = viewModel<ReaderHeld>(key = "reader:$mailbox:$uid")
+    val reuseBody = held.ready && held.openMailbox == mailbox && held.openUid == uid
+    val host = context.hostActivity()
+    DisposableEffect(held) {
+        onDispose {
+            if (host?.isChangingConfigurations != true) held.dropLoaded()
+        }
+    }
+    remember {
+        if (reuseBody) held.recordScroll = false
+        true
+    }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
-    val carry = remember { Utf8Carry() }
+    val carry = held.carry
     val bridge = remember { ScrollBridge() }
-    val scroll = rememberScrollState()
-    var loading by remember(mailbox, uid) { mutableStateOf(true) }
-    var banner by remember(mailbox, uid) { mutableStateOf<String?>(null) }
+    val scroll = rememberScrollState(held.scrollOffsetState.intValue)
+    var loading by remember { mutableStateOf(!reuseBody) }
+    var banner by remember { mutableStateOf<String?>(null) }
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
@@ -219,36 +318,36 @@ fun MessageReaderScreen(
     var confirmExpunge by remember { mutableStateOf(false) }
     var expungeUids by remember { mutableStateOf<List<Long>>(emptyList()) }
     val laterRetry = remember { LaterRetry() }
-    var account by remember { mutableStateOf(AccountSettings()) }
-    var structure by remember { mutableStateOf<MimePart?>(null) }
-    var selectedView by remember { mutableStateOf(BodyView.PlainOrError) }
-    var renderedHtml by remember { mutableStateOf(false) }
-    var bodyText by remember { mutableStateOf("") }
-    var charsetNote by remember { mutableStateOf<String?>(null) }
-    var bodyOffset by remember { mutableIntStateOf(0) }
-    var bodySize by remember { mutableIntStateOf(0) }
-    var bodySection by remember { mutableStateOf<String?>(null) }
-    var missing by remember { mutableStateOf<String?>(null) }
-    var attachments by remember { mutableStateOf<List<AttachmentRow>>(emptyList()) }
-    var headerFrom by remember(mailbox, uid) { mutableStateOf("") }
-    var headerTo by remember(mailbox, uid) { mutableStateOf("") }
-    var headerCc by remember(mailbox, uid) { mutableStateOf("") }
-    var headerDate by remember(mailbox, uid) { mutableStateOf("") }
-    var headerSubject by remember(mailbox, uid) { mutableStateOf("") }
-    var headerReady by remember(mailbox, uid) { mutableStateOf(false) }
-    var rowFlags by remember(mailbox, uid) { mutableStateOf(emptySet<String>()) }
-    var showHtmlButton by remember(mailbox, uid) { mutableStateOf(false) }
-    var pendingLink by remember(mailbox, uid) { mutableStateOf<String?>(null) }
-    var allowImages by remember(mailbox, uid) { mutableStateOf(false) }
+    var account by held.accountState
+    var structure by held.structureState
+    var selectedView by held.selectedViewState
+    var renderedHtml by held.renderedHtmlState
+    var bodyText by held.bodyTextState
+    var charsetNote by held.charsetNoteState
+    var bodyOffset by held.bodyOffsetState
+    var bodySize by held.bodySizeState
+    var bodySection by held.bodySectionState
+    var missing by held.missingState
+    var attachments by held.attachmentsState
+    var headerFrom by held.headerFromState
+    var headerTo by held.headerToState
+    var headerCc by held.headerCcState
+    var headerDate by held.headerDateState
+    var headerSubject by held.headerSubjectState
+    var headerReady by held.headerReadyState
+    var rowFlags by held.rowFlagsState
+    var showHtmlButton by held.showHtmlButtonState
+    var pendingLink by remember { mutableStateOf<String?>(null) }
+    var allowImages by held.allowImagesState
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
-    var noTextPart by remember(mailbox, uid) { mutableStateOf(false) }
-    var connected by remember { mutableStateOf(false) }
-    var seenStored by remember { mutableStateOf(false) }
-    var selectedMailbox by remember { mutableStateOf<String?>(null) }
+    var noTextPart by held.noTextPartState
+    var connected by held.connectedState
+    var seenStored by held.seenStoredState
+    var selectedMailbox by held.selectedMailboxState
     var choosingMove by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
-    var heading by remember(mailbox) { mutableStateOf(MailboxTitle(mailbox, "")) }
+    var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
     BackHandler(enabled = choosingMove && !moreMenu) {
@@ -648,6 +747,18 @@ fun MessageReaderScreen(
     laterRetry.block = { requestView(selectedView) }
 
     LaunchedEffect(session, mailbox, uid, loadToken) {
+        val reuse = held.ready && held.openMailbox == mailbox && held.openUid == uid && loadToken == 0
+        if (reuse) {
+            loading = false
+            connected = true
+            banner = null
+            if (scroll.value != held.scrollOffsetState.intValue) {
+                scroll.scrollTo(held.scrollOffsetState.intValue)
+            }
+            held.recordScroll = true
+            return@LaunchedEffect
+        }
+        held.ready = false
         heading = MailboxTitle(mailbox, "")
         loading = true
         banner = null
@@ -778,7 +889,33 @@ fun MessageReaderScreen(
             }
         }
         loading = false
-        if (openOk) requestView(initialView)
+        if (openOk) {
+            gate.withLock {
+                if (connected) {
+                    when (initialView) {
+                        BodyView.Headers -> {
+                            charsetNote = null
+                            pullUnbounded("HEADER", markSeen = !seenStored)
+                        }
+                        BodyView.Raw -> {
+                            charsetNote = null
+                            pullUnbounded("*", markSeen = !seenStored)
+                        }
+                        else -> loadPreferred(initialView)
+                    }
+                }
+            }
+            held.ready = true
+            held.openMailbox = mailbox
+            held.openUid = uid
+        }
+    }
+
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.value }.collect { value ->
+            if (!held.recordScroll) return@collect
+            held.scrollOffsetState.intValue = value
+        }
     }
 
     LaunchedEffect(connected, bodySection) {
@@ -1240,6 +1377,11 @@ fun MessageReaderScreen(
                                     }
                                     setOnScrollChangeListener { _, _, scrollY, _, _ ->
                                         val extent = (contentHeight * scale) - height
+                                        if (held.recordScroll &&
+                                            !(scrollY == 0 && held.webScroll > 0 && contentHeight == 0)
+                                        ) {
+                                            held.webScroll = scrollY
+                                        }
                                         if (scrollY > 0 && extent - scrollY < 48f) bridge.onNearEnd()
                                     }
                                 }
@@ -1254,6 +1396,8 @@ fun MessageReaderScreen(
                                 if (view.tag != token) {
                                     view.tag = token
                                     view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
+                                    val y = held.webScroll
+                                    if (y > 0) view.post { view.scrollTo(0, y) }
                                 }
                             },
                             modifier = Modifier

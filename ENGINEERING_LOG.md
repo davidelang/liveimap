@@ -1466,3 +1466,15 @@
 - The pinerc preview labels and skip sentences come from strings.xml. The wording stays the same.
 - pinercPreview takes the phrases. sortKeyLabel and startRuleLabel still produce the values. The settings screen passes the resource strings. PinercImportTest and AlpineBookWriteTest pass the same English through previewPinerc. Expected sentences stay, including Display name: Old → Ada. Pinerc keys stay.
 - PinercImport.kt has no TLS is not supported literal. No install.
+
+## 2026-10-06 - Rotation state execution start
+
+- Approved plan: sandbox/plans/rotation-state-20261006-1624-plan.md
+- Phase 1: hold the folder list, the index, the reader, and the mailbox chooser in navigation-entry viewModel() instances so rotation reuses them and does not refetch. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Rotation state phase 1
+
+- Folder list, index, reader, and mailbox chooser keep their models in viewModel() instances owned by the navigation entry.
+- The index holds the model, rows, selected UIDs, and the first visible UID with its pixel offset. The folder list and the chooser hold the folder model and rows. The reader holds the fetched body for the open UID and that body's scroll offset.
+- Those load effects skip loadLevel, the index window fetch, and the body fetch when that held state is already loaded. A new process still starts empty. rememberSaveable fields stay. No configChanges, no orientation lock, no install.

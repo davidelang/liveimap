@@ -76,6 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.SideEffect
@@ -131,7 +132,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
@@ -148,6 +154,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
@@ -435,6 +442,66 @@ fun emptyIndexText(
     return queryFormat.format(query, mailbox)
 }
 
+internal class IndexScreenHeld : ViewModel() {
+    var model: IndexModel? = null
+    var boundMailbox: String? = null
+    val rowsState = mutableStateOf<List<IndexRow>>(emptyList())
+    val selectedState = mutableStateOf<List<Long>>(emptyList())
+    val allMailboxState = mutableStateOf(false)
+    var anchorUid: Long? = null
+    var anchorOffset: Int = 0
+    var anchorSummary: Boolean = false
+    var windowReady: Boolean = false
+    var recordAnchor: Boolean = true
+    var headingLeaf: String = ""
+    var headingParent: String = ""
+
+    fun bind(session: MailSession, store: SettingsStore, mailbox: String): IndexModel {
+        val current = model
+        if (current != null && boundMailbox == mailbox) return current
+        val created = IndexModel(session, store, mailbox)
+        model = created
+        boundMailbox = mailbox
+        rowsState.value = emptyList()
+        selectedState.value = emptyList()
+        allMailboxState.value = false
+        anchorUid = null
+        anchorOffset = 0
+        anchorSummary = false
+        windowReady = false
+        recordAnchor = true
+        headingLeaf = ""
+        headingParent = ""
+        return created
+    }
+
+    fun dropLoaded() {
+        model = null
+        boundMailbox = null
+        rowsState.value = emptyList()
+        selectedState.value = emptyList()
+        allMailboxState.value = false
+        anchorUid = null
+        anchorOffset = 0
+        anchorSummary = false
+        windowReady = false
+        recordAnchor = true
+        headingLeaf = ""
+        headingParent = ""
+    }
+}
+
+private fun Context.hostActivity(): Activity? {
+    var current: Context = this
+    while (true) {
+        if (current is Activity) return current
+        if (current !is ContextWrapper) return null
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageIndexScreen(
@@ -461,45 +528,61 @@ fun MessageIndexScreen(
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
-    val model = remember(session, store, mailbox) { IndexModel(session, store, mailbox) }
+    val held = viewModel<IndexScreenHeld>()
+    val model = held.bind(session, store, mailbox)
+    val reuseWindow = held.windowReady && held.boundMailbox == mailbox
+    val host = LocalContext.current.hostActivity()
+    DisposableEffect(held) {
+        onDispose {
+            if (host?.isChangingConfigurations != true) held.dropLoaded()
+        }
+    }
+    remember {
+        if (reuseWindow && held.anchorUid != null) held.recordAnchor = false
+        true
+    }
     val scope = rememberCoroutineScope()
     val watchRecovery = remember { WatchBackoff() }
     val gate = remember { Mutex() }
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
-    var rows by remember { mutableStateOf<List<IndexRow>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    var rows by held.rowsState
+    var loading by remember { mutableStateOf(!reuseWindow) }
     var banner by remember { mutableStateOf<String?>(null) }
-    var fetchNotice by remember { mutableStateOf<String?>(null) }
+    var fetchNotice by remember { mutableStateOf(if (reuseWindow) model.notice else null) }
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
-    var pendingNew by remember { mutableIntStateOf(0) }
-    var newMailUnnumbered by remember { mutableStateOf(false) }
+    var pendingNew by remember { mutableIntStateOf(if (reuseWindow) model.pendingNew else 0) }
+    var newMailUnnumbered by remember { mutableStateOf(reuseWindow && model.newMailUnnumbered) }
     val userMovedSincePill = remember { mutableStateOf(false) }
     var lastReported by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
-    var view by remember { mutableStateOf(FolderView(SortKey.Arrival, true)) }
-    var account by remember { mutableStateOf(AccountSettings()) }
+    var view by remember { mutableStateOf(if (reuseWindow) model.view else FolderView(SortKey.Arrival, true)) }
+    var account by remember { mutableStateOf(if (reuseWindow) model.account else AccountSettings()) }
     var menuKeys by remember { mutableStateOf(model.menuKeys) }
-    var anchorPage by remember { mutableStateOf(0) }
-    var connected by remember { mutableStateOf(false) }
+    var anchorPage by remember { mutableStateOf(if (reuseWindow) model.anchorPage else 0) }
+    var connected by remember { mutableStateOf(reuseWindow) }
     var menuOpen by remember { mutableStateOf(false) }
     var openAt by remember { mutableStateOf(false) }
-    var heading by remember(mailbox) { mutableStateOf(MailboxTitle(mailbox, "")) }
+    var heading by remember(mailbox) {
+        mutableStateOf(
+            if (reuseWindow) MailboxTitle(held.headingLeaf, held.headingParent) else MailboxTitle(mailbox, ""),
+        )
+    }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var filterOpen by remember { mutableStateOf(false) }
-    var filterActive by remember { mutableStateOf(false) }
-    var canWiden by remember { mutableStateOf(false) }
+    var filterActive by remember { mutableStateOf(reuseWindow && model.filterActive) }
+    var canWiden by remember { mutableStateOf(reuseWindow && model.canWiden) }
     var narrowArmed by remember { mutableStateOf(false) }
     var prompt by remember { mutableStateOf<FilterChoice?>(null) }
     var promptText by remember { mutableStateOf("") }
-    var filters by remember { mutableStateOf<List<AppliedFilter>>(emptyList()) }
-    var summaries by remember { mutableStateOf<Map<Long, ThreadSummary>>(emptyMap()) }
-    var threadMembers by remember { mutableStateOf<Map<Long, IndexRow>>(emptyMap()) }
-    var threadHidden by remember { mutableStateOf<Map<Long, List<Long>>>(emptyMap()) }
-    var threadDepth by remember { mutableStateOf<Map<Long, Int>>(emptyMap()) }
+    var filters by remember { mutableStateOf(if (reuseWindow) model.filters else emptyList()) }
+    var summaries by remember { mutableStateOf(if (reuseWindow) model.summaries else emptyMap()) }
+    var threadMembers by remember { mutableStateOf(if (reuseWindow) model.threadMembers else emptyMap()) }
+    var threadHidden by remember { mutableStateOf(if (reuseWindow) model.threadHidden else emptyMap()) }
+    var threadDepth by remember { mutableStateOf(if (reuseWindow) model.threadDepth else emptyMap()) }
     var refreshing by remember { mutableStateOf(false) }
     var threadAsk by remember { mutableStateOf<FolderView?>(null) }
     var threadAskFromConnect by remember { mutableStateOf(false) }
@@ -510,9 +593,11 @@ fun MessageIndexScreen(
     model.noteExpanded(expandedThreads)
     val threadChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
     val sequenceMeasurer = rememberTextMeasurer()
-    var multiSelect by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<List<Long>>(emptyList()) }
-    var allMailbox by remember { mutableStateOf(false) }
+    var multiSelect by remember {
+        mutableStateOf(reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value))
+    }
+    var selected by held.selectedState
+    var allMailbox by held.allMailboxState
     var mailboxExists by remember { mutableIntStateOf(0) }
     var folderExists by remember(mailbox) { mutableIntStateOf(0) }
     var selectionMore by remember { mutableStateOf(false) }
@@ -823,12 +908,40 @@ fun MessageIndexScreen(
     }
 
     LaunchedEffect(session, mailbox, loadToken) {
-        heading = MailboxTitle(mailbox, "")
-        loading = true
-        banner = null
+        val reuse = held.windowReady && held.boundMailbox == mailbox && loadToken == 0
         var pendingThread: FolderView? = null
         var pendingExists = 0
-        val watchNow = gate.withLock {
+        val watchNow = if (reuse) {
+            held.recordAnchor = false
+            connected = true
+            loading = false
+            pull()
+            heading = MailboxTitle(held.headingLeaf, held.headingParent)
+            val uid = held.anchorUid
+            if (uid != null) {
+                val entries = buildIndexEntries(
+                    model.rows,
+                    model.summaries,
+                    parseExpandedThreads(expandedText),
+                    model.threadMembers,
+                    model.threadHidden,
+                    model.threadDepth,
+                )
+                val index = entries.indexOfFirst { entry ->
+                    if (held.anchorSummary) {
+                        entry is IndexEntry.Summary && entry.rootUid == uid
+                    } else {
+                        entry is IndexEntry.Message && entry.row.uid == uid
+                    }
+                }
+                if (index >= 0) listState.scrollToItem(index, held.anchorOffset)
+            }
+            held.recordAnchor = true
+            true
+        } else gate.withLock {
+            heading = MailboxTitle(mailbox, "")
+            loading = true
+            banner = null
             val settings = try {
                 store.load()
             } catch (error: CancellationException) {
@@ -865,6 +978,8 @@ fun MessageIndexScreen(
                 OpenResult.Connected -> Unit
             }
             heading = mailboxTitleFor(session, mailbox)
+            held.headingLeaf = heading.leaf
+            held.headingParent = heading.parent
             val savedView = settings.folderViews[mailbox] ?: settings.defaultView
             val threading = savedView.key == SortKey.ThreadReferences ||
                 savedView.key == SortKey.ThreadOrderedSubject
@@ -884,6 +999,7 @@ fun MessageIndexScreen(
                 }
             }
             model.loadWindow()
+            held.windowReady = true
             connected = true
             pull()
             true
@@ -904,6 +1020,7 @@ fun MessageIndexScreen(
                 connected = true
                 pull()
             }
+            held.windowReady = true
             loading = false
             if (model.rows.isNotEmpty()) scrollToStart()
         } else if (!watchNow) {
@@ -911,7 +1028,7 @@ fun MessageIndexScreen(
             return@LaunchedEffect
         } else {
             loading = false
-            if (model.rows.isNotEmpty()) scrollToStart()
+            if (!reuse && model.rows.isNotEmpty()) scrollToStart()
         }
         var watchJob: Job? = null
         try {
@@ -1005,6 +1122,21 @@ fun MessageIndexScreen(
         threadDepth,
     )
     val indexEntryState = rememberUpdatedState(indexEntries)
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            if (!held.recordAnchor) return@collect
+            val entry = indexEntryState.value.getOrNull(index) ?: return@collect
+            val uid = when (entry) {
+                is IndexEntry.Message -> entry.row.uid
+                is IndexEntry.Summary -> entry.rootUid
+            }
+            held.anchorUid = uid
+            held.anchorOffset = offset
+            held.anchorSummary = entry is IndexEntry.Summary
+        }
+    }
     noteVisibleTop = {
         if (model.rows.isEmpty()) {
             model.noteTopUid(null)
