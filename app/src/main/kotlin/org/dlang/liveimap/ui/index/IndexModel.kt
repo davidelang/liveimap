@@ -14,7 +14,9 @@ import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
+import org.dlang.liveimap.settings.withFolderStart
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.ui.compose.mailboxLeaf
 import java.text.NumberFormat
@@ -380,6 +382,12 @@ class IndexModel(
 
     var account: AccountSettings = AccountSettings()
         private set
+
+    suspend fun setFolderStart(rule: StartRule?) {
+        val saved = withFolderStart(store.load(), mailbox, rule)
+        store.save(saved)
+        account = saved
+    }
 
     val rows: List<IndexRow>
         get() = heldRows

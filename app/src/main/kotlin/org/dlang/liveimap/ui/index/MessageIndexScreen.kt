@@ -143,7 +143,14 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
+import org.dlang.liveimap.settings.openAtMenuText
+import org.dlang.liveimap.settings.recentRuleNote
+import org.dlang.liveimap.settings.startRuleChoices
+import org.dlang.liveimap.settings.startRuleFor
+import org.dlang.liveimap.settings.startRuleIsRecent
+import org.dlang.liveimap.settings.startRuleLabel
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.settings.swipeActionLabel
 import org.dlang.liveimap.ui.mailBarInsets
@@ -416,6 +423,7 @@ fun MessageIndexScreen(
     var anchorPage by remember { mutableStateOf(0) }
     var connected by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var openAt by remember { mutableStateOf(false) }
     var heading by remember(mailbox) { mutableStateOf(MailboxTitle(mailbox, "")) }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -458,11 +466,12 @@ fun MessageIndexScreen(
     val allowNewer = remember { mutableStateOf(true) }
 
     BackHandler(
-        enabled = prompt != null || filterOpen || menuOpen || flagUid != null || searchVisible || multiSelect,
+        enabled = prompt != null || filterOpen || menuOpen || openAt || flagUid != null || searchVisible || multiSelect,
     ) {
         when {
             prompt != null -> prompt = null
             filterOpen -> filterOpen = false
+            openAt -> openAt = false
             menuOpen -> menuOpen = false
             flagUid != null -> flagUid = null
             searchVisible -> searchVisible = false
@@ -1373,6 +1382,16 @@ fun MessageIndexScreen(
                                 )
                             },
                         )
+                        val openAtLabel = openAtMenuText(account)
+                        if (openAtLabel != null) {
+                            DropdownMenuItem(
+                                text = { Text(openAtLabel) },
+                                onClick = {
+                                    menuOpen = false
+                                    openAt = true
+                                },
+                            )
+                        }
                     }
                 }
                     }
@@ -1758,6 +1777,46 @@ fun MessageIndexScreen(
             },
             dismissButton = {
                 TextButton(onClick = { prompt = null }) { Text("Dismiss") }
+            },
+        )
+    }
+    if (openAt) {
+        val selected = account.folderStarts[mailbox] ?: startRuleFor(mailbox, account)
+        val choices = startRuleChoices(account.showRecentRules, selected)
+        AlertDialog(
+            onDismissRequest = { openAt = false },
+            title = { Text("Open this folder at…") },
+            text = {
+                Column {
+                    choices.forEach { rule ->
+                        TextButton(onClick = {
+                            openAt = false
+                            scope.launch {
+                                gate.withLock {
+                                    model.setFolderStart(rule)
+                                    pull()
+                                }
+                            }
+                        }) {
+                            Column {
+                                Text(startRuleLabel(rule))
+                                if (startRuleIsRecent(rule)) Text(recentRuleNote)
+                            }
+                        }
+                    }
+                    TextButton(onClick = {
+                        openAt = false
+                        scope.launch {
+                            gate.withLock {
+                                model.setFolderStart(null)
+                                pull()
+                            }
+                        }
+                    }) { Text("Default") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { openAt = false }) { Text("Close") }
             },
         )
     }

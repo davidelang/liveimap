@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 
 val connectedConnection: StateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Connected)
 
@@ -33,6 +34,8 @@ interface MailSession {
     suspend fun takeCopiedUids(): List<Long> = emptyList()
     suspend fun searchText(query: String): List<Long>
     suspend fun searchCriterion(kind: String, argument: String): List<Long>
+    suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+        throw MailFailure("searchStart")
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
     suspend fun thread(key: SortKey): ThreadNode
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)

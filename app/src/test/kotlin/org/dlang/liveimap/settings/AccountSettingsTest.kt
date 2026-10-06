@@ -303,6 +303,81 @@ class AccountSettingsTest {
         assertTrue(decodeAccountSettings(older).askBeforeExpunge)
     }
 
+    @Test
+    fun startPositionRoundTripAndMissingDefaults() {
+        val original = AccountSettings(
+            inboxStart = StartRule.FirstImportant,
+            folderStart = StartRule.Last,
+            folderStarts = mapOf(
+                "INBOX" to StartRule.FirstUnseen,
+                "Lists|alpine" to StartRule.FirstRecent,
+            ),
+            startAfterChange = StartAfterChange.KeepTopVisible,
+            showRecentRules = false,
+            openAtInIndexMenu = true,
+            pinercStartDefault = PinercStartDefault.AlpineDefault,
+        )
+        val text = original.encode()
+        assertTrue(text.contains("inboxStart=FirstImportant"))
+        assertTrue(text.contains("folderStart=Last"))
+        assertTrue(text.contains("Lists%7Calpine|FirstRecent"))
+        assertTrue(text.contains("startAfterChange=KeepTopVisible"))
+        assertTrue(text.contains("showRecentRules=false"))
+        assertTrue(text.contains("openAtInIndexMenu=true"))
+        assertTrue(text.contains("pinercStartDefault=AlpineDefault"))
+        assertEquals(original, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+
+        val older = AccountSettings().encode().lineSequence()
+            .filter { line ->
+                line.isNotEmpty() &&
+                    !line.startsWith("inboxStart=") &&
+                    !line.startsWith("folderStart=") &&
+                    !line.startsWith("folderStarts=") &&
+                    !line.startsWith("startAfterChange=") &&
+                    !line.startsWith("showRecentRules=") &&
+                    !line.startsWith("openAtInIndexMenu=") &&
+                    !line.startsWith("pinercStartDefault=")
+            }
+            .joinToString("\n")
+        val loaded = decodeAccountSettings(older)
+        assertEquals(StartRule.Newest, loaded.inboxStart)
+        assertEquals(StartRule.Newest, loaded.folderStart)
+        assertEquals(emptyMap<String, StartRule>(), loaded.folderStarts)
+        assertEquals(StartAfterChange.RerunRule, loaded.startAfterChange)
+        assertTrue(loaded.showRecentRules)
+        assertFalse(loaded.openAtInIndexMenu)
+        assertEquals(PinercStartDefault.LeaveUnchanged, loaded.pinercStartDefault)
+    }
+
+    @Test
+    fun startRuleForOverrideInboxAndOther() {
+        val settings = AccountSettings(
+            inboxStart = StartRule.FirstUnseen,
+            folderStart = StartRule.Last,
+            folderStarts = mapOf("INBOX" to StartRule.First, "Lists" to StartRule.Newest),
+        )
+        assertEquals(StartRule.First, startRuleFor("INBOX", settings))
+        assertEquals(StartRule.FirstUnseen, startRuleFor("inbox", settings))
+        assertEquals(StartRule.FirstUnseen, startRuleFor("InBox", settings))
+        assertEquals(StartRule.Newest, startRuleFor("Lists", settings))
+        assertEquals(StartRule.Last, startRuleFor("Sent", settings))
+        assertEquals(
+            listOf(StartRule.First, StartRule.Last, StartRule.Newest),
+            startRuleChoices(showRecent = false, selected = StartRule.Newest).filter { rule ->
+                rule == StartRule.First || rule == StartRule.Last || rule == StartRule.Newest ||
+                    rule == StartRule.FirstRecent || rule == StartRule.FirstImportantOrRecent
+            },
+        )
+        assertFalse(startRuleChoices(false, StartRule.Newest).contains(StartRule.FirstRecent))
+        assertTrue(startRuleChoices(false, StartRule.FirstRecent).contains(StartRule.FirstRecent))
+        assertFalse(
+            startRuleChoices(false, StartRule.FirstRecent).contains(StartRule.FirstImportantOrRecent),
+        )
+        assertEquals("Open this folder at…", openAtMenuText(AccountSettings(openAtInIndexMenu = true)))
+        assertEquals(null, openAtMenuText(AccountSettings()))
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

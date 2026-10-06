@@ -14,12 +14,14 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
 internal fun capabilityTokens(serverList: String): List<String> =
@@ -384,6 +386,20 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {
+        if (rule == StartRule.Newest) return emptyList()
+        return keeper.read("search") {
+            val ids = nativeSearchStart(
+                requireHandle(),
+                rule.name,
+                byUid,
+                edge.name,
+                searchKind(advertised()) == "Esearch",
+            ) ?: throw MailFailure("search failed")
+            ids.toList()
+        }
+    }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         if (key == SortKey.Arrival) {
             throw MailFailure("use an arrival IndexMode")
@@ -642,6 +658,14 @@ class LibetpanMailSession : MailSession {
         handle: Long,
         kind: String,
         argument: String,
+        useEsearch: Boolean,
+    ): LongArray?
+
+    private external fun nativeSearchStart(
+        handle: Long,
+        rule: String,
+        byUid: Boolean,
+        edge: String,
         useEsearch: Boolean,
     ): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?

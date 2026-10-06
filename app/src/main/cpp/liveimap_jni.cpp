@@ -2594,8 +2594,16 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
             continue;
         }
-        if (strcasecmp(name.c_str(), "MIN") == 0 || strcasecmp(name.c_str(), "MAX") == 0
-            || strcasecmp(name.c_str(), "COUNT") == 0 || strcasecmp(name.c_str(), "MODSEQ") == 0) {
+        if (strcasecmp(name.c_str(), "MIN") == 0 || strcasecmp(name.c_str(), "MAX") == 0) {
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            uint32_t number = 0;
+            r = mailimap_nz_number_parse(fd, buffer, ctx, &cur, &number);
+            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (!appendUid(uids, number)) { freeUidList(uids); return MAILIMAP_ERROR_MEMORY; }
+            continue;
+        }
+        if (strcasecmp(name.c_str(), "COUNT") == 0 || strcasecmp(name.c_str(), "MODSEQ") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
             while (peekChar(buffer, cur) >= '0' && peekChar(buffer, cur) <= '9') cur += 1;
@@ -2762,27 +2770,36 @@ int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     return r;
 }
 
-int sendUidEsearch(mailimap * imap, struct mailimap_search_key * key, struct mailimap_response ** response) {
+int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset,
+    struct mailimap_search_key * key, struct mailimap_response ** response) {
+    if (ret == nullptr) return MAILIMAP_ERROR_INVAL;
+    if (strcasecmp(ret, "ALL") != 0 && strcasecmp(ret, "MIN") != 0 && strcasecmp(ret, "MAX") != 0) {
+        return MAILIMAP_ERROR_INVAL;
+    }
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "UID", false);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "SEARCH", true);
+    if (byUid) {
+        r = sendWord(imap->imap_stream, "UID", false);
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    r = sendWord(imap->imap_stream, "SEARCH", byUid);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "RETURN", true);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "(", true);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "ALL", false);
+    r = sendWord(imap->imap_stream, ret, false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "CHARSET", true);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_space_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_astring_send(imap->imap_stream, "UTF-8");
-    if (r != MAILIMAP_NO_ERROR) return r;
+    if (withCharset) {
+        r = sendWord(imap->imap_stream, "CHARSET", true);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_astring_send(imap->imap_stream, "UTF-8");
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_search_key_send(imap->imap_stream, key);
@@ -2859,6 +2876,32 @@ struct mailimap_search_key * notKey(struct mailimap_search_key * inner) {
     return key;
 }
 
+struct mailimap_search_key * andKey(struct mailimap_search_key * left, struct mailimap_search_key * right) {
+    if (left == nullptr || right == nullptr) {
+        if (left != nullptr) mailimap_search_key_free(left);
+        if (right != nullptr) mailimap_search_key_free(right);
+        return nullptr;
+    }
+    struct mailimap_search_key * multi = mailimap_search_key_new_multiple_empty();
+    if (multi == nullptr) {
+        mailimap_search_key_free(left);
+        mailimap_search_key_free(right);
+        return nullptr;
+    }
+    if (mailimap_search_key_multiple_add(multi, left) != MAILIMAP_NO_ERROR) {
+        mailimap_search_key_free(left);
+        mailimap_search_key_free(right);
+        mailimap_search_key_free(multi);
+        return nullptr;
+    }
+    if (mailimap_search_key_multiple_add(multi, right) != MAILIMAP_NO_ERROR) {
+        mailimap_search_key_free(right);
+        mailimap_search_key_free(multi);
+        return nullptr;
+    }
+    return multi;
+}
+
 struct mailimap_search_key * keyOr(struct mailimap_search_key * left, struct mailimap_search_key * right) {
     if (left == nullptr || right == nullptr) {
         if (left != nullptr) mailimap_search_key_free(left);
@@ -2904,6 +2947,32 @@ struct mailimap_search_key * forwardedKey(bool negated) {
 
 bool sameKind(const char * kind, const char * name) {
     return strcmp(kind, name) == 0;
+}
+
+struct mailimap_search_key * startRuleKey(const char * rule) {
+    if (sameKind(rule, "FirstUnseen")) {
+        return andKey(searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED), searchKeyType(MAILIMAP_SEARCH_KEY_UNSEEN));
+    }
+    if (sameKind(rule, "FirstRecent")) {
+        return andKey(searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED), searchKeyType(MAILIMAP_SEARCH_KEY_NEW));
+    }
+    if (sameKind(rule, "FirstImportant")) {
+        return andKey(searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED), searchKeyType(MAILIMAP_SEARCH_KEY_FLAGGED));
+    }
+    if (sameKind(rule, "FirstImportantOrUnseen")) {
+        return andKey(
+            searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED),
+            keyOr(searchKeyType(MAILIMAP_SEARCH_KEY_FLAGGED), searchKeyType(MAILIMAP_SEARCH_KEY_UNSEEN)));
+    }
+    if (sameKind(rule, "FirstImportantOrRecent")) {
+        return andKey(
+            searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED),
+            keyOr(searchKeyType(MAILIMAP_SEARCH_KEY_FLAGGED), searchKeyType(MAILIMAP_SEARCH_KEY_NEW)));
+    }
+    if (sameKind(rule, "First") || sameKind(rule, "Last")) {
+        return searchKeyType(MAILIMAP_SEARCH_KEY_UNDELETED);
+    }
+    return nullptr;
 }
 
 bool positiveUint(const char * text, uint32_t * out) {
@@ -3059,7 +3128,7 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
 jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean useEsearch) {
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendUidEsearch(session->imap, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", true, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -3082,6 +3151,62 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
     }
     clist * result = nullptr;
     int r = mailimap_uid_search(session->imap, "UTF-8", key, &result);
+    mailimap_search_key_free(key);
+    if (!cmdOk(r)) {
+        if (result != nullptr) mailimap_search_result_free(result);
+        throwImap(env, session, r, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jlongArray arr = uidArray(env, result);
+    if (result != nullptr) mailimap_search_result_free(result);
+    unlockSession(session);
+    return arr;
+}
+
+jlongArray runEdgeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key,
+    bool byUid, const char * edge, bool useEsearch) {
+    if (key == nullptr) {
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    const char * ret = "ALL";
+    if (edge != nullptr && strcmp(edge, "Min") == 0) ret = "MIN";
+    else if (edge != nullptr && strcmp(edge, "Max") == 0) ret = "MAX";
+    else if (edge != nullptr && strcmp(edge, "All") != 0) {
+        mailimap_search_key_free(key);
+        throwFailure(env, "bad search");
+        unlockSession(session);
+        return nullptr;
+    }
+    if (useEsearch) {
+        struct mailimap_response * response = nullptr;
+        int r = sendEsearch(session->imap, byUid, ret, false, key, &response);
+        mailimap_search_key_free(key);
+        if (r != MAILIMAP_NO_ERROR) {
+            throwImap(env, session, r, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        clist * result = takeEsearch(session->imap);
+        bool ok = taggedOk(response);
+        mailimap_response_free(response);
+        if (!ok) {
+            if (result != nullptr) mailimap_search_result_free(result);
+            throwImap(env, session, r, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        jlongArray arr = uidArray(env, result);
+        if (result != nullptr) mailimap_search_result_free(result);
+        unlockSession(session);
+        return arr;
+    }
+    clist * result = nullptr;
+    int r = byUid
+        ? mailimap_uid_search(session->imap, nullptr, key, &result)
+        : mailimap_search(session->imap, nullptr, key, &result);
     mailimap_search_key_free(key);
     if (!cmdOk(r)) {
         if (result != nullptr) mailimap_search_result_free(result);
@@ -4185,7 +4310,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     struct mailimap_search_key * key = mailimap_search_key_new_text(strdup(q.c()));
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendUidEsearch(session->imap, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", true, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -4237,6 +4362,27 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv 
         return nullptr;
     }
     return completeSearch(env, session, key, useEsearch);
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchStart(JNIEnv * env, jobject, jlong handle,
+    jstring rule, jboolean byUid, jstring edge, jboolean useEsearch) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars ruleChars(env, rule);
+    JChars edgeChars(env, edge);
+    if (sameKind(ruleChars.c(), "Newest")) {
+        unlockSession(session);
+        return env->NewLongArray(0);
+    }
+    struct mailimap_search_key * key = startRuleKey(ruleChars.c());
+    if (key == nullptr) {
+        throwFailure(env, "bad search");
+        unlockSession(session);
+        return nullptr;
+    }
+    return runEdgeSearch(env, session, key, byUid == JNI_TRUE, edgeChars.c(), useEsearch == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

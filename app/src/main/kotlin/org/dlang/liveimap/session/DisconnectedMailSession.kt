@@ -2,6 +2,7 @@ package org.dlang.liveimap.session
 
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 
 class DisconnectedMailSession : MailSession {
     override val capabilities: Set<String> = emptySet()
@@ -38,6 +39,9 @@ class DisconnectedMailSession : MailSession {
     override suspend fun searchText(query: String): List<Long> = notConnected()
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = notConnected()
+
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+        notConnected()
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = notConnected()
 

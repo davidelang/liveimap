@@ -82,6 +82,9 @@ fun SettingsScreen() {
     var draftFolder by remember { mutableStateOf("") }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
+    var editingStarts by remember { mutableStateOf(false) }
+    var draftStartMailbox by remember { mutableStateOf("") }
+    var draftStartRule by remember { mutableStateOf(StartRule.Newest) }
     var draftExpanded by remember { mutableStateOf("") }
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
     var probing by remember { mutableStateOf(false) }
@@ -109,11 +112,11 @@ fun SettingsScreen() {
         }
     }
 
-    BackHandler(enabled = picking != null || warnUnread) {
-        if (picking != null) {
-            picking = null
-        } else {
-            warnUnread = false
+    BackHandler(enabled = picking != null || warnUnread || editingStarts) {
+        when {
+            picking != null -> picking = null
+            editingStarts -> editingStarts = false
+            else -> warnUnread = false
         }
     }
 
@@ -283,6 +286,36 @@ fun SettingsScreen() {
             )
             draftFolder = ""
         }) { Text("Add folder view") }
+        Text("Start position")
+        StartRuleField("INBOX opens at", settings.inboxStart, settings.showRecentRules) { rule ->
+            persist(settings.copy(inboxStart = rule))
+        }
+        StartRuleField("Other folders open at", settings.folderStart, settings.showRecentRules) { rule ->
+            persist(settings.copy(folderStart = rule))
+        }
+        TextButton(onClick = { editingStarts = true }) { Text("Start position per folder") }
+        ChoiceField(
+            "After a sort, direction, filter or search change",
+            StartAfterChange.entries,
+            settings.startAfterChange,
+            { startAfterChangeLabel(it) },
+        ) { value ->
+            persist(settings.copy(startAfterChange = value))
+        }
+        BoolField("Show \\Recent-based rules", settings.showRecentRules) { enabled ->
+            persist(settings.copy(showRecentRules = enabled))
+        }
+        BoolField("'Open at' in the index menu", settings.openAtInIndexMenu) { enabled ->
+            persist(settings.copy(openAtInIndexMenu = enabled))
+        }
+        ChoiceField(
+            "When a pinerc has no incoming-startup-rule",
+            PinercStartDefault.entries,
+            settings.pinercStartDefault,
+            { pinercStartDefaultLabel(it) },
+        ) { value ->
+            persist(settings.copy(pinercStartDefault = value))
+        }
         val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
         SwipeEditor(
             if (leftToRight) "Swipe left" else "Swipe right",
@@ -377,6 +410,58 @@ fun SettingsScreen() {
             },
             onDismiss = { picking = null },
         )
+    }
+
+    if (editingStarts) {
+        Dialog(
+            onDismissRequest = { editingStarts = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars
+                                .union(WindowInsets.navigationBars)
+                                .union(WindowInsets.displayCutout),
+                        )
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Start position per folder", style = MaterialTheme.typography.titleLarge)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        settings.folderStarts.forEach { (mailbox, rule) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("$mailbox: ${startRuleLabel(rule)}")
+                                    if (startRuleIsRecent(rule)) Text(recentRuleNote)
+                                }
+                                TextButton(onClick = {
+                                    persist(withFolderStart(settings, mailbox, null))
+                                }) { Text("Default") }
+                            }
+                        }
+                        LineField("Mailbox", draftStartMailbox) { draftStartMailbox = it }
+                        StartRuleField("Opens at", draftStartRule, settings.showRecentRules) {
+                            draftStartRule = it
+                        }
+                        TextButton(onClick = {
+                            if (draftStartMailbox.isEmpty()) return@TextButton
+                            persist(withFolderStart(settings, draftStartMailbox, draftStartRule))
+                            draftStartMailbox = ""
+                        }) { Text("Add") }
+                    }
+                    TextButton(onClick = { editingStarts = false }) { Text("Close") }
+                }
+            }
+        }
     }
 
     val error = importError
@@ -487,6 +572,55 @@ private fun BoolField(label: String, value: Boolean, onValue: (Boolean) -> Unit)
             Switch(checked = value, onCheckedChange = null)
         },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StartRuleField(
+    label: String,
+    selected: StartRule,
+    showRecent: Boolean,
+    onSelect: (StartRule) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = startRuleChoices(showRecent, selected)
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = startRuleLabel(selected),
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(startRuleLabel(option))
+                            if (startRuleIsRecent(option)) Text(recentRuleNote)
+                        }
+                    },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+    if (startRuleIsRecent(selected)) Text(recentRuleNote)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

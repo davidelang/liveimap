@@ -123,6 +123,20 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         }
     }
 
+    var appliedAlpineDefault = false
+    if ("incoming-startup-rule" in entries) {
+        val raw = entries["incoming-startup-rule"]?.decoded?.trim().orEmpty()
+        val mapped = parseStartupRule(raw)
+        if (mapped == null) {
+            skipped.add("Startup rule not recognized")
+        } else {
+            next = next.copy(inboxStart = mapped)
+        }
+    } else if (current.pinercStartDefault == PinercStartDefault.AlpineDefault) {
+        next = next.copy(inboxStart = StartRule.FirstUnseen)
+        appliedAlpineDefault = true
+    }
+
     val features = entries["feature-list"]
     if (features?.decoded != null) {
         var ask: Boolean? = null
@@ -152,13 +166,26 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
                 skipped.add("Folder lists are not imported")
             "signature-file", "literal-signature" ->
                 skipped.add("Signature is not a setting")
+            "patterns-other" -> {
+                val raw = entries[name]?.raw.orEmpty()
+                if (raw.contains("/START=", ignoreCase = true)) {
+                    skipped.add("Per-folder startup rules are not imported")
+                } else {
+                    omitted += 1
+                }
+            }
             else -> if (name !in appliedNames) omitted += 1
         }
     }
 
+    val rows = diffRows(current, next).toMutableList()
+    if (appliedAlpineDefault) {
+        rows.removeAll { it.startsWith("INBOX opens at:") }
+        rows.add("INBOX opens at: First unread (alpine's default)")
+    }
     return PinercPreview(
         next = next,
-        rows = diffRows(current, next),
+        rows = rows,
         skipped = skipped,
         omittedCount = omitted,
     )
@@ -175,6 +202,7 @@ private val appliedNames = setOf(
     "address-book",
     "sort-key",
     "feature-list",
+    "incoming-startup-rule",
 )
 
 private val variableName = Regex("[A-Za-z0-9][A-Za-z0-9_-]*")
@@ -381,6 +409,17 @@ private fun classifyFolder(value: String, allowPlain: Boolean): FolderKind {
     return FolderKind.Mailbox(folder)
 }
 
+private fun parseStartupRule(value: String): StartRule? = when (value.lowercase(Locale.ROOT)) {
+    "first-unseen" -> StartRule.FirstUnseen
+    "first-recent" -> StartRule.FirstRecent
+    "first-important" -> StartRule.FirstImportant
+    "first-important-or-unseen" -> StartRule.FirstImportantOrUnseen
+    "first-important-or-recent" -> StartRule.FirstImportantOrRecent
+    "first" -> StartRule.First
+    "last" -> StartRule.Last
+    else -> null
+}
+
 private fun parseSort(value: String): FolderView? {
     val lower = value.lowercase(Locale.ROOT)
     val newest = lower.endsWith("/reverse")
@@ -418,5 +457,6 @@ private fun diffRows(current: AccountSettings, next: AccountSettings): List<Stri
     add("Default view", sortKeyLabel(current.defaultView.key), sortKeyLabel(next.defaultView.key))
     add("Newest first", current.defaultView.newestFirst, next.defaultView.newestFirst)
     add("Ask before expunge", current.askBeforeExpunge, next.askBeforeExpunge)
+    add("INBOX opens at", startRuleLabel(current.inboxStart), startRuleLabel(next.inboxStart))
     return rows
 }

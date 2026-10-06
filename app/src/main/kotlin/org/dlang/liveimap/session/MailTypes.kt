@@ -39,6 +39,12 @@ data class FolderEntry(
     val unseen: Int? = null,
 )
 
+enum class SearchEdge {
+    All,
+    Min,
+    Max,
+}
+
 enum class IndexMode {
     ArrivalNewest,
     ArrivalOldest,

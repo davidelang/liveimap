@@ -978,3 +978,11 @@
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/connection-recovery-20261003-1645-plan.md
 - Phase 3: ConnectionStatusStrip on the index, folder list, and reader. Index Retry calls resume then refreshIndex, or bumps loadToken when not yet connected. Reconnected refreshes the index. WatchLost resumes after 2 s, then 10 s, then 60 s, and then stops. LifecycleStartEffect resumes and refreshes on every start after the first. MainActivity onStop suspends the session unless a configuration change is in progress.
 - Manual checks on 10.0.0.1 stay with the human. No deploy.
+
+## 2026-10-05 - index start position execution start
+
+- Approved plan: sandbox/plans/index-startup-position-20261003-1625-plan.md
+- Worktree: /home/dlang/git/liveimap/master branch master
+- Phase 0: no tracked modifications. builds tag 13430ae
+- Known failures not fixed here: IndexWindowTest.orderedSubjectHiddenUnlessAdvertised, AccountSettingsTest.defaultsRoundTrip
+- Phase 1: StartRule settings, pinerc mapping, searchStart through native, parseEsearch MIN/MAX

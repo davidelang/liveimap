@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartRule
 
 class SerialMailSession(
     private val inner: MailSession,
@@ -95,6 +96,9 @@ class SerialMailSession(
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> =
         onLane { inner.searchCriterion(kind, argument) }
+
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+        onLane { inner.searchStart(rule, byUid, edge) }
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> =
         onLane { inner.sort(key, newestFirst) }

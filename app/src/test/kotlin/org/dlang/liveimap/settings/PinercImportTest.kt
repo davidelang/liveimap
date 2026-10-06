@@ -285,4 +285,56 @@ class PinercImportTest {
             AccountSettings(displayName = "Old"),
         ).rows)
     }
+
+    @Test
+    fun startupRuleMapsCaseDefaultAndUnknown() {
+        val cases = listOf(
+            "first-unseen" to StartRule.FirstUnseen,
+            "first-recent" to StartRule.FirstRecent,
+            "first-important" to StartRule.FirstImportant,
+            "first-important-or-unseen" to StartRule.FirstImportantOrUnseen,
+            "first-important-or-recent" to StartRule.FirstImportantOrRecent,
+            "first" to StartRule.First,
+            "last" to StartRule.Last,
+        )
+        for ((text, rule) in cases) {
+            val preview = pinercPreview("incoming-startup-rule=$text\n", AccountSettings())
+            assertEquals(rule, preview.next.inboxStart)
+            assertTrue(preview.rows.any { it.startsWith("INBOX opens at:") })
+        }
+        val upper = pinercPreview(
+            "incoming-startup-rule=FIRST-UNSEEN\n",
+            AccountSettings(inboxStart = StartRule.Last),
+        )
+        assertEquals(StartRule.FirstUnseen, upper.next.inboxStart)
+        val unknown = pinercPreview(
+            "incoming-startup-rule=first-new\n",
+            AccountSettings(inboxStart = StartRule.Last),
+        )
+        assertEquals(StartRule.Last, unknown.next.inboxStart)
+        assertTrue(unknown.skipped.contains("Startup rule not recognized"))
+        val leave = pinercPreview(
+            "personal-name=Ada\n",
+            AccountSettings(
+                inboxStart = StartRule.Last,
+                pinercStartDefault = PinercStartDefault.LeaveUnchanged,
+            ),
+        )
+        assertEquals(StartRule.Last, leave.next.inboxStart)
+        val alpine = pinercPreview(
+            "personal-name=Ada\n",
+            AccountSettings(
+                inboxStart = StartRule.Last,
+                pinercStartDefault = PinercStartDefault.AlpineDefault,
+            ),
+        )
+        assertEquals(StartRule.FirstUnseen, alpine.next.inboxStart)
+        assertTrue(alpine.rows.contains("INBOX opens at: First unread (alpine's default)"))
+        val patterns = pinercPreview(
+            "patterns-other=/START=first-unseen\n",
+            AccountSettings(),
+        )
+        assertTrue(patterns.skipped.contains("Per-folder startup rules are not imported"))
+        assertEquals(StartRule.Newest, patterns.next.inboxStart)
+    }
 }

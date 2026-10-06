@@ -42,6 +42,78 @@ fun sortKeyLabel(key: SortKey): String = when (key) {
     SortKey.ThreadOrderedSubject -> "Ordered subject"
 }
 
+enum class StartRule {
+    FirstUnseen,
+    FirstRecent,
+    FirstImportant,
+    FirstImportantOrUnseen,
+    FirstImportantOrRecent,
+    First,
+    Last,
+    Newest,
+}
+
+const val recentRuleNote = "\\Recent belongs to whichever app opens the folder first"
+
+fun startRuleLabel(rule: StartRule): String = when (rule) {
+    StartRule.FirstUnseen -> "First unread"
+    StartRule.FirstRecent -> "First recent"
+    StartRule.FirstImportant -> "First important"
+    StartRule.FirstImportantOrUnseen -> "First important or unread"
+    StartRule.FirstImportantOrRecent -> "First important or recent"
+    StartRule.First -> "Top of the list"
+    StartRule.Last -> "Bottom of the list"
+    StartRule.Newest -> "Newest message"
+}
+
+fun startRuleIsRecent(rule: StartRule): Boolean =
+    rule == StartRule.FirstRecent || rule == StartRule.FirstImportantOrRecent
+
+fun startRuleChoices(showRecent: Boolean, selected: StartRule): List<StartRule> {
+    if (showRecent) return StartRule.entries
+    return StartRule.entries.filter { rule ->
+        rule == selected || !startRuleIsRecent(rule)
+    }
+}
+
+fun startRuleFor(mailbox: String, settings: AccountSettings): StartRule {
+    settings.folderStarts[mailbox]?.let { return it }
+    if (mailbox.equals("INBOX", ignoreCase = true)) return settings.inboxStart
+    return settings.folderStart
+}
+
+enum class StartAfterChange {
+    RerunRule,
+    KeepTopVisible,
+}
+
+fun startAfterChangeLabel(value: StartAfterChange): String = when (value) {
+    StartAfterChange.RerunRule -> "Run the start rule again"
+    StartAfterChange.KeepTopVisible -> "Keep the top visible message"
+}
+
+enum class PinercStartDefault {
+    LeaveUnchanged,
+    AlpineDefault,
+}
+
+fun pinercStartDefaultLabel(value: PinercStartDefault): String = when (value) {
+    PinercStartDefault.LeaveUnchanged -> "Leave unchanged"
+    PinercStartDefault.AlpineDefault -> "Use alpine's default (first unread)"
+}
+
+fun openAtMenuText(settings: AccountSettings): String? =
+    if (settings.openAtInIndexMenu) "Open this folder at…" else null
+
+fun withFolderStart(settings: AccountSettings, mailbox: String, rule: StartRule?): AccountSettings {
+    val starts = if (rule == null) {
+        settings.folderStarts - mailbox
+    } else {
+        settings.folderStarts + (mailbox to rule)
+    }
+    return settings.copy(folderStarts = starts)
+}
+
 data class FolderView(
     val key: SortKey,
     val newestFirst: Boolean,
@@ -193,6 +265,13 @@ data class AccountSettings(
     val pipelineCommands: Boolean = true,
     val logImapTraffic: Boolean = false,
     val readerBar: List<ReaderAction> = defaultReaderBar,
+    val inboxStart: StartRule = StartRule.Newest,
+    val folderStart: StartRule = StartRule.Newest,
+    val folderStarts: Map<String, StartRule> = emptyMap(),
+    val startAfterChange: StartAfterChange = StartAfterChange.RerunRule,
+    val showRecentRules: Boolean = true,
+    val openAtInIndexMenu: Boolean = false,
+    val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -235,6 +314,13 @@ private val fieldNames = listOf(
     "logImapTraffic",
     "readerBar",
     "dynamicColor",
+    "inboxStart",
+    "folderStart",
+    "folderStarts",
+    "startAfterChange",
+    "showRecentRules",
+    "openAtInIndexMenu",
+    "pinercStartDefault",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -276,6 +362,13 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("logImapTraffic=$logImapTraffic")
     appendLine("readerBar=${encodeReaderBar(readerBar)}")
     appendLine("dynamicColor=$dynamicColor")
+    appendLine("inboxStart=${inboxStart.name}")
+    appendLine("folderStart=${folderStart.name}")
+    appendLine("folderStarts=${encodeFolderStarts(folderStarts)}")
+    appendLine("startAfterChange=${startAfterChange.name}")
+    appendLine("showRecentRules=$showRecentRules")
+    appendLine("openAtInIndexMenu=$openAtInIndexMenu")
+    appendLine("pinercStartDefault=${pinercStartDefault.name}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -307,7 +400,14 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "pipelineCommands" ||
             key == "logImapTraffic" ||
             key == "readerBar" ||
-            key == "dynamicColor"
+            key == "dynamicColor" ||
+            key == "inboxStart" ||
+            key == "folderStart" ||
+            key == "folderStarts" ||
+            key == "startAfterChange" ||
+            key == "showRecentRules" ||
+            key == "openAtInIndexMenu" ||
+            key == "pinercStartDefault"
         ) {
             continue
         }
@@ -349,6 +449,15 @@ fun decodeAccountSettings(text: String): AccountSettings {
         logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
         readerBar = values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar,
         dynamicColor = values["dynamicColor"]?.let { parseBoolean(it) } ?: true,
+        inboxStart = values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest,
+        folderStart = values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest,
+        folderStarts = values["folderStarts"]?.let { parseFolderStarts(it) } ?: emptyMap(),
+        startAfterChange = values["startAfterChange"]?.let { enumValueOf<StartAfterChange>(it) }
+            ?: StartAfterChange.RerunRule,
+        showRecentRules = values["showRecentRules"]?.let { parseBoolean(it) } ?: true,
+        openAtInIndexMenu = values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false,
+        pinercStartDefault = values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
+            ?: PinercStartDefault.LeaveUnchanged,
     )
 }
 
@@ -421,6 +530,29 @@ private fun encodeFolderViews(views: Map<String, FolderView>): String =
     views.entries.joinToString(";") { (mailbox, view) ->
         "${percentEncode(mailbox)}|${encodeView(view)}"
     }
+
+private fun encodeFolderStarts(starts: Map<String, StartRule>): String =
+    starts.entries.joinToString(";") { (mailbox, rule) ->
+        "${percentEncode(mailbox)}|${rule.name}"
+    }
+
+private fun parseFolderStarts(value: String): Map<String, StartRule> {
+    if (value.isEmpty()) return emptyMap()
+    val out = linkedMapOf<String, StartRule>()
+    for (part in value.split(';')) {
+        val bits = part.split('|')
+        if (bits.size != 2) throw IllegalArgumentException("bad folderStarts")
+        val mailbox = percentDecode(bits[0])
+        if (out.containsKey(mailbox)) throw IllegalArgumentException("duplicate folder start")
+        val rule = try {
+            enumValueOf<StartRule>(bits[1])
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("bad folderStarts")
+        }
+        out[mailbox] = rule
+    }
+    return out
+}
 
 private fun encodeSwipe(binding: SwipeBinding): String =
     "${binding.action.name}|${percentEncode(binding.moveMailbox)}|${percentEncode(binding.flag)}"
