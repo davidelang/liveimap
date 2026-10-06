@@ -65,13 +65,23 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.reader.unknownCharsetNote
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
+import org.dlang.liveimap.ui.contacts.AddressSuggestion
 import org.dlang.liveimap.ui.contacts.AlpineEntry
+import org.dlang.liveimap.ui.contacts.CompletionSource
 import org.dlang.liveimap.ui.contacts.addressMarkedPlaintext
-import org.dlang.liveimap.ui.contacts.loadAlpineBook
+import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
+import org.dlang.liveimap.ui.contacts.androidEntriesOnce
+import org.dlang.liveimap.ui.contacts.completeAddress
+import org.dlang.liveimap.ui.contacts.completionSourcesInOrder
+import org.dlang.liveimap.ui.contacts.hasReadContacts
+import org.dlang.liveimap.ui.contacts.pineBookIsLoaded
+import org.dlang.liveimap.ui.contacts.pineEntriesOnce
+import org.dlang.liveimap.ui.contacts.suggestionText
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 
@@ -112,8 +122,10 @@ private fun AddressChips(
     buffer: String,
     onStored: (String) -> Unit,
     onBuffer: (String) -> Unit,
+    suggestions: List<AddressSuggestion> = emptyList(),
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
     FlowRow(modifier = Modifier.fillMaxWidth()) {
         for (address in splitAddresses(stored)) {
             InputChip(
@@ -146,6 +158,15 @@ private fun AddressChips(
                 .weight(1f),
         )
         if (trailing != null) trailing()
+    }
+        if (buffer.isNotEmpty()) {
+            for (suggestion in suggestions) {
+                TextButton(onClick = {
+                    onStored(commitSuggestion(stored, suggestion))
+                    onBuffer("")
+                }) { Text(suggestionText(suggestion)) }
+            }
+        }
     }
 }
 
@@ -188,6 +209,7 @@ fun ComposeScreen(
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
     var plaintextEntries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
+    var addressSources by remember { mutableStateOf<List<CompletionSource>>(emptyList()) }
     var discardOpen by remember { mutableStateOf(false) }
     var baseTo by rememberSaveable { mutableStateOf("") }
     var baseCc by rememberSaveable { mutableStateOf("") }
@@ -240,16 +262,16 @@ fun ComposeScreen(
 
     suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
         if (mailbox.isEmpty()) return emptyList()
+        val cached = pineBookIsLoaded()
         val restore = selectedMailbox
         val entries = try {
-            val loaded = loadAlpineBook(session, mailbox)
-            if (loaded.notice != null) emptyList() else loaded.entries
+            pineEntriesOnce(session, mailbox)
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
             emptyList()
         }
-        if (restore != null && restore != mailbox) {
+        if (!cached && restore != null && restore != mailbox) {
             try {
                 session.select(restore)
             } catch (error: CancellationException) {
@@ -259,6 +281,41 @@ fun ComposeScreen(
             }
         }
         return entries
+    }
+
+    suspend fun sourcesForCompose(settings: AccountSettings): List<CompletionSource> {
+        val ids = settings.completionSources
+        val pine = if (pineSourceId !in ids) {
+            emptyList()
+        } else {
+            try {
+                pineEntriesOnce(session, settings.addressBookMailbox)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+                emptyList()
+            }
+        }
+        val wantAndroid = ids.any { it.startsWith("android|") }
+        if (!wantAndroid || !hasReadContacts(appContext)) {
+            return completionSourcesInOrder(ids, pine, emptyMap(), emptyMap())
+        }
+        val entries = try {
+            androidEntriesOnce(appContext.contentResolver)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        val labels = try {
+            androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
+                .associate { it.id to it.label }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        return completionSourcesInOrder(ids, pine, entries, labels)
     }
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
@@ -773,6 +830,7 @@ fun ComposeScreen(
                 }
                 if (seed.kind != ComposeKind.Bounce) {
                     plaintextEntries = readPlaintextBook(settings.addressBookMailbox)
+                    addressSources = sourcesForCompose(settings)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -1019,6 +1077,7 @@ fun ComposeScreen(
                 buffer = toBuffer,
                 onStored = { toText = it },
                 onBuffer = { toBuffer = it },
+                suggestions = completeAddress(toBuffer, addressSources),
                 trailing = {
                     TextButton(onClick = { copiesOpen = !copiesOpen }) {
                         Text(if (copiesOpen) "Hide Cc/Bcc" else "Cc/Bcc")
@@ -1032,6 +1091,7 @@ fun ComposeScreen(
                     buffer = ccBuffer,
                     onStored = { ccText = it },
                     onBuffer = { ccBuffer = it },
+                    suggestions = completeAddress(ccBuffer, addressSources),
                 )
             }
             if (showBcc) {
@@ -1041,6 +1101,7 @@ fun ComposeScreen(
                     buffer = bccBuffer,
                     onStored = { bccText = it },
                     onBuffer = { bccBuffer = it },
+                    suggestions = completeAddress(bccBuffer, addressSources),
                 )
             }
             if (
@@ -1311,4 +1372,16 @@ private fun appendAddress(current: String, next: String): String {
     val trimmed = current.trim()
     if (trimmed.isEmpty()) return next
     return "$trimmed, $next"
+}
+
+private fun commitSuggestion(stored: String, suggestion: AddressSuggestion): String {
+    if (!suggestion.distribution) {
+        val name = suggestion.displayName.ifEmpty { suggestion.nickname }
+        return appendAddress(stored, formatMailbox(name, suggestion.email))
+    }
+    var next = stored
+    for (member in suggestion.members) {
+        next = appendAddress(next, formatMailbox(member.name, member.email))
+    }
+    return next
 }

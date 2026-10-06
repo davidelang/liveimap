@@ -82,6 +82,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -92,6 +93,11 @@ import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.ui.contacts.AndroidContactSet
+import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
+import org.dlang.liveimap.ui.contacts.hasReadContacts
+import org.dlang.liveimap.ui.contacts.moveCompletionSource
+import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.folder.MailboxChooser
 
@@ -777,7 +783,117 @@ private fun ComposeGroup(editor: SettingsEditor) {
         ) {
             BoolField("Bounce Fcc", settings.bounceFcc) { editor.persist(editor.settings.copy(bounceFcc = it)) }
         }
+        SettingsSection(
+            title = "Address completion",
+            summary = completionSummary(settings),
+            expanded = "address-completion" in sections.open,
+            onToggle = { sections.toggle("address-completion") },
+        ) {
+            AddressCompletionRows(editor)
+        }
     }
+}
+
+private data class CompletionRow(val id: String, val label: String, val enabled: Boolean)
+
+private fun completionSummary(settings: AccountSettings): String {
+    val ids = settings.completionSources
+    if (ids.isEmpty()) return "No sources"
+    if (ids == listOf(pineSourceId)) return "Pine"
+    return "${ids.size} sources"
+}
+
+private fun completionRows(settings: AccountSettings, sets: List<AndroidContactSet>): List<CompletionRow> {
+    val enabled = settings.completionSources
+    val setById = sets.associateBy { it.id }
+    val rows = ArrayList<CompletionRow>()
+    val shown = HashSet<String>()
+    for (id in enabled) {
+        if (id == pineSourceId) {
+            if (settings.addressBookMailbox.isEmpty()) continue
+            rows.add(CompletionRow(id, "Pine", true))
+            shown.add(id)
+            continue
+        }
+        val set = setById[id] ?: continue
+        rows.add(CompletionRow(id, set.label, true))
+        shown.add(id)
+    }
+    if (settings.addressBookMailbox.isNotEmpty() && pineSourceId !in shown) {
+        rows.add(CompletionRow(pineSourceId, "Pine", false))
+    }
+    for (set in sets) {
+        if (set.id in shown) continue
+        rows.add(CompletionRow(set.id, set.label, false))
+    }
+    return rows
+}
+
+@Composable
+private fun AddressCompletionRows(editor: SettingsEditor) {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    var granted by remember { mutableStateOf(hasReadContacts(context)) }
+    var denied by rememberSaveable { mutableStateOf(false) }
+    var sets by remember { mutableStateOf<List<AndroidContactSet>>(emptyList()) }
+    val requestContacts = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { ok ->
+        granted = ok
+        denied = !ok
+    }
+    LaunchedEffect(granted) {
+        if (!granted) {
+            sets = emptyList()
+            return@LaunchedEffect
+        }
+        sets = try {
+            androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    for (row in completionRows(editor.settings, sets)) {
+        BoolField(row.label, row.enabled) { on ->
+            editor.persist(
+                editor.settings.copy(
+                    completionSources = withSourceEnabled(editor.settings.completionSources, row.id, on),
+                ),
+            )
+        }
+        if (!row.enabled) continue
+        Row {
+            TextButton(onClick = {
+                editor.persist(
+                    editor.settings.copy(
+                        completionSources = moveCompletionSource(
+                            editor.settings.completionSources,
+                            row.id,
+                            up = true,
+                        ),
+                    ),
+                )
+            }) { Text("Move up") }
+            TextButton(onClick = {
+                editor.persist(
+                    editor.settings.copy(
+                        completionSources = moveCompletionSource(
+                            editor.settings.completionSources,
+                            row.id,
+                            up = false,
+                        ),
+                    ),
+                )
+            }) { Text("Move down") }
+        }
+    }
+    if (granted) return
+    BoolField("Show Android contact sets", false) { on ->
+        if (on) requestContacts.launch(android.Manifest.permission.READ_CONTACTS)
+    }
+    if (denied) Text("Contacts permission was denied.")
 }
 
 @Composable

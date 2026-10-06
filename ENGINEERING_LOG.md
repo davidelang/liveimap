@@ -1176,3 +1176,9 @@
 ## 2026-10-06 - contacts completion phase 1 test import
 
 - CompletionTest imports settings.encode so the completionSources round-trip compiles. The phase 1 ranking behavior is unchanged. No install.
+
+## 2026-10-06 - contacts completion phase 2
+
+- Compose, Address completion lists the pine row when the address book mailbox is set, and asks for READ_CONTACTS only from Show Android contact sets. A denial shows Contacts permission was denied. and enables nothing. After a grant, each RawContacts account is an off switch labeled with the owning app or the account name. Move up and Move down reorder the enabled list.
+- AddressChips shows suggestions while the buffer is not empty. A tap commits through appendAddress and clears the buffer. A distribution list commits each pickedAddresses member. The address book button and picker stay.
+- The pine book is loaded with loadAlpineBook at most once per process when pine is enabled. Android contact rows are queried at most once per process when an Android source is enabled. Neither is written to disk. No WRITE_CONTACTS. No install.
