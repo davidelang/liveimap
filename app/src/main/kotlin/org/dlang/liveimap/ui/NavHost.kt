@@ -410,7 +410,7 @@ fun LiveImapNavHost() {
                 }
             }
             composable("about/licenses") {
-                UpPage("Open-source licenses", onUp = {
+                UpPage(stringResource(R.string.about_licenses), onUp = {
                     navController.popBackStack("about", inclusive = false)
                 }) {
                     LicensesScreen()

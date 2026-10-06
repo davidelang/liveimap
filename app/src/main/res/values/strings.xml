@@ -14,4 +14,5 @@
     <string name="help_report_bug">Report a bug</string>
     <string name="help_copy_report">Copy debug report</string>
     <string name="help_unreadable">The help text could not be read.</string>
+    <string name="licenses_unreadable">The license text could not be read.</string>
 </resources>

@@ -1271,3 +1271,14 @@
 
 - Help title, Getting started, Reporting a bug, Report a bug, Copy debug report, and the missing-file line come from strings.xml. Existing string values are unchanged.
 - HelpScreen uses those resources except the title. The Help route Up title and the Help drawer label are help_title. The About drawer label stays About. HELP_ISSUES_URL and the help asset files stay. No install.
+
+## 2026-10-06 - Licenses strings execution start
+
+- Approved plan: sandbox/plans/licenses-strings-20261006-0335-plan.md
+- Phase 1: the licenses missing-file line comes from strings.xml. Wording stays the same. The about/licenses Up title uses about_licenses. NOTICES.txt stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Licenses strings phase 1
+
+- licenses_unreadable is The license text could not be read. Existing string values are unchanged.
+- LicensesScreen uses that resource for the missing-file line. The about/licenses Up title is about_licenses. The About drawer label stays About. NOTICES.txt stays. No install.

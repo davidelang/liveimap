@@ -17,14 +17,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.R
 
 @Composable
 fun LicensesScreen() {
     val assets = LocalContext.current.assets
+    val unreadable = stringResource(R.string.licenses_unreadable)
     var paragraphs by remember { mutableStateOf<List<String>?>(null) }
     var missing by remember { mutableStateOf(false) }
     LaunchedEffect(assets) {
@@ -36,7 +39,7 @@ fun LicensesScreen() {
         }
     }
     if (missing) {
-        Text("The license text could not be read.")
+        Text(unreadable)
         return
     }
     val shown = paragraphs ?: return
