@@ -1357,3 +1357,15 @@
 
 - sortKeyAdvertised is internal. The menu still lists every SortKey and disables a missing capability. orderedSubjectStaysListedWhenNotAdvertised checks listing and advertisement separately.
 - defaultsRoundTrip lists the keys a default encode writes. completionSources, addressBookHistory, and addressBookNeverTrim stay omitted. The omit comment names those three defaults. Encoded defaults are unchanged. No install.
+
+## 2026-10-06 - Reader strings execution start
+
+- Approved plan: sandbox/plans/reader-strings-20261006-1150-plan.md
+- Phase 1: reader buttons, snacks, dialogs, and header labels come from strings.xml. Wording stays the same. Action, body-view, sort, and opposite-forward labels stay. The charset note stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Reader strings phase 1
+
+- Reader buttons, snacks, dialogs, and header labels come from strings.xml. Wording stays the same.
+- Without UIDPLUS, the expunge dialog is reader_expunge_body, a space, then reader_expunge_others. recipientLine uses reader_to, reader_cc, or reader_to_cc. The share chooser title is reader_share. The five not-connected snacks and banners use reader_not_connected. No app found uses reader_no_app.
+- Action, body-view, sort, and opposite-forward labels stay. Snack modes retry and undo stay. The charset note stays. MessageReaderScreen.kt has no Text(", no No app found, and no not connected literal. No install.

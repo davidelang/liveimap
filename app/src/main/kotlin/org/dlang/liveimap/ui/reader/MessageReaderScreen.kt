@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -98,6 +99,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.ui.compose.armForwardOnce
 import org.dlang.liveimap.ui.compose.oppositeForwardLabel
@@ -183,6 +185,12 @@ fun MessageReaderScreen(
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
+    val noAppFound = stringResource(R.string.reader_no_app)
+    val notConnected = stringResource(R.string.reader_not_connected)
+    val retryLabel = stringResource(R.string.reader_retry)
+    val noTextPartText = stringResource(R.string.reader_no_text)
+    val noHtmlPartText = stringResource(R.string.reader_no_html)
+    val shareTitle = stringResource(R.string.reader_share)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
@@ -260,14 +268,14 @@ fun MessageReaderScreen(
         try {
             val output = context.contentResolver.openOutputStream(uri)
             if (output == null) {
-                postSnack("No app found")
+                postSnack(noAppFound)
                 return@rememberLauncherForActivityResult
             }
             output.use { out ->
                 file.inputStream().use { input -> input.copyTo(out) }
             }
         } catch (error: Exception) {
-            postSnack(error.message ?: "not connected")
+            postSnack(error.message ?: notConnected)
         }
     }
 
@@ -282,7 +290,7 @@ fun MessageReaderScreen(
         snackMode = "retry"
         val result = snackbarHostState.showSnackbar(
             message = snackMessage,
-            actionLabel = "Retry",
+            actionLabel = retryLabel,
         )
         if (result == SnackbarResult.ActionPerformed) {
             laterRetry.block()
@@ -461,7 +469,7 @@ fun MessageReaderScreen(
         when (view) {
             BodyView.PlainOrError -> {
                 if (plain == null) {
-                    showMissing("There is no text part", noText = true, offerHtml = html != null)
+                    showMissing(noTextPartText, noText = true, offerHtml = html != null)
                     return
                 }
                 showHtmlButton = false
@@ -472,7 +480,7 @@ fun MessageReaderScreen(
             }
             BodyView.PlainOrHtml -> {
                 if (html == null) {
-                    showMissing("There is no HTML part")
+                    showMissing(noHtmlPartText)
                 } else {
                     showHtmlButton = false
                     noTextPart = false
@@ -494,7 +502,7 @@ fun MessageReaderScreen(
             }
             BodyView.PlainOrText -> {
                 if (html == null) {
-                    showMissing("There is no HTML part")
+                    showMissing(noHtmlPartText)
                 } else {
                     renderedHtml = false
                     showHtmlButton = false
@@ -582,7 +590,7 @@ fun MessageReaderScreen(
                         throw error
                     } catch (error: Exception) {
                         markAttachment(current.section, offset, done = false, busy = false)
-                        postSnack(error.message ?: "not connected")
+                        postSnack(error.message ?: notConnected)
                         return@withLock
                     }
                     markAttachment(current.section, offset, done = true, busy = false)
@@ -606,7 +614,7 @@ fun MessageReaderScreen(
         try {
             context.startActivity(intent)
         } catch (error: ActivityNotFoundException) {
-            postSnack("No app found")
+            postSnack(noAppFound)
         }
     }
 
@@ -618,11 +626,11 @@ fun MessageReaderScreen(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = ClipData.newRawUri(row.label, uri)
         }
-        val chooser = Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val chooser = Intent.createChooser(send, shareTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(chooser)
         } catch (error: ActivityNotFoundException) {
-            postSnack("No app found")
+            postSnack(noAppFound)
         }
     }
 
@@ -655,7 +663,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                banner = error.message ?: "not connected"
+                banner = error.message ?: notConnected
                 return@withLock
             }
             account = settings
@@ -666,7 +674,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                banner = error.message ?: "not connected"
+                banner = error.message ?: notConnected
                 return@withLock
             }
             val opened = try {
@@ -737,7 +745,7 @@ fun MessageReaderScreen(
                     headerDate = if (row.envelopeDate.isNotBlank()) row.envelopeDate else formatted
                 }
                 try {
-                    val fields = headerFields(readSectionText("HEADER"))
+                    val fields = headerFields(readSectionText(section = "HEADER"))
                     if (fields.from.contains('@')) headerFrom = fields.from
                     headerTo = fields.to
                     headerCc = fields.cc
@@ -882,7 +890,7 @@ fun MessageReaderScreen(
         try {
             context.startActivity(intent)
         } catch (error: ActivityNotFoundException) {
-            postSnack("No app found")
+            postSnack(noAppFound)
         }
     }
 
@@ -978,7 +986,7 @@ fun MessageReaderScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                postSnack(error.message ?: "not connected")
+                postSnack(error.message ?: notConnected)
             }
         }
     }
@@ -1013,7 +1021,7 @@ fun MessageReaderScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.reader_back),
                         )
                     }
                 },
@@ -1021,7 +1029,7 @@ fun MessageReaderScreen(
                     IconButton(onClick = { if (!loading) loadToken += 1 }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = stringResource(R.string.reader_refresh),
                         )
                     }
                 for (action in barActions) {
@@ -1036,7 +1044,7 @@ fun MessageReaderScreen(
                 IconButton(onClick = { moreMenu = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "More",
+                        contentDescription = stringResource(R.string.reader_more),
                     )
                 }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
@@ -1076,14 +1084,14 @@ fun MessageReaderScreen(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text("Newest first") },
+                    text = { Text(stringResource(R.string.reader_newest)) },
                     onClick = {
                         moreMenu = false
                         saveMailboxView { current -> current.copy(newestFirst = true) }
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Oldest first") },
+                    text = { Text(stringResource(R.string.reader_oldest)) },
                     onClick = {
                         moreMenu = false
                         saveMailboxView { current -> current.copy(newestFirst = false) }
@@ -1172,10 +1180,10 @@ fun MessageReaderScreen(
                                 .padding(8.dp),
                         ) {
                             Column(Modifier.padding(12.dp)) {
-                                Text("There is no text part")
+                                Text(stringResource(R.string.reader_no_text))
                                 if (showHtmlButton) {
                                     TextButton(onClick = { requestView(BodyView.PlainOrHtml) }) {
-                                        Text("Show HTML")
+                                        Text(stringResource(R.string.reader_show_html))
                                     }
                                 }
                             }
@@ -1185,7 +1193,7 @@ fun MessageReaderScreen(
                         Column(Modifier.weight(1f).fillMaxWidth()) {
                         val note = charsetNote
                         if (note != null) Text(note, modifier = Modifier.padding(horizontal = 8.dp))
-                        TextButton(onClick = { allowImages = true }) { Text("Show images") }
+                        TextButton(onClick = { allowImages = true }) { Text(stringResource(R.string.reader_show_images)) }
                         AndroidView(
                             factory = { webContext ->
                                 WebView(webContext).apply {
@@ -1277,9 +1285,9 @@ fun MessageReaderScreen(
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {
-                        TextButton(onClick = { runReaderUndo(offer) }) { Text("Undo") }
+                        TextButton(onClick = { runReaderUndo(offer) }) { Text(stringResource(R.string.reader_undo)) }
                         if (showExpunge) {
-                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text("Expunge") }
+                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text(stringResource(R.string.reader_expunge)) }
                         }
                     },
                 ) { Text(data.visuals.message) }
@@ -1298,34 +1306,31 @@ fun MessageReaderScreen(
                 TextButton(onClick = {
                     pendingLink = null
                     openConfirmedLink(confirmedLink)
-                }) { Text("Open") }
+                }) { Text(stringResource(R.string.reader_open)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingLink = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.reader_cancel)) }
             },
         )
     }
     if (confirmExpunge) {
         val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
-        val body = buildString {
-            append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
-            if (!uidPlus) {
-                append(" This includes messages marked deleted by other clients.")
-            }
-        }
+        val expungeBody = stringResource(R.string.reader_expunge_body)
+        val expungeOthers = stringResource(R.string.reader_expunge_others)
+        val body = if (uidPlus) expungeBody else "$expungeBody $expungeOthers"
         AlertDialog(
             onDismissRequest = { confirmExpunge = false },
-            title = { Text("Expunge?") },
+            title = { Text(stringResource(R.string.reader_expunge_title)) },
             text = { Text(body) },
             confirmButton = {
                 TextButton(onClick = {
                     val uids = expungeUids
                     confirmExpunge = false
                     runReaderExpunge(uids)
-                }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.reader_expunge), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmExpunge = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmExpunge = false }) { Text(stringResource(R.string.reader_cancel)) }
             },
         )
     }
@@ -1389,7 +1394,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.reader_retry)) }
         }
     }
 }
@@ -1444,7 +1449,7 @@ private fun ReaderHeaderCard(
             .padding(8.dp),
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text("From: $from")
+            Text(stringResource(R.string.reader_from, from))
             if (toLine != null) {
                 Text(
                     text = toLine,
@@ -1457,8 +1462,8 @@ private fun ReaderHeaderCard(
             Text(subject, style = MaterialTheme.typography.titleMedium)
             if (deleted) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AssistChip(onClick = {}, label = { Text("Deleted") })
-                    TextButton(onClick = onUndelete) { Text("Undelete") }
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.reader_deleted)) })
+                    TextButton(onClick = onUndelete) { Text(stringResource(R.string.reader_undelete)) }
                 }
             }
         }
@@ -1538,9 +1543,9 @@ private fun AttachmentChip(
             if (detail != null) Text(detail)
         }
         if (row.done) {
-            TextButton(onClick = onOpen) { Text("Open") }
-            TextButton(onClick = onShare) { Text("Share") }
-            TextButton(onClick = onSave) { Text("Save") }
+            TextButton(onClick = onOpen) { Text(stringResource(R.string.reader_open)) }
+            TextButton(onClick = onShare) { Text(stringResource(R.string.reader_share)) }
+            TextButton(onClick = onSave) { Text(stringResource(R.string.reader_save)) }
         }
     }
 }
@@ -1579,13 +1584,17 @@ private fun deleteReaderAttachmentCache(dir: File, messageUid: Long) {
     }
 }
 
+@Composable
 private fun recipientLine(to: String, cc: String): String? {
     val toText = to.trim()
     val ccText = cc.trim()
+    val toLine = stringResource(R.string.reader_to, toText)
+    val ccLine = stringResource(R.string.reader_cc, ccText)
+    val bothLine = stringResource(R.string.reader_to_cc, toText, ccText)
     if (toText.isEmpty() && ccText.isEmpty()) return null
-    if (ccText.isEmpty()) return "To: $toText"
-    if (toText.isEmpty()) return "Cc: $ccText"
-    return "To: $toText  Cc: $ccText"
+    if (ccText.isEmpty()) return toLine
+    if (toText.isEmpty()) return ccLine
+    return bothLine
 }
 
 private fun readerLines(text: String): List<String> {

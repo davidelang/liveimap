@@ -158,4 +158,31 @@
         <item quantity="one">This folder has %d message. Threading reads the whole folder.</item>
         <item quantity="other">This folder has %d messages. Threading reads the whole folder.</item>
     </plurals>
+    <string name="reader_back">Back</string>
+    <string name="reader_refresh">Refresh</string>
+    <string name="reader_more">More</string>
+    <string name="reader_newest">Newest first</string>
+    <string name="reader_oldest">Oldest first</string>
+    <string name="reader_no_text">There is no text part</string>
+    <string name="reader_no_html">There is no HTML part</string>
+    <string name="reader_show_html">Show HTML</string>
+    <string name="reader_show_images">Show images</string>
+    <string name="reader_undo">Undo</string>
+    <string name="reader_expunge">Expunge</string>
+    <string name="reader_expunge_title">Expunge?</string>
+    <string name="reader_expunge_body">Permanently removes messages marked deleted in this folder. This cannot be undone.</string>
+    <string name="reader_expunge_others">This includes messages marked deleted by other clients.</string>
+    <string name="reader_open">Open</string>
+    <string name="reader_cancel">Cancel</string>
+    <string name="reader_retry">Retry</string>
+    <string name="reader_not_connected">not connected</string>
+    <string name="reader_no_app">No app found</string>
+    <string name="reader_from">From: %1$s</string>
+    <string name="reader_to">To: %1$s</string>
+    <string name="reader_cc">Cc: %1$s</string>
+    <string name="reader_to_cc">To: %1$s  Cc: %2$s</string>
+    <string name="reader_deleted">Deleted</string>
+    <string name="reader_undelete">Undelete</string>
+    <string name="reader_share">Share</string>
+    <string name="reader_save">Save</string>
 </resources>
