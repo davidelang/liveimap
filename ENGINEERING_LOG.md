@@ -1418,3 +1418,15 @@
 - The index, the reader, and settings show sort, start-rule, swipe, theme, date, density, body-view, reader-action, and forward-style names from strings.xml. Wording stays the same.
 - Reused compose_reply, compose_reply_all, compose_forward, compose_bounce, compose_to, compose_cc, compose_subject, drawer_delete, and settings_forward_attachment. label_recent_note keeps the leading backslash. label_alpine_default keeps the apostrophe. label_open_at keeps the ellipsis and replaces the two index sentences that already said that.
 - ChoiceField's name callback is composable. The pure label functions, recentRuleNote, openAtMenuText, and oppositeForwardLabel stay. PinercImport, AccountSettings label bodies, ComposeScreen, and the tests were not edited. The index sort menu still uses the shorter index_sort names. No install.
+
+## 2026-10-06 - Contact copy strings execution start
+
+- Approved plan: sandbox/plans/contact-copy-strings-20261006-1331-plan.md
+- Phase 1: the contact-copy screen’s buttons, notices, and field labels come from strings.xml. Wording stays the same. Existing back, confirm, Pine, contacts-denied, and not-connected names are reused. Query clauses and the photo marker stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Contact copy strings phase 1
+
+- The contact-copy screen buttons, notices, and field labels come from strings.xml. Wording stays the same.
+- Reused reader_back, settings_confirm, settings_pine, settings_contacts_denied, and reader_not_connected. copy_reading and copy_to keep the ellipsis. copy_name_email is one space between the two values.
+- contactLabel and phoneLabel are not composable and read the words with context.getString. connectAccount receives the not-connected words. Query clauses and the photo marker stay. ContactCopyScreen.kt has no Text(". No install.

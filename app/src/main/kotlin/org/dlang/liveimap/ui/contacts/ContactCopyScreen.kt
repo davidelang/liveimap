@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.provider.ContactsContract
@@ -29,9 +30,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
@@ -91,7 +94,7 @@ fun ContactCopyScreen() {
     suspend fun writePineNow() {
         val state = pineState
         if (state == null) {
-            notice = "This mailbox is not an Alpine address book"
+            notice = context.getString(R.string.copy_not_alpine)
             return
         }
         val settings = store.load()
@@ -116,10 +119,10 @@ fun ContactCopyScreen() {
                 pineState = result.state
                 preview = again.preview
                 pending = again.entries
-                notice = "The address book changed. Nothing was written."
+                notice = context.getString(R.string.copy_changed)
             }
             is PineWriteResult.Wrote -> {
-                notice = "Copied."
+                notice = context.getString(R.string.copy_done)
                 finished = true
             }
             is PineWriteResult.NotBook -> notice = result.notice
@@ -133,14 +136,14 @@ fun ContactCopyScreen() {
             write.accountName,
             write.entries,
         )
-        notice = "Copied."
+        notice = context.getString(R.string.copy_done)
         finished = true
     }
 
     val requestWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val write = pendingAndroid
         if (!granted || write == null) {
-            notice = "Contacts permission was denied."
+            notice = context.getString(R.string.settings_contacts_denied)
             pendingAndroid = null
             writing = false
             return@rememberLauncherForActivityResult
@@ -151,7 +154,7 @@ fun ContactCopyScreen() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "Could not write contacts."
+                notice = error.message ?: context.getString(R.string.copy_write_failed)
             } finally {
                 pendingAndroid = null
                 writing = false
@@ -160,7 +163,7 @@ fun ContactCopyScreen() {
     }
 
     LaunchedEffect(session) {
-        when (val opened = connectAccount(store, session)) {
+        when (val opened = connectAccount(store, session, context.getString(R.string.reader_not_connected))) {
             is ConnectedAccount.Failed -> notice = opened.notice
             is ConnectedAccount.Ready -> {
                 account = opened.settings
@@ -175,7 +178,7 @@ fun ContactCopyScreen() {
                         emptyList()
                     }
                 }
-                sources = enabledCopySources(opened.settings, sets)
+                sources = enabledCopySources(opened.settings, sets, context)
             }
         }
     }
@@ -188,10 +191,10 @@ fun ContactCopyScreen() {
     ) {
         val shown = notice
         if (shown != null) Text(shown)
-        if (reading) Text("Reading…")
+        if (reading) Text(stringResource(R.string.copy_reading))
         when (step) {
             CopyStep.Source -> {
-                if (sources.isEmpty() && !reading && notice == null) Text("No contact set is enabled.")
+                if (sources.isEmpty() && !reading && notice == null) Text(stringResource(R.string.copy_none_enabled))
                 for (source in sources) {
                     TextButton(onClick = {
                         if (reading || writing) return@TextButton
@@ -199,7 +202,7 @@ fun ContactCopyScreen() {
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(source.id, account, session, appContext.contentResolver)
+                                val loaded = loadCopyContacts(source.id, account, session, appContext.contentResolver, context)
                                 contacts = loaded.contacts
                                 sourceId = source.id
                                 selected = emptySet()
@@ -208,7 +211,7 @@ fun ContactCopyScreen() {
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Exception) {
-                                notice = error.message ?: "Could not read contacts."
+                                notice = error.message ?: context.getString(R.string.copy_read_failed)
                             } finally {
                                 reading = false
                             }
@@ -218,25 +221,25 @@ fun ContactCopyScreen() {
             }
             CopyStep.Contacts -> {
                 TextButton(onClick = { selected = contacts.indices.toSet() }, enabled = !writing) {
-                    Text("Select all")
+                    Text(stringResource(R.string.copy_select_all))
                 }
                 contacts.forEachIndexed { index, contact ->
-                    TickRow(contactLabel(contact), index in selected, enabled = !writing) { on ->
+                    TickRow(contactLabel(contact, context), index in selected, enabled = !writing) { on ->
                         selected = if (on) selected + index else selected - index
                     }
                 }
                 TextButton(onClick = {
                     step = CopyStep.Source
                     notice = null
-                }, enabled = !writing) { Text("Back") }
+                }, enabled = !writing) { Text(stringResource(R.string.reader_back)) }
                 TextButton(
                     onClick = { step = CopyStep.Destination },
                     enabled = selected.isNotEmpty() && !writing,
-                ) { Text("Copy to…") }
+                ) { Text(stringResource(R.string.copy_to)) }
             }
             CopyStep.Destination -> {
                 val choices = sources.filter { it.id != sourceId }
-                if (choices.isEmpty()) Text("No other contact set is enabled.")
+                if (choices.isEmpty()) Text(stringResource(R.string.copy_no_destination))
                 for (choice in choices) {
                     TextButton(onClick = {
                         if (reading || writing) return@TextButton
@@ -244,7 +247,7 @@ fun ContactCopyScreen() {
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(choice.id, account, session, appContext.contentResolver)
+                                val loaded = loadCopyContacts(choice.id, account, session, appContext.contentResolver, context)
                                 destinationId = choice.id
                                 destinationContacts = loaded.contacts
                                 pineState = loaded.state
@@ -256,49 +259,49 @@ fun ContactCopyScreen() {
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Exception) {
-                                notice = error.message ?: "Could not read contacts."
+                                notice = error.message ?: context.getString(R.string.copy_read_failed)
                             } finally {
                                 reading = false
                             }
                         }
                     }, enabled = !reading && !writing) { Text(choice.label) }
                 }
-                TextButton(onClick = { step = CopyStep.Contacts }, enabled = !writing) { Text("Back") }
+                TextButton(onClick = { step = CopyStep.Contacts }, enabled = !writing) { Text(stringResource(R.string.reader_back)) }
             }
             CopyStep.Preview -> {
                 val intoPine = destinationId == pineSourceId
-                TickRow("Merge into existing", options.mergeIntoExisting, enabled = !writing && !finished) { on ->
+                TickRow(stringResource(R.string.copy_merge), options.mergeIntoExisting, enabled = !writing && !finished) { on ->
                     applyPreview(options.copy(mergeIntoExisting = on))
                 }
                 if (intoPine) {
-                    TickRow("One entry per email", options.oneEntryPerEmail, enabled = !writing && !finished) { on ->
+                    TickRow(stringResource(R.string.copy_one_email), options.oneEntryPerEmail, enabled = !writing && !finished) { on ->
                         applyPreview(options.copy(oneEntryPerEmail = on))
                     }
                     TickRow(
-                        "Append dropped fields to comments",
+                        stringResource(R.string.copy_append_comments),
                         options.appendDroppedToComments,
                         enabled = !writing && !finished,
                     ) { on ->
                         applyPreview(options.copy(appendDroppedToComments = on))
                     }
                 } else {
-                    TickRow("This set has no notes", !options.destinationKeepsNotes, enabled = !writing && !finished) {
+                    TickRow(stringResource(R.string.copy_no_notes), !options.destinationKeepsNotes, enabled = !writing && !finished) {
                         applyPreview(options.copy(destinationKeepsNotes = !it))
                     }
-                    TickRow("This set has no groups", !options.destinationHasGroups, enabled = !writing && !finished) {
+                    TickRow(stringResource(R.string.copy_no_groups), !options.destinationHasGroups, enabled = !writing && !finished) {
                         applyPreview(options.copy(destinationHasGroups = !it))
                     }
                     TickRow(
-                        "This set does not keep nicknames",
+                        stringResource(R.string.copy_no_nicknames),
                         !options.destinationKeepsNickname,
                         enabled = !writing && !finished,
                     ) { on ->
                         applyPreview(options.copy(destinationKeepsNickname = !on))
                     }
                 }
-                if (preview.isEmpty()) Text("Nothing will change.")
+                if (preview.isEmpty()) Text(stringResource(R.string.copy_unchanged))
                 for (line in preview) Text(line)
-                TextButton(onClick = { step = CopyStep.Destination }, enabled = !writing) { Text("Back") }
+                TextButton(onClick = { step = CopyStep.Destination }, enabled = !writing) { Text(stringResource(R.string.reader_back)) }
                 if (!finished) {
                     TextButton(
                         onClick = {
@@ -312,7 +315,7 @@ fun ContactCopyScreen() {
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: Exception) {
-                                        notice = error.message ?: "Could not write the address book."
+                                        notice = error.message ?: context.getString(R.string.copy_book_failed)
                                     } finally {
                                         writing = false
                                     }
@@ -320,7 +323,7 @@ fun ContactCopyScreen() {
                             } else {
                                 val accountParts = androidAccountOf(destinationId)
                                 if (accountParts == null) {
-                                    notice = "This contact set is not available."
+                                    notice = context.getString(R.string.copy_set_missing)
                                     writing = false
                                     return@TextButton
                                 }
@@ -338,7 +341,7 @@ fun ContactCopyScreen() {
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: Exception) {
-                                        notice = error.message ?: "Could not write contacts."
+                                        notice = error.message ?: context.getString(R.string.copy_write_failed)
                                     } finally {
                                         writing = false
                                     }
@@ -346,7 +349,7 @@ fun ContactCopyScreen() {
                             }
                         },
                         enabled = !writing,
-                    ) { Text("Confirm") }
+                    ) { Text(stringResource(R.string.settings_confirm)) }
                 }
             }
         }
@@ -366,25 +369,25 @@ private fun TickRow(label: String, checked: Boolean, enabled: Boolean, onValue: 
     }
 }
 
-private fun contactLabel(contact: CopyContact): String {
+private fun contactLabel(contact: CopyContact, context: Context): String {
     if (contact.group || isPineListAddress(contact.address)) {
-        return contact.displayName.ifEmpty { contact.nickname }.ifEmpty { "Distribution list" }
+        return contact.displayName.ifEmpty { contact.nickname }.ifEmpty { context.getString(R.string.copy_list) }
     }
     val name = contact.displayName.ifEmpty { contact.nickname }
     val email = contact.emails.firstOrNull().orEmpty()
     return when {
-        name.isEmpty() -> email.ifEmpty { "Contact" }
+        name.isEmpty() -> email.ifEmpty { context.getString(R.string.copy_contact) }
         email.isEmpty() -> name
-        else -> "$name $email"
+        else -> context.getString(R.string.copy_name_email, name, email)
     }
 }
 
-private fun enabledCopySources(settings: AccountSettings, sets: List<AndroidContactSet>): List<CopySource> {
+private fun enabledCopySources(settings: AccountSettings, sets: List<AndroidContactSet>, context: Context): List<CopySource> {
     val setById = sets.associateBy { it.id }
     val out = ArrayList<CopySource>()
     for (id in settings.completionSources) {
         if (id == pineSourceId) {
-            if (settings.addressBookMailbox.isNotEmpty()) out.add(CopySource(id, "Pine"))
+            if (settings.addressBookMailbox.isNotEmpty()) out.add(CopySource(id, context.getString(R.string.settings_pine)))
         } else {
             val set = setById[id] ?: continue
             out.add(CopySource(id, set.label))
@@ -398,20 +401,20 @@ private sealed class ConnectedAccount {
     data class Failed(val notice: String) : ConnectedAccount()
 }
 
-private suspend fun connectAccount(store: DataStoreSettingsStore, session: MailSession): ConnectedAccount {
+private suspend fun connectAccount(store: DataStoreSettingsStore, session: MailSession, notConnected: String): ConnectedAccount {
     val settings = try {
         store.load()
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
-        return ConnectedAccount.Failed(error.message ?: "not connected")
+        return ConnectedAccount.Failed(error.message ?: notConnected)
     }
     try {
         store.password()
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
-        return ConnectedAccount.Failed(error.message ?: "not connected")
+        return ConnectedAccount.Failed(error.message ?: notConnected)
     }
     val opened = try {
         session.open(settings)
@@ -434,6 +437,7 @@ private suspend fun loadCopyContacts(
     settings: AccountSettings,
     session: MailSession,
     resolver: ContentResolver,
+    context: Context,
 ): LoadedContacts {
     if (id == pineSourceId) {
         return when (val read = readPineBook(session, settings.addressBookMailbox)) {
@@ -441,8 +445,8 @@ private suspend fun loadCopyContacts(
             is PineRead.Ready -> LoadedContacts(read.state.entries.map { it.asCopyContact() }, read.state)
         }
     }
-    val account = androidAccountOf(id) ?: throw IllegalStateException("This contact set is not available.")
-    return LoadedContacts(loadAndroidContacts(resolver, account.first, account.second), null)
+    val account = androidAccountOf(id) ?: throw IllegalStateException(context.getString(R.string.copy_set_missing))
+    return LoadedContacts(loadAndroidContacts(resolver, account.first, account.second, context), null)
 }
 
 private class BuiltContact(val rawId: Long) {
@@ -495,11 +499,16 @@ private class BuiltContact(val rawId: Long) {
     }
 }
 
-private fun loadAndroidContacts(resolver: ContentResolver, accountType: String, accountName: String): List<CopyContact> {
+private fun loadAndroidContacts(
+    resolver: ContentResolver,
+    accountType: String,
+    accountName: String,
+    context: Context,
+): List<CopyContact> {
     try {
-        return readAndroidContacts(resolver, accountType, accountName)
+        return readAndroidContacts(resolver, accountType, accountName, context)
     } catch (_: SecurityException) {
-        throw IllegalStateException("Contacts could not be read.")
+        throw IllegalStateException(context.getString(R.string.copy_unreadable))
     }
 }
 
@@ -507,6 +516,7 @@ private fun readAndroidContacts(
     resolver: ContentResolver,
     accountType: String,
     accountName: String,
+    context: Context,
 ): List<CopyContact> {
     val accountClause = accountClause(accountType, accountName)
     val raws = LinkedHashMap<Long, BuiltContact>()
@@ -587,11 +597,11 @@ private fun readAndroidContacts(
                 }
                 ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> {
                     val number = cursorString(cursor, data1)
-                    if (number.isNotEmpty()) built.phones.add(CopyField(phoneLabel(cursorInt(cursor, data2)), number))
+                    if (number.isNotEmpty()) built.phones.add(CopyField(phoneLabel(cursorInt(cursor, data2), context), number))
                 }
                 ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE -> {
                     val formatted = cursorString(cursor, data1)
-                    if (formatted.isNotEmpty()) built.postal.add(CopyField("Postal address", formatted))
+                    if (formatted.isNotEmpty()) built.postal.add(CopyField(context.getString(R.string.copy_postal), formatted))
                 }
                 ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE -> {
                     val company = cursorString(cursor, data1)
@@ -605,11 +615,11 @@ private fun readAndroidContacts(
                 }
                 ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE -> {
                     val url = cursorString(cursor, data1)
-                    if (url.isNotEmpty()) built.websites.add(CopyField("Website", url))
+                    if (url.isNotEmpty()) built.websites.add(CopyField(context.getString(R.string.copy_website), url))
                 }
                 ContactsContract.CommonDataKinds.Im.CONTENT_ITEM_TYPE -> {
                     val handle = cursorString(cursor, data1)
-                    if (handle.isNotEmpty()) built.im.add(CopyField("IM", handle))
+                    if (handle.isNotEmpty()) built.im.add(CopyField(context.getString(R.string.copy_im), handle))
                 }
                 ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE -> {
                     val note = cursorString(cursor, data1)
@@ -715,11 +725,11 @@ private fun cursorLong(cursor: Cursor, index: Int): Long {
     return cursor.getLong(index)
 }
 
-private fun phoneLabel(type: Int): String = when (type) {
-    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE -> "Mobile"
-    ContactsContract.CommonDataKinds.Phone.TYPE_HOME -> "Home"
-    ContactsContract.CommonDataKinds.Phone.TYPE_WORK -> "Work"
-    else -> "Phone"
+private fun phoneLabel(type: Int, context: Context): String = when (type) {
+    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE -> context.getString(R.string.copy_mobile)
+    ContactsContract.CommonDataKinds.Phone.TYPE_HOME -> context.getString(R.string.copy_home)
+    ContactsContract.CommonDataKinds.Phone.TYPE_WORK -> context.getString(R.string.copy_work)
+    else -> context.getString(R.string.copy_phone)
 }
 
 private fun writeAndroidContacts(
