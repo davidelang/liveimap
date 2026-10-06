@@ -1217,3 +1217,9 @@
 - Copying into Android asks for WRITE_CONTACTS at confirm. Denial shows Contacts permission was denied. and writes nothing. Copying into pine does not ask for that permission.
 - A pine write appends one message using the last message header and the new body. The first header message is left as it is. Revisions outside the history window are marked Deleted and removed with uidExpunge of those UIDs only. Never trim and a missing UIDPLUS append and expunge nothing. A changed last UID shows the preview again and does not append on that pass.
 - No install.
+
+## 2026-10-06 - account storage execution start
+
+- Approved plan: sandbox/plans/account-storage-20261006-0246-plan.md.
+- Phase 1: migrateAccount and AccountMigrationTest. Old DataStore and liveimap_secret stay until the readback matches.
+- Phase 2: shared AccountStore, authenticator, manifest, and backup rules. No install.
