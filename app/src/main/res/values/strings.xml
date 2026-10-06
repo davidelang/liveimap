@@ -8,4 +8,10 @@
     <string name="about_licenses">Open-source licenses</string>
     <string name="about_license_notice">LiveIMAP is licensed under the Apache License 2.0</string>
     <string name="about_no_email">No email app found</string>
+    <string name="help_title">Help</string>
+    <string name="help_getting_started">Getting started</string>
+    <string name="help_reporting">Reporting a bug</string>
+    <string name="help_report_bug">Report a bug</string>
+    <string name="help_copy_report">Copy debug report</string>
+    <string name="help_unreadable">The help text could not be read.</string>
 </resources>

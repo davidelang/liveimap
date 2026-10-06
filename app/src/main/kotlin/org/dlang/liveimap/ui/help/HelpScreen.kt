@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -32,17 +33,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.BuildConfig
+import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.debug.DebugReportReview
 
 const val HELP_ISSUES_URL = "https://github.com/davidelang/liveimap/issues"
 
-private const val HELP_UNREADABLE = "The help text could not be read."
-
 @Composable
 fun HelpScreen() {
     val context = LocalContext.current
+    val unreadable = stringResource(R.string.help_unreadable)
+    val gettingStartedTitle = stringResource(R.string.help_getting_started)
+    val reportingTitle = stringResource(R.string.help_reporting)
+    val reportBug = stringResource(R.string.help_report_bug)
+    val copyReport = stringResource(R.string.help_copy_report)
     val appContext = context.applicationContext
     val assets = context.assets
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -70,10 +75,10 @@ fun HelpScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (missing) {
-            Text(HELP_UNREADABLE)
+            Text(unreadable)
         } else if (started != null && bugReport != null) {
             Text(
-                text = "Getting started",
+                text = gettingStartedTitle,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
@@ -81,7 +86,7 @@ fun HelpScreen() {
                 Text(text = started, style = MaterialTheme.typography.bodyLarge)
             }
             Text(
-                text = "Reporting a bug",
+                text = reportingTitle,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
@@ -92,7 +97,7 @@ fun HelpScreen() {
         if (missing || (started != null && bugReport != null)) {
             TextButton(onClick = {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_ISSUES_URL)))
-            }) { Text("Report a bug") }
+            }) { Text(reportBug) }
             TextButton(onClick = {
                 scope.launch {
                     val settings = store.load()
@@ -108,7 +113,7 @@ fun HelpScreen() {
                         settings = settings,
                     ).lines()
                 }
-            }) { Text("Copy debug report") }
+            }) { Text(copyReport) }
         }
     }
     val shownReport = reportLines

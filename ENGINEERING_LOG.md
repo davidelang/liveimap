@@ -1260,3 +1260,14 @@
 
 - About title, version, plaintext warning, Support, licenses, license notice, and the no-email toast come from strings.xml. app_name is unchanged and is reused for the name line and the mail subject.
 - The about route Up title is about_title. Other NavHost titles are unchanged. The support address stays david+liveimap@lang.hm. No install.
+
+## 2026-10-06 - Help strings execution start
+
+- Approved plan: sandbox/plans/help-strings-20261006-0330-plan.md
+- Phase 1: Help headings, buttons, and the missing-file line move into strings.xml. Wording stays the same. The Help Up title and the Help drawer label use help_title. Articles and the issues URL stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Help strings phase 1
+
+- Help title, Getting started, Reporting a bug, Report a bug, Copy debug report, and the missing-file line come from strings.xml. Existing string values are unchanged.
+- HelpScreen uses those resources except the title. The Help route Up title and the Help drawer label are help_title. The About drawer label stays About. HELP_ISSUES_URL and the help asset files stay. No install.

@@ -400,7 +400,7 @@ fun LiveImapNavHost() {
                 }
             }
             composable("help") {
-                UpPage("Help", onUp = { navController.navigateUp() }) {
+                UpPage(stringResource(R.string.help_title), onUp = { navController.navigateUp() }) {
                     HelpScreen()
                 }
             }
@@ -667,7 +667,7 @@ private fun ColumnScope.DrawerSheetContent(
         onClick = onSettings,
     )
     NavigationDrawerItem(
-        label = { Text("Help") },
+        label = { Text(stringResource(R.string.help_title)) },
         selected = false,
         onClick = onHelp,
     )
