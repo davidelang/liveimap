@@ -3,6 +3,7 @@ package org.dlang.liveimap.accounts
 import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.encode
 
 internal const val liveimapAccountType: String = "org.dlang.liveimap"
 internal const val accountSchemaValue: String = "1"
