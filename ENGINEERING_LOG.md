@@ -1454,3 +1454,15 @@
 - Relative index dates and the bad custom pattern come from strings.xml. The sentences stay the same, including min for one minute and for several.
 - formatIndexDate takes the nine words after its current arguments. One minute and several minutes both use index_min. One hour uses index_hour. Several hours use index_hours. Days follow the same split. A past time uses index_ago. A future time uses index_ahead. An empty or illegal custom pattern uses index_bad_pattern.
 - The 45-second, 7-day, and hour boundaries stay. Local and short patterns stay in the formatter. The index and the reader pass the resource values. DateFormatTest passes the same English words. Expected sentences stay. No install.
+
+## 2026-10-06 - Pinerc preview strings execution start
+
+- Approved plan: sandbox/plans/pinerc-strings-20261006-1523-plan.md
+- Phase 1: the pinerc preview labels and skip sentences come from strings.xml. The wording stays the same. Pinerc keys stay. The sort and start-rule functions still supply the values. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Pinerc preview strings phase 1
+
+- The pinerc preview labels and skip sentences come from strings.xml. The wording stays the same.
+- pinercPreview takes the phrases. sortKeyLabel and startRuleLabel still produce the values. The settings screen passes the resource strings. PinercImportTest and AlpineBookWriteTest pass the same English through previewPinerc. Expected sentences stay, including Display name: Old → Ada. Pinerc keys stay.
+- PinercImport.kt has no TLS is not supported literal. No install.

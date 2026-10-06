@@ -9,10 +9,42 @@ data class PinercPreview(
     val omittedCount: Int,
 )
 
+data class PinercPhrases(
+    val tls: String,
+    val smtpUser: String,
+    val local: String,
+    val history: String,
+    val sort: String,
+    val rule: String,
+    val expunge: String,
+    val passwords: String,
+    val folders: String,
+    val signature: String,
+    val perFolder: String,
+    val inboxDefault: String,
+    val change: String,
+    val imapHost: String,
+    val imapPort: String,
+    val smtpHost: String,
+    val smtpPort: String,
+    val username: String,
+    val displayName: String,
+    val altAddresses: String,
+    val email: String,
+    val sentMailbox: String,
+    val postponedMailbox: String,
+    val addressBookMailbox: String,
+    val historyLabel: String,
+    val defaultView: String,
+    val newest: String,
+    val askExpunge: String,
+    val inboxOpens: String,
+)
+
 fun parsePinerc(text: String): Map<String, String?> =
     parseEntries(text).mapValues { it.value.decoded }
 
-fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
+fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases): PinercPreview {
     val entries = parseEntries(text)
     var next = current
     val skipped = mutableListOf<String>()
@@ -24,7 +56,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         val spec = parseRemoteSpec(inbox.decoded)
         if (spec != null) {
             if (spec.tls) {
-                skipped.add("${spec.host}: TLS is not supported")
+                skipped.add(phrases.tls.format(spec.host))
             } else {
                 next = next.copy(imapHost = spec.host, imapPort = spec.port ?: 143)
                 if (spec.user != null) {
@@ -42,14 +74,14 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
             val spec = parseRemoteSpec(first)
             if (spec != null) {
                 if (spec.tls) {
-                    skipped.add("${spec.host}: TLS is not supported")
+                    skipped.add(phrases.tls.format(spec.host))
                 } else {
                     val port = spec.port ?: if (spec.submit) 587 else 25
                     next = next.copy(smtpHost = spec.host, smtpPort = port)
                 }
                 val imapUser = if (inboxUserApplied) next.username else current.username
                 if (spec.user != null && spec.user != imapUser) {
-                    skipped.add("SMTP username is not a separate setting")
+                    skipped.add(phrases.smtpUser)
                 }
             }
         }
@@ -90,7 +122,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
     val sent = entries["default-fcc"]
     if (sent?.decoded != null) {
         when (val folder = classifyFolder(sent.decoded, allowPlain = true)) {
-            FolderKind.Local -> skipped.add("Local path is not a mailbox")
+            FolderKind.Local -> skipped.add(phrases.local)
             is FolderKind.Mailbox -> next = next.copy(sentMailbox = folder.name)
             FolderKind.Empty -> Unit
         }
@@ -99,7 +131,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
     val postponed = entries["postponed-folder"]
     if (postponed?.decoded != null) {
         when (val folder = classifyFolder(postponed.decoded, allowPlain = true)) {
-            FolderKind.Local -> skipped.add("Local path is not a mailbox")
+            FolderKind.Local -> skipped.add(phrases.local)
             is FolderKind.Mailbox -> next = next.copy(postponedMailbox = folder.name)
             FolderKind.Empty -> Unit
         }
@@ -111,7 +143,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         for (item in splitList(book.raw)) {
             if (item.isEmpty()) continue
             when (val folder = classifyFolder(item, allowPlain = false)) {
-                FolderKind.Local -> skipped.add("Local path is not a mailbox")
+                FolderKind.Local -> skipped.add(phrases.local)
                 is FolderKind.Mailbox -> if (chosen == null) chosen = folder.name
                 FolderKind.Empty -> Unit
             }
@@ -123,7 +155,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
     if (history != null) {
         val raw = history.decoded?.trim().orEmpty()
         val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
-        if (number == null) skipped.add("Address book history is not a number.")
+        if (number == null) skipped.add(phrases.history)
         else next = next.copy(addressBookHistory = number)
     }
 
@@ -131,7 +163,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
     if (sort != null) {
         val view = parseSort(sort)
         if (view == null) {
-            skipped.add("Sort key is not supported")
+            skipped.add(phrases.sort)
         } else {
             next = next.copy(defaultView = view)
         }
@@ -142,7 +174,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         val raw = entries["incoming-startup-rule"]?.decoded?.trim().orEmpty()
         val mapped = parseStartupRule(raw)
         if (mapped == null) {
-            skipped.add("Startup rule not recognized")
+            skipped.add(phrases.rule)
         } else {
             next = next.copy(inboxStart = mapped)
         }
@@ -163,7 +195,7 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
                 "no-expunge-without-confirm",
                 "no-expunge-without-confirm-everywhere",
                 -> ask = true
-                "expunge-only-manually" -> skipped.add("Expunge already happens only when asked")
+                "expunge-only-manually" -> skipped.add(phrases.expunge)
                 else -> omitted += 1
             }
         }
@@ -172,18 +204,18 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
 
     for (name in entries.keys) {
         if ("pass" in name) {
-            skipped.add("Passwords are not imported")
+            skipped.add(phrases.passwords)
             continue
         }
         when (name) {
             "incoming-folders", "stay-open-folders", "folder-collections" ->
-                skipped.add("Folder lists are not imported")
+                skipped.add(phrases.folders)
             "signature-file", "literal-signature" ->
-                skipped.add("Signature is not a setting")
+                skipped.add(phrases.signature)
             "patterns-other" -> {
                 val raw = entries[name]?.raw.orEmpty()
                 if (raw.contains("/START=", ignoreCase = true)) {
-                    skipped.add("Per-folder startup rules are not imported")
+                    skipped.add(phrases.perFolder)
                 } else {
                     omitted += 1
                 }
@@ -192,10 +224,11 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
         }
     }
 
-    val rows = diffRows(current, next).toMutableList()
+    val rows = diffRows(current, next, phrases).toMutableList()
     if (appliedAlpineDefault) {
-        rows.removeAll { it.startsWith("INBOX opens at:") }
-        rows.add("INBOX opens at: First unread (alpine's default)")
+        val inboxPrefix = "${phrases.inboxOpens}:"
+        rows.removeAll { it.startsWith(inboxPrefix) }
+        rows.add(phrases.inboxDefault)
     }
     return PinercPreview(
         next = next,
@@ -455,30 +488,38 @@ private fun parseSort(value: String): FolderView? {
     return FolderView(key, newestFirst = newest)
 }
 
-private fun diffRows(current: AccountSettings, next: AccountSettings): List<String> {
+private fun diffRows(
+    current: AccountSettings,
+    next: AccountSettings,
+    phrases: PinercPhrases,
+): List<String> {
     val rows = mutableListOf<String>()
     fun add(label: String, old: Any?, new: Any?) {
-        if (old != new) rows.add("$label: $old → $new")
+        if (old != new) rows.add(phrases.change.format(label, old, new))
     }
-    add("IMAP host", current.imapHost, next.imapHost)
-    add("IMAP port", current.imapPort, next.imapPort)
-    add("SMTP host", current.smtpHost, next.smtpHost)
-    add("SMTP port", current.smtpPort, next.smtpPort)
-    add("Username", current.username, next.username)
-    add("Display name", current.displayName, next.displayName)
+    add(phrases.imapHost, current.imapHost, next.imapHost)
+    add(phrases.imapPort, current.imapPort, next.imapPort)
+    add(phrases.smtpHost, current.smtpHost, next.smtpHost)
+    add(phrases.smtpPort, current.smtpPort, next.smtpPort)
+    add(phrases.username, current.username, next.username)
+    add(phrases.displayName, current.displayName, next.displayName)
     add(
-        "Alternate addresses",
+        phrases.altAddresses,
         current.altAddresses.joinToString(", "),
         next.altAddresses.joinToString(", "),
     )
-    add("Email", current.email, next.email)
-    add("Sent mailbox", current.sentMailbox, next.sentMailbox)
-    add("Postponed mailbox", current.postponedMailbox, next.postponedMailbox)
-    add("Address book mailbox", current.addressBookMailbox, next.addressBookMailbox)
-    add("Address book history", current.addressBookHistory, next.addressBookHistory)
-    add("Default view", sortKeyLabel(current.defaultView.key), sortKeyLabel(next.defaultView.key))
-    add("Newest first", current.defaultView.newestFirst, next.defaultView.newestFirst)
-    add("Ask before expunge", current.askBeforeExpunge, next.askBeforeExpunge)
-    add("INBOX opens at", startRuleLabel(current.inboxStart), startRuleLabel(next.inboxStart))
+    add(phrases.email, current.email, next.email)
+    add(phrases.sentMailbox, current.sentMailbox, next.sentMailbox)
+    add(phrases.postponedMailbox, current.postponedMailbox, next.postponedMailbox)
+    add(phrases.addressBookMailbox, current.addressBookMailbox, next.addressBookMailbox)
+    add(phrases.historyLabel, current.addressBookHistory, next.addressBookHistory)
+    add(
+        phrases.defaultView,
+        sortKeyLabel(current.defaultView.key),
+        sortKeyLabel(next.defaultView.key),
+    )
+    add(phrases.newest, current.defaultView.newestFirst, next.defaultView.newestFirst)
+    add(phrases.askExpunge, current.askBeforeExpunge, next.askBeforeExpunge)
+    add(phrases.inboxOpens, startRuleLabel(current.inboxStart), startRuleLabel(next.inboxStart))
     return rows
 }

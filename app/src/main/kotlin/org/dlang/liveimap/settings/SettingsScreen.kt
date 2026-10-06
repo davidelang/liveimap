@@ -376,12 +376,43 @@ private fun AccountGroup(editor: SettingsEditor) {
     var importError by remember { mutableStateOf<Int?>(null) }
     val settingsState = editor.settingsState
     val contextState = rememberUpdatedState(LocalContext.current)
+    val pinercPhrases = PinercPhrases(
+        tls = stringResource(R.string.pinerc_tls),
+        smtpUser = stringResource(R.string.pinerc_smtp_user),
+        local = stringResource(R.string.pinerc_local),
+        history = stringResource(R.string.pinerc_history),
+        sort = stringResource(R.string.pinerc_sort),
+        rule = stringResource(R.string.pinerc_rule),
+        expunge = stringResource(R.string.pinerc_expunge),
+        passwords = stringResource(R.string.pinerc_passwords),
+        folders = stringResource(R.string.pinerc_folders),
+        signature = stringResource(R.string.pinerc_signature),
+        perFolder = stringResource(R.string.pinerc_per_folder),
+        inboxDefault = stringResource(R.string.pinerc_inbox_default),
+        change = stringResource(R.string.pinerc_change),
+        imapHost = stringResource(R.string.settings_imap_host),
+        imapPort = stringResource(R.string.settings_imap_port),
+        smtpHost = stringResource(R.string.settings_smtp_host),
+        smtpPort = stringResource(R.string.settings_smtp_port),
+        username = stringResource(R.string.settings_username),
+        displayName = stringResource(R.string.settings_display_name),
+        altAddresses = stringResource(R.string.settings_alt_addresses),
+        email = stringResource(R.string.settings_email),
+        sentMailbox = stringResource(R.string.settings_sent_mailbox),
+        postponedMailbox = stringResource(R.string.settings_postponed_mailbox),
+        addressBookMailbox = stringResource(R.string.settings_address_book_mailbox),
+        historyLabel = stringResource(R.string.settings_history_label),
+        defaultView = stringResource(R.string.settings_default_view),
+        newest = stringResource(R.string.reader_newest),
+        askExpunge = stringResource(R.string.settings_ask_expunge),
+        inboxOpens = stringResource(R.string.settings_inbox_opens),
+    )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         when (val outcome = readPinercStream(contextState.value.contentResolver, uri)) {
             is PinercRead.Ok -> {
                 importError = null
-                importPreview = pinercPreview(outcome.text, settingsState.value)
+                importPreview = pinercPreview(outcome.text, settingsState.value, pinercPhrases)
             }
             PinercRead.TooLarge -> {
                 importPreview = null

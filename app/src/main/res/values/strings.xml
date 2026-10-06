@@ -452,4 +452,17 @@
     <string name="index_ago">%1$d %2$s ago</string>
     <string name="index_ahead">in %1$d %2$s</string>
     <string name="index_bad_pattern">bad date pattern</string>
+    <string name="pinerc_tls">%1$s: TLS is not supported</string>
+    <string name="pinerc_smtp_user">SMTP username is not a separate setting</string>
+    <string name="pinerc_local">Local path is not a mailbox</string>
+    <string name="pinerc_history">Address book history is not a number.</string>
+    <string name="pinerc_sort">Sort key is not supported</string>
+    <string name="pinerc_rule">Startup rule not recognized</string>
+    <string name="pinerc_expunge">Expunge already happens only when asked</string>
+    <string name="pinerc_passwords">Passwords are not imported</string>
+    <string name="pinerc_folders">Folder lists are not imported</string>
+    <string name="pinerc_signature">Signature is not a setting</string>
+    <string name="pinerc_per_folder">Per-folder startup rules are not imported</string>
+    <string name="pinerc_inbox_default">INBOX opens at: First unread (alpine\'s default)</string>
+    <string name="pinerc_change">%1$s: %2$s → %3$s</string>
 </resources>

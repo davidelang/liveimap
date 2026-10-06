@@ -16,7 +16,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
-import org.dlang.liveimap.settings.pinercPreview
+import org.dlang.liveimap.settings.previewPinerc
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -84,11 +84,11 @@ class AlpineBookWriteTest {
 
     @Test
     fun pinercHistoryIsDigitsOnlyAndDoesNotTrim() {
-        val ok = pinercPreview("remote-abook-history=4\n", AccountSettings())
+        val ok = previewPinerc("remote-abook-history=4\n", AccountSettings())
         assertEquals(4, ok.next.addressBookHistory)
         assertFalse(ok.next.addressBookNeverTrim)
         assertFalse(ok.skipped.contains("Address book history is not a number."))
-        val bad = pinercPreview("remote-abook-history=nope\n", AccountSettings())
+        val bad = previewPinerc("remote-abook-history=nope\n", AccountSettings())
         assertEquals(3, bad.next.addressBookHistory)
         assertFalse(bad.next.addressBookNeverTrim)
         assertTrue(bad.skipped.contains("Address book history is not a number."))
