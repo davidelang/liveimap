@@ -20,9 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
+import org.dlang.liveimap.R
 
 @Composable
 fun UnsentScreen(
@@ -44,16 +46,28 @@ fun UnsentScreen(
             .padding(8.dp),
     ) {
         for (copy in copies) {
-            Text(unsentSubject(copy.bytes))
+            Text(unsentSubject(copy.bytes, stringResource(R.string.unsent_no_subject)))
             Text(copy.recipients.joinToString(", "))
-            Text(unsentLabel(copy.appendOnly))
+            Text(
+                if (copy.appendOnly) {
+                    stringResource(R.string.unsent_sent_copy)
+                } else {
+                    stringResource(R.string.unsent_not_sent)
+                },
+            )
             if (copy.modifiedMillis > 0L) {
                 Text(shortDateTime(copy.modifiedMillis))
             }
             Row(Modifier.fillMaxWidth()) {
-                TextButton(onClick = { onOpenCopy(copy.id, false) }) { Text("Open") }
-                TextButton(onClick = { onOpenCopy(copy.id, true) }) { Text("Retry") }
-                TextButton(onClick = { discardId = copy.id }) { Text("Discard") }
+                TextButton(onClick = { onOpenCopy(copy.id, false) }) {
+                    Text(stringResource(R.string.unsent_open))
+                }
+                TextButton(onClick = { onOpenCopy(copy.id, true) }) {
+                    Text(stringResource(R.string.unsent_retry))
+                }
+                TextButton(onClick = { discardId = copy.id }) {
+                    Text(stringResource(R.string.unsent_discard))
+                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
         }
@@ -62,16 +76,18 @@ fun UnsentScreen(
     if (pending != null) {
         AlertDialog(
             onDismissRequest = { discardId = null },
-            title = { Text("Discard this unsent message?") },
+            title = { Text(stringResource(R.string.unsent_discard_title)) },
             confirmButton = {
                 TextButton(onClick = {
                     discardId = null
                     deleteCopy(appContext, pending)
                     copies = readCopies(appContext)
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.unsent_discard)) }
             },
             dismissButton = {
-                TextButton(onClick = { discardId = null }) { Text("Cancel") }
+                TextButton(onClick = { discardId = null }) {
+                    Text(stringResource(R.string.unsent_cancel))
+                }
             },
         )
     }

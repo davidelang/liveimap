@@ -13,7 +13,7 @@ internal class DeviceCopy(
     val modifiedMillis: Long = 0,
 )
 
-internal fun unsentSubject(bytes: ByteArray): String {
+internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
     val text = bytes.toString(Charsets.ISO_8859_1)
     val logical = ArrayList<String>()
     for (raw in text.split('\n')) {
@@ -32,11 +32,8 @@ internal fun unsentSubject(bytes: ByteArray): String {
         if (!name.equals("Subject", ignoreCase = true)) continue
         return decodeHeaderWords(line.substring(colon + 1).trim())
     }
-    return "No subject"
+    return missingSubject
 }
-
-internal fun unsentLabel(appendOnly: Boolean): String =
-    if (appendOnly) "Sent, copy not saved" else "Not sent"
 
 internal fun copyDir(context: Context): File = File(context.filesDir, "unsent")
 

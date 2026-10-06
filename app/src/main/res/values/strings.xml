@@ -26,4 +26,13 @@
     <string name="drawer_save">Save</string>
     <string name="drawer_delete">Delete</string>
     <string name="drawer_cancel">Cancel</string>
+    <string name="unsent_title">Unsent</string>
+    <string name="unsent_open">Open</string>
+    <string name="unsent_retry">Retry</string>
+    <string name="unsent_discard">Discard</string>
+    <string name="unsent_discard_title">Discard this unsent message?</string>
+    <string name="unsent_cancel">Cancel</string>
+    <string name="unsent_no_subject">No subject</string>
+    <string name="unsent_sent_copy">Sent, copy not saved</string>
+    <string name="unsent_not_sent">Not sent</string>
 </resources>

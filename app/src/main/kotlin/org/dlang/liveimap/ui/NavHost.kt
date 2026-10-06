@@ -330,7 +330,7 @@ fun LiveImapNavHost() {
                 )
             }
             composable("unsent") {
-                UpPage("Unsent", onUp = { navController.popBackStack() }) {
+                UpPage(stringResource(R.string.unsent_title), onUp = { navController.popBackStack() }) {
                     UnsentScreen(
                         onOpenCopy = { id, retry ->
                             composeKindName.value = ComposeKind.New.name

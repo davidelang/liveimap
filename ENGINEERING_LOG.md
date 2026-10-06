@@ -1294,3 +1294,15 @@
 - Drawer labels INBOX, All folders, and Settings come from strings.xml. The About drawer item uses about_title. Existing string values are unchanged.
 - The postponed row still shows postponedDrawerMailbox. Its spoken label is drawer_postponed. Favorite names stay the stored label. Favorite, Name, Move up, Move down, Save, Delete, and Cancel come from strings.xml.
 - NavHost.kt has no Text(". No other screen. No install.
+
+## 2026-10-06 - Unsent strings execution start
+
+- Approved plan: sandbox/plans/unsent-strings-20261006-0343-plan.md
+- Phase 1: Unsent buttons, dialog, Up title, and status lines come from strings.xml. Wording stays the same. unsentSubject takes the missing-subject fallback. unsentLabel is removed. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Unsent strings phase 1
+
+- Open, Retry, Discard, Cancel, and Discard this unsent message? come from strings.xml. The unsent route Up title is unsent_title. Existing string values are unchanged.
+- unsentSubject takes the missing-subject text and the screen passes unsent_no_subject. unsentLabel is removed. The screen uses unsent_sent_copy or unsent_not_sent. A present Subject header is still shown.
+- ComposeChromeTest.unsentSubjectAndLabel expects Hello and the passed fallback No subject. It does not call unsentLabel. The folder list Unsent item is unchanged. UnsentScreen.kt has no Text(". No install.
