@@ -102,7 +102,6 @@ import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.ui.compose.armForwardOnce
-import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
@@ -118,9 +117,6 @@ import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.ReaderAction
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.ThemeMode
-import org.dlang.liveimap.settings.bodyViewLabel
-import org.dlang.liveimap.settings.readerActionLabel
-import org.dlang.liveimap.settings.sortKeyLabel
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.folder.MailboxChooser
@@ -1036,7 +1032,7 @@ fun MessageReaderScreen(
                     IconButton(onClick = { runReaderAction(action) }) {
                         Icon(
                             imageVector = readerActionImage(action),
-                            contentDescription = readerActionLabel(action),
+                            contentDescription = readerActionName(action),
                         )
                     }
                 }
@@ -1050,7 +1046,7 @@ fun MessageReaderScreen(
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                 for (action in menuActions) {
                     DropdownMenuItem(
-                        text = { Text(readerActionLabel(action)) },
+                        text = { Text(readerActionName(action)) },
                         onClick = {
                             moreMenu = false
                             runReaderAction(action)
@@ -1058,7 +1054,7 @@ fun MessageReaderScreen(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text(oppositeForwardLabel(account.forwardAsAttachment)) },
+                    text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                     onClick = {
                         moreMenu = false
                         armForwardOnce(!account.forwardAsAttachment)
@@ -1067,7 +1063,7 @@ fun MessageReaderScreen(
                 )
                 BodyView.entries.forEach { view ->
                     DropdownMenuItem(
-                        text = { Text(bodyViewLabel(view)) },
+                        text = { Text(bodyViewName(view)) },
                         onClick = {
                             moreMenu = false
                             requestView(view)
@@ -1076,7 +1072,7 @@ fun MessageReaderScreen(
                 }
                 SortKey.entries.forEach { key ->
                     DropdownMenuItem(
-                        text = { Text(sortKeyLabel(key)) },
+                        text = { Text(sortKeyName(key)) },
                         onClick = {
                             moreMenu = false
                             saveMailboxView { current -> current.copy(key = key) }
@@ -1422,6 +1418,50 @@ internal fun readerMenuActions(saved: List<ReaderAction>, spamMailbox: String): 
     val off = ReaderAction.entries.filter { action -> action !in saved }
     return overflow + off
 }
+
+@Composable
+private fun readerActionName(action: ReaderAction): String = stringResource(
+    when (action) {
+        ReaderAction.Reply -> R.string.compose_reply
+        ReaderAction.ReplyAll -> R.string.compose_reply_all
+        ReaderAction.Forward -> R.string.compose_forward
+        ReaderAction.Delete -> R.string.drawer_delete
+        ReaderAction.Move -> R.string.label_move
+        ReaderAction.Spam -> R.string.label_spam
+        ReaderAction.Bounce -> R.string.compose_bounce
+    },
+)
+
+@Composable
+private fun bodyViewName(view: BodyView): String = stringResource(
+    when (view) {
+        BodyView.PlainOrError -> R.string.label_plain
+        BodyView.PlainOrHtml -> R.string.label_html
+        BodyView.PlainOrText -> R.string.label_html_text
+        BodyView.Headers -> R.string.label_headers
+        BodyView.Raw -> R.string.label_raw
+    },
+)
+
+@Composable
+private fun sortKeyName(key: SortKey): String = stringResource(
+    when (key) {
+        SortKey.Arrival -> R.string.label_arrival
+        SortKey.Date -> R.string.label_date
+        SortKey.From -> R.string.label_from
+        SortKey.Subject -> R.string.compose_subject
+        SortKey.To -> R.string.compose_to
+        SortKey.Cc -> R.string.compose_cc
+        SortKey.Size -> R.string.label_size
+        SortKey.ThreadReferences -> R.string.label_thread
+        SortKey.ThreadOrderedSubject -> R.string.label_ordered_subject
+    },
+)
+
+@Composable
+private fun forwardStyleName(asAttachment: Boolean): String = stringResource(
+    if (asAttachment) R.string.label_forward_inline else R.string.settings_forward_attachment,
+)
 
 private fun readerActionImage(action: ReaderAction) = when (action) {
     ReaderAction.Reply -> Icons.AutoMirrored.Filled.Reply

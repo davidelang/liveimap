@@ -1406,3 +1406,15 @@
 - Settings screen titles, fields, buttons, and notices come from strings.xml. Wording stays the same except settings_expanded, settings_omitted, and settings_sources.
 - SettingsGroup.title reads that group's resource. Compose uses compose_new. Debug uses settings_debug. Shared label results are still passed into the summaries. One omitted pinerc line uses the singular settings_omitted.
 - SettingsScreen.kt has no Text(" and no contentDescription = ". No install.
+
+## 2026-10-06 - Shared labels execution start
+
+- Approved plan: sandbox/plans/shared-labels-20261006-1323-plan.md
+- Phase 1: the index, the reader, and settings show sort, start-rule, swipe, theme, date, density, body-view, reader-action, and forward-style names from strings.xml. Wording stays the same. Existing compose, delete, and forward-attachment names are reused. Pure label functions stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Shared labels phase 1
+
+- The index, the reader, and settings show sort, start-rule, swipe, theme, date, density, body-view, reader-action, and forward-style names from strings.xml. Wording stays the same.
+- Reused compose_reply, compose_reply_all, compose_forward, compose_bounce, compose_to, compose_cc, compose_subject, drawer_delete, and settings_forward_attachment. label_recent_note keeps the leading backslash. label_alpine_default keeps the apostrophe. label_open_at keeps the ellipsis and replaces the two index sentences that already said that.
+- ChoiceField's name callback is composable. The pure label functions, recentRuleNote, openAtMenuText, and oppositeForwardLabel stay. PinercImport, AccountSettings label bodies, ComposeScreen, and the tests were not edited. The index sort menu still uses the shorter index_sort names. No install.

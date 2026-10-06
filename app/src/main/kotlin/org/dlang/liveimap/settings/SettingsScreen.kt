@@ -283,7 +283,7 @@ fun FolderViewsScreen() {
                     stringResource(
                         R.string.settings_view_line,
                         mailbox,
-                        sortKeyLabel(view.key),
+                        sortKeyName(view.key),
                         stringResource(
                             if (view.newestFirst) R.string.reader_newest else R.string.reader_oldest,
                         ),
@@ -301,7 +301,7 @@ fun FolderViewsScreen() {
             stringResource(R.string.settings_folder_view_sort),
             SortKey.entries,
             draftSort,
-            { sortKeyLabel(it) },
+            { sortKeyName(it) },
         ) { draftSort = it }
         BoolField(stringResource(R.string.settings_folder_view_newest), draftNewest) { draftNewest = it }
         TextButton(onClick = { picking = true }) { Text(stringResource(R.string.settings_add)) }
@@ -338,8 +338,8 @@ fun FolderStartsScreen() {
         settings.folderStarts.forEach { (mailbox, rule) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_mailbox_rule, mailbox, startRuleLabel(rule)))
-                    if (startRuleIsRecent(rule)) Text(recentRuleNote)
+                    Text(stringResource(R.string.settings_mailbox_rule, mailbox, startRuleName(rule)))
+                    if (startRuleIsRecent(rule)) Text(stringResource(R.string.label_recent_note))
                 }
                 TextButton(onClick = {
                     editor.persist(withFolderStart(editor.settings, mailbox, null))
@@ -633,7 +633,7 @@ private fun FoldersGroup(
                 stringResource(R.string.settings_default_view),
                 SortKey.entries,
                 settings.defaultView.key,
-                { sortKeyLabel(it) },
+                { sortKeyName(it) },
             ) { key ->
                 editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = key)))
             }
@@ -644,7 +644,7 @@ private fun FoldersGroup(
         }
         SettingsSection(
             title = stringResource(R.string.settings_start_position),
-            summary = stringResource(R.string.settings_inbox_line, startRuleLabel(settings.inboxStart)),
+            summary = stringResource(R.string.settings_inbox_line, startRuleName(settings.inboxStart)),
             expanded = "start" in sections.open,
             onToggle = { sections.toggle("start") },
         ) {
@@ -658,7 +658,7 @@ private fun FoldersGroup(
                 stringResource(R.string.settings_after_change),
                 StartAfterChange.entries,
                 settings.startAfterChange,
-                { startAfterChangeLabel(it) },
+                { startAfterChangeName(it) },
             ) { value ->
                 editor.persist(editor.settings.copy(startAfterChange = value))
             }
@@ -672,7 +672,7 @@ private fun FoldersGroup(
                 stringResource(R.string.settings_pinerc_missing),
                 PinercStartDefault.entries,
                 settings.pinercStartDefault,
-                { pinercStartDefaultLabel(it) },
+                { pinercStartDefaultName(it) },
             ) { value ->
                 editor.persist(editor.settings.copy(pinercStartDefault = value))
             }
@@ -694,7 +694,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
     SettingsPage {
         SettingsSection(
             title = stringResource(R.string.settings_opening),
-            summary = bodyViewLabel(settings.bodyView),
+            summary = bodyViewName(settings.bodyView),
             expanded = "opening" in sections.open,
             onToggle = { sections.toggle("opening") },
         ) {
@@ -708,7 +708,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 stringResource(R.string.settings_message_view),
                 BodyView.entries,
                 settings.bodyView,
-                { bodyViewLabel(it) },
+                { bodyViewName(it) },
             ) { view ->
                 editor.persist(editor.settings.copy(bodyView = view))
             }
@@ -749,8 +749,8 @@ private fun ReadingGroup(editor: SettingsEditor) {
             title = stringResource(R.string.settings_actions),
             summary = stringResource(
                 R.string.settings_swipe_line,
-                swipeActionLabel(settings.swipeTrailing.action),
-                swipeActionLabel(settings.swipeLeading.action),
+                swipeActionName(settings.swipeTrailing.action),
+                swipeActionName(settings.swipeLeading.action),
             ),
             expanded = "actions" in sections.open,
             onToggle = { sections.toggle("actions") },
@@ -767,7 +767,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
             Text(stringResource(R.string.settings_message_bar))
             ReaderAction.entries.forEach { action ->
-                BoolField(readerActionLabel(action), settings.readerBar.contains(action)) { enabled ->
+                BoolField(readerActionName(action), settings.readerBar.contains(action)) { enabled ->
                     val next = if (enabled) {
                         ReaderAction.entries.filter { it == action || editor.settings.readerBar.contains(it) }
                     } else {
@@ -1014,7 +1014,7 @@ private fun AppearanceGroup(editor: SettingsEditor) {
             expanded = "theme" in sections.open,
             onToggle = { sections.toggle("theme") },
         ) {
-            ChoiceField(stringResource(R.string.settings_theme), ThemeMode.entries, settings.theme, { themeLabel(it) }) {
+            ChoiceField(stringResource(R.string.settings_theme), ThemeMode.entries, settings.theme, { themeName(it) }) {
                 editor.persist(editor.settings.copy(theme = it))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -1027,20 +1027,20 @@ private fun AppearanceGroup(editor: SettingsEditor) {
             title = stringResource(R.string.settings_display),
             summary = stringResource(
                 R.string.settings_display_line,
-                densityLabel(settings.density),
-                dateFormatLabel(settings.dateFormat),
+                densityName(settings.density),
+                dateFormatName(settings.dateFormat),
             ),
             expanded = "display" in sections.open,
             onToggle = { sections.toggle("display") },
         ) {
-            ChoiceField(stringResource(R.string.settings_density), Density.entries, settings.density, { densityLabel(it) }) {
+            ChoiceField(stringResource(R.string.settings_density), Density.entries, settings.density, { densityName(it) }) {
                 editor.persist(editor.settings.copy(density = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_date_format),
                 DateFormat.entries,
                 settings.dateFormat,
-                { dateFormatLabel(it) },
+                { dateFormatName(it) },
             ) {
                 editor.persist(editor.settings.copy(dateFormat = it))
             }
@@ -1191,11 +1191,11 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
     }
     SettingsGroup.Mailboxes -> mailboxSetCount(settings)
     SettingsGroup.Folders -> sortDirection(settings)
-    SettingsGroup.Reading -> bodyViewLabel(settings.bodyView)
+    SettingsGroup.Reading -> bodyViewName(settings.bodyView)
     SettingsGroup.Compose -> stringResource(
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
-    SettingsGroup.Appearance -> themeLabel(settings.theme)
+    SettingsGroup.Appearance -> themeName(settings.theme)
     SettingsGroup.Debug -> stringResource(
         if (settings.logImapTraffic) R.string.settings_traffic_on else R.string.settings_traffic_off,
     )
@@ -1217,7 +1217,7 @@ private fun sortDirection(settings: AccountSettings): String {
     val direction = stringResource(
         if (settings.defaultView.newestFirst) R.string.reader_newest else R.string.reader_oldest,
     )
-    return stringResource(R.string.settings_sort_line, sortKeyLabel(settings.defaultView.key), direction)
+    return stringResource(R.string.settings_sort_line, sortKeyName(settings.defaultView.key), direction)
 }
 
 @Composable
@@ -1235,7 +1235,7 @@ private fun forwardSummary(settings: AccountSettings): String = when {
 
 @Composable
 private fun themeSummary(settings: AccountSettings): String {
-    val base = themeLabel(settings.theme)
+    val base = themeName(settings.theme)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && settings.dynamicColor) {
         return stringResource(R.string.settings_dynamic_line, base)
     }
@@ -1410,7 +1410,7 @@ private fun StartRuleField(
         modifier = Modifier.fillMaxWidth(),
     ) {
         OutlinedTextField(
-            value = startRuleLabel(selected),
+            value = startRuleName(selected),
             onValueChange = {},
             readOnly = true,
             singleLine = true,
@@ -1428,8 +1428,8 @@ private fun StartRuleField(
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(startRuleLabel(option))
-                            if (startRuleIsRecent(option)) Text(recentRuleNote)
+                            Text(startRuleName(option))
+                            if (startRuleIsRecent(option)) Text(stringResource(R.string.label_recent_note))
                         }
                     },
                     onClick = {
@@ -1440,8 +1440,118 @@ private fun StartRuleField(
             }
         }
     }
-    if (startRuleIsRecent(selected)) Text(recentRuleNote)
+    if (startRuleIsRecent(selected)) Text(stringResource(R.string.label_recent_note))
 }
+
+@Composable
+private fun sortKeyName(key: SortKey): String = stringResource(
+    when (key) {
+        SortKey.Arrival -> R.string.label_arrival
+        SortKey.Date -> R.string.label_date
+        SortKey.From -> R.string.label_from
+        SortKey.Subject -> R.string.compose_subject
+        SortKey.To -> R.string.compose_to
+        SortKey.Cc -> R.string.compose_cc
+        SortKey.Size -> R.string.label_size
+        SortKey.ThreadReferences -> R.string.label_thread
+        SortKey.ThreadOrderedSubject -> R.string.label_ordered_subject
+    },
+)
+
+@Composable
+private fun startRuleName(rule: StartRule): String = stringResource(
+    when (rule) {
+        StartRule.FirstUnseen -> R.string.label_first_unread
+        StartRule.FirstRecent -> R.string.label_first_recent
+        StartRule.FirstImportant -> R.string.label_first_important
+        StartRule.FirstImportantOrUnseen -> R.string.label_first_important_unread
+        StartRule.FirstImportantOrRecent -> R.string.label_first_important_recent
+        StartRule.First -> R.string.label_top
+        StartRule.Last -> R.string.label_bottom
+        StartRule.Newest -> R.string.label_newest_message
+    },
+)
+
+@Composable
+private fun startAfterChangeName(value: StartAfterChange): String = stringResource(
+    when (value) {
+        StartAfterChange.RerunRule -> R.string.label_rerun_rule
+        StartAfterChange.KeepTopVisible -> R.string.label_keep_top
+    },
+)
+
+@Composable
+private fun pinercStartDefaultName(value: PinercStartDefault): String = stringResource(
+    when (value) {
+        PinercStartDefault.LeaveUnchanged -> R.string.label_leave_unchanged
+        PinercStartDefault.AlpineDefault -> R.string.label_alpine_default
+    },
+)
+
+@Composable
+private fun swipeActionName(action: SwipeAction): String = stringResource(
+    when (action) {
+        SwipeAction.Delete -> R.string.drawer_delete
+        SwipeAction.Move -> R.string.label_move
+        SwipeAction.Reply -> R.string.compose_reply
+        SwipeAction.ReplyAll -> R.string.compose_reply_all
+        SwipeAction.SetFlag -> R.string.label_set_flag
+        SwipeAction.ClearFlag -> R.string.label_clear_flag
+        SwipeAction.FlagScreen -> R.string.label_flag_screen
+    },
+)
+
+@Composable
+private fun themeName(mode: ThemeMode): String = stringResource(
+    when (mode) {
+        ThemeMode.Dark -> R.string.label_dark
+        ThemeMode.Light -> R.string.label_light
+        ThemeMode.FollowSystem -> R.string.label_system
+    },
+)
+
+@Composable
+private fun dateFormatName(format: DateFormat): String = stringResource(
+    when (format) {
+        DateFormat.Local -> R.string.label_local
+        DateFormat.Short -> R.string.label_short
+        DateFormat.Relative -> R.string.label_relative
+        DateFormat.Custom -> R.string.label_custom
+    },
+)
+
+@Composable
+private fun densityName(density: Density): String = stringResource(
+    when (density) {
+        Density.Compact -> R.string.label_compact
+        Density.Medium -> R.string.label_comfortable
+        Density.Large -> R.string.label_large
+    },
+)
+
+@Composable
+private fun bodyViewName(view: BodyView): String = stringResource(
+    when (view) {
+        BodyView.PlainOrError -> R.string.label_plain
+        BodyView.PlainOrHtml -> R.string.label_html
+        BodyView.PlainOrText -> R.string.label_html_text
+        BodyView.Headers -> R.string.label_headers
+        BodyView.Raw -> R.string.label_raw
+    },
+)
+
+@Composable
+private fun readerActionName(action: ReaderAction): String = stringResource(
+    when (action) {
+        ReaderAction.Reply -> R.string.compose_reply
+        ReaderAction.ReplyAll -> R.string.compose_reply_all
+        ReaderAction.Forward -> R.string.compose_forward
+        ReaderAction.Delete -> R.string.drawer_delete
+        ReaderAction.Move -> R.string.label_move
+        ReaderAction.Spam -> R.string.label_spam
+        ReaderAction.Bounce -> R.string.compose_bounce
+    },
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1449,7 +1559,7 @@ private fun <T> ChoiceField(
     label: String,
     options: List<T>,
     selected: T,
-    name: (T) -> String,
+    name: @Composable (T) -> String,
     onSelect: (T) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1494,7 +1604,7 @@ private fun SwipeEditor(
     onChange: (SwipeBinding) -> Unit,
 ) {
     Text(label)
-    ChoiceField(stringResource(R.string.settings_action), SwipeAction.entries, binding.action, { swipeActionLabel(it) }) { action ->
+    ChoiceField(stringResource(R.string.settings_action), SwipeAction.entries, binding.action, { swipeActionName(it) }) { action ->
         onChange(binding.copy(action = action))
     }
     if (binding.action == SwipeAction.Move) {

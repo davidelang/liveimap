@@ -136,7 +136,6 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.compose.armForwardOnce
-import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
@@ -155,13 +154,10 @@ import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
-import org.dlang.liveimap.settings.recentRuleNote
 import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.startRuleFor
 import org.dlang.liveimap.settings.startRuleIsRecent
-import org.dlang.liveimap.settings.startRuleLabel
 import org.dlang.liveimap.settings.SwipeBinding
-import org.dlang.liveimap.settings.swipeActionLabel
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import java.time.DateTimeException
@@ -1287,7 +1283,7 @@ fun MessageIndexScreen(
                                 if (!allMailbox && selected.size == 1) {
                                     val oneUid = selected.single()
                                     DropdownMenuItem(
-                                        text = { Text(oppositeForwardLabel(account.forwardAsAttachment)) },
+                                        text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                                         onClick = {
                                             selectionMore = false
                                             armForwardOnce(!account.forwardAsAttachment)
@@ -1456,7 +1452,7 @@ fun MessageIndexScreen(
                         )
                         if (account.openAtInIndexMenu) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.index_open_at)) },
+                                text = { Text(stringResource(R.string.label_open_at)) },
                                 onClick = {
                                     menuOpen = false
                                     openAt = true
@@ -1876,7 +1872,7 @@ fun MessageIndexScreen(
         val choices = startRuleChoices(account.showRecentRules, selected)
         AlertDialog(
             onDismissRequest = { openAt = false },
-            title = { Text(stringResource(R.string.index_open_at)) },
+            title = { Text(stringResource(R.string.label_open_at)) },
             text = {
                 Column {
                     choices.forEach { rule ->
@@ -1890,8 +1886,8 @@ fun MessageIndexScreen(
                             }
                         }) {
                             Column {
-                                Text(startRuleLabel(rule))
-                                if (startRuleIsRecent(rule)) Text(recentRuleNote)
+                                Text(startRuleName(rule))
+                                if (startRuleIsRecent(rule)) Text(stringResource(R.string.label_recent_note))
                             }
                         }
                     }
@@ -2048,13 +2044,13 @@ private fun IndexMessageRow(
                             if (atStart) {
                                 SwipeActionIcon(visual.icon, tint)
                                 Text(
-                                    text = swipeActionLabel(binding.action),
+                                    text = swipeActionName(binding.action),
                                     color = tint,
                                     style = MaterialTheme.typography.labelLarge,
                                 )
                             } else {
                                 Text(
-                                    text = swipeActionLabel(binding.action),
+                                    text = swipeActionName(binding.action),
                                     color = tint,
                                     style = MaterialTheme.typography.labelLarge,
                                 )
@@ -2190,6 +2186,38 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun startRuleName(rule: StartRule): String = stringResource(
+    when (rule) {
+        StartRule.FirstUnseen -> R.string.label_first_unread
+        StartRule.FirstRecent -> R.string.label_first_recent
+        StartRule.FirstImportant -> R.string.label_first_important
+        StartRule.FirstImportantOrUnseen -> R.string.label_first_important_unread
+        StartRule.FirstImportantOrRecent -> R.string.label_first_important_recent
+        StartRule.First -> R.string.label_top
+        StartRule.Last -> R.string.label_bottom
+        StartRule.Newest -> R.string.label_newest_message
+    },
+)
+
+@Composable
+private fun swipeActionName(action: SwipeAction): String = stringResource(
+    when (action) {
+        SwipeAction.Delete -> R.string.drawer_delete
+        SwipeAction.Move -> R.string.label_move
+        SwipeAction.Reply -> R.string.compose_reply
+        SwipeAction.ReplyAll -> R.string.compose_reply_all
+        SwipeAction.SetFlag -> R.string.label_set_flag
+        SwipeAction.ClearFlag -> R.string.label_clear_flag
+        SwipeAction.FlagScreen -> R.string.label_flag_screen
+    },
+)
+
+@Composable
+private fun forwardStyleName(asAttachment: Boolean): String = stringResource(
+    if (asAttachment) R.string.label_forward_inline else R.string.settings_forward_attachment,
+)
 
 @Composable
 private fun sortShortLabel(key: SortKey): String = stringResource(
