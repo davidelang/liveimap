@@ -77,4 +77,14 @@ class ComposePolishTest {
         assertEquals(listOf("List <list@example.com>"), to)
         assertEquals(emptyList<String>(), cc)
     }
+
+    @Test
+    fun appendUidReturnsTheSecondNumber() {
+        assertEquals(3955L, appendUidFromOk("[APPENDUID 38505 3955]"))
+    }
+
+    @Test
+    fun missingAppendUidReturnsZero() {
+        assertEquals(0L, appendUidFromOk("a001 OK APPEND completed"))
+    }
 }

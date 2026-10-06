@@ -34,8 +34,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -200,6 +203,7 @@ fun ComposeScreen(
     var useReplyTo by rememberSaveable { mutableStateOf(false) }
     var replyToLine by rememberSaveable { mutableStateOf("") }
     var replyCcLine by rememberSaveable { mutableStateOf("") }
+    var savedDraftUid by rememberSaveable { mutableLongStateOf(0L) }
     val forwardOnce = rememberSaveable {
         val code = ForwardOnce.code
         ForwardOnce.code = -1
@@ -620,6 +624,61 @@ fun ComposeScreen(
             removePostponedSource()
             true
         }
+    }
+
+    suspend fun saveDraftInBackground() {
+        if (account.postponedMailbox.isEmpty()) return
+        if (toText.isBlank() && subject.isBlank() && bodyField.text.isBlank()) return
+        try {
+            gate.withLock {
+                val built = try {
+                    assemble(account)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    notice = "The draft is not saved."
+                    return@withLock
+                }
+                val uid = try {
+                    session.appendReturningUid(
+                        account.postponedMailbox,
+                        built.rfc822,
+                        setOf("\\Draft"),
+                    )
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    notice = "The draft is not saved."
+                    return@withLock
+                }
+                val previous = when {
+                    savedDraftUid != 0L -> savedDraftUid
+                    seed.kind == ComposeKind.ResumePostpone -> sourceUid ?: 0L
+                    else -> 0L
+                }
+                if (previous != 0L && previous != uid) {
+                    try {
+                        ensureMailbox(account.postponedMailbox)
+                        session.storeFlags(listOf(previous), setOf("\\Deleted"), emptySet())
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: MailFailure) {
+                    }
+                }
+                if (uid != 0L) savedDraftUid = uid
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            notice = "The draft is not saved."
+        }
+    }
+
+    SideEffect {
+        ComposeBackgroundSave.hook = { saveDraftInBackground() }
+    }
+    DisposableEffect(Unit) {
+        onDispose { ComposeBackgroundSave.hook = null }
     }
 
     fun loadStoredCopy(id: String): DeviceCopy? {
@@ -1237,6 +1296,10 @@ private fun showsPlaintextChip(
         }
     }
     return false
+}
+
+internal object ComposeBackgroundSave {
+    var hook: (suspend () -> Unit)? = null
 }
 
 private fun appendAddress(current: String, next: String): String {

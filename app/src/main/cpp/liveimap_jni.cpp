@@ -4352,21 +4352,49 @@ struct mailimap_flag_list * draftFlagList(JNIEnv * env, jobjectArray flags) {
     return list;
 }
 
-extern "C" JNIEXPORT void JNICALL
+jlong appendUidInText(const char * text) {
+    if (text == nullptr) return 0;
+    jlong found = 0;
+    const char * p = text;
+    while (*p != 0) {
+        if (strncasecmp(p, "APPENDUID", 9) == 0) {
+            const char * q = p + 9;
+            while (*q == ' ' || *q == '\t') ++q;
+            if (*q >= '0' && *q <= '9') {
+                while (*q >= '0' && *q <= '9') ++q;
+                while (*q == ' ' || *q == '\t') ++q;
+                if (*q >= '0' && *q <= '9') {
+                    char * end = nullptr;
+                    unsigned long long value = strtoull(q, &end, 10);
+                    if (end != q) found = static_cast<jlong>(value);
+                }
+            }
+        }
+        ++p;
+    }
+    return found;
+}
+
+jlong appendUidFromBuffer(mailimap * imap) {
+    if (imap == nullptr || imap->imap_stream_buffer == nullptr) return 0;
+    return appendUidInText(imap->imap_stream_buffer->str);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jbyteArray message, jobjectArray flags) {
-    if (!ensureJni(env)) return;
+    if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return;
+    if (session == nullptr) return 0;
     if (!appendFlagsAreDraft(env, flags)) {
         throwFailure(env, "unsupported append flag");
         unlockSession(session);
-        return;
+        return 0;
     }
     struct mailimap_flag_list * flagList = draftFlagList(env, flags);
     if (env->ExceptionCheck()) {
         unlockSession(session);
-        return;
+        return 0;
     }
     JChars mb(env, mailbox);
     jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
@@ -4375,8 +4403,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
         bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n), flagList);
     if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
     if (flagList != nullptr) mailimap_flag_list_free(flagList);
-    if (!cmdOk(r)) throwImap(env, session, r, "append failed");
+    jlong uid = 0;
+    if (!cmdOk(r)) {
+        throwImap(env, session, r, "append failed");
+    } else {
+        uid = appendUidFromBuffer(session->imap);
+    }
     unlockSession(session);
+    return uid;
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

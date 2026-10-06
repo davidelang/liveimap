@@ -488,6 +488,11 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
+        keeper.write("append") {
+            nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
+        }
+
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
         keeper.write("send") {
             nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray())
@@ -687,7 +692,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String)
     private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String)
     private external fun nativeTakeCopiedUids(handle: Long): LongArray?
-    private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>)
+    private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>): Long
     private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean): LongArray?
     private external fun nativeSearchCriterion(
         handle: Long,

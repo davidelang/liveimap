@@ -28,6 +28,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
+import org.dlang.liveimap.ui.compose.ComposeBackgroundSave
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,7 +79,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         if (!isChangingConfigurations) {
             lifecycleScope.launch(NonCancellable) {
-                mailSession().suspendConnections()
+                try {
+                    ComposeBackgroundSave.hook?.invoke()
+                } finally {
+                    mailSession().suspendConnections()
+                }
             }
         }
         super.onStop()
