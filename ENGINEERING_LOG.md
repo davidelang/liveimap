@@ -1195,3 +1195,7 @@
 - copyContacts maps nickname, full name, email, distribution lists, fcc, comments, and plaintext both ways. The same call builds the preview lines and the destination entries. The source list is not modified.
 - A matching email with merge off is Skipped, already there. Nested list nicknames expand. No notes drops fcc. Dropped phone, postal, organization, birthday, photo, website, IM, and custom label are named, and can be appended to comments. Starred, ringtone, and linked contacts are not copied.
 - No install.
+
+## 2026-10-06 - contacts copy phase 1 name
+
+- isPineListAddress avoids the private isDistributionAddress already in Completion.kt. The mapping is unchanged. No install.

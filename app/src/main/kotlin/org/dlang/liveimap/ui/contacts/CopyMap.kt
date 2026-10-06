@@ -50,13 +50,13 @@ data class CopyOutcome(
     val entries: List<CopyContact>,
 )
 
-fun isDistributionAddress(address: String): Boolean {
+fun isPineListAddress(address: String): Boolean {
     val trimmed = address.trim()
     return trimmed.length >= 2 && trimmed.startsWith("(") && trimmed.endsWith(")")
 }
 
 fun AlpineEntry.asCopyContact(): CopyContact {
-    val list = isDistributionAddress(address)
+    val list = isPineListAddress(address)
     return CopyContact(
         nickname = nickname,
         displayName = fullname,
@@ -113,7 +113,7 @@ private fun copyIntoPine(
     options: CopyOptions,
     preview: MutableList<String>,
 ) {
-    if (contact.group || isDistributionAddress(contact.address)) {
+    if (contact.group || isPineListAddress(contact.address)) {
         val emails = listMembers(contact, book)
         val nick = assignNickname(pineBase(contact), taken, current = null)
         val fields = pineFields(contact, options)
@@ -176,7 +176,7 @@ private fun copyIntoAndroid(
     options: CopyOptions,
     preview: MutableList<String>,
 ) {
-    if (contact.group || isDistributionAddress(contact.address)) {
+    if (contact.group || isPineListAddress(contact.address)) {
         val members = listMembers(contact, book)
         if (!options.destinationHasGroups) {
             preview.add("This set has no groups.")
@@ -396,7 +396,7 @@ private fun extraLines(contact: CopyContact): List<String> {
 }
 
 private fun ownEmails(contact: CopyContact): List<String> {
-    if (contact.group || isDistributionAddress(contact.address)) return emptyList()
+    if (contact.group || isPineListAddress(contact.address)) return emptyList()
     return contact.emails.filter { it.isNotEmpty() }
 }
 
@@ -430,8 +430,8 @@ private fun assignNickname(base: String, taken: MutableSet<String>, current: Str
 }
 
 private fun listMembers(contact: CopyContact, book: List<CopyContact>): List<String> {
-    if (contact.members.isNotEmpty() && !isDistributionAddress(contact.address)) return contact.members
-    if (!isDistributionAddress(contact.address)) return contact.emails
+    if (contact.members.isNotEmpty() && !isPineListAddress(contact.address)) return contact.members
+    if (!isPineListAddress(contact.address)) return contact.emails
     val inner = contact.address.trim().let { it.substring(1, it.length - 1) }
     val out = ArrayList<String>()
     expandPieces(splitAddresses(inner), book, HashSet(), out)
@@ -453,7 +453,7 @@ private fun expandPieces(
         }
         if (!seen.add(spec.lowercase())) continue
         val entry = book.firstOrNull { it.nickname.equals(spec, ignoreCase = true) } ?: continue
-        if (isDistributionAddress(entry.address)) {
+        if (isPineListAddress(entry.address)) {
             val inner = entry.address.trim().let { it.substring(1, it.length - 1) }
             expandPieces(splitAddresses(inner), book, seen, out)
         } else if (entry.group && entry.members.isNotEmpty()) {
