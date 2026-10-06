@@ -1106,3 +1106,7 @@
 - A link tap, in plain text or the WebView, shows the full URL. Open uses ACTION_VIEW. Cancel dismisses. If no app can open it, the snack says No app found.
 - A line that starts with > is a row with a 2 dp outlineVariant box and onSurfaceVariant text. Other lines keep the current color.
 - Reading, Opening saves Plain text in monospace immediately. The default is false, a missing key stays false, and the plain body uses monospace only when it is on. No install.
+
+## 2026-10-06 - Reader polish phase 1 test import
+
+- ReaderTextTest imports settings.encode so the monospace round-trip compiles. The phase 1 reader behavior is unchanged. No install.
