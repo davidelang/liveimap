@@ -131,7 +131,7 @@ private class OverlapInner : MailSession {
     private fun unused(): Nothing = throw MailFailure("not used")
 }
 
-private class AppendUidInner : OverlapInner() {
+private class AppendUidInner : MailSession {
     val uidCalls = AtomicInteger(0)
     val appendCalls = AtomicInteger(0)
     var mailbox: String = ""
@@ -139,7 +139,53 @@ private class AppendUidInner : OverlapInner() {
     var flags: Set<String> = emptySet()
     private val lanes = mutableListOf<String>()
 
+    override val capabilities: Set<String> = emptySet()
+
     fun laneNames(): List<String> = synchronized(lanes) { lanes.toList() }
+
+    override suspend fun open(account: AccountSettings): OpenResult = unused()
+
+    override suspend fun namespaces(): List<Namespace> = unused()
+
+    override suspend fun listLevel(
+        prefix: String,
+        parentMailbox: String?,
+        unreadCounts: Boolean,
+    ): List<FolderEntry> = unused()
+
+    override suspend fun select(mailbox: String): SelectResult = unused()
+
+    override suspend fun unselect() = unused()
+
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = unused()
+
+    override suspend fun fetchStructure(uid: Long): MimePart = unused()
+
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
+
+    override suspend fun fetchRfc822(uid: Long): ByteArray = unused()
+
+    override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) = unused()
+
+    override suspend fun uidExpungeDeleted() = unused()
+
+    override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) = unused()
+
+    override suspend fun searchText(query: String): List<Long> = unused()
+
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = unused()
+
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = unused()
+
+    override suspend fun thread(key: SortKey): ThreadNode = unused()
+
+    override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) = unused()
+
+    override suspend fun stopWatch() = unused()
+
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
+        appendCalls.incrementAndGet()
+    }
 
     override suspend fun appendReturningUid(
         mailbox: String,
@@ -154,7 +200,9 @@ private class AppendUidInner : OverlapInner() {
         return 3955
     }
 
-    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
-        appendCalls.incrementAndGet()
-    }
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+
+    override fun close() = Unit
+
+    private fun unused(): Nothing = throw MailFailure("not used")
 }

@@ -1135,3 +1135,7 @@
 
 - SerialMailSession.appendReturningUid calls inner.appendReturningUid on the liveimap-imap lane and returns that long. It does not call append.
 - SerialMailSessionTest.appendReturningUidReturnsInnerUidOnTheLane: inner returns 3955, append is not called, and the recorded thread is liveimap-imap. No install.
+
+## 2026-10-06 - compose-polish phase 4 test double
+
+- AppendUidInner is its own MailSession so the lane test compiles. OverlapInner stays unchanged. The test still expects UID 3955, no append call, and thread liveimap-imap. No install.
