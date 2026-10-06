@@ -91,6 +91,7 @@ import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
@@ -103,6 +104,7 @@ import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.settings.readerActionLabel
 import org.dlang.liveimap.settings.sortKeyLabel
 import org.dlang.liveimap.ui.ConnectionStatusStrip
+import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
@@ -155,6 +157,7 @@ fun MessageReaderScreen(
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
+    val debugStatus by TrafficLog.debugStatus.collectAsState()
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
     val carry = remember { Utf8Carry() }
@@ -917,6 +920,7 @@ fun MessageReaderScreen(
                 loadToken += 1
             }
         }
+        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier

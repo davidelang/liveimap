@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import java.io.File
+import org.dlang.liveimap.settings.AccountSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,6 +95,52 @@ class TrafficLogTest {
         assertFalse(text.contains("FIRST-LINE-MARKER"))
         assertTrue(text.contains("L${n - 1} "))
         assertFalse(File(file.parentFile, file.name + ".1").exists())
+    }
+
+    @Test
+    fun reportHidesUserUnlessAsked() {
+        val file = tempLog()
+        val log = TrafficLog(file, clock = { 1L })
+        log.noteCapability("IMAP4rev1 NAMESPACE")
+        log.noteStatus("Selected INBOX")
+        val hidden = AccountSettings(username = "ada.user", imapHost = "imap.example.com")
+        val report = log.debugReport("v0.test", 1, "14", "pixel", hidden)
+        assertTrue(report.contains("LiveIMAP v0.test (1)"))
+        assertTrue(report.contains("Android 14 pixel"))
+        assertTrue(report.contains("username=<user>"))
+        assertFalse(report.contains("ada.user"))
+        assertTrue(report.contains("IMAP4rev1 NAMESPACE"))
+        assertTrue(report.contains("Selected INBOX"))
+        val shown = log.debugReport(
+            "v0.test",
+            1,
+            "14",
+            "pixel",
+            hidden.copy(showUserInDebugReport = true),
+        )
+        assertTrue(shown.contains("username=ada.user"))
+    }
+
+    @Test
+    fun reportStripsPlantedSecrets() {
+        val file = tempLog()
+        val log = TrafficLog(file, clock = { 1L })
+        val password = "hunter2secret"
+        val token = "ya29.SUPERTOKEN"
+        val sasl = "AGFkbWluAHNlY3JldA=="
+        file.writeText(
+            listOf(
+                "1 main C A1 LOGIN ada $password",
+                "1 main token=$token",
+                "1 main C $sasl",
+                "1 main password=$password",
+            ).joinToString("\n", postfix = "\n"),
+        )
+        val report = log.debugReport("v", 1, "14", "pixel", AccountSettings(username = "ada.user"))
+        assertFalse(report.contains(password))
+        assertFalse(report.contains(token))
+        assertFalse(report.contains(sasl))
+        assertTrue(report.contains("username=<user>"))
     }
 
     @Test

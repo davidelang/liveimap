@@ -51,3 +51,12 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
         }
     }
 }
+
+@Composable
+fun DebugConnectionStatus(text: String) {
+    if (text.isEmpty()) return
+    Text(
+        text = text,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+}

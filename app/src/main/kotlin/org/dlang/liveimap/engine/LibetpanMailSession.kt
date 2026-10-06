@@ -181,6 +181,11 @@ class LibetpanMailSession : MailSession {
             return OpenResult.Failed(error.message ?: "keystore unavailable")
         }
         val from = if (account.email.isNotEmpty()) account.email else account.username
+        val trafficPath = prepareTraffic(account)
+        if (account.logImapTraffic) {
+            TrafficLog.noteStatus("Connecting")
+            TrafficLog.noteStatus("Authenticating")
+        }
         val opened = nativeOpen(
             account.imapHost,
             account.imapPort,
@@ -191,11 +196,13 @@ class LibetpanMailSession : MailSession {
             from,
             account.pipelineCommands,
             account.logImapTraffic,
-            prepareTraffic(account),
+            trafficPath,
         )
         if (opened == 0L) {
+            val text = nativeTakeError()
+            if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
             finishTraffic(account)
-            return OpenResult.Failed(nativeTakeError())
+            return OpenResult.Failed(text)
         }
         val line = nativeCapabilityLine(opened)
         val gate = capabilityGate(line)
@@ -204,6 +211,7 @@ class LibetpanMailSession : MailSession {
             finishTraffic(account)
             return gate
         }
+        if (account.logImapTraffic) TrafficLog.noteCapability(line)
         handle = opened
         this.account = account
         capSet = capabilityTokens(line).toSet()
@@ -237,11 +245,15 @@ class LibetpanMailSession : MailSession {
             selectedMailbox = null
             selected = SelectResult(0, 0, 0)
         }
-        val result = nativeSelect(requireHandle(), mailbox) ?: throw MailFailure("select failed")
+        val result = nativeSelect(requireHandle(), mailbox) ?: run {
+            noteTraffic("Error select failed")
+            throw MailFailure("select failed")
+        }
         selectedMailbox = mailbox
         selected = result
         sequencesStale = false
         keeper.noteSelected(result)
+        noteTraffic("Selected $mailbox")
         return result
     }
 
@@ -456,6 +468,7 @@ class LibetpanMailSession : MailSession {
             watchMailbox = mailbox
             watchCallback = onChange
             nativeWatch(requireHandle(), mailbox)
+            noteTraffic("Idling")
         }
     }
 
@@ -542,6 +555,7 @@ class LibetpanMailSession : MailSession {
             selected = result
             cache.clear()
             sequencesStale = true
+            noteTraffic("Selected $mailbox")
             return result
         }
 
@@ -549,6 +563,7 @@ class LibetpanMailSession : MailSession {
             val mailbox = watchMailbox ?: return
             if (watchCallback == null) return
             nativeWatch(requireHandle(), mailbox)
+            noteTraffic("Idling")
         }
 
         override fun close() {
@@ -565,6 +580,10 @@ class LibetpanMailSession : MailSession {
             }
             watchCallback?.invoke(change)
         }
+    }
+
+    private fun noteTraffic(text: String) {
+        if (account?.logImapTraffic == true) TrafficLog.noteStatus(text)
     }
 
     private fun advertised(): String = capSet.joinToString(" ")

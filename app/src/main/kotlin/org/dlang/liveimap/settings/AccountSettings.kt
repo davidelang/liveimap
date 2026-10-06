@@ -264,6 +264,7 @@ data class AccountSettings(
     val askBeforeExpunge: Boolean = true,
     val pipelineCommands: Boolean = true,
     val logImapTraffic: Boolean = false,
+    val showUserInDebugReport: Boolean = false,
     val readerBar: List<ReaderAction> = defaultReaderBar,
     val inboxStart: StartRule = StartRule.Newest,
     val folderStart: StartRule = StartRule.Newest,
@@ -312,6 +313,7 @@ private val fieldNames = listOf(
     "askBeforeExpunge",
     "pipelineCommands",
     "logImapTraffic",
+    "showUserInDebugReport",
     "readerBar",
     "dynamicColor",
     "inboxStart",
@@ -360,6 +362,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("askBeforeExpunge=$askBeforeExpunge")
     appendLine("pipelineCommands=$pipelineCommands")
     appendLine("logImapTraffic=$logImapTraffic")
+    appendLine("showUserInDebugReport=$showUserInDebugReport")
     appendLine("readerBar=${encodeReaderBar(readerBar)}")
     appendLine("dynamicColor=$dynamicColor")
     appendLine("inboxStart=${inboxStart.name}")
@@ -399,6 +402,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "askBeforeExpunge" ||
             key == "pipelineCommands" ||
             key == "logImapTraffic" ||
+            key == "showUserInDebugReport" ||
             key == "readerBar" ||
             key == "dynamicColor" ||
             key == "inboxStart" ||
@@ -447,6 +451,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
         pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,
         logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
+        showUserInDebugReport = values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false,
         readerBar = values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar,
         dynamicColor = values["dynamicColor"]?.let { parseBoolean(it) } ?: true,
         inboxStart = values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest,

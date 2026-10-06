@@ -86,6 +86,7 @@ class ConnectionKeeper(
     fun suspendConnections() {
         link.close()
         state.value = ConnectionState.Suspended
+        TrafficLog.noteStatus("Closed (background)")
     }
 
     fun <T> read(@Suppress("UNUSED_PARAMETER") op: String, block: () -> T): T {
@@ -102,6 +103,7 @@ class ConnectionKeeper(
                 value
             } catch (again: ConnectionLost) {
                 broken = true
+                TrafficLog.noteStatus("Error ${again.text}")
                 throw again
             }
         }
@@ -115,9 +117,9 @@ class ConnectionKeeper(
             value
         } catch (_: ConnectionLost) {
             broken = true
-            throw ConnectionLost(
-                "Connection lost while $op; it may not have finished. Check the folder, then retry.",
-            )
+            val text = "Connection lost while $op; it may not have finished. Check the folder, then retry."
+            TrafficLog.noteStatus("Error $text")
+            throw ConnectionLost(text)
         }
     }
 
@@ -146,6 +148,7 @@ class ConnectionKeeper(
 
     private fun reconnect() {
         state.value = ConnectionState.Reconnecting
+        TrafficLog.noteStatus("Reconnecting")
         link.close()
         var failure: Exception? = null
         var connected = false
@@ -164,6 +167,7 @@ class ConnectionKeeper(
         if (!connected) {
             val text = failureText(failure)
             state.value = ConnectionState.Lost(text)
+            TrafficLog.noteStatus("Error $text")
             broken = true
             throw ConnectionLost(text)
         }
@@ -202,6 +206,7 @@ class ConnectionKeeper(
     private fun failReconnect(error: Exception): Nothing {
         val text = failureText(error)
         state.value = ConnectionState.Lost(text)
+        TrafficLog.noteStatus("Error $text")
         broken = true
         if (error is ConnectionLost) {
             throw error

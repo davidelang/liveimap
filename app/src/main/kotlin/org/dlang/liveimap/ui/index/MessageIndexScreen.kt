@@ -141,8 +141,10 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
+import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
@@ -405,6 +407,7 @@ fun MessageIndexScreen(
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
+    val debugStatus by TrafficLog.debugStatus.collectAsState()
     val model = remember(session, store, mailbox) { IndexModel(session, store, mailbox) }
     val scope = rememberCoroutineScope()
     val watchRecovery = remember { WatchBackoff() }
@@ -1451,6 +1454,7 @@ fun MessageIndexScreen(
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
+        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier

@@ -1,8 +1,13 @@
 package org.dlang.liveimap.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,6 +71,8 @@ import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.BuildConfig
+import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.folder.MailboxChooser
@@ -90,6 +97,7 @@ fun SettingsScreen() {
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
     var warnUnread by remember { mutableStateOf(false) }
+    var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
     val settingsState = rememberUpdatedState(settings)
@@ -112,8 +120,9 @@ fun SettingsScreen() {
         }
     }
 
-    BackHandler(enabled = picking != null || warnUnread || editingStarts) {
+    BackHandler(enabled = picking != null || warnUnread || editingStarts || reportLines != null) {
         when {
+            reportLines != null -> reportLines = null
             picking != null -> picking = null
             editingStarts -> editingStarts = false
             else -> warnUnread = false
@@ -367,7 +376,77 @@ fun SettingsScreen() {
         BoolField("Log IMAP traffic", settings.logImapTraffic) {
             persist(settings.copy(logImapTraffic = it))
         }
-        Text("Commands and server replies go to logcat under LiveIMAP. The password is omitted. Message text is included.")
+        Text("Commands and server replies go to logcat under LiveIMAP. The password is omitted.")
+        TextButton(onClick = {
+            val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
+            log.shareFile(contextState.value)
+        }) { Text("Share log") }
+        TextButton(onClick = {
+            val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
+            val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
+            reportLines = log.debugReport(
+                versionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE,
+                androidVersion = Build.VERSION.RELEASE,
+                device = device,
+                settings = settings,
+            ).lines()
+        }) { Text("Debug report") }
+        BoolField("Show user name in the debug report", settings.showUserInDebugReport) {
+            persist(settings.copy(showUserInDebugReport = it))
+        }
+    }
+
+    val shownReport = reportLines
+    if (shownReport != null) {
+        Dialog(
+            onDismissRequest = { reportLines = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars
+                                .union(WindowInsets.navigationBars)
+                                .union(WindowInsets.displayCutout),
+                        )
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Debug report", style = MaterialTheme.typography.titleLarge)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        shownReport.forEachIndexed { index, line ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = line.ifEmpty { " " },
+                                    modifier = Modifier.weight(1f),
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                TextButton(onClick = {
+                                    reportLines = shownReport.filterIndexed { i, _ -> i != index }
+                                }) { Text("Remove line") }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            copyDebugReport(contextState.value, shownReport)
+                        }) { Text("Copy") }
+                        TextButton(onClick = {
+                            shareDebugReport(contextState.value, shownReport)
+                        }) { Text("Share") }
+                        TextButton(onClick = { reportLines = null }) { Text("Dismiss") }
+                    }
+                }
+            }
+        }
     }
 
     if (warnUnread) {
@@ -712,6 +791,19 @@ private enum class MailboxPick {
     Spam,
     TrailingMove,
     LeadingMove,
+}
+
+private fun copyDebugReport(context: Context, lines: List<String>) {
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText("LiveIMAP debug report", lines.joinToString("\n")))
+}
+
+private fun shareDebugReport(context: Context, lines: List<String>) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
+    }
+    context.startActivity(Intent.createChooser(send, "Share debug report"))
 }
 
 private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: String): AccountSettings {

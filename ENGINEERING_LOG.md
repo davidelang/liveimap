@@ -1022,3 +1022,9 @@
 ## 2026-10-05 - Traffic log execution start
 
 - Execute sandbox/plans/traffic-log-20261005-2145-plan.md on master (Status APPROVED). Phase 1: TrafficLog file format and native chunk handoff. Phase 2: share, debug report review, user-name switch, debug status. No install. Device checks stay with David.
+
+## 2026-10-05 - Traffic log phase 2
+
+- Share the current traffic file through TrafficFileProvider. The debug report can drop a line, then Copy or Share. The user name is <user> unless "Show user name in the debug report" is on.
+- DebugConnectionStatus sits under the reconnect strip on the folder list, the index, and the reader. The strip text is unchanged.
+- TrafficLogTest checks the report. No install. Device checks stay with David.

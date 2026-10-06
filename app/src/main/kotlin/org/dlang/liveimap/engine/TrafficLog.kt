@@ -1,6 +1,21 @@
 package org.dlang.liveimap.engine
 
+import android.content.ClipData
+import android.content.ContentProvider
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.database.Cursor
+import android.database.MatrixCursor
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import java.io.File
+import java.io.FileNotFoundException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.encode
 
 /**
  * IMAP traffic file. Native code hands each chunk here.
@@ -16,10 +31,15 @@ class TrafficLog(
     private val lines = ArrayDeque<String>()
     private var storedBytes = 0L
     private val conns = HashMap<String, Conn>()
+    private val statusHistory = ArrayDeque<String>()
+    private val capabilityLines = ArrayDeque<String>()
 
     fun setRecording(on: Boolean) {
         synchronized(this) {
             recordingEnabled = on
+        }
+        if (!on && active === this) {
+            statusFlow.value = ""
         }
     }
 
@@ -50,6 +70,71 @@ class TrafficLog(
                 flushHalf(id, conn, conn.received, "S")
             }
         }
+    }
+
+    fun noteStatus(text: String) {
+        if (text.isEmpty()) return
+        synchronized(this) {
+            if (!recordingEnabled) return
+            statusHistory.addLast(text)
+            while (statusHistory.size > 100) statusHistory.removeFirst()
+        }
+        if (active === this) statusFlow.value = text
+    }
+
+    fun noteCapability(line: String) {
+        if (line.isEmpty()) return
+        synchronized(this) {
+            if (!recordingEnabled) return
+            capabilityLines.addLast(line)
+            while (capabilityLines.size > 8) capabilityLines.removeFirst()
+        }
+    }
+
+    fun shareFile(context: Context) {
+        synchronized(this) {
+            if (!file.exists()) {
+                file.parentFile?.mkdirs()
+                file.writeText("")
+            }
+        }
+        val uri = Uri.parse("content://$SHARE_AUTHORITY/imap-traffic.log")
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri("imap-traffic.log", uri)
+        }
+        val chooser = Intent.createChooser(send, "Share IMAP traffic")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    }
+
+    fun debugReport(
+        versionName: String,
+        versionCode: Int,
+        androidVersion: String,
+        device: String,
+        settings: AccountSettings,
+    ): String {
+        val traffic = synchronized(this) {
+            if (file.isFile) file.readText() else ""
+        }
+        val caps = synchronized(this) { capabilityLines.toList() }
+        val history = synchronized(this) { statusHistory.toList() }
+        val body = buildString {
+            appendLine("LiveIMAP $versionName ($versionCode)")
+            appendLine("Android $androidVersion $device")
+            appendLine("Account")
+            appendLine(accountBlock(settings))
+            appendLine("CAPABILITY")
+            for (line in caps) appendLine(line)
+            appendLine("Status")
+            for (line in history) appendLine(line)
+            appendLine("Traffic")
+            append(trafficTail(traffic))
+        }
+        return scrubReport(body)
     }
 
     private fun flushHalf(connectionId: String, conn: Conn, half: Half, prefix: String) {
@@ -216,6 +301,10 @@ class TrafficLog(
         const val LOG_RECEIVED = 5
         const val LOG_SENT = 6
         const val LOG_PRIVATE = 7
+        const val SHARE_AUTHORITY = "org.dlang.liveimap.trafficlog"
+
+        private val statusFlow = MutableStateFlow("")
+        val debugStatus: StateFlow<String> = statusFlow
 
         @Volatile
         private var active: TrafficLog? = null
@@ -234,6 +323,16 @@ class TrafficLog(
 
         fun setRecording(on: Boolean) {
             active?.setRecording(on)
+        }
+
+        fun noteStatus(text: String) {
+            val log = active ?: return
+            log.noteStatus(text)
+        }
+
+        fun noteCapability(line: String) {
+            val log = active ?: return
+            log.noteCapability(line)
         }
 
         @JvmStatic
@@ -317,4 +416,100 @@ private fun bodyOf(stored: String): String {
 private fun repeatsOf(stored: String): Int {
     val match = repeatSuffix.find(stored) ?: return 1
     return match.groupValues[1].toIntOrNull() ?: 1
+}
+
+private fun accountBlock(settings: AccountSettings): String {
+    return settings.encode().lineSequence().joinToString("\n") { line ->
+        if (!settings.showUserInDebugReport && line.startsWith("username=")) {
+            "username=<user>"
+        } else {
+            line
+        }
+    }
+}
+
+private fun trafficTail(text: String): String {
+    val cap = 64 * 1024
+    if (text.length <= cap) return text
+    val cut = text.substring(text.length - cap)
+    val nl = cut.indexOf('\n')
+    return if (nl >= 0 && nl < cut.length - 1) cut.substring(nl + 1) else cut
+}
+
+private val assignedSecret = Regex("""(?i)(\b(?:password|token)\s*[:=]\s*)(\S+)""")
+private val base64Blob = Regex("""(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{16,}={0,2}(?![A-Za-z0-9+/=])""")
+
+private fun scrubReport(text: String): String {
+    return text.lines().joinToString("\n") { line -> scrubReportLine(line) }
+}
+
+private fun scrubReportLine(line: String): String {
+    var next = assignedSecret.replace(line) { match ->
+        match.groupValues[1] + "<redacted ${match.groupValues[2].length} bytes>"
+    }
+    next = scrubLogin(next)
+    next = base64Blob.replace(next) { match ->
+        "<redacted ${match.value.length} bytes>"
+    }
+    return next
+}
+
+private fun scrubLogin(line: String): String {
+    val tokens = imapTokens(line)
+    val at = tokens.indexOfFirst { it.equals("LOGIN", ignoreCase = true) }
+    if (at < 0 || at + 2 >= tokens.size) return line
+    val secret = tokens.subList(at + 2, tokens.size).joinToString(" ")
+    if (secret.startsWith("<redacted ")) return line
+    val found = line.lastIndexOf(secret)
+    if (found < 0) return line
+    return line.substring(0, found).trimEnd() + " <redacted ${secret.length} bytes>"
+}
+
+class TrafficFileProvider : ContentProvider() {
+    override fun onCreate(): Boolean = true
+
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?,
+    ): Cursor? {
+        val file = cacheFile(uri) ?: return null
+        val cols = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
+        val cursor = MatrixCursor(cols)
+        cursor.addRow(cols.map { col ->
+            when (col) {
+                OpenableColumns.DISPLAY_NAME -> file.name
+                OpenableColumns.SIZE -> file.length()
+                else -> null
+            }
+        }.toTypedArray())
+        return cursor
+    }
+
+    override fun getType(uri: Uri): String = "text/plain"
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+    ): Int = 0
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        val file = cacheFile(uri) ?: throw FileNotFoundException(uri.toString())
+        if (!file.isFile) throw FileNotFoundException(uri.toString())
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+
+    private fun cacheFile(uri: Uri): File? {
+        if (uri.lastPathSegment != "imap-traffic.log") return null
+        val dir = context?.cacheDir ?: return null
+        return File(dir, "imap-traffic.log")
+    }
 }

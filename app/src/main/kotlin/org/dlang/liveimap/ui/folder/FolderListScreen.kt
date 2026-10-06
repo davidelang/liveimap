@@ -87,10 +87,12 @@ import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.ConnectionStatusStrip
+import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.compose.readCopies
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
@@ -109,6 +111,7 @@ fun FolderListScreen(
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
+    val debugStatus by TrafficLog.debugStatus.collectAsState()
     val model = remember(session, store) { FolderListModel(session, store) }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
@@ -424,6 +427,7 @@ fun FolderListScreen(
                 loadToken += 1
             }
         }
+        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier
