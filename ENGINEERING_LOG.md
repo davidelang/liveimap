@@ -1090,3 +1090,19 @@
 
 - FolderTreeTest constructs the INBOX prefix case already expanded and expects one ListCall("INBOX.", null). Toggling INBOX and Archive leaves stored expanded folders empty and does not save.
 - No production edits. No install.
+
+## 2026-10-06 - Reader polish execution start
+
+- Execute sandbox/plans/reader-polish-20261005-2318-plan.md on master (Status APPROVED).
+- Phase 1: pinned header, view labels, view switch, link dialog, quote rows, Show HTML, and the monospace switch.
+- Phase 2: attachment chip, Open, Share, Save, attachment provider, cache deletion on leave, and Show images.
+- No install. Device checks stay with David.
+
+## 2026-10-06 - Reader polish phase 1
+
+- The header card stays above the scrolling body. From uses the HEADER From when it contains @, otherwise the index From. The date is the envelope date when it is not blank, otherwise the formatted index date. To and Cc start as one ellipsized line and wrap after a tap. Subject is not ellipsized. Message N is gone.
+- A Deleted chip and Undelete show when \Deleted is set. Undelete removes that flag and does not expunge.
+- Body view labels are Plain text, HTML, HTML as text, Headers, and Raw source. The Close menu item is gone. Choosing a view shows that view even when a plain part exists. The no-text card has Show HTML when an HTML part exists, and that button does not write the setting.
+- A link tap, in plain text or the WebView, shows the full URL. Open uses ACTION_VIEW. Cancel dismisses. If no app can open it, the snack says No app found.
+- A line that starts with > is a row with a 2 dp outlineVariant box and onSurfaceVariant text. Other lines keep the current color.
+- Reading, Opening saves Plain text in monospace immediately. The default is false, a missing key stays false, and the plain body uses monospace only when it is on. No install.

@@ -1,11 +1,16 @@
 package org.dlang.liveimap.ui.reader
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -64,14 +69,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayOutputStream
@@ -118,7 +127,6 @@ import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.followingUid
 import org.dlang.liveimap.ui.index.mailUndoText
 import org.dlang.liveimap.ui.compose.attachmentParts
-import org.dlang.liveimap.ui.compose.missingPartText
 import org.dlang.liveimap.ui.compose.nextWireCount
 import org.dlang.liveimap.ui.compose.textPart
 
@@ -132,6 +140,10 @@ private class ScrollBridge {
 
 private class LaterRetry {
     var block: () -> Unit = {}
+}
+
+private class LinkBridge {
+    var onLink: (String) -> Unit = {}
 }
 
 private data class AttachmentRow(
@@ -153,7 +165,8 @@ fun MessageReaderScreen(
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
 ) {
-    val appContext = LocalContext.current.applicationContext
+    val context = LocalContext.current
+    val appContext = context.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
@@ -188,9 +201,15 @@ fun MessageReaderScreen(
     var missing by remember { mutableStateOf<String?>(null) }
     var attachments by remember { mutableStateOf<List<AttachmentRow>>(emptyList()) }
     var headerFrom by remember(mailbox, uid) { mutableStateOf("") }
+    var headerTo by remember(mailbox, uid) { mutableStateOf("") }
+    var headerCc by remember(mailbox, uid) { mutableStateOf("") }
     var headerDate by remember(mailbox, uid) { mutableStateOf("") }
     var headerSubject by remember(mailbox, uid) { mutableStateOf("") }
     var headerReady by remember(mailbox, uid) { mutableStateOf(false) }
+    var rowFlags by remember(mailbox, uid) { mutableStateOf(emptySet<String>()) }
+    var showHtmlButton by remember(mailbox, uid) { mutableStateOf(false) }
+    var pendingLink by remember(mailbox, uid) { mutableStateOf<String?>(null) }
+    val linkBridge = remember { LinkBridge() }
     var noTextPart by remember(mailbox, uid) { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
     var seenStored by remember { mutableStateOf(false) }
@@ -353,9 +372,10 @@ fun MessageReaderScreen(
         return out.toByteArray()
     }
 
-    fun showMissing(text: String, noText: Boolean = false) {
+    fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
         missing = text
         noTextPart = noText
+        showHtmlButton = offerHtml && noText
         renderedHtml = false
         bodyText = ""
         bodySection = null
@@ -364,26 +384,47 @@ fun MessageReaderScreen(
         carry.pending = ByteArray(0)
     }
 
+    suspend fun readSectionText(section: String): String {
+        val local = Utf8Carry()
+        val out = StringBuilder()
+        var offset = 0
+        while (true) {
+            val chunk = session.peekPart(uid, section, offset, 4096)
+            if (chunk.isEmpty()) break
+            offset += chunk.size
+            val (text, rest) = appendUtf8(local.pending, chunk)
+            local.pending = rest
+            out.append(text)
+            if (chunk.size < 4096) break
+        }
+        if (local.pending.isNotEmpty()) {
+            out.append(local.pending.toString(Charsets.UTF_8))
+        }
+        return out.toString()
+    }
+
     suspend fun loadPreferred(view: BodyView) {
         val root = structure ?: return
         val plain = textPart(root, "plain")
         val html = textPart(root, "html")
-        if (plain == null && html == null) {
-            showMissing("There is no text part", noText = true)
-            return
-        }
-        noTextPart = false
-        if (plain != null) {
-            missing = null
-            renderedHtml = false
-            pullBody(plain, reset = true, markSeen = !seenStored)
-            return
-        }
         when (view) {
+            BodyView.PlainOrError -> {
+                if (plain == null) {
+                    showMissing("There is no text part", noText = true, offerHtml = html != null)
+                    return
+                }
+                showHtmlButton = false
+                noTextPart = false
+                missing = null
+                renderedHtml = false
+                pullBody(plain, reset = true, markSeen = !seenStored)
+            }
             BodyView.PlainOrHtml -> {
                 if (html == null) {
-                    showMissing(missingPartText(true))
+                    showMissing("There is no HTML part")
                 } else {
+                    showHtmlButton = false
+                    noTextPart = false
                     missing = null
                     renderedHtml = true
                     pullBody(html, reset = true, markSeen = !seenStored)
@@ -391,9 +432,11 @@ fun MessageReaderScreen(
             }
             BodyView.PlainOrText -> {
                 if (html == null) {
-                    showMissing(missingPartText(true))
+                    showMissing("There is no HTML part")
                 } else {
                     renderedHtml = false
+                    showHtmlButton = false
+                    noTextPart = false
                     missing = null
                     bodyText = ""
                     bodySection = null
@@ -405,7 +448,6 @@ fun MessageReaderScreen(
                     bodyText = htmlAsText(bytes.toString(Charsets.UTF_8))
                 }
             }
-            BodyView.PlainOrError -> showMissing(missingPartText(false))
             BodyView.Headers, BodyView.Raw -> Unit
         }
     }
@@ -492,9 +534,13 @@ fun MessageReaderScreen(
         loading = true
         banner = null
         headerFrom = ""
+        headerTo = ""
+        headerCc = ""
         headerDate = ""
         headerSubject = ""
         headerReady = false
+        rowFlags = emptySet()
+        showHtmlButton = false
         noTextPart = false
         var initialView = BodyView.PlainOrError
         var openOk = false
@@ -573,6 +619,7 @@ fun MessageReaderScreen(
                 if (row != null) {
                     headerFrom = row.from
                     headerSubject = row.subject
+                    rowFlags = row.flags
                     val formatted = formatIndexDate(
                         epochSeconds = row.internalDateEpoch,
                         format = account.dateFormat,
@@ -580,7 +627,17 @@ fun MessageReaderScreen(
                         nowEpoch = Instant.now().epochSecond,
                         zone = ZoneId.systemDefault(),
                     )
-                    headerDate = formatted.ifEmpty { row.envelopeDate }
+                    headerDate = if (row.envelopeDate.isNotBlank()) row.envelopeDate else formatted
+                }
+                try {
+                    val fields = headerFields(readSectionText("HEADER"))
+                    if (fields.from.contains('@')) headerFrom = fields.from
+                    headerTo = fields.to
+                    headerCc = fields.cc
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
                 }
                 headerReady = true
                 connected = true
@@ -713,6 +770,30 @@ fun MessageReaderScreen(
         if (go) openNextOrIndex(next)
     }
 
+    fun openConfirmedLink(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (error: ActivityNotFoundException) {
+            postSnack("No app found")
+        }
+    }
+
+    fun undeleteMessage() {
+        scope.launch {
+            gate.withLock {
+                try {
+                    session.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
+                    rowFlags = rowFlags - "\\Deleted"
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+
     fun runDelete() {
         scope.launch {
             gate.withLock {
@@ -801,12 +882,18 @@ fun MessageReaderScreen(
         ThemeMode.Light -> false
         ThemeMode.FollowSystem -> systemDark
     }
-    val quoteColor = MaterialTheme.colorScheme.secondary
     val linkColor = MaterialTheme.colorScheme.primary
+    val quoteTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val quoteBorder = MaterialTheme.colorScheme.outlineVariant
     val htmlBackground = MaterialTheme.colorScheme.background.toArgb()
     val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
-    val plainBody = remember(bodyText, quoteColor, linkColor) {
-        plainBodyText(bodyText, quoteColor, linkColor)
+    val plainFont = if (account.plainTextMonospace) FontFamily.Monospace else null
+    linkBridge.onLink = { url -> pendingLink = url }
+    val plainLines = remember(bodyText, quoteTint, linkColor, linkBridge) {
+        readerLines(bodyText).map { line ->
+            val quoted = quotedReaderLine(line)
+            quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
+        }
     }
     val barActions = readerBarActions(account.readerBar, account.spamMailbox)
     val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
@@ -846,10 +933,6 @@ fun MessageReaderScreen(
                     )
                 }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Close") },
-                    onClick = { moreMenu = false },
-                )
                 for (action in menuActions) {
                     DropdownMenuItem(
                         text = { Text(readerActionLabel(action)) },
@@ -936,8 +1019,15 @@ fun MessageReaderScreen(
                 loadToken += 1
             }
         }
-        if (sequence != 0) {
-            Text("Message $sequence", modifier = Modifier.padding(horizontal = 8.dp))
+        if (headerReady) {
+            ReaderHeaderCard(
+                from = headerFrom,
+                toLine = recipientLine(headerTo, headerCc),
+                date = headerDate,
+                subject = headerSubject,
+                deleted = "\\Deleted" in rowFlags,
+                onUndelete = { undeleteMessage() },
+            )
         }
         val absent = missing
         PullToRefreshBox(
@@ -948,13 +1038,6 @@ fun MessageReaderScreen(
                 .fillMaxWidth(),
         ) {
             Column(Modifier.fillMaxSize()) {
-                if (headerReady) {
-                    ReaderHeaderCard(
-                        from = headerFrom,
-                        date = headerDate,
-                        subject = headerSubject,
-                    )
-                }
                 if (attachments.isNotEmpty()) {
                     FlowRow(
                         modifier = Modifier
@@ -978,16 +1061,20 @@ fun MessageReaderScreen(
                                 .fillMaxWidth()
                                 .padding(8.dp),
                         ) {
-                            Text(
-                                text = "There is no text part",
-                                modifier = Modifier.padding(12.dp),
-                            )
+                            Column(Modifier.padding(12.dp)) {
+                                Text("There is no text part")
+                                if (showHtmlButton) {
+                                    TextButton(onClick = { requestView(BodyView.PlainOrHtml) }) {
+                                        Text("Show HTML")
+                                    }
+                                }
+                            }
                         }
                     }
                     absent == null && renderedHtml -> {
                         AndroidView(
-                            factory = { context ->
-                                WebView(context).apply {
+                            factory = { webContext ->
+                                WebView(webContext).apply {
                                     settings.javaScriptEnabled = false
                                     settings.javaScriptCanOpenWindowsAutomatically = false
                                     settings.blockNetworkLoads = true
@@ -997,13 +1084,23 @@ fun MessageReaderScreen(
                                     setBackgroundColor(htmlBackground)
                                     applyHtmlDark(settings)
                                     webViewClient = object : WebViewClient() {
+                                        private fun confirm(url: String?) {
+                                            if (!url.isNullOrEmpty()) linkBridge.onLink(url)
+                                        }
+
                                         @Deprecated("Deprecated in API 24")
-                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                            confirm(url)
+                                            return true
+                                        }
 
                                         override fun shouldOverrideUrlLoading(
                                             view: WebView?,
                                             request: WebResourceRequest?,
-                                        ): Boolean = true
+                                        ): Boolean {
+                                            confirm(request?.url?.toString())
+                                            return true
+                                        }
                                     }
                                     setOnScrollChangeListener { _, _, scrollY, _, _ ->
                                         val extent = (contentHeight * scale) - height
@@ -1030,9 +1127,16 @@ fun MessageReaderScreen(
                             Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .verticalScroll(scroll),
+                                .verticalScroll(scroll)
+                                .padding(8.dp),
                         ) {
-                            Text(text = plainBody, modifier = Modifier.padding(8.dp))
+                            for ((quoted, line) in plainLines) {
+                                if (quoted) {
+                                    QuotedReaderLine(line, quoteTint, quoteBorder, plainFont)
+                                } else {
+                                    Text(text = line, fontFamily = plainFont, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
                         }
                     }
                     else -> {
@@ -1064,6 +1168,22 @@ fun MessageReaderScreen(
             }
         }
     }
+    }
+    val confirmedLink = pendingLink
+    if (confirmedLink != null) {
+        AlertDialog(
+            onDismissRequest = { pendingLink = null },
+            text = { Text(confirmedLink) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingLink = null
+                    openConfirmedLink(confirmedLink)
+                }) { Text("Open") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLink = null }) { Text("Cancel") }
+            },
+        )
     }
     if (confirmExpunge) {
         val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
@@ -1189,7 +1309,15 @@ private fun readerActionImage(action: ReaderAction) = when (action) {
 }
 
 @Composable
-private fun ReaderHeaderCard(from: String, date: String, subject: String) {
+private fun ReaderHeaderCard(
+    from: String,
+    toLine: String?,
+    date: String,
+    subject: String,
+    deleted: Boolean,
+    onUndelete: () -> Unit,
+) {
+    var recipientsOpen by remember(toLine) { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1197,8 +1325,51 @@ private fun ReaderHeaderCard(from: String, date: String, subject: String) {
     ) {
         Column(Modifier.padding(12.dp)) {
             Text("From: $from")
+            if (toLine != null) {
+                Text(
+                    text = toLine,
+                    maxLines = if (recipientsOpen) Int.MAX_VALUE else 1,
+                    overflow = if (recipientsOpen) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { recipientsOpen = !recipientsOpen },
+                )
+            }
             Text(date)
             Text(subject, style = MaterialTheme.typography.titleMedium)
+            if (deleted) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AssistChip(onClick = {}, label = { Text("Deleted") })
+                    TextButton(onClick = onUndelete) { Text("Undelete") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuotedReaderLine(
+    text: AnnotatedString,
+    color: Color,
+    border: Color,
+    fontFamily: FontFamily?,
+) {
+    Layout(
+        content = {
+            Box(Modifier.background(border))
+            Text(text = text, color = color, fontFamily = fontFamily)
+        },
+    ) { measurables, constraints ->
+        val gap = 8.dp.roundToPx()
+        val barWidth = 2.dp.roundToPx()
+        val textMax = (constraints.maxWidth - barWidth - gap).coerceAtLeast(0)
+        val textPlaceable = measurables[1].measure(
+            constraints.copy(minWidth = 0, maxWidth = textMax),
+        )
+        val barPlaceable = measurables[0].measure(
+            Constraints.fixed(barWidth, textPlaceable.height.coerceAtLeast(1)),
+        )
+        layout(constraints.maxWidth, textPlaceable.height) {
+            barPlaceable.placeRelative(0, 0)
+            textPlaceable.placeRelative(barWidth + gap, 0)
         }
     }
 }
@@ -1222,35 +1393,53 @@ private val mailLink = Regex("""[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}
 
 private data class PlainLink(val start: Int, val end: Int, val url: String)
 
-private fun plainBodyText(text: String, quote: Color, link: Color): AnnotatedString {
+private fun recipientLine(to: String, cc: String): String? {
+    val toText = to.trim()
+    val ccText = cc.trim()
+    if (toText.isEmpty() && ccText.isEmpty()) return null
+    if (ccText.isEmpty()) return "To: $toText"
+    if (toText.isEmpty()) return "Cc: $ccText"
+    return "To: $toText  Cc: $ccText"
+}
+
+private fun readerLines(text: String): List<String> {
+    if (text.isEmpty()) return emptyList()
+    val parts = text.split('\n')
+    if (parts.size > 1 && parts.last().isEmpty()) return parts.dropLast(1)
+    return parts
+}
+
+private fun plainLineText(
+    line: String,
+    textColor: Color?,
+    linkColor: Color,
+    links: LinkBridge,
+): AnnotatedString {
     return buildAnnotatedString {
-        var index = 0
-        while (index <= text.length) {
-            val newline = text.indexOf('\n', index)
-            val end = if (newline < 0) text.length else newline
-            val line = text.substring(index, end)
-            val quoted = line.startsWith(">")
-            appendLinkedLine(line, if (quoted) quote else null, if (quoted) quote else link)
-            if (newline < 0) break
-            append("\n")
-            index = newline + 1
-        }
+        appendLinkedLine(line, textColor, linkColor, links)
     }
 }
 
-private fun AnnotatedString.Builder.appendLinkedLine(line: String, textColor: Color?, linkColor: Color) {
+private fun AnnotatedString.Builder.appendLinkedLine(
+    line: String,
+    textColor: Color?,
+    linkColor: Color,
+    links: LinkBridge,
+) {
     var cursor = 0
     for (link in findPlainLinks(line)) {
         if (link.start > cursor) appendStyled(line.substring(cursor, link.start), textColor)
+        val url = link.url
         withLink(
-            LinkAnnotation.Url(
-                link.url,
-                TextLinkStyles(
+            LinkAnnotation.Clickable(
+                tag = url,
+                styles = TextLinkStyles(
                     style = SpanStyle(
                         color = linkColor,
                         textDecoration = TextDecoration.Underline,
                     ),
                 ),
+                linkInteractionListener = { links.onLink(url) },
             ),
         ) {
             append(line.substring(link.start, link.end))

@@ -174,11 +174,11 @@ enum class BodyView {
 }
 
 fun bodyViewLabel(view: BodyView): String = when (view) {
-    BodyView.PlainOrHtml -> "Plain or HTML"
-    BodyView.PlainOrText -> "Plain or text"
-    BodyView.PlainOrError -> "Plain or error"
+    BodyView.PlainOrError -> "Plain text"
+    BodyView.PlainOrHtml -> "HTML"
+    BodyView.PlainOrText -> "HTML as text"
     BodyView.Headers -> "Headers"
-    BodyView.Raw -> "Raw"
+    BodyView.Raw -> "Raw source"
 }
 
 data class SwipeBinding(
@@ -273,6 +273,7 @@ data class AccountSettings(
     val showRecentRules: Boolean = true,
     val openAtInIndexMenu: Boolean = false,
     val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
+    val plainTextMonospace: Boolean = false,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -323,6 +324,7 @@ private val fieldNames = listOf(
     "showRecentRules",
     "openAtInIndexMenu",
     "pinercStartDefault",
+    "plainTextMonospace",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -372,6 +374,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("showRecentRules=$showRecentRules")
     appendLine("openAtInIndexMenu=$openAtInIndexMenu")
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
+    appendLine("plainTextMonospace=$plainTextMonospace")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -411,7 +414,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "startAfterChange" ||
             key == "showRecentRules" ||
             key == "openAtInIndexMenu" ||
-            key == "pinercStartDefault"
+            key == "pinercStartDefault" ||
+            key == "plainTextMonospace"
         ) {
             continue
         }
@@ -463,6 +467,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         openAtInIndexMenu = values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false,
         pinercStartDefault = values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
             ?: PinercStartDefault.LeaveUnchanged,
+        plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
     )
 }
 

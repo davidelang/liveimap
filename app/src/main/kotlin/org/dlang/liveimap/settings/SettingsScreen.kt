@@ -650,6 +650,9 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ChoiceField("Message view", BodyView.entries, settings.bodyView, { bodyViewLabel(it) }) { view ->
                 editor.persist(editor.settings.copy(bodyView = view))
             }
+            BoolField("Plain text in monospace", settings.plainTextMonospace) {
+                editor.persist(editor.settings.copy(plainTextMonospace = it))
+            }
         }
         SettingsSection(
             title = "Deleting",
