@@ -1442,3 +1442,15 @@
 - The mailbox chooser, address-book picker, connection status, and up button read their words from strings.xml. Wording stays the same.
 - Added chooser_title, picker_missing, status_reconnecting, and scaffold_up at the end. status_reconnecting keeps the ellipsis. Reused reader_retry, reader_not_connected, and compose_close.
 - The four Kotlin files have no Text(" and no contentDescription = ". Expander marks and the address label template stay. No install.
+
+## 2026-10-06 - Index date strings execution start
+
+- Approved plan: sandbox/plans/index-date-strings-20261006-1512-plan.md
+- Phase 1: relative index dates and the bad custom pattern come from strings.xml. The sentences stay the same, including min for one minute and for several. The 45-second, 7-day, and hour boundaries stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Index date strings phase 1
+
+- Relative index dates and the bad custom pattern come from strings.xml. The sentences stay the same, including min for one minute and for several.
+- formatIndexDate takes the nine words after its current arguments. One minute and several minutes both use index_min. One hour uses index_hour. Several hours use index_hours. Days follow the same split. A past time uses index_ago. A future time uses index_ahead. An empty or illegal custom pattern uses index_bad_pattern.
+- The 45-second, 7-day, and hour boundaries stay. Local and short patterns stay in the formatter. The index and the reader pass the resource values. DateFormatTest passes the same English words. Expected sentences stay. No install.

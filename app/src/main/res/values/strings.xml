@@ -443,4 +443,13 @@
     <string name="picker_missing">Address book mailbox is not set</string>
     <string name="status_reconnecting">Reconnecting…</string>
     <string name="scaffold_up">Navigate up</string>
+    <string name="index_now">now</string>
+    <string name="index_min">min</string>
+    <string name="index_hour">hour</string>
+    <string name="index_hours">hours</string>
+    <string name="index_day">day</string>
+    <string name="index_days">days</string>
+    <string name="index_ago">%1$d %2$s ago</string>
+    <string name="index_ahead">in %1$d %2$s</string>
+    <string name="index_bad_pattern">bad date pattern</string>
 </resources>

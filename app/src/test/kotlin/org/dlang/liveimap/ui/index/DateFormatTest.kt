@@ -116,6 +116,29 @@ class DateFormatTest {
         )
     }
 
+    private fun formatIndexDate(
+        epochSeconds: Long,
+        format: DateFormat,
+        pattern: String,
+        nowEpoch: Long,
+        zone: ZoneId,
+    ): String = org.dlang.liveimap.ui.index.formatIndexDate(
+        epochSeconds = epochSeconds,
+        format = format,
+        pattern = pattern,
+        nowEpoch = nowEpoch,
+        zone = zone,
+        nowWord = "now",
+        minWord = "min",
+        hourWord = "hour",
+        hoursWord = "hours",
+        dayWord = "day",
+        daysWord = "days",
+        agoPhrase = "%1\$d %2\$s ago",
+        aheadPhrase = "in %1\$d %2\$s",
+        badPattern = "bad date pattern",
+    )
+
     private fun epochUtc(text: String): Long = Instant.parse(text).epochSecond
 
     private fun zonedEpoch(year: Int, month: Int, day: Int, hour: Int, minute: Int, zone: ZoneId): Long =

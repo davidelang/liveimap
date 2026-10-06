@@ -235,6 +235,15 @@ fun formatIndexDate(
     pattern: String,
     nowEpoch: Long,
     zone: ZoneId,
+    nowWord: String,
+    minWord: String,
+    hourWord: String,
+    hoursWord: String,
+    dayWord: String,
+    daysWord: String,
+    agoPhrase: String,
+    aheadPhrase: String,
+    badPattern: String,
 ): String {
     if (epochSeconds == 0L) return ""
     val whenZoned = Instant.ofEpochSecond(epochSeconds).atZone(zone)
@@ -242,8 +251,21 @@ fun formatIndexDate(
     return when (format) {
         DateFormat.Local -> localIndexDate.format(whenZoned)
         DateFormat.Short -> shortIndexDate(whenZoned, nowZoned)
-        DateFormat.Relative -> relativeIndexDate(epochSeconds, whenZoned, nowEpoch, nowZoned)
-        DateFormat.Custom -> customIndexDate(whenZoned, pattern)
+        DateFormat.Relative -> relativeIndexDate(
+            epochSeconds,
+            whenZoned,
+            nowEpoch,
+            nowZoned,
+            nowWord,
+            minWord,
+            hourWord,
+            hoursWord,
+            dayWord,
+            daysWord,
+            agoPhrase,
+            aheadPhrase,
+        )
+        DateFormat.Custom -> customIndexDate(whenZoned, pattern, badPattern)
     }
 }
 
@@ -261,35 +283,51 @@ private fun relativeIndexDate(
     whenZoned: ZonedDateTime,
     nowEpoch: Long,
     nowZoned: ZonedDateTime,
+    nowWord: String,
+    minWord: String,
+    hourWord: String,
+    hoursWord: String,
+    dayWord: String,
+    daysWord: String,
+    agoPhrase: String,
+    aheadPhrase: String,
 ): String {
     val delta = epochSeconds - nowEpoch
     val magnitude = if (delta < 0L) -delta else delta
-    if (magnitude < relativeNowSeconds) return "now"
+    if (magnitude < relativeNowSeconds) return nowWord
     if (magnitude >= relativeDayLimit * daySeconds) return shortIndexDate(whenZoned, nowZoned)
     val days = magnitude / daySeconds
-    if (days >= 1L) return relativeUnit(delta < 0L, days, "day", "days")
+    if (days >= 1L) return relativeUnit(delta < 0L, days, dayWord, daysWord, agoPhrase, aheadPhrase)
     val hours = magnitude / hourSeconds
-    if (hours >= 1L) return relativeUnit(delta < 0L, hours, "hour", "hours")
+    if (hours >= 1L) return relativeUnit(delta < 0L, hours, hourWord, hoursWord, agoPhrase, aheadPhrase)
     val minutes = (magnitude / minuteSeconds).coerceAtLeast(1L)
-    return relativeUnit(delta < 0L, minutes, "min", "min")
+    return relativeUnit(delta < 0L, minutes, minWord, minWord, agoPhrase, aheadPhrase)
 }
 
-private fun relativeUnit(past: Boolean, count: Long, one: String, many: String): String {
+private fun relativeUnit(
+    past: Boolean,
+    count: Long,
+    one: String,
+    many: String,
+    agoPhrase: String,
+    aheadPhrase: String,
+): String {
     val unit = if (count == 1L) one else many
-    return if (past) "$count $unit ago" else "in $count $unit"
+    val phrase = if (past) agoPhrase else aheadPhrase
+    return phrase.format(count, unit)
 }
 
-private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String): String {
-    if (pattern.isEmpty()) return "bad date pattern"
+private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String, badPattern: String): String {
+    if (pattern.isEmpty()) return badPattern
     val formatter = try {
         DateTimeFormatter.ofPattern(pattern)
     } catch (error: IllegalArgumentException) {
-        return "bad date pattern"
+        return badPattern
     }
     return try {
         formatter.format(whenZoned)
     } catch (error: DateTimeException) {
-        "bad date pattern"
+        badPattern
     }
 }
 
@@ -410,6 +448,15 @@ fun MessageIndexScreen(
     val emptyIndexSentence = stringResource(R.string.index_empty)
     val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
     val retryLabel = stringResource(R.string.index_retry)
+    val indexNow = stringResource(R.string.index_now)
+    val indexMin = stringResource(R.string.index_min)
+    val indexHour = stringResource(R.string.index_hour)
+    val indexHours = stringResource(R.string.index_hours)
+    val indexDay = stringResource(R.string.index_day)
+    val indexDays = stringResource(R.string.index_days)
+    val indexAgo = stringResource(R.string.index_ago)
+    val indexAhead = stringResource(R.string.index_ahead)
+    val indexBadPattern = stringResource(R.string.index_bad_pattern)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
@@ -1691,6 +1738,15 @@ fun MessageIndexScreen(
                     pattern = account.datePattern,
                     nowEpoch = nowEpoch,
                     zone = dateZone,
+                    nowWord = indexNow,
+                    minWord = indexMin,
+                    hourWord = indexHour,
+                    hoursWord = indexHours,
+                    dayWord = indexDay,
+                    daysWord = indexDays,
+                    agoPhrase = indexAgo,
+                    aheadPhrase = indexAhead,
+                    badPattern = indexBadPattern,
                 )
                 val measured = sequenceMeasurer.measure(text = formatted, style = dateStyle).size.width
                 if (measured > dateWidthPx) dateWidthPx = measured
@@ -1753,6 +1809,15 @@ fun MessageIndexScreen(
                                 dateStyle = dateStyle,
                                 nowEpoch = nowEpoch,
                                 zone = dateZone,
+                                nowWord = indexNow,
+                                minWord = indexMin,
+                                hourWord = indexHour,
+                                hoursWord = indexHours,
+                                dayWord = indexDay,
+                                daysWord = indexDays,
+                                agoPhrase = indexAgo,
+                                aheadPhrase = indexAhead,
+                                badPattern = indexBadPattern,
                                 onClick = {
                                     if (multiSelect) {
                                         if (allMailbox) {
@@ -1946,6 +2011,15 @@ private fun IndexMessageRow(
     dateStyle: TextStyle,
     nowEpoch: Long,
     zone: ZoneId,
+    nowWord: String,
+    minWord: String,
+    hourWord: String,
+    hoursWord: String,
+    dayWord: String,
+    daysWord: String,
+    agoPhrase: String,
+    aheadPhrase: String,
+    badPattern: String,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onSwipe: suspend (SwipeBinding) -> Unit,
@@ -2128,6 +2202,15 @@ private fun IndexMessageRow(
                                     pattern = account.datePattern,
                                     nowEpoch = nowEpoch,
                                     zone = zone,
+                                    nowWord = nowWord,
+                                    minWord = minWord,
+                                    hourWord = hourWord,
+                                    hoursWord = hoursWord,
+                                    dayWord = dayWord,
+                                    daysWord = daysWord,
+                                    agoPhrase = agoPhrase,
+                                    aheadPhrase = aheadPhrase,
+                                    badPattern = badPattern,
                                 ),
                                 modifier = Modifier.width(dateWidth),
                                 style = dateStyle,

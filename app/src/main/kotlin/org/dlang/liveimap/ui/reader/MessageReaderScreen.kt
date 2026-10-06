@@ -187,6 +187,15 @@ fun MessageReaderScreen(
     val noTextPartText = stringResource(R.string.reader_no_text)
     val noHtmlPartText = stringResource(R.string.reader_no_html)
     val shareTitle = stringResource(R.string.reader_share)
+    val indexNow = stringResource(R.string.index_now)
+    val indexMin = stringResource(R.string.index_min)
+    val indexHour = stringResource(R.string.index_hour)
+    val indexHours = stringResource(R.string.index_hours)
+    val indexDay = stringResource(R.string.index_day)
+    val indexDays = stringResource(R.string.index_days)
+    val indexAgo = stringResource(R.string.index_ago)
+    val indexAhead = stringResource(R.string.index_ahead)
+    val indexBadPattern = stringResource(R.string.index_bad_pattern)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
@@ -737,6 +746,15 @@ fun MessageReaderScreen(
                         pattern = account.datePattern,
                         nowEpoch = Instant.now().epochSecond,
                         zone = ZoneId.systemDefault(),
+                        nowWord = indexNow,
+                        minWord = indexMin,
+                        hourWord = indexHour,
+                        hoursWord = indexHours,
+                        dayWord = indexDay,
+                        daysWord = indexDays,
+                        agoPhrase = indexAgo,
+                        aheadPhrase = indexAhead,
+                        badPattern = indexBadPattern,
                     )
                     headerDate = if (row.envelopeDate.isNotBlank()) row.envelopeDate else formatted
                 }
