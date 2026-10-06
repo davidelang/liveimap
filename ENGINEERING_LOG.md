@@ -1223,3 +1223,11 @@
 - Approved plan: sandbox/plans/account-storage-20261006-0246-plan.md.
 - Phase 1: migrateAccount and AccountMigrationTest. Old DataStore and liveimap_secret stay until the readback matches.
 - Phase 2: shared AccountStore, authenticator, manifest, and backup rules. No install.
+
+## 2026-10-06 - account storage phase 2
+
+- Shared AccountStore. The AccountManager password slot is AES-GCM ciphertext, not plaintext.
+- DataStoreSettingsStore load, save, and password delegate to that one store.
+- Authenticator type org.dlang.liveimap. Add account opens settings and does not add a second account.
+- Removing the account deletes its key, DataStore entry, unsent, and imap-traffic.log.
+- Backup stays allowed and excludes liveimap_secret. No install.
