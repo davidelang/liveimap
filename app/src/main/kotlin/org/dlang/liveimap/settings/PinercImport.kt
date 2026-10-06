@@ -81,6 +81,12 @@ fun pinercPreview(text: String, current: AccountSettings): PinercPreview {
     val personal = entries["personal-name"]?.decoded
     if (personal != null) next = next.copy(displayName = personal)
 
+    val alt = entries["alt-addresses"]
+    if (alt != null && alt.raw.isNotEmpty()) {
+        val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
+        next = next.copy(altAddresses = specs)
+    }
+
     val sent = entries["default-fcc"]
     if (sent?.decoded != null) {
         when (val folder = classifyFolder(sent.decoded, allowPlain = true)) {
@@ -197,6 +203,7 @@ private val appliedNames = setOf(
     "user-id",
     "user-domain",
     "personal-name",
+    "alt-addresses",
     "default-fcc",
     "postponed-folder",
     "address-book",
@@ -450,6 +457,11 @@ private fun diffRows(current: AccountSettings, next: AccountSettings): List<Stri
     add("SMTP port", current.smtpPort, next.smtpPort)
     add("Username", current.username, next.username)
     add("Display name", current.displayName, next.displayName)
+    add(
+        "Alternate addresses",
+        current.altAddresses.joinToString(", "),
+        next.altAddresses.joinToString(", "),
+    )
     add("Email", current.email, next.email)
     add("Sent mailbox", current.sentMailbox, next.sentMailbox)
     add("Postponed mailbox", current.postponedMailbox, next.postponedMailbox)

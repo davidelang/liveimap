@@ -30,4 +30,51 @@ class ComposePolishTest {
         assertEquals("c@d.com", removeChipAddress("a@b.com, c@d.com", "a@b.com"))
         assertEquals("a@b.com", removeChipAddress("a@b.com, c@d.com", "c@d.com"))
     }
+
+    @Test
+    fun replyAllDropsAlternateAndAccount() {
+        val (to, cc) = replyRecipients(
+            replyAll = true,
+            replyTo = listOf("List <list@example.com>"),
+            from = listOf("Ann <ann@example.com>"),
+            to = listOf("Me <me@example.com>", "Alt <alt@example.com>", "Bo <bo@example.com>"),
+            cc = listOf("alt@example.com", "Cy <cy@example.com>"),
+            accountEmail = "me@example.com",
+            altAddresses = listOf("alt@example.com"),
+            useReplyTo = false,
+        )
+        assertEquals(listOf("Ann <ann@example.com>", "Bo <bo@example.com>"), to)
+        assertEquals(listOf("Cy <cy@example.com>"), cc)
+    }
+
+    @Test
+    fun useReplyToFalseKeepsFrom() {
+        val (to, cc) = replyRecipients(
+            replyAll = false,
+            replyTo = listOf("List <list@example.com>"),
+            from = listOf("Ann <ann@example.com>"),
+            to = listOf("me@example.com"),
+            cc = emptyList(),
+            accountEmail = "me@example.com",
+            altAddresses = emptyList(),
+            useReplyTo = false,
+        )
+        assertEquals(listOf("Ann <ann@example.com>"), to)
+        assertEquals(emptyList<String>(), cc)
+    }
+
+    @Test
+    fun useReplyToTrueUsesReplyTo() {
+        val (to, cc) = replyRecipients(
+            replyAll = false,
+            replyTo = listOf("List <list@example.com>"),
+            from = listOf("Ann <ann@example.com>"),
+            to = listOf("me@example.com"),
+            cc = emptyList(),
+            accountEmail = "me@example.com",
+            useReplyTo = true,
+        )
+        assertEquals(listOf("List <list@example.com>"), to)
+        assertEquals(emptyList<String>(), cc)
+    }
 }

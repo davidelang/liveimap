@@ -215,10 +215,18 @@ fun replyRecipients(
     to: List<String>,
     cc: List<String>,
     accountEmail: String,
+    altAddresses: List<String> = emptyList(),
+    useReplyTo: Boolean = true,
 ): Pair<List<String>, List<String>> {
-    val primary = if (replyTo.isNotEmpty()) replyTo else from
+    val primary = if (useReplyTo && replyTo.isNotEmpty()) replyTo else from
     if (!replyAll) return primary to emptyList()
+    val drop = HashSet<String>()
     val self = accountEmail.trim().lowercase()
+    if (self.isNotEmpty()) drop.add(self)
+    for (alt in altAddresses) {
+        val spec = addrSpec(alt).trim().lowercase()
+        if (spec.isNotEmpty()) drop.add(spec)
+    }
     val seen = LinkedHashSet<String>()
     val toOut = ArrayList<String>()
     val ccOut = ArrayList<String>()
@@ -226,7 +234,7 @@ fun replyRecipients(
         val spec = addrSpec(raw).trim()
         if (spec.isEmpty()) return
         val key = spec.lowercase()
-        if (self.isNotEmpty() && key == self) return
+        if (key in drop) return
         if (!seen.add(key)) return
         into.add(raw.trim())
     }

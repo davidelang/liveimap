@@ -314,11 +314,13 @@ class LibetpanMailSession : MailSession {
             settings?.showDeleted != false,
             useServerPreview,
             settings?.email.orEmpty(),
+            settings?.altAddresses.orEmpty().joinToString("\n"),
         ) ?: throw MailFailure("fetch failed")
         rows.map { row ->
             row.copy(
                 from = decodeHeaderWords(row.from),
                 subject = decodeHeaderWords(row.subject),
+                recipients = decodeHeaderWords(row.recipients),
             )
         }
     }
@@ -665,6 +667,7 @@ class LibetpanMailSession : MailSession {
         showDeleted: Boolean,
         useServerPreview: Boolean,
         accountEmail: String,
+        altAddresses: String,
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?

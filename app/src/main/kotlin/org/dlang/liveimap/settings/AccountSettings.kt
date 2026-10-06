@@ -274,6 +274,7 @@ data class AccountSettings(
     val openAtInIndexMenu: Boolean = false,
     val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
     val plainTextMonospace: Boolean = false,
+    val altAddresses: List<String> = emptyList(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -325,6 +326,7 @@ private val fieldNames = listOf(
     "openAtInIndexMenu",
     "pinercStartDefault",
     "plainTextMonospace",
+    "altAddresses",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -375,6 +377,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("openAtInIndexMenu=$openAtInIndexMenu")
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
+    appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -415,7 +418,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "showRecentRules" ||
             key == "openAtInIndexMenu" ||
             key == "pinercStartDefault" ||
-            key == "plainTextMonospace"
+            key == "plainTextMonospace" ||
+            key == "altAddresses"
         ) {
             continue
         }
@@ -468,7 +472,16 @@ fun decodeAccountSettings(text: String): AccountSettings {
         pinercStartDefault = values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
             ?: PinercStartDefault.LeaveUnchanged,
         plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
+        altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
     )
+}
+
+private fun encodeAltAddresses(values: List<String>): String =
+    values.joinToString(",") { percentEncode(it) }
+
+private fun decodeAltAddresses(value: String): List<String> {
+    if (value.isEmpty()) return emptyList()
+    return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
 }
 
 fun looksLikeEmail(value: String): Boolean {

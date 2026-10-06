@@ -196,6 +196,10 @@ fun ComposeScreen(
     var ccBuffer by rememberSaveable { mutableStateOf("") }
     var bccBuffer by rememberSaveable { mutableStateOf("") }
     var overflow by remember { mutableStateOf(false) }
+    var offerReplyTo by rememberSaveable { mutableStateOf(false) }
+    var useReplyTo by rememberSaveable { mutableStateOf(false) }
+    var replyToLine by rememberSaveable { mutableStateOf("") }
+    var replyCcLine by rememberSaveable { mutableStateOf("") }
     val forwardOnce = rememberSaveable {
         val code = ForwardOnce.code
         ForwardOnce.code = -1
@@ -280,9 +284,27 @@ fun ComposeScreen(
         val parsed = parseRfc822(session.fetchRfc822(uid))
         val quote = quotedBody(session.fetchStructure(uid), settings.bodyView, uid)
         val draft = replyDraft(replyAll, parsed, settings.email, quote)
+        val replyToAddrs = addresses(parsed, "Reply-To")
+        val fromAddrs = addresses(parsed, "From")
+        fun route(use: Boolean) = replyRecipients(
+            replyAll = replyAll,
+            replyTo = replyToAddrs,
+            from = fromAddrs,
+            to = addresses(parsed, "To"),
+            cc = addresses(parsed, "Cc"),
+            accountEmail = settings.email,
+            altAddresses = settings.altAddresses,
+            useReplyTo = use,
+        )
+        val fromRoute = route(false)
+        val replyRoute = route(true)
+        replyToLine = replyRoute.first.joinToString(", ")
+        replyCcLine = replyRoute.second.joinToString(", ")
+        offerReplyTo = replyToDiffers(replyToAddrs, fromAddrs)
+        val chosen = if (useReplyTo) replyRoute else fromRoute
         val shown = replyCursorBody(draft.body, settings.replyAboveQuote)
         applyDraft(
-            ReplyDraft(draft.to, draft.cc, draft.subject, draft.inReplyTo, draft.references, shown),
+            ReplyDraft(chosen.first, chosen.second, draft.subject, draft.inReplyTo, draft.references, shown),
             cursor = if (settings.replyAboveQuote) 0 else shown.length,
         )
     }
@@ -958,6 +980,23 @@ fun ComposeScreen(
                 )
             }
             if (
+                offerReplyTo &&
+                (seed.kind == ComposeKind.Reply || seed.kind == ComposeKind.ReplyAll)
+            ) {
+                AssistChip(
+                    onClick = {
+                        if (!useReplyTo) {
+                            useReplyTo = true
+                            toText = replyToLine
+                            ccText = replyCcLine
+                            toBuffer = ""
+                            ccBuffer = ""
+                        }
+                    },
+                    label = { Text(if (useReplyTo) "Using Reply-To" else "Use Reply-To?") },
+                )
+            }
+            if (
                 showsPlaintextChip(
                     plaintextEntries,
                     chipProbe(toText, toBuffer),
@@ -1163,6 +1202,13 @@ private fun chipSeparatorAt(buffer: String): Int {
         if (!quoted && angle == 0 && (ch == ',' || ch == '\n' || ch == '\r')) return i
     }
     return -1
+}
+
+private fun replyToDiffers(replyTo: List<String>, from: List<String>): Boolean {
+    if (replyTo.isEmpty()) return false
+    fun specs(list: List<String>): Set<String> =
+        list.map { addrSpec(it).trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+    return specs(replyTo) != specs(from)
 }
 
 private fun chipProbe(stored: String, buffer: String): String {

@@ -744,6 +744,17 @@ private fun ComposeGroup(editor: SettingsEditor) {
             BoolField("Reply above the quote", settings.replyAboveQuote) {
                 editor.persist(editor.settings.copy(replyAboveQuote = it))
             }
+            LineField(
+                "Alternate addresses",
+                settings.altAddresses.joinToString(", "),
+                ready = editor.ready,
+            ) { text ->
+                editor.persist(
+                    editor.settings.copy(
+                        altAddresses = text.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                    ),
+                )
+            }
         }
         SettingsSection(
             title = "Forwarding",

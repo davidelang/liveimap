@@ -1718,6 +1718,7 @@ fun MessageIndexScreen(
                             val row = entry.row
                             IndexMessageRow(
                                 row = row,
+                                mailbox = mailbox,
                                 account = account,
                                 depth = entry.depth,
                                 selected = allMailbox || row.uid in selected,
@@ -1899,10 +1900,16 @@ fun MessageIndexScreen(
     }
 }
 
+private fun indexPartyName(mailbox: String, sentMailbox: String, recipients: String, from: String): String {
+    if (sentMailbox.isNotEmpty() && mailbox == sentMailbox && recipients.isNotBlank()) return recipients
+    return from
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun IndexMessageRow(
     row: IndexRow,
+    mailbox: String,
     account: AccountSettings,
     depth: Int = 0,
     selected: Boolean,
@@ -2082,7 +2089,7 @@ private fun IndexMessageRow(
                                 )
                             }
                             Text(
-                                text = row.from,
+                                text = indexPartyName(mailbox, account.sentMailbox, row.recipients, row.from),
                                 modifier = Modifier.weight(1f),
                                 color = textColor,
                                 textDecoration = decoration,
