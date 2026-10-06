@@ -175,8 +175,11 @@ Avoid:
   an unexpected expunge is the worst failure the client can have.
 * "Permanently delete" removes just the chosen messages with `UID EXPUNGE`
   (UIDPLUS). Without UIDPLUS it is hidden or disabled.
-* Leaving a mailbox uses `UNSELECT` when the server has it; otherwise selecting
-  the next mailbox is the switch.
+* **Leaving a mailbox.** With Auto-expunge on, `CLOSE` (the intended
+  auto-expunge). Otherwise `UNSELECT` when the server has it. Without UNSELECT,
+  never `CLOSE`: selecting or examining the next mailbox is the switch, and
+  leaving without opening another one sends `EXAMINE` of the same mailbox,
+  which deselects it without expunging.
 * **Move method** is a setting. **Copy, then mark deleted** (the default, as
   alpine does): `UID COPY` to the target, then `UID STORE +FLAGS (\Deleted)` on
   the moved UIDs; the source copies stay until an expunge the user asks for (or
@@ -236,9 +239,8 @@ Avoid:
 * A dead connection is detected (keep-alive, connect and read timeouts) and
   reconnected. The failure is reported in words; a server's "Completed" is never
   shown as an error.
-* The session's identity is the host, port, user, password and TLS mode (and
-  the SMTP host, port and settings for sending). Changing any of them starts a
-  new session.
+* The session identity is the protocol, host, port, user, password, TLS mode, SASL mechanism and SMTP settings. Changing any of
+  them starts a new session (for that account only).
 * **Later: more watched folders.** Folders beyond the open one can be watched
   for new mail, each with its own `IDLE` connection (IMAP `IDLE` watches only
   the selected mailbox). Servers limit connections per user (Dovecot's default
@@ -357,6 +359,13 @@ Avoid:
 * After the server accepts a message, it is appended to the Sent mailbox.
   Postpone appends to the Postponed mailbox. A message the server hasn't
   accepted stays on the device as unsent.
+* **Drafts survive the background.** When the app goes to the background with
+  a message being composed, the draft is appended to the server's Drafts
+  folder (the account's Postponed mailbox), so a process kill doesn't lose it.
+  Nothing is stored on the device. The previous saved copy of the same draft
+  is marked `\Deleted` (never expunged by this). The draft is resumed from
+  that folder like any postponed message. If the append fails, compose says
+  the draft is not saved.
 * 8-bit bodies only when the server advertises 8BITMIME; otherwise
   quoted-printable. No line over 998 octets. Wrap at a column, or send
   format=flowed.
@@ -398,9 +407,7 @@ Avoid:
 
 * An account has an id and its own settings, secrets and toolbar layouts.
   Several accounts, on one server or several, can be open.
-* The session identity is the protocol, host, port, user, password, TLS mode
-  and SASL choice, plus the SMTP settings for sending. Changing any of them
-  starts a new session for that account only.
+* The session identity is per account (see "Session and connections").
 * Each account has one main and one watch connection in the foreground; all
   close in the background.
 
@@ -443,10 +450,12 @@ Avoid:
   distribution-list lines, including empty nicknames.
 * `[plaintext]` stays in the comment, not in the address.
 * Each write appends the whole book as a new last message, as alpine does.
-  Old copies are trimmed per alpine's `remote-abook-history` setting (alpine's
-  default; the pinerc importer maps it), only when that setting enables a
-  trim, and only with `UID EXPUNGE` of exactly those old copies (UIDPLUS);
-  without UIDPLUS nothing is trimmed.
+* **History trim.** "Address book history" is the number of old copies kept:
+  default 3 (alpine's `remote-abook-history` default), the imported pinerc
+  value as is, or LiveIMAP's "Never trim". Right after each write, the copies
+  beyond that number are marked `\Deleted` and removed with `UID EXPUNGE` of
+  exactly those UIDs. Never a plain `EXPUNGE`, never on exit, and no trim
+  without UIDPLUS.
 
 ## Traffic log
 
