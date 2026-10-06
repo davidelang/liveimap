@@ -1,9 +1,13 @@
 # LiveIMAP — design decisions
 
 This document holds the mid-level decisions that carry out
-`docs/liveimap-project-direction.md`, and the implementation mistakes to avoid.
-Each one says why, so that it can be changed deliberately rather than by
-accident. What ships when is in the roadmap.
+[`liveimap-project-direction.md`](liveimap-project-direction.md), and the
+implementation mistakes to avoid. Each one says why, so that it can be changed
+deliberately rather than by accident. What ships when is in the roadmap
+([`sandbox/roadmap/README.md`](../../sandbox/roadmap/README.md)).
+
+**Open choices are settings.** When a behaviour has more than one reasonable
+answer, it is a setting with a sensible default, not a fixed choice.
 
 ## Folders
 
@@ -42,9 +46,9 @@ accident. What ships when is in the roadmap.
 * `\HasChildren` and `\HasNoChildren` decide the expander.
 * **Expanded folders: default and current state.** Which folders open expanded
   is configuration: the default view. Which folders are expanded right now is
-  session state, kept in memory (and in Android's saved state, so it survives
-  the process being killed). Expanding or collapsing a row, or "Collapse all",
-  never writes configuration. A new session opens at the default view, which
+  session state, kept in memory for the life of the process. Expanding or
+  collapsing a row, or "Collapse all", never writes configuration. A new start,
+  including after Android kills the process, opens at the default view, which
   starts all collapsed.
 * **Saving the default view.** Two actions, both explicit:
   * "Save as default view", in the folder-list overflow menu, saves the whole
@@ -66,7 +70,14 @@ Avoid:
   range for Arrival order, or positions in the `SORT`, `THREAD` or `SEARCH`
   result for other orders and filters (`Email/query` positions in JMAP). The
   direction decides which end the window starts at and which way it is drawn.
-  A folder opens at its newest message.
+  Where a folder opens is a setting (alpine's `incoming-startup-rule`: first
+  unseen, first recent, first important, either of those, first, last, or
+  newest), for INBOX, for other folders and per folder, worked out in the
+  current view by one server-side search. Only the window around that row is
+  fetched. The default is the newest message, which is also the fallback when
+  nothing matches. What a sort or filter change does (run the rule again, or
+  keep the top visible message), whether the `\Recent`-based rules are offered,
+  an "Open at" index-menu item, and the pinerc default are settings too.
 * The window holds the rows on screen plus a limited prefetch in each scroll
   direction. Rows that leave the window may be dropped.
 * Rows fetch `UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE`, plus a short peek of
@@ -75,8 +86,11 @@ Avoid:
 * Sort and thread choices last for the session only. Per-folder defaults are
   set in Settings. The sort control is a Newest/Oldest direction toggle,
   then the list of criteria.
-* New mail (`EXISTS`, `IDLE`) inserts rows without a reload, and the list
-  doesn't jump.
+* New mail (`EXISTS`, `IDLE`) inserts rows without a reload and **never
+  scrolls the list**, even when the user is at the newest end. A pill,
+  "N new messages ↑" (↓ in an oldest-first view), sits at the edge where the
+  new rows are; tapping it jumps to the newest message. It doesn't time out,
+  and expunges or flag changes never show it.
 
 Avoid:
 
@@ -154,12 +168,22 @@ Avoid:
   first. With it off, the user has accepted permanent deletes, and it never asks.
 * Leaving a folder never asks. With Auto-expunge off nothing happens; with it on
   the client expunges silently.
+* **No expunge the user didn't ask for.** The app never issues an expunge
+  except when the user explicitly asks (Expunge…, Delete permanently) or a
+  setting that explicitly enables it applies (Auto-expunge on leave, the
+  address-book history trim). Many users keep `\Deleted` messages for months;
+  an unexpected expunge is the worst failure the client can have.
 * "Permanently delete" removes just the chosen messages with `UID EXPUNGE`
   (UIDPLUS). Without UIDPLUS it is hidden or disabled.
 * Leaving a mailbox uses `UNSELECT` when the server has it; otherwise selecting
   the next mailbox is the switch.
-* Move is `UID COPY` to the target, then `\Deleted` on the source. Swipe actions
-  call the same commands.
+* **Move method** is a setting. **Copy, then mark deleted** (the default, as
+  alpine does): `UID COPY` to the target, then `UID STORE +FLAGS (\Deleted)` on
+  the moved UIDs; the source copies stay until an expunge the user asks for (or
+  Auto-expunge on leave, when on). **IMAP MOVE**, when the server advertises it:
+  `UID MOVE`, which removes only the moved UIDs. A move never expunges any
+  other message: no plain `EXPUNGE` or `CLOSE` follows a copy, with or without
+  UIDPLUS. Swipe actions call the same commands.
 * **Delete policy.** One setting chooses what Delete does:
   * **Mark as deleted:** sets `\Deleted`; the message stays (visible unless hidden)
     until an expunge, and Undelete reverses it. IMAP only: JMAP has no
@@ -178,6 +202,10 @@ Avoid:
   chosen policy isn't possible on this account (no UIDPLUS, no Trash mailbox, or
   Mark as deleted on JMAP), the trash button uses the nearest one that is (Mark
   as deleted on IMAP, Move to Trash on JMAP) and Settings says why.
+* **Availability** of each action = the delete-policy setting × the server
+  capability (UIDPLUS for `UID EXPUNGE`; a known Trash mailbox; MOVE for the
+  IMAP MOVE method) × Auto-expunge (which decides whether leaving the folder
+  expunges).
 * **Inside Trash.** In the Trash mailbox itself, Move to Trash becomes Delete
   permanently when the server supports it, otherwise Mark as deleted. With
   "Confirm before expunge" on, that delete first warns that it will remove the
@@ -191,7 +219,10 @@ Avoid:
   deleted message in the folder, including ones marked by other clients.
 * `CLOSE`, which expunges silently, except as the leave action when
   Auto-expunge is on.
-* IMAP `MOVE`, which expunges the source at once and bypasses the delete rules.
+* A plain `EXPUNGE` (or `CLOSE`) as a side effect of a move, a delete, a
+  folder switch or any other action. It removes every `\Deleted` message in
+  the folder.
+* `MOVE` used without the IMAP MOVE method chosen in Settings.
 
 ## Session and connections
 
@@ -221,6 +252,21 @@ Avoid:
 
 ## Searching and filters
 
+* **No always-open search bar.** A search icon opens a simple bar with a text
+  field, a visible field selector (Subject by default; From, To, Cc,
+  Participating) and an Advanced button. Phone screens are narrow, so the bar
+  has nothing else.
+* The simple bar always searches the **current folder**. Scope (subfolders,
+  subscribed folders, all folders) is only on the Advanced page.
+* **Never full text by default.** `TEXT` and `BODY` searches are offered only on
+  the Advanced page, with a cost note. Folders hold 244k messages (asgard
+  INBOX) to about 1M (test server); a full-text search there is expensive.
+* Participating is `OR OR FROM x TO x CC x`. Non-ASCII text uses
+  `CHARSET UTF-8`.
+* The Advanced page holds multi-field searches: field, value and Not per row,
+  AND/OR steps, dates, size, flags, keywords, Body and Full text, and scope.
+  Multi-folder searches use `ESEARCH IN (…)` when advertised, else one search
+  per folder in turn, cancellable.
 * A filter is a list of steps: a first search, then AND (narrow) or OR (widen)
   steps, each with its own Not switch.
 * The whole filter is one server search. The client never intersects result
@@ -229,18 +275,85 @@ Avoid:
   otherwise the length of the `UID SEARCH` result. Never `FETCH` to count.
 * The result is the folder view, it survives a sort change, and Select all acts
   on it.
+* These are **search filters** (index view). They are not inbound delivery
+  rules.
+
+## Inbound rules (Sieve)
+
+* **Sieve is the output format.** Rules the user edits in the UI are compiled
+  to Sieve (RFC 5228 plus only the extensions the server advertises).
+* **The engine is server-side.** Delivery filtering runs on the mail server
+  (ManageSieve on Cyrus 3.x / port 4190, or JMAP Sieve per RFC 9661). LiveIMAP
+  never applies inbound rules itself on fetch, IDLE, or display.
+* **Gmail-style entry:** "Filter messages like this" from a message seeds
+  criteria; the drawer also has Add filter and Edit filters.
+* **Actions:** fileinto, set flags (including mark read), discard, redirect.
+  No vacation.
+* **Client:** a minimal Kotlin ManageSieve client. Plaintext is acceptable;
+  TLS is used when the account has it.
+* **Do not clobber hand-written scripts.** LiveIMAP owns only `liveimap`. With
+  consent, the active script `include`s it (RFC 6609). If `include` is missing,
+  ask before SETACTIVE. Never edit his existing script without explicit consent.
+* Roadmap: [`inbound-rules-sieve.md`](../../sandbox/roadmap/inbound-rules-sieve.md).
+  Research:
+  [`managesieve-inbound-rules-20261005.md`](../../sandbox/research/managesieve-inbound-rules-20261005.md).
 
 ## Settings
 
+* Settings are many, so they are organized in three levels: a list of groups;
+  one screen per group, with its settings in collapsible sections (the first
+  open, the others collapsed with a summary of their values); and sub-screens
+  for lists and editors. Rarely used settings go in a collapsed Advanced
+  section at the end of their group. Every setting has one home; no screen is
+  a long flat list.
 * A text field saves on Done or when it loses focus, not on every keystroke.
 * Mailbox names (Sent, Postponed, the address book, Trash) are configured, or
   taken from the server's special-use marks. They are never guessed.
 * Slower fallbacks are listed in their own settings section, each off by
   default.
+* **Thresholds for asking are settings.** "Ask before sorting / threading /
+  a body or full-text search / a client-side fallback in folders larger than N
+  messages" (default 5000 each). 0 means always ask. The question offers "Just
+  this once" and "Always for this folder".
+
+## Toolbars and menus
+
+* Each screen's overflow menu ends, after a divider, with **"Customize
+  toolbar…"**. It is last so it is hard to hit by accident, and it can't be
+  hidden.
+* It opens a per-screen editor with three sections in order: **Toolbar**,
+  **Overflow**, **Hidden**. Items are dragged within and between sections; each
+  item also has Move up/down and move-to-section buttons and TalkBack custom
+  actions. "Reset to default" restores the screen's defaults. Dragging uses the
+  `Reorderable` library (Calvin-LL, Apache-2.0), listed in NOTICES.
+* The toolbar may wrap to more than one row (capped by a setting, default 2);
+  actions never move into the overflow silently.
+* Defaults follow Material 3: one or two essential actions visible, the rest in
+  the overflow. Up/Back, the drawer, Send and "Customize toolbar…" are pinned.
+
+## Rotation and configuration changes
+
+* Every screen works in portrait and landscape. Rotation, dark-mode, font-size
+  and window-size changes keep the state: the screen, scroll position (first
+  visible UID and offset), selection, open message and its scroll, compose
+  drafts, open dialogs, and the IMAP connection.
+* Screen models live in `ViewModel`s scoped to the navigation entry, so a
+  configuration change reuses them. Saved positions are UIDs, never sequence
+  numbers or list indexes.
+* A new start is a new start. After Android kills the process, the app opens
+  at its default view: nothing of the session (screen, scroll position,
+  selection, expanded folders, cached data) is restored, and the session
+  cache is never persisted.
+* No `android:configChanges` override and no orientation lock.
+* Tablet and foldable multi-pane layouts are a separate design item.
 
 ## Compose and sending
 
 * Bcc is an envelope recipient and is not left in the saved copy.
+* **Sending is SMTP submission:** port 587 with STARTTLS, or implicit TLS on
+  port 465, with SMTP AUTH (same SASL rules as IMAP). Port 25 plaintext only
+  when the user chooses it, with a warning. A JMAP account also sends through
+  SMTP by default; JMAP `EmailSubmission` is an option for that account.
 * After the server accepts a message, it is appended to the Sent mailbox.
   Postpone appends to the Postponed mailbox. A message the server hasn't
   accepted stays on the device as unsent.
@@ -250,6 +363,78 @@ Avoid:
 * `[plaintext]` in an address-book comment means "send plain text, not HTML, to
   this address".
 
+## Security: TLS and authentication
+
+* TLS mode and authentication are per-account settings, for IMAP, SMTP and
+  ManageSieve. TLS modes: Implicit TLS (993 / 465), STARTTLS required,
+  STARTTLS if offered (labelled as open to downgrade), or None (plaintext, with
+  a warning). New accounts default to Implicit TLS for IMAP and STARTTLS on 587
+  for SMTP. An account saved without a TLS mode loads as None and keeps
+  working until the user picks another mode.
+* After STARTTLS or AUTH, capabilities are read again. No STARTTLS after
+  PREAUTH.
+* SASL through libetpan and cyrus-sasl, strongest first among what the server
+  advertises: SCRAM-SHA-256(-PLUS), SCRAM-SHA-1(-PLUS), then over TLS only
+  PLAIN (with SASL-IR), LOGIN, and the IMAP `LOGIN` command. On plaintext,
+  CRAM-MD5 if offered; a clear-text password only when the user has accepted
+  it. DIGEST-MD5 is not used (tests record it as an expected skip). NTLM only when chosen in Advanced. An Advanced
+  setting can force a mechanism and set an authorization user.
+* OpenSSL 3.x, TLS 1.2 minimum, SNI always. The certificate chain is checked
+  in Kotlin with the platform trust manager plus a hostname check. A failure
+  is fatal unless the user pins that exact certificate (subject, issuer,
+  validity, SHA-256 fingerprint shown; stored per account and host:port). A
+  changed pinned certificate asks again. There is no global "accept all".
+* Test servers use certificates from a lab test CA. The app trusts that CA
+  only for acceptance-test connections to marked test servers (a test-only
+  trust anchor), never for normal account connections.
+* JMAP uses the platform HTTPS stack, with the same certificate check and
+  pinning prompt.
+* Later options, each with its own roadmap doc and not scheduled: OAuth
+  (XOAUTH2 / OAUTHBEARER; waits on the client-ID registration decision),
+  client certificates (EXTERNAL), and GSSAPI (MIT krb5 through cyrus-sasl,
+  low priority, under Advanced).
+
+## Accounts
+
+* An account has an id and its own settings, secrets and toolbar layouts.
+  Several accounts, on one server or several, can be open.
+* The session identity is the protocol, host, port, user, password, TLS mode
+  and SASL choice, plus the SMTP settings for sending. Changing any of them
+  starts a new session for that account only.
+* Each account has one main and one watch connection in the foreground; all
+  close in the background.
+
+## Testing
+
+* Tests run only against test servers: lab servers, and dedicated test
+  accounts (`liveimap@lang.hm` and others) on sun (10.0.0.1), moon (10.0.0.2)
+  and asgard (10.0.0.100). Those three hold real mail: no test, tool or agent
+  changes a real account, and test tools log in only as an allowlisted test
+  account. The test accounts live on asgard and are replicated to sun and
+  moon, so writes go to asgard and the replicas are read-only. Test entries
+  use sun:143 and moon:143 (sun's port 993 forwards to asgard); asgard is the
+  only read-write real host. Sends go only to david@lang.hm.
+* Every test server starts from one versioned seed (accounts, folder tree,
+  message corpus) with a profile: base by default, and an optional scale
+  profile (a 100,000-message folder and 1,000 folders) chosen per server
+  because it takes a lot of space. Each lab server is reset to its seed with
+  one command, and the test servers are reset before a full regression run.
+  Lab servers run as pinned containers on one lab host, each on its own ports, reachable from the LAN only. Site values come from host settings, and the repo holds only the setup scripts, pins and seed generator.
+* Automated acceptance tests run on the device from a drawer entry, only
+  against entries marked as test servers in Debug settings. Tests that change
+  mail stay inside a `LiveIMAP-Test` folder tree. Scale tests are skipped,
+  with "scale content not seeded", where the scale profile is absent.
+* Every test is tagged with the feature and the plan that added it; suites are
+  filters: full regression, this plan, the last N plans, or a feature. Each
+  plan adds the tests for its own work.
+* Tests cover functional paths (including every advertised auth mechanism and
+  TLS mode; DIGEST-MD5 is an expected skip) and degraded behaviour: capabilities hidden by a debug override,
+  real older servers, and slower fallbacks forced on.
+* Each run writes a JSON report and a text summary to
+  `/sdcard/Android/data/org.dlang.liveimap/files/acceptance/` for `adb pull`,
+  with build, device, servers, seed profiles, capabilities and per-test
+  results, so runs and builds can be compared.
+
 ## Address book
 
 * The address book is Alpine's container message in the configured mailbox.
@@ -257,6 +442,11 @@ Avoid:
 * Writing it must round-trip nickname, full name, address, fcc, comment and
   distribution-list lines, including empty nicknames.
 * `[plaintext]` stays in the comment, not in the address.
+* Each write appends the whole book as a new last message, as alpine does.
+  Old copies are trimmed per alpine's `remote-abook-history` setting (alpine's
+  default; the pinerc importer maps it), only when that setting enables a
+  trim, and only with `UID EXPUNGE` of exactly those old copies (UIDPLUS);
+  without UIDPLUS nothing is trimmed.
 
 ## Traffic log
 
@@ -268,7 +458,8 @@ Avoid:
 
 * IMAP and SMTP use LibEtPan from `https://github.com/davidelang/libetpan`,
   built in `third_party` with libfastjson. JMAP is another engine behind the
-  same session interface.
+  same session interface, using LiveIMAP's own Kotlin JMAP client (no
+  maintained Kotlin or Java JMAP library exists to depend on).
 * Charset conversion goes through Java (`java.nio.charset`), reached from
   libetpan's `extended_charconv` hook. `minSdk` stays 26.
 * Every dependency and native library is listed in

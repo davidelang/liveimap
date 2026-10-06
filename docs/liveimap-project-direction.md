@@ -6,13 +6,14 @@ swipe actions.
 
 This document holds the goals and rules that stay the same across versions,
 servers and accounts. Mid-level design decisions, and the implementation
-mistakes to avoid, are in `docs/design-decisions.md`. What ships when, and the
-facts about particular servers, are in the roadmap.
+mistakes to avoid, are in [`design-decisions.md`](design-decisions.md). What
+ships when, and the facts about particular servers, are in the roadmap
+([`sandbox/roadmap/`](../../sandbox/roadmap/README.md)).
 
 ## Goals
 
 * **The screen can be trusted.** What it shows is the server's current state. A
-  folder opens at its newest mail. A failure is reported, not hidden behind
+  folder opens where its start-position setting says (by default at its newest mail). A failure is reported, not hidden behind
   stale data.
 * **Large accounts work.** About 1000 folders, about 500,000 messages, and more
   than 200,000 in one folder. The user will not read them all here, but the
@@ -35,9 +36,11 @@ facts about particular servers, are in the roadmap.
    the Android keystore), and outgoing mail the server has not yet accepted.
    Outgoing mail is the user's work: it stays, is retried when the link returns,
    and the screen says it was not sent. Headers, bodies, search results, thread
-   trees and folder lists live in memory for the session only, because a disk
-   copy cannot be proven fresh while other clients change the server. A cache
-   may be added only for a server that can prove freshness.
+   trees and folder lists are a short-term in-memory cache only, purged on exit
+   or process restart — not a persistent local datastore. The app cannot know
+   whether a disk cache is valid when it connects (or fails to); a clear "can't
+   connect right now" is better than working from stale data. This holds whatever
+   the server supports (including CONDSTORE/QRESYNC).
 3. **Degrade by capability.** The client uses what the server advertises,
    feature by feature. When something is missing, that feature is off and the
    screen says why, or a slower fallback is offered as an opt-in setting (off
@@ -60,7 +63,8 @@ facts about particular servers, are in the roadmap.
 LiveIMAP is designed for two mail transports, behind one session interface:
 
 * **IMAP**, with SMTP submission for sending.
-* **JMAP** (RFC 8620 and RFC 8621), for mail and submission.
+* **JMAP** (RFC 8620 and RFC 8621), for mail. A JMAP account sends through
+  SMTP submission by default; JMAP `EmailSubmission` is an option.
 
 An account uses one transport, chosen by what its server offers. Design
 decisions are written so they hold for both. For example, the index is a window
@@ -68,3 +72,6 @@ of positions in the server's ordered result, which is a SORT, THREAD or SEARCH
 result in IMAP and `Email/query` with `position` and `limit` in JMAP. The rules
 above apply to both: a JMAP capability that is missing is handled exactly like
 a missing IMAP extension. The roadmap says which transport ships first.
+
+An account is identified by its transport, host, port and user; several
+accounts, on one server or several, can be open at once.
