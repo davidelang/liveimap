@@ -1123,3 +1123,15 @@
 - Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: 575db68
 - Phases: chips and Send/Postpone chrome; alt-addresses, Reply-To chip, sent name, to-me; background draft hook and APPENDUID
 - Do not install. Device checks stay David's
+
+## 2026-10-06 - compose-polish phase 4 execution resume
+
+- Approved plan: sandbox/plans/compose-polish-20261006-0040-plan.md
+- Resume revision 2 from phase 4. Phases 1–3 stay DONE (b30f3a1, 13a7308, d3d5f35).
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: d3d5f35
+- SerialMailSession.appendReturningUid returns the inner UID on the liveimap-imap lane. Do not install.
+
+## 2026-10-06 - compose-polish phase 4
+
+- SerialMailSession.appendReturningUid calls inner.appendReturningUid on the liveimap-imap lane and returns that long. It does not call append.
+- SerialMailSessionTest.appendReturningUidReturnsInnerUidOnTheLane: inner returns 3955, append is not called, and the recorded thread is liveimap-imap. No install.

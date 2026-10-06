@@ -33,6 +33,22 @@ class SerialMailSessionTest {
             inner.release.countDown()
         }
     }
+
+    @Test
+    fun appendReturningUidReturnsInnerUidOnTheLane() = runBlocking {
+        val inner = AppendUidInner()
+        val session = SerialMailSession(inner)
+        val bytes = byteArrayOf(1, 2, 3)
+        val flags = setOf("\\Draft")
+        val uid = session.appendReturningUid("Postponed", bytes, flags)
+        assertEquals(3955L, uid)
+        assertEquals(1, inner.uidCalls.get())
+        assertEquals(0, inner.appendCalls.get())
+        assertEquals("Postponed", inner.mailbox)
+        assertTrue(bytes.contentEquals(inner.rfc822))
+        assertEquals(flags, inner.flags)
+        assertEquals(listOf("liveimap-imap"), inner.laneNames().map { imapThread(it) })
+    }
 }
 
 private fun imapThread(name: String): String {
@@ -113,4 +129,32 @@ private class OverlapInner : MailSession {
     override fun close() = Unit
 
     private fun unused(): Nothing = throw MailFailure("not used")
+}
+
+private class AppendUidInner : OverlapInner() {
+    val uidCalls = AtomicInteger(0)
+    val appendCalls = AtomicInteger(0)
+    var mailbox: String = ""
+    var rfc822: ByteArray = ByteArray(0)
+    var flags: Set<String> = emptySet()
+    private val lanes = mutableListOf<String>()
+
+    fun laneNames(): List<String> = synchronized(lanes) { lanes.toList() }
+
+    override suspend fun appendReturningUid(
+        mailbox: String,
+        rfc822: ByteArray,
+        flags: Set<String>,
+    ): Long {
+        uidCalls.incrementAndGet()
+        this.mailbox = mailbox
+        this.rfc822 = rfc822
+        this.flags = flags
+        synchronized(lanes) { lanes.add(Thread.currentThread().name) }
+        return 3955
+    }
+
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
+        appendCalls.incrementAndGet()
+    }
 }
