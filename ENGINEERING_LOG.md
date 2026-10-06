@@ -1153,3 +1153,9 @@
 - MimePart carries charset and encoding, both default empty. The JNI constructor passes the BODYSTRUCTURE charset and base64 or quoted-printable, or empty for 7bit, 8bit, binary, and multipart.
 - decodePart undoes that transfer encoding, then java.nio.charset. An empty or unknown charset is ISO-8859-1 with unknownCharset set. WireTextDecoder holds a split base64 quantum, a quoted-printable tail, and an incomplete character until finish.
 - Plain bodies stream through that decoder. HTML and HTML-as-text read the whole part, then decode. The WebView page starts with a UTF-8 meta. The reader shows "Unknown charset; shown as ISO-8859-1." above the body. Compose quoting uses the same decode and sets that sentence when the notice is empty. No install.
+
+## 2026-10-06 - reader body decoding phase 2
+
+- htmlAsText uses jsoup 1.21.2. script and style are omitted. Block tags break the line. Link text stays in the body and each href is listed as [1] after a blank line. A blockquote line starts with "> ". Ordered items are numbered. Table cells in a row are separated by one space. pre keeps its spaces.
+- A client preview takes the first text/plain part, otherwise the first text/html part, and does not follow preferHtml. Peeked bytes go through PartText.previewText. A failed base64 or quoted-printable decode leaves the preview empty. A server-supplied preview is unchanged. The unknown-charset note is not inserted into a preview.
+- minSdk stays 26. Core library desugaring uses desugar_jdk_libs_nio 2.1.5. NOTICES lists jsoup as MIT and the desugar library as GPL-2.0 with the Classpath Exception. No install.

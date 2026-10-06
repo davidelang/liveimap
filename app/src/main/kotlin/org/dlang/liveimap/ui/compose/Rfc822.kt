@@ -695,7 +695,10 @@ private fun decodeQEncoding(data: String, charset: Charset): String {
     return out.toByteArray().toString(charset)
 }
 
-internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray {
+internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray =
+    decodeTransferOrNull(bytes, encoding) ?: bytes
+
+internal fun decodeTransferOrNull(bytes: ByteArray, encoding: String): ByteArray? {
     val token = encoding.substringBefore(';').trim().lowercase()
     return try {
         when (token) {
@@ -704,7 +707,7 @@ internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray {
             else -> bytes
         }
     } catch (_: IllegalArgumentException) {
-        bytes
+        null
     }
 }
 

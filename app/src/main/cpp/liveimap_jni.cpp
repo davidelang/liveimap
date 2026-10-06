@@ -717,8 +717,10 @@ const char * filenameOf(struct mailimap_body_fields * fields, struct mailimap_bo
 
 struct PartWant {
     bool found = false;
+    bool html = false;
     std::string section;
     std::string charset;
+    std::string encoding;
 };
 
 struct mailimap_body_fields * fieldsOf1(struct mailimap_body_type_1part * part) {
@@ -774,8 +776,25 @@ void describe1(struct mailimap_body_type_1part * part, std::string * type, std::
     }
 }
 
+std::string partCharset(struct mailimap_body_fields * fields);
+std::string partEncoding(struct mailimap_body_fields * fields);
+
+void rememberText(PartWant * want, const std::string & section, struct mailimap_body_type_1part * part, bool html) {
+    struct mailimap_body_fields * fields = fieldsOf1(part);
+    want->found = true;
+    want->html = html;
+    want->section = section;
+    want->charset = partCharset(fields);
+    want->encoding = partEncoding(fields);
+}
+
+bool plainFound(const PartWant * want) {
+    return want->found && !want->html;
+}
+
 void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want) {
-    if (body == nullptr || want->found) {
+    (void)preferHtml;
+    if (body == nullptr || plainFound(want)) {
         return;
     }
     if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
@@ -787,7 +806,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
         for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
             std::string section = prefix.empty() ? std::to_string(index) : prefix + "." + std::to_string(index);
             findPreferred(static_cast<struct mailimap_body *>(clist_content(cur)), section, preferHtml, want);
-            if (want->found) {
+            if (plainFound(want)) {
                 return;
             }
         }
@@ -810,16 +829,15 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     std::string type;
     std::string subtype;
     describe1(part, &type, &subtype);
-    bool match = preferHtml ? (strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "html") == 0)
-                            : (strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "plain") == 0);
-    if (!match) {
+    bool plain = strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "plain") == 0;
+    bool html = strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "html") == 0;
+    if (plain) {
+        rememberText(want, section, part, false);
         return;
     }
-    want->found = true;
-    want->section = section;
-    struct mailimap_body_fields * fields = fieldsOf1(part);
-    const char * charset = fields != nullptr ? paramValue(fields->bd_parameter, "charset") : nullptr;
-    want->charset = charset != nullptr ? charset : "UTF-8";
+    if (html && !want->found) {
+        rememberText(want, section, part, true);
+    }
 }
 
 std::string partCharset(struct mailimap_body_fields * fields) {
@@ -3328,10 +3346,96 @@ jlongArray runEdgeSearch(JNIEnv * env, LiveSession * session, struct mailimap_se
 
 }  // namespace
 
+std::string utf8FromJava(JNIEnv * env, jstring value) {
+    if (value == nullptr) return std::string();
+    const jchar * chars = env->GetStringChars(value, nullptr);
+    if (chars == nullptr) return std::string();
+    jsize length = env->GetStringLength(value);
+    std::string out;
+    out.reserve(static_cast<size_t>(length));
+    for (jsize i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length) {
+            uint32_t low = chars[i + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                cp = 0x10000u + (((cp - 0xD800u) << 10) | (low - 0xDC00u));
+                ++i;
+            }
+        }
+        if (cp < 0x80u) {
+            out.push_back(static_cast<char>(cp));
+        } else if (cp < 0x800u) {
+            out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        } else if (cp < 0x10000u) {
+            out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+            out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        } else {
+            out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+            out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+            out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+            out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        }
+    }
+    env->ReleaseStringChars(value, chars);
+    return out;
+}
+
+std::string decodePreviewBytes(const char * bytes, size_t length, const std::string & charset,
+    const std::string & encoding, bool html) {
+    if (gVm == nullptr || bytes == nullptr || length == 0 || length > static_cast<size_t>(INT_MAX)) {
+        return std::string();
+    }
+    JNIEnv * env = nullptr;
+    if (gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
+        return std::string();
+    }
+    jclass cls = env->FindClass("org/dlang/liveimap/ui/reader/PartText");
+    if (cls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return std::string();
+    }
+    jmethodID method = env->GetStaticMethodID(
+        cls, "previewText", "([BLjava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        return std::string();
+    }
+    jbyteArray array = env->NewByteArray(static_cast<jsize>(length));
+    jstring jCharset = env->NewStringUTF(charset.c_str());
+    jstring jEncoding = env->NewStringUTF(encoding.c_str());
+    if (array == nullptr || jCharset == nullptr || jEncoding == nullptr) {
+        env->ExceptionClear();
+        if (array != nullptr) env->DeleteLocalRef(array);
+        if (jCharset != nullptr) env->DeleteLocalRef(jCharset);
+        if (jEncoding != nullptr) env->DeleteLocalRef(jEncoding);
+        env->DeleteLocalRef(cls);
+        return std::string();
+    }
+    env->SetByteArrayRegion(array, 0, static_cast<jsize>(length), reinterpret_cast<const jbyte *>(bytes));
+    jobject result = env->CallStaticObjectMethod(
+        cls, method, array, jCharset, jEncoding, html ? JNI_TRUE : JNI_FALSE);
+    std::string text;
+    if (env->ExceptionCheck() || result == nullptr) {
+        env->ExceptionClear();
+    } else {
+        text = utf8FromJava(env, static_cast<jstring>(result));
+        env->DeleteLocalRef(result);
+    }
+    env->DeleteLocalRef(array);
+    env->DeleteLocalRef(jCharset);
+    env->DeleteLocalRef(jEncoding);
+    env->DeleteLocalRef(cls);
+    return text;
+}
+
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
     gVm = vm;
     gKeepUnselect = mailimap_unselect;
     registerExtensions();
+    setPreviewDecoder(decodePreviewBytes);
     return JNI_VERSION_1_6;
 }
 
@@ -3780,7 +3884,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 PartWant want;
                 findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
                 if (!want.found) continue;
-                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset});
+                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
                 at.push_back(i);
                 havePreview[i] = 1;
             }
@@ -3855,7 +3959,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 PartWant want;
                 findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
                 if (!want.found) continue;
-                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset});
+                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
                 at.push_back(i);
                 havePreview[i] = 1;
             }

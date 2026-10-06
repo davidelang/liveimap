@@ -95,14 +95,21 @@ int readPreviewReply(mailimap * imap, TagGuard & guard, int tag, size_t index,
     if (taggedOk(response)) {
         clist * fetched = imap->imap_response_info != nullptr
             ? imap->imap_response_info->rsp_fetch_list : nullptr;
-        previews[index] = previewSectionText(fetched, asks[index].charset);
+        previews[index] = previewSectionText(
+            fetched, asks[index].charset, asks[index].encoding, asks[index].html);
     }
     dropFetchList(imap);
     mailimap_response_free(response);
     return MAILIMAP_NO_ERROR;
 }
 
+PreviewDecoder previewDecoder = nullptr;
+
 }  // namespace
+
+void setPreviewDecoder(PreviewDecoder decoder) {
+    previewDecoder = decoder;
+}
 
 struct mailimap_section * sectionFromSpec(const std::string & spec) {
     clist * ids = clist_new();
@@ -153,16 +160,15 @@ struct mailimap_section * sectionFromSpec(const std::string & spec) {
     return section;
 }
 
-std::string previewSectionText(clist * list, const std::string & charsetName) {
+std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html) {
     std::string text;
-    if (list == nullptr) {
+    if (list == nullptr || previewDecoder == nullptr) {
         return text;
     }
-    const char * charset = charsetName.empty() ? "UTF-8" : charsetName.c_str();
     for (clistiter * cur = clist_begin(list); cur != nullptr && text.empty(); cur = clist_next(cur)) {
         auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
         if (msg == nullptr || msg->att_list == nullptr) continue;
-        for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
+        for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr && text.empty(); ic = clist_next(ic)) {
             auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
             if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) {
                 continue;
@@ -173,20 +179,7 @@ std::string previewSectionText(clist * list, const std::string & charsetName) {
             }
             struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
             if (body->sec_body_part == nullptr || body->sec_length == 0) continue;
-            char * converted = nullptr;
-            size_t convertedLen = 0;
-            int cr = charconv_buffer("UTF-8", charset, body->sec_body_part, body->sec_length, &converted, &convertedLen);
-            if (cr != MAIL_CHARCONV_NO_ERROR || converted == nullptr) {
-                if (converted != nullptr) charconv_buffer_free(converted);
-                converted = nullptr;
-                cr = charconv_buffer("UTF-8", "ISO-8859-1", body->sec_body_part, body->sec_length, &converted, &convertedLen);
-            }
-            if (cr == MAIL_CHARCONV_NO_ERROR && converted != nullptr) {
-                text.assign(converted, convertedLen);
-                charconv_buffer_free(converted);
-            } else if (converted != nullptr) {
-                charconv_buffer_free(converted);
-            }
+            text = previewDecoder(body->sec_body_part, body->sec_length, charsetName, encoding, html);
         }
     }
     return text;
@@ -270,13 +263,13 @@ uint32_t uidOfAtt(struct mailimap_msg_att * msg) {
     return 0;
 }
 
-std::string textOfAtt(struct mailimap_msg_att * att, const std::string & charset) {
+std::string textOfAtt(struct mailimap_msg_att * att, const std::string & charset, const std::string & encoding, bool html) {
     clist * one = clist_new();
     if (one == nullptr || clist_append(one, att) != 0) {
         if (one != nullptr) clist_free(one);
         return std::string();
     }
-    std::string text = previewSectionText(one, charset);
+    std::string text = previewSectionText(one, charset, encoding, html);
     clist_free(one);
     return text;
 }
@@ -398,7 +391,7 @@ int previewViaLibrary(mailimap * imap, const std::vector<PreviewAsk> & asks, int
             if (uid == 0) continue;
             for (size_t i = 0; i < asks.size(); ++i) {
                 if (asks[i].uid != uid || cmd[i] != MAILIMAP_NO_ERROR) continue;
-                previews[i] = textOfAtt(att, asks[i].charset);
+                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
             }
         }
         mailimap_fetch_list_free(result);

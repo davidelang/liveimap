@@ -11,7 +11,7 @@ class HtmlAsTextTest {
             "<p>Hello &amp; world</p><li>One</li><script type=\"text/javascript\">alert(1)</script>" +
                 "<a href=\"https://example.com\">link</a>",
         )
-        assertEquals("Hello & world\n* One\nlink <https://example.com>", text)
+        assertEquals("Hello & world\n* One\nlink\n\n[1] https://example.com", text)
         assertFalse(text.contains("alert"))
         assertFalse(text.contains("script"))
     }
@@ -21,7 +21,7 @@ class HtmlAsTextTest {
         assertEquals("Title\nNext", htmlAsText("<h1>Title</h1>Next"))
         assertEquals("a\nb", htmlAsText("a<br>b"))
         assertEquals("a\nb", htmlAsText("<div>a</div><div>b</div>"))
-        assertEquals("q\nafter", htmlAsText("<blockquote>q</blockquote>after"))
+        assertEquals("> q\nafter", htmlAsText("<blockquote>q</blockquote>after"))
         assertEquals("row", htmlAsText("<tr>row</tr>"))
         assertEquals("cat", htmlAsText("<img alt=\"cat\">"))
         assertEquals("[image]", htmlAsText("<img>"))
@@ -35,9 +35,12 @@ class HtmlAsTextTest {
         assertEquals("text", htmlAsText("<a href=\"\">text</a>"))
         assertEquals("text", htmlAsText("<a>text</a>"))
         assertEquals(
-            "link <https://example.com>",
+            "link\n\n[1] https://example.com",
             htmlAsText("<a href=\"https://example.com\"><b>link</b></a>"),
         )
-        assertEquals("t <https://e.com?a=1&b=2>", htmlAsText("<a href=\"https://e.com?a=1&amp;b=2\">t</a>"))
+        assertEquals("t\n\n[1] https://e.com?a=1&b=2", htmlAsText("<a href=\"https://e.com?a=1&amp;b=2\">t</a>"))
+        assertEquals("1. a\n2. b", htmlAsText("<ol><li>a</li><li>b</li></ol>"))
+        assertEquals("a b", htmlAsText("<table><tr><td>a</td><td>b</td></tr></table>"))
+        assertEquals("a  b\nc", htmlAsText("<pre>a  b\nc</pre>"))
     }
 }

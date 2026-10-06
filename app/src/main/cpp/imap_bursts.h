@@ -10,10 +10,16 @@ struct PreviewAsk {
     uint32_t uid = 0;
     std::string section;
     std::string charset;
+    std::string encoding;
+    bool html = false;
 };
 
+using PreviewDecoder = std::string (*)(const char * bytes, size_t length, const std::string & charset,
+    const std::string & encoding, bool html);
+
 struct mailimap_section * sectionFromSpec(const std::string & spec);
-std::string previewSectionText(clist * list, const std::string & charsetName);
+void setPreviewDecoder(PreviewDecoder decoder);
+std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html);
 bool taggedOk(struct mailimap_response * response);
 void dropStatus(mailimap * imap);
 void dropFetchList(mailimap * imap);

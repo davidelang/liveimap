@@ -7,6 +7,7 @@ import java.nio.charset.CharsetDecoder
 import java.nio.charset.CodingErrorAction
 import java.util.Base64
 import org.dlang.liveimap.ui.compose.decodeTransfer
+import org.dlang.liveimap.ui.compose.decodeTransferOrNull
 
 const val unknownCharsetNote = "Unknown charset; shown as ISO-8859-1."
 
@@ -133,6 +134,20 @@ private fun decodeReplacing(bytes: ByteArray, charset: Charset, end: Boolean): S
         if (!result.isOverflow) break
     }
     return text.toString()
+}
+
+object PartText {
+    @JvmStatic
+    fun previewText(bytes: ByteArray, charset: String, encoding: String, html: Boolean): String {
+        val token = transferToken(encoding)
+        val binary = if (token == "base64" || token == "quoted-printable") {
+            decodeTransferOrNull(bytes, token) ?: return ""
+        } else {
+            decodeTransfer(bytes, encoding)
+        }
+        val text = decodePart(binary, charset, "").text
+        return if (html) htmlAsText(text) else text
+    }
 }
 
 private fun transferToken(encoding: String): String =
