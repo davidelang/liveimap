@@ -439,8 +439,13 @@ class IndexWindowTest {
 
     @Test
     fun emptyIndexTextBlankAndQuery() {
-        assertEquals("No messages", emptyIndexText("", "INBOX"))
-        assertEquals("No messages match \u201cclamp\u201d in INBOX", emptyIndexText("clamp", "INBOX"))
+        val empty = "No messages"
+        val format = "No messages match \u201c%1\$s\u201d in %2\$s"
+        assertEquals("No messages", emptyIndexText("", "INBOX", empty, format))
+        assertEquals(
+            "No messages match \u201cclamp\u201d in INBOX",
+            emptyIndexText("clamp", "INBOX", empty, format),
+        )
     }
 
     @Test

@@ -1329,3 +1329,15 @@
 
 - Debug report, Remove line, Copy, Share, and Dismiss come from strings.xml. The clipboard label is LiveIMAP debug report. The share chooser title is Share debug report. Existing string values are unchanged.
 - An empty report line still shows a space. Report lines stay generated text. DebugReportReview.kt has no Text(". No install.
+
+## 2026-10-06 - Index strings execution start
+
+- Approved plan: sandbox/plans/index-strings-20261006-0408-plan.md
+- Phase 1: index bar, menus, dialogs, empty text, and the new-mail pill come from strings.xml. Wording stays the same, except one versus many for the pill and the thread warning. Filter kinds, start-rule labels, and relative dates stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Index strings phase 1
+
+- Index bar, menus, dialogs, empty text, and the new-mail pill come from strings.xml. Wording stays the same except one versus many for the pill and the thread warning.
+- emptyIndexText takes the empty sentence and the query format. A blank query returns the sentence. Any other query uses the format with the query and the mailbox. Filter kinds, start-rule labels, and relative dates stay.
+- MessageIndexScreen.kt has no Text(". No install.

@@ -101,6 +101,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -130,6 +132,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.LifecycleStartEffect
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.compose.armForwardOnce
@@ -152,7 +155,6 @@ import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
-import org.dlang.liveimap.settings.openAtMenuText
 import org.dlang.liveimap.settings.recentRuleNote
 import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.startRuleFor
@@ -178,41 +180,41 @@ private enum class FilterRole {
 }
 
 private data class FilterChoice(
-    val label: String,
+    val labelRes: Int,
     val kind: String = "",
     val needsValue: Boolean = false,
     val role: FilterRole = FilterRole.Criterion,
 )
 
 private val filterChoices = listOf(
-    FilterChoice("All", role = FilterRole.All),
-    FilterChoice("New", "New"),
-    FilterChoice("Not new", "NotNew"),
-    FilterChoice("Deleted", "Deleted"),
-    FilterChoice("Not deleted", "NotDeleted"),
-    FilterChoice("Answered", "Answered"),
-    FilterChoice("Not answered", "NotAnswered"),
-    FilterChoice("Important", "Important"),
-    FilterChoice("Not important", "NotImportant"),
-    FilterChoice("Forwarded", "Forwarded"),
-    FilterChoice("Not forwarded", "NotForwarded"),
-    FilterChoice("From", "From", needsValue = true),
-    FilterChoice("To", "To", needsValue = true),
-    FilterChoice("Cc", "Cc", needsValue = true),
-    FilterChoice("Subject", "Subject", needsValue = true),
-    FilterChoice("All text", "Text", needsValue = true),
-    FilterChoice("Recipient", "Recipient", needsValue = true),
-    FilterChoice("Participant", "Participant", needsValue = true),
-    FilterChoice("Since", "Since", needsValue = true),
-    FilterChoice("Before", "Before", needsValue = true),
-    FilterChoice("On", "On", needsValue = true),
-    FilterChoice("Age", "Age", needsValue = true),
-    FilterChoice("Larger", "Larger", needsValue = true),
-    FilterChoice("Smaller", "Smaller", needsValue = true),
-    FilterChoice("Keyword", "Keyword", needsValue = true),
-    FilterChoice("Not keyword", "NotKeyword", needsValue = true),
-    FilterChoice("Narrow", role = FilterRole.Narrow),
-    FilterChoice("Widen", role = FilterRole.Widen),
+    FilterChoice(R.string.index_filter_all, role = FilterRole.All),
+    FilterChoice(R.string.index_filter_new, "New"),
+    FilterChoice(R.string.index_filter_not_new, "NotNew"),
+    FilterChoice(R.string.index_filter_deleted, "Deleted"),
+    FilterChoice(R.string.index_filter_not_deleted, "NotDeleted"),
+    FilterChoice(R.string.index_filter_answered, "Answered"),
+    FilterChoice(R.string.index_filter_not_answered, "NotAnswered"),
+    FilterChoice(R.string.index_filter_important, "Important"),
+    FilterChoice(R.string.index_filter_not_important, "NotImportant"),
+    FilterChoice(R.string.index_filter_forwarded, "Forwarded"),
+    FilterChoice(R.string.index_filter_not_forwarded, "NotForwarded"),
+    FilterChoice(R.string.index_filter_from, "From", needsValue = true),
+    FilterChoice(R.string.index_filter_to, "To", needsValue = true),
+    FilterChoice(R.string.index_filter_cc, "Cc", needsValue = true),
+    FilterChoice(R.string.index_filter_subject, "Subject", needsValue = true),
+    FilterChoice(R.string.index_filter_text, "Text", needsValue = true),
+    FilterChoice(R.string.index_filter_recipient, "Recipient", needsValue = true),
+    FilterChoice(R.string.index_filter_participant, "Participant", needsValue = true),
+    FilterChoice(R.string.index_filter_since, "Since", needsValue = true),
+    FilterChoice(R.string.index_filter_before, "Before", needsValue = true),
+    FilterChoice(R.string.index_filter_on, "On", needsValue = true),
+    FilterChoice(R.string.index_filter_age, "Age", needsValue = true),
+    FilterChoice(R.string.index_filter_larger, "Larger", needsValue = true),
+    FilterChoice(R.string.index_filter_smaller, "Smaller", needsValue = true),
+    FilterChoice(R.string.index_filter_keyword, "Keyword", needsValue = true),
+    FilterChoice(R.string.index_filter_not_keyword, "NotKeyword", needsValue = true),
+    FilterChoice(R.string.index_filter_narrow, role = FilterRole.Narrow),
+    FilterChoice(R.string.index_filter_widen, role = FilterRole.Widen),
 )
 
 data class IndexAppearance(
@@ -389,9 +391,14 @@ private class SnapshotSync {
     var block: () -> Unit = {}
 }
 
-fun emptyIndexText(query: String, mailbox: String): String {
-    if (query.isBlank()) return "No messages"
-    return "No messages match \u201c$query\u201d in $mailbox"
+fun emptyIndexText(
+    query: String,
+    mailbox: String,
+    emptySentence: String,
+    queryFormat: String,
+): String {
+    if (query.isBlank()) return emptySentence
+    return queryFormat.format(query, mailbox)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -404,6 +411,9 @@ fun MessageIndexScreen(
     watchMailbox: Boolean = true,
 ) {
     val appContext = LocalContext.current.applicationContext
+    val emptyIndexSentence = stringResource(R.string.index_empty)
+    val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
+    val retryLabel = stringResource(R.string.index_retry)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val connectionState by session.connectionState.collectAsState()
@@ -742,7 +752,7 @@ fun MessageIndexScreen(
         snackMode = "retry"
         val result = snackbarHostState.showSnackbar(
             message = snackMessage,
-            actionLabel = "Retry",
+            actionLabel = retryLabel,
         )
         if (result == SnackbarResult.ActionPerformed) {
             lastReported = null
@@ -1136,13 +1146,16 @@ fun MessageIndexScreen(
                 navigationIcon = {
                     if (multiSelect) {
                         IconButton(onClick = { clearSelection() }) {
-                            Icon(imageVector = Icons.Filled.Close, contentDescription = "Close")
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.index_close),
+                            )
                         }
                     } else {
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
+                                contentDescription = stringResource(R.string.index_back),
                             )
                         }
                     }
@@ -1188,7 +1201,10 @@ fun MessageIndexScreen(
                                 }
                             },
                         ) {
-                            Icon(imageVector = Icons.Filled.DriveFileMove, contentDescription = "Move")
+                            Icon(
+                                imageVector = Icons.Filled.DriveFileMove,
+                                contentDescription = stringResource(R.string.index_move),
+                            )
                         }
                         IconButton(
                             onClick = {
@@ -1207,18 +1223,24 @@ fun MessageIndexScreen(
                                 }
                             },
                         ) {
-                            Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete")
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.index_delete),
+                            )
                         }
                         Box {
                             IconButton(onClick = { selectionMore = true }) {
-                                Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "More")
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.index_more),
+                                )
                             }
                             DropdownMenu(
                                 expanded = selectionMore,
                                 onDismissRequest = { selectionMore = false },
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Select all") },
+                                    text = { Text(stringResource(R.string.index_select_all)) },
                                     onClick = {
                                         selectionMore = false
                                         when (val target = selectAllTarget(filterActive, model.order)) {
@@ -1241,21 +1263,21 @@ fun MessageIndexScreen(
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Mark answered") },
+                                    text = { Text(stringResource(R.string.index_mark_answered)) },
                                     onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Mark unanswered") },
+                                    text = { Text(stringResource(R.string.index_mark_unanswered)) },
                                     onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
                                 )
                                 if (showUndelete) {
                                     DropdownMenuItem(
-                                        text = { Text("Undelete") },
+                                        text = { Text(stringResource(R.string.index_undelete)) },
                                         onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
                                     )
                                 }
                                 DropdownMenuItem(
-                                    text = { Text("Bounce") },
+                                    text = { Text(stringResource(R.string.index_bounce)) },
                                     enabled = !allMailbox,
                                     onClick = {
                                         selectionMore = false
@@ -1276,7 +1298,7 @@ fun MessageIndexScreen(
                                     )
                                 }
                                 DropdownMenuItem(
-                                    text = { Text("Clear selection") },
+                                    text = { Text(stringResource(R.string.index_clear_selection)) },
                                     onClick = { clearSelection() },
                                 )
                             }
@@ -1285,35 +1307,36 @@ fun MessageIndexScreen(
                     IconButton(onClick = { refreshIndex() }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = stringResource(R.string.index_refresh),
                         )
                     }
                     if (connected) {
                 IconButton(onClick = { searchVisible = true }) {
                     Icon(
                         imageVector = Icons.Filled.Search,
-                        contentDescription = "Search",
+                        contentDescription = stringResource(R.string.index_search),
                     )
                 }
                 Box {
                     IconButton(onClick = { filterOpen = true }) {
                         Icon(
                             imageVector = filterImage,
-                            contentDescription = "Filter",
+                            contentDescription = stringResource(R.string.index_filter),
                         )
                     }
                     DropdownMenu(
                         expanded = filterOpen,
                         onDismissRequest = { filterOpen = false },
                     ) {
-                        filterChoices.forEach { choice ->
+                        for (choice in filterChoices) {
+                            val label = stringResource(choice.labelRes)
                             val enabled = when (choice.role) {
                                 FilterRole.Narrow -> filterActive
                                 FilterRole.Widen -> canWiden
                                 else -> true
                             }
                             DropdownMenuItem(
-                                text = { Text(choice.label) },
+                                text = { Text(label) },
                                 enabled = enabled,
                                 onClick = {
                                     filterOpen = false
@@ -1326,7 +1349,7 @@ fun MessageIndexScreen(
                                                 prompt = choice
                                                 promptText = ""
                                             } else {
-                                                runCriterion(choice.kind, "", choice.label)
+                                                runCriterion(choice.kind, "", label)
                                             }
                                         }
                                     }
@@ -1340,7 +1363,7 @@ fun MessageIndexScreen(
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
                                 imageVector = Icons.Filled.Sort,
-                                contentDescription = "Sort",
+                                contentDescription = stringResource(R.string.index_sort),
                             )
                         }
                         Text(
@@ -1409,7 +1432,7 @@ fun MessageIndexScreen(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Newest first") },
+                            text = { Text(stringResource(R.string.index_newest_first)) },
                             onClick = {
                                 menuOpen = false
                                 query = ""
@@ -1431,10 +1454,9 @@ fun MessageIndexScreen(
                                 )
                             },
                         )
-                        val openAtLabel = openAtMenuText(account)
-                        if (openAtLabel != null) {
+                        if (account.openAtInIndexMenu) {
                             DropdownMenuItem(
-                                text = { Text(openAtLabel) },
+                                text = { Text(stringResource(R.string.index_open_at)) },
                                 onClick = {
                                     menuOpen = false
                                     openAt = true
@@ -1486,7 +1508,7 @@ fun MessageIndexScreen(
                             }
                         }
                     },
-                ) { Text("Expunge") }
+                ) { Text(stringResource(R.string.index_expunge)) }
                 if (confirmExpunge) {
                     val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
                     val body = buildString {
@@ -1500,7 +1522,7 @@ fun MessageIndexScreen(
                             confirmExpunge = false
                             pendingExpungeUids = null
                         },
-                        title = { Text("Expunge?") },
+                        title = { Text(stringResource(R.string.index_expunge_title)) },
                         text = { Text(body) },
                         confirmButton = {
                             TextButton(onClick = {
@@ -1516,13 +1538,13 @@ fun MessageIndexScreen(
                                     }
                                     if (specific != null) finishUndoExpunge(ok)
                                 }
-                            }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
+                            }) { Text(stringResource(R.string.index_expunge), color = MaterialTheme.colorScheme.error) }
                         },
                         dismissButton = {
                             TextButton(onClick = {
                                 confirmExpunge = false
                                 pendingExpungeUids = null
-                            }) { Text("Cancel") }
+                            }) { Text(stringResource(R.string.index_cancel)) }
                         },
                     )
                 }
@@ -1591,7 +1613,7 @@ fun MessageIndexScreen(
                             }
                         }
                     },
-                    label = { Text("Search") },
+                    label = { Text(stringResource(R.string.index_search)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
@@ -1615,7 +1637,7 @@ fun MessageIndexScreen(
             }
             val flagsFor = flagUid
             if (flagsFor != null) {
-                Text("Flags", modifier = Modifier.padding(horizontal = 8.dp))
+                Text(stringResource(R.string.index_flags), modifier = Modifier.padding(horizontal = 8.dp))
                 indexFlags.forEach { flag ->
                     Row {
                         TextButton(
@@ -1627,7 +1649,7 @@ fun MessageIndexScreen(
                                     }
                                 }
                             },
-                        ) { Text("Set $flag") }
+                        ) { Text(stringResource(R.string.index_set_flag, flag)) }
                         TextButton(
                             onClick = {
                                 scope.launch {
@@ -1637,10 +1659,10 @@ fun MessageIndexScreen(
                                     }
                                 }
                             },
-                        ) { Text("Clear $flag") }
+                        ) { Text(stringResource(R.string.index_clear_flag, flag)) }
                     }
                 }
-                TextButton(onClick = { flagUid = null }) { Text("Close") }
+                TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
             }
             val visibleInfo = listState.layoutInfo.visibleItemsInfo
             val sequences = if (visibleInfo.isNotEmpty()) {
@@ -1701,7 +1723,12 @@ fun MessageIndexScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = fetchNotice ?: emptyIndexText(query, mailbox),
+                        text = fetchNotice ?: emptyIndexText(
+                            query,
+                            mailbox,
+                            emptyIndexSentence,
+                            emptyIndexQueryFormat,
+                        ),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -1787,8 +1814,8 @@ fun MessageIndexScreen(
         }
     }
         ExtendedFloatingActionButton(
-            text = { Text("Compose") },
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = "Compose") },
+            text = { Text(stringResource(R.string.index_compose)) },
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.index_compose)) },
             onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
             expanded = !listState.isScrollInProgress,
             modifier = Modifier
@@ -1806,9 +1833,9 @@ fun MessageIndexScreen(
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {
-                        TextButton(onClick = { runUndo(offer) }) { Text("Undo") }
+                        TextButton(onClick = { runUndo(offer) }) { Text(stringResource(R.string.index_undo)) }
                         if (showExpunge) {
-                            TextButton(onClick = { runExpunge(offer) }) { Text("Expunge") }
+                            TextButton(onClick = { runExpunge(offer) }) { Text(stringResource(R.string.index_expunge)) }
                         }
                     },
                 ) { Text(data.visuals.message) }
@@ -1820,27 +1847,27 @@ fun MessageIndexScreen(
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {
+        val promptLabel = stringResource(pendingPrompt.labelRes)
         AlertDialog(
             onDismissRequest = { prompt = null },
             text = {
                 OutlinedTextField(
                     value = promptText,
                     onValueChange = { promptText = it },
-                    label = { Text(pendingPrompt.label) },
+                    label = { Text(promptLabel) },
                     singleLine = true,
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     val kind = pendingPrompt.kind
-                    val label = pendingPrompt.label
                     val value = promptText
                     prompt = null
-                    runCriterion(kind, value, label)
-                }) { Text("OK") }
+                    runCriterion(kind, value, promptLabel)
+                }) { Text(stringResource(R.string.index_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { prompt = null }) { Text("Dismiss") }
+                TextButton(onClick = { prompt = null }) { Text(stringResource(R.string.index_dismiss)) }
             },
         )
     }
@@ -1849,7 +1876,7 @@ fun MessageIndexScreen(
         val choices = startRuleChoices(account.showRecentRules, selected)
         AlertDialog(
             onDismissRequest = { openAt = false },
-            title = { Text("Open this folder at…") },
+            title = { Text(stringResource(R.string.index_open_at)) },
             text = {
                 Column {
                     choices.forEach { rule ->
@@ -1876,11 +1903,11 @@ fun MessageIndexScreen(
                                 pull()
                             }
                         }
-                    }) { Text("Default") }
+                    }) { Text(stringResource(R.string.index_default)) }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { openAt = false }) { Text("Close") }
+                TextButton(onClick = { openAt = false }) { Text(stringResource(R.string.index_close)) }
             },
         )
     }
@@ -1888,13 +1915,15 @@ fun MessageIndexScreen(
     if (asking != null) {
         AlertDialog(
             onDismissRequest = { resolveThreadAsk(false) },
-            title = { Text("Thread this folder?") },
-            text = { Text("This folder has $threadExists messages. Threading reads the whole folder.") },
+            title = { Text(stringResource(R.string.index_thread_title)) },
+            text = {
+                Text(pluralStringResource(R.plurals.index_thread_body, threadExists, threadExists))
+            },
             confirmButton = {
-                TextButton(onClick = { resolveThreadAsk(true) }) { Text("Continue") }
+                TextButton(onClick = { resolveThreadAsk(true) }) { Text(stringResource(R.string.index_continue)) }
             },
             dismissButton = {
-                TextButton(onClick = { resolveThreadAsk(false) }) { Text("Cancel") }
+                TextButton(onClick = { resolveThreadAsk(false) }) { Text(stringResource(R.string.index_cancel)) }
             },
         )
     }
@@ -2157,16 +2186,25 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.index_retry)) }
         }
     }
 }
 
-private fun sortShortLabel(key: SortKey): String = when (key) {
-    SortKey.ThreadReferences -> "Thread"
-    SortKey.ThreadOrderedSubject -> "Ordered"
-    else -> key.name
-}
+@Composable
+private fun sortShortLabel(key: SortKey): String = stringResource(
+    when (key) {
+        SortKey.Arrival -> R.string.index_sort_arrival
+        SortKey.Date -> R.string.index_sort_date
+        SortKey.From -> R.string.index_sort_from
+        SortKey.Subject -> R.string.index_sort_subject
+        SortKey.To -> R.string.index_sort_to
+        SortKey.Cc -> R.string.index_sort_cc
+        SortKey.Size -> R.string.index_sort_size
+        SortKey.ThreadReferences -> R.string.index_sort_thread
+        SortKey.ThreadOrderedSubject -> R.string.index_sort_ordered
+    },
+)
 
 private fun sortKeyAdvertised(capabilities: Set<String>, key: SortKey): Boolean {
     fun has(name: String) = capabilities.any { it.equals(name, ignoreCase = true) }
@@ -2186,8 +2224,9 @@ private fun SortMenuChoice(
     onClick: () -> Unit,
 ) {
     val label = sortShortLabel(key)
+    val disabledLabel = stringResource(R.string.index_not_advertised, label)
     DropdownMenuItem(
-        text = { Text(if (enabled) label else "$label Not advertised") },
+        text = { Text(if (enabled) label else disabledLabel) },
         onClick = onClick,
         leadingIcon = if (selected) {
             { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
@@ -2268,29 +2307,6 @@ private fun dismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, leftToR
     }
 }
 
-private fun newMailPillText(count: Int, unnumbered: Boolean, newestFirst: Boolean): String {
-    val arrow = if (newestFirst) "\u2191" else "\u2193"
-    val base = if (unnumbered) {
-        "New messages"
-    } else if (count == 1) {
-        "1 new message"
-    } else {
-        "$count new messages"
-    }
-    return "$base $arrow"
-}
-
-private fun newMailPillSpoken(count: Int, unnumbered: Boolean): String {
-    val base = if (unnumbered) {
-        "New messages"
-    } else if (count == 1) {
-        "1 new message"
-    } else {
-        "$count new messages"
-    }
-    return "$base, jump to newest"
-}
-
 @Composable
 private fun BoxScope.NewMailPill(
     count: Int,
@@ -2298,7 +2314,13 @@ private fun BoxScope.NewMailPill(
     newestFirst: Boolean,
     onClick: () -> Unit,
 ) {
-    val spoken = newMailPillSpoken(count, unnumbered)
+    val plain = stringResource(R.string.index_new_plain)
+    val counted = pluralStringResource(R.plurals.index_new, count, count)
+    val base = if (unnumbered) plain else counted
+    val up = stringResource(R.string.index_pill_up, base)
+    val down = stringResource(R.string.index_pill_down, base)
+    val spoken = stringResource(R.string.index_pill_spoken, base)
+    val label = if (newestFirst) up else down
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(24.dp),
@@ -2316,7 +2338,7 @@ private fun BoxScope.NewMailPill(
             },
     ) {
         Text(
-            text = newMailPillText(count, unnumbered, newestFirst),
+            text = label,
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .clearAndSetSemantics { },
