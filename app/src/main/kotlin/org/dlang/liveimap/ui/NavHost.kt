@@ -46,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
@@ -403,7 +405,7 @@ fun LiveImapNavHost() {
                 }
             }
             composable("about") {
-                UpPage("About", onUp = { navController.navigateUp() }) {
+                UpPage(stringResource(R.string.about_title), onUp = { navController.navigateUp() }) {
                     AboutScreen(onOpenLicenses = { navController.navigate("about/licenses") })
                 }
             }

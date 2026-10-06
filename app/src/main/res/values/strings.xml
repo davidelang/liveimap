@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LiveIMAP</string>
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_plaintext">This connection is not encrypted. The password and messages travel in the clear.</string>
+    <string name="about_support">Support</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_license_notice">LiveIMAP is licensed under the Apache License 2.0</string>
+    <string name="about_no_email">No email app found</string>
 </resources>

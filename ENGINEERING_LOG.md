@@ -1249,3 +1249,14 @@
 - Script steps Close, Silent, Bad, No, Bye, NewUidValidity, and ExpungeDuringFetch replace the next reply.
 - Close ends the read. Silent stays unanswered. Bad and No are tagged. Bye is untagged and the socket closes. The next SELECT reports UIDVALIDITY 99. EXPUNGE is sent before FETCH.
 - No install.
+
+## 2026-10-06 - About strings execution start
+
+- Approved plan: sandbox/plans/about-strings-20261006-0325-plan.md
+- Phase 1: About words move into strings.xml. Wording stays the same. The about route title uses about_title. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - About strings phase 1
+
+- About title, version, plaintext warning, Support, licenses, license notice, and the no-email toast come from strings.xml. app_name is unchanged and is reused for the name line and the mail subject.
+- The about route Up title is about_title. Other NavHost titles are unchanged. The support address stays david+liveimap@lang.hm. No install.

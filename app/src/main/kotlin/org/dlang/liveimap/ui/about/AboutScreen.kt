@@ -20,8 +20,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.dlang.liveimap.BuildConfig
+import org.dlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
@@ -34,31 +36,42 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
     LaunchedEffect(store) {
         imapHost = store.load().imapHost
     }
+    val appName = stringResource(R.string.app_name)
+    val versionLine = stringResource(R.string.about_version, BuildConfig.VERSION_NAME)
+    val plaintext = stringResource(R.string.about_plaintext)
+    val support = stringResource(R.string.about_support)
+    val licenses = stringResource(R.string.about_licenses)
+    val licenseNotice = stringResource(R.string.about_license_notice)
+    val noEmail = stringResource(R.string.about_no_email)
     Column {
-        Text("LiveIMAP")
-        Text("Version ${BuildConfig.VERSION_NAME}")
+        Text(appName)
+        Text(versionLine)
         if (imapHost.isNotBlank()) {
             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
-                    "This connection is not encrypted. The password and messages travel in the clear.",
+                    plaintext,
                     modifier = Modifier.padding(16.dp),
                 )
             }
         }
-        TextButton(onClick = { sendSupport(context) }) {
-            Text("Support")
+        TextButton(onClick = { sendSupport(context, appName, versionLine, support, noEmail) }) {
+            Text(support)
         }
         ListItem(
-            headlineContent = { Text("Open-source licenses") },
-            supportingContent = { Text("LiveIMAP is licensed under the Apache License 2.0") },
+            headlineContent = { Text(licenses) },
+            supportingContent = { Text(licenseNotice) },
             modifier = Modifier.clickable(onClick = onOpenLicenses),
         )
     }
 }
 
-private fun sendSupport(context: Context) {
-    val subject = "LiveIMAP"
-    val body = "Version ${BuildConfig.VERSION_NAME}"
+private fun sendSupport(
+    context: Context,
+    subject: String,
+    body: String,
+    chooserTitle: String,
+    noEmail: String,
+) {
     val sendTo = Intent(Intent.ACTION_SENDTO).apply {
         data = Uri.parse("mailto:$SUPPORT_ADDRESS")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_ADDRESS))
@@ -76,8 +89,8 @@ private fun sendSupport(context: Context) {
         putExtra(Intent.EXTRA_TEXT, body)
     }
     if (send.resolveActivity(context.packageManager) != null) {
-        context.startActivity(Intent.createChooser(send, "Support"))
+        context.startActivity(Intent.createChooser(send, chooserTitle))
     } else {
-        Toast.makeText(context, "No email app found", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, noEmail, Toast.LENGTH_SHORT).show()
     }
 }
