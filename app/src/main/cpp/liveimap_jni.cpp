@@ -1,5 +1,6 @@
 #include <libetpan/libetpan.h>
 #include <libetpan/unselect.h>
+#include <libetpan/esearch.h>
 
 #include "imap_bursts.h"
 
@@ -2851,14 +2852,27 @@ static void live_ext_free(struct mailimap_extension_data * ext_data) {
 
 clist * takeEsearch(mailimap * imap) {
     clist * uids = nullptr;
+    struct mailimap_esearch_result * esearch = nullptr;
     if (imap->imap_response_info != nullptr && imap->imap_response_info->rsp_extension_list != nullptr) {
         for (clistiter * cur = clist_begin(imap->imap_response_info->rsp_extension_list); cur != nullptr; cur = clist_next(cur)) {
             auto * ext = static_cast<struct mailimap_extension_data *>(clist_content(cur));
-            if (ext != nullptr && ext->ext_extension == &liveimap_extra_extension && ext->ext_type == LIVE_ESEARCH && uids == nullptr) {
+            if (ext == nullptr) continue;
+            if (ext->ext_extension == &liveimap_extra_extension && ext->ext_type == LIVE_ESEARCH && uids == nullptr) {
                 uids = static_cast<clist *>(ext->ext_data);
                 ext->ext_data = nullptr;
                 ext->ext_type = -1;
+            } else if (esearch == nullptr && ext->ext_extension == &mailimap_extension_esearch && ext->ext_data != nullptr) {
+                esearch = static_cast<struct mailimap_esearch_result *>(ext->ext_data);
             }
+        }
+    }
+    if (uids == nullptr && esearch != nullptr) {
+        uids = esearch->msg_list;
+        esearch->msg_list = nullptr;
+        if (uids == nullptr) uids = clist_new();
+        if (uids != nullptr && clist_begin(uids) == nullptr) {
+            if (esearch->has_min) appendUid(uids, esearch->min);
+            if (esearch->has_max) appendUid(uids, esearch->max);
         }
     }
     freeExtensionList(imap);

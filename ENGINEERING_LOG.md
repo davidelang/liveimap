@@ -1369,3 +1369,15 @@
 - Reader buttons, snacks, dialogs, and header labels come from strings.xml. Wording stays the same.
 - Without UIDPLUS, the expunge dialog is reader_expunge_body, a space, then reader_expunge_others. recipientLine uses reader_to, reader_cc, or reader_to_cc. The share chooser title is reader_share. The five not-connected snacks and banners use reader_not_connected. No app found uses reader_no_app.
 - Action, body-view, sort, and opposite-forward labels stay. Snack modes retry and undo stay. The charset note stays. MessageReaderScreen.kt has no Text(", no No app found, and no not connected literal. No install.
+
+## 2026-10-06 - ESEARCH filter results execution start
+
+- Approved plan: sandbox/plans/esearch-filter-results-20261006-1245-plan.md
+- Phase 1: takeEsearch returns the libetpan ESEARCH ids when the LiveIMAP list is absent. Steal msg_list before the result is freed. MIN and MAX stay one id. An empty match stays empty. sendEsearch and libetpan stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - ESEARCH filter results phase 1
+
+- takeEsearch still returns a detached LIVE_ESEARCH list when that slot is filled.
+- Otherwise, when the extension is mailimap_extension_esearch, it steals msg_list and sets that field to null before freeExtensionList. A null msg_list starts empty. An empty list appends min when has_min and max when has_max.
+- The list uidArray receives is still uint32_t values. sendEsearch is unchanged. libetpan is unchanged. No install.
