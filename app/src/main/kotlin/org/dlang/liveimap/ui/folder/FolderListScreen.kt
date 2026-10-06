@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
@@ -73,6 +74,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
@@ -137,6 +139,7 @@ fun FolderListScreen(
     var showUnreadCounts by remember { mutableStateOf(false) }
     var folderQuery by remember { mutableStateOf("") }
     var moreMenu by remember { mutableStateOf(false) }
+    var refreshListed by remember { mutableStateOf(false) }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -225,6 +228,10 @@ fun FolderListScreen(
                 OpenResult.Connected -> Unit
             }
             try {
+                if (refreshListed) {
+                    model.refreshLevels()
+                    refreshListed = false
+                }
                 rows = model.loadLevel()
                 ready = true
             } catch (error: CancellationException) {
@@ -316,18 +323,96 @@ fun FolderListScreen(
         scope.launch {
             gate.withLock {
                 if (stopped) return@withLock
-                val settings = try {
-                    store.load()
+                model.collapseAll()
+                // Rebuilt from the level cache. Does not send LIST.
+                val listed = try {
+                    model.loadLevel()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (listed != null) rows = listed
+            }
+        }
+    }
+
+    fun saveDefaultView() {
+        scope.launch {
+            gate.withLock {
+                if (stopped) return@withLock
+                try {
+                    model.saveDefaultView()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    postSnack(error.message ?: "not connected")
+                }
+            }
+        }
+    }
+
+    fun resetToDefaultView() {
+        scope.launch {
+            gate.withLock {
+                if (stopped) return@withLock
+                try {
+                    model.resetToDefault()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     postSnack(error.message ?: "not connected")
                     return@withLock
                 }
-                store.save(settings.copy(expandedFolders = emptySet()))
-                // Names already loaded. Does not send LIST.
-                rows = rows.filter { it.depth == 0 }.map { row ->
-                    if (row.expanded) row.copy(expanded = false) else row
+                val listed = try {
+                    model.loadLevel()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (listed != null) rows = listed
+            }
+        }
+    }
+
+    fun alwaysExpand(mailbox: String) {
+        scope.launch {
+            gate.withLock {
+                if (stopped) return@withLock
+                try {
+                    model.alwaysExpand(mailbox)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    postSnack(error.message ?: "not connected")
+                    return@withLock
+                }
+                val listed = try {
+                    model.loadLevel()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    null
+                }
+                if (listed != null) rows = listed
+            }
+        }
+    }
+
+    fun dontAlwaysExpand(mailbox: String) {
+        scope.launch {
+            gate.withLock {
+                if (stopped) return@withLock
+                try {
+                    model.dontAlwaysExpand(mailbox)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    postSnack(error.message ?: "not connected")
                 }
             }
         }
@@ -350,7 +435,12 @@ fun FolderListScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                        IconButton(onClick = {
+                            if (!loading) {
+                                refreshListed = true
+                                loadToken += 1
+                            }
+                        }) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "Refresh",
@@ -372,6 +462,20 @@ fun FolderListScreen(
                                     onClick = {
                                         moreMenu = false
                                         collapseAll()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save as default view") },
+                                    onClick = {
+                                        moreMenu = false
+                                        saveDefaultView()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reset to default view") },
+                                    onClick = {
+                                        moreMenu = false
+                                        resetToDefaultView()
                                     },
                                 )
                                 if (unsentCount > 0) {
@@ -482,7 +586,12 @@ fun FolderListScreen(
             )
             PullToRefreshBox(
                 isRefreshing = loading,
-                onRefresh = { if (!loading) loadToken += 1 },
+                onRefresh = {
+                    if (!loading) {
+                        refreshListed = true
+                        loadToken += 1
+                    }
+                },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
@@ -561,8 +670,8 @@ fun FolderListScreen(
                                 }
                             }
                         },
-                        onLeafLongPress = { toggleFavorite(row.namespaceRoot, row) },
-                        onNodeLongPress = { toggleFavorite(true, row) },
+                        onAlwaysExpand = { alwaysExpand(row.mailbox) },
+                        onDontAlwaysExpand = { dontAlwaysExpand(row.mailbox) },
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 }
@@ -644,7 +753,11 @@ internal fun folderDisplayName(row: FolderRow): String =
 
 internal fun folderRowsMatchingName(rows: List<FolderRow>, query: String): List<FolderRow> {
     if (query.isBlank()) return rows
-    return rows.filter { folderDisplayName(it).contains(query.trim(), ignoreCase = true) }
+    val needle = query.trim()
+    return rows.filter { row ->
+        val emptyPrefix = row.namespaceRoot && row.mailbox.isEmpty()
+        emptyPrefix || folderDisplayName(row).contains(needle, ignoreCase = true)
+    }
 }
 
 internal fun folderFavoriteNode(row: FolderRow): Boolean = when {
@@ -703,12 +816,14 @@ private fun FolderListRow(
     onOpen: () -> Unit,
     onStar: () -> Unit,
     onToggle: () -> Unit,
-    onLeafLongPress: () -> Unit,
-    onNodeLongPress: () -> Unit,
+    onAlwaysExpand: () -> Unit,
+    onDontAlwaysExpand: () -> Unit,
 ) {
+    val emptyPrefix = row.namespaceRoot && row.mailbox.isEmpty()
+    var rowMenu by remember { mutableStateOf(false) }
     val shownLeaf = folderDisplayName(row)
     val unreadLabel = folderUnreadLabel(showUnread, row.unseen)
-    val description = if (row.namespaceRoot && row.mailbox.isEmpty()) {
+    val description = if (emptyPrefix) {
         "Namespace, empty prefix"
     } else {
         folderRowDescription(
@@ -719,24 +834,29 @@ private fun FolderListRow(
             row.expanded,
         )
     }
-    val icon = when (
-        folderIconKey(
-            row.mailbox,
-            sentMailbox,
-            postponedMailbox,
-            spamMailbox,
-            addressBookMailbox,
-            row.specialUse,
-        )
-    ) {
-        "inbox" -> Icons.Filled.Inbox
-        "send" -> Icons.AutoMirrored.Filled.Send
-        "drafts" -> Icons.Filled.Drafts
-        "report" -> Icons.Filled.Report
-        "contacts" -> Icons.Filled.Contacts
-        "delete" -> Icons.Filled.Delete
-        else -> Icons.Filled.Folder
+    val icon = if (emptyPrefix) {
+        Icons.Filled.FolderSpecial
+    } else {
+        when (
+            folderIconKey(
+                row.mailbox,
+                sentMailbox,
+                postponedMailbox,
+                spamMailbox,
+                addressBookMailbox,
+                row.specialUse,
+            )
+        ) {
+            "inbox" -> Icons.Filled.Inbox
+            "send" -> Icons.AutoMirrored.Filled.Send
+            "drafts" -> Icons.Filled.Drafts
+            "report" -> Icons.Filled.Report
+            "contacts" -> Icons.Filled.Contacts
+            "delete" -> Icons.Filled.Delete
+            else -> Icons.Filled.Folder
+        }
     }
+    val openRowMenu = { rowMenu = true }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -746,7 +866,7 @@ private fun FolderListRow(
         val slot = if (row.hasChildren) {
             Modifier
                 .size(48.dp)
-                .combinedClickable(onClick = onToggle, onLongClick = onNodeLongPress)
+                .combinedClickable(onClick = onToggle, onLongClick = openRowMenu)
         } else {
             Modifier.size(48.dp)
         }
@@ -762,7 +882,7 @@ private fun FolderListRow(
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = 48.dp)
-                .combinedClickable(onClick = onOpen, onLongClick = onLeafLongPress)
+                .combinedClickable(onClick = onOpen, onLongClick = openRowMenu)
                 .clearAndSetSemantics { contentDescription = description },
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -774,9 +894,36 @@ private fun FolderListRow(
             )
             Text(
                 text = shownLeaf,
+                fontStyle = if (emptyPrefix) FontStyle.Italic else FontStyle.Normal,
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = rowMenu,
+            onDismissRequest = { rowMenu = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (favorite) "Remove favorite" else "Add favorite") },
+                onClick = {
+                    rowMenu = false
+                    onStar()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Always expand") },
+                onClick = {
+                    rowMenu = false
+                    onAlwaysExpand()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Don't always expand") },
+                onClick = {
+                    rowMenu = false
+                    onDontAlwaysExpand()
+                },
             )
         }
         IconButton(onClick = onStar) {

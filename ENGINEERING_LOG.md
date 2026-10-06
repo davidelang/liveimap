@@ -1057,3 +1057,17 @@
 - Help route and drawer item sit above About. Up is navigateUp. About is unchanged.
 - The folder list shows Help under the connection strip only while the loaded IMAP host is blank.
 - Help reads the two bundled assets. Report a bug opens the issues URL. Copy debug report uses the shared review. No install.
+
+## 2026-10-05 - Folder list execution start
+
+- Execute sandbox/plans/folder-list-20261005-2319-plan.md on master (Status APPROVED).
+- Phase 1: session expansion, level cache, overflow items, long-press menu, empty-prefix row, and FolderListModelTest.
+- Phase 2: Expanded folders and Folder views use the mailbox picker and a close icon.
+- No install. Device and lab-server checks stay with David.
+
+## 2026-10-05 - Folder list phase 1
+
+- Session expansion is copied once. Expand, collapse, show collapsed, and collapse all do not write settings.
+- Each list level is cached until refreshLevels. Pull to refresh and the toolbar refresh clear that cache before they list.
+- Overflow adds Save as default view and Reset to default view. Long-press keeps favorite and adds Always expand and Don't always expand.
+- The empty-prefix row is italic, uses FolderSpecial, and search always keeps it without matching its label. No install.

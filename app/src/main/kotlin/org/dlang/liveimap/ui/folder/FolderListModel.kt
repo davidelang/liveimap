@@ -28,10 +28,12 @@ class FolderListModel(
     private val nowMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) {
     private val countedAt = mutableMapOf<String, Long>()
+    private var sessionExpandedFolders: MutableSet<String>? = null
+    private val levelCache = mutableMapOf<LevelKey, List<FolderEntry>>()
 
     suspend fun loadLevel(): List<FolderRow> {
         val settings = store.load()
-        val expanded = settings.expandedFolders
+        val expanded = sessionExpanded()
         val namespaces = session.namespaces()
         val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
         val other = namespaces.filter { it.kind == NamespaceKind.Other }
@@ -47,7 +49,7 @@ class FolderListModel(
 
         for (ns in personal) {
             if (inboxDelimiter == '\u0000') inboxDelimiter = ns.delimiter
-            val level = session.listLevel(ns.prefix, null, settings.showUnreadCounts)
+            val level = listLevelCached(ns.prefix, null, settings.showUnreadCounts)
             val mark = inboxChildPrefix(ns.delimiter)
             // Prefix "INBOX." lists that mailbox's children. Do not show them as roots.
             val levelIsInboxChildren = mark != null && ns.prefix == mark
@@ -138,22 +140,78 @@ class FolderListModel(
         }
     }
 
-    suspend fun showCollapsed(mailbox: String) {
+    fun refreshLevels() {
+        levelCache.clear()
+    }
+
+    suspend fun saveDefaultView() {
+        val expanded = sessionExpanded().toSet()
         val settings = store.load()
+        store.save(settings.copy(expandedFolders = expanded))
+    }
+
+    suspend fun resetToDefault() {
+        val settings = store.load()
+        sessionExpandedFolders = settings.expandedFolders.toMutableSet()
+    }
+
+    suspend fun alwaysExpand(mailbox: String) {
+        val settings = store.load()
+        if (mailbox !in settings.expandedFolders) {
+            store.save(settings.copy(expandedFolders = settings.expandedFolders + mailbox))
+        }
+        sessionExpanded().add(mailbox)
+    }
+
+    suspend fun dontAlwaysExpand(mailbox: String) {
+        val settings = store.load()
+        if (mailbox in settings.expandedFolders) {
+            store.save(settings.copy(expandedFolders = settings.expandedFolders - mailbox))
+        }
+    }
+
+    fun collapseAll() {
+        val current = sessionExpandedFolders
+        if (current == null) {
+            sessionExpandedFolders = mutableSetOf()
+        } else {
+            current.clear()
+        }
+    }
+
+    suspend fun showCollapsed(mailbox: String) {
+        val next = sessionExpanded()
         val ancestors = ancestorMailboxes(mailbox, session.namespaces())
-        val next = settings.expandedFolders.toMutableSet()
         next.addAll(ancestors)
         next.remove(mailbox)
-        store.save(settings.copy(expandedFolders = next))
     }
 
     suspend fun toggleExpanded(mailbox: String) {
-        val settings = store.load()
-        val next = settings.expandedFolders.toMutableSet()
+        val next = sessionExpanded()
         if (!next.add(mailbox)) {
             next.remove(mailbox)
         }
-        store.save(settings.copy(expandedFolders = next))
+    }
+
+    private suspend fun sessionExpanded(): MutableSet<String> {
+        val existing = sessionExpandedFolders
+        if (existing != null) return existing
+        val copied = store.load().expandedFolders.toMutableSet()
+        sessionExpandedFolders = copied
+        return copied
+    }
+
+    private suspend fun listLevelCached(
+        prefix: String,
+        parentMailbox: String?,
+        unreadCounts: Boolean,
+    ): List<FolderEntry> {
+        val key = LevelKey(prefix, parentMailbox ?: "")
+        val hit = levelCache[key]
+        if (hit != null) return hit
+        val listed = session.listLevel(prefix, parentMailbox, unreadCounts)
+        levelCache[key] = listed
+        return listed
     }
 
     private suspend fun appendVisible(
@@ -191,13 +249,13 @@ class FolderListModel(
     private suspend fun childrenOf(node: LevelNode): List<LevelNode> {
         val unreadCounts = store.load().showUnreadCounts
         if (node.namespaceRoot) {
-            return session.listLevel(node.namespacePrefix, null, unreadCounts)
+            return listLevelCached(node.namespacePrefix, null, unreadCounts)
                 .map { entryNode(it, node.namespacePrefix) }
         }
         if (node.childrenComplete) {
             return node.cachedChildren.orEmpty()
         }
-        val fetched = session.listLevel(node.namespacePrefix, node.mailbox, unreadCounts)
+        val fetched = listLevelCached(node.namespacePrefix, node.mailbox, unreadCounts)
             .map { entryNode(it, node.namespacePrefix) }
         val seen = fetched.map { it.mailbox }.toSet()
         val extra = node.cachedChildren.orEmpty().filter { it.mailbox !in seen }
@@ -285,6 +343,8 @@ class FolderListModel(
         if (prefixed.isNotEmpty()) return prefixed.maxBy { it.prefix.length }
         return namespaces.firstOrNull { it.prefix.isEmpty() } ?: namespaces.firstOrNull()
     }
+
+    private data class LevelKey(val prefix: String, val parent: String)
 
     private data class LevelNode(
         val mailbox: String,
