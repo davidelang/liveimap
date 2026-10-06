@@ -1210,3 +1210,10 @@
 ## 2026-10-06 - contacts copy phase 2 test import
 
 - AlpineBookWriteTest imports settings.encode so the history round-trip compiles. The history behavior is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 3
+
+- Compose, Address book has the history number, Never trim, and Copy contacts. Up on the contacts route opens the copy screen. The user selects contacts, taps Copy to…, and confirms once. The copy is not started from a background load.
+- Copying into Android asks for WRITE_CONTACTS at confirm. Denial shows Contacts permission was denied. and writes nothing. Copying into pine does not ask for that permission.
+- A pine write appends one message using the last message header and the new body. The first header message is left as it is. Revisions outside the history window are marked Deleted and removed with uidExpunge of those UIDs only. Never trim and a missing UIDPLUS append and expunge nothing. A changed last UID shows the preview again and does not append on that pass.
+- No install.

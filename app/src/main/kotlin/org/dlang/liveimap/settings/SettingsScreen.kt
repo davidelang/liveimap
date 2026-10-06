@@ -210,6 +210,7 @@ fun SettingsGroupScreen(
     onOpenExpanded: () -> Unit,
     onOpenViews: () -> Unit,
     onOpenStarts: () -> Unit,
+    onCopyContacts: () -> Unit,
 ) {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
@@ -218,7 +219,7 @@ fun SettingsGroupScreen(
         SettingsGroup.Mailboxes -> MailboxesGroup(editor)
         SettingsGroup.Folders -> FoldersGroup(editor, onOpenExpanded, onOpenViews, onOpenStarts)
         SettingsGroup.Reading -> ReadingGroup(editor)
-        SettingsGroup.Compose -> ComposeGroup(editor)
+        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts)
         SettingsGroup.Appearance -> AppearanceGroup(editor)
         SettingsGroup.Debug -> DebugGroup(editor)
     }
@@ -737,7 +738,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun ComposeGroup(editor: SettingsEditor) {
+private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit) {
     val sections = rememberSectionOpen("replying")
     val settings = editor.settings
     SettingsPage {
@@ -790,6 +791,39 @@ private fun ComposeGroup(editor: SettingsEditor) {
             onToggle = { sections.toggle("address-completion") },
         ) {
             AddressCompletionRows(editor)
+        }
+        SettingsSection(
+            title = "Address book",
+            summary = if (settings.addressBookNeverTrim) {
+                "Never trim"
+            } else {
+                "History ${settings.addressBookHistory}"
+            },
+            expanded = "address-book" in sections.open,
+            onToggle = { sections.toggle("address-book") },
+        ) {
+            LineField(
+                "Address book history",
+                settings.addressBookHistory.toString(),
+                keyboardType = KeyboardType.Number,
+                ready = editor.ready,
+                interpret = { draft, _ ->
+                    val text = draft.trim()
+                    if (text.isEmpty() || text.any { !it.isDigit() }) {
+                        null
+                    } else {
+                        text.toIntOrNull()?.toString()
+                    }
+                },
+                onCommit = { text ->
+                    val number = text.toIntOrNull()
+                    if (number != null) editor.persist(editor.settings.copy(addressBookHistory = number))
+                },
+            )
+            BoolField("Never trim", settings.addressBookNeverTrim) {
+                editor.persist(editor.settings.copy(addressBookNeverTrim = it))
+            }
+            OpenRow("Copy contacts", onCopyContacts)
         }
     }
 }

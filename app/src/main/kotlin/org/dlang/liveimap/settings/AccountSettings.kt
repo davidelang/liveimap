@@ -517,6 +517,17 @@ private fun decodeCompletionSources(value: String?): List<String> {
 fun androidSourceId(accountType: String, accountName: String): String =
     "android|${percentEncode(accountType)}|${percentEncode(accountName)}"
 
+fun androidAccountOf(id: String): Pair<String, String>? {
+    if (!id.startsWith("android|")) return null
+    val parts = id.removePrefix("android|").split('|', limit = 2)
+    if (parts.size != 2) return null
+    return try {
+        percentDecode(parts[0]) to percentDecode(parts[1])
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
 fun looksLikeEmail(value: String): Boolean {
     val trimmed = value.trim()
     if (trimmed.any { it.isWhitespace() }) return false

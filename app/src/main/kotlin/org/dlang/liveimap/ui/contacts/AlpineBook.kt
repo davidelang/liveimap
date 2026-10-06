@@ -123,6 +123,133 @@ fun revisionsToExpunge(
 private fun alpineField(value: String): String =
     value.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
 
+data class PineBookState(
+    val headerUid: Long,
+    val lastUid: Long,
+    val headerBytes: ByteArray,
+    val separator: ByteArray,
+    val entries: List<AlpineEntry>,
+    val uids: List<Long>,
+)
+
+sealed class PineRead {
+    data class Ready(val state: PineBookState) : PineRead()
+    data class NotBook(val notice: String) : PineRead()
+}
+
+sealed class PineWriteResult {
+    data class Stale(val state: PineBookState) : PineWriteResult()
+    data class Wrote(val expunged: List<Long>) : PineWriteResult()
+    data class NotBook(val notice: String) : PineWriteResult()
+}
+
+suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
+    if (mailbox.isEmpty()) return PineRead.NotBook("Address book mailbox is not set")
+    val selected = session.select(mailbox)
+    if (selected.exists <= 0) return PineRead.NotBook("This mailbox is not an Alpine address book")
+    val rows = session.fetchIndex(
+        IndexRequest(
+            mailbox = mailbox,
+            mode = IndexMode.ArrivalRange,
+            firstSequence = 1,
+            lastSequence = selected.exists,
+            limit = selected.exists,
+            prefetch = 0,
+        ),
+    )
+    if (rows.isEmpty()) return PineRead.NotBook("This mailbox is not an Alpine address book")
+    val ordered = rows.sortedBy { it.sequence }
+    val header = ordered.first()
+    val last = ordered.last()
+    val headerMessage = session.fetchRfc822(header.uid)
+    if (!hasPineAddrbookHeader(headerMessage)) {
+        return PineRead.NotBook("This mailbox is not an Alpine address book")
+    }
+    val lastMessage = if (last.uid == header.uid) headerMessage else session.fetchRfc822(last.uid)
+    val split = headerAndSeparator(lastMessage)
+        ?: return PineRead.NotBook("This mailbox is not an Alpine address book")
+    if (!looksLikeHeaders(split.header)) {
+        return PineRead.NotBook("This mailbox is not an Alpine address book")
+    }
+    return PineRead.Ready(
+        PineBookState(
+            headerUid = header.uid,
+            lastUid = last.uid,
+            headerBytes = split.header,
+            separator = split.separator,
+            entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
+            uids = ordered.map { it.uid },
+        ),
+    )
+}
+
+suspend fun writePineBook(
+    session: MailSession,
+    mailbox: String,
+    expectedLastUid: Long,
+    entries: List<AlpineEntry>,
+    history: Int,
+    neverTrim: Boolean,
+): PineWriteResult {
+    val state = when (val read = readPineBook(session, mailbox)) {
+        is PineRead.NotBook -> return PineWriteResult.NotBook(read.notice)
+        is PineRead.Ready -> read.state
+    }
+    if (state.lastUid != expectedLastUid) return PineWriteResult.Stale(state)
+    val body = formatAlpineBook(entries).toByteArray(Charsets.UTF_8)
+    val message = ByteArray(state.headerBytes.size + state.separator.size + body.size)
+    System.arraycopy(state.headerBytes, 0, message, 0, state.headerBytes.size)
+    System.arraycopy(state.separator, 0, message, state.headerBytes.size, state.separator.size)
+    System.arraycopy(body, 0, message, state.headerBytes.size + state.separator.size, body.size)
+    val appended = session.appendReturningUid(mailbox, message, emptySet())
+    val uids = when (val after = readPineBook(session, mailbox)) {
+        is PineRead.Ready -> {
+            val listed = after.state.uids
+            if (appended > 0L && appended !in listed) listed + appended else listed
+        }
+        is PineRead.NotBook -> if (appended > 0L) state.uids + appended else state.uids
+    }
+    val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+    val expunge = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
+    if (expunge.isNotEmpty()) {
+        session.storeFlags(expunge, setOf("\\Deleted"), emptySet())
+        session.uidExpunge(expunge)
+    }
+    return PineWriteResult.Wrote(expunge)
+}
+
+private data class SplitMessage(val header: ByteArray, val separator: ByteArray, val body: ByteArray)
+
+private fun headerAndSeparator(bytes: ByteArray): SplitMessage? {
+    var i = 0
+    while (i < bytes.size) {
+        if (i + 3 < bytes.size &&
+            bytes[i] == '\r'.code.toByte() &&
+            bytes[i + 1] == '\n'.code.toByte() &&
+            bytes[i + 2] == '\r'.code.toByte() &&
+            bytes[i + 3] == '\n'.code.toByte()
+        ) {
+            return SplitMessage(
+                bytes.copyOfRange(0, i),
+                byteArrayOf(13, 10, 13, 10),
+                bytes.copyOfRange(i + 4, bytes.size),
+            )
+        }
+        if (i + 1 < bytes.size &&
+            bytes[i] == '\n'.code.toByte() &&
+            bytes[i + 1] == '\n'.code.toByte()
+        ) {
+            return SplitMessage(
+                bytes.copyOfRange(0, i),
+                byteArrayOf(10, 10),
+                bytes.copyOfRange(i + 2, bytes.size),
+            )
+        }
+        i++
+    }
+    return null
+}
+
 fun pickedAddresses(entry: AlpineEntry): List<SelectedAddress> {
     val address = entry.address.trim()
     if (isDistributionList(address)) {

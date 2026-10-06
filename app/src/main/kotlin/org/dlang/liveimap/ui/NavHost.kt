@@ -77,6 +77,7 @@ import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.about.LicensesScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
+import org.dlang.liveimap.ui.contacts.ContactCopyScreen
 import org.dlang.liveimap.ui.compose.UnsentScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
@@ -386,8 +387,14 @@ fun LiveImapNavHost() {
                             onOpenExpanded = { navController.navigate("settings/folders/expanded") },
                             onOpenViews = { navController.navigate("settings/folders/views") },
                             onOpenStarts = { navController.navigate("settings/folders/starts") },
+                            onCopyContacts = { navController.navigate("contacts") },
                         )
                     }
+                }
+            }
+            composable("contacts") {
+                UpPage("Copy contacts", onUp = { navController.popBackStack() }) {
+                    ContactCopyScreen()
                 }
             }
             composable("help") {
