@@ -3,6 +3,7 @@ package org.dlang.liveimap.ui.contacts
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.androidSourceId
 import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

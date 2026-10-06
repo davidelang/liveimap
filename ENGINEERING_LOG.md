@@ -1172,3 +1172,7 @@
 - completeAddress ranks an exact nickname, ignoring case, ahead of a display name or email that contains the typed text. Within one rank the earlier source stays first. A parenthesized distribution list is one suggestion whose members come from pickedAddresses.
 - completionSources is missing as pine and empty as no sources. The default pine-only list is not written. Other lists are percent-encoded and comma-separated. An Android id is android, the encoded account type, and the encoded account name.
 - loadAlpineBook is unchanged. No install.
+
+## 2026-10-06 - contacts completion phase 1 test import
+
+- CompletionTest imports settings.encode so the completionSources round-trip compiles. The phase 1 ranking behavior is unchanged. No install.
