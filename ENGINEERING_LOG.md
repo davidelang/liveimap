@@ -1341,3 +1341,8 @@
 - Index bar, menus, dialogs, empty text, and the new-mail pill come from strings.xml. Wording stays the same except one versus many for the pill and the thread warning.
 - emptyIndexText takes the empty sentence and the query format. A blank query returns the sentence. Any other query uses the format with the query and the mailbox. Filter kinds, start-rule labels, and relative dates stay.
 - MessageIndexScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Index strings phase 1 test gate
+
+- IndexWindowTest at 2026-10-06 04:20:45 MST: 54 tests, 1 failed, 0 errors, 0 skipped. The failure is the known orderedSubjectHiddenUnlessAdvertised at IndexWindowTest.kt:175. emptyIndexTextBlankAndQuery passed. No install.
+- assembleDebug follows so the builds tag can move. The earlier testDebugUnitTest exit left the tag unmoved.
