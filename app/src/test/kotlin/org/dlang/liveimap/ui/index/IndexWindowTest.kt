@@ -536,7 +536,8 @@ class IndexWindowTest {
         assertEquals(IndexMode.ArrivalNewest, newestSession.fetchRequests.last().mode)
         assertEquals(2, newestSession.fetchRequests.last().limit)
         assertEquals((12L downTo 1L).toList(), newest.rows.map { it.uid })
-        assertEquals(0, newest.pendingNew)
+        assertEquals(2, newest.pendingNew)
+        assertFalse(newest.newMailUnnumbered)
 
         val oldestSession = folder(10)
         val oldest = IndexModel(
@@ -553,7 +554,8 @@ class IndexWindowTest {
         assertEquals(oldestFetches + 1, oldestSession.fetchRequests.size)
         assertEquals(IndexMode.ArrivalNewest, oldestSession.fetchRequests.last().mode)
         assertEquals((1L..12L).toList(), oldest.rows.map { it.uid })
-        assertEquals(0, oldest.pendingNew)
+        assertEquals(2, oldest.pendingNew)
+        assertFalse(oldest.newMailUnnumbered)
     }
 
     @Test
@@ -573,6 +575,63 @@ class IndexWindowTest {
         assertEquals(before, model.rows.map { it.uid })
         assertEquals(2, model.pendingNew)
         assertEquals(fetches, session.fetchRequests.size)
+        assertFalse(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun newMailInSortedViewDoesNotReload() {
+        val session = folder(10)
+        session.sortUids = (1L..10L).toList()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        val fetches = session.fetchRequests.size
+        val sorts = session.sortCalls.size
+        val before = model.rows.map { it.uid }
+        session.exists = 11
+        session.rows[11L] = row(11L)
+        runImmediate { model.applyChange(MailboxChange.Exists(11)) }
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(sorts, session.sortCalls.size)
+        assertTrue(session.searchCalls.isEmpty())
+        assertEquals(before, model.rows.map { it.uid })
+        assertEquals(0, model.pendingNew)
+        assertTrue(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun newMailWhileSearchingDoesNotReload() {
+        val session = folder(10)
+        session.searchUids = listOf(2L, 4L, 6L)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applySearch("needle") }
+        val fetches = session.fetchRequests.size
+        val searches = session.searchCalls.toList()
+        val before = model.rows.map { it.uid }
+        session.exists = 12
+        session.rows[11L] = row(11L)
+        session.rows[12L] = row(12L)
+        runImmediate { model.applyChange(MailboxChange.Exists(12)) }
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(searches, session.searchCalls)
+        assertEquals(before, model.rows.map { it.uid })
+        assertEquals(0, model.pendingNew)
+        assertTrue(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun flagAndExpungeDoNotRaiseNewMail() {
+        val session = folder(10)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applyChange(MailboxChange.Flags(1L, setOf("\\Seen"))) }
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+        assertEquals(setOf("\\Seen"), model.rows.first { it.uid == 1L }.flags)
+        session.exists = 9
+        runImmediate { model.applyChange(MailboxChange.Expunge(9)) }
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
     }
 
     @Test

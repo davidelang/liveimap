@@ -993,3 +993,21 @@
 - scrollToStart after open, sort, direction, filter, and search; Show uses scrollToNewestEnd
 - Keep-top records the visible uid; Arrival locates it with an uncached sequence search
 - New mail shows the snackbar and does not scroll; undo and expunge keep the anchor
+
+## 2026-10-05 - Index new-mail pill execution start
+
+- Approved plan: sandbox/plans/index-new-mail-pill-20261005-2130-plan.md
+- Status: APPROVED
+- Worktree: /home/dlang/git/liveimap/master branch master
+- builds before edit: f45cbba
+- Phase 1: Arrival growth keeps pendingNew; a sort, filter, or search sets newMailUnnumbered and does not fetch
+- Phase 2: replace the new-mail snackbar with the pill; hold the first visible row across a prepend
+- Known failures not fixed here: IndexWindowTest.orderedSubjectHiddenUnlessAdvertised, AccountSettingsTest.defaultsRoundTrip
+- No deploy. Do not install. Do not send, append, expunge, or edit the address book
+
+## 2026-10-05 - Index new-mail pill phase 1
+
+- applyArrivalGrowth keeps pendingNew as the running growth, including when the new tail is inserted
+- Exists during a search, a filter, or a non-Arrival sort sets newMailUnnumbered, leaves pendingNew at 0, and does not fetch
+- Flags and Expunge do not set that flag
+- IndexWindowTest: one known failure, orderedSubjectHiddenUnlessAdvertised. The new-mail tests passed

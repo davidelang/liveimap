@@ -321,6 +321,9 @@ class IndexModel(
     var pendingNew: Int = 0
         private set
 
+    var newMailUnnumbered: Boolean = false
+        private set
+
     var notice: String? = null
         private set
 
@@ -445,6 +448,11 @@ class IndexModel(
         honourKeep = false
         keepSnapshot = null
         return replaceWindow { fetchCurrent() }
+    }
+
+    fun acknowledgeNewMail() {
+        pendingNew = 0
+        newMailUnnumbered = false
     }
 
     suspend fun applyView(next: FolderView): List<IndexRow> {
@@ -701,8 +709,10 @@ class IndexModel(
                 }
             }
             is MailboxChange.Exists -> {
-                if (activeSearch != null || view.key != SortKey.Arrival) {
-                    reloadKeepingAnchor()
+                if (activeSearch != null || filterUids != null || view.key != SortKey.Arrival) {
+                    if (change.exists > 0) knownExists = change.exists
+                    pendingNew = 0
+                    newMailUnnumbered = true
                 } else {
                     applyArrivalGrowth(change.exists)
                 }
@@ -1061,12 +1071,9 @@ class IndexModel(
             if (filterUids == null) arrivalTotal = existsNow
         }
         if (growth <= 0) return
-        if (wasAtEnd) {
-            addNewTail(growth)
-            pendingNew = 0
-        } else {
-            pendingNew += growth
-        }
+        if (wasAtEnd) addNewTail(growth)
+        pendingNew += growth
+        newMailUnnumbered = false
     }
 
     private fun includesNewest(bound: Int): Boolean {
