@@ -1394,3 +1394,15 @@
 - composeTitle takes Reply, Reply all, Forward, and Compose. Bounce, a new message, and a resumed draft use Compose. The send icon is compose_send, or reader_retry when the held copy is append-only.
 - The Unsent button compares the notice and status with compose_accepted and unsent_not_sent. forwardHeaderBody takes the header already formatted with compose_quote_header. The leading newline stays at the call. oppositeForwardLabel is unchanged.
 - ComposeScreen.kt has no Text(", no contentDescription = ", no notice = ", and no status = ". No install.
+
+## 2026-10-06 - Settings strings execution start
+
+- Approved plan: sandbox/plans/settings-strings-20261006-1310-plan.md
+- Phase 1: settings screen titles, fields, buttons, and notices come from strings.xml. Wording stays the same except settings_expanded, settings_omitted, and settings_sources. Shared label functions stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Settings strings phase 1
+
+- Settings screen titles, fields, buttons, and notices come from strings.xml. Wording stays the same except settings_expanded, settings_omitted, and settings_sources.
+- SettingsGroup.title reads that group's resource. Compose uses compose_new. Debug uses settings_debug. Shared label results are still passed into the summaries. One omitted pinerc line uses the singular settings_omitted.
+- SettingsScreen.kt has no Text(" and no contentDescription = ". No install.
