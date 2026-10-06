@@ -211,8 +211,11 @@ Avoid:
   as deleted on IMAP, Move to Trash on JMAP) and Settings says why.
 * **Availability** of each action = the delete-policy setting × the server
   capability (UIDPLUS for `UID EXPUNGE`; a known Trash mailbox; MOVE for the
-  IMAP MOVE method) × Auto-expunge (which decides whether leaving the folder
-  expunges).
+  IMAP MOVE method) × Auto-expunge. Auto-expunge matters only for copy, then
+  mark deleted: the source copy stays marked `\Deleted` until an expunge the
+  user asks for or a leave with Auto-expunge on. With `UID MOVE` the server
+  removes exactly the moved source UIDs at once, and Auto-expunge has no effect
+  on that.
 * **Inside Trash.** In the Trash mailbox itself, Move to Trash becomes Delete
   permanently when the server supports it, otherwise Mark as deleted. With
   "Confirm before expunge" on, that delete first warns that it will remove the
@@ -265,8 +268,8 @@ Avoid:
 * The simple bar always searches the **current folder**. Scope (subfolders,
   subscribed folders, all folders) is only on the Advanced page.
 * **Never full text by default.** `TEXT` and `BODY` searches are offered only on
-  the Advanced page, with a cost note. Folders hold 244k messages (asgard
-  INBOX) to about 1M (test server); a full-text search there is expensive.
+  the Advanced page, with a cost note. Folders hold hundreds of thousands of
+  messages; a full-text search there is expensive.
 * Participating is `OR OR FROM x TO x CC x`. Non-ASCII text uses
   `CHARSET UTF-8`.
 * The Advanced page holds multi-field searches: field, value and Not per row,
@@ -418,19 +421,18 @@ Avoid:
 
 ## Testing
 
-* Tests run only against test servers: lab servers, and dedicated test
-  accounts (`liveimap@lang.hm` and others) on sun (10.0.0.1), moon (10.0.0.2)
-  and asgard (10.0.0.100). Those three hold real mail: no test, tool or agent
-  changes a real account, and test tools log in only as an allowlisted test
-  account. The test accounts live on asgard and are replicated to sun and
-  moon, so writes go to asgard and the replicas are read-only. Test entries
-  use sun:143 and moon:143 (sun's port 993 is reported to forward to asgard); asgard is the
-  only read-write real host. Sends go only to david@lang.hm.
-* Every test server starts from one versioned seed (accounts, folder tree,
+* Tests run only against test servers: lab servers, and test servers the
+  user configures at test time. A configured test server may be a real mail
+  server used only through its test accounts: no test, tool or agent changes a
+  real account, and test tools log in only as an allowlisted test account.
+  Each configured server has a role, read-write or read-only (for example a
+  replica); only a read-write one takes writes. The docs name no particular
+  host. Sends go only to the test recipient set at test time.
+* Every lab server starts from one versioned seed (accounts, folder tree,
   message corpus) with a profile: base by default, and an optional scale
   profile (a 100,000-message folder and 1,000 folders) chosen per server
   because it takes a lot of space. Each lab server is reset to its seed with
-  one command, and the test servers are reset before a full regression run.
+  one command, and the lab servers are reset before a full regression run.
   Lab servers run as pinned containers on one lab host, each on its own ports, reachable from the LAN only. Site values come from host settings, and the repo holds only the setup scripts, pins and seed generator.
 * Automated acceptance tests run on the device from a drawer entry, only
   against entries marked as test servers in Debug settings. Tests that change
