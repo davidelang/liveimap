@@ -400,6 +400,15 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun locateUid(uid: Long): List<Long> = keeper.read("search") {
+        val ids = nativeLocateUid(
+            requireHandle(),
+            uid,
+            searchKind(advertised()) == "Esearch",
+        ) ?: throw MailFailure("search failed")
+        ids.toList()
+    }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         if (key == SortKey.Arrival) {
             throw MailFailure("use an arrival IndexMode")
@@ -668,6 +677,8 @@ class LibetpanMailSession : MailSession {
         edge: String,
         useEsearch: Boolean,
     ): LongArray?
+
+    private external fun nativeLocateUid(handle: Long, uid: Long, useEsearch: Boolean): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)

@@ -43,6 +43,8 @@ class DisconnectedMailSession : MailSession {
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         notConnected()
 
+    override suspend fun locateUid(uid: Long): List<Long> = notConnected()
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = notConnected()
 
     override suspend fun thread(key: SortKey): ThreadNode = notConnected()

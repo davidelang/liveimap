@@ -4385,6 +4385,30 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchStart(JNIEnv * en
     return runEdgeSearch(env, session, key, byUid == JNI_TRUE, edgeChars.c(), useEsearch == JNI_TRUE);
 }
 
+struct mailimap_search_key * uidOnlyKey(uint32_t uid) {
+    struct mailimap_set * set = mailimap_set_new_single(uid);
+    if (set == nullptr) return nullptr;
+    struct mailimap_search_key * key = mailimap_search_key_new_uid(set);
+    if (key == nullptr) mailimap_set_free(set);
+    return key;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeLocateUid(JNIEnv * env, jobject, jlong handle,
+    jlong uid, jboolean useEsearch) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    if (uid <= 0 || uid > 0xffffffffll) {
+        throwFailure(env, "bad search");
+        unlockSession(session);
+        return nullptr;
+    }
+    struct mailimap_search_key * key = uidOnlyKey(static_cast<uint32_t>(uid));
+    const char * edge = useEsearch == JNI_TRUE ? "Min" : "All";
+    return runEdgeSearch(env, session, key, false, edge, useEsearch == JNI_TRUE);
+}
+
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobject, jlong handle,
     jstring keyName, jboolean newestFirst, jboolean useEsort) {

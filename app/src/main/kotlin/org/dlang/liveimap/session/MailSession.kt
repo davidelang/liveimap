@@ -36,6 +36,8 @@ interface MailSession {
     suspend fun searchCriterion(kind: String, argument: String): List<Long>
     suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         throw MailFailure("searchStart")
+
+    suspend fun locateUid(uid: Long): List<Long> = throw MailFailure("locateUid")
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
     suspend fun thread(key: SortKey): ThreadNode
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)

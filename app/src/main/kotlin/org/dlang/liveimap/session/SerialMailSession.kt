@@ -100,6 +100,8 @@ class SerialMailSession(
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         onLane { inner.searchStart(rule, byUid, edge) }
 
+    override suspend fun locateUid(uid: Long): List<Long> = onLane { inner.locateUid(uid) }
+
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> =
         onLane { inner.sort(key, newestFirst) }
 

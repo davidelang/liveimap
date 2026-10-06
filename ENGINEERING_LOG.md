@@ -986,3 +986,10 @@
 - Phase 0: no tracked modifications. builds tag 13430ae
 - Known failures not fixed here: IndexWindowTest.orderedSubjectHiddenUnlessAdvertised, AccountSettingsTest.defaultsRoundTrip
 - Phase 1: StartRule settings, pinerc mapping, searchStart through native, parseEsearch MIN/MAX
+
+## 2026-10-05 - index start position phase 2
+
+- Phase 2: locateStart, startIndex, and the window anchor around that row
+- scrollToStart after open, sort, direction, filter, and search; Show uses scrollToNewestEnd
+- Keep-top records the visible uid; Arrival locates it with an uncached sequence search
+- New mail shows the snackbar and does not scroll; undo and expunge keep the anchor

@@ -8,14 +8,17 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartAfterChange
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
+import org.dlang.liveimap.settings.startRuleFor
 import org.dlang.liveimap.settings.withFolderStart
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.ui.compose.mailboxLeaf
@@ -265,11 +268,6 @@ fun followingUid(uids: List<Long>, current: Long): Long? {
 
 fun newestAtEnd(view: FolderView): Boolean = !view.newestFirst
 
-private fun timeOrdered(key: SortKey): Boolean = when (key) {
-    SortKey.Arrival, SortKey.Date, SortKey.ThreadReferences, SortKey.ThreadOrderedSubject -> true
-    else -> false
-}
-
 internal object OpenMessageOrder {
     var mailbox: String = ""
         private set
@@ -308,6 +306,14 @@ class IndexModel(
     private val filterStack = ArrayDeque<Set<Long>>()
     private val appliedFilters = ArrayList<AppliedFilter>()
     private var lastVisibleIndex: Int = 0
+    private var startInHeld: Int = 0
+    private var pendingNotice: String? = null
+    private var honourKeep: Boolean = false
+    private var keepSnapshot: Long? = null
+    private var forceNewest: Boolean = false
+    private var windowFailed: Boolean = false
+    private var placedStart: Boolean = false
+    private var notedTop: Long? = null
     private var threading = false
     private var threadPlan: List<CollapsedThread> = emptyList()
     private var knownExists: Int = 0
@@ -402,11 +408,23 @@ class IndexModel(
     val anchorPage: Int
         get() = pageAnchor
 
-    val initialIndex: Int
+    val startIndex: Int
+        get() = if (heldRows.isEmpty()) 0 else startInHeld.coerceIn(0, heldRows.lastIndex)
+
+    val newestHeldIndex: Int
         get() {
-            if (heldRows.isEmpty() || !newestAtEnd(view) || !timeOrdered(view.key)) return 0
-            return heldRows.lastIndex
+            if (heldRows.isEmpty()) return 0
+            val best = if (view.key == SortKey.Arrival && filterUids == null && activeSearch == null) {
+                heldRows.maxBy { it.sequence }
+            } else {
+                heldRows.maxBy { it.uid }
+            }
+            return heldRows.indexOf(best).coerceAtLeast(0)
         }
+
+    fun noteTopUid(uid: Long?) {
+        notedTop = uid
+    }
 
     val showsNewestEnd: Boolean
         get() = includesNewest(if (arrivalTotal > 0) arrivalTotal else order.size)
@@ -416,6 +434,16 @@ class IndexModel(
 
     suspend fun loadWindow(): List<IndexRow> {
         activeSearch = null
+        honourKeep = false
+        forceNewest = false
+        keepSnapshot = null
+        return replaceWindow { fetchCurrent() }
+    }
+
+    suspend fun jumpToNewest(): List<IndexRow> {
+        forceNewest = true
+        honourKeep = false
+        keepSnapshot = null
         return replaceWindow { fetchCurrent() }
     }
 
@@ -430,6 +458,7 @@ class IndexModel(
         appliedFilters.clear()
         includePreview = saved.density != Density.Compact
         view = next
+        armKeep()
         return replaceWindow { fetchView(next) }
     }
 
@@ -441,11 +470,13 @@ class IndexModel(
         if (query.isEmpty()) {
             if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
+            armKeep()
             return replaceWindow { fetchCurrent() }
         }
         account = store.load()
         includePreview = account.density != Density.Compact
         activeSearch = query
+        armKeep()
         return replaceWindow { fetchSearch(query) }
     }
 
@@ -476,8 +507,9 @@ class IndexModel(
             appliedFilters.clear()
             appliedFilters.add(chip)
         }
+        armKeep()
         val rows = replaceWindow { fetchCurrent() }
-        if (notice != null) {
+        if (windowFailed) {
             filterUids = savedUids
             filterStack.clear()
             filterStack.addAll(savedStack)
@@ -498,8 +530,9 @@ class IndexModel(
         filterStack.clear()
         activeSearch = null
         appliedFilters.clear()
+        armKeep()
         val rows = replaceWindow { fetchCurrent() }
-        if (notice != null) {
+        if (windowFailed) {
             filterUids = savedUids
             filterStack.clear()
             filterStack.addAll(savedStack)
@@ -519,8 +552,9 @@ class IndexModel(
         filterUids = filterStack.removeLast()
         if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
         activeSearch = null
+        armKeep()
         val rows = replaceWindow { fetchCurrent() }
-        if (notice != null) {
+        if (windowFailed) {
             filterUids = savedUids
             filterStack.clear()
             filterStack.addAll(savedStack)
@@ -543,8 +577,9 @@ class IndexModel(
         }
         appliedFilters.subList(index, appliedFilters.size).clear()
         activeSearch = null
+        armKeep()
         val rows = replaceWindow { fetchCurrent() }
-        if (notice != null) {
+        if (windowFailed) {
             filterUids = savedUids
             filterStack.clear()
             filterStack.addAll(savedStack)
@@ -672,9 +707,10 @@ class IndexModel(
                     applyArrivalGrowth(change.exists)
                 }
             }
-            is MailboxChange.Expunge,
-            MailboxChange.UidValidityReset,
-            -> {
+            is MailboxChange.Expunge -> {
+                if (loadedWindow) reloadKeepingAnchor()
+            }
+            MailboxChange.UidValidityReset -> {
                 replaceWindow { fetchCurrent() }
             }
             MailboxChange.WatchLost,
@@ -778,7 +814,7 @@ class IndexModel(
             }
             notice = null
             mailUndo = null
-            if (loadedWindow) return replaceWindow { fetchCurrent() }
+            if (loadedWindow) return reloadKeepingAnchor()
         } catch (failure: MailFailure) {
             notice = failure.text
         }
@@ -817,7 +853,8 @@ class IndexModel(
             notice = failure.text
             return heldRows
         }
-        return replaceWindow { fetchCurrent() }
+        if (!loadedWindow) return heldRows
+        return reloadKeepingAnchor()
     }
 
     suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
@@ -829,7 +866,8 @@ class IndexModel(
             return heldRows
         }
         mailUndo = null
-        return replaceWindow { fetchCurrent() }
+        if (!loadedWindow) return heldRows
+        return reloadKeepingAnchor()
     }
 
     suspend fun performSwipe(uid: Long, binding: SwipeBinding): IndexCommand {
@@ -879,10 +917,14 @@ class IndexModel(
         val previousPlan = threadPlan
         pageAnchor = 0
         lastVisibleIndex = 0
+        placedStart = false
+        windowFailed = false
         try {
             heldRows = load()
             loadedWindow = true
-            notice = null
+            notice = pendingNotice
+            pendingNotice = null
+            if (!placedStart) lastVisibleIndex = previousIndex
             rememberExists()
             publishMessageOrder()
         } catch (failure: MailFailure) {
@@ -893,6 +935,10 @@ class IndexModel(
             threadMembers = previousMembers
             threading = previousThreading
             threadPlan = previousPlan
+            windowFailed = true
+            pendingNotice = null
+            forceNewest = false
+            honourKeep = false
             notice = failure.text
         }
         return heldRows
@@ -931,11 +977,13 @@ class IndexModel(
         val keep = filterUids
         if (keep != null) {
             val sorted = if (newestFirst) keep.sortedDescending() else keep.sorted()
-            pageAnchor = clampedAnchor(sorted.size, preserveAnchor, !newestFirst)
-            val loaded = pagesOf(sorted)
             order = sorted
             arrivalTotal = 0
             pendingNew = 0
+            val target = resolveTarget(sorted.size, preserveAnchor)
+            pageAnchor = clampedAnchor(sorted.size, preserveAnchor, target ?: 0)
+            val loaded = pagesOf(sorted)
+            if (target != null) rememberStart(target, loaded.size)
             return loaded
         }
         val exists = session.selectedExists()
@@ -955,14 +1003,18 @@ class IndexModel(
             pageAnchor = 0
             arrivalTotal = 0
             pendingNew = 0
+            val target = resolveTarget(0, preserveAnchor)
+            if (target != null) rememberStart(0, 0)
             return emptyList()
         }
         val previousTotal = arrivalTotal
         arrivalTotal = exists
-        pageAnchor = clampedAnchor(exists, preserveAnchor, !newestFirst)
+        val target = resolveTarget(exists, preserveAnchor)
+        pageAnchor = clampedAnchor(exists, preserveAnchor, target ?: 0)
         return try {
             val loaded = fetchArrivalWindow()
             pendingNew = 0
+            if (target != null) rememberStart(target, loaded.size)
             loaded
         } catch (failure: MailFailure) {
             arrivalTotal = previousTotal
@@ -1025,12 +1077,184 @@ class IndexModel(
         return pageAnchor in start..lastPage
     }
 
-    private fun clampedAnchor(count: Int, preserveAnchor: Int?, end: Boolean): Int {
+    private fun clampedAnchor(count: Int, preserveAnchor: Int?, target: Int): Int {
         if (count <= 0) return 0
         val lastPage = (count - 1) / IndexPageSize
         if (preserveAnchor != null) return preserveAnchor.coerceIn(0, lastPage)
-        if (end && lastPage > 0) return lastPage - 1
-        return 0
+        val maxAnchor = (lastPage - 1).coerceAtLeast(0)
+        val raw = ((target - IndexPageSize / 4).coerceAtLeast(0) / IndexPageSize)
+        return raw.coerceIn(0, maxAnchor)
+    }
+
+    private fun rememberStart(target: Int, loadedCount: Int) {
+        placedStart = true
+        if (loadedCount <= 0) {
+            startInHeld = 0
+            lastVisibleIndex = 0
+            return
+        }
+        val index = (target - pageAnchor * IndexPageSize).coerceIn(0, loadedCount - 1)
+        startInHeld = index
+        lastVisibleIndex = index
+    }
+
+    private fun armKeep() {
+        val noted = notedTop
+        notedTop = null
+        if (account.startAfterChange != StartAfterChange.KeepTopVisible) {
+            honourKeep = false
+            keepSnapshot = null
+            return
+        }
+        honourKeep = true
+        keepSnapshot = noted ?: heldRows.getOrNull(lastVisibleIndex)?.uid
+    }
+
+    private fun hasEsearch(): Boolean =
+        session.capabilities.any { it.equals("ESEARCH", ignoreCase = true) }
+
+    private fun usesArrivalSequences(): Boolean =
+        view.key == SortKey.Arrival && filterUids == null && activeSearch == null && arrivalTotal > 0
+
+    private suspend fun resolveTarget(count: Int, preserveAnchor: Int?): Int? {
+        if (preserveAnchor != null) {
+            honourKeep = false
+            forceNewest = false
+            keepSnapshot = null
+            return null
+        }
+        if (forceNewest) {
+            forceNewest = false
+            honourKeep = false
+            keepSnapshot = null
+            if (count <= 0) return 0
+            return newestDisplayIndex(count)
+        }
+        if (honourKeep) {
+            honourKeep = false
+            val uid = keepSnapshot
+            keepSnapshot = null
+            if (uid != null && count > 0) {
+                val found = findKeptIndex(uid, count)
+                if (found != null) return found
+            }
+        }
+        if (count <= 0) return 0
+        return locateStart(count)
+    }
+
+    private suspend fun locateStart(count: Int): Int {
+        val found = locateRule(startRuleFor(mailbox, account), count)
+        return found ?: newestDisplayIndex(count)
+    }
+
+    private suspend fun locateRule(rule: StartRule, count: Int): Int? {
+        if (rule == StartRule.Newest) return newestDisplayIndex(count)
+        if (rule == StartRule.First || rule == StartRule.Last) {
+            if (usesArrivalSequences() && hasEsearch()) return arrivalSearchedIndex(rule, count)
+            return if (rule == StartRule.First) 0 else (count - 1).coerceAtLeast(0)
+        }
+        return flagIndex(rule, count)
+    }
+
+    private fun preferMax(rule: StartRule): Boolean {
+        val bottom = rule == StartRule.Last
+        return if (bottom) !view.newestFirst else view.newestFirst
+    }
+
+    private fun newestDisplayIndex(count: Int): Int {
+        if (count <= 0) return 0
+        if (usesArrivalSequences()) return if (view.newestFirst) 0 else count - 1
+        if (threading) {
+            var best = 0
+            var bestUid = Long.MIN_VALUE
+            for ((index, part) in threadPlan.withIndex()) {
+                var top = part.rootUid
+                for (uid in part.hiddenUids) if (uid > top) top = uid
+                if (top > bestUid) {
+                    bestUid = top
+                    best = index
+                }
+            }
+            return best
+        }
+        var best = 0
+        var bestUid = Long.MIN_VALUE
+        for ((index, uid) in order.withIndex()) {
+            if (uid > bestUid) {
+                bestUid = uid
+                best = index
+            }
+        }
+        return best.coerceIn(0, (count - 1).coerceAtLeast(0))
+    }
+
+    private suspend fun arrivalSearchedIndex(rule: StartRule, count: Int): Int? {
+        val max = preferMax(rule)
+        val edge = if (hasEsearch()) {
+            if (max) SearchEdge.Max else SearchEdge.Min
+        } else {
+            SearchEdge.All
+        }
+        val matches = try {
+            session.searchStart(rule, false, edge)
+        } catch (failure: MailFailure) {
+            if (pendingNotice == null) pendingNotice = failure.text
+            return null
+        }
+        if (matches.isEmpty()) return null
+        val sequence = (if (max) matches.maxOrNull() else matches.minOrNull()) ?: return null
+        val seq = sequence.toInt()
+        if (seq < 1 || seq > count) return null
+        val index = if (view.newestFirst) count - seq else seq - 1
+        if (index < 0 || index >= count) return null
+        return index
+    }
+
+    private suspend fun flagIndex(rule: StartRule, count: Int): Int? {
+        if (usesArrivalSequences()) return arrivalSearchedIndex(rule, count)
+        val matches = try {
+            session.searchStart(rule, true, SearchEdge.All)
+        } catch (failure: MailFailure) {
+            if (pendingNotice == null) pendingNotice = failure.text
+            return null
+        }
+        if (matches.isEmpty()) return null
+        val found = matches.toSet()
+        if (threading) {
+            for ((index, part) in threadPlan.withIndex()) {
+                if (part.rootUid in found || part.hiddenUids.any { it in found }) return index
+            }
+            return null
+        }
+        val index = order.indexOfFirst { it in found }
+        if (index < 0 || index >= count) return null
+        return index
+    }
+
+    private suspend fun findKeptIndex(uid: Long, count: Int): Int? {
+        if (usesArrivalSequences()) {
+            val sequences = try {
+                session.locateUid(uid)
+            } catch (failure: MailFailure) {
+                if (pendingNotice == null) pendingNotice = failure.text
+                return null
+            }
+            val sequence = sequences.minOrNull()?.toInt() ?: return null
+            if (sequence < 1 || sequence > count) return null
+            val index = if (view.newestFirst) count - sequence else sequence - 1
+            if (index < 0 || index >= count) return null
+            return index
+        }
+        if (threading) {
+            for ((index, part) in threadPlan.withIndex()) {
+                if (part.rootUid == uid || uid in part.hiddenUids) return index
+            }
+            return null
+        }
+        val index = order.indexOf(uid)
+        if (index < 0 || index >= count) return null
+        return index
     }
 
     private fun arrivalSpan(exists: Int, anchor: Int, fromNewestEnd: Boolean): IntRange? {
@@ -1055,11 +1279,13 @@ class IndexModel(
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
         val uids = restrict(session.sort(key, newestFirst))
-        pageAnchor = clampedAnchor(uids.size, preserveAnchor, !newestFirst && timeOrdered(key))
-        val loaded = pagesOf(uids)
         order = uids
         arrivalTotal = 0
         pendingNew = 0
+        val target = resolveTarget(uids.size, preserveAnchor)
+        pageAnchor = clampedAnchor(uids.size, preserveAnchor, target ?: 0)
+        val loaded = pagesOf(uids)
+        if (target != null) rememberStart(target, loaded.size)
         return loaded
     }
 
@@ -1070,10 +1296,12 @@ class IndexModel(
         threadPlan = kept
         threadMembers = emptyMap()
         order = kept.map { it.rootUid }
-        pageAnchor = clampedAnchor(order.size, preserveAnchor, !newestFirst)
-        val loaded = loadThreadPage()
         arrivalTotal = 0
         pendingNew = 0
+        val target = resolveTarget(order.size, preserveAnchor)
+        pageAnchor = clampedAnchor(order.size, preserveAnchor, target ?: 0)
+        val loaded = loadThreadPage()
+        if (target != null) rememberStart(target, loaded.size)
         return loaded
     }
 
@@ -1086,12 +1314,13 @@ class IndexModel(
         clearThreads()
         val found = session.searchText(query)
         val uids = if (view.newestFirst) found.sortedDescending() else found.sorted()
-        val end = !view.newestFirst && timeOrdered(view.key)
-        pageAnchor = clampedAnchor(uids.size, preserveAnchor, end)
-        val loaded = pagesOf(uids)
         order = uids
         arrivalTotal = 0
         pendingNew = 0
+        val target = resolveTarget(uids.size, preserveAnchor)
+        pageAnchor = clampedAnchor(uids.size, preserveAnchor, target ?: 0)
+        val loaded = pagesOf(uids)
+        if (target != null) rememberStart(target, loaded.size)
         return loaded
     }
 

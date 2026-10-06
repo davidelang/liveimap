@@ -12,6 +12,7 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
@@ -19,11 +20,16 @@ import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.StartAfterChange
+import org.dlang.liveimap.settings.StartRule
+import org.dlang.liveimap.settings.openAtMenuText
+import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -306,7 +312,7 @@ class IndexWindowTest {
     @Test
     fun pagingDropsThePageThatLeft() {
         val session = FakeMailSession()
-        val uids = (1L..130L).toList()
+        val uids = (130L downTo 1L).toList()
         session.sortUids = uids
         uids.forEach { session.rows[it] = row(it) }
         val store = MemorySettingsStore(
@@ -319,7 +325,8 @@ class IndexWindowTest {
         assertEquals(uids.take(IndexPageSize * 2), model.rows.map { it.uid })
         runImmediate { model.onFirstVisible(0) }
         runImmediate { model.onFirstVisible(IndexPageSize) }
-        assertTrue(model.rows.none { it.uid <= IndexPageSize })
+        val left = uids.take(IndexPageSize).toSet()
+        assertTrue(model.rows.none { it.uid in left })
         assertEquals(uids.drop(IndexPageSize), model.rows.map { it.uid })
         assertEquals(SortKey.Size to true, session.sortCalls.single())
     }
@@ -470,7 +477,7 @@ class IndexWindowTest {
         assertEquals(300, request.lastSequence)
         assertEquals(300, rows.first().sequence)
         assertEquals(181, rows.last().sequence)
-        assertEquals(0, model.initialIndex)
+        assertEquals(0, model.startIndex)
     }
 
     @Test
@@ -484,7 +491,7 @@ class IndexWindowTest {
         assertEquals(181, rows.first().sequence)
         assertEquals(300, rows.last().sequence)
         assertTrue(rows.zipWithNext().all { (left, right) -> left.sequence < right.sequence })
-        assertEquals(rows.lastIndex, model.initialIndex)
+        assertEquals(rows.lastIndex, model.startIndex)
     }
 
     @Test
@@ -581,7 +588,7 @@ class IndexWindowTest {
         runImmediate { newest.loadWindow() }
         val newestRows = runImmediate { newest.applySearch("a") }
         assertEquals(listOf(5L, 3L, 1L), newestRows.map { it.uid })
-        assertEquals(0, newest.initialIndex)
+        assertEquals(0, newest.startIndex)
 
         val oldestSession = FakeMailSession()
         oldestSession.searchUids = listOf(1L, 5L, 3L)
@@ -594,7 +601,7 @@ class IndexWindowTest {
         runImmediate { oldest.loadWindow() }
         val oldestRows = runImmediate { oldest.applySearch("a") }
         assertEquals(listOf(1L, 3L, 5L), oldestRows.map { it.uid })
-        assertEquals(oldestRows.lastIndex, oldest.initialIndex)
+        assertEquals(oldestRows.lastIndex, oldest.startIndex)
     }
 
     @Test
@@ -625,8 +632,13 @@ class IndexWindowTest {
                         listOf(1L, 2L, 3L).forEach { session.rows[it] = row(it) }
                     }
                     else -> {
-                        session.sortUids = listOf(1L, 2L, 3L)
-                        listOf(1L, 2L, 3L).forEach { session.rows[it] = row(it) }
+                        val ordered = if (!newestFirst && key in timeOrdered) {
+                            listOf(1L, 2L, 3L)
+                        } else {
+                            listOf(3L, 2L, 1L)
+                        }
+                        session.sortUids = ordered
+                        ordered.forEach { session.rows[it] = row(it) }
                     }
                 }
                 val model = IndexModel(
@@ -637,14 +649,320 @@ class IndexWindowTest {
                 val loaded = runImmediate { model.loadWindow() }
                 assertEquals(!newestFirst, newestAtEnd(model.view))
                 if (!newestFirst && key in timeOrdered) {
-                    assertEquals(loaded.lastIndex, model.initialIndex)
+                    assertEquals(loaded.lastIndex, model.startIndex)
                 } else {
-                    assertEquals(0, model.initialIndex)
+                    assertEquals(0, model.startIndex)
                 }
                 assertTrue(loaded.isNotEmpty())
             }
         }
     }
+
+    @Test
+    fun startFirstUnseenArrivalNewestFirst() {
+        val session = folder(300)
+        session.capabilities = setOf("ESEARCH")
+        session.unseenSeq.addAll(listOf(150, 151, 290))
+        val model = model(session, StartRule.FirstUnseen, newestFirst = true)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(290, rows[model.startIndex].sequence)
+        assertEquals(1, session.startSearches.size)
+        val search = session.startSearches.single()
+        assertEquals(StartRule.FirstUnseen.name, search.rule)
+        assertEquals(false, search.byUid)
+        assertEquals(SearchEdge.Max.name, search.edge)
+        assertEquals("UNDELETED UNSEEN", search.key)
+        val fetch = session.fetchRequests.single()
+        assertEquals(IndexMode.ArrivalRange, fetch.mode)
+        assertTrue(fetch.lastSequence - fetch.firstSequence + 1 <= 120)
+        assertTrue(290 in fetch.firstSequence..fetch.lastSequence)
+    }
+
+    @Test
+    fun startFirstUnseenArrivalOldestFirst() {
+        val session = folder(300)
+        session.unseenSeq.addAll(listOf(150, 151, 290))
+        val model = model(session, StartRule.FirstUnseen, newestFirst = false)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(150, rows[model.startIndex].sequence)
+        assertTrue(session.fetchRequests.none { it.firstSequence == 1 && 1 !in it.firstSequence..it.lastSequence })
+        assertTrue(session.fetchRequests.none { it.firstSequence == 1 })
+    }
+
+    @Test
+    fun startNoMatchFallsBackToNewest() {
+        val newestSession = folder(300)
+        val newest = model(newestSession, StartRule.FirstUnseen, newestFirst = true)
+        val newestRows = runImmediate { newest.loadWindow() }
+        assertEquals(300, newestRows[newest.startIndex].sequence)
+        assertEquals(1, newestSession.startSearches.size)
+        val oldestSession = folder(300)
+        val oldest = model(oldestSession, StartRule.FirstUnseen, newestFirst = false)
+        val oldestRows = runImmediate { oldest.loadWindow() }
+        assertEquals(300, oldestRows[oldest.startIndex].sequence)
+        assertEquals(1, oldestSession.startSearches.size)
+    }
+
+    @Test
+    fun startSkipsDeleted() {
+        val session = folder(300)
+        session.unseenSeq.addAll(listOf(150, 151))
+        session.deletedSeq.add(150)
+        val model = model(session, StartRule.FirstUnseen, newestFirst = false)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(151, rows[model.startIndex].sequence)
+    }
+
+    @Test
+    fun startFirstRecentUsesNew() {
+        val session = folder(80)
+        session.unseenSeq.addAll(listOf(10, 40))
+        session.recentSeq.add(40)
+        val model = model(session, StartRule.FirstRecent, newestFirst = false)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals("UNDELETED NEW", session.startSearches.single().key)
+        assertEquals(40, rows[model.startIndex].sequence)
+    }
+
+    @Test
+    fun startImportantOrUnseenTakesEarlier() {
+        val session = folder(300)
+        session.flaggedSeq.add(100)
+        session.unseenSeq.add(150)
+        val model = model(session, StartRule.FirstImportantOrUnseen, newestFirst = false)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(100, rows[model.startIndex].sequence)
+        assertEquals("UNDELETED OR FLAGGED UNSEEN", session.startSearches.single().key)
+    }
+
+    @Test
+    fun startSortedFromFirstImportant() {
+        val session = FakeMailSession(capabilities = setOf("ESEARCH"))
+        val uids = (1L..200L).toList()
+        session.sortUids = uids
+        uids.forEach { session.rows[it] = row(it) }
+        session.flaggedUids.add(uids[75])
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.FirstImportant,
+                defaultView = FolderView(SortKey.From, newestFirst = true),
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(75, model.order.indexOf(rows[model.startIndex].uid))
+        assertTrue(model.anchorPage == 0 || model.anchorPage == 1)
+        assertTrue(rows.any { it.uid == uids[75] })
+        val window = model.order.drop(model.anchorPage * IndexPageSize).take(IndexPageSize * 2).toSet()
+        assertTrue(session.fetchRequests.all { request ->
+            request.mode != IndexMode.ByUid || request.uids.all { it in window }
+        })
+        val search = session.startSearches.single()
+        assertEquals(true, search.byUid)
+        assertEquals(SearchEdge.All.name, search.edge)
+        assertEquals("UNDELETED FLAGGED", search.key)
+    }
+
+    @Test
+    fun startThreadHiddenMemberUnseen() {
+        val session = FakeMailSession()
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(5L, listOf(ThreadNode(1L, emptyList()))),
+                ThreadNode(3L, emptyList()),
+            ),
+        )
+        listOf(5L, 1L, 3L).forEach { session.rows[it] = row(it) }
+        session.unseenUids.add(1L)
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.FirstUnseen,
+                defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true),
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(5L, rows[model.startIndex].uid)
+        assertEquals(listOf(5L, 3L), rows.map { it.uid })
+        assertEquals(listOf(1L), model.threadHidden[5L])
+        assertEquals(true, session.startSearches.single().byUid)
+    }
+
+    @Test
+    fun startFilterIntersects() {
+        val session = folder(10)
+        session.unseenSeq.addAll(listOf(2, 8))
+        session.searchUids = listOf(2L, 3L, 4L)
+        val model = model(session, StartRule.FirstUnseen, newestFirst = true)
+        val rows = runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        assertEquals(2L, rows[model.startIndex].uid)
+        assertTrue(rows.none { it.uid == 8L })
+        assertEquals(true, session.startSearches.single().byUid)
+    }
+
+    @Test
+    fun startFirstLastAreTopBottom() {
+        for (newestFirst in listOf(true, false)) {
+            for (esearch in listOf(false, true)) {
+                for (rule in listOf(StartRule.First, StartRule.Last)) {
+                    val session = folder(300)
+                    if (esearch) session.capabilities = setOf("ESEARCH")
+                    val opened = model(session, rule, newestFirst)
+                    val rows = runImmediate { opened.loadWindow() }
+                    val sequence = rows[opened.startIndex].sequence
+                    val top = if (newestFirst) 300 else 1
+                    val bottom = if (newestFirst) 1 else 300
+                    assertEquals(if (rule == StartRule.First) top else bottom, sequence)
+                    if (!esearch) {
+                        assertTrue(session.startSearches.isEmpty())
+                    } else {
+                        assertEquals("UNDELETED", session.startSearches.single().key)
+                        assertEquals(1, session.startSearches.size)
+                    }
+                }
+            }
+        }
+        val sorted = FakeMailSession(capabilities = setOf("ESEARCH"))
+        sorted.sortUids = listOf(1L, 2L, 3L)
+        listOf(1L, 2L, 3L).forEach { sorted.rows[it] = row(it) }
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.Last,
+                defaultView = FolderView(SortKey.From, newestFirst = true),
+            ),
+        )
+        val model = IndexModel(sorted, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(3L, rows[model.startIndex].uid)
+        assertTrue(sorted.startSearches.isEmpty())
+    }
+
+    @Test
+    fun startSearchFailureFallsBackToNewest() {
+        val session = folder(300)
+        session.startFailure = MailFailure("search failed")
+        session.unseenSeq.add(10)
+        val model = model(session, StartRule.FirstUnseen, newestFirst = true)
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals("search failed", model.notice)
+        assertEquals(300, rows[model.startIndex].sequence)
+        assertEquals(1, session.startSearches.size)
+    }
+
+    @Test
+    fun startNotCached() {
+        val session = folder(30)
+        session.unseenSeq.addAll(listOf(10, 20))
+        val model = model(session, StartRule.FirstUnseen, newestFirst = true)
+        val first = runImmediate { model.loadWindow() }
+        assertEquals(20, first[model.startIndex].sequence)
+        runImmediate { model.changeFlags(listOf(20L), setOf("\\Seen"), emptySet()) }
+        val second = runImmediate { model.loadWindow() }
+        assertEquals(2, session.startSearches.size)
+        assertEquals(10, second[model.startIndex].sequence)
+    }
+
+    @Test
+    fun firstVisibleAfterStartDoesNotPage() {
+        val session = folder(300)
+        session.capabilities = setOf("ESEARCH")
+        session.unseenSeq.add(240)
+        val model = model(session, StartRule.FirstUnseen, newestFirst = true)
+        runImmediate { model.loadWindow() }
+        assertEquals(0, model.anchorPage)
+        assertEquals(60, model.startIndex)
+        val anchor = model.anchorPage
+        runImmediate { model.onFirstVisible(model.startIndex) }
+        assertEquals(anchor, model.anchorPage)
+    }
+
+    @Test
+    fun keepTopVisibleOnSort() {
+        val keepSession = folder(10)
+        keepSession.sortUids = (1L..10L).toList()
+        val keepStore = MemorySettingsStore(
+            AccountSettings(startAfterChange = StartAfterChange.KeepTopVisible),
+        )
+        val keep = IndexModel(keepSession, keepStore, "INBOX")
+        runImmediate { keep.loadWindow() }
+        runImmediate { keep.onFirstVisible(3) }
+        val top = keep.rows[3].uid
+        runImmediate { keep.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        assertEquals(top, keep.rows[keep.startIndex].uid)
+
+        val rerunSession = folder(10)
+        rerunSession.sortUids = (1L..10L).toList()
+        val rerun = IndexModel(rerunSession, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { rerun.loadWindow() }
+        runImmediate { rerun.onFirstVisible(3) }
+        runImmediate { rerun.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        assertEquals(10L, rerun.rows[rerun.startIndex].uid)
+    }
+
+    @Test
+    fun keepTopVisibleFilteredOut() {
+        val session = folder(10)
+        session.unseenSeq.add(2)
+        session.searchUids = listOf(2L, 3L)
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.FirstUnseen,
+                startAfterChange = StartAfterChange.KeepTopVisible,
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.onFirstVisible(0) }
+        val rows = runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        assertEquals(2L, rows[model.startIndex].uid)
+        assertTrue(rows.none { it.uid == 10L })
+    }
+
+    @Test
+    fun recentRulesHidden() {
+        val hidden = startRuleChoices(false, StartRule.Newest)
+        assertFalse(hidden.contains(StartRule.FirstRecent))
+        assertFalse(hidden.contains(StartRule.FirstImportantOrRecent))
+        val kept = startRuleChoices(false, StartRule.FirstRecent)
+        assertTrue(kept.contains(StartRule.FirstRecent))
+        val session = folder(50)
+        session.recentSeq.add(12)
+        session.unseenSeq.add(12)
+        val store = MemorySettingsStore(
+            AccountSettings(inboxStart = StartRule.FirstRecent, showRecentRules = false),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(12, rows[model.startIndex].sequence)
+        assertEquals("UNDELETED NEW", session.startSearches.single().key)
+    }
+
+    @Test
+    fun openAtMenuItem() {
+        assertNull(openAtMenuText(AccountSettings()))
+        assertEquals(
+            "Open this folder at\u2026",
+            openAtMenuText(AccountSettings(openAtInIndexMenu = true)),
+        )
+        val session = folder(3)
+        val store = MemorySettingsStore(AccountSettings())
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.setFolderStart(StartRule.First) }
+        assertEquals(StartRule.First, store.settings.folderStarts["INBOX"])
+        runImmediate { model.setFolderStart(null) }
+        assertFalse(store.settings.folderStarts.containsKey("INBOX"))
+    }
+}
+
+private fun model(session: FakeMailSession, rule: StartRule, newestFirst: Boolean): IndexModel {
+    val store = MemorySettingsStore(
+        AccountSettings(
+            inboxStart = rule,
+            defaultView = FolderView(SortKey.Arrival, newestFirst),
+        ),
+    )
+    return IndexModel(session, store, "INBOX")
 }
 
 private fun folder(exists: Int): FakeMailSession {
@@ -690,6 +1008,8 @@ private class MemorySettingsStore(initial: AccountSettings) : SettingsStore {
 
 private data class FlagWrite(val uids: List<Long>, val add: Set<String>, val remove: Set<String>)
 
+private data class StartSearch(val rule: String, val byUid: Boolean, val edge: String, val key: String)
+
 private data class CopyWrite(val uids: List<Long>, val target: String)
 
 private class FakeMailSession(
@@ -699,6 +1019,17 @@ private class FakeMailSession(
     val sortCalls = mutableListOf<Pair<SortKey, Boolean>>()
     val threadCalls = mutableListOf<SortKey>()
     val searchCalls = mutableListOf<String>()
+    val startSearches = mutableListOf<StartSearch>()
+    val locateCalls = mutableListOf<Long>()
+    val unseenSeq = HashSet<Int>()
+    val recentSeq = HashSet<Int>()
+    val flaggedSeq = HashSet<Int>()
+    val deletedSeq = HashSet<Int>()
+    val unseenUids = HashSet<Long>()
+    val recentUids = HashSet<Long>()
+    val flaggedUids = HashSet<Long>()
+    val deletedUids = HashSet<Long>()
+    var startFailure: MailFailure? = null
     val stores = mutableListOf<FlagWrite>()
     val copies = mutableListOf<CopyWrite>()
     val rows = HashMap<Long, IndexRow>()
@@ -789,6 +1120,31 @@ private class FakeMailSession(
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
         throwIfArmed()
         stores += FlagWrite(uids, add, remove)
+        for (uid in uids) {
+            val current = rows[uid] ?: continue
+            rows[uid] = applyFlagEdit(current, add, remove)
+        }
+    }
+
+    private fun applyFlagEdit(row: IndexRow, add: Set<String>, remove: Set<String>): IndexRow {
+        fun mark(seq: MutableSet<Int>, ids: MutableSet<Long>, on: Boolean) {
+            if (on) {
+                seq.add(row.sequence)
+                ids.add(row.uid)
+            } else {
+                seq.remove(row.sequence)
+                ids.remove(row.uid)
+            }
+        }
+        if ("\\Seen" in add) mark(unseenSeq, unseenUids, false)
+        if ("\\Seen" in remove) mark(unseenSeq, unseenUids, true)
+        if ("\\Recent" in add) mark(recentSeq, recentUids, true)
+        if ("\\Recent" in remove) mark(recentSeq, recentUids, false)
+        if ("\\Flagged" in add) mark(flaggedSeq, flaggedUids, true)
+        if ("\\Flagged" in remove) mark(flaggedSeq, flaggedUids, false)
+        if ("\\Deleted" in add) mark(deletedSeq, deletedUids, true)
+        if ("\\Deleted" in remove) mark(deletedSeq, deletedUids, false)
+        return row.copy(flags = (row.flags + add) - remove)
     }
 
     override suspend fun uidExpungeDeleted() {
@@ -812,6 +1168,49 @@ private class FakeMailSession(
         throwIfArmed()
         return searchUids
     }
+
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {
+        val key = startKey(rule)
+        startSearches += StartSearch(rule.name, byUid, edge.name, key)
+        val pending = startFailure
+        if (pending != null) {
+            startFailure = null
+            throw pending
+        }
+        throwIfArmed()
+        val matched = sequencePool().filter { rowMatches(rule, it) }
+        val numbers = if (byUid) matched.map { it.uid } else matched.map { it.sequence.toLong() }
+        return when (edge) {
+            SearchEdge.Min -> numbers.minOrNull()?.let { listOf(it) } ?: emptyList()
+            SearchEdge.Max -> numbers.maxOrNull()?.let { listOf(it) } ?: emptyList()
+            SearchEdge.All -> numbers
+        }
+    }
+
+    override suspend fun locateUid(uid: Long): List<Long> {
+        locateCalls += uid
+        val found = rows[uid] ?: arrivalRows.firstOrNull { it.uid == uid }
+        return if (found == null) emptyList() else listOf(found.sequence.toLong())
+    }
+
+    private fun rowMatches(rule: StartRule, row: IndexRow): Boolean {
+        if (isMarked(row, deletedSeq, deletedUids, "\\Deleted")) return false
+        val unseen = isMarked(row, unseenSeq, unseenUids, "\\Unseen")
+        val recent = isMarked(row, recentSeq, recentUids, "\\Recent")
+        val flagged = isMarked(row, flaggedSeq, flaggedUids, "\\Flagged")
+        return when (rule) {
+            StartRule.FirstUnseen -> unseen
+            StartRule.FirstRecent -> recent && unseen
+            StartRule.FirstImportant -> flagged
+            StartRule.FirstImportantOrUnseen -> flagged || unseen
+            StartRule.FirstImportantOrRecent -> flagged || (recent && unseen)
+            StartRule.First, StartRule.Last -> true
+            StartRule.Newest -> false
+        }
+    }
+
+    private fun isMarked(row: IndexRow, seq: Set<Int>, ids: Set<Long>, flag: String): Boolean =
+        row.sequence in seq || row.uid in ids || flag in row.flags
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         sortCalls += key to newestFirst
@@ -850,6 +1249,16 @@ private class FakeMailSession(
     }
 
     private fun unused(): Nothing = throw MailFailure("not used")
+}
+
+private fun startKey(rule: StartRule): String = when (rule) {
+    StartRule.FirstUnseen -> "UNDELETED UNSEEN"
+    StartRule.FirstRecent -> "UNDELETED NEW"
+    StartRule.FirstImportant -> "UNDELETED FLAGGED"
+    StartRule.FirstImportantOrUnseen -> "UNDELETED OR FLAGGED UNSEEN"
+    StartRule.FirstImportantOrRecent -> "UNDELETED OR FLAGGED NEW"
+    StartRule.First, StartRule.Last -> "UNDELETED"
+    StartRule.Newest -> ""
 }
 
 private fun <T> runImmediate(block: suspend () -> T): T {

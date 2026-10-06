@@ -516,13 +516,15 @@ fun MessageIndexScreen(
         }
     }
 
-    suspend fun scrollToNewest() {
+    var noteVisibleTop: () -> Unit = {}
+
+    suspend fun scrollToIndex(rowIndex: Int) {
         if (model.rows.isEmpty()) return
-        val rowIndex = model.initialIndex.coerceIn(0, model.rows.lastIndex)
+        val target = rowIndex.coerceIn(0, model.rows.lastIndex)
         var lazyIndex = 0
         var seen = 0
         for (row in model.rows) {
-            if (seen == rowIndex) break
+            if (seen == target) break
             lazyIndex += 1
             if (model.summaries.containsKey(row.uid)) lazyIndex += 1
             if (row.uid in expandedThreads) {
@@ -533,6 +535,14 @@ fun MessageIndexScreen(
             seen += 1
         }
         listState.scrollToItem(lazyIndex)
+    }
+
+    suspend fun scrollToStart() {
+        scrollToIndex(model.startIndex)
+    }
+
+    suspend fun scrollToNewestEnd() {
+        scrollToIndex(model.newestHeldIndex)
     }
 
     fun userAtNewestEnd(): Boolean {
@@ -561,7 +571,6 @@ fun MessageIndexScreen(
                 sync.block()
             }
             snackbarHostState.currentSnackbarData?.dismiss()
-            if (model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -586,7 +595,6 @@ fun MessageIndexScreen(
                 ok = model.notice == null
             }
             finishUndoExpunge(ok)
-            if (ok && model.rows.isNotEmpty()) scrollToNewest()
         }
     }
 
@@ -639,6 +647,7 @@ fun MessageIndexScreen(
         val narrow = narrowArmed
         scope.launch {
             gate.withLock {
+                noteVisibleTop()
                 model.applyCriterion(kind, argument, narrow, label)
                 pull()
             }
@@ -647,13 +656,14 @@ fun MessageIndexScreen(
                 query = ""
                 searchVisible = false
             }
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
 
     fun runShowAll() {
         scope.launch {
             gate.withLock {
+                noteVisibleTop()
                 model.showAll()
                 pull()
             }
@@ -662,18 +672,19 @@ fun MessageIndexScreen(
                 query = ""
                 searchVisible = false
             }
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
 
     fun runWiden() {
         scope.launch {
             gate.withLock {
+                noteVisibleTop()
                 model.widenFilter()
                 pull()
             }
             if (model.notice == null) narrowArmed = false
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
 
@@ -693,10 +704,11 @@ fun MessageIndexScreen(
         prompt = null
         scope.launch {
             gate.withLock {
+                noteVisibleTop()
                 model.applyView(pending)
                 pull()
             }
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
 
@@ -713,7 +725,7 @@ fun MessageIndexScreen(
                 model.loadWindow()
                 pull()
             }
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
 
@@ -744,10 +756,10 @@ fun MessageIndexScreen(
         )
         if (result == SnackbarResult.ActionPerformed) {
             gate.withLock {
-                model.loadWindow()
+                model.jumpToNewest()
                 pull()
             }
-            scrollToNewest()
+            scrollToNewestEnd()
         }
     }
 
@@ -834,13 +846,13 @@ fun MessageIndexScreen(
                 pull()
             }
             loading = false
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         } else if (!watchNow) {
             loading = false
             return@LaunchedEffect
         } else {
             loading = false
-            if (model.rows.isNotEmpty()) scrollToNewest()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
         var watchJob: Job? = null
         try {
@@ -866,22 +878,28 @@ fun MessageIndexScreen(
                                 MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
                                 MailboxChange.WatchLost -> watchRecovery.onWatchLost(scope, session)
                                 else -> scope.launch {
-                                    val atNewest = userAtNewestEnd()
                                     when (change) {
                                         is MailboxChange.Exists -> folderExists = change.exists
                                         is MailboxChange.Expunge -> folderExists = change.exists
                                         else -> Unit
                                     }
+                                    val beforeRows = model.rows.size
+                                    val beforePending = model.pendingNew
                                     gate.withLock {
                                         model.applyChange(change)
                                         pull()
                                     }
-                                    if (change !is MailboxChange.Flags && model.rows.isNotEmpty() && atNewest) {
-                                        scrollToNewest()
-                                    }
-                                    if (model.pendingNew > 0 && !atNewest) {
-                                        newMailCount = model.pendingNew
-                                        newMailToken += 1
+                                    if (change is MailboxChange.Exists) {
+                                        val inserted = (model.rows.size - beforeRows).coerceAtLeast(0)
+                                        val count = when {
+                                            model.pendingNew > beforePending -> model.pendingNew - beforePending
+                                            model.view.key == SortKey.Arrival && inserted > 0 -> inserted
+                                            else -> 0
+                                        }
+                                        if (count > 0) {
+                                            newMailCount = count
+                                            newMailToken += 1
+                                        }
                                     }
                                 }
                             }
@@ -928,6 +946,14 @@ fun MessageIndexScreen(
         threadDepth,
     )
     val indexEntryState = rememberUpdatedState(indexEntries)
+    noteVisibleTop = {
+        if (model.rows.isEmpty()) {
+            model.noteTopUid(null)
+        } else {
+            val root = rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex)
+            model.noteTopUid(model.rows.getOrNull(root)?.uid)
+        }
+    }
 
     fun visibleMessageUids(): List<Long> {
         val entries = indexEntryState.value
@@ -1337,10 +1363,11 @@ fun MessageIndexScreen(
                                 narrowArmed = false
                                 prompt = null
                                 gate.withLock {
+                                    noteVisibleTop()
                                     model.applyView(FolderView(key, view.newestFirst))
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) scrollToNewest()
+                                if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         }
                         fieldKeys.forEach { key ->
@@ -1369,10 +1396,11 @@ fun MessageIndexScreen(
                                 prompt = null
                                 scope.launch {
                                     gate.withLock {
+                                        noteVisibleTop()
                                         model.applyView(view.copy(newestFirst = !view.newestFirst))
                                         pull()
                                     }
-                                    if (model.rows.isNotEmpty()) scrollToNewest()
+                                    if (model.rows.isNotEmpty()) scrollToStart()
                                 }
                             },
                             trailingIcon = {
@@ -1433,7 +1461,6 @@ fun MessageIndexScreen(
                                     model.expunge()
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) scrollToNewest()
                             }
                         }
                     },
@@ -1466,7 +1493,6 @@ fun MessageIndexScreen(
                                         ok = model.notice == null
                                     }
                                     if (specific != null) finishUndoExpunge(ok)
-                                    if (model.rows.isNotEmpty()) scrollToNewest()
                                 }
                             }) { Text("Expunge", color = MaterialTheme.colorScheme.error) }
                         },
@@ -1504,11 +1530,12 @@ fun MessageIndexScreen(
                                 onClick = {
                                     scope.launch {
                                         gate.withLock {
+                                            noteVisibleTop()
                                             model.dropFiltersFrom(index)
                                             pull()
                                         }
                                         if (model.notice == null) narrowArmed = false
-                                        if (model.rows.isNotEmpty()) scrollToNewest()
+                                        if (model.rows.isNotEmpty()) scrollToStart()
                                     }
                                 },
                                 label = { Text(chipText) },
@@ -1534,10 +1561,11 @@ fun MessageIndexScreen(
                             prompt = null
                             scope.launch {
                                 gate.withLock {
+                                    noteVisibleTop()
                                     model.applySearch("")
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) scrollToNewest()
+                                if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         }
                     },
@@ -1550,10 +1578,11 @@ fun MessageIndexScreen(
                             prompt = null
                             scope.launch {
                                 gate.withLock {
+                                    noteVisibleTop()
                                     model.applySearch(query)
                                     pull()
                                 }
-                                if (model.rows.isNotEmpty()) scrollToNewest()
+                                if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         },
                     ),
