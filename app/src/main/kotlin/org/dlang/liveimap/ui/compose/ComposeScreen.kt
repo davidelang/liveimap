@@ -109,10 +109,7 @@ private fun AddressChips(
     onBuffer: (String) -> Unit,
     trailing: @Composable (() -> Unit)? = null,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
+    FlowRow(modifier = Modifier.fillMaxWidth()) {
         for (address in splitAddresses(stored)) {
             InputChip(
                 selected = false,
