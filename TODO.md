@@ -41,7 +41,7 @@
 
 - Per-feature capability flags instead of the all-or-nothing session gate, plus opt-in slower fallbacks that do only the work they need (roadmap M3; recommendations W1 W2, D13)
 
-- Fake IMAP server with Cyrus 2.2 and 3.x profiles for tests, and a fixed test account on 10.0.0.1 (roadmap M3.3; recommendations R-P2-5)
+- Fake IMAP server with Cyrus 2.2 and 3.x profiles for tests, and a fixed test account (roadmap M3.3; recommendations R-P2-5)
 
 - Replace GNU libiconv with Java charsets through the libetpan extended_charconv hook and keep minSdk 26 (roadmap M4.1; recommendations section 12)
 
