@@ -229,6 +229,8 @@ val defaultReaderBar: List<ReaderAction> = listOf(
     ReaderAction.Move,
 )
 
+const val pineSourceId: String = "pine"
+
 data class AccountSettings(
     val imapHost: String = "",
     val imapPort: Int = 143,
@@ -275,6 +277,7 @@ data class AccountSettings(
     val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
     val plainTextMonospace: Boolean = false,
     val altAddresses: List<String> = emptyList(),
+    val completionSources: List<String> = listOf(pineSourceId),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -327,6 +330,7 @@ private val fieldNames = listOf(
     "pinercStartDefault",
     "plainTextMonospace",
     "altAddresses",
+    "completionSources",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -378,6 +382,10 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
+    // Missing key decodes to pine, so the default list is not written.
+    if (completionSources != listOf(pineSourceId)) {
+        appendLine("completionSources=${encodeCompletionSources(completionSources)}")
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -419,7 +427,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "openAtInIndexMenu" ||
             key == "pinercStartDefault" ||
             key == "plainTextMonospace" ||
-            key == "altAddresses"
+            key == "altAddresses" ||
+            key == "completionSources"
         ) {
             continue
         }
@@ -473,6 +482,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             ?: PinercStartDefault.LeaveUnchanged,
         plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
         altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
+        completionSources = decodeCompletionSources(values["completionSources"]),
     )
 }
 
@@ -483,6 +493,18 @@ private fun decodeAltAddresses(value: String): List<String> {
     if (value.isEmpty()) return emptyList()
     return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
 }
+
+private fun encodeCompletionSources(sources: List<String>): String =
+    sources.joinToString(",") { percentEncode(it) }
+
+private fun decodeCompletionSources(value: String?): List<String> {
+    if (value == null) return listOf(pineSourceId)
+    if (value.isEmpty()) return emptyList()
+    return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
+}
+
+fun androidSourceId(accountType: String, accountName: String): String =
+    "android|${percentEncode(accountType)}|${percentEncode(accountName)}"
 
 fun looksLikeEmail(value: String): Boolean {
     val trimmed = value.trim()

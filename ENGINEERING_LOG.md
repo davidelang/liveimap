@@ -1159,3 +1159,16 @@
 - htmlAsText uses jsoup 1.21.2. script and style are omitted. Block tags break the line. Link text stays in the body and each href is listed as [1] after a blank line. A blockquote line starts with "> ". Ordered items are numbered. Table cells in a row are separated by one space. pre keeps its spaces.
 - A client preview takes the first text/plain part, otherwise the first text/html part, and does not follow preferHtml. Peeked bytes go through PartText.previewText. A failed base64 or quoted-printable decode leaves the preview empty. A server-supplied preview is unchanged. The unknown-charset note is not inserted into a preview.
 - minSdk stays 26. Core library desugaring uses desugar_jdk_libs_nio 2.1.5. NOTICES lists jsoup as MIT and the desugar library as GPL-2.0 with the Classpath Exception. No install.
+
+## 2026-10-06 - contacts completion execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-completion-20261006-0150-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: a7dcba9
+- Phase 1: completeAddress and completionSources. Phase 2: settings section, READ_CONTACTS, in-memory load, AddressChips suggestions
+- Do not install. Do not copy contacts or write the pine address book. Device checks stay David's
+
+## 2026-10-06 - contacts completion phase 1
+
+- completeAddress ranks an exact nickname, ignoring case, ahead of a display name or email that contains the typed text. Within one rank the earlier source stays first. A parenthesized distribution list is one suggestion whose members come from pickedAddresses.
+- completionSources is missing as pine and empty as no sources. The default pine-only list is not written. Other lists are percent-encoded and comma-separated. An Android id is android, the encoded account type, and the encoded account name.
+- loadAlpineBook is unchanged. No install.
