@@ -113,10 +113,10 @@ class FolderListModelTest {
         val empty = FolderRow("", "ignored", true, 0, null, false, namespaceRoot = true)
         val archive = FolderRow("Archive", "Archive", false, 0, null, false)
         val inbox = FolderRow("INBOX", "INBOX", false, 0, null, false)
-        assertEquals("(empty prefix)", folderDisplayName(empty))
-        assertEquals(listOf(""), folderRowsMatchingName(listOf(empty, archive, inbox), "zzz").map { it.mailbox })
-        assertEquals(listOf(""), folderRowsMatchingName(listOf(empty, archive), "ignored").map { it.mailbox })
-        assertEquals(listOf("", "Archive"), folderRowsMatchingName(listOf(empty, archive, inbox), "arch").map { it.mailbox })
+        assertEquals("(empty prefix)", folderDisplayName(empty, "(empty prefix)"))
+        assertEquals(listOf(""), folderRowsMatchingName(listOf(empty, archive, inbox), "zzz", "(empty prefix)").map { it.mailbox })
+        assertEquals(listOf(""), folderRowsMatchingName(listOf(empty, archive), "ignored", "(empty prefix)").map { it.mailbox })
+        assertEquals(listOf("", "Archive"), folderRowsMatchingName(listOf(empty, archive, inbox), "arch", "(empty prefix)").map { it.mailbox })
     }
 
     @Test

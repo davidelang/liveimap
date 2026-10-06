@@ -35,4 +35,37 @@
     <string name="unsent_no_subject">No subject</string>
     <string name="unsent_sent_copy">Sent, copy not saved</string>
     <string name="unsent_not_sent">Not sent</string>
+    <string name="folders_title">Folders</string>
+    <string name="folders_menu">Menu</string>
+    <string name="folders_refresh">Refresh</string>
+    <string name="folders_more">More</string>
+    <string name="folders_collapse_all">Collapse all</string>
+    <string name="folders_save_default">Save as default view</string>
+    <string name="folders_reset_default">Reset to default view</string>
+    <string name="folders_unsent">Unsent</string>
+    <string name="folders_unsent_count">Unsent %1$d</string>
+    <string name="folders_search">Search folders</string>
+    <string name="folders_clear_search">Clear search</string>
+    <string name="folders_compose">Compose</string>
+    <string name="folders_retry">Retry</string>
+    <string name="folders_none">No folders</string>
+    <string name="folders_none_match">No matching folders</string>
+    <string name="folders_always_expand">Always expand</string>
+    <string name="folders_dont_always_expand">Don\'t always expand</string>
+    <string name="folders_add_favorite">Add favorite</string>
+    <string name="folders_remove_favorite">Remove favorite</string>
+    <string name="folders_collapse">Collapse %1$s</string>
+    <string name="folders_expand">Expand %1$s</string>
+    <string name="folders_empty_prefix">(empty prefix)</string>
+    <string name="folders_namespace_empty">Namespace, empty prefix</string>
+    <string name="folders_expanded">expanded</string>
+    <string name="folders_collapsed">collapsed</string>
+    <plurals name="folders_messages">
+        <item quantity="one">%d message</item>
+        <item quantity="other">%d messages</item>
+    </plurals>
+    <plurals name="folders_unread">
+        <item quantity="one">%d unread</item>
+        <item quantity="other">%d unread</item>
+    </plurals>
 </resources>

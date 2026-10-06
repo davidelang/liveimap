@@ -218,12 +218,12 @@ class FolderTreeTest {
     fun folderRowDescriptionIncludesCountsAndExpansion() {
         assertEquals(
             "kernel, 97625 messages, 97608 unread, collapsed",
-            folderRowDescription("kernel", 97625, 97608, true, false),
+            folderRowDescription("kernel", "97625 messages", "97608 unread", "collapsed"),
         )
-        assertEquals("INBOX", folderRowDescription("INBOX", null, null, false, false))
+        assertEquals("INBOX", folderRowDescription("INBOX", null, null, null))
         assertEquals(
             "(empty prefix), expanded",
-            folderRowDescription("(empty prefix)", null, null, true, true),
+            folderRowDescription("(empty prefix)", null, null, "expanded"),
         )
     }
 }

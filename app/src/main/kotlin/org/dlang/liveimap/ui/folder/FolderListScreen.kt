@@ -70,6 +70,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextMeasurer
@@ -85,6 +87,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -140,6 +143,8 @@ fun FolderListScreen(
     var folderQuery by remember { mutableStateOf("") }
     var moreMenu by remember { mutableStateOf(false) }
     var refreshListed by remember { mutableStateOf(false) }
+    val emptyPrefixLabel = stringResource(R.string.folders_empty_prefix)
+    val retryLabel = stringResource(R.string.folders_retry)
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -150,7 +155,7 @@ fun FolderListScreen(
         if (snackEvent == 0) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             message = snackMessage,
-            actionLabel = "Retry",
+            actionLabel = retryLabel,
         )
         if (result == SnackbarResult.ActionPerformed) {
             gate.withLock {
@@ -259,7 +264,7 @@ fun FolderListScreen(
             }
             if (listed != null) {
                 rows = listed
-                scrollIndex = folderRowsMatchingName(listed, folderQuery).indexOfFirst { it.mailbox == target }
+                scrollIndex = folderRowsMatchingName(listed, folderQuery, emptyPrefixLabel).indexOfFirst { it.mailbox == target }
             }
         }
         if (scrollIndex >= 0) listState.scrollToItem(scrollIndex)
@@ -274,7 +279,7 @@ fun FolderListScreen(
                 gate.withLock {
                     if (stopped) return@withLock
                     val current = rows
-                    val listed = folderRowsMatchingName(current, folderQuery)
+                    val listed = folderRowsMatchingName(current, folderQuery, emptyPrefixLabel)
                     val visible = indices.mapNotNull { listed.getOrNull(it) }.filter { !it.namespaceRoot }
                     if (visible.isEmpty()) return@withLock
                     val updated = try {
@@ -423,13 +428,13 @@ fun FolderListScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("Folders") },
+                    title = { Text(stringResource(R.string.folders_title)) },
                     navigationIcon = {
                         if (onOpenDrawer != null) {
                             IconButton(onClick = onOpenDrawer) {
                                 Icon(
                                     imageVector = Icons.Filled.Menu,
-                                    contentDescription = "Menu",
+                                    contentDescription = stringResource(R.string.folders_menu),
                                 )
                             }
                         }
@@ -443,14 +448,14 @@ fun FolderListScreen(
                         }) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Refresh",
+                                contentDescription = stringResource(R.string.folders_refresh),
                             )
                         }
                         Box {
                             IconButton(onClick = { moreMenu = true }) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = "More",
+                                    contentDescription = stringResource(R.string.folders_more),
                                 )
                             }
                             DropdownMenu(
@@ -458,21 +463,21 @@ fun FolderListScreen(
                                 onDismissRequest = { moreMenu = false },
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Collapse all") },
+                                    text = { Text(stringResource(R.string.folders_collapse_all)) },
                                     onClick = {
                                         moreMenu = false
                                         collapseAll()
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Save as default view") },
+                                    text = { Text(stringResource(R.string.folders_save_default)) },
                                     onClick = {
                                         moreMenu = false
                                         saveDefaultView()
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Reset to default view") },
+                                    text = { Text(stringResource(R.string.folders_reset_default)) },
                                     onClick = {
                                         moreMenu = false
                                         resetToDefaultView()
@@ -480,7 +485,7 @@ fun FolderListScreen(
                                 )
                                 if (unsentCount > 0) {
                                     DropdownMenuItem(
-                                        text = { Text("Unsent") },
+                                        text = { Text(stringResource(R.string.folders_unsent)) },
                                         onClick = {
                                             moreMenu = false
                                             onOpenUnsent()
@@ -500,7 +505,7 @@ fun FolderListScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         singleLine = true,
-                        placeholder = { Text("Search folders") },
+                        placeholder = { Text(stringResource(R.string.folders_search)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Filled.Search,
@@ -512,7 +517,7 @@ fun FolderListScreen(
                                 IconButton(onClick = { folderQuery = "" }) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
-                                        contentDescription = "Clear search",
+                                        contentDescription = stringResource(R.string.folders_clear_search),
                                     )
                                 }
                             }
@@ -537,7 +542,7 @@ fun FolderListScreen(
             }
         }
         if (hostKnown && imapHost.isBlank()) {
-            TextButton(onClick = onOpenHelp) { Text("Help") }
+            TextButton(onClick = onOpenHelp) { Text(stringResource(R.string.help_title)) }
         }
         DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
@@ -558,7 +563,7 @@ fun FolderListScreen(
         }
         if (unsentCount > 0) {
             Text(
-                text = "Unsent $unsentCount",
+                text = stringResource(R.string.folders_unsent_count, unsentCount),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpenUnsent)
@@ -568,7 +573,7 @@ fun FolderListScreen(
         }
         if (!stopped) {
             // Names already loaded. Does not send LIST.
-            val shown = folderRowsMatchingName(rows, folderQuery)
+            val shown = folderRowsMatchingName(rows, folderQuery, emptyPrefixLabel)
             val countStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
             val countMeasurer = rememberTextMeasurer()
             val density = LocalDensity.current
@@ -609,7 +614,7 @@ fun FolderListScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "No folders",
+                        text = stringResource(R.string.folders_none),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -620,7 +625,7 @@ fun FolderListScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "No matching folders",
+                        text = stringResource(R.string.folders_none_match),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -681,8 +686,8 @@ fun FolderListScreen(
         }
     }
         ExtendedFloatingActionButton(
-            text = { Text("Compose") },
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = "Compose") },
+            text = { Text(stringResource(R.string.folders_compose)) },
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.folders_compose)) },
             onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
             expanded = !listState.isScrollInProgress,
             modifier = Modifier
@@ -716,7 +721,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.folders_retry)) }
         }
     }
 }
@@ -748,15 +753,19 @@ internal fun folderIconKey(
     return "folder"
 }
 
-internal fun folderDisplayName(row: FolderRow): String =
-    if (row.namespaceRoot && row.mailbox.isEmpty()) "(empty prefix)" else row.leaf
+internal fun folderDisplayName(row: FolderRow, emptyPrefixLabel: String): String =
+    if (row.namespaceRoot && row.mailbox.isEmpty()) emptyPrefixLabel else row.leaf
 
-internal fun folderRowsMatchingName(rows: List<FolderRow>, query: String): List<FolderRow> {
+internal fun folderRowsMatchingName(
+    rows: List<FolderRow>,
+    query: String,
+    emptyPrefixLabel: String,
+): List<FolderRow> {
     if (query.isBlank()) return rows
     val needle = query.trim()
     return rows.filter { row ->
         val emptyPrefix = row.namespaceRoot && row.mailbox.isEmpty()
-        emptyPrefix || folderDisplayName(row).contains(needle, ignoreCase = true)
+        emptyPrefix || folderDisplayName(row, emptyPrefixLabel).contains(needle, ignoreCase = true)
     }
 }
 
@@ -788,17 +797,10 @@ internal fun folderCountColumnWidth(
 
 internal fun folderRowDescription(
     shownLeaf: String,
-    messages: Int?,
-    unseen: Int?,
-    hasChildren: Boolean,
-    expanded: Boolean,
-): String {
-    val text = StringBuilder(shownLeaf)
-    if (messages != null) text.append(", ").append(messages).append(" messages")
-    if (unseen != null) text.append(", ").append(unseen).append(" unread")
-    if (hasChildren) text.append(", ").append(if (expanded) "expanded" else "collapsed")
-    return text.toString()
-}
+    messagesPhrase: String?,
+    unreadPhrase: String?,
+    expansionPhrase: String?,
+): String = listOfNotNull(shownLeaf, messagesPhrase, unreadPhrase, expansionPhrase).joinToString(", ")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -821,19 +823,35 @@ private fun FolderListRow(
 ) {
     val emptyPrefix = row.namespaceRoot && row.mailbox.isEmpty()
     var rowMenu by remember { mutableStateOf(false) }
-    val shownLeaf = folderDisplayName(row)
+    val shownLeaf = folderDisplayName(row, stringResource(R.string.folders_empty_prefix))
     val unreadLabel = folderUnreadLabel(showUnread, row.unseen)
-    val description = if (emptyPrefix) {
-        "Namespace, empty prefix"
+    val messageCount = row.messages
+    val messagesPhrase = if (messageCount == null) {
+        null
     } else {
-        folderRowDescription(
-            shownLeaf,
-            row.messages,
-            if (unreadLabel == null) null else row.unseen,
-            row.hasChildren,
-            row.expanded,
-        )
+        pluralStringResource(R.plurals.folders_messages, messageCount, messageCount)
     }
+    val unseenCount = if (unreadLabel == null) null else row.unseen
+    val unreadPhrase = if (unseenCount == null) {
+        null
+    } else {
+        pluralStringResource(R.plurals.folders_unread, unseenCount, unseenCount)
+    }
+    val expansionPhrase = if (!row.hasChildren) {
+        null
+    } else if (row.expanded) {
+        stringResource(R.string.folders_expanded)
+    } else {
+        stringResource(R.string.folders_collapsed)
+    }
+    val description = if (emptyPrefix) {
+        stringResource(R.string.folders_namespace_empty)
+    } else {
+        folderRowDescription(shownLeaf, messagesPhrase, unreadPhrase, expansionPhrase)
+    }
+    val favoriteText = stringResource(
+        if (favorite) R.string.folders_remove_favorite else R.string.folders_add_favorite,
+    )
     val icon = if (emptyPrefix) {
         Icons.Filled.FolderSpecial
     } else {
@@ -874,7 +892,11 @@ private fun FolderListRow(
             if (row.hasChildren) {
                 Icon(
                     imageVector = if (row.expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
-                    contentDescription = if (row.expanded) "Collapse $shownLeaf" else "Expand $shownLeaf",
+                    contentDescription = if (row.expanded) {
+                        stringResource(R.string.folders_collapse, shownLeaf)
+                    } else {
+                        stringResource(R.string.folders_expand, shownLeaf)
+                    },
                 )
             }
         }
@@ -905,21 +927,21 @@ private fun FolderListRow(
             onDismissRequest = { rowMenu = false },
         ) {
             DropdownMenuItem(
-                text = { Text(if (favorite) "Remove favorite" else "Add favorite") },
+                text = { Text(favoriteText) },
                 onClick = {
                     rowMenu = false
                     onStar()
                 },
             )
             DropdownMenuItem(
-                text = { Text("Always expand") },
+                text = { Text(stringResource(R.string.folders_always_expand)) },
                 onClick = {
                     rowMenu = false
                     onAlwaysExpand()
                 },
             )
             DropdownMenuItem(
-                text = { Text("Don't always expand") },
+                text = { Text(stringResource(R.string.folders_dont_always_expand)) },
                 onClick = {
                     rowMenu = false
                     onDontAlwaysExpand()
@@ -929,7 +951,7 @@ private fun FolderListRow(
         IconButton(onClick = onStar) {
             Icon(
                 imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                contentDescription = if (favorite) "Remove favorite" else "Add favorite",
+                contentDescription = favoriteText,
                 tint = if (favorite) {
                     MaterialTheme.colorScheme.primary
                 } else {

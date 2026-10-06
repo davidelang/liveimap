@@ -1306,3 +1306,15 @@
 - Open, Retry, Discard, Cancel, and Discard this unsent message? come from strings.xml. The unsent route Up title is unsent_title. Existing string values are unchanged.
 - unsentSubject takes the missing-subject text and the screen passes unsent_no_subject. unsentLabel is removed. The screen uses unsent_sent_copy or unsent_not_sent. A present Subject header is still shown.
 - ComposeChromeTest.unsentSubjectAndLabel expects Hello and the passed fallback No subject. It does not call unsentLabel. The folder list Unsent item is unchanged. UnsentScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Folder strings execution start
+
+- Approved plan: sandbox/plans/folder-strings-20261006-0350-plan.md
+- Phase 1: folder list titles, menus, empty states, and spoken row text come from strings.xml. Wording stays the same, except one versus many for the spoken counts. Mailbox names stay mailbox names. Help uses help_title. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Folder strings phase 1
+
+- Folder list title, menu, search, empty states, row menu, and icon descriptions come from strings.xml. Existing string values are unchanged. Help uses help_title.
+- Spoken counts use folders_messages and folders_unread. One count uses the one-form. Other counts use the other-form. An empty prefix shows (empty prefix) and is spoken as Namespace, empty prefix.
+- folderDisplayName and folderRowsMatchingName take the empty-prefix label. folderRowDescription joins the leaf and the non-null phrases. FolderListScreen.kt has no Text(". No install.
