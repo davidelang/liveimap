@@ -622,21 +622,22 @@ private fun ColumnScope.DrawerSheetContent(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
     )
     NavigationDrawerItem(
-        label = { Text("INBOX") },
+        label = { Text(stringResource(R.string.drawer_inbox)) },
         selected = false,
         onClick = onInbox,
     )
+    val postponedDescription = stringResource(R.string.drawer_postponed)
     val postponedRow = postponedDrawerMailbox(postponedMailbox)
     if (postponedRow != null) {
         NavigationDrawerItem(
             label = { Text(postponedRow) },
             selected = false,
-            modifier = Modifier.semantics { contentDescription = "Postponed" },
+            modifier = Modifier.semantics { contentDescription = postponedDescription },
             onClick = { onPostponed(postponedRow) },
         )
     }
     NavigationDrawerItem(
-        label = { Text("All folders") },
+        label = { Text(stringResource(R.string.drawer_all_folders)) },
         selected = false,
         onClick = onAllFolders,
     )
@@ -662,7 +663,7 @@ private fun ColumnScope.DrawerSheetContent(
     }
     HorizontalDivider()
     NavigationDrawerItem(
-        label = { Text("Settings") },
+        label = { Text(stringResource(R.string.drawer_settings)) },
         selected = false,
         onClick = onSettings,
     )
@@ -672,7 +673,7 @@ private fun ColumnScope.DrawerSheetContent(
         onClick = onHelp,
     )
     NavigationDrawerItem(
-        label = { Text("About") },
+        label = { Text(stringResource(R.string.about_title)) },
         selected = false,
         onClick = onAbout,
     )
@@ -690,25 +691,25 @@ private fun FavoriteEditDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Favorite") },
+        title = { Text(stringResource(R.string.drawer_favorite)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = onName,
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.drawer_name)) },
                 modifier = Modifier.fillMaxWidth(),
             )
         },
         confirmButton = {
             Column {
-                TextButton(onClick = onMoveUp) { Text("Move up") }
-                TextButton(onClick = onMoveDown) { Text("Move down") }
-                TextButton(onClick = onSave) { Text("Save") }
-                TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = onMoveUp) { Text(stringResource(R.string.drawer_move_up)) }
+                TextButton(onClick = onMoveDown) { Text(stringResource(R.string.drawer_move_down)) }
+                TextButton(onClick = onSave) { Text(stringResource(R.string.drawer_save)) }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.drawer_delete)) }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.drawer_cancel)) }
         },
     )
 }

@@ -1282,3 +1282,15 @@
 
 - licenses_unreadable is The license text could not be read. Existing string values are unchanged.
 - LicensesScreen uses that resource for the missing-file line. The about/licenses Up title is about_licenses. The About drawer label stays About. NOTICES.txt stays. No install.
+
+## 2026-10-06 - Drawer strings execution start
+
+- Approved plan: sandbox/plans/drawer-strings-20261006-0338-plan.md
+- Phase 1: drawer labels, the postponed description, and the favorite dialog come from strings.xml. Wording stays the same. About uses about_title. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Drawer strings phase 1
+
+- Drawer labels INBOX, All folders, and Settings come from strings.xml. The About drawer item uses about_title. Existing string values are unchanged.
+- The postponed row still shows postponedDrawerMailbox. Its spoken label is drawer_postponed. Favorite names stay the stored label. Favorite, Name, Move up, Move down, Save, Delete, and Cancel come from strings.xml.
+- NavHost.kt has no Text(". No other screen. No install.
