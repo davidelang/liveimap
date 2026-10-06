@@ -333,6 +333,9 @@ class IndexModel(
     val filterActive: Boolean
         get() = filterUids != null
 
+    val searchActive: Boolean
+        get() = activeSearch != null
+
     val canWiden: Boolean
         get() = filterStack.isNotEmpty()
 

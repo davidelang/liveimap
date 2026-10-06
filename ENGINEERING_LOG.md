@@ -1011,3 +1011,10 @@
 - Exists during a search, a filter, or a non-Arrival sort sets newMailUnnumbered, leaves pendingNew at 0, and does not fetch
 - Flags and Expunge do not set that flag
 - IndexWindowTest: one known failure, orderedSubjectHiddenUnlessAdvertised. The new-mail tests passed
+
+## 2026-10-05 - Index new-mail pill phase 2
+
+- The new-mail snackbar is gone. New mail does not call loadWindow
+- The pill reads "N new messages" with an arrow, or "New messages" with no number. TalkBack uses one polite live region per change
+- A newest-first prepend keeps the first visible uid and offset. Tap and a scroll onto the newest rows clear the pill
+- IndexWindowTest: 54 completed, 1 known failure (orderedSubjectHiddenUnlessAdvertised). No deploy

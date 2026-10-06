@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -99,8 +101,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -413,8 +418,9 @@ fun MessageIndexScreen(
     var loadToken by remember { mutableIntStateOf(0) }
     var snackEvent by remember { mutableIntStateOf(0) }
     var snackMessage by remember { mutableStateOf("") }
-    var newMailToken by remember { mutableIntStateOf(0) }
-    var newMailCount by remember { mutableIntStateOf(0) }
+    var pendingNew by remember { mutableIntStateOf(0) }
+    var newMailUnnumbered by remember { mutableStateOf(false) }
+    val userMovedSincePill = remember { mutableStateOf(false) }
     var lastReported by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     var view by remember { mutableStateOf(FolderView(SortKey.Arrival, true)) }
@@ -620,9 +626,25 @@ fun MessageIndexScreen(
         threadMembers = model.threadMembers
         threadHidden = model.threadHidden
         threadDepth = model.threadDepth
+        pendingNew = model.pendingNew
+        newMailUnnumbered = model.newMailUnnumbered
     }
 
     fun pull() { sync.block() }
+
+    fun onNewMailPill() {
+        scope.launch {
+            gate.withLock {
+                val plainArrival = model.view.key == SortKey.Arrival &&
+                    !model.filterActive &&
+                    !model.searchActive
+                model.acknowledgeNewMail()
+                if (plainArrival) model.jumpToNewest()
+                pull()
+            }
+            if (model.rows.isNotEmpty()) scrollToNewestEnd()
+        }
+    }
 
     fun toggleThread(rootUid: Long) {
         scope.launch {
@@ -741,25 +763,6 @@ fun MessageIndexScreen(
         if (undoToken == token) {
             undoOffer = null
             snackMode = "retry"
-        }
-    }
-
-    LaunchedEffect(newMailToken) {
-        if (newMailToken == 0) return@LaunchedEffect
-        val count = newMailCount
-        if (count <= 0) return@LaunchedEffect
-        val text = if (count == 1) "1 new message" else "$count new messages"
-        snackMode = "new"
-        val result = snackbarHostState.showSnackbar(
-            message = text,
-            actionLabel = "Show",
-        )
-        if (result == SnackbarResult.ActionPerformed) {
-            gate.withLock {
-                model.jumpToNewest()
-                pull()
-            }
-            scrollToNewestEnd()
         }
     }
 
@@ -883,23 +886,23 @@ fun MessageIndexScreen(
                                         is MailboxChange.Expunge -> folderExists = change.exists
                                         else -> Unit
                                     }
-                                    val beforeRows = model.rows.size
-                                    val beforePending = model.pendingNew
+                                    val anchorOffset = listState.firstVisibleItemScrollOffset
+                                    val anchorIndex = listState.firstVisibleItemIndex
+                                    val anchorUid = model.rows.getOrNull(anchorIndex)?.uid
                                     gate.withLock {
                                         model.applyChange(change)
                                         pull()
                                     }
-                                    if (change is MailboxChange.Exists) {
-                                        val inserted = (model.rows.size - beforeRows).coerceAtLeast(0)
-                                        val count = when {
-                                            model.pendingNew > beforePending -> model.pendingNew - beforePending
-                                            model.view.key == SortKey.Arrival && inserted > 0 -> inserted
-                                            else -> 0
+                                    if (change is MailboxChange.Exists && anchorUid != null && model.view.newestFirst) {
+                                        val after = model.rows.indexOfFirst { it.uid == anchorUid }
+                                        if (after > anchorIndex) {
+                                            listState.requestScrollToItem(after, anchorOffset)
                                         }
-                                        if (count > 0) {
-                                            newMailCount = count
-                                            newMailToken += 1
-                                        }
+                                    }
+                                    if (change is MailboxChange.Exists &&
+                                        (model.pendingNew > 0 || model.newMailUnnumbered)
+                                    ) {
+                                        userMovedSincePill.value = false
                                     }
                                 }
                             }
@@ -1043,9 +1046,24 @@ fun MessageIndexScreen(
         }
     }
 
+    LaunchedEffect(listState, connected) {
+        if (!connected) return@LaunchedEffect
+        snapshotFlow { userAtNewestEnd() }.collect { atEnd ->
+            if (!atEnd || !userMovedSincePill.value) return@collect
+            if (model.pendingNew <= 0 && !model.newMailUnnumbered) return@collect
+            if (!model.showsNewestEnd) return@collect
+            userMovedSincePill.value = false
+            gate.withLock {
+                model.acknowledgeNewMail()
+                pull()
+            }
+        }
+    }
+
     val newerConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.SideEffect) userMovedSincePill.value = true
                 if (available.y < 0f) allowNewer.value = true
                 return Offset.Zero
             }
@@ -1656,12 +1674,15 @@ fun MessageIndexScreen(
                 if (measured > dateWidthPx) dateWidthPx = measured
             }
             val dateWidth = with(LocalDensity.current) { dateWidthPx.toDp() }
-            PullToRefreshBox(
-                isRefreshing = loading || refreshing,
-                onRefresh = { refreshIndex() },
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
+            ) {
+            PullToRefreshBox(
+                isRefreshing = loading || refreshing,
+                onRefresh = { refreshIndex() },
+                modifier = Modifier.fillMaxSize(),
             ) {
             if (!loading && banner == null && rows.isEmpty() && threadAsk == null) {
                 Column(
@@ -1749,6 +1770,15 @@ fun MessageIndexScreen(
             }
             }
             }
+            if (newMailUnnumbered || pendingNew > 0) {
+                NewMailPill(
+                    count = pendingNew,
+                    unnumbered = newMailUnnumbered,
+                    newestFirst = view.newestFirst,
+                    onClick = { onNewMailPill() },
+                )
+            }
+        }
         }
     }
         ExtendedFloatingActionButton(
@@ -2224,6 +2254,63 @@ private fun dismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, leftToR
         SwipeToDismissBoxValue.EndToStart -> if (leftToRight) -span else span
         SwipeToDismissBoxValue.StartToEnd -> if (leftToRight) span else -span
         SwipeToDismissBoxValue.Settled -> 0f
+    }
+}
+
+private fun newMailPillText(count: Int, unnumbered: Boolean, newestFirst: Boolean): String {
+    val arrow = if (newestFirst) "\u2191" else "\u2193"
+    val base = if (unnumbered) {
+        "New messages"
+    } else if (count == 1) {
+        "1 new message"
+    } else {
+        "$count new messages"
+    }
+    return "$base $arrow"
+}
+
+private fun newMailPillSpoken(count: Int, unnumbered: Boolean): String {
+    val base = if (unnumbered) {
+        "New messages"
+    } else if (count == 1) {
+        "1 new message"
+    } else {
+        "$count new messages"
+    }
+    return "$base, jump to newest"
+}
+
+@Composable
+private fun BoxScope.NewMailPill(
+    count: Int,
+    unnumbered: Boolean,
+    newestFirst: Boolean,
+    onClick: () -> Unit,
+) {
+    val spoken = newMailPillSpoken(count, unnumbered)
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .align(if (newestFirst) Alignment.TopCenter else Alignment.BottomCenter)
+            .padding(
+                top = 8.dp,
+                bottom = if (newestFirst) 8.dp else 72.dp,
+            )
+            .semantics {
+                contentDescription = spoken
+                liveRegion = LiveRegionMode.Polite
+            },
+    ) {
+        Text(
+            text = newMailPillText(count, unnumbered, newestFirst),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .clearAndSetSemantics { },
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 
