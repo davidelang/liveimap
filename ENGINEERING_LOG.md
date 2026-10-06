@@ -1318,3 +1318,14 @@
 - Folder list title, menu, search, empty states, row menu, and icon descriptions come from strings.xml. Existing string values are unchanged. Help uses help_title.
 - Spoken counts use folders_messages and folders_unread. One count uses the one-form. Other counts use the other-form. An empty prefix shows (empty prefix) and is spoken as Namespace, empty prefix.
 - folderDisplayName and folderRowsMatchingName take the empty-prefix label. folderRowDescription joins the leaf and the non-null phrases. FolderListScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Debug report strings execution start
+
+- Approved plan: sandbox/plans/debug-report-strings-20261006-0358-plan.md
+- Phase 1: debug-report review title, buttons, clipboard label, and share title come from strings.xml. Wording stays the same. Report lines stay generated text. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Debug report strings phase 1
+
+- Debug report, Remove line, Copy, Share, and Dismiss come from strings.xml. The clipboard label is LiveIMAP debug report. The share chooser title is Share debug report. Existing string values are unchanged.
+- An empty report line still shows a space. Report lines stay generated text. DebugReportReview.kt has no Text(". No install.

@@ -27,10 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import org.dlang.liveimap.R
 
 @Composable
 fun DebugReportReview(
@@ -56,7 +58,7 @@ fun DebugReportReview(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Debug report", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.debug_report_title), style = MaterialTheme.typography.titleLarge)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -72,18 +74,18 @@ fun DebugReportReview(
                             )
                             TextButton(onClick = {
                                 onLines(lines.filterIndexed { i, _ -> i != index })
-                            }) { Text("Remove line") }
+                            }) { Text(stringResource(R.string.debug_remove_line)) }
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = {
                         copyDebugReport(context, lines)
-                    }) { Text("Copy") }
+                    }) { Text(stringResource(R.string.debug_copy)) }
                     TextButton(onClick = {
                         shareDebugReport(context, lines)
-                    }) { Text("Share") }
-                    TextButton(onClick = onDismiss) { Text("Dismiss") }
+                    }) { Text(stringResource(R.string.debug_share)) }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.debug_dismiss)) }
                 }
             }
         }
@@ -92,7 +94,9 @@ fun DebugReportReview(
 
 private fun copyDebugReport(context: Context, lines: List<String>) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText("LiveIMAP debug report", lines.joinToString("\n")))
+    clipboard.setPrimaryClip(
+        ClipData.newPlainText(context.getString(R.string.debug_clipboard), lines.joinToString("\n")),
+    )
 }
 
 private fun shareDebugReport(context: Context, lines: List<String>) {
@@ -100,5 +104,5 @@ private fun shareDebugReport(context: Context, lines: List<String>) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
     }
-    context.startActivity(Intent.createChooser(send, "Share debug report"))
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.debug_share_title)))
 }

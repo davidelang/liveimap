@@ -68,4 +68,11 @@
         <item quantity="one">%d unread</item>
         <item quantity="other">%d unread</item>
     </plurals>
+    <string name="debug_report_title">Debug report</string>
+    <string name="debug_remove_line">Remove line</string>
+    <string name="debug_copy">Copy</string>
+    <string name="debug_share">Share</string>
+    <string name="debug_dismiss">Dismiss</string>
+    <string name="debug_clipboard">LiveIMAP debug report</string>
+    <string name="debug_share_title">Share debug report</string>
 </resources>
