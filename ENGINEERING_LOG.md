@@ -1018,3 +1018,7 @@
 - The pill reads "N new messages" with an arrow, or "New messages" with no number. TalkBack uses one polite live region per change
 - A newest-first prepend keeps the first visible uid and offset. Tap and a scroll onto the newest rows clear the pill
 - IndexWindowTest: 54 completed, 1 known failure (orderedSubjectHiddenUnlessAdvertised). No deploy
+
+## 2026-10-05 - Traffic log execution start
+
+- Execute sandbox/plans/traffic-log-20261005-2145-plan.md on master (Status APPROVED). Phase 1: TrafficLog file format and native chunk handoff. Phase 2: share, debug report review, user-name switch, debug status. No install. Device checks stay with David.

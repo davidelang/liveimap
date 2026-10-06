@@ -146,8 +146,9 @@ class LibetpanMailSession : MailSession {
                         handle,
                         account.pipelineCommands,
                         account.logImapTraffic,
-                        imapTrafficLogPath(currentApplication()),
+                        prepareTraffic(account),
                     )
+                    finishTraffic(account)
                     this.account = held.copy(
                         pipelineCommands = account.pipelineCommands,
                         logImapTraffic = account.logImapTraffic,
@@ -190,15 +191,17 @@ class LibetpanMailSession : MailSession {
             from,
             account.pipelineCommands,
             account.logImapTraffic,
-            imapTrafficLogPath(context),
+            prepareTraffic(account),
         )
         if (opened == 0L) {
+            finishTraffic(account)
             return OpenResult.Failed(nativeTakeError())
         }
         val line = nativeCapabilityLine(opened)
         val gate = capabilityGate(line)
         if (gate is OpenResult.Rejected) {
             nativeClose(opened)
+            finishTraffic(account)
             return gate
         }
         handle = opened
@@ -214,6 +217,7 @@ class LibetpanMailSession : MailSession {
             nativeCompress(opened)
             compressed = true
         }
+        finishTraffic(account)
         return OpenResult.Connected
     }
 
@@ -698,6 +702,24 @@ class LibetpanMailSession : MailSession {
 private fun imapTrafficLogPath(context: Context?): String {
     if (context == null) return ""
     return File(context.cacheDir, "imap-traffic.log").absolutePath
+}
+
+private fun prepareTraffic(account: AccountSettings): String {
+    val context = currentApplication()
+    val path = imapTrafficLogPath(context)
+    if (context != null) {
+        TrafficLog.install(File(context.cacheDir, "imap-traffic.log"))
+        if (account.logImapTraffic) {
+            TrafficLog.setRecording(true)
+        }
+    }
+    return path
+}
+
+private fun finishTraffic(account: AccountSettings) {
+    if (!account.logImapTraffic) {
+        TrafficLog.setRecording(false)
+    }
 }
 
 private fun currentApplication(): Context? {

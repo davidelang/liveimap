@@ -13,7 +13,6 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -110,9 +109,6 @@ struct LiveSession {
     bool pipelineCommands = true;
     bool logImapTraffic = false;
     std::string trafficLogPath;
-    std::mutex trafficTailMu;
-    std::string trafficSentTail;
-    std::string trafficRecvTail;
     std::string capabilityLine;
     std::map<std::string, char> delims;
     bool qresync = false;
@@ -166,6 +162,10 @@ struct JniCache {
     jmethodID longValueOf = nullptr;
     jmethodID integerValueOf = nullptr;
     jmethodID onWatch = nullptr;
+    jclass trafficLog = nullptr;
+    jmethodID trafficAccept = nullptr;
+    jmethodID trafficFlush = nullptr;
+    jmethodID trafficNote = nullptr;
     jfieldID personal = nullptr;
     jfieldID other = nullptr;
     jfieldID shared = nullptr;
@@ -175,6 +175,15 @@ JniCache gJni;
 std::once_flag gExtOnce;
 thread_local LiveSession * tlsWatch = nullptr;
 thread_local mailimap * tlsImap = nullptr;
+thread_local const char * tlsTrafficId = nullptr;
+
+struct TrafficIdScope {
+    const char * previous;
+    explicit TrafficIdScope(const char * id) : previous(tlsTrafficId) {
+        tlsTrafficId = id != nullptr && id[0] != 0 ? id : "main";
+    }
+    ~TrafficIdScope() { tlsTrafficId = previous; }
+};
 
 static int thread_ext_parse(int calling_parser, mailstream * fd, MMAPString * buffer,
     struct mailimap_parser_context * parser_ctx, size_t * indx,
@@ -377,8 +386,20 @@ bool ensureJni(JNIEnv * env) {
     jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
     gJni.onWatch = env->GetMethodID(sessionCls, "onNativeWatch", "(IIJ[Ljava/lang/String;)V");
     env->DeleteLocalRef(sessionCls);
+    local = env->FindClass("org/dlang/liveimap/engine/TrafficLog");
+    if (local != nullptr) {
+        gJni.trafficLog = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+        gJni.trafficAccept = env->GetStaticMethodID(
+            gJni.trafficLog, "acceptNative", "(Ljava/lang/String;I[B)V");
+        gJni.trafficFlush = env->GetStaticMethodID(gJni.trafficLog, "flushNative", "()V");
+        gJni.trafficNote = env->GetStaticMethodID(
+            gJni.trafficLog, "noteNative", "(Ljava/lang/String;Ljava/lang/String;)V");
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
     gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
-        gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr;
+        gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr &&
+        gJni.trafficAccept != nullptr && gJni.trafficFlush != nullptr && gJni.trafficNote != nullptr;
     return gJni.ready;
 }
 
@@ -1857,33 +1878,84 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     return fd;
 }
 
-constexpr size_t kTrafficRotate = 4u * 1024u * 1024u;
-std::mutex gTrafficMu;
+std::string trafficConnectionId(LiveSession * live, mailimap * imap, mailstream * stream) {
+    if (live != nullptr) {
+        if (imap != nullptr && imap == live->watch) return "watch";
+        if (stream != nullptr && live->watch != nullptr && live->watch->imap_stream == stream) return "watch";
+        if (imap != nullptr && imap == live->imap) return "main";
+        if (stream != nullptr && live->imap != nullptr && live->imap->imap_stream == stream) return "main";
+    }
+    if (tlsTrafficId != nullptr && tlsTrafficId[0] != 0) return tlsTrafficId;
+    return "main";
+}
+
+bool beginTrafficJni(JNIEnv ** env, bool * attached) {
+    *env = nullptr;
+    *attached = false;
+    if (gVm == nullptr || !gJni.ready || gJni.trafficLog == nullptr) return false;
+    JNIEnv * local = nullptr;
+    jint got = gVm->GetEnv(reinterpret_cast<void **>(&local), JNI_VERSION_1_6);
+    if (got == JNI_EDETACHED) {
+        if (gVm->AttachCurrentThread(&local, nullptr) != 0) return false;
+        *attached = true;
+    } else if (got != JNI_OK) {
+        return false;
+    }
+    *env = local;
+    return local != nullptr;
+}
+
+void endTrafficJni(bool attached) {
+    if (attached && gVm != nullptr) gVm->DetachCurrentThread();
+}
+
+void postTrafficBytes(const std::string & connectionId, int logType, const char * data, size_t size) {
+    if (data == nullptr || size == 0 || gJni.trafficAccept == nullptr) return;
+    if (size > static_cast<size_t>(INT_MAX)) return;
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    if (!beginTrafficJni(&env, &attached)) return;
+    jstring id = env->NewStringUTF(connectionId.c_str());
+    jbyteArray bytes = env->NewByteArray(static_cast<jsize>(size));
+    if (id != nullptr && bytes != nullptr) {
+        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(size), reinterpret_cast<const jbyte *>(data));
+        env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficAccept, id, logType, bytes);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (id != nullptr) env->DeleteLocalRef(id);
+    if (bytes != nullptr) env->DeleteLocalRef(bytes);
+    endTrafficJni(attached);
+}
+
+void postTrafficNote(const std::string & connectionId, const std::string & text) {
+    if (gJni.trafficNote == nullptr || text.empty()) return;
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    if (!beginTrafficJni(&env, &attached)) return;
+    jstring id = env->NewStringUTF(connectionId.c_str());
+    jstring line = env->NewStringUTF(text.c_str());
+    if (id != nullptr && line != nullptr) {
+        env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficNote, id, line);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (id != nullptr) env->DeleteLocalRef(id);
+    if (line != nullptr) env->DeleteLocalRef(line);
+    endTrafficJni(attached);
+}
+
+void postTrafficFlush() {
+    if (gJni.trafficFlush == nullptr) return;
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    if (!beginTrafficJni(&env, &attached)) return;
+    env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficFlush);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    endTrafficJni(attached);
+}
 
 void appendTrafficLine(const std::string & path, const std::string & line) {
-    if (path.empty()) return;
-    std::lock_guard<std::mutex> lock(gTrafficMu);
-    struct stat st{};
-    if (stat(path.c_str(), &st) == 0 && static_cast<unsigned long long>(st.st_size) >= kTrafficRotate) {
-        std::string rotated = path + ".1";
-        rename(path.c_str(), rotated.c_str());
-    }
-    int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0600);
-    if (fd < 0) return;
-    std::string out = line;
-    out.push_back('\n');
-    const char * p = out.data();
-    size_t left = out.size();
-    while (left > 0) {
-        ssize_t n = write(fd, p, left);
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        p += n;
-        left -= static_cast<size_t>(n);
-    }
-    close(fd);
+    (void)path;
+    postTrafficNote("main", line);
 }
 
 void emitTrafficLine(const std::string & line, const std::string & path) {
@@ -1892,72 +1964,21 @@ void emitTrafficLine(const std::string & line, const std::string & path) {
     appendTrafficLine(path, line);
 }
 
-std::string trafficShown(const std::string & raw) {
-    std::string shown;
-    shown.reserve(raw.size());
-    for (size_t i = 0; i < raw.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(raw[i]);
-        if (c == '\t' || (c >= 0x20 && c <= 0x7E)) {
-            shown.push_back(static_cast<char>(c));
-        } else {
-            shown.push_back('.');
-        }
-    }
-    return shown;
-}
-
-void writeTrafficTail(std::string * tail, const char * prefix, const std::string & path) {
-    emitTrafficLine(std::string(prefix) + trafficShown(*tail), path);
-    tail->clear();
-}
-
-void consumeTrafficChunk(std::string * tail, const char * prefix, const char * str, size_t size,
-    const std::string & path) {
-    for (size_t i = 0; i < size; ++i) {
-        unsigned char c = static_cast<unsigned char>(str[i]);
-        if (c == '\n') {
-            if (!tail->empty() && static_cast<unsigned char>(tail->back()) == '\r') {
-                tail->pop_back();
-            }
-            writeTrafficTail(tail, prefix, path);
-        } else {
-            tail->push_back(static_cast<char>(c));
-        }
-    }
-}
-
-// Sent and received are separate streams, so a split FETCH is not cut by the other direction.
-void logImapBuffer(LiveSession * live, int log_type, const char * str, size_t size) {
-    if (live == nullptr) return;
-    std::lock_guard<std::mutex> lock(live->trafficTailMu);
-    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE) {
-        emitTrafficLine("C <private>", live->trafficLogPath);
+// Sent and received stay separate streams. Kotlin owns the file.
+void logImapBuffer(LiveSession * live, int log_type, const char * str, size_t size,
+    const std::string & connectionId) {
+    if (live == nullptr || str == nullptr || size == 0) return;
+    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
         return;
     }
-    const char * prefix = nullptr;
-    std::string * tail = nullptr;
-    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT) {
-        prefix = "C ";
-        tail = &live->trafficSentTail;
-    } else if (log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
-        prefix = "S ";
-        tail = &live->trafficRecvTail;
-    } else {
-        return;
-    }
-    if (str == nullptr || size == 0) return;
-    consumeTrafficChunk(tail, prefix, str, size, live->trafficLogPath);
+    postTrafficBytes(connectionId, log_type, str, size);
 }
 
 void flushTrafficTail(LiveSession * live) {
-    if (live == nullptr) return;
-    std::lock_guard<std::mutex> lock(live->trafficTailMu);
-    if (!live->trafficSentTail.empty()) {
-        writeTrafficTail(&live->trafficSentTail, "C ", live->trafficLogPath);
-    }
-    if (!live->trafficRecvTail.empty()) {
-        writeTrafficTail(&live->trafficRecvTail, "S ", live->trafficLogPath);
-    }
+    (void)live;
+    postTrafficFlush();
 }
 
 void noteParsedRows(LiveSession * session, size_t count) {
@@ -1977,17 +1998,15 @@ bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
 }
 
 void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_t size, void * context) {
-    (void)session;
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(live, log_type, str, size);
+    logImapBuffer(live, log_type, str, size, trafficConnectionId(live, session, nullptr));
 }
 
 void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
-    (void)stream;
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(live, log_type, str, size);
+    logImapBuffer(live, log_type, str, size, trafficConnectionId(live, nullptr, stream));
 }
 
 void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
@@ -3259,6 +3278,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->pipelineCommands = pipelineFlag == JNI_TRUE;
     session->logImapTraffic = logFlag == JNI_TRUE;
     session->trafficLogPath = path.c();
+    TrafficIdScope idScope("main");
     std::string error;
     std::string address;
     mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
@@ -4524,6 +4544,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     }
     stopWatchLocked(session, env);
     JChars mb(env, mailbox);
+    TrafficIdScope idScope("watch");
     std::string error;
     mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
     if (watch == nullptr) {
