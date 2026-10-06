@@ -1028,3 +1028,13 @@
 - Share the current traffic file through TrafficFileProvider. The debug report can drop a line, then Copy or Share. The user name is <user> unless "Show user name in the debug report" is on.
 - DebugConnectionStatus sits under the reconnect strip on the folder list, the index, and the reader. The strip text is unchanged.
 - TrafficLogTest checks the report. No install. Device checks stay with David.
+
+## 2026-10-05 - Settings screens execution start
+
+- Execute sandbox/plans/settings-screens-20261005-2248-plan.md on master (Status APPROVED). Phase 1: commit text and port on Done, focus loss, or leave. Phase 2: settings groups, sub-screens, licenses. No install. Device and rotation checks stay with David.
+
+## 2026-10-05 - Settings screens phase 1
+
+- commitText and commitPort. Equal text and an invalid or unchanged port return null.
+- A text field keeps its draft and writes on IME Done, focus loss, or leaving. Rotation and a screen that is not ready skip the leave write. Add-row drafts do not insert a row on leave.
+- LineCommitTest covers those rules. No install.

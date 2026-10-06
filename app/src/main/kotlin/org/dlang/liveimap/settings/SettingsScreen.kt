@@ -1,9 +1,11 @@
 package org.dlang.liveimap.settings
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentResolver
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -42,20 +45,26 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -68,6 +77,9 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -77,14 +89,18 @@ import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.folder.MailboxChooser
 
+private val settingsIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+private val settingsMutex = Mutex()
+
 @Composable
 fun SettingsScreen() {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val scope = rememberCoroutineScope()
-    val saveMutex = remember { Mutex() }
-    var settings by remember { mutableStateOf(AccountSettings()) }
-    var password by remember { mutableStateOf("") }
+    val settingsState = remember { mutableStateOf(AccountSettings()) }
+    var settings by settingsState
+    val passwordState = remember { mutableStateOf("") }
+    var password by passwordState
     var ready by remember { mutableStateOf(false) }
     var draftFolder by remember { mutableStateOf("") }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
@@ -138,16 +154,16 @@ fun SettingsScreen() {
     fun persist(next: AccountSettings) {
         if (!ready) return
         settings = next
-        scope.launch {
-            saveMutex.withLock { store.save(next) }
+        settingsIo.launch {
+            settingsMutex.withLock { store.save(settingsState.value) }
         }
     }
 
     fun persistPassword(value: String) {
         if (!ready) return
         password = value
-        scope.launch {
-            saveMutex.withLock { store.setPassword(value) }
+        settingsIo.launch {
+            settingsMutex.withLock { store.setPassword(passwordState.value) }
         }
     }
 
@@ -169,13 +185,14 @@ fun SettingsScreen() {
         LineField("Friendly name", settings.friendlyName) {
             persist(settings.copy(friendlyName = it))
         }
-        LineField(
-            "Username",
-            settings.username,
-            onFocusLost = { username ->
-                persist(settings.copy(email = emailDefaultedFromUsername(username, settings.email)))
-            },
-        ) { persist(settings.copy(username = it)) }
+        LineField("Username", settings.username) { draft ->
+            persist(
+                settings.copy(
+                    username = draft,
+                    email = emailDefaultedFromUsername(draft, settings.email),
+                ),
+            )
+        }
         LineField("Password", password, KeyboardType.Password, password = true) {
             persistPassword(it)
         }
@@ -228,7 +245,12 @@ fun SettingsScreen() {
                 }) { Text("Remove") }
             }
         }
-        LineField("Expanded folder", draftExpanded) { draftExpanded = it }
+        LineField(
+            "Expanded folder",
+            draftExpanded,
+            commitOnLeave = false,
+            onDraft = { draftExpanded = it },
+        ) { draftExpanded = it }
         TextButton(onClick = {
             if (draftExpanded.isEmpty()) return@TextButton
             persist(settings.copy(expandedFolders = settings.expandedFolders + draftExpanded))
@@ -282,7 +304,12 @@ fun SettingsScreen() {
                 }) { Text("Remove") }
             }
         }
-        LineField("Folder view mailbox", draftFolder) { draftFolder = it }
+        LineField(
+            "Folder view mailbox",
+            draftFolder,
+            commitOnLeave = false,
+            onDraft = { draftFolder = it },
+        ) { draftFolder = it }
         ChoiceField("Folder view sort", SortKey.entries, draftSort, { sortKeyLabel(it) }) { draftSort = it }
         BoolField("Folder view newest first", draftNewest) { draftNewest = it }
         TextButton(onClick = {
@@ -473,13 +500,13 @@ fun SettingsScreen() {
     if (field != null) {
         MailboxChooser(
             store = store,
-            saveMutex = saveMutex,
+            saveMutex = settingsMutex,
             onStored = { loaded ->
                 settings = settings.copy(expandedFolders = loaded.expandedFolders)
             },
             onPick = { mailbox ->
-                scope.launch {
-                    saveMutex.withLock {
+                settingsIo.launch {
+                    settingsMutex.withLock {
                         val next = assignMailbox(store.load(), field, mailbox)
                         store.save(next)
                         settings = next
@@ -527,7 +554,12 @@ fun SettingsScreen() {
                                 }) { Text("Default") }
                             }
                         }
-                        LineField("Mailbox", draftStartMailbox) { draftStartMailbox = it }
+                        LineField(
+                            "Mailbox",
+                            draftStartMailbox,
+                            commitOnLeave = false,
+                            onDraft = { draftStartMailbox = it },
+                        ) { draftStartMailbox = it }
                         StartRuleField("Opens at", draftStartRule, settings.showRecentRules) {
                             draftStartRule = it
                         }
@@ -604,39 +636,131 @@ fun SettingsScreen() {
     }
 }
 
+private class LineCommitter {
+    var ready: Boolean = true
+    var commitOnLeave: Boolean = true
+    var onCommit: (String) -> Unit = {}
+    var onDraft: ((String) -> Unit)? = null
+    var interpret: (String, String) -> String? = { _, _ -> null }
+    var skipLeave: () -> Boolean = { false }
+    lateinit var draft: MutableState<String>
+    lateinit var baseline: MutableState<String>
+
+    fun commit() {
+        if (!ready) return
+        val current = draft.value
+        val base = baseline.value
+        val written = interpret(current, base)
+        if (written == null) {
+            if (current != base) {
+                draft.value = base
+                onDraft?.invoke(base)
+            }
+            return
+        }
+        baseline.value = written
+        if (draft.value != written) draft.value = written
+        onCommit(written)
+    }
+
+    fun commitFromDispose() {
+        if (!commitOnLeave || !ready || skipLeave()) return
+        commit()
+    }
+}
+
 @Composable
 private fun LineField(
     label: String,
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     password: Boolean = false,
-    onFocusLost: ((String) -> Unit)? = null,
-    onValue: (String) -> Unit,
+    ready: Boolean = true,
+    commitOnLeave: Boolean = true,
+    onDraft: ((String) -> Unit)? = null,
+    interpret: (String, String) -> String? = { draft, stored -> commitText(draft, stored) },
+    onCommit: (String) -> Unit,
 ) {
+    val draftState = rememberSaveable { mutableStateOf(value) }
+    val baselineState = remember { mutableStateOf(value) }
+    if (value != baselineState.value) {
+        if (draftState.value == baselineState.value || draftState.value == value) {
+            draftState.value = value
+        }
+        baselineState.value = value
+    }
+    val committer = remember { LineCommitter() }
+    committer.draft = draftState
+    committer.baseline = baselineState
+    committer.ready = ready
+    committer.commitOnLeave = commitOnLeave
+    committer.onCommit = onCommit
+    committer.onDraft = onDraft
+    committer.interpret = interpret
+    val context = LocalContext.current
+    committer.skipLeave = { context.findActivity()?.isChangingConfigurations == true }
+    if (onDraft != null) {
+        SideEffect { onDraft(draftState.value) }
+    }
+    DisposableEffect(committer) {
+        onDispose { committer.commitFromDispose() }
+    }
     var hadFocus by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     OutlinedTextField(
-        value = value,
-        onValueChange = onValue,
+        value = draftState.value,
+        onValueChange = { next ->
+            draftState.value = next
+            onDraft?.invoke(next)
+        },
         label = { Text(label) },
         singleLine = true,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = {
+            committer.commit()
+            focusManager.clearFocus()
+        }),
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { state ->
-                if (onFocusLost != null && hadFocus && !state.isFocused) {
-                    onFocusLost(value)
-                }
+                if (hadFocus && !state.isFocused && !committer.skipLeave()) committer.commit()
                 hadFocus = state.isFocused
             },
     )
 }
 
 @Composable
-private fun PortField(label: String, value: Int, onValue: (Int) -> Unit) {
-    LineField(label, value.toString(), KeyboardType.Number) { text ->
-        val port = text.toIntOrNull() ?: return@LineField
-        onValue(port)
+private fun PortField(
+    label: String,
+    value: Int,
+    ready: Boolean = true,
+    onValue: (Int) -> Unit,
+) {
+    val storedPort = value
+    LineField(
+        label = label,
+        value = value.toString(),
+        keyboardType = KeyboardType.Number,
+        ready = ready,
+        interpret = { draft, stored ->
+            commitPort(draft, stored.toIntOrNull() ?: storedPort)?.toString()
+        },
+        onCommit = { text ->
+            val port = text.toIntOrNull() ?: return@LineField
+            onValue(port)
+        },
+    )
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (true) {
+        if (current is Activity) return current
+        if (current !is ContextWrapper) return null
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
     }
 }
 
