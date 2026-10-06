@@ -1110,3 +1110,9 @@
 ## 2026-10-06 - Reader polish phase 1 test import
 
 - ReaderTextTest imports settings.encode so the monospace round-trip compiles. The phase 1 reader behavior is unchanged. No install.
+
+## 2026-10-06 - Reader polish phase 2
+
+- An attachment chip shows the filename, the BODYSTRUCTURE size, and an image, PDF, or generic icon. Nothing is fetched until the first tap. While the 65536-byte fetch runs, the chip shows the fetched count. When it is done, Open, Share, and Save use the cache file and do not fetch again.
+- AttachmentFileProvider serves only a read-only cache file named liveimap-<uid>-<safe>. It does not serve the traffic log. Leaving the message deletes that UID's cache files and leaves imap-traffic.log.
+- Show images is shown while HTML is on screen. It turns off blockNetworkLoads for this message only. The next message starts blocked. JavaScript stays off. No install.

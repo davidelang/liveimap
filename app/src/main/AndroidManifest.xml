@@ -22,5 +22,11 @@
             android:authorities="org.dlang.liveimap.trafficlog"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <provider
+            android:name=".ui.reader.AttachmentFileProvider"
+            android:authorities="org.dlang.liveimap.attachments"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

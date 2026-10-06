@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.reader
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -9,6 +10,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -30,9 +33,12 @@ import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -56,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -146,12 +153,20 @@ private class LinkBridge {
     var onLink: (String) -> Unit = {}
 }
 
+private class SaveTarget {
+    var row: AttachmentRow? = null
+    var uid: Long = 0
+}
+
 private data class AttachmentRow(
     val section: String,
     val label: String,
     val size: Int,
     val fetched: Int,
     val done: Boolean,
+    val type: String,
+    val subtype: String,
+    val busy: Boolean = false,
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -209,7 +224,9 @@ fun MessageReaderScreen(
     var rowFlags by remember(mailbox, uid) { mutableStateOf(emptySet<String>()) }
     var showHtmlButton by remember(mailbox, uid) { mutableStateOf(false) }
     var pendingLink by remember(mailbox, uid) { mutableStateOf<String?>(null) }
+    var allowImages by remember(mailbox, uid) { mutableStateOf(false) }
     val linkBridge = remember { LinkBridge() }
+    val saveTarget = remember { SaveTarget() }
     var noTextPart by remember(mailbox, uid) { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
     var seenStored by remember { mutableStateOf(false) }
@@ -230,6 +247,32 @@ fun MessageReaderScreen(
         snackMessage = text
         snackMode = "retry"
         snackEvent += 1
+    }
+
+    val saveDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val row = saveTarget.row
+        val messageUid = saveTarget.uid
+        saveTarget.row = null
+        if (uri == null || row == null) return@rememberLauncherForActivityResult
+        val file = File(appContext.cacheDir, attachmentCacheName(messageUid, row.section))
+        try {
+            val output = context.contentResolver.openOutputStream(uri)
+            if (output == null) {
+                postSnack("No app found")
+                return@rememberLauncherForActivityResult
+            }
+            output.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            }
+        } catch (error: Exception) {
+            postSnack(error.message ?: "not connected")
+        }
+    }
+
+    DisposableEffect(uid) {
+        onDispose {
+            deleteReaderAttachmentCache(appContext.cacheDir, uid)
+        }
     }
 
     LaunchedEffect(snackEvent) {
@@ -466,13 +509,20 @@ fun MessageReaderScreen(
         }
     }
 
+    fun markAttachment(section: String, fetched: Int, done: Boolean, busy: Boolean) {
+        attachments = attachments.map { item ->
+            if (item.section == section) item.copy(fetched = fetched, done = done, busy = busy) else item
+        }
+    }
+
     fun fetchAttachment(row: AttachmentRow) {
-        if (row.done) return
+        if (row.done || row.busy) return
         scope.launch {
             gate.withLock {
                 if (!connected) return@withLock
                 val current = attachments.firstOrNull { it.section == row.section } ?: return@withLock
-                if (current.done) return@withLock
+                if (current.done || current.busy) return@withLock
+                markAttachment(current.section, current.fetched, done = false, busy = true)
                 try {
                     if (selectedMailbox != mailbox) {
                         session.select(mailbox)
@@ -484,6 +534,7 @@ fun MessageReaderScreen(
                         val chunk = session.peekPart(uid, current.section, 0, 65536)
                         out.write(chunk)
                         offset = chunk.size
+                        markAttachment(current.section, offset, done = false, busy = true)
                     } else {
                         while (offset < current.size) {
                             val length = nextWireCount(offset, current.size, 65536, true)
@@ -492,39 +543,64 @@ fun MessageReaderScreen(
                             if (chunk.isEmpty()) break
                             out.write(chunk)
                             offset += chunk.size
-                            val fetchedNow = offset
-                            attachments = attachments.map { item ->
-                                if (item.section == current.section) {
-                                    item.copy(fetched = fetchedNow, done = false)
-                                } else {
-                                    item
-                                }
-                            }
+                            markAttachment(current.section, offset, done = false, busy = true)
                         }
                     }
-                    val safe = current.section.replace(Regex("[^A-Za-z0-9._-]"), "_")
                     try {
-                        File(appContext.cacheDir, "liveimap-$uid-$safe").writeBytes(out.toByteArray())
+                        File(appContext.cacheDir, attachmentCacheName(uid, current.section))
+                            .writeBytes(out.toByteArray())
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
+                        markAttachment(current.section, offset, done = false, busy = false)
                         postSnack(error.message ?: "not connected")
+                        return@withLock
                     }
-                    val fetchedNow = offset
-                    attachments = attachments.map { item ->
-                        if (item.section == current.section) {
-                            item.copy(fetched = fetchedNow, done = true)
-                        } else {
-                            item
-                        }
-                    }
+                    markAttachment(current.section, offset, done = true, busy = false)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
+                    markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.text)
                 }
             }
         }
+    }
+
+    fun openAttachment(row: AttachmentRow) {
+        val uri = attachmentUri(attachmentCacheName(uid, row.section))
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, attachmentMime(row))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri(row.label, uri)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (error: ActivityNotFoundException) {
+            postSnack("No app found")
+        }
+    }
+
+    fun shareAttachment(row: AttachmentRow) {
+        val uri = attachmentUri(attachmentCacheName(uid, row.section))
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = attachmentMime(row)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri(row.label, uri)
+        }
+        val chooser = Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(chooser)
+        } catch (error: ActivityNotFoundException) {
+            postSnack("No app found")
+        }
+    }
+
+    fun saveAttachment(row: AttachmentRow) {
+        saveTarget.row = row
+        saveTarget.uid = uid
+        saveDocument.launch(row.label)
     }
 
     laterRetry.block = { requestView(selectedView) }
@@ -597,6 +673,8 @@ fun MessageReaderScreen(
                         size = part.size,
                         fetched = 0,
                         done = false,
+                        type = part.type,
+                        subtype = part.subtype,
                     )
                 }
                 val row = try {
@@ -1047,9 +1125,12 @@ fun MessageReaderScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         for (row in attachments) {
-                            AssistChip(
-                                onClick = { fetchAttachment(row) },
-                                label = { Text(row.label) },
+                            AttachmentChip(
+                                row = row,
+                                onFetch = { fetchAttachment(row) },
+                                onOpen = { openAttachment(row) },
+                                onShare = { shareAttachment(row) },
+                                onSave = { saveAttachment(row) },
                             )
                         }
                     }
@@ -1072,6 +1153,8 @@ fun MessageReaderScreen(
                         }
                     }
                     absent == null && renderedHtml -> {
+                        Column(Modifier.weight(1f).fillMaxWidth()) {
+                        TextButton(onClick = { allowImages = true }) { Text("Show images") }
                         AndroidView(
                             factory = { webContext ->
                                 WebView(webContext).apply {
@@ -1109,11 +1192,14 @@ fun MessageReaderScreen(
                                 }
                             },
                             update = { view ->
+                                view.settings.javaScriptEnabled = false
+                                view.settings.blockNetworkLoads = !allowImages
                                 view.setBackgroundColor(htmlBackground)
                                 applyHtmlDark(view.settings)
                                 val page = themedHtml(bodyText, dark, htmlBackground, htmlForeground)
-                                if (view.tag != page) {
-                                    view.tag = page
+                                val token = page to allowImages
+                                if (view.tag != token) {
+                                    view.tag = token
                                     view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
                                 }
                             },
@@ -1121,6 +1207,7 @@ fun MessageReaderScreen(
                                 .weight(1f)
                                 .fillMaxWidth(),
                         )
+                        }
                     }
                     absent == null -> {
                         Column(
@@ -1392,6 +1479,67 @@ private val httpLink = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
 private val mailLink = Regex("""[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}""")
 
 private data class PlainLink(val start: Int, val end: Int, val url: String)
+
+@Composable
+private fun AttachmentChip(
+    row: AttachmentRow,
+    onFetch: () -> Unit,
+    onOpen: () -> Unit,
+    onShare: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val detail = if (row.busy && !row.done) row.fetched.toString() else attachmentSizeText(row.size)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(attachmentIcon(row.type, row.subtype), contentDescription = null)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .clickable(enabled = !row.done && !row.busy, onClick = onFetch),
+        ) {
+            Text(row.label)
+            if (detail != null) Text(detail)
+        }
+        if (row.done) {
+            TextButton(onClick = onOpen) { Text("Open") }
+            TextButton(onClick = onShare) { Text("Share") }
+            TextButton(onClick = onSave) { Text("Save") }
+        }
+    }
+}
+
+private fun attachmentIcon(type: String, subtype: String) = when {
+    type.equals("image", ignoreCase = true) -> Icons.Filled.Image
+    type.equals("application", ignoreCase = true) && subtype.equals("pdf", ignoreCase = true) ->
+        Icons.Filled.PictureAsPdf
+    else -> Icons.Filled.AttachFile
+}
+
+private fun attachmentSizeText(size: Int): String? = when {
+    size <= 0 -> null
+    size < 1024 -> "$size B"
+    else -> "${size / 1024} KB"
+}
+
+private fun attachmentMime(row: AttachmentRow): String {
+    val type = row.type.trim().ifEmpty { "application" }.lowercase()
+    val subtype = row.subtype.trim().ifEmpty { "octet-stream" }.lowercase()
+    return "$type/$subtype"
+}
+
+private fun attachmentCacheName(uid: Long, section: String): String {
+    val safe = section.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    return "liveimap-$uid-$safe"
+}
+
+private fun attachmentUri(name: String): Uri = Uri.parse("content://org.dlang.liveimap.attachments/$name")
+
+private fun deleteReaderAttachmentCache(dir: File, messageUid: Long) {
+    val prefix = "liveimap-$messageUid-"
+    val files = dir.listFiles() ?: return
+    for (file in files) {
+        if (file.isFile && file.name.startsWith(prefix)) file.delete()
+    }
+}
 
 private fun recipientLine(to: String, cc: String): String? {
     val toText = to.trim()
