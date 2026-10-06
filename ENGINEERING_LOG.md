@@ -1381,3 +1381,16 @@
 - takeEsearch still returns a detached LIVE_ESEARCH list when that slot is filled.
 - Otherwise, when the extension is mailimap_extension_esearch, it steals msg_list and sets that field to null before freeExtensionList. A null msg_list starts empty. An empty list appends min when has_min and max when has_max.
 - The list uidArray receives is still uint32_t values. sendEsearch is unchanged. libetpan is unchanged. No install.
+
+## 2026-10-06 - Compose strings execution start
+
+- Approved plan: sandbox/plans/compose-strings-20261006-1255-plan.md
+- Phase 1: compose buttons, field labels, titles, and notices come from strings.xml. Wording stays the same. Existing reader and unsent names are reused. oppositeForwardLabel stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Compose strings phase 1
+
+- Compose buttons, field labels, titles, and notices come from strings.xml. Wording stays the same.
+- composeTitle takes Reply, Reply all, Forward, and Compose. Bounce, a new message, and a resumed draft use Compose. The send icon is compose_send, or reader_retry when the held copy is append-only.
+- The Unsent button compares the notice and status with compose_accepted and unsent_not_sent. forwardHeaderBody takes the header already formatted with compose_quote_header. The leading newline stays at the call. oppositeForwardLabel is unchanged.
+- ComposeScreen.kt has no Text(", no contentDescription = ", no notice = ", and no status = ". No install.

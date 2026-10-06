@@ -50,8 +50,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.util.UUID
+import org.dlang.liveimap.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -133,7 +135,10 @@ private fun AddressChips(
                 onClick = { onStored(removeChipAddress(stored, address)) },
                 label = { Text(address) },
                 trailingIcon = {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove")
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.compose_remove),
+                    )
                 },
             )
         }
@@ -180,6 +185,16 @@ fun ComposeScreen(
     onOpenUnsent: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
+    val acceptedNotice = stringResource(R.string.compose_accepted)
+    val notSentNotice = stringResource(R.string.unsent_not_sent)
+    val sentMailboxMissing = stringResource(R.string.compose_sent_mailbox)
+    val postponedMailboxMissing = stringResource(R.string.compose_postponed_mailbox)
+    val fromMissing = stringResource(R.string.compose_from_missing)
+    val resentMissing = stringResource(R.string.compose_resent_missing)
+    val draftNotSaved = stringResource(R.string.compose_draft_not_saved)
+    val unsentGone = stringResource(R.string.compose_unsent_gone)
+    val notConnected = stringResource(R.string.reader_not_connected)
+    val fetchFailed = stringResource(R.string.compose_fetch_failed)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
     val scope = rememberCoroutineScope()
@@ -417,12 +432,13 @@ fun ComposeScreen(
             val fetched = session.fetchStructure(uid)
             val quote = quotedBody(fetched, settings.bodyView, uid)
             val draft = forwardDraft(parsed, quote)
-            val shown = "\n" + forwardHeaderBody(
-                headerValues(parsed, "From").firstOrNull().orEmpty(),
-                headerValues(parsed, "Date").firstOrNull().orEmpty(),
-                headerValues(parsed, "Subject").firstOrNull().orEmpty(),
-                quote,
+            val header = appContext.getString(
+                R.string.compose_quote_header,
+                headerValues(parsed, "From").firstOrNull().orEmpty().trim(),
+                headerValues(parsed, "Date").firstOrNull().orEmpty().trim(),
+                headerValues(parsed, "Subject").firstOrNull().orEmpty().trim(),
             )
+            val shown = "\n" + forwardHeaderBody(header, quote)
             applyDraft(
                 ReplyDraft(draft.to, draft.cc, draft.subject, draft.inReplyTo, draft.references, shown),
                 cursor = 0,
@@ -487,7 +503,7 @@ fun ComposeScreen(
             val payload = if (row.bytes != null) {
                 row.bytes to row.wireBase64
             } else {
-                if (uid == null) throw MailFailure("fetch failed")
+                if (uid == null) throw MailFailure(fetchFailed)
                 val fetched = peekWireBytes(row.size, 65536, true) { offset, length ->
                     session.peekPart(uid, row.section, offset, length)
                 }
@@ -536,14 +552,14 @@ fun ComposeScreen(
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
-            notice = "Postponed copy is still in $box"
+            notice = appContext.getString(R.string.compose_postponed_remains, box)
         }
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
         if (copy.appendOnly) {
             if (copy.mailbox.isEmpty()) {
-                notice = "Sent mailbox is not set"
+                notice = sentMailboxMissing
                 return false
             }
             try {
@@ -552,14 +568,14 @@ fun ComposeScreen(
                 throw error
             } catch (error: MailFailure) {
                 notice = error.text
-                status = "Accepted but not saved"
+                status = acceptedNotice
                 return false
             }
             deleteCopy(appContext, copy.id)
             if (held?.id == copy.id) held = null
             notice = null
             deliveryDone = true
-            status = "Sent · saved to ${mailboxLeaf(copy.mailbox)}"
+            status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
             removePostponedSource()
             return true
         }
@@ -569,7 +585,7 @@ fun ComposeScreen(
             throw error
         } catch (error: MailFailure) {
             notice = error.text
-            status = "Not sent"
+            status = notSentNotice
             return false
         }
         storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
@@ -583,7 +599,7 @@ fun ComposeScreen(
                 writeCopy(appContext, saved)
                 if (held?.id == copy.id) held = saved
                 notice = error.text
-                status = "Accepted but not saved"
+                status = acceptedNotice
                 return false
             }
         }
@@ -591,7 +607,11 @@ fun ComposeScreen(
         if (held?.id == copy.id) held = null
         notice = null
         deliveryDone = true
-        status = if (copy.mailbox.isNotEmpty()) "Sent · saved to ${mailboxLeaf(copy.mailbox)}" else null
+        status = if (copy.mailbox.isNotEmpty()) {
+            appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+        } else {
+            null
+        }
         removePostponedSource()
         return true
     }
@@ -657,7 +677,7 @@ fun ComposeScreen(
     fun postponeDraft() {
         launchLocked {
             if (account.postponedMailbox.isEmpty()) {
-                notice = "Postponed mailbox is not set"
+                notice = postponedMailboxMissing
                 return@launchLocked false
             }
             val built = try {
@@ -682,7 +702,7 @@ fun ComposeScreen(
                 held = null
             }
             notice = null
-            status = "Saved to ${mailboxLeaf(account.postponedMailbox)}"
+            status = appContext.getString(R.string.compose_saved_to, mailboxLeaf(account.postponedMailbox))
             removePostponedSource()
             true
         }
@@ -698,7 +718,7 @@ fun ComposeScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {
-                    notice = "The draft is not saved."
+                    notice = draftNotSaved
                     return@withLock
                 }
                 val uid = try {
@@ -710,7 +730,7 @@ fun ComposeScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {
-                    notice = "The draft is not saved."
+                    notice = draftNotSaved
                     return@withLock
                 }
                 val previous = when {
@@ -732,7 +752,7 @@ fun ComposeScreen(
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
-            notice = "The draft is not saved."
+            notice = draftNotSaved
         }
     }
 
@@ -746,7 +766,7 @@ fun ComposeScreen(
     fun loadStoredCopy(id: String): DeviceCopy? {
         val copy = readCopies(appContext).firstOrNull { it.id == id }
         if (copy == null) {
-            notice = "That unsent copy is no longer on this device."
+            notice = unsentGone
             return null
         }
         held = copy
@@ -771,7 +791,7 @@ fun ComposeScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                notice = error.message ?: notConnected
                 return@withLock
             }
             account = settings
@@ -780,7 +800,7 @@ fun ComposeScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notice = error.message ?: "not connected"
+                notice = error.message ?: notConnected
                 return@withLock
             }
             val opened = try {
@@ -856,15 +876,15 @@ fun ComposeScreen(
                     }
                     if (deliveryDone) {
                         notice = null
-                        status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
+                        status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
-                        notice = "From address is not set"
+                        notice = fromMissing
                         return@launchLocked false
                     }
                     if (account.sentMailbox.isEmpty()) {
-                        notice = "Sent mailbox is not set"
+                        notice = sentMailboxMissing
                         return@launchLocked false
                     }
                     val built = try {
@@ -885,7 +905,7 @@ fun ComposeScreen(
                         writeCopy(appContext, copy)
                         held = copy
                         notice = error.text
-                        status = "Not sent"
+                        status = notSentNotice
                         return@launchLocked false
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
@@ -898,14 +918,14 @@ fun ComposeScreen(
                         writeCopy(appContext, copy)
                         held = copy
                         notice = error.text
-                        status = "Accepted but not saved"
+                        status = acceptedNotice
                         return@launchLocked false
                     }
                     deleteCopy(appContext, id)
                     held = null
                     deliveryDone = true
                     notice = null
-                    status = "Sent · saved to ${mailboxLeaf(account.sentMailbox)}"
+                    status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
                     removePostponedSource()
                     true
                 }
@@ -915,12 +935,22 @@ fun ComposeScreen(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(composeTitle(seed.kind)) },
+                title = {
+                    Text(
+                        composeTitle(
+                            seed.kind,
+                            stringResource(R.string.compose_reply),
+                            stringResource(R.string.compose_reply_all),
+                            stringResource(R.string.compose_forward),
+                            stringResource(R.string.compose_new),
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { requestClose() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.reader_back),
                         )
                     }
                 },
@@ -929,7 +959,13 @@ fun ComposeScreen(
                         IconButton(onClick = { sendMessage() }) {
                             Icon(
                                 imageVector = Icons.Filled.Send,
-                                contentDescription = if (held?.appendOnly == true) "Retry" else "Send",
+                                contentDescription = stringResource(
+                                    if (held?.appendOnly == true) {
+                                        R.string.reader_retry
+                                    } else {
+                                        R.string.compose_send
+                                    },
+                                ),
                             )
                         }
                         if (!deliveryDone) {
@@ -937,7 +973,7 @@ fun ComposeScreen(
                                 IconButton(onClick = { overflow = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = "More",
+                                        contentDescription = stringResource(R.string.reader_more),
                                     )
                                 }
                                 DropdownMenu(
@@ -945,7 +981,7 @@ fun ComposeScreen(
                                     onDismissRequest = { overflow = false },
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Postpone") },
+                                        text = { Text(stringResource(R.string.compose_postpone)) },
                                         onClick = {
                                             overflow = false
                                             postponeDraft()
@@ -974,26 +1010,26 @@ fun ComposeScreen(
         val failure = notice
         if (failure != null) Text(failure)
         if (
-            failure == "Accepted but not saved" ||
-            failure == "Not sent" ||
-            stateText == "Accepted but not saved" ||
-            stateText == "Not sent"
+            failure == acceptedNotice ||
+            failure == notSentNotice ||
+            stateText == acceptedNotice ||
+            stateText == notSentNotice
         ) {
-            TextButton(onClick = onOpenUnsent) { Text("Unsent") }
+            TextButton(onClick = onOpenUnsent) { Text(stringResource(R.string.unsent_title)) }
         }
-        Text("From: ${formatMailbox(account.displayName, account.email)}")
+        Text(stringResource(R.string.reader_from, formatMailbox(account.displayName, account.email)))
         if (seed.kind == ComposeKind.Bounce) {
             OutlinedTextField(
                 value = bounceTo,
                 onValueChange = { bounceTo = it },
-                label = { Text("Resent-To") },
+                label = { Text(stringResource(R.string.compose_resent_to)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             TextButton(onClick = {
                 pickerTarget = AddressTarget.Bounce
                 pickerOpen = true
-            }) { Text("Address book") }
+            }) { Text(stringResource(R.string.compose_address_book)) }
             if (pickerOpen) {
                 AddressBookPicker(
                     onPicked = { picked ->
@@ -1002,21 +1038,21 @@ fun ComposeScreen(
                     },
                     onDismiss = { pickerOpen = false },
                 )
-                TextButton(onClick = { pickerOpen = false }) { Text("Close") }
+                TextButton(onClick = { pickerOpen = false }) { Text(stringResource(R.string.compose_close)) }
             }
             TextButton(onClick = {
                 launchLocked {
                     if (account.email.isEmpty()) {
-                        notice = "From address is not set"
+                        notice = fromMissing
                         return@launchLocked false
                     }
                     if (account.bounceFcc && account.sentMailbox.isEmpty()) {
-                        notice = "Sent mailbox is not set"
+                        notice = sentMailboxMissing
                         return@launchLocked false
                     }
                     val resentTo = bounceTo.trim()
                     if (resentTo.isEmpty()) {
-                        notice = "Resent-To is not set"
+                        notice = resentMissing
                         return@launchLocked false
                     }
                     if (seed.uids.isEmpty()) return@launchLocked false
@@ -1044,7 +1080,7 @@ fun ComposeScreen(
                             writeCopy(appContext, copy)
                             held = copy
                             notice = error.text
-                            status = "Not sent"
+                            status = notSentNotice
                             return@launchLocked false
                         }
                         storeAcceptedFlags(listOf(uid))
@@ -1058,21 +1094,25 @@ fun ComposeScreen(
                             writeCopy(appContext, copy)
                             held = copy
                             notice = error.text
-                            status = "Accepted but not saved"
+                            status = acceptedNotice
                             return@launchLocked false
                         }
                     }
                     notice = null
                     deliveryDone = true
-                    status = if (account.bounceFcc) "Sent · saved to ${mailboxLeaf(account.sentMailbox)}" else null
+                    status = if (account.bounceFcc) {
+                        appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                    } else {
+                        null
+                    }
                     true
                 }
-            }) { Text("Bounce") }
+            }) { Text(stringResource(R.string.compose_bounce)) }
         } else {
             val showCc = copiesOpen || ccText.isNotBlank() || ccBuffer.isNotBlank()
             val showBcc = copiesOpen || bccText.isNotBlank() || bccBuffer.isNotBlank()
             AddressChips(
-                label = "To",
+                label = stringResource(R.string.compose_to),
                 stored = toText,
                 buffer = toBuffer,
                 onStored = { toText = it },
@@ -1080,13 +1120,17 @@ fun ComposeScreen(
                 suggestions = completeAddress(toBuffer, addressSources),
                 trailing = {
                     TextButton(onClick = { copiesOpen = !copiesOpen }) {
-                        Text(if (copiesOpen) "Hide Cc/Bcc" else "Cc/Bcc")
+                        Text(
+                            stringResource(
+                                if (copiesOpen) R.string.compose_hide_copies else R.string.compose_show_copies,
+                            ),
+                        )
                     }
                 },
             )
             if (showCc) {
                 AddressChips(
-                    label = "Cc",
+                    label = stringResource(R.string.compose_cc),
                     stored = ccText,
                     buffer = ccBuffer,
                     onStored = { ccText = it },
@@ -1096,7 +1140,7 @@ fun ComposeScreen(
             }
             if (showBcc) {
                 AddressChips(
-                    label = "Bcc",
+                    label = stringResource(R.string.compose_bcc),
                     stored = bccText,
                     buffer = bccBuffer,
                     onStored = { bccText = it },
@@ -1118,7 +1162,17 @@ fun ComposeScreen(
                             ccBuffer = ""
                         }
                     },
-                    label = { Text(if (useReplyTo) "Using Reply-To" else "Use Reply-To?") },
+                    label = {
+                        Text(
+                            stringResource(
+                                if (useReplyTo) {
+                                    R.string.compose_using_reply_to
+                                } else {
+                                    R.string.compose_use_reply_to
+                                },
+                            ),
+                        )
+                    },
                 )
             }
             if (
@@ -1131,31 +1185,31 @@ fun ComposeScreen(
             ) {
                 AssistChip(
                     onClick = {},
-                    label = { Text("Plain text only") },
+                    label = { Text(stringResource(R.string.compose_plain_only)) },
                 )
             }
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it },
-                label = { Text("Subject") },
+                label = { Text(stringResource(R.string.compose_subject)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             TextButton(onClick = {
                 pickerTarget = AddressTarget.To
                 pickerOpen = true
-            }) { Text("To address book") }
+            }) { Text(stringResource(R.string.compose_to_book)) }
             if (showCc) {
                 TextButton(onClick = {
                     pickerTarget = AddressTarget.Cc
                     pickerOpen = true
-                }) { Text("Cc address book") }
+                }) { Text(stringResource(R.string.compose_cc_book)) }
             }
             if (showBcc) {
                 TextButton(onClick = {
                     pickerTarget = AddressTarget.Bcc
                     pickerOpen = true
-                }) { Text("Bcc address book") }
+                }) { Text(stringResource(R.string.compose_bcc_book)) }
             }
             if (pickerOpen) {
                 AddressBookPicker(
@@ -1171,7 +1225,7 @@ fun ComposeScreen(
                     },
                     onDismiss = { pickerOpen = false },
                 )
-                TextButton(onClick = { pickerOpen = false }) { Text("Close") }
+                TextButton(onClick = { pickerOpen = false }) { Text(stringResource(R.string.compose_close)) }
             }
             for (row in forwardRows) {
                 FilterChip(
@@ -1181,12 +1235,15 @@ fun ComposeScreen(
                             if (item.key == row.key) item.toggle() else item
                         }
                     },
-                    label = { Text("${row.filename} ${row.size}") },
+                    label = { Text(row.filename + " " + row.size) },
                     trailingIcon = {
                         IconButton(onClick = {
                             forwardRows = forwardRows.filter { it.key != row.key }
                         }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Remove")
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.compose_remove),
+                            )
                         }
                     },
                 )
@@ -1194,7 +1251,7 @@ fun ComposeScreen(
             OutlinedTextField(
                 value = bodyField,
                 onValueChange = { bodyField = it },
-                label = { Text("Body") },
+                label = { Text(stringResource(R.string.compose_body)) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -1203,20 +1260,22 @@ fun ComposeScreen(
     if (discardOpen) {
         AlertDialog(
             onDismissRequest = { discardOpen = false },
-            title = { Text("Discard draft?") },
+            title = { Text(stringResource(R.string.compose_discard_title)) },
             confirmButton = {
-                TextButton(onClick = { onDone() }) { Text("Discard") }
+                TextButton(onClick = { onDone() }) { Text(stringResource(R.string.unsent_discard)) }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { discardOpen = false }) { Text("Keep editing") }
+                    TextButton(onClick = { discardOpen = false }) {
+                        Text(stringResource(R.string.compose_keep_editing))
+                    }
                     TextButton(
                         onClick = {
                             discardOpen = false
                             postponeDraft()
                         },
                         enabled = account.postponedMailbox.isNotEmpty(),
-                    ) { Text("Postpone") }
+                    ) { Text(stringResource(R.string.compose_postpone)) }
                 }
             },
         )
@@ -1240,10 +1299,7 @@ internal fun replyCursorBody(quoted: String, above: Boolean): String {
     return if (above) "\n$block" else "$block\n"
 }
 
-internal fun forwardHeaderBody(from: String, date: String, subject: String, peeked: String): String {
-    val header = "From: ${from.trim()}\nDate: ${date.trim()}\nSubject: ${subject.trim()}"
-    return quotePart(header, peeked)
-}
+internal fun forwardHeaderBody(header: String, peeked: String): String = quotePart(header, peeked)
 
 internal fun composeIsDirty(
     to: String,
@@ -1277,11 +1333,17 @@ internal fun smtpAcceptFlags(kind: ComposeKind): Set<String> = when (kind) {
     ComposeKind.New, ComposeKind.ResumePostpone -> emptySet()
 }
 
-internal fun composeTitle(kind: ComposeKind): String = when (kind) {
-    ComposeKind.Reply -> "Reply"
-    ComposeKind.ReplyAll -> "Reply all"
-    ComposeKind.Forward -> "Forward"
-    ComposeKind.New, ComposeKind.Bounce, ComposeKind.ResumePostpone -> "Compose"
+internal fun composeTitle(
+    kind: ComposeKind,
+    reply: String,
+    replyAll: String,
+    forward: String,
+    compose: String,
+): String = when (kind) {
+    ComposeKind.Reply -> reply
+    ComposeKind.ReplyAll -> replyAll
+    ComposeKind.Forward -> forward
+    ComposeKind.New, ComposeKind.Bounce, ComposeKind.ResumePostpone -> compose
 }
 
 internal data class ChipCommit(val stored: String, val buffer: String)
