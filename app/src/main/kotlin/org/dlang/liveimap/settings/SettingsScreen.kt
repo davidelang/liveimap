@@ -116,7 +116,6 @@ fun SettingsScreen() {
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
-    val settingsState = rememberUpdatedState(settings)
     val contextState = rememberUpdatedState(LocalContext.current)
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -902,7 +901,7 @@ private fun MailboxLine(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            LineField(label, value, onValue = onValue)
+            LineField(label, value, onCommit = onValue)
         }
         TextButton(onClick = onChoose) { Text("Choose") }
     }

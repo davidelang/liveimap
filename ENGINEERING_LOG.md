@@ -1038,3 +1038,7 @@
 - commitText and commitPort. Equal text and an invalid or unchanged port return null.
 - A text field keeps its draft and writes on IME Done, focus loss, or leaving. Rotation and a screen that is not ready skip the leave write. Add-row drafts do not insert a row on leave.
 - LineCommitTest covers those rules. No install.
+
+## 2026-10-05 - Settings screens phase 1 compiles
+
+- One settings state, and mailbox lines pass onCommit. The field commit now compiles.
