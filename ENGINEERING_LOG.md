@@ -1182,3 +1182,16 @@
 - Compose, Address completion lists the pine row when the address book mailbox is set, and asks for READ_CONTACTS only from Show Android contact sets. A denial shows Contacts permission was denied. and enables nothing. After a grant, each RawContacts account is an off switch labeled with the owning app or the account name. Move up and Move down reorder the enabled list.
 - AddressChips shows suggestions while the buffer is not empty. A tap commits through appendAddress and clears the buffer. A distribution list commits each pickedAddresses member. The address book button and picker stay.
 - The pine book is loaded with loadAlpineBook at most once per process when pine is enabled. Android contact rows are queried at most once per process when an Android source is enabled. Neither is written to disk. No WRITE_CONTACTS. No install.
+
+## 2026-10-06 - contacts copy execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-20261006-0213-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: 8c0d572
+- Phase 1: CopyMap both ways and preview. Phase 2: formatAlpineBook, revisionsToExpunge, history settings. Phase 3: copy screen, WRITE_CONTACTS, pine append and uidExpunge of those UIDs only
+- Do not install. Do not expunge without UIDPLUS. Device checks stay David's
+
+## 2026-10-06 - contacts copy phase 1
+
+- copyContacts maps nickname, full name, email, distribution lists, fcc, comments, and plaintext both ways. The same call builds the preview lines and the destination entries. The source list is not modified.
+- A matching email with merge off is Skipped, already there. Nested list nicknames expand. No notes drops fcc. Dropped phone, postal, organization, birthday, photo, website, IM, and custom label are named, and can be appended to comments. Starred, ringtone, and linked contacts are not copied.
+- No install.
