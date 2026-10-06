@@ -1206,3 +1206,7 @@
 - revisionsToExpunge keeps the header out. History 3 on UIDs 1 through 6 returns 2. Never trim and a missing UIDPLUS return nothing.
 - addressBookHistory defaults to 3 and addressBookNeverTrim to false. Both keys are omitted at those defaults. Pinerc remote-abook-history sets the number only when it is all digits, and does not turn on never-trim.
 - loadAlpineBook is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 2 test import
+
+- AlpineBookWriteTest imports settings.encode so the history round-trip compiles. The history behavior is unchanged. No install.
