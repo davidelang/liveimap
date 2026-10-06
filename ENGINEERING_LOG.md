@@ -1079,3 +1079,14 @@
 ## 2026-10-05 - Folder list phase 2
 
 - Expanded folders and Folder views add through the mailbox picker. Remove is a close icon. Sort, Newest first, and the stored strings are unchanged. No install.
+
+## 2026-10-06 - Folder list phase 3 execution resume
+
+- Resume revision 2 of sandbox/plans/folder-list-20261005-2319-plan.md on master. Phases 1 and 2 stay DONE.
+- Phase 3 updates FolderTreeTest only: inboxDotPrefixDoesNotPromoteChildren and toggleExpandedLeavesStoredExpandedFolders.
+- No production edits. No install.
+
+## 2026-10-06 - Folder list phase 3
+
+- FolderTreeTest constructs the INBOX prefix case already expanded and expects one ListCall("INBOX.", null). Toggling INBOX and Archive leaves stored expanded folders empty and does not save.
+- No production edits. No install.

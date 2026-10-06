@@ -86,18 +86,16 @@ class FolderTreeTest {
                 ),
             ),
         )
-        val store = MemorySettingsStore(AccountSettings())
+        val store = MemorySettingsStore(
+            AccountSettings(expandedFolders = setOf("INBOX")),
+        )
         val model = FolderListModel(session, store)
-        val collapsed = runImmediate { model.loadLevel() }
-        assertEquals(listOf("INBOX", "#shared."), collapsed.map { it.mailbox })
-        assertTrue(collapsed.none { it.mailbox == "INBOX.sent-mail" || it.leaf == "sent-mail" })
-        assertEquals("#shared.", collapsed.single { it.mailbox == "#shared." }.leaf)
-
-        store.settings = AccountSettings(expandedFolders = setOf("INBOX"))
         val rows = runImmediate { model.loadLevel() }
         val sent = rows.single { it.mailbox == "INBOX.sent-mail" }
         assertEquals("INBOX", sent.parentMailbox)
         assertEquals("sent-mail", sent.leaf)
+        assertTrue(rows.single { it.mailbox == "#shared." }.namespaceRoot)
+        assertEquals("#shared.", rows.single { it.mailbox == "#shared." }.leaf)
         assertEquals(
             listOf(
                 FolderRow("INBOX", "INBOX", true, 0, null, true, delimiter = '.'),
@@ -107,30 +105,26 @@ class FolderTreeTest {
             rows,
         )
         assertTrue(session.listCalls.none { it.parentMailbox != null })
-        assertEquals(
-            listOf(ListCall("INBOX.", null), ListCall("INBOX.", null)),
-            session.listCalls,
-        )
+
+        val again = runImmediate { model.loadLevel() }
+        assertEquals(rows, again)
+        assertEquals(listOf(ListCall("INBOX.", null)), session.listCalls)
     }
 
     @Test
-    fun toggleExpandedPersistsInSettings() {
+    fun toggleExpandedLeavesStoredExpandedFolders() {
         val session = FakeMailSession(namespaces = emptyList(), levels = emptyMap())
         val store = MemorySettingsStore(
             AccountSettings(imapHost = "imap.example.com"),
         )
         val model = FolderListModel(session, store)
         runImmediate { model.toggleExpanded("INBOX") }
-        assertEquals(setOf("INBOX"), store.settings.expandedFolders)
-        assertEquals("imap.example.com", store.settings.imapHost)
-        assertEquals(1, store.saves)
-        runImmediate { model.toggleExpanded("INBOX") }
-        assertEquals(emptySet<String>(), store.settings.expandedFolders)
         runImmediate { model.toggleExpanded("Archive") }
-        runImmediate { model.toggleExpanded("INBOX") }
-        assertEquals(setOf("Archive", "INBOX"), store.settings.expandedFolders)
-        assertEquals(0, session.namespaceCalls)
+        assertEquals(emptySet<String>(), store.settings.expandedFolders)
+        assertEquals("imap.example.com", store.settings.imapHost)
+        assertEquals(0, store.saves)
         assertTrue(session.listCalls.isEmpty())
+        assertEquals(0, session.namespaceCalls)
     }
 
     @Test
