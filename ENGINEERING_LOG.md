@@ -1231,3 +1231,15 @@
 - Authenticator type org.dlang.liveimap. Add account opens settings and does not add a second account.
 - Removing the account deletes its key, DataStore entry, unsent, and imap-traffic.log.
 - Backup stays allowed and excludes liveimap_secret. No install.
+
+## 2026-10-06 - fake IMAP execution start
+
+- Approved plan: sandbox/plans/fake-imap-20261006-0313-plan.md
+- Phase 1: loopback FakeImapServer and a line client. Both profiles greet, CAPABILITY is that string, LOGIN, LIST INBOX, SELECT UIDVALIDITY 17, FETCH \Seen.
+- Phase 2: Close, Silent, Bad, No, Bye, NewUidValidity, and ExpungeDuringFetch.
+- Test sources only. No app/src/main edits. No install.
+
+## 2026-10-06 - fake IMAP phase 1
+
+- FakeImapServer binds 127.0.0.1 only. minimal is IMAP4rev1. cyrus22 is the recorded Cyrus 2.2 token line. Greeting, CAPABILITY, LOGIN, LIST INBOX, SELECT UIDVALIDITY 17, FETCH \Seen, and LOGOUT.
+- FakeImapTest drives both profiles with a CRLF line client, including an empty password NO. No install.
