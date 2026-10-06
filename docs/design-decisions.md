@@ -73,8 +73,11 @@ Avoid:
   Where a folder opens is a setting (alpine's `incoming-startup-rule`: first
   unseen, first recent, first important, either of those, first, last, or
   newest), for INBOX, for other folders and per folder, worked out in the
-  current view by one server-side search. Only the window around that row is
-  fetched. The default is the newest message, which is also the fallback when
+  current view. It takes one server-side search when the rule needs one:
+  Newest needs none, and without ESEARCH neither do First and Last. Arrival
+  order uses a sequence-number `SEARCH` (`RETURN (MIN|MAX)` with ESEARCH);
+  sorted, threaded and filtered views use one `UID SEARCH`, intersected with
+  the view's order. Only the window around that row is fetched. The default is the newest message, which is also the fallback when
   nothing matches. What a sort or filter change does (run the rule again, or
   keep the top visible message), whether the `\Recent`-based rules are offered,
   an "Open at" index-menu item, and the pinerc default are settings too.
@@ -192,8 +195,9 @@ Avoid:
     until an expunge, and Undelete reverses it. IMAP only: JMAP has no
     `\Deleted` (RFC 8621 §4.1.1).
   * **Move to Trash:** a move to the Trash mailbox, which is configured or comes
-    from the server's `\Trash` special-use mark, never guessed. On IMAP the
-    source copy is marked `\Deleted`, as for any move.
+    from the server's `\Trash` special-use mark, never guessed. On IMAP it
+    uses the move method: copy, then `\Deleted` on the source (default), or
+    `UID MOVE` when the setting chooses IMAP MOVE.
   * **Delete permanently:** `UID STORE +FLAGS (\Deleted)`, then `UID EXPUNGE` of
     exactly those UIDs (UIDPLUS); `Email/set destroy` on JMAP. It asks first
     when "Confirm before expunge" is on.
@@ -383,10 +387,11 @@ Avoid:
 * After STARTTLS or AUTH, capabilities are read again. No STARTTLS after
   PREAUTH.
 * SASL through libetpan and cyrus-sasl, strongest first among what the server
-  advertises: SCRAM-SHA-256(-PLUS), SCRAM-SHA-1(-PLUS), then over TLS only
-  PLAIN (with SASL-IR), LOGIN, and the IMAP `LOGIN` command. On plaintext,
-  CRAM-MD5 if offered; a clear-text password only when the user has accepted
-  it. DIGEST-MD5 is not used (tests record it as an expected skip). NTLM only when chosen in Advanced. An Advanced
+  advertises: SCRAM-SHA-256(-PLUS), SCRAM-SHA-1(-PLUS), CRAM-MD5, then the
+  clear-text password mechanisms PLAIN (with SASL-IR), LOGIN and the IMAP
+  `LOGIN` command. On a plaintext connection only challenge-response
+  mechanisms (SCRAM, CRAM-MD5) are used without asking; clear-text password
+  mechanisms only after the user accepts the plaintext warning. DIGEST-MD5 is not used (tests record it as an expected skip). NTLM only when chosen in Advanced. An Advanced
   setting can force a mechanism and set an authorization user.
 * OpenSSL 3.x, TLS 1.2 minimum, SNI always. The certificate chain is checked
   in Kotlin with the platform trust manager plus a hostname check. A failure
@@ -419,7 +424,7 @@ Avoid:
   changes a real account, and test tools log in only as an allowlisted test
   account. The test accounts live on asgard and are replicated to sun and
   moon, so writes go to asgard and the replicas are read-only. Test entries
-  use sun:143 and moon:143 (sun's port 993 forwards to asgard); asgard is the
+  use sun:143 and moon:143 (sun's port 993 is reported to forward to asgard); asgard is the
   only read-write real host. Sends go only to david@lang.hm.
 * Every test server starts from one versioned seed (accounts, folder tree,
   message corpus) with a profile: base by default, and an optional scale
