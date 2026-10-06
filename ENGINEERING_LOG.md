@@ -1075,3 +1075,7 @@
 ## 2026-10-05 - Folder list phase 1 test doubles
 
 - Renamed the FolderListModelTest doubles so they do not clash with FolderTreeTest's private helpers. FolderTreeTest is unchanged.
+
+## 2026-10-05 - Folder list phase 2
+
+- Expanded folders and Folder views add through the mailbox picker. Remove is a close icon. Sort, Newest first, and the stored strings are unchanged. No install.

@@ -30,7 +30,11 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -218,29 +222,36 @@ fun SettingsGroupScreen(
 fun ExpandedFoldersScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    var draftExpanded by remember { mutableStateOf("") }
+    var picking by remember { mutableStateOf(false) }
     val settings = editor.settings
     SettingsPage {
         settings.expandedFolders.forEach { mailbox ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(mailbox, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
+                IconButton(onClick = {
                     editor.persist(editor.settings.copy(expandedFolders = editor.settings.expandedFolders - mailbox))
-                }) { Text("Remove") }
+                }) {
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = "Remove")
+                }
             }
         }
-        LineField(
-            "Expanded folder",
-            draftExpanded,
-            ready = editor.ready,
-            commitOnLeave = false,
-            onDraft = { draftExpanded = it },
-        ) { draftExpanded = it }
-        TextButton(onClick = {
-            if (draftExpanded.isEmpty()) return@TextButton
-            editor.persist(editor.settings.copy(expandedFolders = editor.settings.expandedFolders + draftExpanded))
-            draftExpanded = ""
-        }) { Text("Add expanded folder") }
+        TextButton(onClick = { picking = true }) { Text("Add") }
+    }
+    if (picking) {
+        MailboxChooser(
+            store = editor.store,
+            saveMutex = settingsMutex,
+            onStored = { _ -> },
+            onPick = { mailbox ->
+                if (mailbox.isNotEmpty()) {
+                    editor.persist(
+                        editor.settings.copy(expandedFolders = editor.settings.expandedFolders + mailbox),
+                    )
+                }
+                picking = false
+            },
+            onDismiss = { picking = false },
+        )
     }
 }
 
@@ -248,7 +259,7 @@ fun ExpandedFoldersScreen() {
 fun FolderViewsScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    var draftFolder by remember { mutableStateOf("") }
+    var picking by remember { mutableStateOf(false) }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
     val settings = editor.settings
@@ -259,30 +270,35 @@ fun FolderViewsScreen() {
                     "$mailbox ${sortKeyLabel(view.key)} ${if (view.newestFirst) "Newest first" else "Oldest first"}",
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = {
+                IconButton(onClick = {
                     editor.persist(editor.settings.copy(folderViews = editor.settings.folderViews - mailbox))
-                }) { Text("Remove") }
+                }) {
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = "Remove")
+                }
             }
         }
-        LineField(
-            "Folder view mailbox",
-            draftFolder,
-            ready = editor.ready,
-            commitOnLeave = false,
-            onDraft = { draftFolder = it },
-        ) { draftFolder = it }
         ChoiceField("Folder view sort", SortKey.entries, draftSort, { sortKeyLabel(it) }) { draftSort = it }
         BoolField("Folder view newest first", draftNewest) { draftNewest = it }
-        TextButton(onClick = {
-            if (draftFolder.isEmpty()) return@TextButton
-            editor.persist(
-                editor.settings.copy(
-                    folderViews = editor.settings.folderViews +
-                        (draftFolder to FolderView(draftSort, draftNewest)),
-                ),
-            )
-            draftFolder = ""
-        }) { Text("Add folder view") }
+        TextButton(onClick = { picking = true }) { Text("Add") }
+    }
+    if (picking) {
+        MailboxChooser(
+            store = editor.store,
+            saveMutex = settingsMutex,
+            onStored = { _ -> },
+            onPick = { mailbox ->
+                if (mailbox.isNotEmpty()) {
+                    editor.persist(
+                        editor.settings.copy(
+                            folderViews = editor.settings.folderViews +
+                                (mailbox to FolderView(draftSort, draftNewest)),
+                        ),
+                    )
+                }
+                picking = false
+            },
+            onDismiss = { picking = false },
+        )
     }
 }
 
