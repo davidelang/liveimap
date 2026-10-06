@@ -1243,3 +1243,9 @@
 
 - FakeImapServer binds 127.0.0.1 only. minimal is IMAP4rev1. cyrus22 is the recorded Cyrus 2.2 token line. Greeting, CAPABILITY, LOGIN, LIST INBOX, SELECT UIDVALIDITY 17, FETCH \Seen, and LOGOUT.
 - FakeImapTest drives both profiles with a CRLF line client, including an empty password NO. No install.
+
+## 2026-10-06 - fake IMAP phase 2
+
+- Script steps Close, Silent, Bad, No, Bye, NewUidValidity, and ExpungeDuringFetch replace the next reply.
+- Close ends the read. Silent stays unanswered. Bad and No are tagged. Bye is untagged and the socket closes. The next SELECT reports UIDVALIDITY 99. EXPUNGE is sent before FETCH.
+- No install.

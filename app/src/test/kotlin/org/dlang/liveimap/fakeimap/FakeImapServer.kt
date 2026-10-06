@@ -11,6 +11,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class FakeImapProfile(val capability: String) {
@@ -18,9 +19,20 @@ enum class FakeImapProfile(val capability: String) {
     Cyrus22("IMAP4rev1 NAMESPACE UIDPLUS LITERAL+ CHILDREN UNSELECT SORT THREAD=REFERENCES IDLE"),
 }
 
+enum class FakeImapStep {
+    Close,
+    Silent,
+    Bad,
+    No,
+    Bye,
+    NewUidValidity,
+    ExpungeDuringFetch,
+}
+
 class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
     private val listen = ServerSocket()
     private val running = AtomicBoolean(true)
+    private val steps = ConcurrentLinkedQueue<FakeImapStep>()
     private val thread: Thread
 
     @Volatile
@@ -36,6 +48,10 @@ class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
         thread = Thread({ acceptLoop() }, "fake-imap")
         thread.isDaemon = true
         thread.start()
+    }
+
+    fun script(step: FakeImapStep) {
+        steps.add(step)
     }
 
     override fun close() {
@@ -88,12 +104,30 @@ class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
             if (tokens.isEmpty()) continue
             val tag = tokens[0]
             val command = if (tokens.size >= 2) tokens[1].uppercase(Locale.ROOT) else ""
-            if (command == "LOGOUT") {
-                send("* BYE")
-                send("$tag OK")
-                return
+            when (val step = steps.poll()) {
+                FakeImapStep.Close -> {
+                    socket.close()
+                    return
+                }
+                FakeImapStep.Silent -> continue
+                FakeImapStep.Bad -> send("$tag BAD")
+                FakeImapStep.No -> send("$tag NO")
+                FakeImapStep.Bye -> {
+                    send("* BYE")
+                    socket.close()
+                    return
+                }
+                else -> {
+                    val uidValidity = if (step == FakeImapStep.NewUidValidity) 99 else 17
+                    val expungeDuringFetch = step == FakeImapStep.ExpungeDuringFetch
+                    if (command == "LOGOUT") {
+                        send("* BYE")
+                        send("$tag OK")
+                        return
+                    }
+                    reply(command, tag, tokens, ::send, uidValidity, expungeDuringFetch)
+                }
             }
-            reply(command, tag, tokens, ::send)
         }
     }
 
@@ -102,6 +136,8 @@ class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
         tag: String,
         tokens: List<String>,
         send: (String) -> Unit,
+        uidValidity: Int,
+        expungeDuringFetch: Boolean,
     ) {
         when (command) {
             "CAPABILITY" -> {
@@ -123,10 +159,11 @@ class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
             }
             "SELECT" -> {
                 send("* 1 EXISTS")
-                send("* OK [UIDVALIDITY 17] UIDs valid")
+                send("* OK [UIDVALIDITY $uidValidity] UIDs valid")
                 send("$tag OK [READ-WRITE]")
             }
             "FETCH" -> {
+                if (expungeDuringFetch) send("* 1 EXPUNGE")
                 send("* 1 FETCH (FLAGS (\\Seen))")
                 send("$tag OK")
             }
