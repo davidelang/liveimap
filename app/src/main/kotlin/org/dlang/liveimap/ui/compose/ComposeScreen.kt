@@ -262,7 +262,7 @@ fun ComposeScreen(
     }
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
-        fun decodedQuote(part: MimePart, html: Boolean): String {
+        suspend fun decodedQuote(part: MimePart, html: Boolean): String {
             val bytes = peekWireBytes(
                 part.size,
                 4096,
