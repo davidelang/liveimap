@@ -1,8 +1,6 @@
 package org.dlang.liveimap.settings
 
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.ContentResolver
 import android.content.Context
 import android.content.ContextWrapper
@@ -90,6 +88,7 @@ import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.folder.MailboxChooser
 
 private val settingsIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -798,7 +797,6 @@ private fun DebugGroup(editor: SettingsEditor) {
     val settings = editor.settings
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     val contextState = rememberUpdatedState(LocalContext.current)
-    BackHandler(enabled = reportLines != null) { reportLines = null }
     SettingsPage {
         SettingsSection(
             title = "Logging",
@@ -835,54 +833,11 @@ private fun DebugGroup(editor: SettingsEditor) {
     }
     val shownReport = reportLines
     if (shownReport != null) {
-        Dialog(
-            onDismissRequest = { reportLines = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Surface(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(
-                            WindowInsets.statusBars
-                                .union(WindowInsets.navigationBars)
-                                .union(WindowInsets.displayCutout),
-                        )
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Debug report", style = MaterialTheme.typography.titleLarge)
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        shownReport.forEachIndexed { index, line ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = line.ifEmpty { " " },
-                                    modifier = Modifier.weight(1f),
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                TextButton(onClick = {
-                                    reportLines = shownReport.filterIndexed { i, _ -> i != index }
-                                }) { Text("Remove line") }
-                            }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            copyDebugReport(contextState.value, shownReport)
-                        }) { Text("Copy") }
-                        TextButton(onClick = {
-                            shareDebugReport(contextState.value, shownReport)
-                        }) { Text("Share") }
-                        TextButton(onClick = { reportLines = null }) { Text("Dismiss") }
-                    }
-                }
-            }
-        }
+        DebugReportReview(
+            lines = shownReport,
+            onLines = { reportLines = it },
+            onDismiss = { reportLines = null },
+        )
     }
 }
 
@@ -1293,19 +1248,6 @@ private enum class MailboxPick {
     Spam,
     TrailingMove,
     LeadingMove,
-}
-
-private fun copyDebugReport(context: Context, lines: List<String>) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText("LiveIMAP debug report", lines.joinToString("\n")))
-}
-
-private fun shareDebugReport(context: Context, lines: List<String>) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
-    }
-    context.startActivity(Intent.createChooser(send, "Share debug report"))
 }
 
 private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: String): AccountSettings {

@@ -103,6 +103,7 @@ fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
+    onOpenHelp: () -> Unit,
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -130,6 +131,8 @@ fun FolderListScreen(
     var postponedMailbox by remember { mutableStateOf("") }
     var spamMailbox by remember { mutableStateOf("") }
     var addressBookMailbox by remember { mutableStateOf("") }
+    var imapHost by remember { mutableStateOf("") }
+    var hostKnown by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var showUnreadCounts by remember { mutableStateOf(false) }
     var folderQuery by remember { mutableStateOf("") }
@@ -178,6 +181,8 @@ fun FolderListScreen(
                 loading = false
                 return@withLock
             }
+            imapHost = settings.imapHost
+            hostKnown = true
             sentMailbox = settings.sentMailbox
             postponedMailbox = settings.postponedMailbox
             spamMailbox = settings.spamMailbox
@@ -426,6 +431,9 @@ fun FolderListScreen(
                 }
                 loadToken += 1
             }
+        }
+        if (hostKnown && imapHost.isBlank()) {
+            TextButton(onClick = onOpenHelp) { Text("Help") }
         }
         DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {

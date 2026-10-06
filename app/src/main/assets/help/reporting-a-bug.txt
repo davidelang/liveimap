@@ -1,0 +1,3 @@
+Include the LiveIMAP version and build from About, the Android version, and the device model. If you know the server software, include it. The CAPABILITY line in the debug report shows it. Say whether About shows the plaintext card. Include the steps, what you expected, what happened, and the time. Add a screenshot when the problem is on screen.
+
+The debug report is optional. It contains the version and build, the Android version and device, the account settings with the password removed, the user name as <user> unless Show user name in the debug report is on, the last CAPABILITY lines, the connection-status history, and the tail of the traffic log. LiveIMAP does not send it. You copy or share it after you review it.

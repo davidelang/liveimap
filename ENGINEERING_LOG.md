@@ -1047,3 +1047,13 @@
 
 - Settings opens a group list, then one screen per group. The first section starts open. Up returns to the list, and the folder lists are their own screens.
 - About shows the plaintext card when an IMAP host is set, and Open-source licenses reads the notices. No new setting and no session restart. No install.
+
+## 2026-10-05 - Help page execution start
+
+- Execute sandbox/plans/help-page-20261005-2251-plan.md on master (Status APPROVED). Phase 1: help assets, Help screen, shared debug-report review, drawer item, route, and folder-list Help button. No install. Device and TalkBack checks stay with David.
+
+## 2026-10-05 - Help page phase 1
+
+- Help route and drawer item sit above About. Up is navigateUp. About is unchanged.
+- The folder list shows Help under the connection strip only while the loaded IMAP host is blank.
+- Help reads the two bundled assets. Report a bug opens the issues URL. Copy debug report uses the shared review. No install.

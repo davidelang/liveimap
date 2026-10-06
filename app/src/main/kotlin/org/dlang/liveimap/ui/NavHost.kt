@@ -80,6 +80,7 @@ import org.dlang.liveimap.ui.compose.ComposeScreen
 import org.dlang.liveimap.ui.compose.UnsentScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
+import org.dlang.liveimap.ui.help.HelpScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 
@@ -158,6 +159,7 @@ fun LiveImapNavHost() {
                     },
                     onCompose = { seed -> openCompose(seed) },
                     onOpenUnsent = { navController.navigate("unsent") },
+                    onOpenHelp = { navController.navigate("help") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
@@ -388,6 +390,11 @@ fun LiveImapNavHost() {
                     }
                 }
             }
+            composable("help") {
+                UpPage("Help", onUp = { navController.navigateUp() }) {
+                    HelpScreen()
+                }
+            }
             composable("about") {
                 UpPage("About", onUp = { navController.navigateUp() }) {
                     AboutScreen(onOpenLicenses = { navController.navigate("about/licenses") })
@@ -513,6 +520,13 @@ fun LiveImapNavHost() {
                     }
                 }
             },
+            onHelp = {
+                navigateFromDrawer {
+                    navController.navigate("help") {
+                        launchSingleTop = true
+                    }
+                }
+            },
             onAbout = {
                 navigateFromDrawer {
                     navController.navigate("about") {
@@ -591,6 +605,7 @@ private fun ColumnScope.DrawerSheetContent(
     onFavorite: (FolderFavorite) -> Unit,
     onEditFavorite: (FolderFavorite) -> Unit,
     onSettings: () -> Unit,
+    onHelp: () -> Unit,
     onAbout: () -> Unit,
 ) {
     Text(
@@ -641,6 +656,11 @@ private fun ColumnScope.DrawerSheetContent(
         label = { Text("Settings") },
         selected = false,
         onClick = onSettings,
+    )
+    NavigationDrawerItem(
+        label = { Text("Help") },
+        selected = false,
+        onClick = onHelp,
     )
     NavigationDrawerItem(
         label = { Text("About") },
