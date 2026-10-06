@@ -1071,3 +1071,7 @@
 - Each list level is cached until refreshLevels. Pull to refresh and the toolbar refresh clear that cache before they list.
 - Overflow adds Save as default view and Reset to default view. Long-press keeps favorite and adds Always expand and Don't always expand.
 - The empty-prefix row is italic, uses FolderSpecial, and search always keeps it without matching its label. No install.
+
+## 2026-10-05 - Folder list phase 1 test doubles
+
+- Renamed the FolderListModelTest doubles so they do not clash with FolderTreeTest's private helpers. FolderTreeTest is unchanged.

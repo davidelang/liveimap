@@ -26,57 +26,57 @@ class FolderListModelTest {
     @Test
     fun expandCollapseAndCollapseAllLeaveStoredExpandedFolders() {
         val session = treeSession()
-        val store = MemorySettingsStore(
+        val store = ModelSettingsStore(
             AccountSettings(expandedFolders = setOf("INBOX"), imapHost = "imap.example.com"),
         )
         val model = FolderListModel(session, store)
-        val opened = runImmediate { model.loadLevel() }
+        val opened = runModel { model.loadLevel() }
         assertTrue(opened.single { it.mailbox == "INBOX" }.expanded)
         assertTrue(opened.any { it.mailbox == "INBOX.sent" })
 
-        runImmediate { model.toggleExpanded("Archive") }
+        runModel { model.toggleExpanded("Archive") }
         assertEquals(setOf("INBOX"), store.settings.expandedFolders)
         assertEquals(0, store.saves)
-        assertTrue(runImmediate { model.loadLevel() }.any { it.mailbox == "Archive.b" })
+        assertTrue(runModel { model.loadLevel() }.any { it.mailbox == "Archive.b" })
 
-        runImmediate { model.toggleExpanded("Archive") }
+        runModel { model.toggleExpanded("Archive") }
         assertEquals(setOf("INBOX"), store.settings.expandedFolders)
         assertEquals(0, store.saves)
-        assertTrue(runImmediate { model.loadLevel() }.none { it.mailbox == "Archive.b" })
+        assertTrue(runModel { model.loadLevel() }.none { it.mailbox == "Archive.b" })
 
-        runImmediate { model.showCollapsed("INBOX.sent") }
+        runModel { model.showCollapsed("INBOX.sent") }
         assertEquals(setOf("INBOX"), store.settings.expandedFolders)
         assertEquals(0, store.saves)
 
-        runImmediate { model.collapseAll() }
+        runModel { model.collapseAll() }
         assertEquals(setOf("INBOX"), store.settings.expandedFolders)
         assertEquals("imap.example.com", store.settings.imapHost)
         assertEquals(0, store.saves)
-        val collapsed = runImmediate { model.loadLevel() }
+        val collapsed = runModel { model.loadLevel() }
         assertTrue(collapsed.none { it.depth > 0 || it.expanded })
     }
 
     @Test
     fun listingOneLevelTwiceCallsListLevelOnceUntilRefresh() {
         val session = treeSession()
-        val model = FolderListModel(session, MemorySettingsStore(AccountSettings()))
-        runImmediate { model.loadLevel() }
-        runImmediate { model.loadLevel() }
-        assertEquals(listOf(ListCall("", null)), session.listCalls)
+        val model = FolderListModel(session, ModelSettingsStore(AccountSettings()))
+        runModel { model.loadLevel() }
+        runModel { model.loadLevel() }
+        assertEquals(listOf(ModelListCall("", null)), session.listCalls)
 
-        runImmediate { model.toggleExpanded("INBOX") }
-        runImmediate { model.loadLevel() }
-        runImmediate { model.loadLevel() }
-        assertEquals(listOf(ListCall("", null), ListCall("", "INBOX")), session.listCalls)
+        runModel { model.toggleExpanded("INBOX") }
+        runModel { model.loadLevel() }
+        runModel { model.loadLevel() }
+        assertEquals(listOf(ModelListCall("", null), ModelListCall("", "INBOX")), session.listCalls)
 
         model.refreshLevels()
-        runImmediate { model.loadLevel() }
+        runModel { model.loadLevel() }
         assertEquals(
             listOf(
-                ListCall("", null),
-                ListCall("", "INBOX"),
-                ListCall("", null),
-                ListCall("", "INBOX"),
+                ModelListCall("", null),
+                ModelListCall("", "INBOX"),
+                ModelListCall("", null),
+                ModelListCall("", "INBOX"),
             ),
             session.listCalls,
         )
@@ -87,25 +87,25 @@ class FolderListModelTest {
         val session = treeSession()
         val model = FolderListModel(
             session,
-            MemorySettingsStore(AccountSettings(expandedFolders = setOf("INBOX"))),
+            ModelSettingsStore(AccountSettings(expandedFolders = setOf("INBOX"))),
         )
-        val opened = runImmediate { model.loadLevel() }
+        val opened = runModel { model.loadLevel() }
         assertEquals(5, opened.single { it.mailbox == "INBOX" }.messages)
         assertEquals(9, opened.single { it.mailbox == "INBOX.sent" }.messages)
         assertEquals(1, opened.single { it.mailbox == "INBOX.sent" }.unseen)
 
-        runImmediate { model.toggleExpanded("INBOX") }
-        val collapsed = runImmediate { model.loadLevel() }
+        runModel { model.toggleExpanded("INBOX") }
+        val collapsed = runModel { model.loadLevel() }
         assertTrue(collapsed.none { it.mailbox == "INBOX.sent" })
         assertEquals(5, collapsed.single { it.mailbox == "INBOX" }.messages)
         assertEquals(false, collapsed.single { it.mailbox == "INBOX" }.expanded)
 
-        runImmediate { model.toggleExpanded("INBOX") }
-        val again = runImmediate { model.loadLevel() }
+        runModel { model.toggleExpanded("INBOX") }
+        val again = runModel { model.loadLevel() }
         assertEquals(5, again.single { it.mailbox == "INBOX" }.messages)
         assertEquals(9, again.single { it.mailbox == "INBOX.sent" }.messages)
         assertEquals(1, again.single { it.mailbox == "INBOX.sent" }.unseen)
-        assertEquals(listOf(ListCall("", null), ListCall("", "INBOX")), session.listCalls)
+        assertEquals(listOf(ModelListCall("", null), ModelListCall("", "INBOX")), session.listCalls)
     }
 
     @Test
@@ -122,63 +122,63 @@ class FolderListModelTest {
     @Test
     fun saveResetAndAlwaysExpand() {
         val session = treeSession()
-        val store = MemorySettingsStore(
+        val store = ModelSettingsStore(
             AccountSettings(expandedFolders = setOf("INBOX"), imapHost = "imap.example.com"),
         )
         val model = FolderListModel(session, store)
-        runImmediate { model.loadLevel() }
-        runImmediate { model.toggleExpanded("Archive") }
-        runImmediate { model.saveDefaultView() }
+        runModel { model.loadLevel() }
+        runModel { model.toggleExpanded("Archive") }
+        runModel { model.saveDefaultView() }
         assertEquals(setOf("INBOX", "Archive"), store.settings.expandedFolders)
         assertEquals("imap.example.com", store.settings.imapHost)
         assertEquals(1, store.saves)
 
-        runImmediate { model.collapseAll() }
-        assertTrue(runImmediate { model.loadLevel() }.none { it.expanded })
+        runModel { model.collapseAll() }
+        assertTrue(runModel { model.loadLevel() }.none { it.expanded })
         assertEquals(setOf("INBOX", "Archive"), store.settings.expandedFolders)
         assertEquals(1, store.saves)
 
-        runImmediate { model.resetToDefault() }
-        val reset = runImmediate { model.loadLevel() }
+        runModel { model.resetToDefault() }
+        val reset = runModel { model.loadLevel() }
         assertTrue(reset.single { it.mailbox == "INBOX" }.expanded)
         assertTrue(reset.single { it.mailbox == "Archive" }.expanded)
         assertEquals(1, store.saves)
 
-        runImmediate { model.dontAlwaysExpand("INBOX") }
+        runModel { model.dontAlwaysExpand("INBOX") }
         assertEquals(setOf("Archive"), store.settings.expandedFolders)
         assertEquals("imap.example.com", store.settings.imapHost)
-        assertTrue(runImmediate { model.loadLevel() }.single { it.mailbox == "INBOX" }.expanded)
+        assertTrue(runModel { model.loadLevel() }.single { it.mailbox == "INBOX" }.expanded)
 
-        runImmediate { model.alwaysExpand("Sent") }
+        runModel { model.alwaysExpand("Sent") }
         assertEquals(setOf("Archive", "Sent"), store.settings.expandedFolders)
         assertEquals("imap.example.com", store.settings.imapHost)
-        assertTrue(runImmediate { model.loadLevel() }.single { it.mailbox == "Sent" }.expanded)
+        assertTrue(runModel { model.loadLevel() }.single { it.mailbox == "Sent" }.expanded)
     }
 }
 
-private fun treeSession(): FakeMailSession = FakeMailSession(
+private fun treeSession(): ModelMailSession = ModelMailSession(
     namespaces = listOf(Namespace("", '.', NamespaceKind.Personal)),
     levels = mapOf(
-        ListCall("", null) to listOf(
+        ModelListCall("", null) to listOf(
             FolderEntry("INBOX", "INBOX", true, '.', messages = 5, unseen = 2),
             FolderEntry("Archive", "Archive", true, '.'),
             FolderEntry("Sent", "Sent", true, '.'),
         ),
-        ListCall("", "INBOX") to listOf(
+        ModelListCall("", "INBOX") to listOf(
             FolderEntry("INBOX.sent", "sent", false, '.', messages = 9, unseen = 1),
         ),
-        ListCall("", "Archive") to listOf(
+        ModelListCall("", "Archive") to listOf(
             FolderEntry("Archive.b", "b", false, '.', messages = 4),
         ),
-        ListCall("", "Sent") to listOf(
+        ModelListCall("", "Sent") to listOf(
             FolderEntry("Sent.x", "x", false, '.'),
         ),
     ),
 )
 
-private data class ListCall(val prefix: String, val parentMailbox: String?)
+private data class ModelListCall(val prefix: String, val parentMailbox: String?)
 
-private class MemorySettingsStore(initial: AccountSettings) : SettingsStore {
+private class ModelSettingsStore(initial: AccountSettings) : SettingsStore {
     var settings: AccountSettings = initial
     var saves: Int = 0
 
@@ -194,11 +194,11 @@ private class MemorySettingsStore(initial: AccountSettings) : SettingsStore {
     override suspend fun setPassword(value: String) = Unit
 }
 
-private class FakeMailSession(
+private class ModelMailSession(
     private val namespaces: List<Namespace>,
-    private val levels: Map<ListCall, List<FolderEntry>>,
+    private val levels: Map<ModelListCall, List<FolderEntry>>,
 ) : MailSession {
-    val listCalls = mutableListOf<ListCall>()
+    val listCalls = mutableListOf<ModelListCall>()
 
     override val capabilities: Set<String> = emptySet()
 
@@ -207,7 +207,7 @@ private class FakeMailSession(
     override suspend fun namespaces(): List<Namespace> = namespaces
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
-        val call = ListCall(prefix, parentMailbox)
+        val call = ModelListCall(prefix, parentMailbox)
         listCalls += call
         return levels[call] ?: emptyList()
     }
@@ -251,7 +251,7 @@ private class FakeMailSession(
     private fun unused(): Nothing = throw MailFailure("not used")
 }
 
-private fun <T> runImmediate(block: suspend () -> T): T {
+private fun <T> runModel(block: suspend () -> T): T {
     var result: Result<T>? = null
     block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
     return result!!.getOrThrow()
