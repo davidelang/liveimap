@@ -189,7 +189,7 @@ private data class AttachmentRow(
     val busy: Boolean = false,
 )
 
-private class ReaderHeld : ViewModel() {
+internal class ReaderHeld : ViewModel() {
     var openUid: Long = -1L
     var openMailbox: String = ""
     var ready: Boolean = false

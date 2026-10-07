@@ -1896,3 +1896,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Settings, Sending has a Wrap column row after the SMTP port. Empty text, a non-digit, or a value outside 0..998 restores the stored number and does not persist. The section summary stays the SMTP host and port.
 - wrapPlain breaks plain text on spaces and tabs at the column, repeats a > quote prefix, and leaves a long word whole. Column 0 does not insert breaks. buildPlain wraps before the existing 998 rule. No format=flowed. Bounce is unchanged.
 - No composer-wrap-column import. No STARTTLS. No AUTH. No install.
+
+## 2026-10-07 - ReaderHeld visibility execution start
+
+- Approved plan: sandbox/plans/reader-held-visible-20261007-0256-plan.md. Mailbox SEQ 68 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: change private class ReaderHeld to internal class ReaderHeld. No-arg constructor, properties, dropLoaded, and the viewModel key stay.
+- Do not edit Index, folder, or mailbox-chooser holders. Do not install. Base builds tag 20bce7d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - ReaderHeld visibility phase 1
+
+- ReaderHeld is internal class ReaderHeld : ViewModel(). The no-arg constructor, properties, dropLoaded, and viewModel key reader:$mailbox:$uid are unchanged.
+- IndexScreenHeld, FolderScreenHeld, and MailboxChooserHeld were not edited.
+- No install.
