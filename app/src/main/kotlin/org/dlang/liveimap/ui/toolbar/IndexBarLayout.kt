@@ -16,6 +16,48 @@ enum class BarSection {
     Hidden,
 }
 
+private sealed interface DragLine<A> {
+    class Header<A>(val section: BarSection) : DragLine<A>
+    class Item<A>(val action: A) : DragLine<A>
+}
+
+fun <A> dragActions(
+    toolbar: List<A>,
+    overflow: List<A>,
+    hidden: List<A>,
+    from: Int,
+    to: Int,
+): Triple<List<A>, List<A>, List<A>> {
+    val lines = ArrayList<DragLine<A>>(toolbar.size + overflow.size + hidden.size + 3)
+    lines.add(DragLine.Header(BarSection.Toolbar))
+    for (action in toolbar) lines.add(DragLine.Item(action))
+    lines.add(DragLine.Header(BarSection.Overflow))
+    for (action in overflow) lines.add(DragLine.Item(action))
+    lines.add(DragLine.Header(BarSection.Hidden))
+    for (action in hidden) lines.add(DragLine.Item(action))
+    if (from !in lines.indices || to !in lines.indices || from == to || lines[from] is DragLine.Header<*>) {
+        return Triple(toolbar, overflow, hidden)
+    }
+    val moved = lines.toMutableList()
+    val item = moved.removeAt(from)
+    moved.add(to.coerceIn(1, moved.size), item)
+    val nextToolbar = ArrayList<A>()
+    val nextOverflow = ArrayList<A>()
+    val nextHidden = ArrayList<A>()
+    var section = BarSection.Toolbar
+    for (line in moved) {
+        when (line) {
+            is DragLine.Header -> section = line.section
+            is DragLine.Item -> when (section) {
+                BarSection.Toolbar -> nextToolbar.add(line.action)
+                BarSection.Overflow -> nextOverflow.add(line.action)
+                BarSection.Hidden -> nextHidden.add(line.action)
+            }
+        }
+    }
+    return Triple(nextToolbar, nextOverflow, nextHidden)
+}
+
 data class IndexBarLayout(
     val toolbar: List<IndexBarAction>,
     val overflow: List<IndexBarAction>,
@@ -59,6 +101,11 @@ fun moveIndexActionBy(layout: IndexBarLayout, action: IndexBarAction, delta: Int
     next.removeAt(index)
     next.add(target, action)
     return layout.withSection(section, next)
+}
+
+fun dragIndexLayout(layout: IndexBarLayout, from: Int, to: Int): IndexBarLayout {
+    val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
+    return IndexBarLayout(toolbar, overflow, hidden)
 }
 
 fun indexMenuTail(layout: IndexBarLayout): List<IndexMenuEntry> {
@@ -185,6 +232,11 @@ fun moveSelectionActionBy(layout: SelectionBarLayout, action: SelectionBarAction
     return layout.withSection(section, next)
 }
 
+fun dragSelectionLayout(layout: SelectionBarLayout, from: Int, to: Int): SelectionBarLayout {
+    val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
+    return SelectionBarLayout(toolbar, overflow, hidden)
+}
+
 fun selectionMenuTail(layout: SelectionBarLayout): List<SelectionMenuEntry> {
     val items = ArrayList<SelectionMenuEntry>()
     items.add(SelectionMenuEntry.Divider)
@@ -309,6 +361,11 @@ fun moveFolderActionBy(layout: FolderBarLayout, action: FolderBarAction, delta: 
     next.removeAt(index)
     next.add(target, action)
     return layout.withSection(section, next)
+}
+
+fun dragFolderLayout(layout: FolderBarLayout, from: Int, to: Int): FolderBarLayout {
+    val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
+    return FolderBarLayout(toolbar, overflow, hidden)
 }
 
 fun folderMenu(layout: FolderBarLayout, showUnsent: Boolean): List<FolderMenuEntry> {
@@ -451,6 +508,11 @@ fun moveReaderActionBy(
     return layout.withSection(section, next)
 }
 
+fun dragReaderLayout(layout: ReaderToolbarLayout, from: Int, to: Int): ReaderToolbarLayout {
+    val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
+    return ReaderToolbarLayout(toolbar, overflow, hidden)
+}
+
 fun encodeReaderToolbar(layout: ReaderToolbarLayout): String =
     "T:${layout.toolbar.joinToString(",") { it.name }}" +
         "|O:${layout.overflow.joinToString(",") { it.name }}" +
@@ -570,6 +632,11 @@ fun moveComposeActionBy(
     next.removeAt(index)
     next.add(target, action)
     return layout.withSection(section, next)
+}
+
+fun dragComposeLayout(layout: ComposeBarLayout, from: Int, to: Int): ComposeBarLayout {
+    val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
+    return ComposeBarLayout(toolbar, overflow, hidden)
 }
 
 fun composeMenu(layout: ComposeBarLayout): List<ComposeMenuEntry> {

@@ -57,7 +57,7 @@ is at https://github.com/davidelang/libetpan.
 2. Java and Kotlin libraries (release runtime classpath)
 ========================================================================
 
-114 artifacts. 112 are licensed under the Apache License, Version 2.0 (4.1).
+115 artifacts. 113 are licensed under the Apache License, Version 2.0 (4.1).
 org.jsoup:jsoup is MIT (4.10). com.android.tools:desugar_jdk_libs_nio is
 GPL-2.0 with the Classpath Exception (4.11). None of these artifacts ships a
 NOTICE file.
@@ -627,6 +627,10 @@ org.jsoup:jsoup:1.21.2
   https://jsoup.org/
   License: MIT (4.10)
 
+sh.calvin.reorderable:reorderable:3.1.0
+  Reorderable
+  https://github.com/Calvin-LL/Reorderable
+  License: Apache-2.0
 
 ========================================================================
 3. Required acknowledgments

@@ -325,4 +325,29 @@ class IndexBarLayoutTest {
         assertEquals(layout, moveComposeActionBy(layout, ComposeBarAction.Postpone, 1))
         assertEquals(layout, moveComposeActionBy(layout, ComposeBarAction.Postpone, -1))
     }
+
+    @Test
+    fun dragIndexWithinAndAcrossSections() {
+        val swapped = dragIndexLayout(defaultIndexBar(), 2, 3)
+        assertEquals(
+            listOf(IndexBarAction.Refresh, IndexBarAction.Filter, IndexBarAction.Search),
+            swapped.toolbar,
+        )
+        assertEquals(emptyList<IndexBarAction>(), swapped.overflow)
+        assertEquals(emptyList<IndexBarAction>(), swapped.hidden)
+        val hidden = dragIndexLayout(defaultIndexBar(), 3, 5)
+        assertEquals(listOf(IndexBarAction.Refresh, IndexBarAction.Search), hidden.toolbar)
+        assertEquals(emptyList<IndexBarAction>(), hidden.overflow)
+        assertEquals(listOf(IndexBarAction.Filter), hidden.hidden)
+        assertEquals(defaultIndexBar(), dragIndexLayout(defaultIndexBar(), 0, 3))
+        assertEquals(defaultIndexBar(), dragIndexLayout(defaultIndexBar(), 1, 6))
+    }
+
+    @Test
+    fun dragComposeOntoTheToolbar() {
+        val dragged = dragComposeLayout(defaultComposeBar(), 2, 0)
+        assertEquals(listOf(ComposeBarAction.Postpone), dragged.toolbar)
+        assertEquals(emptyList<ComposeBarAction>(), dragged.overflow)
+        assertEquals(emptyList<ComposeBarAction>(), dragged.hidden)
+    }
 }

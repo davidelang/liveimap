@@ -540,4 +540,5 @@
     <string name="toolbar_mark_unread">Mark unread</string>
     <string name="toolbar_flag">Flag</string>
     <string name="toolbar_unflag">Unflag</string>
+    <string name="toolbar_drag">Drag to reorder</string>
 </resources>

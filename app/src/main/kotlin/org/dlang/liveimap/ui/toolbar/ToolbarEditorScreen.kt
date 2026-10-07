@@ -4,10 +4,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,7 +28,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import sh.calvin.reorderable.ReorderableCollectionItemScope
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -109,6 +120,10 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 val current = holder.settings?.indexBar
                 if (current != null) holder.persistIndex(moveIndexAction(current, action, target))
             },
+            onDrag = { from, to ->
+                val current = holder.settings?.indexBar
+                if (current != null) holder.persistIndex(dragIndexLayout(current, from, to))
+            },
             onReset = { holder.persistIndex(resetIndexBar()) },
         )
         ToolbarScreen.Selection -> SectionEditor(
@@ -121,6 +136,10 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             onMoveTo = { action, target ->
                 val current = holder.settings?.selectionBar
                 if (current != null) holder.persistSelection(moveSelectionAction(current, action, target))
+            },
+            onDrag = { from, to ->
+                val current = holder.settings?.selectionBar
+                if (current != null) holder.persistSelection(dragSelectionLayout(current, from, to))
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
         )
@@ -135,6 +154,10 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 val current = holder.settings?.folderBar
                 if (current != null) holder.persistFolder(moveFolderAction(current, action, target))
             },
+            onDrag = { from, to ->
+                val current = holder.settings?.folderBar
+                if (current != null) holder.persistFolder(dragFolderLayout(current, from, to))
+            },
             onReset = { holder.persistFolder(resetFolderBar()) },
         )
         ToolbarScreen.Reader -> SectionEditor(
@@ -147,6 +170,10 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             onMoveTo = { action, target ->
                 val current = holder.settings?.let { effectiveReaderToolbar(it) }
                 if (current != null) holder.persistReader(moveReaderAction(current, action, target))
+            },
+            onDrag = { from, to ->
+                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                if (current != null) holder.persistReader(dragReaderLayout(current, from, to))
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
         )
@@ -161,51 +188,69 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 val current = holder.settings?.composeBar
                 if (current != null) holder.persistCompose(moveComposeAction(current, action, target))
             },
+            onDrag = { from, to ->
+                val current = holder.settings?.composeBar
+                if (current != null) holder.persistCompose(dragComposeLayout(current, from, to))
+            },
             onReset = { holder.persistCompose(resetComposeBar()) },
         )
     }
 }
 
 @Composable
-private fun <A> SectionEditor(
+private fun <A : Enum<A>> SectionEditor(
     rowsIn: (BarSection) -> List<A>,
     labelRes: (A) -> Int,
     onMoveBy: (A, Int) -> Unit,
     onMoveTo: (A, BarSection) -> Unit,
+    onDrag: (Int, Int) -> Unit,
     onReset: () -> Unit,
 ) {
-    Column(
+    val lazyListState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        onDrag(from.index, to.index)
+    }
+    LazyColumn(
+        state = lazyListState,
         modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         for (section in BarSection.entries) {
-            Text(
-                text = sectionTitle(section),
-                style = MaterialTheme.typography.titleSmall,
-            )
+            item(key = section.name) {
+                ReorderableItem(reorderableState, key = section.name) {
+                    Text(
+                        text = sectionTitle(section),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+            }
             val rows = rowsIn(section)
-            rows.forEachIndexed { index, action ->
-                ToolbarEditorRow(
-                    labelRes = labelRes(action),
-                    section = section,
-                    index = index,
-                    count = rows.size,
-                    onMoveBy = { delta -> onMoveBy(action, delta) },
-                    onMoveTo = { target -> onMoveTo(action, target) },
-                )
+            items(rows, key = { action -> action.name }) { action ->
+                val index = rows.indexOf(action)
+                ReorderableItem(reorderableState, key = action.name) {
+                    ToolbarEditorRow(
+                        labelRes = labelRes(action),
+                        section = section,
+                        index = index,
+                        count = rows.size,
+                        onMoveBy = { delta -> onMoveBy(action, delta) },
+                        onMoveTo = { target -> onMoveTo(action, target) },
+                    )
+                }
             }
         }
-        TextButton(onClick = onReset) {
-            Text(stringResource(R.string.toolbar_reset))
+        item(key = "reset") {
+            TextButton(onClick = onReset) {
+                Text(stringResource(R.string.toolbar_reset))
+            }
         }
     }
 }
 
 @Composable
-private fun ToolbarEditorRow(
+private fun ReorderableCollectionItemScope.ToolbarEditorRow(
     labelRes: Int,
     section: BarSection,
     index: Int,
@@ -219,6 +264,15 @@ private fun ToolbarEditorRow(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(
+                onClick = {},
+                modifier = Modifier.draggableHandle().clearAndSetSemantics {},
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DragHandle,
+                    contentDescription = stringResource(R.string.toolbar_drag),
+                )
+            }
             if (index > 0) {
                 TextButton(onClick = { onMoveBy(-1) }) {
                     Text(stringResource(R.string.toolbar_move_up))

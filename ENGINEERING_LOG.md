@@ -1687,3 +1687,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A default encode omits composeBar. defaultsRoundTrip keeps its key list. A repeated, unknown, missing, or badly shaped value throws bad composeBar
 - The compose More menu ends with Customize toolbar…. That screen moves Postpone onto the bar, into that menu, or out of sight, and saves composeBar. The other toolbar routes stay on their own layouts
 - No install
+
+## 2026-10-06 - toolbar drag execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-drag-20261006-2219-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 50 IMPLEMENT revision 1. builds before edit: e20659b
+- Phase 1 of 1: drag a row in the shared toolbar editor. Move up, Move down, and Move to stay. No wrap and no TalkBack custom actions. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar drag phase 1
+
+- Customize toolbar… can drag a row within and between Toolbar, Overflow, and Hidden. The drag saves the same layout the Move buttons already save. Reset still restores that screen's default
+- Move up, Move down, and Move to stay. Reader drag reads effectiveReaderToolbar and saves readerToolbar. A drag on one screen does not change another screen's layout
+- reorderable 3.1.0 is the only new dependency. NOTICES.txt says 115 artifacts and 113 under Apache-2.0, and lists that artifact once. No install
