@@ -34,9 +34,12 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.Activity
 import android.content.Context
@@ -109,6 +113,10 @@ import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.compose.readCopies
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
+import org.dlang.liveimap.ui.toolbar.FolderBarAction
+import org.dlang.liveimap.ui.toolbar.FolderMenuEntry
+import org.dlang.liveimap.ui.toolbar.defaultFolderBar
+import org.dlang.liveimap.ui.toolbar.folderMenu
 
 internal class FolderScreenHeld : ViewModel() {
     var model: FolderListModel? = null
@@ -141,6 +149,13 @@ private fun Context.hostActivity(): Activity? {
     }
 }
 
+private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
+    FolderBarAction.Refresh -> R.string.folders_refresh
+    FolderBarAction.CollapseAll -> R.string.folders_collapse_all
+    FolderBarAction.SaveDefault -> R.string.folders_save_default
+    FolderBarAction.ResetDefault -> R.string.folders_reset_default
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
@@ -148,6 +163,7 @@ fun FolderListScreen(
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
     onOpenHelp: () -> Unit,
+    onCustomize: () -> Unit = {},
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -189,8 +205,23 @@ fun FolderListScreen(
     var folderQuery by remember { mutableStateOf("") }
     var moreMenu by remember { mutableStateOf(false) }
     var refreshListed by remember { mutableStateOf(false) }
+    var folderBar by remember { mutableStateOf(defaultFolderBar()) }
     val emptyPrefixLabel = stringResource(R.string.folders_empty_prefix)
     val retryLabel = stringResource(R.string.folders_retry)
+
+    LifecycleStartEffect(store) {
+        val job = scope.launch {
+            val loaded = try {
+                store.load()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            if (loaded != null) folderBar = loaded.folderBar
+        }
+        onStopOrDispose { job.cancel() }
+    }
 
     fun postSnack(text: String) {
         snackMessage = text
@@ -246,6 +277,7 @@ fun FolderListScreen(
             addressBookMailbox = settings.addressBookMailbox
             favorites = settings.favorites
             showUnreadCounts = settings.showUnreadCounts
+            folderBar = settings.folderBar
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -492,16 +524,47 @@ fun FolderListScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = {
+                        val refreshFolderList = {
                             if (!loading) {
                                 refreshListed = true
                                 loadToken += 1
                             }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = stringResource(R.string.folders_refresh),
-                            )
+                        }
+                        for (action in folderBar.toolbar) {
+                            when (action) {
+                                FolderBarAction.Refresh -> {
+                                    IconButton(onClick = refreshFolderList) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Refresh,
+                                            contentDescription = stringResource(R.string.folders_refresh),
+                                        )
+                                    }
+                                }
+                                FolderBarAction.CollapseAll -> {
+                                    IconButton(onClick = { collapseAll() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.UnfoldLess,
+                                            contentDescription = stringResource(R.string.folders_collapse_all),
+                                        )
+                                    }
+                                }
+                                FolderBarAction.SaveDefault -> {
+                                    IconButton(onClick = { saveDefaultView() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Save,
+                                            contentDescription = stringResource(R.string.folders_save_default),
+                                        )
+                                    }
+                                }
+                                FolderBarAction.ResetDefault -> {
+                                    IconButton(onClick = { resetToDefaultView() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.RestartAlt,
+                                            contentDescription = stringResource(R.string.folders_reset_default),
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Box {
                             IconButton(onClick = { moreMenu = true }) {
@@ -514,35 +577,42 @@ fun FolderListScreen(
                                 expanded = moreMenu,
                                 onDismissRequest = { moreMenu = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.folders_collapse_all)) },
-                                    onClick = {
-                                        moreMenu = false
-                                        collapseAll()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.folders_save_default)) },
-                                    onClick = {
-                                        moreMenu = false
-                                        saveDefaultView()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.folders_reset_default)) },
-                                    onClick = {
-                                        moreMenu = false
-                                        resetToDefaultView()
-                                    },
-                                )
-                                if (unsentCount > 0) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.folders_unsent)) },
-                                        onClick = {
-                                            moreMenu = false
-                                            onOpenUnsent()
-                                        },
-                                    )
+                                for (entry in folderMenu(folderBar, unsentCount > 0)) {
+                                    when (entry) {
+                                        is FolderMenuEntry.Action -> {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(folderBarLabel(entry.action))) },
+                                                onClick = {
+                                                    moreMenu = false
+                                                    when (entry.action) {
+                                                        FolderBarAction.Refresh -> refreshFolderList()
+                                                        FolderBarAction.CollapseAll -> collapseAll()
+                                                        FolderBarAction.SaveDefault -> saveDefaultView()
+                                                        FolderBarAction.ResetDefault -> resetToDefaultView()
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        FolderMenuEntry.Unsent -> {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.folders_unsent)) },
+                                                onClick = {
+                                                    moreMenu = false
+                                                    onOpenUnsent()
+                                                },
+                                            )
+                                        }
+                                        FolderMenuEntry.Divider -> HorizontalDivider()
+                                        FolderMenuEntry.Customize -> {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.toolbar_customize)) },
+                                                onClick = {
+                                                    moreMenu = false
+                                                    onCustomize()
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

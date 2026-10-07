@@ -167,6 +167,7 @@ fun LiveImapNavHost() {
                     onCompose = { seed -> openCompose(seed) },
                     onOpenUnsent = { navController.navigate("unsent") },
                     onOpenHelp = { navController.navigate("help") },
+                    onCustomize = { navController.navigate("toolbar/folders") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
@@ -343,6 +344,11 @@ fun LiveImapNavHost() {
             composable("toolbar/selection") {
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     ToolbarEditorScreen(ToolbarScreen.Selection)
+                }
+            }
+            composable("toolbar/folders") {
+                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                    ToolbarEditorScreen(ToolbarScreen.Folders)
                 }
             }
             composable(

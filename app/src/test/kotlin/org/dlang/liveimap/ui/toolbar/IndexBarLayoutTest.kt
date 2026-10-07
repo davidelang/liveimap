@@ -127,4 +127,91 @@ class IndexBarLayoutTest {
             moveSelectionActionBy(defaultSelectionBar(), SelectionBarAction.Seen, -1),
         )
     }
+
+    @Test
+    fun defaultFolderLayoutAndMenu() {
+        val layout = defaultFolderBar()
+        val all = layout.toolbar + layout.overflow + layout.hidden
+        assertEquals(listOf(FolderBarAction.Refresh), layout.toolbar)
+        assertEquals(
+            listOf(
+                FolderBarAction.CollapseAll,
+                FolderBarAction.SaveDefault,
+                FolderBarAction.ResetDefault,
+            ),
+            layout.overflow,
+        )
+        assertEquals(emptyList<FolderBarAction>(), layout.hidden)
+        assertEquals(FolderBarAction.entries.toSet(), all.toSet())
+        assertEquals(all.size, all.toSet().size)
+        assertEquals(
+            listOf(
+                FolderMenuEntry.Action(FolderBarAction.CollapseAll),
+                FolderMenuEntry.Action(FolderBarAction.SaveDefault),
+                FolderMenuEntry.Action(FolderBarAction.ResetDefault),
+                FolderMenuEntry.Divider,
+                FolderMenuEntry.Customize,
+            ),
+            folderMenu(layout, showUnsent = false),
+        )
+        assertEquals(
+            listOf(
+                FolderMenuEntry.Action(FolderBarAction.CollapseAll),
+                FolderMenuEntry.Action(FolderBarAction.SaveDefault),
+                FolderMenuEntry.Action(FolderBarAction.ResetDefault),
+                FolderMenuEntry.Unsent,
+                FolderMenuEntry.Divider,
+                FolderMenuEntry.Customize,
+            ),
+            folderMenu(layout, showUnsent = true),
+        )
+        assertEquals(layout, resetFolderBar())
+        assertEquals(
+            listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
+            defaultIndexBar().toolbar,
+        )
+        assertEquals(
+            listOf(
+                SelectionBarAction.Seen,
+                SelectionBarAction.Flag,
+                SelectionBarAction.Move,
+                SelectionBarAction.Delete,
+            ),
+            defaultSelectionBar().toolbar,
+        )
+    }
+
+    @Test
+    fun moveFolderRefreshAndSaveDefault() {
+        val overflow = moveFolderAction(defaultFolderBar(), FolderBarAction.Refresh, BarSection.Overflow)
+        assertEquals(emptyList<FolderBarAction>(), overflow.toolbar)
+        assertEquals(
+            listOf(
+                FolderBarAction.CollapseAll,
+                FolderBarAction.SaveDefault,
+                FolderBarAction.ResetDefault,
+                FolderBarAction.Refresh,
+            ),
+            overflow.overflow,
+        )
+        val hidden = moveFolderAction(defaultFolderBar(), FolderBarAction.Refresh, BarSection.Hidden)
+        assertFalse(hidden.toolbar.contains(FolderBarAction.Refresh))
+        assertFalse(hidden.overflow.contains(FolderBarAction.Refresh))
+        assertEquals(listOf(FolderBarAction.Refresh), hidden.hidden)
+        assertFalse(folderMenu(hidden, showUnsent = false).contains(FolderMenuEntry.Action(FolderBarAction.Refresh)))
+        val swapped = moveFolderActionBy(defaultFolderBar(), FolderBarAction.SaveDefault, -1)
+        assertEquals(
+            listOf(
+                FolderBarAction.SaveDefault,
+                FolderBarAction.CollapseAll,
+                FolderBarAction.ResetDefault,
+            ),
+            swapped.overflow,
+        )
+        assertEquals(listOf(FolderBarAction.Refresh), swapped.toolbar)
+        assertEquals(
+            defaultFolderBar(),
+            moveFolderActionBy(defaultFolderBar(), FolderBarAction.ResetDefault, 1),
+        )
+    }
 }

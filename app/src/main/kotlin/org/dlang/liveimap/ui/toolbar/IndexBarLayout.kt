@@ -245,3 +245,127 @@ private fun SelectionBarLayout.withSection(
     BarSection.Overflow -> copy(overflow = actions)
     BarSection.Hidden -> copy(hidden = actions)
 }
+
+enum class FolderBarAction {
+    Refresh,
+    CollapseAll,
+    SaveDefault,
+    ResetDefault,
+}
+
+data class FolderBarLayout(
+    val toolbar: List<FolderBarAction>,
+    val overflow: List<FolderBarAction>,
+    val hidden: List<FolderBarAction>,
+)
+
+sealed interface FolderMenuEntry {
+    data class Action(val action: FolderBarAction) : FolderMenuEntry
+    data object Unsent : FolderMenuEntry
+    data object Divider : FolderMenuEntry
+    data object Customize : FolderMenuEntry
+}
+
+fun defaultFolderBar(): FolderBarLayout = FolderBarLayout(
+    toolbar = listOf(FolderBarAction.Refresh),
+    overflow = listOf(
+        FolderBarAction.CollapseAll,
+        FolderBarAction.SaveDefault,
+        FolderBarAction.ResetDefault,
+    ),
+    hidden = emptyList(),
+)
+
+fun resetFolderBar(): FolderBarLayout = defaultFolderBar()
+
+fun moveFolderAction(
+    layout: FolderBarLayout,
+    action: FolderBarAction,
+    section: BarSection,
+): FolderBarLayout {
+    val current = layout.sectionOf(action) ?: return layout
+    if (current == section) return layout
+    val cleared = layout.copy(
+        toolbar = layout.toolbar.filterNot { it == action },
+        overflow = layout.overflow.filterNot { it == action },
+        hidden = layout.hidden.filterNot { it == action },
+    )
+    return cleared.withSection(section, cleared.section(section) + action)
+}
+
+fun moveFolderActionBy(layout: FolderBarLayout, action: FolderBarAction, delta: Int): FolderBarLayout {
+    if (delta != -1 && delta != 1) return layout
+    val section = layout.sectionOf(action) ?: return layout
+    val list = layout.section(section)
+    val index = list.indexOf(action)
+    if (index < 0) return layout
+    val target = index + delta
+    if (target !in list.indices) return layout
+    val next = list.toMutableList()
+    next.removeAt(index)
+    next.add(target, action)
+    return layout.withSection(section, next)
+}
+
+fun folderMenu(layout: FolderBarLayout, showUnsent: Boolean): List<FolderMenuEntry> {
+    val items = ArrayList<FolderMenuEntry>()
+    for (action in layout.overflow) items.add(FolderMenuEntry.Action(action))
+    if (showUnsent) items.add(FolderMenuEntry.Unsent)
+    items.add(FolderMenuEntry.Divider)
+    items.add(FolderMenuEntry.Customize)
+    return items
+}
+
+fun encodeFolderBar(layout: FolderBarLayout): String =
+    "T:${layout.toolbar.joinToString(",") { it.name }}" +
+        "|O:${layout.overflow.joinToString(",") { it.name }}" +
+        "|H:${layout.hidden.joinToString(",") { it.name }}"
+
+fun parseFolderBar(value: String): FolderBarLayout {
+    val match = folderBarShape.matchEntire(value) ?: throw IllegalArgumentException("bad folderBar")
+    val toolbar = parseFolderNames(match.groupValues[1])
+    val overflow = parseFolderNames(match.groupValues[2])
+    val hidden = parseFolderNames(match.groupValues[3])
+    val all = toolbar + overflow + hidden
+    if (all.toSet() != FolderBarAction.entries.toSet() || all.size != all.toSet().size) {
+        throw IllegalArgumentException("bad folderBar")
+    }
+    return FolderBarLayout(toolbar, overflow, hidden)
+}
+
+private val folderBarShape = Regex(
+    "^T:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|O:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|H:([A-Za-z]+(?:,[A-Za-z]+)*)?$",
+)
+
+private fun parseFolderNames(text: String): List<FolderBarAction> {
+    if (text.isEmpty()) return emptyList()
+    return text.split(',').map { name ->
+        try {
+            enumValueOf<FolderBarAction>(name)
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("bad folderBar")
+        }
+    }
+}
+
+private fun FolderBarLayout.sectionOf(action: FolderBarAction): BarSection? = when {
+    action in toolbar -> BarSection.Toolbar
+    action in overflow -> BarSection.Overflow
+    action in hidden -> BarSection.Hidden
+    else -> null
+}
+
+private fun FolderBarLayout.section(section: BarSection): List<FolderBarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun FolderBarLayout.withSection(
+    section: BarSection,
+    actions: List<FolderBarAction>,
+): FolderBarLayout = when (section) {
+    BarSection.Toolbar -> copy(toolbar = actions)
+    BarSection.Overflow -> copy(overflow = actions)
+    BarSection.Hidden -> copy(hidden = actions)
+}

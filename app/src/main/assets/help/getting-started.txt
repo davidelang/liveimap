@@ -21,3 +21,5 @@ Advanced search can cover this folder, the folders under it, subscribed folders,
 The index Sort menu ends with Customize toolbar…. That screen moves Refresh, Search, and Filter onto the bar, into the menu, or out of sight.
 
 The selection More menu ends with Customize toolbar…. That screen moves Mark read, Flag, Move, and Delete onto the bar, into that menu, or out of sight.
+
+The folder list More menu ends with Customize toolbar…. That screen moves Refresh, Collapse all, Save as default view, and Reset to default view onto the bar, into that menu, or out of sight.

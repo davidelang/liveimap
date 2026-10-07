@@ -1639,3 +1639,19 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A default encode omits selectionBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad selectionBar
 - The selection More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves selectionBar. toolbar/index still saves indexBar only
 - No install
+
+## 2026-10-06 - folder toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-folder-bar-20261006-2135-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 47 IMPLEMENT revision 1. builds before edit: d899a40
+- Phase 1 of 1: folder bar for Refresh, Collapse all, Save as default view, and Reset to default view. More stays pinned. The index and selection bars stay. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - folder toolbar customize phase 1
+
+- FolderBarLayout keeps Refresh, Collapse all, Save as default view, and Reset to default view in exactly one section. Unsent is not an action. More stays pinned
+- A default encode omits folderBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad folderBar
+- The folder list More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves folderBar. toolbar/index still saves indexBar only. toolbar/selection still saves selectionBar only
+- No install

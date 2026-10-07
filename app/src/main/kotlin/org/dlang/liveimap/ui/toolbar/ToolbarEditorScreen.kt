@@ -37,6 +37,7 @@ private val toolbarIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immedi
 enum class ToolbarScreen {
     Index,
     Selection,
+    Folders,
 }
 
 private class ToolbarSettings(val store: DataStoreSettingsStore) {
@@ -56,6 +57,12 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
     fun persistSelection(next: SelectionBarLayout) {
         val current = settings ?: return
         settings = current.copy(selectionBar = next)
+        save()
+    }
+
+    fun persistFolder(next: FolderBarLayout) {
+        val current = settings ?: return
+        settings = current.copy(folderBar = next)
         save()
     }
 
@@ -102,6 +109,19 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistSelection(moveSelectionAction(current, action, target))
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
+        )
+        ToolbarScreen.Folders -> SectionEditor(
+            rowsIn = { section -> loaded.folderBar.actionsIn(section) },
+            labelRes = ::folderBarActionRes,
+            onMoveBy = { action, delta ->
+                val current = holder.settings?.folderBar
+                if (current != null) holder.persistFolder(moveFolderActionBy(current, action, delta))
+            },
+            onMoveTo = { action, target ->
+                val current = holder.settings?.folderBar
+                if (current != null) holder.persistFolder(moveFolderAction(current, action, target))
+            },
+            onReset = { holder.persistFolder(resetFolderBar()) },
         )
     }
 }
@@ -201,6 +221,13 @@ private fun selectionBarActionRes(action: SelectionBarAction): Int = when (actio
     SelectionBarAction.Delete -> R.string.drawer_delete
 }
 
+private fun folderBarActionRes(action: FolderBarAction): Int = when (action) {
+    FolderBarAction.Refresh -> R.string.folders_refresh
+    FolderBarAction.CollapseAll -> R.string.folders_collapse_all
+    FolderBarAction.SaveDefault -> R.string.folders_save_default
+    FolderBarAction.ResetDefault -> R.string.folders_reset_default
+}
+
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
@@ -208,6 +235,12 @@ private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> 
 }
 
 private fun SelectionBarLayout.actionsIn(section: BarSection): List<SelectionBarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun FolderBarLayout.actionsIn(section: BarSection): List<FolderBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
     BarSection.Hidden -> hidden

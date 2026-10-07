@@ -1,10 +1,13 @@
 package org.dlang.liveimap.settings
 
 import org.dlang.liveimap.ui.toolbar.BarSection
+import org.dlang.liveimap.ui.toolbar.FolderBarAction
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.SelectionBarAction
+import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
+import org.dlang.liveimap.ui.toolbar.moveFolderAction
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
 import org.dlang.liveimap.ui.toolbar.moveSelectionAction
 import org.junit.Assert.assertEquals
@@ -502,6 +505,32 @@ class AccountSettingsTest {
             } catch (error: IllegalArgumentException) {
                 assertEquals(value, "bad selectionBar", error.message)
             }
+        }
+    }
+
+    @Test
+    fun folderBarRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("folderBar"))
+        assertEquals(defaultFolderBar(), decodeAccountSettings(text).folderBar)
+        val explicit = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:\n"
+        assertEquals(defaultFolderBar(), decodeAccountSettings(explicit).folderBar)
+        val moved = moveFolderAction(defaultFolderBar(), FolderBarAction.Refresh, BarSection.Overflow)
+        val saved = AccountSettings(folderBar = moved)
+        val encoded = saved.encode()
+        assertFalse(encoded.contains("indexBar"))
+        assertFalse(encoded.contains("selectionBar"))
+        assertTrue(encoded.contains("folderBar=T:|O:CollapseAll,SaveDefault,ResetDefault,Refresh|H:"))
+        assertEquals(moved, decodeAccountSettings(encoded).folderBar)
+        assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
+        assertEquals(defaultSelectionBar(), decodeAccountSettings(encoded).selectionBar)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val bad = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,CollapseAll|H:\n"
+        try {
+            decodeAccountSettings(bad)
+            fail("T:Refresh|O:CollapseAll,CollapseAll|H:")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("bad folderBar", error.message)
         }
     }
 
