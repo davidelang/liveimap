@@ -111,6 +111,12 @@ class SerialMailSession(
     override suspend fun thread(key: SortKey): ThreadNode =
         onLane { inner.thread(key) }
 
+    override suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> =
+        onLane { inner.clientOrder(key, newestFirst) }
+
+    override suspend fun clientThread(key: SortKey): ThreadNode =
+        onLane { inner.clientThread(key) }
+
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         onLane { inner.watch(mailbox, onChange) }
     }

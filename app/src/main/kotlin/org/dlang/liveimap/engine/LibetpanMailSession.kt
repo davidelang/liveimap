@@ -18,7 +18,10 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
+import org.dlang.liveimap.session.SortField
+import org.dlang.liveimap.session.ThreadHeader
 import org.dlang.liveimap.session.ThreadNode
+import org.dlang.liveimap.session.clientThreads
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
@@ -500,6 +503,38 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> {
+        val field = when (key) {
+            SortKey.Date -> "DATE"
+            SortKey.From -> "FROM"
+            SortKey.Subject -> "SUBJECT"
+            SortKey.To -> "TO"
+            SortKey.Cc -> "CC"
+            SortKey.Size -> "SIZE"
+            else -> throw MailFailure("use an arrival IndexMode")
+        }
+        return keeper.read("client-sort") {
+            val h = requireHandle()
+            remember("CLIENT SORT $field $newestFirst") {
+                val rows = nativeFetchSortFields(h, field) ?: throw MailFailure("sort failed")
+                orderedClientUids(rows, key, newestFirst)
+            }
+        }
+    }
+
+    override suspend fun clientThread(key: SortKey): ThreadNode {
+        if (key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject) {
+            throw MailFailure("use thread")
+        }
+        return keeper.read("client-thread") {
+            val h = requireHandle()
+            remember("CLIENT THREAD ${key.name}") {
+                val rows = nativeFetchThreadHeaders(h) ?: throw MailFailure("thread failed")
+                clientThreads(rows.toList(), key)
+            }
+        }
+    }
+
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         if (!featureCaps.idle) return
         keeper.read("watch") {
@@ -667,6 +702,25 @@ class LibetpanMailSession : MailSession {
         return value
     }
 
+    private fun orderedClientUids(rows: Array<SortField>, key: SortKey, newestFirst: Boolean): List<Long> {
+        val filled = ArrayList<SortField>()
+        val blanks = ArrayList<SortField>()
+        for (row in rows) {
+            if (row.uid <= 0L) continue
+            if (row.empty) blanks.add(row) else filled.add(row)
+        }
+        val numeric = key == SortKey.Date || key == SortKey.Size
+        val byValue = if (numeric) {
+            compareBy<SortField> { it.number }.thenBy { it.uid }
+        } else {
+            compareBy<SortField> { it.text.lowercase() }.thenBy { it.uid }
+        }
+        filled.sortWith(byValue)
+        if (newestFirst) filled.reverse()
+        blanks.sortBy { it.uid }
+        return (filled.asSequence() + blanks.asSequence()).map { it.uid }.toList()
+    }
+
     private fun sortToken(key: SortKey): String = when (key) {
         SortKey.Date -> "DATE"
         SortKey.From -> "FROM"
@@ -760,6 +814,8 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeLocateUid(handle: Long, uid: Long, useEsearch: Boolean): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
+    private external fun nativeFetchSortFields(handle: Long, field: String): Array<SortField>?
+    private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)
     private external fun nativeStopWatch(handle: Long)

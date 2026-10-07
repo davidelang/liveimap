@@ -1510,3 +1510,9 @@
 - Approved plan: sandbox/plans/slower-fallbacks-20261006-1732-plan.md. Mailbox SEQ 38 IMPLEMENT is the approval. Status set to APPROVED.
 - Phase 1: settings, the hide set, polling, the STATUS gate, and the help paragraph. Phase 2: client sort, client thread, and the 5000 dialog. No install.
 - First action per standard-plan-compliance-block.md. Base builds tag a8630ff. Commits stay on master.
+
+## 2026-10-06 - Slower fallbacks phase 2
+
+- Client sort sends one UID FETCH of UID plus one field and sorts in Kotlin. Client thread sends one UID FETCH of Message-ID, References, In-Reply-To, and Subject with BODY.PEEK.
+- A folder over 5000 messages asks before that download. Continue runs the client call. Cancel leaves the view at Arrival.
+- SerialMailSession forwards clientOrder and clientThread so the open session reaches LibetpanMailSession. No install.

@@ -111,6 +111,21 @@ data class ThreadNode(
     val children: List<ThreadNode>,
 )
 
+data class SortField(
+    val uid: Long,
+    val text: String,
+    val number: Long,
+    val empty: Boolean,
+)
+
+data class ThreadHeader(
+    val uid: Long,
+    val messageId: String,
+    val references: String,
+    val inReplyTo: String,
+    val subject: String,
+)
+
 enum class ComposeKind {
     New,
     Reply,

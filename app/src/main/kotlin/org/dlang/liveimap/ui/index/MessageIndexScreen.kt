@@ -156,6 +156,8 @@ import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.pollIntervalSeconds
+import org.dlang.liveimap.settings.slowerClientSort
+import org.dlang.liveimap.settings.slowerClientThread
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
@@ -590,10 +592,14 @@ fun MessageIndexScreen(
     var threadAskFromConnect by remember { mutableStateOf(false) }
     var threadExists by remember { mutableIntStateOf(0) }
     var threadConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
+    var fallbackAsk by remember { mutableStateOf<FolderView?>(null) }
+    var fallbackAskFromConnect by remember { mutableStateOf(false) }
+    var fallbackExists by remember { mutableIntStateOf(0) }
     var expandedText by rememberSaveable(mailbox) { mutableStateOf("") }
     val expandedThreads = parseExpandedThreads(expandedText)
     model.noteExpanded(expandedThreads)
     val threadChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
+    val fallbackChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
     val sequenceMeasurer = rememberTextMeasurer()
     var multiSelect by remember {
         mutableStateOf(reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value))
@@ -877,6 +883,60 @@ fun MessageIndexScreen(
         }
     }
 
+    fun resolveFallbackAsk(continueFallback: Boolean) {
+        val pending = fallbackAsk ?: return
+        val fromConnect = fallbackAskFromConnect
+        fallbackAsk = null
+        fallbackAskFromConnect = false
+        if (fromConnect) {
+            model.allowLargeClientFallback = continueFallback
+            fallbackChoice.trySend(continueFallback)
+            return
+        }
+        query = ""
+        narrowArmed = false
+        prompt = null
+        scope.launch {
+            gate.withLock {
+                noteVisibleTop()
+                model.allowLargeClientFallback = continueFallback
+                val next = if (continueFallback) pending else FolderView(SortKey.Arrival, newestFirst = true)
+                model.applyView(next)
+                pull()
+            }
+            if (model.rows.isNotEmpty()) scrollToStart()
+        }
+    }
+
+    suspend fun needsLargeClientAsk(next: FolderView): Boolean {
+        if (model.allowLargeClientFallback) return false
+        if (!usesClientFallback(
+                session.featureCaps,
+                next.key,
+                slowerClientSort(account),
+                slowerClientThread(account),
+            )
+        ) {
+            return false
+        }
+        val exists = try {
+            gate.withLock { session.select(mailbox).exists }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            postSnack(error.text)
+            return true
+        }
+        folderExists = exists
+        if (exists > ClientFallbackWarn) {
+            fallbackExists = exists
+            fallbackAskFromConnect = false
+            fallbackAsk = next
+            return true
+        }
+        return false
+    }
+
     LaunchedEffect(snackEvent) {
         if (snackEvent == 0) return@LaunchedEffect
         snackMode = "retry"
@@ -912,6 +972,7 @@ fun MessageIndexScreen(
     LaunchedEffect(session, mailbox, loadToken) {
         val reuse = held.windowReady && held.boundMailbox == mailbox && loadToken == 0
         var pendingThread: FolderView? = null
+        var pendingFallback: FolderView? = null
         var pendingExists = 0
         val watchNow = if (reuse) {
             held.recordAnchor = false
@@ -983,11 +1044,34 @@ fun MessageIndexScreen(
             held.headingLeaf = heading.leaf
             held.headingParent = heading.parent
             val savedView = settings.folderViews[mailbox] ?: settings.defaultView
-            val savedAdvertised = sortKeyAdvertised(session.featureCaps, savedView.key)
+            val clientSort = slowerClientSort(settings)
+            val clientThread = slowerClientThread(settings)
+            val savedAdvertised = sortKeyAdvertised(session.featureCaps, savedView.key, clientSort, clientThread)
             if (!savedAdvertised) {
                 model.loadUnadvertisedArrival(savedView.newestFirst)
             }
-            val threading = savedAdvertised && (savedView.key == SortKey.ThreadReferences ||
+            val clientFallback = savedAdvertised && usesClientFallback(
+                session.featureCaps,
+                savedView.key,
+                clientSort,
+                clientThread,
+            )
+            if (clientFallback) {
+                val selected = try {
+                    session.select(mailbox)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    banner = error.text
+                    return@withLock false
+                }
+                pendingExists = selected.exists
+                if (selected.exists > ClientFallbackWarn && !model.allowLargeClientFallback) {
+                    pendingFallback = savedView
+                    return@withLock false
+                }
+            }
+            val threading = savedAdvertised && !clientFallback && (savedView.key == SortKey.ThreadReferences ||
                 savedView.key == SortKey.ThreadOrderedSubject)
             if (threading) {
                 val selected = try {
@@ -1011,16 +1095,18 @@ fun MessageIndexScreen(
             true
         }
         if (pendingExists > 0) folderExists = pendingExists
-        val chosen = pendingThread
-        if (chosen != null) {
-            threadExists = pendingExists
-            threadAskFromConnect = true
-            threadAsk = chosen
-            val continueThread = threadChoice.receive()
+        val fallback = pendingFallback
+        if (fallback != null) {
+            fallbackExists = pendingExists
+            fallbackAskFromConnect = true
+            fallbackAsk = fallback
+            val continueFallback = fallbackChoice.receive()
             gate.withLock {
-                if (continueThread) {
-                    model.applyView(chosen)
+                if (continueFallback) {
+                    model.allowLargeClientFallback = true
+                    model.applyView(fallback)
                 } else {
+                    model.allowLargeClientFallback = false
                     model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                 }
                 connected = true
@@ -1029,12 +1115,32 @@ fun MessageIndexScreen(
             held.windowReady = true
             loading = false
             if (model.rows.isNotEmpty()) scrollToStart()
-        } else if (!watchNow) {
-            loading = false
-            return@LaunchedEffect
         } else {
-            loading = false
-            if (!reuse && model.rows.isNotEmpty()) scrollToStart()
+            val chosen = pendingThread
+            if (chosen != null) {
+                threadExists = pendingExists
+                threadAskFromConnect = true
+                threadAsk = chosen
+                val continueThread = threadChoice.receive()
+                gate.withLock {
+                    if (continueThread) {
+                        model.applyView(chosen)
+                    } else {
+                        model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
+                    }
+                    connected = true
+                    pull()
+                }
+                held.windowReady = true
+                loading = false
+                if (model.rows.isNotEmpty()) scrollToStart()
+            } else if (!watchNow) {
+                loading = false
+                return@LaunchedEffect
+            } else {
+                loading = false
+                if (!reuse && model.rows.isNotEmpty()) scrollToStart()
+            }
         }
         fun deliverMailboxChange(change: MailboxChange) {
             when (change) {
@@ -1598,9 +1704,17 @@ fun MessageIndexScreen(
                         val chooseSort: (SortKey) -> Unit = { key ->
                             menuOpen = false
                             scope.launch {
+                                val next = FolderView(key, view.newestFirst)
+                                if (needsLargeClientAsk(next)) return@launch
                                 val threading = key == SortKey.ThreadReferences ||
                                     key == SortKey.ThreadOrderedSubject
-                                if (threading) {
+                                val client = usesClientFallback(
+                                    session.featureCaps,
+                                    key,
+                                    slowerClientSort(account),
+                                    slowerClientThread(account),
+                                )
+                                if (threading && !client) {
                                     val exists = try {
                                         gate.withLock { session.select(mailbox).exists }
                                     } catch (error: CancellationException) {
@@ -1632,7 +1746,12 @@ fun MessageIndexScreen(
                             SortMenuChoice(
                                 key = key,
                                 selected = key == view.key,
-                                enabled = sortKeyAdvertised(session.featureCaps, key),
+                                enabled = sortKeyAdvertised(
+                                    session.featureCaps,
+                                    key,
+                                    slowerClientSort(account),
+                                    slowerClientThread(account),
+                                ),
                                 onClick = { chooseSort(key) },
                             )
                         }
@@ -1641,7 +1760,12 @@ fun MessageIndexScreen(
                             SortMenuChoice(
                                 key = key,
                                 selected = key == view.key,
-                                enabled = sortKeyAdvertised(session.featureCaps, key),
+                                enabled = sortKeyAdvertised(
+                                    session.featureCaps,
+                                    key,
+                                    slowerClientSort(account),
+                                    slowerClientThread(account),
+                                ),
                                 onClick = { chooseSort(key) },
                             )
                         }
@@ -1649,13 +1773,15 @@ fun MessageIndexScreen(
                             text = { Text(stringResource(R.string.index_newest_first)) },
                             onClick = {
                                 menuOpen = false
+                                val next = view.copy(newestFirst = !view.newestFirst)
                                 query = ""
                                 narrowArmed = false
                                 prompt = null
                                 scope.launch {
+                                    if (needsLargeClientAsk(next)) return@launch
                                     gate.withLock {
                                         noteVisibleTop()
-                                        model.applyView(view.copy(newestFirst = !view.newestFirst))
+                                        model.applyView(next)
                                         pull()
                                     }
                                     if (model.rows.isNotEmpty()) scrollToStart()
@@ -1933,7 +2059,7 @@ fun MessageIndexScreen(
                 onRefresh = { refreshIndex() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-            if (!loading && banner == null && rows.isEmpty() && threadAsk == null) {
+            if (!loading && banner == null && rows.isEmpty() && threadAsk == null && fallbackAsk == null) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -2156,6 +2282,22 @@ fun MessageIndexScreen(
             },
             dismissButton = {
                 TextButton(onClick = { resolveThreadAsk(false) }) { Text(stringResource(R.string.index_cancel)) }
+            },
+        )
+    }
+    val askingFallback = fallbackAsk
+    if (askingFallback != null) {
+        AlertDialog(
+            onDismissRequest = { resolveFallbackAsk(false) },
+            title = { Text(stringResource(R.string.index_fallback_title)) },
+            text = {
+                Text(pluralStringResource(R.plurals.index_fallback_body, fallbackExists, fallbackExists))
+            },
+            confirmButton = {
+                TextButton(onClick = { resolveFallbackAsk(true) }) { Text(stringResource(R.string.index_continue)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { resolveFallbackAsk(false) }) { Text(stringResource(R.string.index_cancel)) }
             },
         )
     }
@@ -2488,12 +2630,33 @@ private fun sortShortLabel(key: SortKey): String = stringResource(
     },
 )
 
-internal fun sortKeyAdvertised(capabilities: Capabilities, key: SortKey): Boolean {
+internal fun sortKeyAdvertised(
+    capabilities: Capabilities,
+    key: SortKey,
+    clientSort: Boolean = false,
+    clientThread: Boolean = false,
+): Boolean {
     return when (key) {
         SortKey.Arrival -> true
-        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size -> capabilities.sort
-        SortKey.ThreadReferences -> capabilities.threadReferences
-        SortKey.ThreadOrderedSubject -> capabilities.threadOrderedSubject
+        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size ->
+            capabilities.sort || clientSort
+        SortKey.ThreadReferences -> capabilities.threadReferences || clientThread
+        SortKey.ThreadOrderedSubject -> capabilities.threadOrderedSubject || clientThread
+    }
+}
+
+internal fun usesClientFallback(
+    capabilities: Capabilities,
+    key: SortKey,
+    clientSort: Boolean,
+    clientThread: Boolean,
+): Boolean {
+    return when (key) {
+        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size ->
+            !capabilities.sort && clientSort
+        SortKey.ThreadReferences -> !capabilities.threadReferences && clientThread
+        SortKey.ThreadOrderedSubject -> !capabilities.threadOrderedSubject && clientThread
+        else -> false
     }
 }
 

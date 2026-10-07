@@ -481,4 +481,9 @@
     <string name="settings_hide_capabilities">Hide capabilities</string>
     <string name="settings_hide_none">None hidden</string>
     <string name="settings_hide_count">%1$d hidden</string>
+    <string name="index_fallback_title">Download for every message?</string>
+    <plurals name="index_fallback_body">
+        <item quantity="one">This folder has %d message. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.</item>
+        <item quantity="other">This folder has %d messages. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.</item>
+    </plurals>
 </resources>

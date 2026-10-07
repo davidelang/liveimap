@@ -159,6 +159,10 @@ struct JniCache {
     jmethodID selectInit = nullptr;
     jmethodID mimeInit = nullptr;
     jmethodID threadInit = nullptr;
+    jclass sortField = nullptr;
+    jclass threadHeader = nullptr;
+    jmethodID sortFieldInit = nullptr;
+    jmethodID threadHeaderInit = nullptr;
     jmethodID listInit = nullptr;
     jmethodID listAdd = nullptr;
     jmethodID setInit = nullptr;
@@ -400,10 +404,26 @@ bool ensureJni(JNIEnv * env) {
         gJni.trafficNote = env->GetStaticMethodID(
             gJni.trafficLog, "noteNative", "(Ljava/lang/String;Ljava/lang/String;)V");
     }
+    local = env->FindClass("org/dlang/liveimap/session/SortField");
+    if (local != nullptr) {
+        gJni.sortField = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+        gJni.sortFieldInit = env->GetMethodID(gJni.sortField, "<init>", "(JLjava/lang/String;JZ)V");
+    }
+    local = env->FindClass("org/dlang/liveimap/session/ThreadHeader");
+    if (local != nullptr) {
+        gJni.threadHeader = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+        gJni.threadHeaderInit = env->GetMethodID(
+            gJni.threadHeader,
+            "<init>",
+            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    }
     if (env->ExceptionCheck()) env->ExceptionClear();
     gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
         gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr &&
-        gJni.trafficAccept != nullptr && gJni.trafficFlush != nullptr && gJni.trafficNote != nullptr;
+        gJni.trafficAccept != nullptr && gJni.trafficFlush != nullptr && gJni.trafficNote != nullptr &&
+        gJni.sortFieldInit != nullptr && gJni.threadHeaderInit != nullptr;
     return gJni.ready;
 }
 
@@ -4729,6 +4749,366 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeLocateUid(JNIEnv * env,
     struct mailimap_search_key * key = uidOnlyKey(static_cast<uint32_t>(uid));
     const char * edge = useEsearch == JNI_TRUE ? "Min" : "All";
     return runEdgeSearch(env, session, key, false, edge, useEsearch == JNI_TRUE);
+}
+
+void freeCStringList(clist * hdrs) {
+    if (hdrs == nullptr) return;
+    for (clistiter * cur = clist_begin(hdrs); cur != nullptr; cur = clist_next(cur)) {
+        free(clist_content(cur));
+    }
+    clist_free(hdrs);
+}
+
+struct mailimap_fetch_att * peekHeaderFields(const char * const * names, size_t count) {
+    clist * hdrs = clist_new();
+    if (hdrs == nullptr) return nullptr;
+    for (size_t i = 0; i < count; ++i) {
+        char * copy = strdup(names[i]);
+        if (copy == nullptr) {
+            freeCStringList(hdrs);
+            return nullptr;
+        }
+        if (clist_append(hdrs, copy) != 0) {
+            free(copy);
+            freeCStringList(hdrs);
+            return nullptr;
+        }
+    }
+    struct mailimap_header_list * list = mailimap_header_list_new(hdrs);
+    if (list == nullptr) {
+        freeCStringList(hdrs);
+        return nullptr;
+    }
+    struct mailimap_section * section = mailimap_section_new_header_fields(list);
+    if (section == nullptr) {
+        mailimap_header_list_free(list);
+        return nullptr;
+    }
+    struct mailimap_fetch_att * att = mailimap_fetch_att_new_body_peek_section(section);
+    if (att == nullptr) mailimap_section_free(section);
+    return att;
+}
+
+bool addFetchAtt(struct mailimap_fetch_type * fetch, struct mailimap_fetch_att * att) {
+    if (att == nullptr) return false;
+    if (mailimap_fetch_type_new_fetch_att_list_add(fetch, att) != MAILIMAP_NO_ERROR) {
+        mailimap_fetch_att_free(att);
+        return false;
+    }
+    return true;
+}
+
+struct mailimap_fetch_type * uidPlusExtra(struct mailimap_fetch_att * extra) {
+    struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
+    if (fetch == nullptr) {
+        if (extra != nullptr) mailimap_fetch_att_free(extra);
+        return nullptr;
+    }
+    bool uidOk = addFetchAtt(fetch, mailimap_fetch_att_new_uid());
+    bool extraOk = addFetchAtt(fetch, extra);
+    if (!uidOk || !extraOk) {
+        mailimap_fetch_type_free(fetch);
+        return nullptr;
+    }
+    return fetch;
+}
+
+clist * uidFetchAll(JNIEnv * env, LiveSession * session, struct mailimap_fetch_type * fetch) {
+    if (fetch == nullptr) {
+        throwFailure(env, "fetch failed");
+        return nullptr;
+    }
+    struct mailimap_set * set = mailimap_set_new_interval(1, 0);
+    if (set == nullptr) {
+        mailimap_fetch_type_free(fetch);
+        throwFailure(env, "fetch failed");
+        return nullptr;
+    }
+    clist * list = nullptr;
+    int r = mailimap_uid_fetch(session->imap, set, fetch, &list);
+    mailimap_set_free(set);
+    mailimap_fetch_type_free(fetch);
+    if (!cmdOk(r)) {
+        if (list != nullptr) mailimap_fetch_list_free(list);
+        throwImap(env, session, r, "fetch failed");
+        return nullptr;
+    }
+    return list;
+}
+
+std::string unfoldHeaderBlock(const char * bytes, size_t n) {
+    std::string out;
+    if (bytes == nullptr || n == 0) return out;
+    out.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        char c = bytes[i];
+        if (c == '\r' && i + 2 < n && bytes[i + 1] == '\n' && (bytes[i + 2] == ' ' || bytes[i + 2] == '\t')) {
+            out.push_back(' ');
+            i += 2;
+            continue;
+        }
+        if (c == '\n' && i + 1 < n && (bytes[i + 1] == ' ' || bytes[i + 1] == '\t')) {
+            out.push_back(' ');
+            ++i;
+            continue;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::string trimHeaderValue(const std::string & value) {
+    size_t a = 0;
+    size_t b = value.size();
+    while (a < b && (value[a] == ' ' || value[a] == '\t')) ++a;
+    while (b > a && (value[b - 1] == ' ' || value[b - 1] == '\t' || value[b - 1] == '\r')) --b;
+    return value.substr(a, b - a);
+}
+
+std::string headerField(const std::string & block, const char * name) {
+    size_t start = 0;
+    while (start < block.size()) {
+        size_t end = block.find('\n', start);
+        if (end == std::string::npos) end = block.size();
+        std::string line = block.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        start = end < block.size() ? end + 1 : block.size();
+        size_t colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        if (strcasecmp(trimHeaderValue(line.substr(0, colon)).c_str(), name) != 0) continue;
+        return trimHeaderValue(line.substr(colon + 1));
+    }
+    return "";
+}
+
+std::string firstBodyText(struct mailimap_msg_att * att) {
+    if (att == nullptr || att->att_list == nullptr) return "";
+    for (clistiter * cur = clist_begin(att->att_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(cur));
+        if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC) continue;
+        struct mailimap_msg_att_static * st = item->att_data.att_static;
+        if (st == nullptr || st->att_type != MAILIMAP_MSG_ATT_BODY_SECTION) continue;
+        struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
+        if (body == nullptr || body->sec_body_part == nullptr || body->sec_length == 0) return "";
+        return unfoldHeaderBlock(body->sec_body_part, body->sec_length);
+    }
+    return "";
+}
+
+uint32_t attUid(struct mailimap_msg_att * att) {
+    if (att == nullptr || att->att_list == nullptr) return 0;
+    for (clistiter * cur = clist_begin(att->att_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(cur));
+        if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC) continue;
+        struct mailimap_msg_att_static * st = item->att_data.att_static;
+        if (st != nullptr && st->att_type == MAILIMAP_MSG_ATT_UID) return st->att_data.att_uid;
+    }
+    return 0;
+}
+
+struct SortRow {
+    jlong uid;
+    std::string text;
+    jlong number;
+    bool empty;
+};
+
+bool readSortRow(struct mailimap_msg_att * att, const char * field, SortRow * row) {
+    uint32_t uid = attUid(att);
+    if (uid == 0 || att == nullptr || att->att_list == nullptr) return false;
+    row->uid = static_cast<jlong>(uid);
+    row->text.clear();
+    row->number = 0;
+    row->empty = true;
+    bool sawDate = false;
+    bool dateMissing = true;
+    bool sawSize = false;
+    std::string block = firstBodyText(att);
+    for (clistiter * cur = clist_begin(att->att_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(cur));
+        if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC) continue;
+        struct mailimap_msg_att_static * st = item->att_data.att_static;
+        if (st == nullptr) continue;
+        if (st->att_type == MAILIMAP_MSG_ATT_INTERNALDATE) {
+            sawDate = true;
+            if (st->att_data.att_internal_date == nullptr) {
+                dateMissing = true;
+                row->number = 0;
+            } else {
+                dateMissing = false;
+                row->number = internalDateEpoch(st->att_data.att_internal_date);
+            }
+        } else if (st->att_type == MAILIMAP_MSG_ATT_RFC822_SIZE) {
+            sawSize = true;
+            row->number = static_cast<jlong>(st->att_data.att_rfc822_size);
+        }
+    }
+    if (strcasecmp(field, "DATE") == 0) {
+        row->empty = !sawDate || dateMissing;
+        if (row->empty) row->number = 0;
+        return true;
+    }
+    if (strcasecmp(field, "SIZE") == 0) {
+        row->empty = !sawSize;
+        if (row->empty) row->number = 0;
+        return true;
+    }
+    const char * name = "Subject";
+    if (strcasecmp(field, "FROM") == 0) name = "From";
+    else if (strcasecmp(field, "TO") == 0) name = "To";
+    else if (strcasecmp(field, "CC") == 0) name = "Cc";
+    row->text = headerField(block, name);
+    row->number = 0;
+    row->empty = row->text.empty();
+    return true;
+}
+
+jstring jStringOrEmpty(JNIEnv * env, const std::string & text) {
+    jstring value = newString(env, text.c_str());
+    if (value != nullptr) return value;
+    return env->NewStringUTF("");
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFields(JNIEnv * env, jobject, jlong handle,
+    jstring fieldName) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars fieldChars(env, fieldName);
+    const char * field = fieldChars.c();
+    bool known = strcasecmp(field, "DATE") == 0 || strcasecmp(field, "FROM") == 0
+        || strcasecmp(field, "SUBJECT") == 0 || strcasecmp(field, "TO") == 0
+        || strcasecmp(field, "CC") == 0 || strcasecmp(field, "SIZE") == 0;
+    if (!known) {
+        throwFailure(env, "use an arrival IndexMode");
+        unlockSession(session);
+        return nullptr;
+    }
+    struct mailimap_fetch_att * extra = nullptr;
+    if (strcasecmp(field, "DATE") == 0) extra = mailimap_fetch_att_new_internaldate();
+    else if (strcasecmp(field, "SIZE") == 0) extra = mailimap_fetch_att_new_rfc822_size();
+    else {
+        const char * name = "Subject";
+        if (strcasecmp(field, "FROM") == 0) name = "From";
+        else if (strcasecmp(field, "TO") == 0) name = "To";
+        else if (strcasecmp(field, "CC") == 0) name = "Cc";
+        const char * names[] = { name };
+        extra = peekHeaderFields(names, 1);
+    }
+    clist * list = uidFetchAll(env, session, uidPlusExtra(extra));
+    if (env->ExceptionCheck()) {
+        unlockSession(session);
+        return nullptr;
+    }
+    std::vector<SortRow> rows;
+    if (list != nullptr) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+            SortRow row;
+            if (readSortRow(static_cast<struct mailimap_msg_att *>(clist_content(cur)), field, &row)) {
+                rows.push_back(row);
+            }
+        }
+        mailimap_fetch_list_free(list);
+    }
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), gJni.sortField, nullptr);
+    if (arr == nullptr) {
+        unlockSession(session);
+        return nullptr;
+    }
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (env->PushLocalFrame(8) < 0) {
+            unlockSession(session);
+            return nullptr;
+        }
+        jstring text = jStringOrEmpty(env, rows[i].text);
+        jobject obj = env->NewObject(
+            gJni.sortField,
+            gJni.sortFieldInit,
+            rows[i].uid,
+            text,
+            rows[i].number,
+            rows[i].empty ? JNI_TRUE : JNI_FALSE);
+        if (obj == nullptr) {
+            env->PopLocalFrame(nullptr);
+            unlockSession(session);
+            return nullptr;
+        }
+        env->SetObjectArrayElement(arr, static_cast<jsize>(i), obj);
+        env->PopLocalFrame(nullptr);
+    }
+    unlockSession(session);
+    return arr;
+}
+
+struct HeaderRow {
+    jlong uid;
+    std::string messageId;
+    std::string references;
+    std::string inReplyTo;
+    std::string subject;
+};
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    const char * names[] = { "Message-ID", "References", "In-Reply-To", "Subject" };
+    clist * list = uidFetchAll(env, session, uidPlusExtra(peekHeaderFields(names, 4)));
+    if (env->ExceptionCheck()) {
+        unlockSession(session);
+        return nullptr;
+    }
+    std::vector<HeaderRow> rows;
+    if (list != nullptr) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+            auto * att = static_cast<struct mailimap_msg_att *>(clist_content(cur));
+            uint32_t uid = attUid(att);
+            if (uid == 0) continue;
+            std::string block = firstBodyText(att);
+            HeaderRow row;
+            row.uid = static_cast<jlong>(uid);
+            row.messageId = headerField(block, "Message-ID");
+            row.references = headerField(block, "References");
+            row.inReplyTo = headerField(block, "In-Reply-To");
+            row.subject = headerField(block, "Subject");
+            rows.push_back(row);
+        }
+        mailimap_fetch_list_free(list);
+    }
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), gJni.threadHeader, nullptr);
+    if (arr == nullptr) {
+        unlockSession(session);
+        return nullptr;
+    }
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (env->PushLocalFrame(16) < 0) {
+            unlockSession(session);
+            return nullptr;
+        }
+        jstring messageId = jStringOrEmpty(env, rows[i].messageId);
+        jstring references = jStringOrEmpty(env, rows[i].references);
+        jstring inReplyTo = jStringOrEmpty(env, rows[i].inReplyTo);
+        jstring subject = jStringOrEmpty(env, rows[i].subject);
+        jobject obj = env->NewObject(
+            gJni.threadHeader,
+            gJni.threadHeaderInit,
+            rows[i].uid,
+            messageId,
+            references,
+            inReplyTo,
+            subject);
+        if (obj == nullptr) {
+            env->PopLocalFrame(nullptr);
+            unlockSession(session);
+            return nullptr;
+        }
+        env->SetObjectArrayElement(arr, static_cast<jsize>(i), obj);
+        env->PopLocalFrame(nullptr);
+    }
+    unlockSession(session);
+    return arr;
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

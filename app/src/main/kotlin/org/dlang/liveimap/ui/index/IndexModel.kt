@@ -16,6 +16,8 @@ import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartAfterChange
+import org.dlang.liveimap.settings.slowerClientSort
+import org.dlang.liveimap.settings.slowerClientThread
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.startRuleFor
@@ -28,6 +30,7 @@ import kotlin.math.abs
 const val IndexPageSize = 60
 const val SwipeWidthPercent = 40
 const val ThreadConfirmExists = 5000
+const val ClientFallbackWarn = 5000
 
 data class AppliedFilter(
     val label: String,
@@ -395,6 +398,8 @@ class IndexModel(
 
     var account: AccountSettings = AccountSettings()
         private set
+
+    var allowLargeClientFallback: Boolean = false
 
     suspend fun setFolderStart(rule: StartRule?) {
         val saved = withFolderStart(store.load(), mailbox, rule)
@@ -1294,7 +1299,13 @@ class IndexModel(
 
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
-        val uids = restrict(session.sort(key, newestFirst))
+        val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
+            session.select(mailbox)
+            requireClientFallbackRoom()
+            restrict(session.clientOrder(key, newestFirst))
+        } else {
+            restrict(session.sort(key, newestFirst))
+        }
         order = uids
         arrivalTotal = 0
         pendingNew = 0
@@ -1306,7 +1317,19 @@ class IndexModel(
     }
 
     private suspend fun fetchThread(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
-        val collapsed = collapsedThreads(session.thread(key), newestFirst)
+        val serverThread = when (key) {
+            SortKey.ThreadReferences -> session.featureCaps.threadReferences
+            SortKey.ThreadOrderedSubject -> session.featureCaps.threadOrderedSubject
+            else -> true
+        }
+        val node = if (!serverThread && slowerClientThread(account)) {
+            session.select(mailbox)
+            requireClientFallbackRoom()
+            session.clientThread(key)
+        } else {
+            session.thread(key)
+        }
+        val collapsed = collapsedThreads(node, newestFirst)
         val kept = restrictThreads(collapsed)
         threading = true
         threadPlan = kept
@@ -1319,6 +1342,12 @@ class IndexModel(
         val loaded = loadThreadPage()
         if (target != null) rememberStart(target, loaded.size)
         return loaded
+    }
+
+    private suspend fun requireClientFallbackRoom() {
+        if (session.selectedExists() > ClientFallbackWarn && !allowLargeClientFallback) {
+            throw MailFailure("folder is large")
+        }
     }
 
     private fun restrict(uids: List<Long>): List<Long> {

@@ -42,6 +42,12 @@ interface MailSession {
     suspend fun locateUid(uid: Long): List<Long> = throw MailFailure("locateUid")
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
     suspend fun thread(key: SortKey): ThreadNode
+    suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> =
+        throw MailFailure("SORT was not advertised")
+
+    suspend fun clientThread(key: SortKey): ThreadNode =
+        throw MailFailure("THREAD=REFERENCES was not advertised")
+
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)
     suspend fun stopWatch()
     suspend fun noop() {}
