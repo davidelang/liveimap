@@ -2008,3 +2008,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - The split drawer column and the modal sheet pad mail screen insets on the vertical and start sides only. The index and reader split is unchanged.
 - When the resolved drawer width is above 0, the trailing NavHost consumes the start inset. Width 0 does not. Top, bottom, and end are not consumed. No install.
+
+## 2026-10-07 - Reader pane first layout execution start
+
+- Approved plan: sandbox/plans/reader-pane-first-layout-20261007-1505-plan.md. Status set to APPROVED.
+- Phase 1: the split reader draws the header and body on the first layout. The body keeps half the pane. A wrapped header scrolls in the other half. A positive WebView size posts layout and invalidate without loading.
+- Do not install. Base builds tag 2d1b800. Commits stay on master. Do not commit the unstaged .gitignore edit.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Reader pane first layout phase 1
+
+- Below the status line, one BoxWithConstraints holds the rest of the pane. readerBodyMinPx is 0 when the pane is not positive, otherwise half. readerHeaderMaxPx is 0 in that same case, otherwise the rest.
+- When the header is ready it sits in a vertical scroll capped at that max, and the body slot keeps weight 1 with at least half the pane. Otherwise the body slot fills the pane. Plain text still scrolls inside the body. The HTML WebView stays in the body slot.
+- onSizeChanged posts requestLayout and invalidate only when width and height are both positive and differ from the last size requested for that view. That callback does not load. The view.tag check still decides loadDataWithBaseURL.
+- Test readerPaneGivesBodyHalf. No install.

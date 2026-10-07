@@ -21,12 +21,14 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -82,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -1506,24 +1509,48 @@ fun MessageReaderScreen(
                 loadToken += 1
             }
         }
-        if (headerReady) {
-            ReaderHeaderCard(
-                from = headerFrom,
-                toLine = recipientLine(headerTo, headerCc),
-                date = headerDate,
-                subject = headerSubject,
-                deleted = "\\Deleted" in rowFlags,
-                onUndelete = { undeleteMessage() },
-            )
-        }
         val absent = missing
-        PullToRefreshBox(
-            isRefreshing = loading,
-            onRefresh = { if (!loading) loadToken += 1 },
+        val headerScroll = rememberScrollState()
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
+            val panePx = constraints.maxHeight
+            val headerMax = with(LocalDensity.current) { readerHeaderMaxPx(panePx).toDp() }
+            val bodyMin = with(LocalDensity.current) { readerBodyMinPx(panePx).toDp() }
+            Column(Modifier.fillMaxSize()) {
+                if (headerReady) {
+                    Column(
+                        Modifier
+                            .heightIn(max = headerMax)
+                            .verticalScroll(headerScroll)
+                            .fillMaxWidth(),
+                    ) {
+                        ReaderHeaderCard(
+                            from = headerFrom,
+                            toLine = recipientLine(headerTo, headerCc),
+                            date = headerDate,
+                            subject = headerSubject,
+                            deleted = "\\Deleted" in rowFlags,
+                            onUndelete = { undeleteMessage() },
+                        )
+                    }
+                }
+                PullToRefreshBox(
+                    isRefreshing = loading,
+                    onRefresh = { if (!loading) loadToken += 1 },
+                    modifier = if (headerReady) {
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = bodyMin)
+                            .fillMaxWidth()
+                    } else {
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    },
+                ) {
             Column(Modifier.fillMaxSize()) {
                 if (attachments.isNotEmpty()) {
                     FlowRow(
@@ -1568,7 +1595,22 @@ fun MessageReaderScreen(
                         TextButton(onClick = { allowImages = true }) { Text(stringResource(R.string.reader_show_images)) }
                         AndroidView(
                             factory = { webContext ->
-                                WebView(webContext).apply {
+                                object : WebView(webContext) {
+                                    private var postedWidth = 0
+                                    private var postedHeight = 0
+
+                                    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                                        super.onSizeChanged(w, h, oldw, oldh)
+                                        if (w > 0 && h > 0 && (w != postedWidth || h != postedHeight)) {
+                                            postedWidth = w
+                                            postedHeight = h
+                                            post {
+                                                requestLayout()
+                                                invalidate()
+                                            }
+                                        }
+                                    }
+                                }.apply {
                                     settings.javaScriptEnabled = false
                                     settings.javaScriptCanOpenWindowsAutomatically = false
                                     settings.blockNetworkLoads = true
@@ -1650,6 +1692,8 @@ fun MessageReaderScreen(
                         Text(text = absent, modifier = Modifier.padding(8.dp))
                     }
                 }
+            }
+        }
             }
         }
     }
@@ -1953,6 +1997,16 @@ private fun applyHtmlDark(settings: WebSettings) {
         @Suppress("DEPRECATION")
         settings.forceDark = WebSettings.FORCE_DARK_OFF
     }
+}
+
+internal fun readerBodyMinPx(panePx: Int): Int {
+    if (panePx <= 0) return 0
+    return panePx / 2
+}
+
+internal fun readerHeaderMaxPx(panePx: Int): Int {
+    if (panePx <= 0) return 0
+    return panePx - readerBodyMinPx(panePx)
 }
 
 internal fun readerBarActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {

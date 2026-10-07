@@ -189,4 +189,15 @@ class ReaderTextTest {
             takeAddresses("\"Ada Lovelace\" <ada@example.com>", "", "", "", ""),
         )
     }
+
+    @Test
+    fun readerPaneGivesBodyHalf() {
+        assertEquals(0, readerBodyMinPx(0))
+        assertEquals(0, readerHeaderMaxPx(0))
+        assertEquals(200, readerBodyMinPx(400))
+        assertEquals(200, readerHeaderMaxPx(400))
+        assertEquals(5, readerBodyMinPx(11))
+        assertEquals(6, readerHeaderMaxPx(11))
+        assertEquals(0, readerBodyMinPx(-4))
+    }
 }
