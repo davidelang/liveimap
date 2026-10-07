@@ -13,3 +13,5 @@ Settings, Reading, Deleting: Confirm before expunge is on, and Auto-expunge is o
 The index sort lasts until you leave the app. Settings, Folders, holds the folder's usual sort. Threads start expanded unless Thread index is set to start collapsed.
 
 The search icon searches the current folder. Subject is the usual field. Full text is not the simple search.
+
+Advanced search combines terms with And or Or. Body and Full text search every message and are slow on a large folder.

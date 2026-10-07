@@ -42,6 +42,60 @@ enum class SimpleSearchField {
     Participant,
 }
 
+enum class AdvancedCombiner {
+    And,
+    Or,
+}
+
+data class AdvancedStep(
+    val negated: Boolean,
+    val kind: String,
+    val argument: String,
+)
+
+data class AdvancedQuery(
+    val combiner: AdvancedCombiner,
+    val steps: List<AdvancedStep>,
+)
+
+fun encodeAdvancedQuery(combiner: AdvancedCombiner, steps: List<AdvancedStep>): String? {
+    val lines = ArrayList<String>(steps.size + 1)
+    lines.add(combiner.name)
+    for (step in steps) {
+        if (step.kind.contains('\t') || step.kind.contains('\n')) return null
+        if (step.argument.contains('\t') || step.argument.contains('\n')) return null
+        val mark = if (step.negated) "Not" else "Yes"
+        lines.add(mark + "\t" + step.kind + "\t" + step.argument)
+    }
+    return lines.joinToString("\n")
+}
+
+fun parseAdvancedQuery(text: String): AdvancedQuery? {
+    val lines = text.split('\n')
+    if (lines.isEmpty()) return null
+    val combiner = when (lines[0]) {
+        AdvancedCombiner.And.name -> AdvancedCombiner.And
+        AdvancedCombiner.Or.name -> AdvancedCombiner.Or
+        else -> return null
+    }
+    val steps = ArrayList<AdvancedStep>(lines.size - 1)
+    for (index in 1 until lines.size) {
+        val line = lines[index]
+        var tabs = 0
+        for (ch in line) if (ch == '\t') tabs += 1
+        if (tabs != 2) return null
+        val parts = line.split('\t', limit = 3)
+        if (parts.size != 3) return null
+        val negated = when (parts[0]) {
+            "Yes" -> false
+            "Not" -> true
+            else -> return null
+        }
+        steps.add(AdvancedStep(negated, parts[1], parts[2]))
+    }
+    return AdvancedQuery(combiner, steps)
+}
+
 data class AppliedFilter(
     val label: String,
     val argument: String,
@@ -352,6 +406,7 @@ class IndexModel(
     private var pageAnchor: Int = 0
     private var includePreview: Boolean = false
     private var activeSearch: String? = null
+    private var activeAdvanced: String? = null
     private var activeSearchField: SimpleSearchField = SimpleSearchField.Subject
     private var filterUids: Set<Long>? = null
     private val filterStack = ArrayDeque<Set<Long>>()
@@ -498,6 +553,7 @@ class IndexModel(
 
     suspend fun loadWindow(): List<IndexRow> {
         activeSearch = null
+        activeAdvanced = null
         honourKeep = false
         forceNewest = false
         keepSnapshot = null
@@ -520,14 +576,19 @@ class IndexModel(
         arrivalInstead = null
         val loaded = store.load()
         account = loaded
-        activeSearch = null
+        val advanced = activeAdvanced
+        if (advanced == null) activeSearch = null
         filterUids = null
         filterStack.clear()
         appliedFilters.clear()
         includePreview = loaded.density != Density.Compact
         view = next
         armKeep()
-        return replaceWindow { fetchView(next) }
+        return if (advanced != null) {
+            replaceWindow { fetchSearch(advanced) }
+        } else {
+            replaceWindow { fetchView(next) }
+        }
     }
 
     suspend fun applySearch(
@@ -538,6 +599,7 @@ class IndexModel(
         filterUids = null
         filterStack.clear()
         appliedFilters.clear()
+        activeAdvanced = null
         if (query.isEmpty()) {
             if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
@@ -553,6 +615,18 @@ class IndexModel(
         return replaceWindow { fetchSearch(query) }
     }
 
+    suspend fun applyAdvanced(text: String): List<IndexRow> {
+        filterUids = null
+        filterStack.clear()
+        appliedFilters.clear()
+        account = store.load()
+        includePreview = account.density != Density.Compact
+        activeAdvanced = text
+        activeSearch = text
+        armKeep()
+        return replaceWindow { fetchSearch(text) }
+    }
+
     suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean, label: String): List<IndexRow> {
         val found = try {
             session.searchCriterion(kind, argument)
@@ -564,11 +638,13 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedAdvanced = activeAdvanced
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         account = loaded
         includePreview = loaded.density != Density.Compact
         activeSearch = null
+        activeAdvanced = null
         val foundSet = found.toSet()
         val chip = AppliedFilter(label, argument)
         if (narrow && savedUids != null) {
@@ -588,6 +664,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeAdvanced = savedAdvanced
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -599,12 +676,14 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedAdvanced = activeAdvanced
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         if (savedUids == null && savedStack.isEmpty() && savedSearch == null && savedFilters.isEmpty()) return heldRows
         filterUids = null
         filterStack.clear()
         activeSearch = null
+        activeAdvanced = null
         appliedFilters.clear()
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
@@ -613,6 +692,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeAdvanced = savedAdvanced
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -625,11 +705,13 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedAdvanced = activeAdvanced
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         filterUids = filterStack.removeLast()
         if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
         activeSearch = null
+        activeAdvanced = null
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
         if (windowFailed) {
@@ -637,6 +719,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeAdvanced = savedAdvanced
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -650,6 +733,7 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedAdvanced = activeAdvanced
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         repeat(appliedFilters.size - index) {
@@ -657,6 +741,7 @@ class IndexModel(
         }
         appliedFilters.subList(index, appliedFilters.size).clear()
         activeSearch = null
+        activeAdvanced = null
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
         if (windowFailed) {
@@ -664,6 +749,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeAdvanced = savedAdvanced
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -1464,7 +1550,12 @@ class IndexModel(
 
     private suspend fun fetchSearch(query: String, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
-        val found = session.searchCriterion(activeSearchField.name, query)
+        val advanced = activeAdvanced
+        val found = if (advanced != null) {
+            session.searchCriterion("Advanced", advanced)
+        } else {
+            session.searchCriterion(activeSearchField.name, query)
+        }
         val uids = if (view.newestFirst) found.sortedDescending() else found.sorted()
         order = uids
         arrivalTotal = 0

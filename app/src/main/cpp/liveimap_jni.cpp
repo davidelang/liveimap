@@ -3088,7 +3088,7 @@ struct mailimap_search_key * keyOr(struct mailimap_search_key * left, struct mai
     return key;
 }
 
-enum class TextSlot { From, To, Cc, Subject, Text, Keyword, Unkeyword };
+enum class TextSlot { From, To, Cc, Subject, Text, Body, Keyword, Unkeyword };
 
 struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
     char * copy = strdup(argument);
@@ -3100,6 +3100,7 @@ struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
     case TextSlot::Cc: key = mailimap_search_key_new_cc(copy); break;
     case TextSlot::Subject: key = mailimap_search_key_new_subject(copy); break;
     case TextSlot::Text: key = mailimap_search_key_new_text(copy); break;
+    case TextSlot::Body: key = mailimap_search_key_new_body(copy); break;
     case TextSlot::Keyword: key = mailimap_search_key_new_keyword(copy); break;
     case TextSlot::Unkeyword: key = mailimap_search_key_new_unkeyword(copy); break;
     }
@@ -3243,7 +3244,7 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
     if (sameKind(kind, "Forwarded")) return forwardedKey(false);
     if (sameKind(kind, "NotForwarded")) return forwardedKey(true);
     if (sameKind(kind, "From") || sameKind(kind, "To") || sameKind(kind, "Cc") || sameKind(kind, "Subject")
-        || sameKind(kind, "Text") || sameKind(kind, "Keyword") || sameKind(kind, "NotKeyword")
+        || sameKind(kind, "Text") || sameKind(kind, "Body") || sameKind(kind, "Keyword") || sameKind(kind, "NotKeyword")
         || sameKind(kind, "Recipient") || sameKind(kind, "Participant")) {
         if (emptyText(env, argument)) return nullptr;
         if (sameKind(kind, "From")) return textKey(TextSlot::From, argument);
@@ -3251,6 +3252,7 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
         if (sameKind(kind, "Cc")) return textKey(TextSlot::Cc, argument);
         if (sameKind(kind, "Subject")) return textKey(TextSlot::Subject, argument);
         if (sameKind(kind, "Text")) return textKey(TextSlot::Text, argument);
+        if (sameKind(kind, "Body")) return textKey(TextSlot::Body, argument);
         if (sameKind(kind, "Keyword")) return textKey(TextSlot::Keyword, argument);
         if (sameKind(kind, "NotKeyword")) return textKey(TextSlot::Unkeyword, argument);
         if (sameKind(kind, "Recipient")) {
@@ -4719,6 +4721,92 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv 
     JChars kindChars(env, kind);
     JChars argChars(env, argument);
     struct mailimap_search_key * key = criterionKey(env, kindChars.c(), argChars.c());
+    if (env->ExceptionCheck() || key == nullptr) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    return completeSearch(env, session, key, useEsearch, withCharset);
+}
+
+struct mailimap_search_key * advancedKey(JNIEnv * env, const char * combiner, jbooleanArray negated,
+    jobjectArray kinds, jobjectArray arguments) {
+    if (!sameKind(combiner, "And") && !sameKind(combiner, "Or")) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
+    if (kinds == nullptr || arguments == nullptr || negated == nullptr) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
+    jsize n = env->GetArrayLength(kinds);
+    if (n <= 0 || env->GetArrayLength(arguments) != n || env->GetArrayLength(negated) != n) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
+    jboolean * flags = env->GetBooleanArrayElements(negated, nullptr);
+    if (flags == nullptr) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
+    const bool foldAnd = sameKind(combiner, "And");
+    struct mailimap_search_key * folded = nullptr;
+    for (jsize i = 0; i < n; ++i) {
+        jstring kindJs = static_cast<jstring>(env->GetObjectArrayElement(kinds, i));
+        jstring argJs = static_cast<jstring>(env->GetObjectArrayElement(arguments, i));
+        struct mailimap_search_key * step = nullptr;
+        {
+            JChars kindChars(env, kindJs);
+            JChars argChars(env, argJs);
+            step = criterionKey(env, kindChars.c(), argChars.c());
+        }
+        if (kindJs != nullptr) env->DeleteLocalRef(kindJs);
+        if (argJs != nullptr) env->DeleteLocalRef(argJs);
+        if (env->ExceptionCheck() || step == nullptr) {
+            if (step != nullptr) mailimap_search_key_free(step);
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
+            if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+            return nullptr;
+        }
+        if (flags[i] == JNI_TRUE) {
+            step = notKey(step);
+            if (step == nullptr) {
+                if (folded != nullptr) mailimap_search_key_free(folded);
+                env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
+                throwFailure(env, "search failed");
+                return nullptr;
+            }
+        }
+        if (folded == nullptr) {
+            folded = step;
+            continue;
+        }
+        folded = foldAnd ? andKey(folded, step) : keyOr(folded, step);
+        if (folded == nullptr) {
+            env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
+            throwFailure(env, "search failed");
+            return nullptr;
+        }
+    }
+    env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
+    if (folded == nullptr) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
+    return folded;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv * env, jobject, jlong handle,
+    jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
+    jboolean useEsearch, jboolean withCharset) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars combinerChars(env, combiner);
+    struct mailimap_search_key * key = advancedKey(env, combinerChars.c(), negated, kinds, arguments);
     if (env->ExceptionCheck() || key == nullptr) {
         if (key != nullptr) mailimap_search_key_free(key);
         if (!env->ExceptionCheck()) throwFailure(env, "search failed");

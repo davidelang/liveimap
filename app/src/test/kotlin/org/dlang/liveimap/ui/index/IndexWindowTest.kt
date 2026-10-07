@@ -1253,6 +1253,70 @@ class IndexWindowTest {
         runImmediate { model.setFolderStart(null) }
         assertFalse(store.settings.folderStarts.containsKey("INBOX"))
     }
+
+    @Test
+    fun advancedQueryRoundTripAndSearch() {
+        val steps = listOf(
+            AdvancedStep(false, "Subject", "budget"),
+            AdvancedStep(true, "From", "ada"),
+        )
+        val text = checkNotNull(
+            encodeAdvancedQuery(AdvancedCombiner.And, steps),
+        )
+        assertEquals("And\nYes\tSubject\tbudget\nNot\tFrom\tada", text)
+        val parsed = parseAdvancedQuery(text)
+        assertEquals(AdvancedCombiner.And, parsed?.combiner)
+        assertEquals(steps, parsed?.steps)
+        assertNull(encodeAdvancedQuery(AdvancedCombiner.And, listOf(AdvancedStep(false, "Subject", "bud\tget"))))
+        assertNull(encodeAdvancedQuery(AdvancedCombiner.And, listOf(AdvancedStep(false, "Sub\nject", "budget"))))
+        assertNull(parseAdvancedQuery("Both\nYes\tSubject\tbudget"))
+
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(1), row(2), row(3))
+        session.searchUids = listOf(9L, 8L)
+        session.rows[9L] = row(9)
+        session.rows[8L] = row(8)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        assertEquals(
+            SelectAllTarget.EntireMailbox,
+            selectAllTarget(model.filterActive || model.searchActive, model.order),
+        )
+        val searched = runImmediate { model.applyAdvanced(text) }
+        assertEquals(listOf("Advanced"), session.searchKinds)
+        assertEquals(listOf(text), session.searchCalls)
+        assertTrue(session.textSearches.isEmpty())
+        assertEquals(listOf(9L, 8L), model.order)
+        assertEquals(listOf(9L, 8L), searched.map { it.uid })
+        assertEquals(
+            SelectAllTarget.Uids(model.order),
+            selectAllTarget(model.filterActive || model.searchActive, model.order),
+        )
+        runImmediate { model.jumpToNewest() }
+        assertEquals(listOf("Advanced", "Advanced"), session.searchKinds)
+        assertEquals(listOf(text, text), session.searchCalls)
+        val sorted = runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        assertEquals(listOf("Advanced", "Advanced", "Advanced"), session.searchKinds)
+        assertEquals(listOf(text, text, text), session.searchCalls)
+        assertEquals(listOf(9L, 8L), sorted.map { it.uid })
+        assertEquals(listOf(9L, 8L), model.order)
+        assertTrue(session.sortCalls.isEmpty())
+        runImmediate { model.applySearch("needle") }
+        assertEquals(listOf("Advanced", "Advanced", "Advanced", "Subject"), session.searchKinds)
+        assertEquals(listOf(text, text, text, "needle"), session.searchCalls)
+        assertTrue(session.textSearches.isEmpty())
+
+        val failedSession = FakeMailSession()
+        failedSession.arrivalRows = listOf(row(1, sequence = 4))
+        val failed = IndexModel(failedSession, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { failed.loadWindow() }
+        failedSession.failure = MailFailure("bad search")
+        runImmediate { failed.applyAdvanced(text) }
+        assertEquals("bad search", failed.notice)
+        assertEquals(listOf(1L), failed.rows.map { it.uid })
+        assertEquals(4, failed.rows.single().sequence)
+        assertTrue(failedSession.textSearches.isEmpty())
+    }
 }
 
 private fun model(session: FakeMailSession, rule: StartRule, newestFirst: Boolean): IndexModel {

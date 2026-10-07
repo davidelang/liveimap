@@ -510,4 +510,13 @@
     <string name="settings_thread_expanded">Expanded</string>
     <string name="settings_thread_collapsed">Collapsed</string>
     <string name="index_search_participating">Participating</string>
+    <string name="index_search_advanced">Advanced</string>
+    <string name="index_search_and">And</string>
+    <string name="index_search_or">Or</string>
+    <string name="index_search_not">Not</string>
+    <string name="index_search_add_term">Add term</string>
+    <string name="index_search_remove_term">Remove</string>
+    <string name="index_search_body">Body</string>
+    <string name="index_search_full_text">Full text</string>
+    <string name="index_search_body_cost">Searches every message body; slow on large folders.</string>
 </resources>

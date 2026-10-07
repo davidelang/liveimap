@@ -31,6 +31,7 @@ import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
+import org.dlang.liveimap.ui.index.parseAdvancedQuery
 
 internal fun searchNeedsCharset(text: String): Boolean =
     text.any { it.code > 127 }
@@ -482,13 +483,27 @@ class LibetpanMailSession : MailSession {
         val h = requireHandle()
         val withCharset = searchNeedsCharset(argument)
         remember("CRITERION $kind $argument") {
-            val ids = nativeSearchCriterion(
-                h,
-                kind,
-                argument,
-                featureCaps.searchKind() == "Esearch",
-                withCharset,
-            ) ?: throw MailFailure("search failed")
+            val ids = (if (kind == "Advanced") {
+                val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
+                if (parsed.steps.isEmpty()) throw MailFailure("bad search")
+                nativeSearchAdvanced(
+                    h,
+                    parsed.combiner.name,
+                    BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
+                    Array(parsed.steps.size) { parsed.steps[it].kind },
+                    Array(parsed.steps.size) { parsed.steps[it].argument },
+                    featureCaps.searchKind() == "Esearch",
+                    withCharset,
+                )
+            } else {
+                nativeSearchCriterion(
+                    h,
+                    kind,
+                    argument,
+                    featureCaps.searchKind() == "Esearch",
+                    withCharset,
+                )
+            }) ?: throw MailFailure("search failed")
             ids.toList()
         }
     }
@@ -892,6 +907,16 @@ class LibetpanMailSession : MailSession {
         handle: Long,
         kind: String,
         argument: String,
+        useEsearch: Boolean,
+        withCharset: Boolean,
+    ): LongArray?
+
+    private external fun nativeSearchAdvanced(
+        handle: Long,
+        combiner: String,
+        negated: BooleanArray,
+        kinds: Array<String>,
+        arguments: Array<String>,
         useEsearch: Boolean,
         withCharset: Boolean,
     ): LongArray?

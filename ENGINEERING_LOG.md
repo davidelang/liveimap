@@ -1566,3 +1566,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - applySearch stores the query and the field. fetchSearch calls searchCriterion with that field name. Filter save and restore keeps the field. jumpToNewest repeats it. The simple search does not call searchText.
 - searchNeedsCharset is false for ASCII and true when a code point is above 127. completeSearch sends CHARSET UTF-8 only when that flag is true. nativeSearchText still builds TEXT and still sends CHARSET UTF-8.
 - The visible word is Participating. The help paragraph is last. No install.
+
+## 2026-10-06 - Advanced search page execution start
+
+- Approved plan: sandbox/plans/search-advanced-page-20261006-1942-plan.md. Mailbox SEQ 42 IMPLEMENT revision 1 is the approval. Status set to APPROVED.
+- Phase 1: the Advanced page for the current folder, one combined search, Body, sort and select-all, the help paragraph, and the tests. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag d6ad37c. Commits stay on master.
+
+## 2026-10-06 - Advanced search page phase 1
+
+- The open bar gains Advanced after the text field. It opens search/{mailbox} for the current folder. The filter menu stays. There is no scope control.
+- The page starts on And, with one Subject row and Not off. Add term adds a Subject row. Body and Full text show the cost sentence and are not the starting field. Search sends one criterion of kind Advanced. A blank valued row is dropped. The form is not saved.
+- A sort keeps that search. A simple search clears it. Select all during a search selects the search uids. Body uses the BODY key. One folded key is sent. No install.

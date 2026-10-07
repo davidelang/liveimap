@@ -86,6 +86,7 @@ import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.help.HelpScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
+import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -209,6 +210,15 @@ fun LiveImapNavHost() {
                         navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
                     }
                 }
+                val advancedQuery by entry.savedStateHandle
+                    .getStateFlow("advancedQuery", "")
+                    .collectAsState()
+                fun openAdvanced() {
+                    navController.navigate("search/${Uri.encode(mailbox)}")
+                }
+                fun consumeAdvanced() {
+                    entry.savedStateHandle.remove<String>("advancedQuery")
+                }
                 if (!expanded) {
                     key(folderViewToken) {
                         MessageIndexScreen(
@@ -218,6 +228,9 @@ fun LiveImapNavHost() {
                             },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
+                            onAdvanced = { openAdvanced() },
+                            advancedQuery = advancedQuery.ifEmpty { null },
+                            onAdvancedConsumed = { consumeAdvanced() },
                         )
                     }
                 } else {
@@ -251,6 +264,9 @@ fun LiveImapNavHost() {
                                     onCompose = { seed -> openCompose(seed) },
                                     onBack = { navController.popBackStack() },
                                     watchMailbox = paneUid < 0L,
+                                    onAdvanced = { openAdvanced() },
+                                    advancedQuery = advancedQuery.ifEmpty { null },
+                                    onAdvancedConsumed = { consumeAdvanced() },
                                 )
                             }
                         },
@@ -274,6 +290,26 @@ fun LiveImapNavHost() {
                         },
                     )
                 }
+            }
+            composable(
+                route = "search/{mailbox}",
+                arguments = listOf(
+                    navArgument("mailbox") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                val encoded = entry.arguments?.getString("mailbox") ?: return@composable
+                val mailbox = Uri.decode(encoded)
+                AdvancedSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onSearch = { text ->
+                        val previous = navController.previousBackStackEntry
+                        val indexMailbox = previous?.arguments?.getString("mailbox")?.let(Uri::decode)
+                        if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
+                            previous.savedStateHandle["advancedQuery"] = text
+                        }
+                        navController.popBackStack()
+                    },
+                )
             }
             composable(
                 route = "reader/{mailbox}/{uid}/{sequence}",

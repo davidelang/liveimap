@@ -605,6 +605,9 @@ fun MessageIndexScreen(
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
     watchMailbox: Boolean = true,
+    onAdvanced: () -> Unit = {},
+    advancedQuery: String? = null,
+    onAdvancedConsumed: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val emptyIndexSentence = stringResource(R.string.index_empty)
@@ -909,7 +912,7 @@ fun MessageIndexScreen(
     fun pull() { sync.block() }
 
     fun selectAllMessages() {
-        when (val target = selectAllTarget(filterActive, model.order)) {
+        when (val target = selectAllTarget(filterActive || model.searchActive, model.order)) {
             is SelectAllTarget.Uids -> {
                 allMailbox = false
                 selected = target.uids
@@ -1364,6 +1367,16 @@ fun MessageIndexScreen(
                 loading = false
                 if (!reuse && model.rows.isNotEmpty()) scrollToStart()
             }
+        }
+        val pendingAdvanced = advancedQuery
+        if (!pendingAdvanced.isNullOrEmpty() && held.windowReady) {
+            gate.withLock {
+                noteVisibleTop()
+                model.applyAdvanced(pendingAdvanced)
+                pull()
+            }
+            onAdvancedConsumed()
+            if (model.rows.isNotEmpty()) scrollToStart()
         }
         fun deliverMailboxChange(change: MailboxChange) {
             when (change) {
@@ -2295,6 +2308,9 @@ fun MessageIndexScreen(
                         ),
                         modifier = Modifier.weight(1f),
                     )
+                    TextButton(onClick = onAdvanced) {
+                        Text(stringResource(R.string.index_search_advanced))
+                    }
                 }
             }
             val flagsFor = flagUid
