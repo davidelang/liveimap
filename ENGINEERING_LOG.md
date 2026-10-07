@@ -1992,3 +1992,14 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Stored inboundRules on the account, omitted when empty. seedCriteria skips blanks. Filter list and editor show emitSieve and do not connect.
 - Drawer Add filter and Edit filters, and the reader overflow Filter messages like this…, edit rules on device only.
 - Unit tests: 324 run, 0 failed, including defaultsRoundTrip, inboundRulesRoundTrip, seedSkipsBlanks, and orderedSubjectStaysListedWhenNotAdvertised.
+
+## 2026-10-07 - Cold index and drawer insets execution start
+
+- Approved plan: sandbox/plans/cold-index-and-drawer-insets-20261007-1334-plan.md
+- Status set to APPROVED. Phase 1: a mailbox that reports exists at or below 0 selects once, then a still-empty mailbox returns without fetchIndex. Phase 2: the split drawer pads vertical and start, and an open drawer consumes start for the trailing host.
+- First action per standard-plan-compliance-block.md. Base builds tag b8f32da. No install.
+
+## 2026-10-07 - Cold index phase 1
+
+- fetchArrival still returns the filter list unchanged. When selected exists is not positive it selects that mailbox once. A still-empty mailbox clears the window and does not call fetchIndex. A positive exists does not select. MailFailure from select propagates.
+- FakeMailSession.existsBeforeSelect is returned only while the mailbox name is empty, and that check is before exists. New tests cover a cold Inbox of 8 and an empty mailbox. Arrival fixtures that already expected a fetch set exists to 1 so they do not select.

@@ -1477,19 +1477,11 @@ class IndexModel(
             if (target != null) rememberStart(target, loaded.size)
             return loaded
         }
-        val exists = session.selectedExists()
+        var exists = session.selectedExists()
         if (exists <= 0) {
-            session.fetchIndex(
-                IndexRequest(
-                    mailbox = mailbox,
-                    mode = IndexMode.ArrivalRange,
-                    firstSequence = 0,
-                    lastSequence = 0,
-                    limit = IndexPageSize,
-                    prefetch = IndexPageSize,
-                    includePreview = includePreview,
-                ),
-            )
+            exists = session.select(mailbox).exists
+        }
+        if (exists <= 0) {
             order = emptyList()
             pageAnchor = 0
             arrivalTotal = 0

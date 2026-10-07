@@ -67,6 +67,7 @@ class IndexWindowTest {
     @Test
     fun arrivalOldestDoesNotCallSort() {
         val session = FakeMailSession()
+        session.exists = 1
         val store = MemorySettingsStore(
             AccountSettings(defaultView = FolderView(SortKey.Arrival, newestFirst = false)),
         )
@@ -74,6 +75,34 @@ class IndexWindowTest {
         runImmediate { model.loadWindow() }
         assertEquals(IndexMode.ArrivalRange, session.fetchRequests.single().mode)
         assertTrue(session.sortCalls.isEmpty())
+    }
+
+    @Test
+    fun coldStartArrivalSelectsBeforeEmptyCheck() {
+        val session = FakeMailSession()
+        session.exists = 8
+        session.existsBeforeSelect = 0
+        session.arrivalRows = listOf(row(3, sequence = 3), row(8, sequence = 8))
+        val store = MemorySettingsStore(AccountSettings())
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertEquals(listOf("INBOX"), session.selects)
+        assertEquals(listOf(8L, 3L), rows.map { it.uid })
+        assertEquals(IndexMode.ArrivalRange, session.fetchRequests.single().mode)
+        assertTrue(session.fetchRequests.none { it.firstSequence == 0 && it.lastSequence == 0 })
+    }
+
+    @Test
+    fun emptyMailboxArrivalDoesNotFetch() {
+        val session = FakeMailSession()
+        session.exists = 0
+        session.existsBeforeSelect = 0
+        val store = MemorySettingsStore(AccountSettings())
+        val model = IndexModel(session, store, "INBOX")
+        val rows = runImmediate { model.loadWindow() }
+        assertTrue(rows.isEmpty())
+        assertEquals(listOf("INBOX"), session.selects)
+        assertTrue(session.fetchRequests.isEmpty())
     }
 
     @Test
@@ -196,9 +225,11 @@ class IndexWindowTest {
         assertEquals(3, previewLineCount(Density.Medium))
         assertEquals(7, previewLineCount(Density.Large))
         val compact = FakeMailSession()
+        compact.exists = 1
         runImmediate { IndexModel(compact, MemorySettingsStore(AccountSettings()), "INBOX").loadWindow() }
         assertTrue(!compact.fetchRequests.single().includePreview)
         val medium = FakeMailSession()
+        medium.exists = 1
         val store = MemorySettingsStore(AccountSettings(density = Density.Medium))
         runImmediate { IndexModel(medium, store, "INBOX").loadWindow() }
         assertTrue(medium.fetchRequests.single().includePreview)
@@ -2001,6 +2032,7 @@ private class FakeMailSession(
     val rows = HashMap<Long, IndexRow>()
     var arrivalRows: List<IndexRow> = emptyList()
     var exists: Int = -1
+    var existsBeforeSelect: Int? = null
     var sortUids: List<Long> = emptyList()
     var searchUids: List<Long> = emptyList()
     var threadNode: ThreadNode = ThreadNode(null, emptyList())
@@ -2038,6 +2070,8 @@ private class FakeMailSession(
     override suspend fun unselect() = Unit
 
     override suspend fun selectedExists(): Int {
+        val beforeSelect = existsBeforeSelect
+        if (beforeSelect != null && selectedName.isEmpty()) return beforeSelect
         if (exists >= 0) return exists
         if (arrivalRows.isNotEmpty()) return arrivalRows.maxOf { it.sequence }
         return rows.values.maxOfOrNull { it.sequence } ?: 0
