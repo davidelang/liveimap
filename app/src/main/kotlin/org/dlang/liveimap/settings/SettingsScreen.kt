@@ -510,6 +510,12 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_imap_port), settings.imapPort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(imapPort = it))
             }
+            LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
+                editor.persist(editor.settings.copy(sieveHost = it))
+            }
+            PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
+                editor.persist(editor.settings.copy(sievePort = it))
+            }
         }
         val noUser = stringResource(R.string.settings_no_user)
         SettingsSection(

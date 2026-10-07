@@ -124,6 +124,31 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun sieveEndpointRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("sieveHost="))
+        assertFalse(defaults.contains("sievePort="))
+        val blank = AccountSettings(imapHost = "imap.example.com", sieveHost = "  ")
+        assertEquals("imap.example.com" to 4190, sieveEndpoint(blank))
+        val set = AccountSettings(
+            imapHost = "imap.example.com",
+            sieveHost = "sieve.example.com",
+            sievePort = 4191,
+        )
+        val text = set.encode()
+        assertTrue(text.contains("sieveHost=sieve.example.com"))
+        assertTrue(text.contains("sievePort=4191"))
+        val decoded = decodeAccountSettings(text)
+        assertEquals(set, decoded)
+        assertEquals("sieve.example.com" to 4191, sieveEndpoint(decoded))
+        assertEquals(text, decoded.encode())
+        assertEquals(4190, decodeAccountSettings(defaults.trimEnd() + "\nsievePort=0\n").sievePort)
+        assertEquals(4190, decodeAccountSettings(defaults.trimEnd() + "\nsievePort=65536\n").sievePort)
+        assertEquals("", decodeAccountSettings(defaults).sieveHost)
+        assertEquals(4190, decodeAccountSettings(defaults).sievePort)
+    }
+
+    @Test
     fun fullScreenRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("fullScreen="))

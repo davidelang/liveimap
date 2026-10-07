@@ -605,4 +605,6 @@
     <string name="reader_expand_header">Expand header</string>
     <string name="reader_hide_images">Hide images</string>
     <string name="settings_full_screen">Full screen</string>
+    <string name="settings_sieve_host">Sieve host</string>
+    <string name="settings_sieve_port">Sieve port</string>
 </resources>

@@ -359,6 +359,8 @@ data class AccountSettings(
     val composerWrapColumn: Int = 74,
     val multiPane: MultiPane = MultiPane.Wide,
     val fullScreen: Boolean = false,
+    val sieveHost: String = "",
+    val sievePort: Int = 4190,
     val inboundRules: List<InboundRule> = emptyList(),
 ) {
     val preferHtml: Boolean
@@ -444,6 +446,8 @@ private val fieldNames = listOf(
     "composerWrapColumn",
     "multiPane",
     "fullScreen",
+    "sieveHost",
+    "sievePort",
     "inboundRules",
 )
 
@@ -496,7 +500,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, and inboundRules when empty.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, and inboundRules when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -540,6 +544,8 @@ fun AccountSettings.encode(): String = buildString {
     if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
     if (multiPane != MultiPane.Wide) appendLine("multiPane=${multiPane.name}")
     if (fullScreen) appendLine("fullScreen=true")
+    if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
+    if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
 }
 
@@ -618,6 +624,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "composerWrapColumn" ||
             key == "multiPane" ||
             key == "fullScreen" ||
+            key == "sieveHost" ||
+            key == "sievePort" ||
             key == "inboundRules"
         ) {
             continue
@@ -700,8 +708,20 @@ fun decodeAccountSettings(text: String): AccountSettings {
         composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
         multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Wide,
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
+        sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
+        sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
     )
+}
+
+fun sieveEndpoint(settings: AccountSettings): Pair<String, Int> {
+    val host = if (settings.sieveHost.isBlank()) settings.imapHost else settings.sieveHost
+    return host to settings.sievePort
+}
+
+private fun parseSievePort(value: String): Int {
+    val port = parseIntField(value)
+    return if (port in 1..65535) port else 4190
 }
 
 fun slowerClientSort(settings: AccountSettings): Boolean =

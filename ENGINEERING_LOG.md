@@ -2075,3 +2075,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - plainSaslInitial is standard Base64 of NUL, username, NUL, password. cramMd5Response HMACs the challenge bytes with HmacMD5 and returns standard Base64 of username, one space, and the lowercase hex digest.
 - authenticatePlain and authenticateCramMd5 write on the injected transport. Empty username or password writes nothing. NO throws the server text. A CRAM response token writes no second line. Quoted and whole-line literal challenges are Base64.
 - No socket. No STARTTLS. No SCRAM. No account setting. No FilterScreen. No install.
+
+## 2026-10-07 - Sieve account setting execution start
+
+- Approved plan: sandbox/plans/sieve-account-setting-20261007-1553-plan.md. Status set to APPROVED.
+- Phase 1: store ManageSieve host and port on the account. A blank host means the IMAP host. Port defaults to 4190.
+- No socket. No STARTTLS. No openPlainSieve. No ManageSieve.kt or FilterScreen edits. No install. Base builds tag 3e2da6d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Sieve account setting phase 1
+
+- AccountSettings stores sieveHost (default empty) and sievePort (default 4190) after fullScreen. Encode omits an empty host and port 4190. A missing host decodes as empty. A missing port, or a port outside 1..65535, decodes as 4190.
+- sieveEndpoint uses the sieve host when it is not blank, otherwise the IMAP host, with sievePort. Server fields follow the IMAP port. The server summary stays the IMAP host and port.
+- No socket. No STARTTLS. No openPlainSieve. No ManageSieve.kt or FilterScreen edits. No install.
