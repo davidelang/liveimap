@@ -1979,3 +1979,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - MultiPane is Off or Wide. Wide is the default and encode omits it. Off round-trips as multiPane=Off. An unknown value throws from enumValueOf. defaultsRoundTrip still ends at altAddresses.
 - When wide on an expanded width, the drawer, index, and open message are panes with an 8 dp resize bar. Dragging a pane to the edge closes it. Off keeps today's single-pane drawer and reader route. Widths are rememberSaveable, not account settings.
 - Appearance, Display offers Off and When wide. Did not install. Compose BOM stays 2024.10.00.
+
+## 2026-10-07 - inbound rules editor execution start
+
+- Approved plan: sandbox/plans/inbound-rules-editor-20261007-1255-plan.md. Status set to APPROVED.
+- Phase 1: store inbound rules, seed criteria, and edit them on device. Show emitSieve text. No socket, no upload, no install.
+- Host worktree: /home/dlang/git/liveimap/master at 6a5ff07. Do not commit the unstaged .gitignore edit.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules editor phase 1
+
+- Stored inboundRules on the account, omitted when empty. seedCriteria skips blanks. Filter list and editor show emitSieve and do not connect.
+- Drawer Add filter and Edit filters, and the reader overflow Filter messages like this…, edit rules on device only.
+- Unit tests: 324 run, 0 failed, including defaultsRoundTrip, inboundRulesRoundTrip, seedSkipsBlanks, and orderedSubjectStaysListedWhenNotAdvertised.

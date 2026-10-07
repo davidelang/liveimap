@@ -25,6 +25,15 @@ data class InboundRule(
     val discard: Boolean = false,
 )
 
+fun seedCriteria(from: String, to: String, listId: String, subject: String): List<RuleCriterion> {
+    val out = ArrayList<RuleCriterion>(4)
+    if (from.isNotBlank()) out.add(RuleCriterion(RuleField.From, from))
+    if (to.isNotBlank()) out.add(RuleCriterion(RuleField.To, to))
+    if (listId.isNotBlank()) out.add(RuleCriterion(RuleField.ListId, listId))
+    if (subject.isNotBlank()) out.add(RuleCriterion(RuleField.Subject, subject))
+    return out
+}
+
 /** Sieve text only. Does not connect or upload. */
 fun emitSieve(rules: List<InboundRule>): String {
     val kept = rules.filter { it.criteria.isNotEmpty() && hasAction(it) }

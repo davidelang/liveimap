@@ -286,6 +286,7 @@ fun MessageReaderScreen(
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
+    onFilterLike: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -1433,6 +1434,13 @@ fun MessageReaderScreen(
                                 confirmTake = true
                             }
                         }
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.reader_filter_like)) },
+                    onClick = {
+                        moreMenu = false
+                        onFilterLike(headerFrom, headerTo, "", headerSubject)
                     },
                 )
                 DropdownMenuItem(

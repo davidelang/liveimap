@@ -1,5 +1,8 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.engine.sieve.InboundRule
+import org.dlang.liveimap.engine.sieve.RuleCriterion
+import org.dlang.liveimap.engine.sieve.RuleField
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
@@ -716,6 +719,19 @@ class AccountSettingsTest {
                 assertEquals("bad toolbarRows", error.message)
             }
         }
+    }
+
+    @Test
+    fun inboundRulesRoundTrip() {
+        val rule = InboundRule(
+            criteria = listOf(RuleCriterion(RuleField.From, "ann@example.com")),
+            fileInto = "INBOX.lists",
+        )
+        val saved = AccountSettings(inboundRules = listOf(rule))
+        val text = saved.encode()
+        assertTrue(text.contains("inboundRules="))
+        assertEquals(listOf(rule), decodeAccountSettings(text).inboundRules)
+        assertEquals(text, decodeAccountSettings(text).encode())
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

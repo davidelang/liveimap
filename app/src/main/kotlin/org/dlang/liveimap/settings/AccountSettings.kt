@@ -5,6 +5,10 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CharsetDecoder
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import org.dlang.liveimap.engine.sieve.InboundRule
+import org.dlang.liveimap.engine.sieve.RuleCriterion
+import org.dlang.liveimap.engine.sieve.RuleField
+import org.dlang.liveimap.engine.sieve.SystemFlag
 import org.dlang.liveimap.ui.toolbar.ComposeBarLayout
 import org.dlang.liveimap.ui.toolbar.FolderBarLayout
 import org.dlang.liveimap.ui.toolbar.IndexBarLayout
@@ -354,6 +358,7 @@ data class AccountSettings(
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
     val multiPane: MultiPane = MultiPane.Wide,
+    val inboundRules: List<InboundRule> = emptyList(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -437,6 +442,7 @@ private val fieldNames = listOf(
     "toolbarRows",
     "composerWrapColumn",
     "multiPane",
+    "inboundRules",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -488,7 +494,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, and multiPane when Wide.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, and inboundRules when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -531,18 +537,27 @@ fun AccountSettings.encode(): String = buildString {
     if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
     if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
     if (multiPane != MultiPane.Wide) appendLine("multiPane=${multiPane.name}")
+    if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
     val values = linkedMapOf<String, String>()
+    var openKey: String? = null
     for (line in text.lines()) {
         if (line.isEmpty()) continue
         val eq = line.indexOf('=')
-        if (eq <= 0) throw IllegalArgumentException("bad line")
-        val key = line.substring(0, eq)
-        if (key !in fieldNames) throw IllegalArgumentException("unknown key")
-        if (values.containsKey(key)) throw IllegalArgumentException("duplicate key")
-        values[key] = line.substring(eq + 1)
+        val key = if (eq > 0) line.substring(0, eq) else ""
+        if (eq > 0 && key in fieldNames) {
+            if (values.containsKey(key)) throw IllegalArgumentException("duplicate key")
+            values[key] = line.substring(eq + 1)
+            openKey = key
+        } else if (openKey == "inboundRules") {
+            values[openKey] = values.getValue(openKey) + "\n" + line
+        } else if (eq <= 0) {
+            throw IllegalArgumentException("bad line")
+        } else {
+            throw IllegalArgumentException("unknown key")
+        }
     }
     for (key in fieldNames) {
         if (
@@ -598,7 +613,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "composeBar" ||
             key == "toolbarRows" ||
             key == "composerWrapColumn" ||
-            key == "multiPane"
+            key == "multiPane" ||
+            key == "inboundRules"
         ) {
             continue
         }
@@ -679,6 +695,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
         composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
         multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Wide,
+        inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
     )
 }
 
@@ -717,6 +734,96 @@ private fun encodeAltAddresses(values: List<String>): String =
 private fun decodeAltAddresses(value: String): List<String> {
     if (value.isEmpty()) return emptyList()
     return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
+}
+
+private fun encodeInboundRules(rules: List<InboundRule>): String =
+    rules.joinToString("\n") { encodeInboundRule(it) }
+
+private fun encodeInboundRule(rule: InboundRule): String {
+    val criteria = rule.criteria.joinToString("&") { criterion ->
+        "${criterion.field.name}=${percentEncode(criterion.value)}"
+    }
+    val actions = ArrayList<String>(5)
+    if (rule.fileInto.isNotEmpty()) actions.add("file=${percentEncode(rule.fileInto)}")
+    if (SystemFlag.Seen in rule.flags) actions.add("seen")
+    if (SystemFlag.Flagged in rule.flags) actions.add("flagged")
+    if (rule.redirectTo.isNotEmpty()) actions.add("redirect=${percentEncode(rule.redirectTo)}")
+    if (rule.discard) actions.add("discard")
+    return "$criteria\t${actions.joinToString(",")}"
+}
+
+private fun decodeInboundRules(value: String): List<InboundRule> {
+    if (value.isEmpty()) return emptyList()
+    return value.split('\n').map { decodeInboundRule(it) }
+}
+
+private fun decodeInboundRule(value: String): InboundRule {
+    val tab = value.indexOf('\t')
+    if (tab <= 0 || tab == value.lastIndex) throw IllegalArgumentException("broken rule")
+    val criteriaPart = value.substring(0, tab)
+    val actionPart = value.substring(tab + 1)
+    if ('\t' in actionPart) throw IllegalArgumentException("broken rule")
+    val criteria = criteriaPart.split('&').map { decodeInboundCriterion(it) }
+    var fileInto = ""
+    val flags = linkedSetOf<SystemFlag>()
+    var redirectTo = ""
+    var discard = false
+    var sawFile = false
+    var sawRedirect = false
+    var sawDiscard = false
+    for (token in actionPart.split(',')) {
+        when {
+            token == "seen" -> {
+                if (!flags.add(SystemFlag.Seen)) throw IllegalArgumentException("broken rule")
+            }
+            token == "flagged" -> {
+                if (!flags.add(SystemFlag.Flagged)) throw IllegalArgumentException("broken rule")
+            }
+            token == "discard" -> {
+                if (sawDiscard) throw IllegalArgumentException("broken rule")
+                sawDiscard = true
+                discard = true
+            }
+            token.startsWith("file=") -> {
+                if (sawFile) throw IllegalArgumentException("broken rule")
+                sawFile = true
+                fileInto = percentDecode(token.substring("file=".length))
+                if (fileInto.isEmpty()) throw IllegalArgumentException("broken rule")
+            }
+            token.startsWith("redirect=") -> {
+                if (sawRedirect) throw IllegalArgumentException("broken rule")
+                sawRedirect = true
+                redirectTo = percentDecode(token.substring("redirect=".length))
+                if (redirectTo.isEmpty()) throw IllegalArgumentException("broken rule")
+            }
+            else -> throw IllegalArgumentException("broken rule")
+        }
+    }
+    if (!sawFile && flags.isEmpty() && !sawRedirect && !discard) {
+        throw IllegalArgumentException("broken rule")
+    }
+    return InboundRule(
+        criteria = criteria,
+        fileInto = fileInto,
+        flags = flags,
+        redirectTo = redirectTo,
+        discard = discard,
+    )
+}
+
+private fun decodeInboundCriterion(token: String): RuleCriterion {
+    val eq = token.indexOf('=')
+    if (eq <= 0) throw IllegalArgumentException("broken rule")
+    val field = when (token.substring(0, eq)) {
+        "From" -> RuleField.From
+        "To" -> RuleField.To
+        "ListId" -> RuleField.ListId
+        "Subject" -> RuleField.Subject
+        else -> throw IllegalArgumentException("broken rule")
+    }
+    val decoded = percentDecode(token.substring(eq + 1))
+    if (decoded.isEmpty()) throw IllegalArgumentException("broken rule")
+    return RuleCriterion(field, decoded)
 }
 
 private fun encodeCompletionSources(sources: List<String>): String =

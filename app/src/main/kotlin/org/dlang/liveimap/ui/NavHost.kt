@@ -76,6 +76,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.R
+import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
@@ -94,6 +95,8 @@ import org.dlang.liveimap.ui.about.LicensesScreen
 import org.dlang.liveimap.ui.compose.ComposeScreen
 import org.dlang.liveimap.ui.contacts.ContactCopyScreen
 import org.dlang.liveimap.ui.compose.UnsentScreen
+import org.dlang.liveimap.ui.filter.FilterEditorScreen
+import org.dlang.liveimap.ui.filter.FilterListScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.help.HelpScreen
@@ -130,6 +133,11 @@ fun LiveImapNavHost() {
     val composeUids = rememberSaveable { mutableStateOf("") }
     val composeUnsentId = rememberSaveable { mutableStateOf("") }
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
+    val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
+    val filterSeedFrom = rememberSaveable { mutableStateOf("") }
+    val filterSeedTo = rememberSaveable { mutableStateOf("") }
+    val filterSeedListId = rememberSaveable { mutableStateOf("") }
+    val filterSeedSubject = rememberSaveable { mutableStateOf("") }
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     val favoriteMutex = remember { Mutex() }
@@ -174,6 +182,15 @@ fun LiveImapNavHost() {
         previous.savedStateHandle["paneUid"] = readerArgs.getLong("uid")
         previous.savedStateHandle["paneSequence"] = readerArgs.getInt("sequence")
         navController.popBackStack()
+    }
+
+    fun openFilterEditor(index: Int, from: String, to: String, listId: String, subject: String) {
+        filterEditIndex.value = index
+        filterSeedFrom.value = from
+        filterSeedTo.value = to
+        filterSeedListId.value = listId
+        filterSeedSubject.value = subject
+        navController.navigate("filter")
     }
 
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
@@ -350,6 +367,9 @@ fun LiveImapNavHost() {
                                     onBack = { paneUid = -1L },
                                     onFolderViewSaved = { noteFolderView() },
                                     onCustomize = { navController.navigate("toolbar/reader") },
+                                    onFilterLike = { from, to, listId, subject ->
+                                        openFilterEditor(-1, from, to, listId, subject)
+                                    },
                                 )
                             }
                         },
@@ -437,6 +457,9 @@ fun LiveImapNavHost() {
                         }
                     },
                     onCustomize = { navController.navigate("toolbar/reader") },
+                    onFilterLike = { from, to, listId, subject ->
+                        openFilterEditor(-1, from, to, listId, subject)
+                    },
                 )
             }
             composable("compose") {
@@ -527,6 +550,28 @@ fun LiveImapNavHost() {
             composable("contacts") {
                 UpPage("Copy contacts", onUp = { navController.popBackStack() }) {
                     ContactCopyScreen()
+                }
+            }
+            composable("filters") {
+                UpPage(stringResource(R.string.filter_edit_list), onUp = { navController.popBackStack() }) {
+                    FilterListScreen(onOpen = { index -> openFilterEditor(index, "", "", "", "") })
+                }
+            }
+            composable("filter") {
+                val index = rememberSaveable { filterEditIndex.value }
+                val from = rememberSaveable { filterSeedFrom.value }
+                val to = rememberSaveable { filterSeedTo.value }
+                val listId = rememberSaveable { filterSeedListId.value }
+                val subject = rememberSaveable { filterSeedSubject.value }
+                UpPage(
+                    title = stringResource(if (index < 0) R.string.filter_add else R.string.filter_edit),
+                    onUp = { navController.popBackStack() },
+                ) {
+                    FilterEditorScreen(
+                        index = index,
+                        seed = seedCriteria(from, to, listId, subject),
+                        onDone = { navController.popBackStack() },
+                    )
                 }
             }
             composable("help") {
@@ -650,6 +695,16 @@ fun LiveImapNavHost() {
                     }
                 }
             },
+            onAddFilter = {
+                navigateFromDrawer {
+                    openFilterEditor(-1, "", "", "", "")
+                }
+            },
+            onEditFilters = {
+                navigateFromDrawer {
+                    navController.navigate("filters")
+                }
+            },
             onFavorite = { favorite -> openFavorite(favorite) },
             onEditFavorite = { favorite -> openFavoriteEditor(favorite) },
             onSettings = {
@@ -763,6 +818,8 @@ private fun ColumnScope.DrawerSheetContent(
     onAllFolders: () -> Unit,
     onFavorite: (FolderFavorite) -> Unit,
     onEditFavorite: (FolderFavorite) -> Unit,
+    onAddFilter: () -> Unit,
+    onEditFilters: () -> Unit,
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     onAbout: () -> Unit,
@@ -790,6 +847,16 @@ private fun ColumnScope.DrawerSheetContent(
         label = { Text(stringResource(R.string.drawer_all_folders)) },
         selected = false,
         onClick = onAllFolders,
+    )
+    NavigationDrawerItem(
+        label = { Text(stringResource(R.string.filter_add)) },
+        selected = false,
+        onClick = onAddFilter,
+    )
+    NavigationDrawerItem(
+        label = { Text(stringResource(R.string.filter_edit_list)) },
+        selected = false,
+        onClick = onEditFilters,
     )
     for (favorite in favorites) {
         val shown = favoriteDrawerLabel(favorite)

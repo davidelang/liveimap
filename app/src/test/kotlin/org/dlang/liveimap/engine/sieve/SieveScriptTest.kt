@@ -74,6 +74,17 @@ class SieveScriptTest {
         assertClean(stripped)
     }
 
+    @Test
+    fun seedSkipsBlanks() {
+        assertEquals(
+            listOf(
+                RuleCriterion(RuleField.From, "a@b"),
+                RuleCriterion(RuleField.Subject, "Hello"),
+            ),
+            seedCriteria("a@b", "", "", "Hello"),
+        )
+    }
+
     private fun assertClean(script: String) {
         assertFalse(script.contains("vacation"))
         assertFalse(script.contains("include"))
