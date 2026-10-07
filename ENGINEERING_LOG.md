@@ -1914,3 +1914,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - The internal ReaderHeld class cannot expose file-private Utf8Carry or AttachmentRow. Those two types in MessageReaderScreen.kt are internal. ReaderHeld properties, dropLoaded, and the viewModel key are unchanged.
 - First compile of the visibility change failed on those two exposures. No install.
+
+## 2026-10-07 - inbound rules sieve emitter execution start
+
+- Approved plan: sandbox/plans/inbound-rules-emitter-20261007-0305-plan.md
+- Phase 1: emit Sieve script text from inbound rules. No connect, no upload, no install.
+- Host worktree: /home/dlang/git/liveimap/master at c37e941
+
+## 2026-10-07 - inbound rules sieve emitter phase 1
+
+- emitSieve writes script text only: require fileinto and imap4flags when used, allof tests, addflag fileinto redirect discard
+- Empty and actionless rules return an empty script. CR, LF, and NUL are stripped before quoting
+- Tests: filesAndMarksRead, redirectsAndDiscards, quotesAndSkipsEmptyRules. No install
