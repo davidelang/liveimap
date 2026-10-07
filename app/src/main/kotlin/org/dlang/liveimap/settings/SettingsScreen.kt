@@ -96,6 +96,7 @@ import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
+import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
 import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
@@ -412,6 +413,8 @@ private fun AccountGroup(editor: SettingsEditor) {
         inboxOpens = stringResource(R.string.settings_inbox_opens),
         otherHost = stringResource(R.string.pinerc_other_host),
         inboxBraces = stringResource(R.string.pinerc_inbox_braces),
+        missingFolder = stringResource(R.string.pinerc_folder_missing),
+        folderCheck = stringResource(R.string.pinerc_folder_check),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -419,7 +422,41 @@ private fun AccountGroup(editor: SettingsEditor) {
             is PinercRead.Ok -> {
                 importError = null
                 importGeneration += 1
-                importPreview = pinercPreview(outcome.text, settingsState.value, pinercPhrases)
+                val generation = importGeneration
+                importPreview = null
+                val text = outcome.text
+                editor.ui.launch {
+                    val current = settingsState.value
+                    val built = pinercPreview(text, current, pinercPhrases)
+                    val names = ArrayList<String>(3)
+                    if (built.next.sentMailbox.isNotEmpty() && built.next.sentMailbox != current.sentMailbox) {
+                        names.add(built.next.sentMailbox)
+                    }
+                    if (built.next.postponedMailbox.isNotEmpty() &&
+                        built.next.postponedMailbox != current.postponedMailbox
+                    ) {
+                        names.add(built.next.postponedMailbox)
+                    }
+                    if (built.next.addressBookMailbox.isNotEmpty() &&
+                        built.next.addressBookMailbox != current.addressBookMailbox
+                    ) {
+                        names.add(built.next.addressBookMailbox)
+                    }
+                    val shown = if (names.isEmpty()) {
+                        built
+                    } else {
+                        try {
+                            val missing = linkedSetOf<String>()
+                            for (name in names) {
+                                if (!pinercMailboxListed(mailSession(), name)) missing.add(name)
+                            }
+                            withoutMissingMailboxes(built, current, missing, pinercPhrases)
+                        } catch (_: MailFailure) {
+                            withoutCheckedMailboxes(built, current, pinercPhrases)
+                        }
+                    }
+                    if (importGeneration == generation) importPreview = shown
+                }
             }
             PinercRead.TooLarge -> {
                 importPreview = null

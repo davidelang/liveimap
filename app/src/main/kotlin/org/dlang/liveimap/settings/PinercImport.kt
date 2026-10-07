@@ -1,6 +1,7 @@
 package org.dlang.liveimap.settings
 
 import java.util.Locale
+import org.dlang.liveimap.session.MailSession
 
 data class PinercPreview(
     val next: AccountSettings,
@@ -42,6 +43,8 @@ data class PinercPhrases(
     val inboxOpens: String,
     val otherHost: String,
     val inboxBraces: String,
+    val missingFolder: String,
+    val folderCheck: String,
 )
 
 fun parsePinerc(text: String): Map<String, String?> =
@@ -259,6 +262,66 @@ fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): AccountSe
     } else {
         preview.next
     }
+
+suspend fun pinercMailboxListed(session: MailSession, name: String): Boolean {
+    if (name.isEmpty() || '%' in name || '*' in name) return false
+    return session.mailboxListed(name)
+}
+
+fun withoutMissingMailboxes(
+    preview: PinercPreview,
+    current: AccountSettings,
+    missing: Set<String>,
+    phrases: PinercPhrases,
+): PinercPreview {
+    val drops = mutableListOf<String>()
+    val notes = mutableListOf<String>()
+    var next = preview.next
+    fun consider(phrase: String, now: String, was: String, write: (String) -> Unit) {
+        if (now == was || now !in missing) return
+        drops.add("$phrase:")
+        notes.add(phrases.missingFolder.format(now))
+        write(was)
+    }
+    consider(phrases.sentMailbox, next.sentMailbox, current.sentMailbox) {
+        next = next.copy(sentMailbox = it)
+    }
+    consider(phrases.postponedMailbox, next.postponedMailbox, current.postponedMailbox) {
+        next = next.copy(postponedMailbox = it)
+    }
+    consider(phrases.addressBookMailbox, next.addressBookMailbox, current.addressBookMailbox) {
+        next = next.copy(addressBookMailbox = it)
+    }
+    if (drops.isEmpty()) return preview
+    val rows = preview.rows.filter { row -> drops.none { prefix -> row.startsWith(prefix) } }
+    return preview.copy(next = next, rows = rows, skipped = preview.skipped + notes)
+}
+
+fun withoutCheckedMailboxes(
+    preview: PinercPreview,
+    current: AccountSettings,
+    phrases: PinercPhrases,
+): PinercPreview {
+    val drops = mutableListOf<String>()
+    var next = preview.next
+    fun consider(phrase: String, now: String, was: String, write: (String) -> Unit) {
+        if (now.isEmpty() || now == was) return
+        drops.add("$phrase:")
+        write(was)
+    }
+    consider(phrases.sentMailbox, next.sentMailbox, current.sentMailbox) {
+        next = next.copy(sentMailbox = it)
+    }
+    consider(phrases.postponedMailbox, next.postponedMailbox, current.postponedMailbox) {
+        next = next.copy(postponedMailbox = it)
+    }
+    consider(phrases.addressBookMailbox, next.addressBookMailbox, current.addressBookMailbox) {
+        next = next.copy(addressBookMailbox = it)
+    }
+    if (drops.isEmpty()) return preview
+    val rows = preview.rows.filter { row -> drops.none { prefix -> row.startsWith(prefix) } }
+    return preview.copy(next = next, rows = rows, skipped = preview.skipped + phrases.folderCheck)
+}
 
 private val appliedNames = setOf(
     "inbox-path",

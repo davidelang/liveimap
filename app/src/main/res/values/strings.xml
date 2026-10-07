@@ -574,4 +574,6 @@
     <string name="settings_import_auto_expunge">Also turn on Auto-expunge?</string>
     <string name="pinerc_other_host">%1$s is a different server</string>
     <string name="pinerc_inbox_braces">inbox-path needs a server in braces</string>
+    <string name="pinerc_folder_missing">%1$s was not found</string>
+    <string name="pinerc_folder_check">Could not check folders</string>
 </resources>

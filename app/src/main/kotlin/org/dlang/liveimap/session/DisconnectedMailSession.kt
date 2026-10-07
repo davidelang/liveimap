@@ -15,6 +15,8 @@ class DisconnectedMailSession : MailSession {
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
         notConnected()
 
+    override suspend fun mailboxListed(name: String): Boolean = notConnected()
+
     override suspend fun select(mailbox: String): SelectResult = notConnected()
 
     override suspend fun unselect(): Unit = notConnected()

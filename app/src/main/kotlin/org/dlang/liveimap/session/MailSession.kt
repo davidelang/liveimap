@@ -19,6 +19,7 @@ interface MailSession {
     suspend fun open(account: AccountSettings): OpenResult
     suspend fun namespaces(): List<Namespace>
     suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry>
+    suspend fun mailboxListed(name: String): Boolean = throw MailFailure("list failed")
     suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> = emptyMap()
     suspend fun select(mailbox: String): SelectResult
     suspend fun unselect()

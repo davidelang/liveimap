@@ -328,6 +328,10 @@ class LibetpanMailSession : MailSession {
         rows.toList()
     }
 
+    override suspend fun mailboxListed(name: String): Boolean = keeper.read("list") {
+        nativeMailboxListed(requireHandle(), name)
+    }
+
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
         if (mailboxes.isEmpty()) return emptyMap()
         return keeper.read("status") {
@@ -959,6 +963,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
     private external fun nativeHierarchyDelimiter(handle: Long): Char
     private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
+    private external fun nativeMailboxListed(handle: Long, name: String): Boolean
     private external fun nativeSubscribedMailboxes(handle: Long, extended: Boolean): Array<String>?
     private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?

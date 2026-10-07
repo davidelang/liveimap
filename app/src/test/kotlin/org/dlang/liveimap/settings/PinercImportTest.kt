@@ -1,7 +1,20 @@
 package org.dlang.liveimap.settings
 
+import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.session.FolderEntry
+import org.dlang.liveimap.session.IndexRequest
+import org.dlang.liveimap.session.IndexRow
+import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.MimePart
+import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.SelectResult
+import org.dlang.liveimap.session.ThreadNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -570,43 +583,192 @@ class PinercImportTest {
         assertEquals("keep", plainBook.next.addressBookMailbox)
         assertTrue(plainBook.skipped.contains("Local path is not a mailbox"))
     }
+
+    @Test
+    fun previewOfSentNameDoesNotOpenASession() {
+        val preview = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        assertEquals("INBOX.sent-mail", preview.next.sentMailbox)
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        assertEquals("smtp.example.com", submit.next.smtpHost)
+        assertEquals(587, submit.next.smtpPort)
+    }
+
+    @Test
+    fun missingMailboxDropsOnlyThatRow() {
+        val current = AccountSettings(
+            sentMailbox = "keep-sent",
+            postponedMailbox = "old-post",
+            imapHost = "imap.example.com",
+        )
+        val preview = previewPinerc(
+            "personal-name=Ada\ndefault-fcc=INBOX.sent-mail\npostponed-folder=INBOX.postponed\n" +
+                "feature-list=expunge-without-confirm\n",
+            current,
+        )
+        assertTrue(preview.offerAutoExpunge)
+        assertTrue(preview.rows.any { it.startsWith("Sent mailbox:") })
+        assertTrue(preview.rows.any { it.startsWith("Display name:") })
+        val phrases = testPinercPhrases()
+        val dropped = withoutMissingMailboxes(
+            preview,
+            current,
+            setOf("INBOX.sent-mail"),
+            phrases,
+        )
+        assertEquals("keep-sent", dropped.next.sentMailbox)
+        assertEquals("INBOX.postponed", dropped.next.postponedMailbox)
+        assertEquals("Ada", dropped.next.displayName)
+        assertTrue(dropped.rows.none { it.startsWith("Sent mailbox:") })
+        assertTrue(dropped.rows.any { it.startsWith("Postponed mailbox:") })
+        assertTrue(dropped.rows.any { it.startsWith("Display name:") })
+        assertTrue(dropped.skipped.contains("INBOX.sent-mail was not found"))
+        assertEquals(1, dropped.skipped.count { it == "INBOX.sent-mail was not found" })
+        assertEquals(preview.offerAutoExpunge, dropped.offerAutoExpunge)
+        assertEquals(preview.omittedCount, dropped.omittedCount)
+        val same = previewPinerc("default-fcc=INBOX.sent-mail\n", current.copy(sentMailbox = "INBOX.sent-mail"))
+        assertSame(
+            same,
+            withoutMissingMailboxes(same, current.copy(sentMailbox = "INBOX.sent-mail"), setOf("INBOX.sent-mail"), phrases),
+        )
+    }
+
+    @Test
+    fun failedCheckDropsMailboxChangesOnce() {
+        val current = AccountSettings(
+            imapHost = "imap.example.com",
+            sentMailbox = "old-sent",
+            postponedMailbox = "same-post",
+            addressBookMailbox = "old-book",
+        )
+        val preview = previewPinerc(
+            "default-fcc=INBOX.sent-mail\npostponed-folder=same-post\naddress-book={imap.example.com}book\n",
+            current,
+        )
+        assertEquals("book", preview.next.addressBookMailbox)
+        assertTrue(preview.rows.any { it.startsWith("Sent mailbox:") })
+        assertTrue(preview.rows.any { it.startsWith("Address book mailbox:") })
+        val checked = withoutCheckedMailboxes(preview, current, testPinercPhrases())
+        assertEquals("old-sent", checked.next.sentMailbox)
+        assertEquals("same-post", checked.next.postponedMailbox)
+        assertEquals("old-book", checked.next.addressBookMailbox)
+        assertTrue(checked.rows.none { it.startsWith("Sent mailbox:") })
+        assertTrue(checked.rows.none { it.startsWith("Address book mailbox:") })
+        assertEquals(1, checked.skipped.count { it == "Could not check folders" })
+        assertTrue(checked.skipped.none { "was not found" in it })
+        val untouched = previewPinerc("personal-name=Ada\n", AccountSettings())
+        assertSame(untouched, withoutCheckedMailboxes(untouched, AccountSettings(), testPinercPhrases()))
+    }
+
+    @Test
+    fun wildcardMailboxIsNotListed() = runBlocking {
+        val session = ListingSession()
+        assertFalse(pinercMailboxListed(session, "INBOX.sent%"))
+        assertFalse(pinercMailboxListed(session, "*"))
+        assertFalse(pinercMailboxListed(session, ""))
+        assertTrue(session.calls.isEmpty())
+        session.result = true
+        assertTrue(pinercMailboxListed(session, "INBOX.sent-mail"))
+        session.result = false
+        assertFalse(pinercMailboxListed(session, "INBOX.sent-mail"))
+        assertEquals(listOf("INBOX.sent-mail", "INBOX.sent-mail"), session.calls)
+    }
 }
 
+internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
+    tls = "%1\$s: TLS is not supported",
+    smtpUser = "SMTP username is not a separate setting",
+    local = "Local path is not a mailbox",
+    history = "Address book history is not a number.",
+    sort = "Sort key is not supported",
+    rule = "Startup rule not recognized",
+    expunge = "Expunge already happens only when asked",
+    passwords = "Passwords are not imported",
+    folders = "Folder lists are not imported",
+    signature = "Signature is not a setting",
+    perFolder = "Per-folder startup rules are not imported",
+    inboxDefault = "INBOX opens at: First unread (alpine's default)",
+    change = "%1\$s: %2\$s → %3\$s",
+    imapHost = "IMAP host",
+    imapPort = "IMAP port",
+    smtpHost = "SMTP host",
+    smtpPort = "SMTP port",
+    username = "Username",
+    displayName = "Display name",
+    altAddresses = "Alternate addresses",
+    email = "Email",
+    sentMailbox = "Sent mailbox",
+    postponedMailbox = "Postponed mailbox",
+    addressBookMailbox = "Address book mailbox",
+    historyLabel = "Address book history",
+    defaultView = "Default view",
+    newest = "Newest first",
+    askExpunge = "Ask before expunge",
+    inboxOpens = "INBOX opens at",
+    otherHost = "%1\$s is a different server",
+    inboxBraces = "inbox-path needs a server in braces",
+    missingFolder = "%1\$s was not found",
+    folderCheck = "Could not check folders",
+)
+
 internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =
-    pinercPreview(
-        text,
-        current,
-        PinercPhrases(
-            tls = "%1\$s: TLS is not supported",
-            smtpUser = "SMTP username is not a separate setting",
-            local = "Local path is not a mailbox",
-            history = "Address book history is not a number.",
-            sort = "Sort key is not supported",
-            rule = "Startup rule not recognized",
-            expunge = "Expunge already happens only when asked",
-            passwords = "Passwords are not imported",
-            folders = "Folder lists are not imported",
-            signature = "Signature is not a setting",
-            perFolder = "Per-folder startup rules are not imported",
-            inboxDefault = "INBOX opens at: First unread (alpine's default)",
-            change = "%1\$s: %2\$s → %3\$s",
-            imapHost = "IMAP host",
-            imapPort = "IMAP port",
-            smtpHost = "SMTP host",
-            smtpPort = "SMTP port",
-            username = "Username",
-            displayName = "Display name",
-            altAddresses = "Alternate addresses",
-            email = "Email",
-            sentMailbox = "Sent mailbox",
-            postponedMailbox = "Postponed mailbox",
-            addressBookMailbox = "Address book mailbox",
-            historyLabel = "Address book history",
-            defaultView = "Default view",
-            newest = "Newest first",
-            askExpunge = "Ask before expunge",
-            inboxOpens = "INBOX opens at",
-            otherHost = "%1\$s is a different server",
-            inboxBraces = "inbox-path needs a server in braces",
-        ),
-    )
+    pinercPreview(text, current, testPinercPhrases())
+
+private class ListingSession : MailSession {
+    val calls = mutableListOf<String>()
+    var result = false
+
+    override val capabilities: Set<String> = emptySet()
+
+    override suspend fun mailboxListed(name: String): Boolean {
+        calls.add(name)
+        return result
+    }
+
+    override suspend fun open(account: AccountSettings): OpenResult = unused()
+
+    override suspend fun namespaces(): List<Namespace> = unused()
+
+    override suspend fun listLevel(
+        prefix: String,
+        parentMailbox: String?,
+        unreadCounts: Boolean,
+    ): List<FolderEntry> = unused()
+
+    override suspend fun select(mailbox: String): SelectResult = unused()
+
+    override suspend fun unselect() = unused()
+
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = unused()
+
+    override suspend fun fetchStructure(uid: Long): MimePart = unused()
+
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
+
+    override suspend fun fetchRfc822(uid: Long): ByteArray = unused()
+
+    override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) = unused()
+
+    override suspend fun uidExpungeDeleted() = unused()
+
+    override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) = unused()
+
+    override suspend fun searchText(query: String): List<Long> = unused()
+
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = unused()
+
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = unused()
+
+    override suspend fun thread(key: SortKey): ThreadNode = unused()
+
+    override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) = unused()
+
+    override suspend fun stopWatch() = unused()
+
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
+
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+
+    override fun close() = Unit
+
+    private fun unused(): Nothing = throw MailFailure("not used")
+}

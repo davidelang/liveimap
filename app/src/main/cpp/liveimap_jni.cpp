@@ -4385,6 +4385,41 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     return arr;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeMailboxListed(JNIEnv * env, jobject, jlong handle,
+    jstring mailbox) {
+    if (!ensureJni(env)) {
+        throwFailure(env, "list failed");
+        return JNI_FALSE;
+    }
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return JNI_FALSE;
+    JChars name(env, mailbox);
+    clist * list = nullptr;
+    int r = mailimap_list(session->imap, "", name.c(), &list);
+    if (!cmdOk(r)) {
+        if (list != nullptr) mailimap_list_result_free(list);
+        throwImap(env, session, r, "list failed");
+        unlockSession(session);
+        return JNI_FALSE;
+    }
+    bool found = false;
+    bool inbox = strcasecmp(name.c(), "INBOX") == 0;
+    if (list != nullptr) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+            auto * mb = static_cast<struct mailimap_mailbox_list *>(clist_content(cur));
+            if (mb == nullptr || mb->mb_name == nullptr) continue;
+            bool same = inbox ? strcasecmp(mb->mb_name, "INBOX") == 0 : strcmp(mb->mb_name, name.c()) == 0;
+            if (!same || mailboxNoselect(mb)) continue;
+            found = true;
+            break;
+        }
+        mailimap_list_result_free(list);
+    }
+    unlockSession(session);
+    return found ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSubscribedMailboxes(JNIEnv * env, jobject, jlong handle,
     jboolean extended) {

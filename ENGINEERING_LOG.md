@@ -1849,3 +1849,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Phase 1: same-server folder-collections prefix, other-host skip, braced slash mailbox, inbox-path without braces, phrases, and tests.
 - Do not LIST. Do not import incoming folders. Do not change smtp-server. Do not install. Base builds tag 37b2bcc. Commits stay on master.
 - First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - pinerc folder LIST execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-list-20261007-0130-plan.md. Mailbox SEQ 64 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: LIST Sent, Postponed, and address-book names before the import dialog. A missing mailbox is dropped. A failed check drops those changes with one reason.
+- Do not import incoming folders. Do not change smtp-server. Do not install. Base builds tag 6dad25d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - pinerc folder LIST phase 1
+
+- mailboxListed asks LIST for one exact name. An empty OK list is missing. \Noselect is missing. INBOX matches ignoring case. nativeListLevel stays %.
+- A missing Sent, Postponed, or address-book name is put back and reported. A failed check drops those changes once, with no missing-folder line.
+- The import dialog stays closed until that check finishes. A newer read discards the older result. pinercPreview does not open a session.
+- No incoming-folder import. smtp-server is unchanged. No install.

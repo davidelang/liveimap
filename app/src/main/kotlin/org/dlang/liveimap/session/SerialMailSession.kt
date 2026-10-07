@@ -44,6 +44,9 @@ class SerialMailSession(
         unreadCounts: Boolean,
     ): List<FolderEntry> = onLane { inner.listLevel(prefix, parentMailbox, unreadCounts) }
 
+    override suspend fun mailboxListed(name: String): Boolean =
+        onLane { inner.mailboxListed(name) }
+
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> =
         onLane { inner.statusMessages(mailboxes) }
 
