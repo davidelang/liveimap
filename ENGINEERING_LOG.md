@@ -2103,3 +2103,10 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - sameImapIdentity is false when the TLS modes differ. The Server TLS choice follows the IMAP port and precedes the Sieve host.
 - PeerTrust.check returns empty only for a non-empty chain the platform trust manager accepts and whose leaf matches the host. An empty chain returns a failure string and does not throw.
 - No socket. No install.
+
+## 2026-10-07 - IMAP TLS connect phase 2
+
+- nativeOpen takes the TLS mode name. None stays on openPlain and does not call PeerTrust.
+- StartTls uses the existing TCP connect, reads capabilities, and fails before login when STARTTLS is absent. It then calls mailimap_socket_starttls_with_server_name_callback with the account host.
+- Implicit calls mailimap_ssl_connect_with_callback. The SSL callback sets TLS 1.2 as the minimum and records the peer chain, leaf first, while letting the handshake finish. No recorded certificate fails with certificate rejected before login.
+- PeerTrust.check runs before mailimap_login. A failure closes the session and returns that text. The password is not sent. No socket from this turn. No install.

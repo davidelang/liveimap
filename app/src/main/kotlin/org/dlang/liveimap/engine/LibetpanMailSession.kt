@@ -187,6 +187,7 @@ class LibetpanMailSession : MailSession {
             account.pipelineCommands,
             account.logImapTraffic,
             trafficPath,
+            account.tlsMode.name,
         )
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -948,6 +949,7 @@ class LibetpanMailSession : MailSession {
         pipeline: Boolean,
         log: Boolean,
         logPath: String,
+        tlsMode: String,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)

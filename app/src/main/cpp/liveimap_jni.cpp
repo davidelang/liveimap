@@ -1,6 +1,9 @@
 #include <libetpan/libetpan.h>
 #include <libetpan/unselect.h>
 #include <libetpan/esearch.h>
+#include <libetpan/mailimap_socket.h>
+#include <libetpan/mailimap_ssl.h>
+#include <libetpan/mailstream_ssl.h>
 
 #include "imap_bursts.h"
 
@@ -75,6 +78,25 @@ int mailimap_nstring_parse(mailstream * fd, MMAPString * buffer, struct mailimap
 int mailimap_atom_parse(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * parser_ctx,
     size_t * indx, char ** result, size_t progr_rate, progress_function * progr_fun);
 }
+
+// OpenSSL 1.1.1w symbols. The NDK include path has no openssl headers.
+struct ssl_ctx_st;
+struct x509_st;
+struct x509_store_ctx_st;
+struct stack_st;
+extern "C" {
+long SSL_CTX_ctrl(ssl_ctx_st * ctx, int cmd, long larg, void * parg);
+void SSL_CTX_set_verify(ssl_ctx_st * ctx, int mode, int (* callback)(int, x509_store_ctx_st *));
+int X509_STORE_CTX_get_error_depth(x509_store_ctx_st * ctx);
+x509_st * X509_STORE_CTX_get_current_cert(x509_store_ctx_st * ctx);
+stack_st * X509_STORE_CTX_get0_chain(x509_store_ctx_st * ctx);
+int OPENSSL_sk_num(const stack_st * sk);
+void * OPENSSL_sk_value(const stack_st * sk, int i);
+int i2d_X509(x509_st * cert, unsigned char ** out);
+}
+
+std::string utf8FromJava(JNIEnv * env, jstring value);
+extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 
 namespace {
 
@@ -2184,16 +2206,119 @@ void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
     }
 }
 
-mailimap * openPlain(const char * host, int port, const char * user, const char * password,
-    LiveSession * live, std::string * error, std::string * connectedAddress) {
+struct TlsCapture {
+    std::vector<std::vector<unsigned char>> ders;
+};
+
+thread_local TlsCapture * tlsCapture = nullptr;
+
+const int kSslCtrlSetMinProtoVersion = 123;
+const long kTls12Version = 0x0303;
+const int kSslVerifyPeer = 1;
+
+bool encodeDer(x509_st * cert, std::vector<unsigned char> * out) {
+    if (cert == nullptr || out == nullptr) return false;
+    int len = i2d_X509(cert, nullptr);
+    if (len <= 0) return false;
+    out->assign(static_cast<size_t>(len), 0);
+    unsigned char * cursor = out->data();
+    return i2d_X509(cert, &cursor) == len;
+}
+
+bool hasStartTls(struct mailimap_capability_data * cap) {
+    if (cap == nullptr || cap->cap_list == nullptr) return false;
+    for (clistiter * cur = clist_begin(cap->cap_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_capability *>(clist_content(cur));
+        if (item == nullptr || item->cap_data.cap_name == nullptr) continue;
+        if (strcasecmp(item->cap_data.cap_name, "STARTTLS") == 0) return true;
+    }
+    return false;
+}
+
+std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<std::vector<unsigned char>> & ders) {
+    if (env == nullptr) return "certificate rejected";
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    jclass cls = env->FindClass("org/dlang/liveimap/engine/PeerTrust");
+    if (cls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return "certificate rejected";
+    }
+    jmethodID method = env->GetStaticMethodID(
+        cls, "check", "(Ljava/lang/String;Ljava/util/List;)Ljava/lang/String;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        return "certificate rejected";
+    }
+    jobject list = newList(env);
+    if (list == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (list != nullptr) env->DeleteLocalRef(list);
+        env->DeleteLocalRef(cls);
+        return "certificate rejected";
+    }
+    for (const std::vector<unsigned char> & der : ders) {
+        if (der.size() > static_cast<size_t>(INT_MAX)) {
+            env->DeleteLocalRef(list);
+            env->DeleteLocalRef(cls);
+            return "certificate rejected";
+        }
+        jbyteArray bytes = env->NewByteArray(static_cast<jsize>(der.size()));
+        if (bytes == nullptr || env->ExceptionCheck()) {
+            env->ExceptionClear();
+            if (bytes != nullptr) env->DeleteLocalRef(bytes);
+            env->DeleteLocalRef(list);
+            env->DeleteLocalRef(cls);
+            return "certificate rejected";
+        }
+        if (!der.empty()) {
+            env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(der.size()),
+                reinterpret_cast<const jbyte *>(der.data()));
+        }
+        listAdd(env, list, bytes);
+        env->DeleteLocalRef(bytes);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(list);
+            env->DeleteLocalRef(cls);
+            return "certificate rejected";
+        }
+    }
+    jstring jhost = newString(env, host != nullptr ? host : "");
+    if (jhost == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (jhost != nullptr) env->DeleteLocalRef(jhost);
+        env->DeleteLocalRef(list);
+        env->DeleteLocalRef(cls);
+        return "certificate rejected";
+    }
+    jobject result = env->CallStaticObjectMethod(cls, method, jhost, list);
+    std::string text = "certificate rejected";
+    if (env->ExceptionCheck() || result == nullptr) {
+        env->ExceptionClear();
+    } else {
+        text = utf8FromJava(env, static_cast<jstring>(result));
+        env->DeleteLocalRef(result);
+    }
+    env->DeleteLocalRef(jhost);
+    env->DeleteLocalRef(list);
+    env->DeleteLocalRef(cls);
+    return text;
+}
+
+void rejectImap(mailimap * imap) {
+    if (imap == nullptr) return;
+    mailimap_free(imap);
+}
+
+mailimap * openTcp(const char * host, int port, LiveSession * live, std::string * error, std::string * address) {
     mailimap * imap = mailimap_new(0, nullptr);
     if (imap == nullptr) {
         *error = "imap error";
         return nullptr;
     }
     mailimap_set_timeout(imap, kReadTimeoutSec);
-    std::string address;
-    int fd = tcpConnect("IMAP", host, port, &address, error);
+    int fd = tcpConnect("IMAP", host, port, address, error);
     if (fd < 0) {
         mailimap_free(imap);
         return nullptr;
@@ -2201,7 +2326,7 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
     mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
     if (stream == nullptr) {
         close(fd);
-        *error = connectFailure("IMAP", host, port, address, "connection failed");
+        *error = connectFailure("IMAP", host, port, *address, "connection failed");
         mailimap_free(imap);
         return nullptr;
     }
@@ -2210,7 +2335,7 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
     }
     int r = mailimap_connect(imap, stream);
     if (!connectOk(r)) {
-        *error = connectFailure("IMAP", host, port, address, imapText(imap, "connection failed"));
+        *error = connectFailure("IMAP", host, port, *address, imapText(imap, "connection failed"));
         if (imap->imap_stream != nullptr) {
             mailstream_close(imap->imap_stream);
             imap->imap_stream = nullptr;
@@ -2220,11 +2345,118 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
         mailimap_free(imap);
         return nullptr;
     }
-    r = mailimap_login(imap, user, password);
+    return imap;
+}
+
+bool loginImap(mailimap * imap, const char * host, int port, const char * user, const char * password,
+    const std::string & address, std::string * error) {
+    int r = mailimap_login(imap, user, password);
     if (!cmdOk(r)) {
         const char * name = user != nullptr ? user : "";
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed");
+        return false;
+    }
+    return true;
+}
+
+mailimap * openPlain(const char * host, int port, const char * user, const char * password,
+    LiveSession * live, std::string * error, std::string * connectedAddress) {
+    std::string address;
+    mailimap * imap = openTcp(host, port, live, error, &address);
+    if (imap == nullptr) return nullptr;
+    if (!loginImap(imap, host, port, user, password, address, error)) {
+        mailimap_free(imap);
+        return nullptr;
+    }
+    if (connectedAddress != nullptr) *connectedAddress = address;
+    return imap;
+}
+
+mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port, const char * user,
+    const char * password, LiveSession * live, std::string * error, std::string * connectedAddress) {
+    TlsCapture capture;
+    tlsCapture = &capture;
+    std::string address;
+    mailimap * imap = nullptr;
+    bool tlsOk = false;
+    if (strcmp(mode, "StartTls") == 0) {
+        imap = openTcp(host, port, live, error, &address);
+        if (imap == nullptr) {
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        struct mailimap_capability_data * caps = nullptr;
+        int r = mailimap_capability(imap, &caps);
+        bool advertised = cmdOk(r) && hasStartTls(caps);
+        if (caps != nullptr) mailimap_capability_data_free(caps);
+        if (!cmdOk(r)) {
+            *error = serviceLabel("IMAP", host, port) + " (" + address + "): capability failed: "
+                + imapText(imap, "capability failed");
+            rejectImap(imap);
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        if (!advertised) {
+            *error = serviceLabel("IMAP", host, port) + " (" + address + "): STARTTLS is not advertised";
+            rejectImap(imap);
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        r = mailimap_socket_starttls_with_server_name_callback(imap, host, prepareTls, nullptr);
+        tlsOk = cmdOk(r);
+        if (!tlsOk) {
+            *error = serviceLabel("IMAP", host, port) + " (" + address + "): STARTTLS failed: "
+                + imapText(imap, "STARTTLS failed");
+        }
+    } else if (strcmp(mode, "Implicit") == 0) {
+        imap = mailimap_new(0, nullptr);
+        if (imap == nullptr) {
+            *error = "imap error";
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        mailimap_set_timeout(imap, kReadTimeoutSec);
+        if (live != nullptr && live->logImapTraffic) {
+            mailimap_set_logger(imap, imapTrafficLogger, live);
+        }
+        address = host != nullptr ? host : "";
+        if (port < 0 || port > 65535) {
+            *error = connectFailure("IMAP", host, port, address, "connection failed");
+            rejectImap(imap);
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        int r = mailimap_ssl_connect_with_callback(
+            imap, host, static_cast<uint16_t>(port), prepareTls, nullptr);
+        tlsOk = connectOk(r);
+        if (!tlsOk) {
+            *error = connectFailure("IMAP", host, port, address, imapText(imap, "connection failed"));
+        }
+    } else {
+        *error = "unknown tls mode";
+        tlsCapture = nullptr;
+        return nullptr;
+    }
+    if (capture.ders.empty()) {
+        *error = "certificate rejected";
+        rejectImap(imap);
+        tlsCapture = nullptr;
+        return nullptr;
+    }
+    if (!tlsOk) {
+        rejectImap(imap);
+        tlsCapture = nullptr;
+        return nullptr;
+    }
+    std::string trust = peerTrustCheck(env, host, capture.ders);
+    tlsCapture = nullptr;
+    if (!trust.empty()) {
+        *error = trust;
+        rejectImap(imap);
+        return nullptr;
+    }
+    if (!loginImap(imap, host, port, user, password, address, error)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -3917,6 +4149,33 @@ jlong completeCount(JNIEnv * env, LiveSession * session, struct mailimap_search_
 
 }  // namespace
 
+extern "C" int recordPeerCerts(int, x509_store_ctx_st * store) {
+    if (tlsCapture == nullptr || store == nullptr) return 1;
+    if (X509_STORE_CTX_get_error_depth(store) != 0) return 1;
+    tlsCapture->ders.clear();
+    stack_st * chain = X509_STORE_CTX_get0_chain(store);
+    int count = chain != nullptr ? OPENSSL_sk_num(chain) : 0;
+    // OpenSSL keeps the peer certificate at index 0.
+    for (int i = 0; i < count; ++i) {
+        auto * cert = static_cast<x509_st *>(OPENSSL_sk_value(chain, i));
+        std::vector<unsigned char> der;
+        if (encodeDer(cert, &der)) tlsCapture->ders.push_back(std::move(der));
+    }
+    if (tlsCapture->ders.empty()) {
+        std::vector<unsigned char> der;
+        if (encodeDer(X509_STORE_CTX_get_current_cert(store), &der)) tlsCapture->ders.push_back(std::move(der));
+    }
+    return 1;
+}
+
+extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) {
+    if (ssl_context == nullptr) return;
+    auto * ctx = static_cast<ssl_ctx_st *>(mailstream_ssl_get_openssl_ssl_ctx(ssl_context));
+    if (ctx == nullptr) return;
+    SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls12Version, nullptr);
+    SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
+}
+
 std::string utf8FromJava(JNIEnv * env, jstring value) {
     if (value == nullptr) return std::string();
     const jchar * chars = env->GetStringChars(value, nullptr);
@@ -4020,7 +4279,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeError(JNIEnv * env,
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath) {
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -4029,6 +4288,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars sh(env, smtpHost);
     JChars fr(env, from);
     JChars path(env, logPath);
+    JChars mode(env, tlsMode);
     auto * session = new LiveSession();
     session->host = h.c();
     session->imapPort = port;
@@ -4043,7 +4303,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;
-    mailimap * imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
+    mailimap * imap = nullptr;
+    if (strcmp(mode.c(), "None") == 0) {
+        imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
+    } else {
+        imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address);
+    }
     if (imap == nullptr) {
         flushTrafficTail(session);
         delete session;
