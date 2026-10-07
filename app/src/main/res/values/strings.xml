@@ -572,4 +572,6 @@
     <string name="index_mark_all_read_body">Mark every message in this folder read?</string>
     <string name="index_mark_all_read_go">Mark</string>
     <string name="settings_import_auto_expunge">Also turn on Auto-expunge?</string>
+    <string name="pinerc_other_host">%1$s is a different server</string>
+    <string name="pinerc_inbox_braces">inbox-path needs a server in braces</string>
 </resources>

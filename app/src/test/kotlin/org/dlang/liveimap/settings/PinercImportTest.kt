@@ -434,6 +434,142 @@ class PinercImportTest {
         assertTrue(alreadyOffTicked.autoExpunge)
         assertFalse(alreadyOffTicked.askBeforeExpunge)
     }
+
+    @Test
+    fun folderNamesUseSameServerPrefixAndSkipOtherHosts() {
+        val bareInbox = previewPinerc("inbox-path=inbox\n", AccountSettings())
+        assertEquals("", bareInbox.next.imapHost)
+        assertEquals(AccountSettings(), bareInbox.next)
+        assertTrue(bareInbox.skipped.contains("inbox-path needs a server in braces"))
+
+        val keptHost = previewPinerc(
+            "inbox-path=inbox\n",
+            AccountSettings(imapHost = "imap.example.com", imapPort = 993, username = "ada"),
+        )
+        assertEquals("imap.example.com", keptHost.next.imapHost)
+        assertEquals(993, keptHost.next.imapPort)
+        assertEquals("ada", keptHost.next.username)
+        assertTrue(keptHost.skipped.contains("inbox-path needs a server in braces"))
+
+        val openBrace = previewPinerc("inbox-path={imap.example.com\n", AccountSettings())
+        assertEquals(AccountSettings(), openBrace.next)
+        assertTrue(openBrace.skipped.none { it == "inbox-path needs a server in braces" })
+
+        val tls = previewPinerc(
+            "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
+            AccountSettings(),
+        )
+        assertEquals("", tls.next.imapHost)
+        assertEquals("", tls.next.username)
+        assertEquals(AccountSettings(), tls.next)
+        assertTrue(tls.skipped.contains("imap.example.com: TLS is not supported"))
+        assertTrue(tls.skipped.none { it == "inbox-path needs a server in braces" })
+
+        val host = AccountSettings(imapHost = "imap.example.com")
+        val other = previewPinerc("default-fcc={other.example.com}Sent\n", host)
+        assertEquals("", other.next.sentMailbox)
+        assertEquals("imap.example.com", other.next.imapHost)
+        assertTrue(other.skipped.contains("other.example.com is a different server"))
+
+        val ignoredCase = previewPinerc(
+            "default-fcc={IMAP.Example.Com:993/user=ada}INBOX.sent\n",
+            host,
+        )
+        assertEquals("INBOX.sent", ignoredCase.next.sentMailbox)
+        assertEquals("imap.example.com", ignoredCase.next.imapHost)
+
+        val slash = previewPinerc("default-fcc={imap.example.com}mail/sent\n", host)
+        assertEquals("mail/sent", slash.next.sentMailbox)
+
+        val fromInbox = previewPinerc(
+            "inbox-path={imap.example.com/user=ada}INBOX\ndefault-fcc={other.example.com}Sent\n",
+            AccountSettings(),
+        )
+        assertEquals("imap.example.com", fromInbox.next.imapHost)
+        assertEquals(143, fromInbox.next.imapPort)
+        assertEquals("ada", fromInbox.next.username)
+        assertEquals("", fromInbox.next.sentMailbox)
+        assertTrue(fromInbox.skipped.contains("other.example.com is a different server"))
+
+        val prefixed = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\n" +
+                "default-fcc=sent-mail\npostponed-folder=drafts\n",
+            host,
+        )
+        assertEquals("INBOX.sent-mail", prefixed.next.sentMailbox)
+        assertEquals("INBOX.drafts", prefixed.next.postponedMailbox)
+        assertTrue(prefixed.skipped.contains("Folder lists are not imported"))
+
+        val already = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\ndefault-fcc=INBOX.sent-mail\n",
+            host,
+        )
+        assertEquals("INBOX.sent-mail", already.next.sentMailbox)
+
+        val differentCase = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\ndefault-fcc=inbox.sent-mail\n",
+            host,
+        )
+        assertEquals("INBOX.inbox.sent-mail", differentCase.next.sentMailbox)
+
+        val noBrackets = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.\ndefault-fcc=sent-mail\n",
+            host,
+        )
+        assertEquals("sent-mail", noBrackets.next.sentMailbox)
+
+        val otherCollection = previewPinerc(
+            "folder-collections={other.example.com}INBOX.[]\ndefault-fcc=sent-mail\n",
+            host,
+        )
+        assertEquals("", otherCollection.next.sentMailbox)
+        assertEquals("imap.example.com", otherCollection.next.imapHost)
+        assertTrue(otherCollection.skipped.contains("other.example.com is a different server"))
+        assertTrue(otherCollection.skipped.contains("Folder lists are not imported"))
+
+        val emptyHostBraced = previewPinerc(
+            "default-fcc={imap.example.com}INBOX.sent\n",
+            AccountSettings(),
+        )
+        assertEquals("INBOX.sent", emptyHostBraced.next.sentMailbox)
+        assertEquals("", emptyHostBraced.next.imapHost)
+
+        val emptyHostCollection = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\ndefault-fcc=sent-mail\n",
+            AccountSettings(),
+        )
+        assertEquals("sent-mail", emptyHostCollection.next.sentMailbox)
+        assertEquals("", emptyHostCollection.next.imapHost)
+
+        val noCollection = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        assertEquals("INBOX.sent-mail", noCollection.next.sentMailbox)
+
+        val localPost = previewPinerc("postponed-folder=INBOX/postponed\n", AccountSettings())
+        assertEquals("", localPost.next.postponedMailbox)
+        assertTrue(localPost.skipped.contains("Local path is not a mailbox"))
+
+        val lists = previewPinerc("folder-collections=c\n", AccountSettings())
+        assertEquals(listOf("Folder lists are not imported"), lists.skipped)
+        assertEquals(AccountSettings(), lists.next)
+
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        assertEquals("smtp.example.com", submit.next.smtpHost)
+        assertEquals(587, submit.next.smtpPort)
+
+        val book = previewPinerc(
+            "address-book={other.example.com}ab, {imap.example.com}book\n",
+            host,
+        )
+        assertEquals("book", book.next.addressBookMailbox)
+        assertTrue(book.skipped.contains("other.example.com is a different server"))
+
+        val plainBook = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\naddress-book=ab\n",
+            host.copy(addressBookMailbox = "keep"),
+        )
+        assertEquals("keep", plainBook.next.addressBookMailbox)
+        assertTrue(plainBook.skipped.contains("Local path is not a mailbox"))
+    }
 }
 
 internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =
@@ -470,5 +606,7 @@ internal fun previewPinerc(text: String, current: AccountSettings): PinercPrevie
             newest = "Newest first",
             askExpunge = "Ask before expunge",
             inboxOpens = "INBOX opens at",
+            otherHost = "%1\$s is a different server",
+            inboxBraces = "inbox-path needs a server in braces",
         ),
     )

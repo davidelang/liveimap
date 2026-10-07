@@ -40,6 +40,8 @@ data class PinercPhrases(
     val newest: String,
     val askExpunge: String,
     val inboxOpens: String,
+    val otherHost: String,
+    val inboxBraces: String,
 )
 
 fun parsePinerc(text: String): Map<String, String?> =
@@ -52,21 +54,27 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     var omitted = 0
     var inboxUserApplied = false
 
-    val inbox = entries["inbox-path"]
-    if (inbox?.decoded != null) {
-        val spec = parseRemoteSpec(inbox.decoded)
-        if (spec != null) {
-            if (spec.tls) {
-                skipped.add(phrases.tls.format(spec.host))
-            } else {
-                next = next.copy(imapHost = spec.host, imapPort = spec.port ?: 143)
-                if (spec.user != null) {
-                    next = next.copy(username = spec.user)
-                    inboxUserApplied = true
+    val inbox = entries["inbox-path"]?.decoded
+    if (inbox != null) {
+        if (!inbox.startsWith("{")) {
+            skipped.add(phrases.inboxBraces)
+        } else {
+            val spec = parseRemoteSpec(inbox)
+            if (spec != null) {
+                if (spec.tls) {
+                    skipped.add(phrases.tls.format(spec.host))
+                } else {
+                    next = next.copy(imapHost = spec.host, imapPort = spec.port ?: 143)
+                    if (spec.user != null) {
+                        next = next.copy(username = spec.user)
+                        inboxUserApplied = true
+                    }
                 }
             }
         }
     }
+    val comparisonHost = next.imapHost
+    val collectionRaw = entries["folder-collections"]?.raw
 
     val smtp = entries["smtp-server"]
     if (smtp != null && smtp.raw.isNotEmpty()) {
@@ -122,18 +130,20 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
 
     val sent = entries["default-fcc"]
     if (sent?.decoded != null) {
-        when (val folder = classifyFolder(sent.decoded, allowPlain = true)) {
+        when (val folder = classifyFolder(sent.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
             FolderKind.Local -> skipped.add(phrases.local)
             is FolderKind.Mailbox -> next = next.copy(sentMailbox = folder.name)
+            is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
             FolderKind.Empty -> Unit
         }
     }
 
     val postponed = entries["postponed-folder"]
     if (postponed?.decoded != null) {
-        when (val folder = classifyFolder(postponed.decoded, allowPlain = true)) {
+        when (val folder = classifyFolder(postponed.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
             FolderKind.Local -> skipped.add(phrases.local)
             is FolderKind.Mailbox -> next = next.copy(postponedMailbox = folder.name)
+            is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
             FolderKind.Empty -> Unit
         }
     }
@@ -143,9 +153,10 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         var chosen: String? = null
         for (item in splitList(book.raw)) {
             if (item.isEmpty()) continue
-            when (val folder = classifyFolder(item, allowPlain = false)) {
+            when (val folder = classifyFolder(item, allowPlain = false, comparisonHost, collectionRaw)) {
                 FolderKind.Local -> skipped.add(phrases.local)
                 is FolderKind.Mailbox -> if (chosen == null) chosen = folder.name
+                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
                 FolderKind.Empty -> Unit
             }
         }
@@ -281,6 +292,7 @@ private sealed class FolderKind {
     data object Local : FolderKind()
     data object Empty : FolderKind()
     data class Mailbox(val name: String) : FolderKind()
+    data class OtherHost(val host: String) : FolderKind()
 }
 
 private fun parseEntries(text: String): Map<String, PinercValue> {
@@ -460,13 +472,52 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
     return RemoteSpec(host, port, user, tls, submit)
 }
 
-private fun classifyFolder(value: String, allowPlain: Boolean): FolderKind {
-    val braced = value.contains('}')
-    if (!braced && !allowPlain) return FolderKind.Local
-    val folder = if (braced) value.substringAfter('}') else value
-    if (folder.isEmpty()) return FolderKind.Empty
-    if (folder.startsWith("/") || folder.startsWith("~") || '/' in folder) return FolderKind.Local
-    return FolderKind.Mailbox(folder)
+private fun classifyFolder(
+    value: String,
+    allowPlain: Boolean,
+    comparisonHost: String,
+    collectionRaw: String?,
+): FolderKind {
+    if (value.contains('}')) return classifyBraced(value, comparisonHost)
+    if (!allowPlain) return FolderKind.Local
+    if (value.isEmpty()) return FolderKind.Empty
+    if (value.startsWith("/") || value.startsWith("~") || '/' in value) return FolderKind.Local
+    return applyCollectionPrefix(value, comparisonHost, collectionRaw)
+}
+
+private fun classifyBraced(value: String, comparisonHost: String): FolderKind {
+    val brace = value.indexOf('{')
+    val spec = if (brace >= 0) parseRemoteSpec(value.substring(brace)) else null
+    if (spec != null &&
+        comparisonHost.isNotEmpty() &&
+        !comparisonHost.equals(spec.host, ignoreCase = true)
+    ) {
+        return FolderKind.OtherHost(spec.host)
+    }
+    val mailbox = value.substringAfter('}')
+    if (mailbox.isEmpty()) return FolderKind.Empty
+    return FolderKind.Mailbox(mailbox)
+}
+
+private fun applyCollectionPrefix(
+    plainName: String,
+    comparisonHost: String,
+    collectionRaw: String?,
+): FolderKind {
+    if (collectionRaw.isNullOrEmpty()) return FolderKind.Mailbox(plainName)
+    val item = splitList(collectionRaw).firstOrNull { it.isNotEmpty() }
+        ?: return FolderKind.Mailbox(plainName)
+    val brace = item.indexOf('{')
+    if (brace < 0) return FolderKind.Mailbox(plainName)
+    val specText = item.substring(brace)
+    val spec = parseRemoteSpec(specText) ?: return FolderKind.Mailbox(plainName)
+    if (comparisonHost.isEmpty()) return FolderKind.Mailbox(plainName)
+    if (!comparisonHost.equals(spec.host, ignoreCase = true)) return FolderKind.OtherHost(spec.host)
+    val rest = specText.substringAfter('}')
+    val bracket = rest.indexOf("[]")
+    val prefix = if (bracket < 0) "" else rest.substring(0, bracket)
+    val name = if (prefix.isNotEmpty() && !plainName.startsWith(prefix)) prefix + plainName else plainName
+    return FolderKind.Mailbox(name)
 }
 
 private fun parseStartupRule(value: String): StartRule? = when (value.lowercase(Locale.ROOT)) {

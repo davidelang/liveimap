@@ -410,6 +410,8 @@ private fun AccountGroup(editor: SettingsEditor) {
         newest = stringResource(R.string.reader_newest),
         askExpunge = stringResource(R.string.settings_ask_expunge),
         inboxOpens = stringResource(R.string.settings_inbox_opens),
+        otherHost = stringResource(R.string.pinerc_other_host),
+        inboxBraces = stringResource(R.string.pinerc_inbox_braces),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult

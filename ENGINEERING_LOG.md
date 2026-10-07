@@ -1842,3 +1842,10 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - pinercApplied turns autoExpunge on only when the row is offered and ticked. An untick leaves it unchanged. A tick when the row is not offered does nothing.
 - The import dialog shows "Also turn on Auto-expunge?" under the change rows. It starts unticked for each new preview. Apply persists pinercApplied and is enabled when that result differs. Cancel discards the tick.
 - The confirm row string stays "Confirm before expunge". No folder import. No install.
+
+## 2026-10-07 - pinerc folder names execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-folders-20261007-0114-plan.md. Mailbox SEQ 63 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: same-server folder-collections prefix, other-host skip, braced slash mailbox, inbox-path without braces, phrases, and tests.
+- Do not LIST. Do not import incoming folders. Do not change smtp-server. Do not install. Base builds tag 37b2bcc. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
