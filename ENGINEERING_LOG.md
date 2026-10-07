@@ -1491,3 +1491,16 @@
 - The watch connection sends EXAMINE, then IDLE, and not QRESYNC. NAMESPACE stays on the session. login and close clear it. A kept session does not.
 - sameImapIdentity takes both passwords. A different password logs in again. A different display name does not. The password is not stored on AccountSettings and is not written to the traffic log.
 - Leaving a mailbox sends no CLOSE. UNSELECT clears the open mailbox. Without UNSELECT, unselect examines the same mailbox and leaves it read-only. No install.
+
+## 2026-10-06 - Capability flags execution start
+
+- Approved plan: sandbox/plans/capability-flags-20261006-1711-plan.md
+- Phase 1: one Capabilities object from the login line. IMAP4rev1 or IMAP4rev2 connects. A missing extension skips that command. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Capability flags phase 1
+
+- IMAP4rev1 or IMAP4rev2 connects. A line with neither is rejected. Missing IDLE, SORT, NAMESPACE, or UIDPLUS still connects.
+- Capabilities.parse is the capability-line split. The session stores that object. Sort, thread, idle, and unselect read it. Without NAMESPACE, LIST "" "" supplies one personal delimiter and does not list %.
+- An unadvertised saved sort or thread opens at Arrival and does not ask the thread question. The menu still lists the key as not advertised. UIDPLUS, MOVE, and ESEARCH in the index, reader, and address book read featureCaps.
+- requiredCapabilities stays so ServerProbe can compile. The gate does not read it. No install.

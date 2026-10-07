@@ -1085,7 +1085,7 @@ fun MessageReaderScreen(
                 try {
                     session.copyThenDelete(listOf(uid), spamMailbox)
                     val dest = session.takeCopiedUids()
-                    val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+                    val usedMove = session.featureCaps.move
                     showActionUndo(
                         MailUndo(
                             delete = false,
@@ -1437,7 +1437,7 @@ fun MessageReaderScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         ) { data ->
             val offer = undoOffer
-            val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+            val uidPlus = session.featureCaps.uidPlus
             val showExpunge = snackMode == "undo" && offer != null && offer.delete &&
                 offer.uids.isNotEmpty() && uidPlus
             if (snackMode == "undo" && offer != null) {
@@ -1472,7 +1472,7 @@ fun MessageReaderScreen(
         )
     }
     if (confirmExpunge) {
-        val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+        val uidPlus = session.featureCaps.uidPlus
         val expungeBody = stringResource(R.string.reader_expunge_body)
         val expungeOthers = stringResource(R.string.reader_expunge_others)
         val body = if (uidPlus) expungeBody else "$expungeBody $expungeOthers"
@@ -1508,7 +1508,7 @@ fun MessageReaderScreen(
                             try {
                                 session.copyThenDelete(listOf(uid), picked)
                                 val dest = session.takeCopiedUids()
-                                val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+                                val usedMove = session.featureCaps.move
                                 showActionUndo(
                                     MailUndo(
                                         delete = false,

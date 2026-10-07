@@ -139,6 +139,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import org.dlang.liveimap.R
+import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.compose.armForwardOnce
@@ -981,8 +982,12 @@ fun MessageIndexScreen(
             held.headingLeaf = heading.leaf
             held.headingParent = heading.parent
             val savedView = settings.folderViews[mailbox] ?: settings.defaultView
-            val threading = savedView.key == SortKey.ThreadReferences ||
-                savedView.key == SortKey.ThreadOrderedSubject
+            val savedAdvertised = sortKeyAdvertised(session.featureCaps, savedView.key)
+            if (!savedAdvertised) {
+                model.loadUnadvertisedArrival(savedView.newestFirst)
+            }
+            val threading = savedAdvertised && (savedView.key == SortKey.ThreadReferences ||
+                savedView.key == SortKey.ThreadOrderedSubject)
             if (threading) {
                 val selected = try {
                     session.select(mailbox)
@@ -1593,7 +1598,7 @@ fun MessageIndexScreen(
                             SortMenuChoice(
                                 key = key,
                                 selected = key == view.key,
-                                enabled = sortKeyAdvertised(session.capabilities, key),
+                                enabled = sortKeyAdvertised(session.featureCaps, key),
                                 onClick = { chooseSort(key) },
                             )
                         }
@@ -1602,7 +1607,7 @@ fun MessageIndexScreen(
                             SortMenuChoice(
                                 key = key,
                                 selected = key == view.key,
-                                enabled = sortKeyAdvertised(session.capabilities, key),
+                                enabled = sortKeyAdvertised(session.featureCaps, key),
                                 onClick = { chooseSort(key) },
                             )
                         }
@@ -1670,7 +1675,7 @@ fun MessageIndexScreen(
         if (connected) {
                 TextButton(
                     onClick = {
-                        val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+                        val uidPlus = session.featureCaps.uidPlus
                         if (account.askBeforeExpunge || !uidPlus) {
                             pendingExpungeUids = null
                             confirmExpunge = true
@@ -1685,7 +1690,7 @@ fun MessageIndexScreen(
                     },
                 ) { Text(stringResource(R.string.index_expunge)) }
                 if (confirmExpunge) {
-                    val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+                    val uidPlus = session.featureCaps.uidPlus
                     val body = buildString {
                         append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
                         if (!uidPlus) {
@@ -2020,7 +2025,7 @@ fun MessageIndexScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         ) { data ->
             val offer = undoOffer
-            val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+            val uidPlus = session.featureCaps.uidPlus
             val showExpunge = snackMode == "undo" && offer != null && offer.delete &&
                 !offer.allMailbox && offer.uids.isNotEmpty() && uidPlus
             if (snackMode == "undo" && offer != null) {
@@ -2449,13 +2454,12 @@ private fun sortShortLabel(key: SortKey): String = stringResource(
     },
 )
 
-internal fun sortKeyAdvertised(capabilities: Set<String>, key: SortKey): Boolean {
-    fun has(name: String) = capabilities.any { it.equals(name, ignoreCase = true) }
+internal fun sortKeyAdvertised(capabilities: Capabilities, key: SortKey): Boolean {
     return when (key) {
         SortKey.Arrival -> true
-        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size -> has("SORT")
-        SortKey.ThreadReferences -> has("THREAD=REFERENCES")
-        SortKey.ThreadOrderedSubject -> has("THREAD=ORDEREDSUBJECT")
+        SortKey.Date, SortKey.From, SortKey.Subject, SortKey.To, SortKey.Cc, SortKey.Size -> capabilities.sort
+        SortKey.ThreadReferences -> capabilities.threadReferences
+        SortKey.ThreadOrderedSubject -> capabilities.threadOrderedSubject
     }
 }
 

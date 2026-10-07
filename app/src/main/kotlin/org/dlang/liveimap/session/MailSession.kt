@@ -10,6 +10,8 @@ val connectedConnection: StateFlow<ConnectionState> = MutableStateFlow(Connectio
 
 interface MailSession {
     val capabilities: Set<String>
+    val featureCaps: Capabilities
+        get() = Capabilities.parse(capabilities.joinToString(" "))
     val connectionState: StateFlow<ConnectionState>
         get() = connectedConnection
     suspend fun resume() {}

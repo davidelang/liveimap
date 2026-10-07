@@ -3652,6 +3652,43 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
     return arr;
 }
 
+extern "C" JNIEXPORT jchar JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeHierarchyDelimiter(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return 0;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return 0;
+    if (session->imap == nullptr) {
+        throwFailure(env, "not connected");
+        unlockSession(session);
+        return 0;
+    }
+    clist * list = nullptr;
+    int r = mailimap_list(session->imap, "", "", &list);
+    if (!cmdOk(r)) {
+        if (list != nullptr) mailimap_list_result_free(list);
+        throwImap(env, session, r, "list failed");
+        unlockSession(session);
+        return 0;
+    }
+    char delim = 0;
+    bool found = false;
+    if (list != nullptr && clist_begin(list) != nullptr) {
+        auto * mb = static_cast<struct mailimap_mailbox_list *>(clist_content(clist_begin(list)));
+        if (mb != nullptr) {
+            delim = mb->mb_delimiter;
+            found = true;
+        }
+    }
+    if (list != nullptr) mailimap_list_result_free(list);
+    if (!found) {
+        throwFailure(env, "list failed");
+        unlockSession(session);
+        return 0;
+    }
+    unlockSession(session);
+    return static_cast<jchar>(delim);
+}
+
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv * env, jobject, jlong handle,
     jobjectArray mailboxes) {

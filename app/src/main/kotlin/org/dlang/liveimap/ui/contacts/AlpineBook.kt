@@ -209,7 +209,7 @@ suspend fun writePineBook(
         }
         is PineRead.NotBook -> if (appended > 0L) state.uids + appended else state.uids
     }
-    val uidPlus = session.capabilities.any { it.equals("UIDPLUS", ignoreCase = true) }
+    val uidPlus = session.featureCaps.uidPlus
     val expunge = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
     if (expunge.isNotEmpty()) {
         session.storeFlags(expunge, setOf("\\Deleted"), emptySet())

@@ -328,6 +328,7 @@ class IndexModel(
         private set
 
     var view: FolderView = FolderView(SortKey.Arrival, newestFirst = true)
+    private var arrivalInstead: FolderView? = null
         private set
 
     val filterActive: Boolean
@@ -438,6 +439,10 @@ class IndexModel(
     val menuKeys: List<SortKey>
         get() = SortKey.entries
 
+    internal fun loadUnadvertisedArrival(newestFirst: Boolean) {
+        arrivalInstead = FolderView(SortKey.Arrival, newestFirst)
+    }
+
     suspend fun loadWindow(): List<IndexRow> {
         activeSearch = null
         honourKeep = false
@@ -459,6 +464,7 @@ class IndexModel(
     }
 
     suspend fun applyView(next: FolderView): List<IndexRow> {
+        arrivalInstead = null
         val loaded = store.load()
         val saved = loaded.copy(folderViews = loaded.folderViews + (mailbox to next))
         store.save(saved)
@@ -762,7 +768,7 @@ class IndexModel(
             if (allMailbox) session.copyAllThenDelete(moveMailbox)
             else session.copyThenDelete(uids, moveMailbox)
             val dest = session.takeCopiedUids()
-            val usedMove = session.capabilities.any { it.equals("MOVE", ignoreCase = true) }
+            val usedMove = session.featureCaps.move
             if (allMailbox) {
                 order = emptyList()
                 heldRows = emptyList()
@@ -963,7 +969,8 @@ class IndexModel(
         includePreview = loaded.density != Density.Compact
         val query = activeSearch
         if (query != null) return fetchSearch(query, preserveAnchor)
-        val resolved = loaded.folderViews[mailbox] ?: loaded.defaultView
+        val saved = loaded.folderViews[mailbox] ?: loaded.defaultView
+        val resolved = arrivalInstead ?: saved
         view = resolved
         return fetchView(resolved, preserveAnchor)
     }
@@ -1120,8 +1127,7 @@ class IndexModel(
         keepSnapshot = noted ?: heldRows.getOrNull(lastVisibleIndex)?.uid
     }
 
-    private fun hasEsearch(): Boolean =
-        session.capabilities.any { it.equals("ESEARCH", ignoreCase = true) }
+    private fun hasEsearch(): Boolean = session.featureCaps.esearch
 
     private fun usesArrivalSequences(): Boolean =
         view.key == SortKey.Arrival && filterUids == null && activeSearch == null && arrivalTotal > 0

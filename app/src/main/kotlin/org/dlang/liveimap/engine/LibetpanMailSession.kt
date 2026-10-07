@@ -4,6 +4,7 @@ import android.content.Context
 import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -13,6 +14,7 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
@@ -24,9 +26,7 @@ import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
-internal fun capabilityTokens(serverList: String): List<String> =
-    serverList.split(Regex("\\s+")).filter { it.isNotEmpty() }
-
+// ServerProbe and ServerProbeTest still read this list. The gate does not.
 internal val requiredCapabilities = listOf(
     "NAMESPACE",
     "UIDPLUS",
@@ -38,56 +38,15 @@ internal val requiredCapabilities = listOf(
 )
 
 fun capabilityGate(serverList: String): OpenResult {
-    val have = capabilityTokens(serverList).map { it.uppercase() }.toSet()
-    val missing = requiredCapabilities.any { it.uppercase() !in have }
-    return if (missing) OpenResult.Rejected(serverList) else OpenResult.Connected
+    val caps = Capabilities.parse(serverList)
+    return if (caps.imap4rev1 || caps.imap4rev2) OpenResult.Connected else OpenResult.Rejected(serverList)
 }
-
-private fun hasCap(serverList: String, name: String): Boolean =
-    capabilityTokens(serverList).any { it.equals(name, ignoreCase = true) }
-
-fun moveKind(serverList: String): String =
-    if (hasCap(serverList, "MOVE")) "Move" else "CopyThenDelete"
-
-fun listKind(serverList: String, unreadCounts: Boolean): String = when {
-    !hasCap(serverList, "LIST-EXTENDED") -> "Plain"
-    !hasCap(serverList, "LIST-STATUS") -> "Extended"
-    unreadCounts -> "ExtendedWithStatus"
-    else -> "ExtendedWithMessages"
-}
-
-fun resyncKind(serverList: String): String = when {
-    hasCap(serverList, "QRESYNC") -> "Qresync"
-    hasCap(serverList, "CONDSTORE") -> "Condstore"
-    else -> "FullSelect"
-}
-
-fun searchKind(serverList: String): String =
-    if (hasCap(serverList, "ESEARCH")) "Esearch" else "UidSearch"
-
-fun sortKind(serverList: String): String =
-    if (hasCap(serverList, "ESORT")) "Esort" else "UidSort"
-
-fun imapSortKey(serverList: String, token: String): String {
-    if (!hasCap(serverList, "SORT=DISPLAY")) return token
-    return when (token) {
-        "FROM" -> "DISPLAYFROM"
-        "TO" -> "DISPLAYTO"
-        else -> token
-    }
-}
-
-fun previewKind(serverList: String): String =
-    if (hasCap(serverList, "PREVIEW")) "Preview" else "BodyPeek"
-
-fun fetchKind(serverList: String): String =
-    if (hasCap(serverList, "BINARY")) "BinaryPeek" else "BodyPeek"
 
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
 
     @Volatile
-    private var capSet: Set<String> = emptySet()
+    private var storedCaps: Capabilities = Capabilities.parse("")
     private var account: AccountSettings? = null
     private var loggedInPassword: String? = null
     private var compressed = false
@@ -122,7 +81,10 @@ class LibetpanMailSession : MailSession {
     )
 
     override val capabilities: Set<String>
-        get() = capSet
+        get() = storedCaps.names
+
+    override val featureCaps: Capabilities
+        get() = storedCaps
 
     override val connectionState: StateFlow<ConnectionState>
         get() = keeper.connectionState
@@ -233,14 +195,14 @@ class LibetpanMailSession : MailSession {
         handle = opened
         this.account = account
         loggedInPassword = password
-        capSet = capabilityTokens(line).toSet()
+        storedCaps = Capabilities.parse(line)
         cache.clear()
         compressed = false
-        when (resyncKind(line)) {
+        when (storedCaps.resyncKind()) {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
-        if (hasCap(line, "COMPRESS=DEFLATE") && !account.logImapTraffic) {
+        if (storedCaps.compressDeflate && !account.logImapTraffic) {
             nativeCompress(opened)
             compressed = true
         }
@@ -265,7 +227,7 @@ class LibetpanMailSession : MailSession {
             return selected
         }
         val current = selectedMailbox
-        if (current != null && current != mailbox && hasCap(advertised(), "UNSELECT")) {
+        if (current != null && current != mailbox && featureCaps.unselect) {
             nativeUnselect(requireHandle())
             selectedMailbox = null
             selectedReadWrite = false
@@ -295,6 +257,13 @@ class LibetpanMailSession : MailSession {
     override suspend fun namespaces(): List<Namespace> = keeper.read("namespace") {
         val held = namespaceList
         if (held != null) return@read held
+        if (!featureCaps.namespace) {
+            val listed = nativeHierarchyDelimiter(requireHandle())
+            val delimiter = if (listed == '\u0000') '.' else listed
+            val list = listOf(Namespace("", delimiter, NamespaceKind.Personal))
+            namespaceList = list
+            return@read list
+        }
         val rows = nativeNamespaces(requireHandle()) ?: throw MailFailure("namespace failed")
         val list = rows.toList()
         namespaceList = list
@@ -310,7 +279,7 @@ class LibetpanMailSession : MailSession {
             requireHandle(),
             prefix,
             parentMailbox,
-            listKind(advertised(), unreadCounts),
+            featureCaps.listKind(unreadCounts),
         ) ?: throw MailFailure("list failed")
         rows.toList()
     }
@@ -328,7 +297,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun unselect() {
         val mailbox = selectedMailbox
-        if (hasCap(advertised(), "UNSELECT")) {
+        if (featureCaps.unselect) {
             nativeUnselect(requireHandle())
             selectedMailbox = null
             selectedReadWrite = false
@@ -354,7 +323,7 @@ class LibetpanMailSession : MailSession {
         }
         val h = requireHandle()
         val settings = account
-        val useServerPreview = request.includePreview && previewKind(advertised()) == "Preview"
+        val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
         val rows = nativeFetchIndex(
             h,
             request.mailbox,
@@ -387,7 +356,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
         keeper.read("fetch") {
-            val binary = fetchKind(advertised()) == "BinaryPeek"
+            val binary = featureCaps.fetchKind() == "BinaryPeek"
             nativePeekPart(requireHandle(), uid, section, offset, length, binary)
                 ?: throw MailFailure("fetch failed")
         }
@@ -429,14 +398,14 @@ class LibetpanMailSession : MailSession {
         if (uids.isEmpty()) return
         keeper.write("copy") {
             ensureReadWrite()
-            nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
+            nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, featureCaps.moveKind())
         }
     }
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         keeper.write("copy") {
             ensureReadWrite()
-            nativeCopyAllThenDelete(requireHandle(), targetMailbox, moveKind(advertised()))
+            nativeCopyAllThenDelete(requireHandle(), targetMailbox, featureCaps.moveKind())
         }
     }
 
@@ -451,7 +420,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
         remember("SEARCH $query") {
-            val ids = nativeSearchText(h, query, searchKind(advertised()) == "Esearch")
+            val ids = nativeSearchText(h, query, featureCaps.searchKind() == "Esearch")
                 ?: throw MailFailure("search failed")
             ids.toList()
         }
@@ -460,7 +429,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
         remember("CRITERION $kind $argument") {
-            val ids = nativeSearchCriterion(h, kind, argument, searchKind(advertised()) == "Esearch")
+            val ids = nativeSearchCriterion(h, kind, argument, featureCaps.searchKind() == "Esearch")
                 ?: throw MailFailure("search failed")
             ids.toList()
         }
@@ -474,7 +443,7 @@ class LibetpanMailSession : MailSession {
                 rule.name,
                 byUid,
                 edge.name,
-                searchKind(advertised()) == "Esearch",
+                featureCaps.searchKind() == "Esearch",
             ) ?: throw MailFailure("search failed")
             ids.toList()
         }
@@ -484,7 +453,7 @@ class LibetpanMailSession : MailSession {
         val ids = nativeLocateUid(
             requireHandle(),
             uid,
-            searchKind(advertised()) == "Esearch",
+            featureCaps.searchKind() == "Esearch",
         ) ?: throw MailFailure("search failed")
         ids.toList()
     }
@@ -496,10 +465,13 @@ class LibetpanMailSession : MailSession {
         if (key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject) {
             throw MailFailure("use thread")
         }
+        if (!featureCaps.sort) {
+            throw MailFailure("SORT was not advertised")
+        }
         return keeper.read("sort") {
             val h = requireHandle()
-            val command = sortKind(advertised())
-            val token = imapSortKey(advertised(), sortToken(key))
+            val command = featureCaps.sortKind()
+            val token = featureCaps.imapSortKey(sortToken(key))
             remember("SORT $token $newestFirst") {
                 val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
                 ids.toList()
@@ -509,10 +481,14 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun thread(key: SortKey): ThreadNode {
         val algorithm = when (key) {
-            SortKey.ThreadReferences -> "REFERENCES"
+            SortKey.ThreadReferences -> {
+                if (!featureCaps.threadReferences) {
+                    throw MailFailure("THREAD=REFERENCES was not advertised")
+                }
+                "REFERENCES"
+            }
             SortKey.ThreadOrderedSubject -> {
-                val advertised = capSet.any { it.equals("THREAD=ORDEREDSUBJECT", ignoreCase = true) }
-                if (!advertised) {
+                if (!featureCaps.threadOrderedSubject) {
                     throw MailFailure("ORDEREDSUBJECT was not advertised")
                 }
                 "ORDEREDSUBJECT"
@@ -528,6 +504,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
+        if (!featureCaps.idle) return
         keeper.read("watch") {
             watchMailbox = mailbox
             watchCallback = onChange
@@ -563,7 +540,7 @@ class LibetpanMailSession : MailSession {
 
     override fun close() {
         closeSockets()
-        capSet = emptySet()
+        storedCaps = Capabilities.parse("")
         account = null
         loggedInPassword = null
         namespaceList = null
@@ -660,8 +637,6 @@ class LibetpanMailSession : MailSession {
         if (account?.logImapTraffic == true) TrafficLog.noteStatus(text)
     }
 
-    private fun advertised(): String = capSet.joinToString(" ")
-
     private fun requireHandle(): Long {
         val h = handle
         if (h == 0L) throw MailFailure("not connected")
@@ -720,6 +695,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
+    private external fun nativeHierarchyDelimiter(handle: Long): Char
     private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
     private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
