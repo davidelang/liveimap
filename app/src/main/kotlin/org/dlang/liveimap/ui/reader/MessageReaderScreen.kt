@@ -156,7 +156,7 @@ import org.dlang.liveimap.ui.toolbar.effectiveReaderToolbar
 import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 import org.dlang.liveimap.ui.toolbar.visibleReaderActions
 
-private class Utf8Carry {
+internal class Utf8Carry {
     var pending: ByteArray = ByteArray(0)
     var decoder: WireTextDecoder? = null
 }
@@ -178,7 +178,7 @@ private class SaveTarget {
     var uid: Long = 0
 }
 
-private data class AttachmentRow(
+internal data class AttachmentRow(
     val section: String,
     val label: String,
     val size: Int,

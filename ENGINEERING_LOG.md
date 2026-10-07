@@ -1909,3 +1909,8 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - ReaderHeld is internal class ReaderHeld : ViewModel(). The no-arg constructor, properties, dropLoaded, and viewModel key reader:$mailbox:$uid are unchanged.
 - IndexScreenHeld, FolderScreenHeld, and MailboxChooserHeld were not edited.
 - No install.
+
+## 2026-10-07 - ReaderHeld helper types visible in the module
+
+- The internal ReaderHeld class cannot expose file-private Utf8Carry or AttachmentRow. Those two types in MessageReaderScreen.kt are internal. ReaderHeld properties, dropLoaded, and the viewModel key are unchanged.
+- First compile of the visibility change failed on those two exposures. No install.
