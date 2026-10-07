@@ -1939,3 +1939,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - readGreeting collects IMPLEMENTATION, VERSION, SASL, SIEVE, and STARTTLS. OK returns them. NO and BYE throw SieveFailure with the quoted text, or the raw line.
 - An empty line, an unquoted `{`, a bad line, or a missing close quote fails. logout writes LOGOUT and waits for OK. Capability lines during logout are ignored.
 - No AUTHENTICATE, no PUTSCRIPT, no socket, and no screen. Tests: readsTheGreeting, splitsOneExtensionString, noTextIsTheFailure, logoutWritesLogout. No install.
+
+## 2026-10-07 - inbound rules socket execution start
+
+- Approved plan: sandbox/plans/inbound-rules-socket-20261007-0324-plan.md. Status set to APPROVED.
+- Phase 1: plaintext ManageSieve TCP, read the greeting, send LOGOUT, and close. The only test peer is 127.0.0.1.
+- Do not authenticate. Do not install. Base builds tag abf7ba6. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules socket phase 1
+
+- PlainSieveTransport connects on Dispatchers.IO. Connect timeout is 30 seconds and read timeout is 60 seconds. readLine, writeLine, and close also run on Dispatchers.IO.
+- writeLine sends the line, then CR LF, as UTF-8, and flushes. readLine stops at LF, drops one trailing CR, and rejects a line longer than 8192 characters. A closed peer is SieveFailure("read"). A failed connect is SieveFailure("connect"). close is safe to call more than once.
+- greetPlain reads the greeting, sends LOGOUT, and closes in a finally block. The localhost test peer is 127.0.0.1. No AUTHENTICATE, no PUTSCRIPT, and no install.
