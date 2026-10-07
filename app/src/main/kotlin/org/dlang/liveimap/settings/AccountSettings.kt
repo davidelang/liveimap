@@ -358,6 +358,7 @@ data class AccountSettings(
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
     val multiPane: MultiPane = MultiPane.Wide,
+    val fullScreen: Boolean = false,
     val inboundRules: List<InboundRule> = emptyList(),
 ) {
     val preferHtml: Boolean
@@ -442,6 +443,7 @@ private val fieldNames = listOf(
     "toolbarRows",
     "composerWrapColumn",
     "multiPane",
+    "fullScreen",
     "inboundRules",
 )
 
@@ -494,7 +496,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, and inboundRules when empty.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, and inboundRules when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -537,6 +539,7 @@ fun AccountSettings.encode(): String = buildString {
     if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
     if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
     if (multiPane != MultiPane.Wide) appendLine("multiPane=${multiPane.name}")
+    if (fullScreen) appendLine("fullScreen=true")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
 }
 
@@ -614,6 +617,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "toolbarRows" ||
             key == "composerWrapColumn" ||
             key == "multiPane" ||
+            key == "fullScreen" ||
             key == "inboundRules"
         ) {
             continue
@@ -695,6 +699,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
         composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
         multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Wide,
+        fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
     )
 }

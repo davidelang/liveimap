@@ -21,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
@@ -47,11 +49,13 @@ class MainActivity : ComponentActivity() {
             val store = remember { DataStoreSettingsStore(appContext) }
             var theme by remember { mutableStateOf(ThemeMode.FollowSystem) }
             var dynamicColor by remember { mutableStateOf(true) }
+            var fullScreen by remember { mutableStateOf(false) }
             LaunchedEffect(store) {
                 store.theme().collect {
                     val loaded = store.load()
                     theme = loaded.theme
                     dynamicColor = loaded.dynamicColor
+                    fullScreen = loaded.fullScreen
                 }
             }
             val dark = when (theme) {
@@ -65,10 +69,19 @@ class MainActivity : ComponentActivity() {
             } else {
                 if (dark) darkColorScheme() else lightColorScheme()
             }
+            val immersive = fullScreen
             SideEffect {
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.isAppearanceLightStatusBars = !dark
                 controller.isAppearanceLightNavigationBars = !dark
+                val bars = WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars()
+                if (immersive) {
+                    controller.hide(bars)
+                    controller.systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                } else {
+                    controller.show(bars)
+                }
             }
             MaterialTheme(colorScheme = colorScheme) {
                 LiveImapNavHost()

@@ -124,6 +124,17 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun fullScreenRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("fullScreen="))
+        val text = AccountSettings(fullScreen = true).encode()
+        assertTrue(text.contains("fullScreen=true"))
+        val decoded = decodeAccountSettings(text)
+        assertTrue(decoded.fullScreen)
+        assertEquals(text, decoded.encode())
+    }
+
+    @Test
     fun nonDefaultRoundTrip() {
         val original = AccountSettings(
             imapHost = "imap.example.com",

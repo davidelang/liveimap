@@ -2022,3 +2022,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - When the header is ready it sits in a vertical scroll capped at that max, and the body slot keeps weight 1 with at least half the pane. Otherwise the body slot fills the pane. Plain text still scrolls inside the body. The HTML WebView stays in the body slot.
 - onSizeChanged posts requestLayout and invalidate only when width and height are both positive and differ from the last size requested for that view. That callback does not load. The view.tag check still decides loadDataWithBaseURL.
 - Test readerPaneGivesBodyHalf. No install.
+
+## 2026-10-07 - Reader header collapse execution start
+
+- Approved plan: sandbox/plans/reader-header-collapse-20261007-1517-plan.md. Status set to APPROVED.
+- Phase 1: full screen setting, round-trip, Display switch, three strings, and hide or show the status and navigation bars. Cutout padding stays.
+- Phase 2: collapse the reader header. Idle and Show images become toolbar icons. Remove the half-pane body cap. Keep the WebView size callback.
+- Do not install. Base builds tag 9e09d6b. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Reader header collapse phase 1
+
+- AccountSettings.fullScreen defaults false, is omitted from the default encode, and is written as fullScreen=true only when true. A missing key decodes false. fullScreenRoundTrip covers that. defaultsRoundTrip keys still end at altAddresses.
+- Display has a Full screen switch after the multi-pane choice. strings.xml appends collapse, expand, and full screen labels.
+- MainActivity keeps fullScreen from the same settings load as theme. Full screen hides the status and navigation bars and shows them on a swipe. Off shows them. Light and dark icons stay. Cutout insets are unchanged.
+- No install.

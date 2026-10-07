@@ -1263,6 +1263,9 @@ private fun AppearanceGroup(editor: SettingsEditor) {
             ) {
                 editor.persist(editor.settings.copy(multiPane = it))
             }
+            BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
+                editor.persist(editor.settings.copy(fullScreen = it))
+            }
         }
     }
 }
