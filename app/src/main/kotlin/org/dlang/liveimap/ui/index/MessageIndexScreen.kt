@@ -2296,6 +2296,7 @@ fun MessageIndexScreen(
                                     if (!allMailbox && row.uid !in selected) selected = selected + row.uid
                                 },
                                 onSwipe = { binding ->
+                                    var askedPermanent = false
                                     if (binding.action == SwipeAction.Delete && account.askBeforeExpunge) {
                                         val trash = readKnownTrash()
                                         val policy = effectiveDeletePolicy(
@@ -2310,10 +2311,10 @@ fun MessageIndexScreen(
                                                 allMailbox = false,
                                                 fromSwipe = true,
                                             )
-                                            return@onSwipe
+                                            askedPermanent = true
                                         }
                                     }
-                                    finishSwipe(row.uid, binding)
+                                    if (!askedPermanent) finishSwipe(row.uid, binding)
                                 },
                             )
                         }
