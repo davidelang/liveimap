@@ -88,6 +88,100 @@ suspend fun checkScript(transport: SieveLineTransport, script: String): String {
     return writeScriptCommand(transport, "CHECKSCRIPT", script)
 }
 
+const val liveimapScriptName = "liveimap"
+const val liveimapIncludeLine = "include :personal \"liveimap\";"
+
+enum class LiveimapActivateAction {
+    None,
+    Include,
+    SetActive,
+}
+
+data class LiveimapActivatePlan(
+    val action: LiveimapActivateAction,
+    val activeName: String,
+    val rewritten: String,
+)
+
+/** Appends the liveimap include once. Does not open a socket. */
+fun withLiveimapInclude(script: String): String {
+    if (script.lineSequence().any { it.trim() == liveimapIncludeLine }) return script
+    val lead = if (script.isNotEmpty() && !script.endsWith("\n")) "\n" else ""
+    return script + lead + liveimapIncludeLine + "\n"
+}
+
+/** Chooses include or SETACTIVE. Does not write and does not open a socket. */
+fun planLiveimapActivation(
+    extensions: List<String>,
+    scripts: List<ListedScript>,
+    activeText: String,
+): LiveimapActivatePlan {
+    val activeName = scripts.firstOrNull { it.active }?.name ?: ""
+    if (activeName.isEmpty()) {
+        return LiveimapActivatePlan(LiveimapActivateAction.SetActive, "", "")
+    }
+    if (activeName == liveimapScriptName) {
+        return LiveimapActivatePlan(LiveimapActivateAction.None, activeName, "")
+    }
+    if (!extensions.any { it.equals("include", ignoreCase = true) }) {
+        return LiveimapActivatePlan(LiveimapActivateAction.SetActive, activeName, "")
+    }
+    if (activeText.isEmpty() || scriptHasLiveimapInclude(activeText)) {
+        return LiveimapActivatePlan(LiveimapActivateAction.None, activeName, "")
+    }
+    return LiveimapActivatePlan(
+        LiveimapActivateAction.Include,
+        activeName,
+        withLiveimapInclude(activeText),
+    )
+}
+
+/** Checks, then uploads the script named liveimap. Does not SETACTIVE. */
+suspend fun uploadLiveimap(transport: SieveLineTransport, script: String): String {
+    checkScript(transport, script)
+    return putScript(transport, liveimapScriptName, script)
+}
+
+/** Writes SETACTIVE. An empty name writes nothing. Does not open a socket. */
+suspend fun setActive(transport: SieveLineTransport, name: String): String {
+    if (name.isEmpty()) throw SieveFailure("name")
+    transport.writeLine("SETACTIVE ${quoteScriptName(name)}")
+    return commandResult(transport, transport.readLine())
+}
+
+/** Puts the other active script only with consent. Does not open a socket. */
+suspend fun putConsentedInclude(
+    transport: SieveLineTransport,
+    plan: LiveimapActivatePlan,
+    consent: Boolean,
+): String {
+    if (!consent ||
+        plan.action != LiveimapActivateAction.Include ||
+        plan.activeName.isEmpty() ||
+        plan.activeName == liveimapScriptName
+    ) {
+        throw SieveFailure("consent")
+    }
+    checkScript(transport, plan.rewritten)
+    return putScript(transport, plan.activeName, plan.rewritten)
+}
+
+/** Sets liveimap active only with consent. Does not open a socket. */
+suspend fun activateConsented(
+    transport: SieveLineTransport,
+    plan: LiveimapActivatePlan,
+    consent: Boolean,
+): String {
+    if (!consent || plan.action != LiveimapActivateAction.SetActive) {
+        throw SieveFailure("consent")
+    }
+    return setActive(transport, liveimapScriptName)
+}
+
+private fun scriptHasLiveimapInclude(script: String): Boolean {
+    return script.lineSequence().any { it.trim() == liveimapIncludeLine }
+}
+
 private class CapabilityBuilder {
     var implementation: String = ""
     var version: String = ""

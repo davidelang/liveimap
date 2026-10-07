@@ -2049,3 +2049,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - On an HTML body the picture button stays. It says Show images while images are blocked. While images are allowed it says Hide images and draws a red circle and a red diagonal line over the same picture. The tap toggles allowImages. Plain text has no button. The page and allowImages token still decides the load.
 - reader_hide_images is appended with the other new reader strings. No install.
+
+## 2026-10-07 - inbound rules activate execution start
+
+- Approved plan: sandbox/plans/inbound-rules-activate-20261007-1532-plan.md. Status set to APPROVED.
+- Phase 1: prepare the liveimap include line and SETACTIVE. Both stay behind consent. Upload only the script named liveimap.
+- Do not open a socket. Do not install. Base builds tag c960912. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules activate phase 1
+
+- withLiveimapInclude appends include :personal "liveimap"; once. planLiveimapActivation chooses None, Include, or SetActive. Upload checks, then PUTSCRIPT names liveimap only.
+- SETACTIVE and the include rewrite write nothing without consent. An empty SETACTIVE name writes nothing. No socket and no install.
