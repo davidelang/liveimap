@@ -525,6 +525,7 @@ fun emptyIndexText(
 }
 
 internal class IndexScreenHeld : ViewModel() {
+    var searchField by mutableStateOf(SimpleSearchField.Subject)
     var model: IndexModel? = null
     var boundMailbox: String? = null
     val rowsState = mutableStateOf<List<IndexRow>>(emptyList())
@@ -574,6 +575,15 @@ internal class IndexScreenHeld : ViewModel() {
         headingParent = ""
         expandedThreadsState.value = emptySet()
     }
+}
+
+@Composable
+private fun simpleSearchLabel(field: SimpleSearchField): String = when (field) {
+    SimpleSearchField.Subject -> stringResource(R.string.index_filter_subject)
+    SimpleSearchField.From -> stringResource(R.string.index_filter_from)
+    SimpleSearchField.To -> stringResource(R.string.index_filter_to)
+    SimpleSearchField.Cc -> stringResource(R.string.index_filter_cc)
+    SimpleSearchField.Participant -> stringResource(R.string.index_search_participating)
 }
 
 private fun Context.hostActivity(): Activity? {
@@ -656,6 +666,7 @@ fun MessageIndexScreen(
         )
     }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
+    var searchFieldOpen by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var filterOpen by remember { mutableStateOf(false) }
     var filterActive by remember { mutableStateOf(reuseWindow && model.filterActive) }
@@ -713,7 +724,10 @@ fun MessageIndexScreen(
             openAt -> openAt = false
             menuOpen -> menuOpen = false
             flagUid != null -> flagUid = null
-            searchVisible -> searchVisible = false
+            searchVisible -> {
+                searchFieldOpen = false
+                searchVisible = false
+            }
             multiSelect -> {
                 multiSelect = false
                 selected = emptyList()
@@ -1018,6 +1032,7 @@ fun MessageIndexScreen(
             if (model.notice == null) {
                 narrowArmed = false
                 query = ""
+                searchFieldOpen = false
                 searchVisible = false
             }
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1034,6 +1049,7 @@ fun MessageIndexScreen(
             if (model.notice == null) {
                 narrowArmed = false
                 query = ""
+                searchFieldOpen = false
                 searchVisible = false
             }
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1865,7 +1881,10 @@ fun MessageIndexScreen(
                         )
                     }
                     if (connected) {
-                IconButton(onClick = { searchVisible = true }) {
+                IconButton(onClick = {
+                    searchFieldOpen = false
+                    searchVisible = true
+                }) {
                     Icon(
                         imageVector = Icons.Filled.Search,
                         contentDescription = stringResource(R.string.index_search),
@@ -2210,46 +2229,73 @@ fun MessageIndexScreen(
                 }
             }
             if (searchVisible) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { next ->
-                        val cleared = next.isEmpty() && query.isNotEmpty()
-                        query = next
-                        if (cleared) {
-                            searchVisible = false
-                            narrowArmed = false
-                            prompt = null
-                            scope.launch {
-                                gate.withLock {
-                                    noteVisibleTop()
-                                    model.applySearch("")
-                                    pull()
-                                }
-                                if (model.rows.isNotEmpty()) scrollToStart()
-                            }
-                        }
-                    },
-                    label = { Text(stringResource(R.string.index_search)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            narrowArmed = false
-                            prompt = null
-                            scope.launch {
-                                gate.withLock {
-                                    noteVisibleTop()
-                                    model.applySearch(query)
-                                    pull()
-                                }
-                                if (model.rows.isNotEmpty()) scrollToStart()
-                            }
-                        },
-                    ),
-                    modifier = Modifier
+                Row(
+                    Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box {
+                        Text(
+                            text = simpleSearchLabel(held.searchField),
+                            modifier = Modifier.clickable { searchFieldOpen = true },
+                        )
+                        DropdownMenu(
+                            expanded = searchFieldOpen,
+                            onDismissRequest = { searchFieldOpen = false },
+                        ) {
+                            for (field in SimpleSearchField.entries) {
+                                DropdownMenuItem(
+                                    text = { Text(simpleSearchLabel(field)) },
+                                    onClick = {
+                                        searchFieldOpen = false
+                                        held.searchField = field
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { next ->
+                            val cleared = next.isEmpty() && query.isNotEmpty()
+                            query = next
+                            if (cleared) {
+                                searchFieldOpen = false
+                                searchVisible = false
+                                narrowArmed = false
+                                prompt = null
+                                scope.launch {
+                                    gate.withLock {
+                                        noteVisibleTop()
+                                        model.applySearch("")
+                                        pull()
+                                    }
+                                    if (model.rows.isNotEmpty()) scrollToStart()
+                                }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.index_search)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                narrowArmed = false
+                                prompt = null
+                                scope.launch {
+                                    gate.withLock {
+                                        noteVisibleTop()
+                                        model.applySearch(query, held.searchField)
+                                        pull()
+                                    }
+                                    if (model.rows.isNotEmpty()) scrollToStart()
+                                }
+                            },
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             val flagsFor = flagUid
             if (flagsFor != null) {

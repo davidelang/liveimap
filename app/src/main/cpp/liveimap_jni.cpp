@@ -3297,10 +3297,11 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
     return nullptr;
 }
 
-jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean useEsearch) {
+jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key,
+    jboolean useEsearch, jboolean withCharset) {
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendEsearch(session->imap, true, "ALL", true, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", withCharset == JNI_TRUE, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -3322,7 +3323,8 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
         return arr;
     }
     clist * result = nullptr;
-    int r = mailimap_uid_search(session->imap, "UTF-8", key, &result);
+    const char * charset = withCharset == JNI_TRUE ? "UTF-8" : nullptr;
+    int r = mailimap_uid_search(session->imap, charset, key, &result);
     mailimap_search_key_free(key);
     if (!cmdOk(r)) {
         if (result != nullptr) mailimap_search_result_free(result);
@@ -4710,7 +4712,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv * env, jobject, jlong handle,
-    jstring kind, jstring argument, jboolean useEsearch) {
+    jstring kind, jstring argument, jboolean useEsearch, jboolean withCharset) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -4723,7 +4725,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv 
         unlockSession(session);
         return nullptr;
     }
-    return completeSearch(env, session, key, useEsearch);
+    return completeSearch(env, session, key, useEsearch, withCharset);
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

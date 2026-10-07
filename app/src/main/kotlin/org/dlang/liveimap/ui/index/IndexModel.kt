@@ -34,6 +34,14 @@ const val SwipeWidthPercent = 40
 const val ThreadConfirmExists = 5000
 const val ClientFallbackWarn = 5000
 
+enum class SimpleSearchField {
+    Subject,
+    From,
+    To,
+    Cc,
+    Participant,
+}
+
 data class AppliedFilter(
     val label: String,
     val argument: String,
@@ -344,6 +352,7 @@ class IndexModel(
     private var pageAnchor: Int = 0
     private var includePreview: Boolean = false
     private var activeSearch: String? = null
+    private var activeSearchField: SimpleSearchField = SimpleSearchField.Subject
     private var filterUids: Set<Long>? = null
     private val filterStack = ArrayDeque<Set<Long>>()
     private val appliedFilters = ArrayList<AppliedFilter>()
@@ -521,7 +530,10 @@ class IndexModel(
         return replaceWindow { fetchView(next) }
     }
 
-    suspend fun applySearch(query: String): List<IndexRow> {
+    suspend fun applySearch(
+        query: String,
+        field: SimpleSearchField = SimpleSearchField.Subject,
+    ): List<IndexRow> {
         val hadFilter = filterUids != null
         filterUids = null
         filterStack.clear()
@@ -529,12 +541,14 @@ class IndexModel(
         if (query.isEmpty()) {
             if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
+            activeSearchField = field
             armKeep()
             return replaceWindow { fetchCurrent() }
         }
         account = store.load()
         includePreview = account.density != Density.Compact
         activeSearch = query
+        activeSearchField = field
         armKeep()
         return replaceWindow { fetchSearch(query) }
     }
@@ -550,6 +564,7 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         account = loaded
         includePreview = loaded.density != Density.Compact
@@ -573,6 +588,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
         }
@@ -583,6 +599,7 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         if (savedUids == null && savedStack.isEmpty() && savedSearch == null && savedFilters.isEmpty()) return heldRows
         filterUids = null
@@ -596,6 +613,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
         }
@@ -607,6 +625,7 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         filterUids = filterStack.removeLast()
         if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
@@ -618,6 +637,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
         }
@@ -630,6 +650,7 @@ class IndexModel(
         val savedUids = filterUids
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
+        val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         repeat(appliedFilters.size - index) {
             if (filterStack.isNotEmpty()) filterUids = filterStack.removeLast()
@@ -643,6 +664,7 @@ class IndexModel(
             filterStack.clear()
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
+            activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
         }
@@ -1442,7 +1464,7 @@ class IndexModel(
 
     private suspend fun fetchSearch(query: String, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
-        val found = session.searchText(query)
+        val found = session.searchCriterion(activeSearchField.name, query)
         val uids = if (view.newestFirst) found.sortedDescending() else found.sorted()
         order = uids
         arrivalTotal = 0

@@ -1552,3 +1552,17 @@
 ## 2026-10-06 - Index layout and sort phase 2
 
 Session sort stays in memory. The index menu is Newest, Oldest, then the criteria, with a quiet sort line under the mailbox title. The reader more menu no longer changes the sort. A thread count sits on the root row. A null-uid parent is siblings at that level. Thread index is Expanded or Collapsed and is omitted from encode when Expanded.
+
+## 2026-10-06 - Simple search bar execution start
+
+- Approved plan: sandbox/plans/search-simple-bar-20261006-1924-plan.md. Mailbox SEQ 41 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: the search bar field name, SimpleSearchField, searchCriterion from the simple search, charset only when a code point is above 127, the Participating string, and the help paragraph. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag dfd461f. Commits stay on master.
+
+## 2026-10-06 - Simple search bar phase 1
+
+- The open bar is the field name and the text field. The names are Subject, From, To, Cc, and Participating. Choosing a name does not search. IME Search passes the held field. There is no Advanced button and no scope control. The filter menu stays.
+- searchField is on IndexScreenHeld. It is not rememberSaveable. bind and dropLoaded leave it. A new process starts at Subject. It is not written to settings.
+- applySearch stores the query and the field. fetchSearch calls searchCriterion with that field name. Filter save and restore keeps the field. jumpToNewest repeats it. The simple search does not call searchText.
+- searchNeedsCharset is false for ASCII and true when a code point is above 127. completeSearch sends CHARSET UTF-8 only when that flag is true. nativeSearchText still builds TEXT and still sends CHARSET UTF-8.
+- The visible word is Participating. The help paragraph is last. No install.

@@ -32,6 +32,9 @@ import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
+internal fun searchNeedsCharset(text: String): Boolean =
+    text.any { it.code > 127 }
+
 // ServerProbe and ServerProbeTest still read this list. The gate does not.
 internal val requiredCapabilities = listOf(
     "NAMESPACE",
@@ -477,9 +480,15 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
+        val withCharset = searchNeedsCharset(argument)
         remember("CRITERION $kind $argument") {
-            val ids = nativeSearchCriterion(h, kind, argument, featureCaps.searchKind() == "Esearch")
-                ?: throw MailFailure("search failed")
+            val ids = nativeSearchCriterion(
+                h,
+                kind,
+                argument,
+                featureCaps.searchKind() == "Esearch",
+                withCharset,
+            ) ?: throw MailFailure("search failed")
             ids.toList()
         }
     }
@@ -884,6 +893,7 @@ class LibetpanMailSession : MailSession {
         kind: String,
         argument: String,
         useEsearch: Boolean,
+        withCharset: Boolean,
     ): LongArray?
 
     private external fun nativeSearchStart(

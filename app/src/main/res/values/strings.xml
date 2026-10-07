@@ -509,4 +509,5 @@
     <string name="settings_thread_index">Thread index</string>
     <string name="settings_thread_expanded">Expanded</string>
     <string name="settings_thread_collapsed">Collapsed</string>
+    <string name="index_search_participating">Participating</string>
 </resources>

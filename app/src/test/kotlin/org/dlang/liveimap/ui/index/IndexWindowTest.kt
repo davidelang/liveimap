@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.engine.searchNeedsCharset
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.FolderEntry
@@ -460,7 +461,18 @@ class IndexWindowTest {
         assertEquals(listOf(9L, 8L), searched.map { it.uid })
         runImmediate { model.applySearch("") }
         assertEquals(listOf("needle"), session.searchCalls)
+        assertEquals(listOf("Subject"), session.searchKinds)
+        assertTrue(session.textSearches.isEmpty())
         assertEquals(listOf(3L, 2L, 1L), model.rows.map { it.uid })
+        runImmediate { model.applySearch("ada", SimpleSearchField.From) }
+        assertEquals(listOf("Subject", "From"), session.searchKinds)
+        assertEquals(listOf("needle", "ada"), session.searchCalls)
+        runImmediate { model.jumpToNewest() }
+        assertEquals(listOf("Subject", "From", "From"), session.searchKinds)
+        assertEquals(listOf("needle", "ada", "ada"), session.searchCalls)
+        assertTrue(session.textSearches.isEmpty())
+        assertFalse(searchNeedsCharset("needle"))
+        assertTrue(searchNeedsCharset("é"))
     }
 
     @Test
@@ -1307,6 +1319,8 @@ private class FakeMailSession(
     val sortCalls = mutableListOf<Pair<SortKey, Boolean>>()
     val threadCalls = mutableListOf<SortKey>()
     val searchCalls = mutableListOf<String>()
+    val searchKinds = mutableListOf<String>()
+    val textSearches = mutableListOf<String>()
     val startSearches = mutableListOf<StartSearch>()
     val locateCalls = mutableListOf<Long>()
     val unseenSeq = HashSet<Int>()
@@ -1461,12 +1475,14 @@ private class FakeMailSession(
 
     override suspend fun searchText(query: String): List<Long> {
         searchCalls += query
+        textSearches += query
         throwIfArmed()
         return searchUids
     }
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
         searchCalls += argument
+        searchKinds += kind
         throwIfArmed()
         return searchUids
     }

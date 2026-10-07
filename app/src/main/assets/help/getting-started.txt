@@ -11,3 +11,5 @@ Settings, Slower fallbacks, is off. Turn a switch on only when the server does n
 Settings, Reading, Deleting: Confirm before expunge is on, and Auto-expunge is off. The Delete button follows that setting. Auto-expunge on sends CLOSE when you leave a folder.
 
 The index sort lasts until you leave the app. Settings, Folders, holds the folder's usual sort. Threads start expanded unless Thread index is set to start collapsed.
+
+The search icon searches the current folder. Subject is the usual field. Full text is not the simple search.
