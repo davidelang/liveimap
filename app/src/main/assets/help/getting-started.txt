@@ -49,3 +49,5 @@ When a saved mailbox is set, Save asks before copying there. Choose opens the fo
 The save name rule chooses the folder Save offers: the saved mailbox, the last folder used, or the From, Sender, or recipient name.
 
 Take address in the reader More menu adds a header address to the address book after you confirm.
+
+Mark all read in the index Sort menu marks every message in this folder read after you confirm.

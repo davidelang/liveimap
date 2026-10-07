@@ -1821,3 +1821,9 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Approved plan: sandbox/plans/alpine-take-address-20261007-0042-plan.md. Mailbox SEQ 60 REVISION 1 IMPLEMENT is the approval. Status set to APPROVED.
 - Phase 1: takeAddresses, bookHasAddress, the reader Take address menu and confirm, the strings, the help sentence, and the tests. No install. Do not mark messages read.
 - First action per standard-plan-compliance-block.md. Base builds tag 4007657. Commits stay on master.
+
+## 2026-10-07 - alpine mark all read execution start
+
+- Approved plan: sandbox/plans/alpine-mark-all-read-20261007-0053-plan.md
+- Work: Mark all read in the connected index Sort menu, after confirm, stores \Seen on the whole folder
+- Phase 1 only. Do not expunge. Do not install. Take address at 7a92dca stays underneath.

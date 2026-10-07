@@ -406,6 +406,35 @@ class IndexWindowTest {
     }
 
     @Test
+    fun markAllReadStoresSeenOnWholeMailbox() {
+        val session = folder(4)
+        session.rows[2L] = row(2L, flags = setOf("\\Flagged"))
+        session.searchUids = listOf(2L, 4L)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applySearch("needle") }
+        assertEquals(listOf(4L, 2L), model.rows.map { it.uid })
+        val rows = runImmediate {
+            model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
+        }
+        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Seen"), emptySet())), session.stores)
+        assertTrue(rows.all { "\\Seen" in it.flags })
+        assertEquals(setOf("\\Seen", "\\Flagged"), rows.first { it.uid == 2L }.flags)
+        assertEquals(0, session.expungeCount)
+        assertTrue(session.uidExpunges.isEmpty())
+        assertNull(model.notice)
+        session.failure = MailFailure("store failed")
+        val kept = runImmediate {
+            model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
+        }
+        assertEquals("store failed", model.notice)
+        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Seen"), emptySet())), session.stores)
+        assertEquals(rows, kept)
+        assertEquals(0, session.expungeCount)
+        assertTrue(session.uidExpunges.isEmpty())
+    }
+
+    @Test
     fun expungeWithoutUidPlusDoesNotSend() {
         val session = FakeMailSession()
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")

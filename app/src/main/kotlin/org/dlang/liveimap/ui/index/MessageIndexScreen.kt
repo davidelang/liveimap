@@ -772,6 +772,7 @@ fun MessageIndexScreen(
     var folderExists by remember(mailbox) { mutableIntStateOf(0) }
     var selectionMore by remember { mutableStateOf(false) }
     var confirmExpunge by remember { mutableStateOf(false) }
+    var confirmMarkAllRead by remember { mutableStateOf(false) }
     var pendingExpungeUids by remember { mutableStateOf<List<Long>?>(null) }
     var pendingPermanent by remember { mutableStateOf<PendingDelete?>(null) }
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
@@ -789,10 +790,11 @@ fun MessageIndexScreen(
     val watchMailboxNow = rememberUpdatedState(watchMailbox)
     val allowNewer = remember { mutableStateOf(true) }
 
-    val overlayBack = prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
+    val overlayBack = confirmMarkAllRead || prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
         nextFolderTarget != null || flagUid != null || searchVisible || multiSelect
     BackHandler(enabled = overlayBack) {
         when {
+            confirmMarkAllRead -> confirmMarkAllRead = false
             prompt != null -> prompt = null
             filterOpen -> filterOpen = false
             openAt -> openAt = false
@@ -2334,6 +2336,13 @@ fun MessageIndexScreen(
                                 }
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.index_mark_all_read)) },
+                            onClick = {
+                                menuOpen = false
+                                confirmMarkAllRead = true
+                            },
+                        )
                         for (entry in indexMenuTail(barLayout)) {
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()
@@ -2921,6 +2930,28 @@ fun MessageIndexScreen(
             },
             dismissButton = {
                 TextButton(onClick = { nextFolderTarget = null }) {
+                    Text(stringResource(R.string.index_cancel))
+                }
+            },
+        )
+    }
+    if (confirmMarkAllRead) {
+        AlertDialog(
+            onDismissRequest = { confirmMarkAllRead = false },
+            text = { Text(stringResource(R.string.index_mark_all_read_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMarkAllRead = false
+                    scope.launch {
+                        gate.withLock {
+                            model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
+                            pull()
+                        }
+                    }
+                }) { Text(stringResource(R.string.index_mark_all_read_go)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMarkAllRead = false }) {
                     Text(stringResource(R.string.index_cancel))
                 }
             },

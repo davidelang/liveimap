@@ -568,4 +568,7 @@
     <string name="reader_no_addresses">No addresses</string>
     <string name="reader_address_added">Added to the address book</string>
     <string name="reader_address_exists">Already in the address book</string>
+    <string name="index_mark_all_read">Mark all read</string>
+    <string name="index_mark_all_read_body">Mark every message in this folder read?</string>
+    <string name="index_mark_all_read_go">Mark</string>
 </resources>
