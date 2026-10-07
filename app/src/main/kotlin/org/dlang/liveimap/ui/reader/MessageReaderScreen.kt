@@ -145,7 +145,9 @@ import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.nextWireCount
 import org.dlang.liveimap.ui.compose.textPart
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
+import org.dlang.liveimap.ui.toolbar.ToolbarIconRows
 import org.dlang.liveimap.ui.toolbar.effectiveReaderToolbar
+import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 import org.dlang.liveimap.ui.toolbar.visibleReaderActions
 
 private class Utf8Carry {
@@ -358,6 +360,7 @@ fun MessageReaderScreen(
     var selectedMailbox by held.selectedMailboxState
     var choosingMove by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
+    var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
@@ -1280,30 +1283,40 @@ fun MessageReaderScreen(
                     }
                 },
                 actions = {
+                    val readerIcons = ArrayList<@Composable () -> Unit>(barActions.size)
                     for (action in barActions) {
                         if (action == ReaderToolbarAction.Refresh) {
-                            IconButton(onClick = { if (!loading) loadToken += 1 }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = stringResource(R.string.reader_refresh),
-                                )
+                            readerIcons.add {
+                                IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = stringResource(R.string.reader_refresh),
+                                    )
+                                }
                             }
                         } else {
                             val reader = action.readerAction()
                             if (reader != null) {
-                                IconButton(onClick = { runReaderAction(reader) }) {
-                                    Icon(
-                                        imageVector = readerActionImage(reader),
-                                        contentDescription = if (reader == ReaderAction.Delete) {
-                                            deletePolicyLabel(effectivePolicy)
-                                        } else {
-                                            readerActionName(reader)
-                                        },
-                                    )
+                                readerIcons.add {
+                                    IconButton(onClick = { runReaderAction(reader) }) {
+                                        Icon(
+                                            imageVector = readerActionImage(reader),
+                                            contentDescription = if (reader == ReaderAction.Delete) {
+                                                deletePolicyLabel(effectivePolicy)
+                                            } else {
+                                                readerActionName(reader)
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    ToolbarIconRows(
+                        maxRows = account.toolbarRows,
+                        onRows = { count -> iconRows = count },
+                        icons = readerIcons,
+                    )
                     Box {
                 IconButton(onClick = { moreMenu = true }) {
                     Icon(
@@ -1376,6 +1389,7 @@ fun MessageReaderScreen(
             }
                     }
                 },
+                expandedHeight = toolbarExpandedHeight(iconRows),
                 windowInsets = mailBarInsets(),
             )
         },

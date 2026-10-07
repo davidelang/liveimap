@@ -335,9 +335,14 @@ data class AccountSettings(
     val folderBar: FolderBarLayout = defaultFolderBar(),
     val readerToolbar: ReaderToolbarLayout? = null,
     val composeBar: ComposeBarLayout = defaultComposeBar(),
+    val toolbarRows: Int = 2,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
+
+    init {
+        if (toolbarRows !in 1..4) throw IllegalArgumentException("bad toolbarRows")
+    }
 }
 
 private val fieldNames = listOf(
@@ -407,6 +412,7 @@ private val fieldNames = listOf(
     "folderBar",
     "readerToolbar",
     "composeBar",
+    "toolbarRows",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -458,7 +464,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, and composeBar when it is the default.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -495,6 +501,7 @@ fun AccountSettings.encode(): String = buildString {
     if (composeBar != defaultComposeBar()) {
         appendLine("composeBar=${encodeComposeBar(composeBar)}")
     }
+    if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -556,7 +563,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "selectionBar" ||
             key == "folderBar" ||
             key == "readerToolbar" ||
-            key == "composeBar"
+            key == "composeBar" ||
+            key == "toolbarRows"
         ) {
             continue
         }
@@ -631,6 +639,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         folderBar = values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar(),
         readerToolbar = values["readerToolbar"]?.let { parseReaderToolbar(it) },
         composeBar = values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar(),
+        toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
     )
 }
 

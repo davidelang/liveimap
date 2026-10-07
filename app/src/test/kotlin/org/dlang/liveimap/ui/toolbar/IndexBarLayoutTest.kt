@@ -5,6 +5,7 @@ import org.dlang.liveimap.settings.ReaderAction
 import org.dlang.liveimap.settings.defaultReaderBar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class IndexBarLayoutTest {
@@ -349,5 +350,21 @@ class IndexBarLayoutTest {
         assertEquals(listOf(ComposeBarAction.Postpone), dragged.toolbar)
         assertEquals(emptyList<ComposeBarAction>(), dragged.overflow)
         assertEquals(emptyList<ComposeBarAction>(), dragged.hidden)
+    }
+
+    @Test
+    fun packToolbarRows() {
+        val six = packToolbar(6, 4, 2)
+        assertEquals(listOf(4, 2), six.rowSizes)
+        assertFalse(six.overflowsCap)
+        val eight = packToolbar(8, 3, 2)
+        assertEquals(listOf(3, 5), eight.rowSizes)
+        assertTrue(eight.overflowsCap)
+        val three = packToolbar(3, 3, 2)
+        assertEquals(listOf(3), three.rowSizes)
+        assertFalse(three.overflowsCap)
+        val none = packToolbar(0, 3, 2)
+        assertEquals(emptyList<Int>(), none.rowSizes)
+        assertFalse(none.overflowsCap)
     }
 }

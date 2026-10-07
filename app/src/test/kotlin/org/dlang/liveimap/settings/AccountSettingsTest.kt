@@ -605,6 +605,29 @@ class AccountSettingsTest {
         }
     }
 
+    @Test
+    fun toolbarRowsRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("toolbarRows"))
+        assertEquals(2, decodeAccountSettings(text).toolbarRows)
+        val stored = text.trimEnd() + "\ntoolbarRows=3\n"
+        assertEquals(3, decodeAccountSettings(stored).toolbarRows)
+        val saved = AccountSettings(toolbarRows = 3)
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("toolbarRows=3"))
+        assertEquals(3, decodeAccountSettings(encoded).toolbarRows)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        for (value in listOf("0", "5")) {
+            val bad = text.trimEnd() + "\ntoolbarRows=$value\n"
+            try {
+                decodeAccountSettings(bad)
+                fail(value)
+            } catch (error: IllegalArgumentException) {
+                assertEquals("bad toolbarRows", error.message)
+            }
+        }
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

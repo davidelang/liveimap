@@ -541,4 +541,6 @@
     <string name="toolbar_flag">Flag</string>
     <string name="toolbar_unflag">Unflag</string>
     <string name="toolbar_drag">Drag to reorder</string>
+    <string name="toolbar_rows">Toolbar rows</string>
+    <string name="toolbar_rows_warning">These actions need more than %1$d rows. The last row scrolls.</string>
 </resources>

@@ -1702,3 +1702,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Customize toolbar… can drag a row within and between Toolbar, Overflow, and Hidden. The drag saves the same layout the Move buttons already save. Reset still restores that screen's default
 - Move up, Move down, and Move to stay. Reader drag reads effectiveReaderToolbar and saves readerToolbar. A drag on one screen does not change another screen's layout
 - reorderable 3.1.0 is the only new dependency. NOTICES.txt says 115 artifacts and 113 under Apache-2.0, and lists that artifact once. No install
+
+## 2026-10-06 - toolbar wrap execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-wrap-20261006-2235-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 51 IMPLEMENT revision 1. builds before edit: f8de69f
+- Phase 1 of 1: wrap toolbar icons onto another row. Sort, More, and Send stay on the bar. No TalkBack custom actions. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar wrap phase 1
+
+- A full toolbar wraps onto another row. The last row scrolls when the chosen cap is too small. No action is dropped into the overflow
+- Toolbar rows defaults to 2 and is omitted from a default encode. A value outside 1..4 throws bad toolbarRows. The editor stepper saves toolbarRows only and warns with a 3-slot budget
+- Sort, More, and Send stay on the bar. The disconnected index Refresh stays one icon. Bounce still draws neither Send nor More. No TalkBack custom actions. No install

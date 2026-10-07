@@ -91,6 +91,13 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
         save()
     }
 
+    fun persistToolbarRows(next: Int) {
+        val current = settings ?: return
+        if (next !in 1..4 || next == current.toolbarRows) return
+        settings = current.copy(toolbarRows = next)
+        save()
+    }
+
     private fun save() {
         toolbarIo.launch {
             gate.withLock {
@@ -125,6 +132,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistIndex(dragIndexLayout(current, from, to))
             },
             onReset = { holder.persistIndex(resetIndexBar()) },
+            toolbarRows = loaded.toolbarRows,
+            onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
         ToolbarScreen.Selection -> SectionEditor(
             rowsIn = { section -> loaded.selectionBar.actionsIn(section) },
@@ -142,6 +151,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistSelection(dragSelectionLayout(current, from, to))
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
+            toolbarRows = loaded.toolbarRows,
+            onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
         ToolbarScreen.Folders -> SectionEditor(
             rowsIn = { section -> loaded.folderBar.actionsIn(section) },
@@ -159,6 +170,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistFolder(dragFolderLayout(current, from, to))
             },
             onReset = { holder.persistFolder(resetFolderBar()) },
+            toolbarRows = loaded.toolbarRows,
+            onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
         ToolbarScreen.Reader -> SectionEditor(
             rowsIn = { section -> effectiveReaderToolbar(loaded).actionsIn(section) },
@@ -176,6 +189,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistReader(dragReaderLayout(current, from, to))
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
+            toolbarRows = loaded.toolbarRows,
+            onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
         ToolbarScreen.Compose -> SectionEditor(
             rowsIn = { section -> loaded.composeBar.actionsIn(section) },
@@ -193,6 +208,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistCompose(dragComposeLayout(current, from, to))
             },
             onReset = { holder.persistCompose(resetComposeBar()) },
+            toolbarRows = loaded.toolbarRows,
+            onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
     }
 }
@@ -205,6 +222,8 @@ private fun <A : Enum<A>> SectionEditor(
     onMoveTo: (A, BarSection) -> Unit,
     onDrag: (Int, Int) -> Unit,
     onReset: () -> Unit,
+    toolbarRows: Int,
+    onToolbarRows: (Int) -> Unit,
 ) {
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -244,6 +263,31 @@ private fun <A : Enum<A>> SectionEditor(
         item(key = "reset") {
             TextButton(onClick = onReset) {
                 Text(stringResource(R.string.toolbar_reset))
+            }
+        }
+        item(key = "toolbar-rows") {
+            val toolbarCount = rowsIn(BarSection.Toolbar).size
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.toolbar_rows))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(toolbarRows.toString())
+                    TextButton(
+                        onClick = { onToolbarRows(toolbarRows - 1) },
+                        enabled = toolbarRows > 1,
+                    ) {
+                        Text("−")
+                    }
+                    TextButton(
+                        onClick = { onToolbarRows(toolbarRows + 1) },
+                        enabled = toolbarRows < 4,
+                    ) {
+                        Text("+")
+                    }
+                }
+                // Editor budget is 3 slots. Each bar measures its own width.
+                if (packToolbar(toolbarCount, 3, toolbarRows).overflowsCap) {
+                    Text(stringResource(R.string.toolbar_rows_warning, toolbarRows))
+                }
             }
         }
     }

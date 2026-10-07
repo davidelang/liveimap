@@ -176,8 +176,10 @@ import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.IndexMenuEntry
 import org.dlang.liveimap.ui.toolbar.SelectionBarAction
 import org.dlang.liveimap.ui.toolbar.SelectionMenuEntry
+import org.dlang.liveimap.ui.toolbar.ToolbarIconRows
 import org.dlang.liveimap.ui.toolbar.indexMenuTail
 import org.dlang.liveimap.ui.toolbar.selectionMenuTail
+import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.Month
@@ -722,6 +724,7 @@ fun MessageIndexScreen(
     var anchorPage by remember { mutableStateOf(if (reuseWindow) model.anchorPage else 0) }
     var connected by remember { mutableStateOf(reuseWindow) }
     var menuOpen by remember { mutableStateOf(false) }
+    var iconRows by remember { mutableIntStateOf(1) }
     var openAt by remember { mutableStateOf(false) }
     var heading by remember(mailbox) {
         mutableStateOf(
@@ -1872,9 +1875,10 @@ fun MessageIndexScreen(
                             }
                             Unit
                         }
+                        val selectionIcons = ArrayList<@Composable () -> Unit>(selectionLayout.toolbar.size)
                         for (action in selectionLayout.toolbar) {
                             when (action) {
-                                SelectionBarAction.Seen -> {
+                                SelectionBarAction.Seen -> selectionIcons.add {
                                     IconButton(onClick = { toggleSeen() }) {
                                         Icon(
                                             imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
@@ -1882,7 +1886,7 @@ fun MessageIndexScreen(
                                         )
                                     }
                                 }
-                                SelectionBarAction.Flag -> {
+                                SelectionBarAction.Flag -> selectionIcons.add {
                                     IconButton(onClick = { toggleFlag() }) {
                                         Icon(
                                             imageVector = Icons.Filled.Flag,
@@ -1890,7 +1894,7 @@ fun MessageIndexScreen(
                                         )
                                     }
                                 }
-                                SelectionBarAction.Move -> {
+                                SelectionBarAction.Move -> selectionIcons.add {
                                     IconButton(onClick = { moveSelected() }) {
                                         Icon(
                                             imageVector = Icons.Filled.DriveFileMove,
@@ -1898,7 +1902,7 @@ fun MessageIndexScreen(
                                         )
                                     }
                                 }
-                                SelectionBarAction.Delete -> {
+                                SelectionBarAction.Delete -> selectionIcons.add {
                                     IconButton(onClick = { deleteSelected() }) {
                                         Icon(
                                             imageVector = Icons.Filled.Delete,
@@ -1908,6 +1912,11 @@ fun MessageIndexScreen(
                                 }
                             }
                         }
+                        ToolbarIconRows(
+                            maxRows = account.toolbarRows,
+                            onRows = { count -> iconRows = count },
+                            icons = selectionIcons,
+                        )
                         Box {
                             IconButton(onClick = { selectionMore = true }) {
                                 Icon(
@@ -2022,18 +2031,22 @@ fun MessageIndexScreen(
                         }
                     } else {
                         val barLayout = account.indexBar
-                        if (!connected && IndexBarAction.Refresh in barLayout.toolbar) {
-                            IconButton(onClick = { refreshIndex() }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = stringResource(R.string.index_refresh),
-                                )
+                        if (!connected) {
+                            if (IndexBarAction.Refresh in barLayout.toolbar) {
+                                IconButton(onClick = { refreshIndex() }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = stringResource(R.string.index_refresh),
+                                    )
+                                }
                             }
+                            SideEffect { iconRows = 1 }
                         }
                         if (connected) {
+                        val indexIcons = ArrayList<@Composable () -> Unit>(barLayout.toolbar.size)
                         for (action in barLayout.toolbar) {
                             when (action) {
-                                IndexBarAction.Refresh -> {
+                                IndexBarAction.Refresh -> indexIcons.add {
                                     IconButton(onClick = { refreshIndex() }) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
@@ -2041,7 +2054,7 @@ fun MessageIndexScreen(
                                         )
                                     }
                                 }
-                                IndexBarAction.Search -> {
+                                IndexBarAction.Search -> indexIcons.add {
                                     IconButton(onClick = {
                                         searchFieldOpen = false
                                         searchVisible = true
@@ -2052,7 +2065,7 @@ fun MessageIndexScreen(
                                         )
                                     }
                                 }
-                                IndexBarAction.Filter -> {
+                                IndexBarAction.Filter -> indexIcons.add {
                                     Box {
                                         IconButton(onClick = { filterOpen = true }) {
                                             Icon(
@@ -2078,6 +2091,11 @@ fun MessageIndexScreen(
                                 }
                             }
                         }
+                        ToolbarIconRows(
+                            maxRows = account.toolbarRows,
+                            onRows = { count -> iconRows = count },
+                            icons = indexIcons,
+                        )
                 Box {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { menuOpen = true }) {
@@ -2312,6 +2330,7 @@ fun MessageIndexScreen(
                     }
                     }
                 },
+                expandedHeight = toolbarExpandedHeight(iconRows),
                 windowInsets = mailBarInsets(),
             )
         },

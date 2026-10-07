@@ -700,3 +700,26 @@ private fun ComposeBarLayout.withSection(
     BarSection.Overflow -> copy(overflow = actions)
     BarSection.Hidden -> copy(hidden = actions)
 }
+
+data class ToolbarPack(
+    val rowSizes: List<Int>,
+    val overflowsCap: Boolean,
+)
+
+fun packToolbar(itemCount: Int, slotsPerRow: Int, maxRows: Int): ToolbarPack {
+    val slots = if (slotsPerRow < 1) 1 else slotsPerRow
+    val rows = if (maxRows < 1) 1 else maxRows
+    if (itemCount <= 0) return ToolbarPack(emptyList(), false)
+    if (itemCount <= slots * rows) {
+        val full = itemCount / slots
+        val rem = itemCount % slots
+        val sizes = ArrayList<Int>(if (rem == 0) full else full + 1)
+        repeat(full) { sizes.add(slots) }
+        if (rem != 0) sizes.add(rem)
+        return ToolbarPack(sizes, false)
+    }
+    val sizes = ArrayList<Int>(rows)
+    repeat(rows - 1) { sizes.add(slots) }
+    sizes.add(itemCount - slots * (rows - 1))
+    return ToolbarPack(sizes, true)
+}

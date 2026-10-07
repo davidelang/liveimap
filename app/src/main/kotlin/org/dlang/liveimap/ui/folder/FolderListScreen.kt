@@ -115,8 +115,10 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
 import org.dlang.liveimap.ui.toolbar.FolderMenuEntry
+import org.dlang.liveimap.ui.toolbar.ToolbarIconRows
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.folderMenu
+import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 
 internal class FolderScreenHeld : ViewModel() {
     var model: FolderListModel? = null
@@ -206,6 +208,8 @@ fun FolderListScreen(
     var moreMenu by remember { mutableStateOf(false) }
     var refreshListed by remember { mutableStateOf(false) }
     var folderBar by remember { mutableStateOf(defaultFolderBar()) }
+    var toolbarRows by remember { mutableIntStateOf(2) }
+    var iconRows by remember { mutableIntStateOf(1) }
     val emptyPrefixLabel = stringResource(R.string.folders_empty_prefix)
     val retryLabel = stringResource(R.string.folders_retry)
 
@@ -218,7 +222,10 @@ fun FolderListScreen(
             } catch (_: Exception) {
                 null
             }
-            if (loaded != null) folderBar = loaded.folderBar
+            if (loaded != null) {
+                folderBar = loaded.folderBar
+                toolbarRows = loaded.toolbarRows
+            }
         }
         onStopOrDispose { job.cancel() }
     }
@@ -278,6 +285,7 @@ fun FolderListScreen(
             favorites = settings.favorites
             showUnreadCounts = settings.showUnreadCounts
             folderBar = settings.folderBar
+            toolbarRows = settings.toolbarRows
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -530,9 +538,10 @@ fun FolderListScreen(
                                 loadToken += 1
                             }
                         }
+                        val folderIcons = ArrayList<@Composable () -> Unit>(folderBar.toolbar.size)
                         for (action in folderBar.toolbar) {
                             when (action) {
-                                FolderBarAction.Refresh -> {
+                                FolderBarAction.Refresh -> folderIcons.add {
                                     IconButton(onClick = refreshFolderList) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
@@ -540,7 +549,7 @@ fun FolderListScreen(
                                         )
                                     }
                                 }
-                                FolderBarAction.CollapseAll -> {
+                                FolderBarAction.CollapseAll -> folderIcons.add {
                                     IconButton(onClick = { collapseAll() }) {
                                         Icon(
                                             imageVector = Icons.Filled.UnfoldLess,
@@ -548,7 +557,7 @@ fun FolderListScreen(
                                         )
                                     }
                                 }
-                                FolderBarAction.SaveDefault -> {
+                                FolderBarAction.SaveDefault -> folderIcons.add {
                                     IconButton(onClick = { saveDefaultView() }) {
                                         Icon(
                                             imageVector = Icons.Filled.Save,
@@ -556,7 +565,7 @@ fun FolderListScreen(
                                         )
                                     }
                                 }
-                                FolderBarAction.ResetDefault -> {
+                                FolderBarAction.ResetDefault -> folderIcons.add {
                                     IconButton(onClick = { resetToDefaultView() }) {
                                         Icon(
                                             imageVector = Icons.Filled.RestartAlt,
@@ -566,6 +575,11 @@ fun FolderListScreen(
                                 }
                             }
                         }
+                        ToolbarIconRows(
+                            maxRows = toolbarRows,
+                            onRows = { count -> iconRows = count },
+                            icons = folderIcons,
+                        )
                         Box {
                             IconButton(onClick = { moreMenu = true }) {
                                 Icon(
@@ -617,6 +631,7 @@ fun FolderListScreen(
                             }
                         }
                     },
+                    expandedHeight = toolbarExpandedHeight(iconRows),
                     windowInsets = mailBarInsets(),
                 )
                 Surface(color = MaterialTheme.colorScheme.surface) {

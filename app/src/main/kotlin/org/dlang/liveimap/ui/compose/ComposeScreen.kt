@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,7 +92,9 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.ComposeMenuEntry
+import org.dlang.liveimap.ui.toolbar.ToolbarIconRows
 import org.dlang.liveimap.ui.toolbar.composeMenu
+import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 
 private enum class AddressTarget {
     To,
@@ -245,6 +248,7 @@ fun ComposeScreen(
     var ccBuffer by rememberSaveable { mutableStateOf("") }
     var bccBuffer by rememberSaveable { mutableStateOf("") }
     var overflow by remember { mutableStateOf(false) }
+    var iconRows by remember { mutableIntStateOf(1) }
     var offerReplyTo by rememberSaveable { mutableStateOf(false) }
     var useReplyTo by rememberSaveable { mutableStateOf(false) }
     var replyToLine by rememberSaveable { mutableStateOf("") }
@@ -978,19 +982,29 @@ fun ComposeScreen(
                 actions = {
                     if (seed.kind != ComposeKind.Bounce) {
                         if (!deliveryDone) {
+                            val composeIcons = ArrayList<@Composable () -> Unit>(account.composeBar.toolbar.size)
                             for (action in account.composeBar.toolbar) {
                                 when (action) {
-                                    ComposeBarAction.Postpone -> IconButton(
-                                        onClick = { postponeDraft() },
-                                        enabled = account.postponedMailbox.isNotEmpty(),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Save,
-                                            contentDescription = stringResource(R.string.compose_postpone),
-                                        )
+                                    ComposeBarAction.Postpone -> composeIcons.add {
+                                        IconButton(
+                                            onClick = { postponeDraft() },
+                                            enabled = account.postponedMailbox.isNotEmpty(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Save,
+                                                contentDescription = stringResource(R.string.compose_postpone),
+                                            )
+                                        }
                                     }
                                 }
                             }
+                            ToolbarIconRows(
+                                maxRows = account.toolbarRows,
+                                onRows = { count -> iconRows = count },
+                                icons = composeIcons,
+                            )
+                        } else {
+                            SideEffect { iconRows = 1 }
                         }
                         IconButton(onClick = { sendMessage() }) {
                             Icon(
@@ -1041,8 +1055,11 @@ fun ComposeScreen(
                                 }
                             }
                         }
+                    } else {
+                        SideEffect { iconRows = 1 }
                     }
                 },
+                expandedHeight = toolbarExpandedHeight(iconRows),
                 windowInsets = mailBarInsets(),
             )
         },
