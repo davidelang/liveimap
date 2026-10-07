@@ -2115,3 +2115,5 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/todo-backlog-update-20261007-1629-plan.md
 - TODO: long-press icon help waits for the expanded manual. OpenSSL 3.x stays before a public release. IMAP TLS may ship on 1.1.1w.
+
+## 2026-10-07 - IDLE watch uses the account TLS mode. None stays plaintext.

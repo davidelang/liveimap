@@ -139,6 +139,7 @@ struct LiveSession {
     int imapPort = 143;
     std::string user;
     std::string password;
+    std::string tlsMode = "None";
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
@@ -4300,6 +4301,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->pipelineCommands = pipelineFlag == JNI_TRUE;
     session->logImapTraffic = logFlag == JNI_TRUE;
     session->trafficLogPath = path.c();
+    session->tlsMode = mode.c();
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;
@@ -6276,7 +6278,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     JChars mb(env, mailbox);
     TrafficIdScope idScope("watch");
     std::string error;
-    mailimap * watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+    mailimap * watch = nullptr;
+    if (session->tlsMode == "None") {
+        watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+    } else {
+        watch = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+    }
     if (watch == nullptr) {
         throwFailure(env, error);
         unlockSession(session);
