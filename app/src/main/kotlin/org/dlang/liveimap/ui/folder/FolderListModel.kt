@@ -123,6 +123,10 @@ class FolderListModel(
     }
 
     suspend fun refreshVisibleCounts(visible: List<FolderRow>): List<FolderRow> {
+        val settings = store.load()
+        if (!session.featureCaps.listStatus && !settings.forceSlowerFallbacks && !settings.statusVisibleCounts) {
+            return visible
+        }
         val now = nowMillis()
         val due = visible.filter { row ->
             if (row.namespaceRoot) return@filter false

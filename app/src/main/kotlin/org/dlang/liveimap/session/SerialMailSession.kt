@@ -18,6 +18,9 @@ class SerialMailSession(
     override val capabilities: Set<String>
         get() = inner.capabilities
 
+    override val featureCaps: Capabilities
+        get() = inner.featureCaps
+
     override val connectionState: StateFlow<ConnectionState>
         get() = inner.connectionState
 
@@ -114,6 +117,10 @@ class SerialMailSession(
 
     override suspend fun stopWatch() {
         onLane { inner.stopWatch() }
+    }
+
+    override suspend fun noop() {
+        onLane { inner.noop() }
     }
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {

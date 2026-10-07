@@ -155,6 +155,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.pollIntervalSeconds
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
@@ -1035,6 +1036,37 @@ fun MessageIndexScreen(
             loading = false
             if (!reuse && model.rows.isNotEmpty()) scrollToStart()
         }
+        fun deliverMailboxChange(change: MailboxChange) {
+            when (change) {
+                MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
+                MailboxChange.WatchLost -> watchRecovery.onWatchLost(scope, session)
+                else -> scope.launch {
+                    when (change) {
+                        is MailboxChange.Exists -> folderExists = change.exists
+                        is MailboxChange.Expunge -> folderExists = change.exists
+                        else -> Unit
+                    }
+                    val anchorOffset = listState.firstVisibleItemScrollOffset
+                    val anchorIndex = listState.firstVisibleItemIndex
+                    val anchorUid = model.rows.getOrNull(anchorIndex)?.uid
+                    gate.withLock {
+                        model.applyChange(change)
+                        pull()
+                    }
+                    if (change is MailboxChange.Exists && anchorUid != null && model.view.newestFirst) {
+                        val after = model.rows.indexOfFirst { it.uid == anchorUid }
+                        if (after > anchorIndex) {
+                            listState.requestScrollToItem(after, anchorOffset)
+                        }
+                    }
+                    if (change is MailboxChange.Exists &&
+                        (model.pendingNew > 0 || model.newMailUnnumbered)
+                    ) {
+                        userMovedSincePill.value = false
+                    }
+                }
+            }
+        }
         var watchJob: Job? = null
         try {
             snapshotFlow { watchMailboxNow.value }.collect { watching ->
@@ -1054,36 +1086,38 @@ fun MessageIndexScreen(
                 }
                 watchJob = launch {
                     try {
-                        model.watch { change ->
-                            when (change) {
-                                MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
-                                MailboxChange.WatchLost -> watchRecovery.onWatchLost(scope, session)
-                                else -> scope.launch {
-                                    when (change) {
-                                        is MailboxChange.Exists -> folderExists = change.exists
-                                        is MailboxChange.Expunge -> folderExists = change.exists
-                                        else -> Unit
-                                    }
-                                    val anchorOffset = listState.firstVisibleItemScrollOffset
-                                    val anchorIndex = listState.firstVisibleItemIndex
-                                    val anchorUid = model.rows.getOrNull(anchorIndex)?.uid
-                                    gate.withLock {
-                                        model.applyChange(change)
-                                        pull()
-                                    }
-                                    if (change is MailboxChange.Exists && anchorUid != null && model.view.newestFirst) {
-                                        val after = model.rows.indexOfFirst { it.uid == anchorUid }
-                                        if (after > anchorIndex) {
-                                            listState.requestScrollToItem(after, anchorOffset)
-                                        }
-                                    }
-                                    if (change is MailboxChange.Exists &&
-                                        (model.pendingNew > 0 || model.newMailUnnumbered)
-                                    ) {
-                                        userMovedSincePill.value = false
-                                    }
+                        val loaded = try {
+                            store.load()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val poll = loaded != null &&
+                            !session.featureCaps.idle &&
+                            (loaded.forceSlowerFallbacks || loaded.pollForNewMail)
+                        if (poll) {
+                            while (true) {
+                                val seconds = try {
+                                    pollIntervalSeconds(store.load())
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    pollIntervalSeconds(loaded)
+                                }
+                                delay(seconds * 1000L)
+                                try {
+                                    session.noop()
+                                    deliverMailboxChange(MailboxChange.Exists(session.selectedExists()))
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: MailFailure) {
+                                    postSnack(error.text)
                                 }
                             }
+                        }
+                        model.watch { change ->
+                            deliverMailboxChange(change)
                         }
                         awaitCancellation()
                     } catch (error: CancellationException) {

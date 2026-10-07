@@ -173,7 +173,10 @@ class FolderTreeTest {
         var now = 5_000L
         val session = FakeMailSession(namespaces = emptyList(), levels = emptyMap())
         session.statusCounts = mapOf("INBOX" to 12)
-        val model = FolderListModel(session, MemorySettingsStore(AccountSettings())) { now }
+        val model = FolderListModel(
+            session,
+            MemorySettingsStore(AccountSettings(statusVisibleCounts = true)),
+        ) { now }
         val visible = listOf(
             FolderRow("user.", "user.", true, 0, null, false, namespaceRoot = true, delimiter = '.'),
             FolderRow("INBOX", "INBOX", true, 0, null, false, unseen = 3, delimiter = '.'),
@@ -192,6 +195,11 @@ class FolderTreeTest {
         assertEquals(listOf(listOf("INBOX"), listOf("INBOX")), session.statusCalls)
         assertEquals(12, third.single { it.mailbox == "INBOX" }.messages)
         assertEquals(3, third.single { it.mailbox == "INBOX" }.unseen)
+        val plain = FolderListModel(session, MemorySettingsStore(AccountSettings())) { now }
+        val skipped = runImmediate { plain.refreshVisibleCounts(visible) }
+        assertEquals(listOf(listOf("INBOX"), listOf("INBOX")), session.statusCalls)
+        assertEquals(null, skipped.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(3, skipped.single { it.mailbox == "INBOX" }.unseen)
     }
 
     @Test

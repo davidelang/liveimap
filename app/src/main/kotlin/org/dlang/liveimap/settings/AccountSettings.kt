@@ -280,6 +280,13 @@ data class AccountSettings(
     val plainTextMonospace: Boolean = false,
     val altAddresses: List<String> = emptyList(),
     val completionSources: List<String> = listOf(pineSourceId),
+    val clientSort: Boolean = false,
+    val clientThread: Boolean = false,
+    val pollForNewMail: Boolean = false,
+    val pollSeconds: Int = 60,
+    val statusVisibleCounts: Boolean = false,
+    val forceSlowerFallbacks: Boolean = false,
+    val hiddenCapabilities: Set<String> = emptySet(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -335,6 +342,13 @@ private val fieldNames = listOf(
     "completionSources",
     "addressBookHistory",
     "addressBookNeverTrim",
+    "clientSort",
+    "clientThread",
+    "pollForNewMail",
+    "pollSeconds",
+    "statusVisibleCounts",
+    "forceSlowerFallbacks",
+    "hiddenCapabilities",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -386,12 +400,21 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // The three defaults completionSources, addressBookHistory, and addressBookNeverTrim are omitted.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, and the slower-fallback fields.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
     if (addressBookHistory != 3) appendLine("addressBookHistory=$addressBookHistory")
     if (addressBookNeverTrim) appendLine("addressBookNeverTrim=true")
+    if (clientSort) appendLine("clientSort=true")
+    if (clientThread) appendLine("clientThread=true")
+    if (pollForNewMail) appendLine("pollForNewMail=true")
+    if (pollSeconds != 60) appendLine("pollSeconds=$pollSeconds")
+    if (statusVisibleCounts) appendLine("statusVisibleCounts=true")
+    if (forceSlowerFallbacks) appendLine("forceSlowerFallbacks=true")
+    if (hiddenCapabilities.isNotEmpty()) {
+        appendLine("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -436,7 +459,14 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "altAddresses" ||
             key == "completionSources" ||
             key == "addressBookHistory" ||
-            key == "addressBookNeverTrim"
+            key == "addressBookNeverTrim" ||
+            key == "clientSort" ||
+            key == "clientThread" ||
+            key == "pollForNewMail" ||
+            key == "pollSeconds" ||
+            key == "statusVisibleCounts" ||
+            key == "forceSlowerFallbacks" ||
+            key == "hiddenCapabilities"
         ) {
             continue
         }
@@ -493,7 +523,43 @@ fun decodeAccountSettings(text: String): AccountSettings {
         completionSources = decodeCompletionSources(values["completionSources"]),
         addressBookHistory = values["addressBookHistory"]?.let { parseIntField(it) } ?: 3,
         addressBookNeverTrim = values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false,
+        clientSort = values["clientSort"]?.let { parseBoolean(it) } ?: false,
+        clientThread = values["clientThread"]?.let { parseBoolean(it) } ?: false,
+        pollForNewMail = values["pollForNewMail"]?.let { parseBoolean(it) } ?: false,
+        pollSeconds = values["pollSeconds"]?.let { clampPollSeconds(parseIntField(it)) } ?: 60,
+        statusVisibleCounts = values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false,
+        forceSlowerFallbacks = values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false,
+        hiddenCapabilities = values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet(),
     )
+}
+
+fun slowerClientSort(settings: AccountSettings): Boolean =
+    settings.forceSlowerFallbacks || settings.clientSort
+
+fun slowerClientThread(settings: AccountSettings): Boolean =
+    settings.forceSlowerFallbacks || settings.clientThread
+
+fun slowerPoll(settings: AccountSettings): Boolean =
+    settings.forceSlowerFallbacks || settings.pollForNewMail
+
+fun slowerStatusCounts(settings: AccountSettings): Boolean =
+    settings.forceSlowerFallbacks || settings.statusVisibleCounts
+
+fun pollIntervalSeconds(settings: AccountSettings): Int = clampPollSeconds(settings.pollSeconds)
+
+private fun clampPollSeconds(value: Int): Int = value.coerceIn(15, 600)
+
+private fun encodeHiddenCapabilities(hidden: Set<String>): String =
+    hidden.map { it.uppercase() }.distinct().sorted().joinToString(",") { percentEncode(it) }
+
+private fun decodeHiddenCapabilities(value: String): Set<String> {
+    if (value.isEmpty()) return emptySet()
+    val out = linkedSetOf<String>()
+    for (part in value.split(',')) {
+        val token = percentDecode(part)
+        if (token.isNotEmpty()) out.add(token.uppercase())
+    }
+    return out
 }
 
 private fun encodeAltAddresses(values: List<String>): String =

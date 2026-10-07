@@ -1504,3 +1504,9 @@
 - Capabilities.parse is the capability-line split. The session stores that object. Sort, thread, idle, and unselect read it. Without NAMESPACE, LIST "" "" supplies one personal delimiter and does not list %.
 - An unadvertised saved sort or thread opens at Arrival and does not ask the thread question. The menu still lists the key as not advertised. UIDPLUS, MOVE, and ESEARCH in the index, reader, and address book read featureCaps.
 - requiredCapabilities stays so ServerProbe can compile. The gate does not read it. No install.
+
+## 2026-10-06 - Slower fallbacks execution start
+
+- Approved plan: sandbox/plans/slower-fallbacks-20261006-1732-plan.md. Mailbox SEQ 38 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: settings, the hide set, polling, the STATUS gate, and the help paragraph. Phase 2: client sort, client thread, and the 5000 dialog. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag a8630ff. Commits stay on master.

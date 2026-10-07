@@ -46,7 +46,7 @@ class LibetpanMailSession : MailSession {
     private var handle: Long = 0
 
     @Volatile
-    private var storedCaps: Capabilities = Capabilities.parse("")
+    private var capabilityLine: String = ""
     private var account: AccountSettings? = null
     private var loggedInPassword: String? = null
     private var compressed = false
@@ -81,10 +81,10 @@ class LibetpanMailSession : MailSession {
     )
 
     override val capabilities: Set<String>
-        get() = storedCaps.names
+        get() = Capabilities.parse(capabilityLine).names
 
     override val featureCaps: Capabilities
-        get() = storedCaps
+        get() = Capabilities.parse(capabilityLine).without(account?.hiddenCapabilities ?: emptySet())
 
     override val connectionState: StateFlow<ConnectionState>
         get() = keeper.connectionState
@@ -123,10 +123,7 @@ class LibetpanMailSession : MailSession {
                         prepareTraffic(account),
                     )
                     finishTraffic(account)
-                    this.account = held.copy(
-                        pipelineCommands = account.pipelineCommands,
-                        logImapTraffic = account.logImapTraffic,
-                    )
+                    this.account = account
                     return OpenResult.Connected
                 }
             }
@@ -195,14 +192,14 @@ class LibetpanMailSession : MailSession {
         handle = opened
         this.account = account
         loggedInPassword = password
-        storedCaps = Capabilities.parse(line)
+        capabilityLine = line
         cache.clear()
         compressed = false
-        when (storedCaps.resyncKind()) {
+        when (featureCaps.resyncKind()) {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
-        if (storedCaps.compressDeflate && !account.logImapTraffic) {
+        if (featureCaps.compressDeflate && !account.logImapTraffic) {
             nativeCompress(opened)
             compressed = true
         }
@@ -521,6 +518,15 @@ class LibetpanMailSession : MailSession {
         watchCallback = null
     }
 
+    override suspend fun noop() {
+        keeper.read("noop") {
+            val exists = nativeNoop(requireHandle())
+            if (exists >= 0 && selectedMailbox != null) {
+                selected = selected.copy(exists = exists)
+            }
+        }
+    }
+
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
             nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
@@ -540,7 +546,7 @@ class LibetpanMailSession : MailSession {
 
     override fun close() {
         closeSockets()
-        storedCaps = Capabilities.parse("")
+        capabilityLine = ""
         account = null
         loggedInPassword = null
         namespaceList = null
@@ -688,7 +694,7 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeSessionDead(handle: Long): Boolean
 
-    private external fun nativeNoop(handle: Long)
+    private external fun nativeNoop(handle: Long): Int
 
     private external fun nativeCapabilityLine(handle: Long): String
     private external fun nativeEnable(handle: Long, capability: String)

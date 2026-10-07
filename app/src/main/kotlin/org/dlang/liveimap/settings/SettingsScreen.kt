@@ -114,6 +114,7 @@ enum class SettingsGroup(val route: String, private val titleRes: Int) {
     Reading("reading", R.string.settings_reading),
     Compose("compose", R.string.compose_new),
     Appearance("appearance", R.string.settings_appearance),
+    Slower("slower", R.string.settings_slower),
     Debug("debug", R.string.settings_debug),
     ;
 
@@ -227,6 +228,7 @@ fun SettingsGroupScreen(
         SettingsGroup.Reading -> ReadingGroup(editor)
         SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts)
         SettingsGroup.Appearance -> AppearanceGroup(editor)
+        SettingsGroup.Slower -> SlowerGroup(editor)
         SettingsGroup.Debug -> DebugGroup(editor)
     }
 }
@@ -1084,6 +1086,67 @@ private fun AppearanceGroup(editor: SettingsEditor) {
     }
 }
 
+private val hideCapabilityTokens = listOf(
+    "SORT",
+    "THREAD=REFERENCES",
+    "THREAD=ORDEREDSUBJECT",
+    "ESEARCH",
+    "LIST-STATUS",
+    "LIST-EXTENDED",
+    "UIDPLUS",
+    "IDLE",
+    "UNSELECT",
+    "NAMESPACE",
+    "CONDSTORE",
+    "QRESYNC",
+    "SPECIAL-USE",
+)
+
+@Composable
+private fun SlowerGroup(editor: SettingsEditor) {
+    val settings = editor.settings
+    SettingsPage {
+        BoolField(
+            stringResource(R.string.settings_client_sort),
+            settings.clientSort,
+            note = stringResource(R.string.settings_client_sort_note),
+        ) {
+            editor.persist(editor.settings.copy(clientSort = it))
+        }
+        BoolField(
+            stringResource(R.string.settings_client_thread),
+            settings.clientThread,
+            note = stringResource(R.string.settings_client_thread_note),
+        ) {
+            editor.persist(editor.settings.copy(clientThread = it))
+        }
+        BoolField(
+            stringResource(R.string.settings_poll_mail),
+            settings.pollForNewMail,
+            note = stringResource(R.string.settings_poll_note),
+        ) {
+            editor.persist(editor.settings.copy(pollForNewMail = it))
+        }
+        BoolField(
+            stringResource(R.string.settings_status_counts),
+            settings.statusVisibleCounts,
+            note = stringResource(R.string.settings_status_note),
+        ) {
+            editor.persist(editor.settings.copy(statusVisibleCounts = it))
+        }
+    }
+}
+
+@Composable
+private fun hiddenSummary(settings: AccountSettings): String {
+    val count = settings.hiddenCapabilities.size
+    return if (count == 0) {
+        stringResource(R.string.settings_hide_none)
+    } else {
+        stringResource(R.string.settings_hide_count, count)
+    }
+}
+
 @Composable
 private fun DebugGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen("logging")
@@ -1121,6 +1184,30 @@ private fun DebugGroup(editor: SettingsEditor) {
             }) { Text(stringResource(R.string.settings_debug_report)) }
             BoolField(stringResource(R.string.settings_show_user), settings.showUserInDebugReport) {
                 editor.persist(editor.settings.copy(showUserInDebugReport = it))
+            }
+        }
+        SettingsSection(
+            title = stringResource(R.string.settings_hide_capabilities),
+            summary = hiddenSummary(settings),
+            expanded = "caps" in sections.open,
+            onToggle = { sections.toggle("caps") },
+        ) {
+            BoolField(
+                stringResource(R.string.settings_force_slower),
+                settings.forceSlowerFallbacks,
+                note = stringResource(R.string.settings_force_slower_note),
+            ) {
+                editor.persist(editor.settings.copy(forceSlowerFallbacks = it))
+            }
+            for (token in hideCapabilityTokens) {
+                val hidden = settings.hiddenCapabilities.any { it.equals(token, ignoreCase = true) }
+                BoolField(token, hidden) { on ->
+                    val next = settings.hiddenCapabilities
+                        .filterNot { it.equals(token, ignoreCase = true) }
+                        .toMutableSet()
+                    if (on) next.add(token)
+                    editor.persist(editor.settings.copy(hiddenCapabilities = next))
+                }
             }
         }
     }
@@ -1227,6 +1314,18 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
     SettingsGroup.Appearance -> themeName(settings.theme)
+    SettingsGroup.Slower -> stringResource(
+        if (
+            settings.clientSort ||
+            settings.clientThread ||
+            settings.pollForNewMail ||
+            settings.statusVisibleCounts
+        ) {
+            R.string.settings_slower_on
+        } else {
+            R.string.settings_slower_off
+        },
+    )
     SettingsGroup.Debug -> stringResource(
         if (settings.logImapTraffic) R.string.settings_traffic_on else R.string.settings_traffic_off,
     )
@@ -1413,9 +1512,19 @@ private fun Context.findActivity(): Activity? {
 }
 
 @Composable
-private fun BoolField(label: String, value: Boolean, onValue: (Boolean) -> Unit) {
+private fun BoolField(
+    label: String,
+    value: Boolean,
+    note: String? = null,
+    onValue: (Boolean) -> Unit,
+) {
     ListItem(
         headlineContent = { Text(label) },
+        supportingContent = if (note == null) {
+            null
+        } else {
+            { Text(note) }
+        },
         modifier = Modifier
             .fillMaxWidth()
             .toggleable(value = value, role = Role.Switch, onValueChange = onValue),

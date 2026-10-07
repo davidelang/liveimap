@@ -55,6 +55,22 @@ class Capabilities private constructor(
 
     fun fetchKind(): String = if (binary) "BinaryPeek" else "BodyPeek"
 
+    fun without(hidden: Collection<String>): Capabilities {
+        if (hidden.isEmpty()) return this
+        val drop = hidden.map { it.uppercase() }.toSet()
+        var removed = false
+        val kept = ArrayList<String>(names.size)
+        for (token in names) {
+            if (token.uppercase() in drop) {
+                removed = true
+            } else {
+                kept.add(token)
+            }
+        }
+        if (!removed) return this
+        return parse(kept.joinToString(" "))
+    }
+
     companion object {
         fun parse(line: String): Capabilities {
             val tokens = line.split(Regex("\\s+")).filter { it.isNotEmpty() }

@@ -465,4 +465,20 @@
     <string name="pinerc_per_folder">Per-folder startup rules are not imported</string>
     <string name="pinerc_inbox_default">INBOX opens at: First unread (alpine\'s default)</string>
     <string name="pinerc_change">%1$s: %2$s → %3$s</string>
+    <string name="settings_slower">Slower</string>
+    <string name="settings_slower_off">Off</string>
+    <string name="settings_slower_on">On</string>
+    <string name="settings_client_sort">Client sort</string>
+    <string name="settings_client_thread">Client thread</string>
+    <string name="settings_poll_mail">Poll for new mail</string>
+    <string name="settings_status_counts">Folder message counts</string>
+    <string name="settings_client_sort_note">Downloads one field for every message.</string>
+    <string name="settings_client_thread_note">Downloads threading headers for every message.</string>
+    <string name="settings_poll_note">Asks the server on a timer when it has no IDLE.</string>
+    <string name="settings_status_note">Sends STATUS for each visible folder when the server has no LIST-STATUS.</string>
+    <string name="settings_force_slower">Force slower fallbacks</string>
+    <string name="settings_force_slower_note">Debug only. Uses the slower fallbacks.</string>
+    <string name="settings_hide_capabilities">Hide capabilities</string>
+    <string name="settings_hide_none">None hidden</string>
+    <string name="settings_hide_count">%1$d hidden</string>
 </resources>

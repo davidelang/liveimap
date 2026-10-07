@@ -3570,21 +3570,26 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSessionDead(JNIEnv * en
     return dead;
 }
 
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
+    if (!ensureJni(env)) return -1;
     LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return;
+    if (session == nullptr) return -1;
     if (session->imap == nullptr) {
         throwImap(env, session, MAILIMAP_ERROR_STREAM, "noop failed");
         unlockSession(session);
-        return;
+        return -1;
     }
     int r = mailimap_noop(session->imap);
     if (!cmdOk(r)) {
         throwImap(env, session, r, "noop failed");
+        unlockSession(session);
+        return -1;
     }
+    struct mailimap_selection_info * info = session->imap->imap_selection_info;
+    jint exists = info != nullptr ? static_cast<jint>(info->sel_exists) : 0;
     unlockSession(session);
+    return exists;
 }
 
 extern "C" JNIEXPORT void JNICALL
