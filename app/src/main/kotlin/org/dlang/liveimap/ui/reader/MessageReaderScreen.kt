@@ -15,6 +15,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -81,7 +83,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
@@ -1328,12 +1332,35 @@ fun MessageReaderScreen(
                         )
                     }
                     DebugStatusIcon(debugStatus)
-                    if (renderedHtml && !allowImages) {
-                        IconButton(onClick = { allowImages = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.Image,
-                                contentDescription = stringResource(R.string.reader_show_images),
-                            )
+                    if (renderedHtml) {
+                        IconButton(onClick = { allowImages = !allowImages }) {
+                            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Image,
+                                    contentDescription = stringResource(
+                                        if (allowImages) R.string.reader_hide_images
+                                        else R.string.reader_show_images,
+                                    ),
+                                    modifier = Modifier.size(24.dp),
+                                )
+                                if (allowImages) {
+                                    Canvas(Modifier.matchParentSize()) {
+                                        val stroke = 2.dp.toPx()
+                                        val inset = stroke / 2f
+                                        drawCircle(
+                                            color = Color.Red,
+                                            radius = (size.minDimension / 2f) - inset,
+                                            style = Stroke(width = stroke),
+                                        )
+                                        drawLine(
+                                            color = Color.Red,
+                                            start = Offset(inset, size.height - inset),
+                                            end = Offset(size.width - inset, inset),
+                                            strokeWidth = stroke,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     val readerIcons = ArrayList<@Composable () -> Unit>(barActions.size)

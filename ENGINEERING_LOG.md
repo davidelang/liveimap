@@ -2044,3 +2044,8 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - The reader collapse button is fixed, not a toolbar action. Expanded and ready shows the header at its own height. Collapsed does not compose it. The body slot is weight 1 with no half-pane cap. readerBodyMinPx, readerHeaderMaxPx, and readerPaneGivesBodyHalf are gone.
 - Show images is a fixed image icon when HTML is shown and images are still blocked. The body button is gone. The WebView size callback still posts layout and invalidate and does not load.
 - No install.
+
+## 2026-10-07 - Reader header collapse image toggle
+
+- On an HTML body the picture button stays. It says Show images while images are blocked. While images are allowed it says Hide images and draws a red circle and a red diagonal line over the same picture. The tap toggles allowImages. Plain text has no button. The page and allowImages token still decides the load.
+- reader_hide_images is appended with the other new reader strings. No install.
