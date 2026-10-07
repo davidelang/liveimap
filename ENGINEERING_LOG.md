@@ -1926,3 +1926,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - emitSieve writes script text only: require fileinto and imap4flags when used, allof tests, addflag fileinto redirect discard
 - Empty and actionless rules return an empty script. CR, LF, and NUL are stripped before quoting
 - Tests: filesAndMarksRead, redirectsAndDiscards, quotesAndSkipsEmptyRules. No install
+
+## 2026-10-07 - inbound rules greeting execution start
+
+- Approved plan: sandbox/plans/inbound-rules-greeting-20261007-0313-plan.md. Status set to APPROVED.
+- Phase 1: parse a ManageSieve greeting into capabilities and send LOGOUT on an injected line transport.
+- Do not open a socket. Do not authenticate. Do not install. Base builds tag 4fa5971. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules greeting phase 1
+
+- readGreeting collects IMPLEMENTATION, VERSION, SASL, SIEVE, and STARTTLS. OK returns them. NO and BYE throw SieveFailure with the quoted text, or the raw line.
+- An empty line, an unquoted `{`, a bad line, or a missing close quote fails. logout writes LOGOUT and waits for OK. Capability lines during logout are ignored.
+- No AUTHENTICATE, no PUTSCRIPT, no socket, and no screen. Tests: readsTheGreeting, splitsOneExtensionString, noTextIsTheFailure, logoutWritesLogout. No install.
