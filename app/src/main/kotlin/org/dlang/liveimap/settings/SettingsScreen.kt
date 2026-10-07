@@ -33,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenuItem
@@ -375,6 +376,7 @@ private fun AccountGroup(editor: SettingsEditor) {
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
+    var importGeneration by remember { mutableStateOf(0) }
     var importError by remember { mutableStateOf<Int?>(null) }
     val settingsState = editor.settingsState
     val contextState = rememberUpdatedState(LocalContext.current)
@@ -414,6 +416,7 @@ private fun AccountGroup(editor: SettingsEditor) {
         when (val outcome = readPinercStream(contextState.value.contentResolver, uri)) {
             is PinercRead.Ok -> {
                 importError = null
+                importGeneration += 1
                 importPreview = pinercPreview(outcome.text, settingsState.value, pinercPhrases)
             }
             PinercRead.TooLarge -> {
@@ -550,6 +553,8 @@ private fun AccountGroup(editor: SettingsEditor) {
     }
     val preview = importPreview
     if (preview != null) {
+        var turnOnAutoExpunge by remember(importGeneration) { mutableStateOf(false) }
+        val applied = pinercApplied(preview, turnOnAutoExpunge)
         Dialog(
             onDismissRequest = { importPreview = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -575,6 +580,20 @@ private fun AccountGroup(editor: SettingsEditor) {
                     ) {
                         Text(stringResource(R.string.settings_will_change))
                         preview.rows.forEach { line -> Text(line) }
+                        if (preview.offerAutoExpunge) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { turnOnAutoExpunge = !turnOnAutoExpunge },
+                            ) {
+                                Checkbox(
+                                    checked = turnOnAutoExpunge,
+                                    onCheckedChange = { turnOnAutoExpunge = it },
+                                )
+                                Text(stringResource(R.string.settings_import_auto_expunge))
+                            }
+                        }
                         Text(stringResource(R.string.settings_not_applied))
                         preview.skipped.forEach { line -> Text(line) }
                         Text(stringResource(R.string.settings_ignored))
@@ -592,10 +611,10 @@ private fun AccountGroup(editor: SettingsEditor) {
                         TextButton(onClick = { importPreview = null }) { Text(stringResource(R.string.unsent_cancel)) }
                         TextButton(
                             onClick = {
-                                editor.persist(preview.next)
+                                editor.persist(applied)
                                 importPreview = null
                             },
-                            enabled = preview.next != editor.settings,
+                            enabled = applied != editor.settings,
                         ) { Text(stringResource(R.string.settings_apply)) }
                     }
                 }

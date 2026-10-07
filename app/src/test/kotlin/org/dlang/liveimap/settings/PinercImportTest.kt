@@ -337,6 +337,103 @@ class PinercImportTest {
         assertTrue(patterns.skipped.contains("Per-folder startup rules are not imported"))
         assertEquals(StartRule.Newest, patterns.next.inboxStart)
     }
+
+    @Test
+    fun autoExpungeIsOfferedOnlyWhenConfirmIsTurnedOff() {
+        val without = previewPinerc("feature-list=expunge-without-confirm\n", AccountSettings())
+        assertFalse(without.next.askBeforeExpunge)
+        assertFalse(without.next.autoExpunge)
+        assertTrue(without.offerAutoExpunge)
+        val unticked = pinercApplied(without, turnOnAutoExpunge = false)
+        assertEquals(without.next, unticked)
+        assertFalse(unticked.autoExpunge)
+        assertFalse(unticked.askBeforeExpunge)
+        val ticked = pinercApplied(without, turnOnAutoExpunge = true)
+        assertTrue(ticked.autoExpunge)
+        assertFalse(ticked.askBeforeExpunge)
+
+        val everywhere = previewPinerc(
+            "feature-list=expunge-without-confirm-everywhere\n",
+            AccountSettings(),
+        )
+        assertFalse(everywhere.next.askBeforeExpunge)
+        assertFalse(everywhere.next.autoExpunge)
+        assertTrue(everywhere.offerAutoExpunge)
+        assertFalse(pinercApplied(everywhere, turnOnAutoExpunge = false).autoExpunge)
+        val everywhereOn = pinercApplied(everywhere, turnOnAutoExpunge = true)
+        assertTrue(everywhereOn.autoExpunge)
+        assertFalse(everywhereOn.askBeforeExpunge)
+
+        val lastOff = previewPinerc(
+            "feature-list=no-expunge-without-confirm,expunge-without-confirm-everywhere\n",
+            AccountSettings(),
+        )
+        assertFalse(lastOff.next.askBeforeExpunge)
+        assertFalse(lastOff.next.autoExpunge)
+        assertTrue(lastOff.offerAutoExpunge)
+
+        val confirm = previewPinerc(
+            "feature-list=no-expunge-without-confirm\n",
+            AccountSettings(askBeforeExpunge = false),
+        )
+        assertTrue(confirm.next.askBeforeExpunge)
+        assertFalse(confirm.next.autoExpunge)
+        assertFalse(confirm.offerAutoExpunge)
+        val confirmTicked = pinercApplied(confirm, turnOnAutoExpunge = true)
+        assertFalse(confirmTicked.autoExpunge)
+        assertTrue(confirmTicked.askBeforeExpunge)
+        assertEquals(confirm.next, confirmTicked)
+
+        val confirmEverywhere = previewPinerc(
+            "feature-list=no-expunge-without-confirm-everywhere\n",
+            AccountSettings(askBeforeExpunge = false),
+        )
+        assertTrue(confirmEverywhere.next.askBeforeExpunge)
+        assertFalse(confirmEverywhere.offerAutoExpunge)
+        assertFalse(pinercApplied(confirmEverywhere, turnOnAutoExpunge = true).autoExpunge)
+
+        val lastOn = previewPinerc(
+            "feature-list=expunge-without-confirm,no-expunge-without-confirm-everywhere\n",
+            AccountSettings(),
+        )
+        assertTrue(lastOn.next.askBeforeExpunge)
+        assertFalse(lastOn.offerAutoExpunge)
+        assertFalse(pinercApplied(lastOn, turnOnAutoExpunge = true).autoExpunge)
+
+        val manual = previewPinerc("feature-list=expunge-only-manually\n", AccountSettings())
+        assertTrue(manual.next.askBeforeExpunge)
+        assertFalse(manual.offerAutoExpunge)
+        assertFalse(pinercApplied(manual, turnOnAutoExpunge = true).autoExpunge)
+
+        val noList = previewPinerc("personal-name=Ada\n", AccountSettings())
+        assertFalse(noList.offerAutoExpunge)
+        assertFalse(pinercApplied(noList, turnOnAutoExpunge = true).autoExpunge)
+        assertFalse(previewPinerc("\n", AccountSettings()).offerAutoExpunge)
+
+        val already = previewPinerc(
+            "feature-list=expunge-without-confirm\n",
+            AccountSettings(autoExpunge = true),
+        )
+        assertFalse(already.next.askBeforeExpunge)
+        assertTrue(already.next.autoExpunge)
+        assertTrue(already.offerAutoExpunge)
+        val alreadyUnticked = pinercApplied(already, turnOnAutoExpunge = false)
+        assertTrue(alreadyUnticked.autoExpunge)
+        assertFalse(alreadyUnticked.askBeforeExpunge)
+        assertEquals(already.next, alreadyUnticked)
+
+        val alreadyOff = previewPinerc(
+            "feature-list=expunge-without-confirm\n",
+            AccountSettings(askBeforeExpunge = false),
+        )
+        assertFalse(alreadyOff.next.askBeforeExpunge)
+        assertFalse(alreadyOff.next.autoExpunge)
+        assertTrue(alreadyOff.offerAutoExpunge)
+        assertEquals(alreadyOff.next, pinercApplied(alreadyOff, turnOnAutoExpunge = false))
+        val alreadyOffTicked = pinercApplied(alreadyOff, turnOnAutoExpunge = true)
+        assertTrue(alreadyOffTicked.autoExpunge)
+        assertFalse(alreadyOffTicked.askBeforeExpunge)
+    }
 }
 
 internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =

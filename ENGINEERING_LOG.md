@@ -1827,3 +1827,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Approved plan: sandbox/plans/alpine-mark-all-read-20261007-0053-plan.md
 - Work: Mark all read in the connected index Sort menu, after confirm, stores \Seen on the whole folder
 - Phase 1 only. Do not expunge. Do not install. Take address at 7a92dca stays underneath.
+
+## 2026-10-07 - pinerc expunge row execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-expunge-20261007-0101-plan.md
+- Mailbox SEQ 62 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: offerAutoExpunge, pinercApplied, the import checkbox, settings_import_auto_expunge, and PinercImportTest.
+- Do not import folder names. Do not install. Base builds tag ac1c2c7. Mark all read stays underneath.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - pinerc expunge row phase 1
+
+- offerAutoExpunge is true only when the feature list sets askBeforeExpunge false. pinercPreview does not change autoExpunge.
+- pinercApplied turns autoExpunge on only when the row is offered and ticked. An untick leaves it unchanged. A tick when the row is not offered does nothing.
+- The import dialog shows "Also turn on Auto-expunge?" under the change rows. It starts unticked for each new preview. Apply persists pinercApplied and is enabled when that result differs. Cancel discards the tick.
+- The confirm row string stays "Confirm before expunge". No folder import. No install.

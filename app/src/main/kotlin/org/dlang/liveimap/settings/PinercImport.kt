@@ -7,6 +7,7 @@ data class PinercPreview(
     val rows: List<String>,
     val skipped: List<String>,
     val omittedCount: Int,
+    val offerAutoExpunge: Boolean,
 )
 
 data class PinercPhrases(
@@ -183,6 +184,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         appliedAlpineDefault = true
     }
 
+    var offerAutoExpunge = false
     val features = entries["feature-list"]
     if (features?.decoded != null) {
         var ask: Boolean? = null
@@ -200,6 +202,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
             }
         }
         if (ask != null) next = next.copy(askBeforeExpunge = ask)
+        offerAutoExpunge = ask == false
     }
 
     for (name in entries.keys) {
@@ -235,8 +238,16 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         rows = rows,
         skipped = skipped,
         omittedCount = omitted,
+        offerAutoExpunge = offerAutoExpunge,
     )
 }
+
+fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): AccountSettings =
+    if (turnOnAutoExpunge && preview.offerAutoExpunge) {
+        preview.next.copy(autoExpunge = true)
+    } else {
+        preview.next
+    }
 
 private val appliedNames = setOf(
     "inbox-path",
