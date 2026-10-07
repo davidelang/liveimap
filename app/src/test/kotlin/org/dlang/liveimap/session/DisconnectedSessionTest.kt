@@ -40,6 +40,7 @@ class DisconnectedSessionTest {
         }
         assertThrowsNotConnected { runImmediate { session.uidExpungeDeleted() } }
         assertThrowsNotConnected { runImmediate { session.copyThenDelete(listOf(1L), "Trash") } }
+        assertThrowsNotConnected { runImmediate { session.copyUids(listOf(1L), "Trash") } }
         assertThrowsNotConnected { runImmediate { session.searchText("hi") } }
         assertThrowsNotConnected { runImmediate { session.sort(SortKey.Arrival, true) } }
         assertThrowsNotConnected { runImmediate { session.thread(SortKey.ThreadReferences) } }

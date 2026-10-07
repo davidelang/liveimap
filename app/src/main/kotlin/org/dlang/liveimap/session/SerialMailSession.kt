@@ -86,6 +86,10 @@ class SerialMailSession(
         onLane { inner.copyThenDelete(uids, targetMailbox) }
     }
 
+    override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
+        onLane { inner.copyUids(uids, targetMailbox) }
+    }
+
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         onLane { inner.copyAllThenDelete(targetMailbox) }
     }

@@ -552,4 +552,5 @@
     <string name="index_no_unread">No unread messages</string>
     <string name="index_next_folder">Go to %1$s? It has unread mail.</string>
     <string name="index_next_folder_go">Go</string>
+    <string name="reader_saved">Saved</string>
 </resources>

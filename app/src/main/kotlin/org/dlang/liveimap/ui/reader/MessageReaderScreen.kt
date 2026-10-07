@@ -281,6 +281,7 @@ fun MessageReaderScreen(
     val appContext = context.applicationContext
     val noAppFound = stringResource(R.string.reader_no_app)
     val notConnected = stringResource(R.string.reader_not_connected)
+    val savedText = stringResource(R.string.reader_saved)
     val retryLabel = stringResource(R.string.reader_retry)
     val noTextPartText = stringResource(R.string.reader_no_text)
     val noHtmlPartText = stringResource(R.string.reader_no_html)
@@ -359,13 +360,15 @@ fun MessageReaderScreen(
     var seenStored by held.seenStoredState
     var selectedMailbox by held.selectedMailboxState
     var choosingMove by remember { mutableStateOf(false) }
+    var choosingSave by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
-    BackHandler(enabled = choosingMove && !moreMenu) {
+    BackHandler(enabled = (choosingMove || choosingSave) && !moreMenu) {
         choosingMove = false
+        choosingSave = false
     }
     BackHandler(enabled = moreMenu) {
         moreMenu = false
@@ -1362,6 +1365,13 @@ fun MessageReaderScreen(
                     }
                 }
                 DropdownMenuItem(
+                    text = { Text(stringResource(R.string.reader_save)) },
+                    onClick = {
+                        moreMenu = false
+                        choosingSave = true
+                    },
+                )
+                DropdownMenuItem(
                     text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                     onClick = {
                         moreMenu = false
@@ -1692,6 +1702,33 @@ fun MessageReaderScreen(
                 }
             },
             onDismiss = { choosingMove = false },
+        )
+    }
+    if (choosingSave) {
+        MailboxChooser(
+            store = store,
+            saveMutex = saveMutex,
+            onStored = { loaded ->
+                account = account.copy(expandedFolders = loaded.expandedFolders)
+            },
+            onPick = { picked ->
+                choosingSave = false
+                if (picked.isNotEmpty()) {
+                    scope.launch {
+                        gate.withLock {
+                            try {
+                                session.copyUids(listOf(uid), picked)
+                                postSnack(savedText)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: MailFailure) {
+                                postSnack(error.text)
+                            }
+                        }
+                    }
+                }
+            },
+            onDismiss = { choosingSave = false },
         )
     }
 }

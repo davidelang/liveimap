@@ -41,3 +41,5 @@ Jump to number… in the index Sort menu moves the list to that sequence number.
 Next unread in the index Sort menu moves to the next unread message in this folder.
 
 When this folder has no later unread message, Next unread asks before opening the next folder that has unread mail.
+
+Save in the reader More menu copies the open message to another folder and leaves the original where it is.

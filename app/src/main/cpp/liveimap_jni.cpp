@@ -4965,6 +4965,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
     struct mailimap_set * source = nullptr;
     struct mailimap_set * copied = nullptr;
     bool move = kind != nullptr && strcasecmp(kind, "Move") == 0;
+    bool copyOnly = kind != nullptr && strcasecmp(kind, "Copy") == 0;
     int r = move
         ? mailimap_uidplus_uid_move(session->imap, set, destMailbox, &uidvalidity, &source, &copied)
         : mailimap_uidplus_uid_copy(session->imap, set, destMailbox, &uidvalidity, &source, &copied);
@@ -4975,7 +4976,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
     }
     rememberDestUids(session, copied);
     freeUidSets(source, copied);
-    if (move) return true;
+    if (move || copyOnly) return true;
     struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
     mailimap_flag_list_add(flags, mailimap_flag_new_deleted());
     struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags(flags);

@@ -1777,3 +1777,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Next unread with no later message in this folder asks before opening the next folder that has unread mail.
 - Go opens that index. Cancel stays. No unread folder still says "No unread messages".
 - No install.
+
+## 2026-10-07 - Save copy execution start
+
+- Approved plan: sandbox/plans/alpine-save-copy-20261007-0009-plan.md
+- SEQ 57 REVISION 1. Phase 1: Copy kind, copyUids, reader Save row, snack string, help sentence, disconnected test.
+- No install. Builds tip at start is b4e35d9.
+
+## 2026-10-07 - Save copy phase 1
+
+- Kind Copy is UID COPY and does not store Deleted. Move still UID MOVEs. Other kinds still copy and then store Deleted.
+- Reader More Save copies the open message into the chosen folder and stays. Saved is the success text. A copy failure shows that failure text.
+- No install.

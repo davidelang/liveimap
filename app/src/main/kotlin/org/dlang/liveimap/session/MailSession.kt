@@ -31,6 +31,9 @@ interface MailSession {
     suspend fun uidExpungeDeleted()
     suspend fun uidExpunge(uids: List<Long>) {}
     suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String)
+    suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
+        throw MailFailure("copy failed")
+    }
     suspend fun copyAllThenDelete(targetMailbox: String) {}
     suspend fun selectedExists(): Int = 0
     suspend fun takeCopiedUids(): List<Long> = emptyList()

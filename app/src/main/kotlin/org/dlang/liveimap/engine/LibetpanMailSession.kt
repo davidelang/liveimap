@@ -452,6 +452,19 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
+        if (uids.isEmpty()) return
+        keeper.write("copy") {
+            ensureReadWrite()
+            nativeCopyThenDelete(
+                requireHandle(),
+                uids.toLongArray(),
+                targetMailbox,
+                "Copy",
+            )
+        }
+    }
+
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         keeper.write("copy") {
             ensureReadWrite()

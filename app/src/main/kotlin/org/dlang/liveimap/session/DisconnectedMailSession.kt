@@ -36,6 +36,9 @@ class DisconnectedMailSession : MailSession {
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String): Unit =
         notConnected()
 
+    override suspend fun copyUids(uids: List<Long>, targetMailbox: String): Unit =
+        notConnected()
+
     override suspend fun searchText(query: String): List<Long> = notConnected()
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = notConnected()
