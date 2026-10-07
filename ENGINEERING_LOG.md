@@ -1590,3 +1590,7 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Scope is This folder, This folder and below, Subscribed, or All folders. This folder starts selected and is not saved. Search stores advancedScope with the encoded text.
 - A wider search walks one folder at a time, can cancel, reports Folder N of M, names the folder on the row, and selects the index mailbox again. Current stays one search and does not list children.
 - Count uses searchCount and does not fetch. ESEARCH sends RETURN (COUNT). A failed select is skipped. No ESEARCH IN. No install.
+
+## 2026-10-06 - Search scope and count phase 1 layout
+
+- The scope chips use FlowRow with the same ExperimentalLayoutApi opt-in as the other chip rows. No install.
