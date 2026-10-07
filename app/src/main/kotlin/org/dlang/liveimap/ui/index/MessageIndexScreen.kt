@@ -32,7 +32,6 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
@@ -175,9 +174,14 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import java.time.DateTimeException
 import java.time.Instant
+import java.time.Month
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoField
+import java.time.temporal.TemporalAccessor
+import java.time.temporal.TemporalField
+import java.time.temporal.UnsupportedTemporalTypeException
 
 private val indexFlags = listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")
 
@@ -382,11 +386,85 @@ fun sequenceColumnChars(sequences: Iterable<Int>): Int {
     return if (digits == 0) 1 else digits
 }
 
+fun existsColumnChars(exists: Int): Int = if (exists <= 0) 1 else exists.toString().length
+
+data class DateColumnWords(
+    val now: String,
+    val min: String,
+    val hours: String,
+    val days: String,
+    val ago: String,
+    val badPattern: String,
+)
+
+private val dateSampleZone: ZoneId = ZoneId.of("UTC")
+private val dateSampleInstant: Instant = Instant.parse("2024-12-30T23:59:00Z")
+private const val dateSampleYear = 2024
+
+fun dateColumnSamples(format: DateFormat, pattern: String, words: DateColumnWords): List<String> {
+    return when (format) {
+        DateFormat.Local -> listOf(localDateSample())
+        DateFormat.Short -> shortDateSamples()
+        DateFormat.Relative -> relativeDateSamples(words)
+        DateFormat.Custom -> listOf(
+            customIndexDate(dateSampleInstant.atZone(dateSampleZone), pattern, words.badPattern),
+            words.badPattern,
+        )
+    }
+}
+
+private fun localDateSample(): String = localIndexDate.format(dateSampleInstant.atZone(dateSampleZone))
+
+private fun shortDateSamples(): List<String> {
+    val out = ArrayList<String>(25)
+    out.add(sameDayIndexDate.format(dateSampleInstant.atZone(dateSampleZone)))
+    for (month in Month.entries) out.add(monthFieldSample(sameYearIndexDate, month))
+    for (month in Month.entries) out.add(monthFieldSample(otherYearIndexDate, month))
+    return out
+}
+
+private fun relativeDateSamples(words: DateColumnWords): List<String> {
+    val out = ArrayList<String>(29)
+    out.add(words.now)
+    out.add(words.ago.format(59L, words.min))
+    out.add(words.ago.format(23L, words.hours))
+    out.add(words.ago.format(6L, words.days))
+    out.addAll(shortDateSamples())
+    return out
+}
+
+private fun monthFieldSample(formatter: DateTimeFormatter, month: Month): String {
+    return formatter.format(MonthDayYear(month.value, 30, dateSampleYear))
+}
+
+private class MonthDayYear(
+    private val month: Int,
+    private val day: Int,
+    private val year: Int,
+) : TemporalAccessor {
+    override fun isSupported(field: TemporalField): Boolean = when (field) {
+        ChronoField.MONTH_OF_YEAR,
+        ChronoField.DAY_OF_MONTH,
+        ChronoField.YEAR,
+        ChronoField.YEAR_OF_ERA,
+        ChronoField.ERA,
+        -> true
+        else -> false
+    }
+
+    override fun getLong(field: TemporalField): Long = when (field) {
+        ChronoField.MONTH_OF_YEAR -> month.toLong()
+        ChronoField.DAY_OF_MONTH -> day.toLong()
+        ChronoField.YEAR, ChronoField.YEAR_OF_ERA -> year.toLong()
+        ChronoField.ERA -> 1L
+        else -> throw UnsupportedTemporalTypeException(field.toString())
+    }
+}
+
 @Composable
 private fun IndexStatusColumn(
     row: IndexRow,
     description: String,
-    selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val forwarded = "\$Forwarded" in row.flags
@@ -400,14 +478,6 @@ private fun IndexStatusColumn(
         modifier.semantics { contentDescription = description }
     }
     Row(columnModifier, verticalAlignment = Alignment.Top) {
-        if (selected) {
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
             val icon = when {
                 forwarded -> Icons.AutoMirrored.Filled.Forward
@@ -1200,6 +1270,15 @@ fun MessageIndexScreen(
                 }
             }
             model.loadWindow()
+            if (pendingExists <= 0) {
+                pendingExists = try {
+                    session.selectedExists()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    0
+                }
+            }
             held.windowReady = true
             connected = true
             pull()
@@ -2167,18 +2246,7 @@ fun MessageIndexScreen(
                 }
                 TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
             }
-            val visibleInfo = listState.layoutInfo.visibleItemsInfo
-            val sequences = if (visibleInfo.isNotEmpty()) {
-                visibleInfo.map { info ->
-                    when (val entry = indexEntries.getOrNull(info.index)) {
-                        is IndexEntry.Message -> entry.row.sequence
-                        else -> 0
-                    }
-                }
-            } else {
-                rows.map { it.sequence }
-            }
-            val sequenceChars = sequenceColumnChars(sequences)
+            val sequenceChars = existsColumnChars(folderExists)
             val sequenceStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
             val sequenceWidth = with(LocalDensity.current) {
                 sequenceMeasurer.measure(
@@ -2189,26 +2257,21 @@ fun MessageIndexScreen(
             val nowEpoch = Instant.now().epochSecond
             val dateZone = ZoneId.systemDefault()
             val dateStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
-            var dateWidthPx = 0
-            for (entry in indexEntries) {
-                if (entry !is IndexEntry.Message) continue
-                val formatted = formatIndexDate(
-                    epochSeconds = entry.row.internalDateEpoch,
-                    format = account.dateFormat,
-                    pattern = account.datePattern,
-                    nowEpoch = nowEpoch,
-                    zone = dateZone,
-                    nowWord = indexNow,
-                    minWord = indexMin,
-                    hourWord = indexHour,
-                    hoursWord = indexHours,
-                    dayWord = indexDay,
-                    daysWord = indexDays,
-                    agoPhrase = indexAgo,
-                    aheadPhrase = indexAhead,
+            val dateSamples = dateColumnSamples(
+                account.dateFormat,
+                account.datePattern,
+                DateColumnWords(
+                    now = indexNow,
+                    min = indexMin,
+                    hours = indexHours,
+                    days = indexDays,
+                    ago = indexAgo,
                     badPattern = indexBadPattern,
-                )
-                val measured = sequenceMeasurer.measure(text = formatted, style = dateStyle).size.width
+                ),
+            )
+            var dateWidthPx = 0
+            for (sample in dateSamples) {
+                val measured = sequenceMeasurer.measure(text = sample, style = dateStyle).size.width
                 if (measured > dateWidthPx) dateWidthPx = measured
             }
             val dateWidth = with(LocalDensity.current) { dateWidthPx.toDp() }
@@ -2713,7 +2776,6 @@ private fun IndexMessageRow(
                     IndexStatusColumn(
                         row,
                         statusDescription,
-                        selected = rowSelected,
                         modifier = Modifier.padding(end = 4.dp),
                     )
                     Column(Modifier.weight(1f)) {

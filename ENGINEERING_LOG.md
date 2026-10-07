@@ -1536,3 +1536,15 @@
 - The selection trash icon, reader Delete, and swipe Delete use effectiveDeletePolicy. The other two policies are on the selection menu and the reader more menu when they are possible. A fallen-back policy is not listed again.
 - Delete permanently asks before STORE when Confirm is on, then STORE \Deleted and UID EXPUNGE. All-mailbox uses uidExpungeDeleted. Without UIDPLUS neither expunge method runs.
 - Expunge… is on the sort menu after the sort items, then Select all, then Folder info. The list-column button is gone. Forward as attachment stays on the selection menu. Index Back calls expungeOnLeave. Reader Back does not. No install.
+
+## 2026-10-06 - Index layout and sort execution start
+
+- Approved plan: sandbox/plans/index-layout-and-sort-20261006-1855-plan.md
+- SEQ 40. Phase 1: fixed status slots, EXISTS sequence width, date-format width. Phase 2: session sort, menu, subtitle, reader items, thread count, null-parent siblings, thread index setting, help paragraph.
+- No install. Builds tip at start is 66cc2b2.
+
+## 2026-10-06 - Index layout and sort phase 1
+
+- Status slots stay 16 dp, 10 dp, and 16 dp. A selected row has no check icon. The row background and selected semantics stay.
+- Sequence width uses existsColumnChars(folderExists). 999 is 3 digits and 1000 is 4. sequenceColumnChars stays. Opening copies selected EXISTS when the ask path did not.
+- Date width uses dateColumnSamples for the format. Loaded row dates are not measured.

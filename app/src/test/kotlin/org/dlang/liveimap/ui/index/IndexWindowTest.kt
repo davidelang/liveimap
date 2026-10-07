@@ -16,6 +16,7 @@ import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.MoveMethod
@@ -581,6 +582,46 @@ class IndexWindowTest {
             indexStatusDescription(setOf("\\Answered"), toMe = true, hasAttachment = false),
         )
         assertEquals(2, sequenceColumnChars(listOf(4, 80, 0)))
+        assertEquals(1, existsColumnChars(0))
+        assertEquals(3, existsColumnChars(999))
+        assertEquals(4, existsColumnChars(1000))
+    }
+
+    @Test
+    fun dateColumnSamplesIgnoreRowDates() {
+        val words = DateColumnWords(
+            now = "now",
+            min = "min",
+            hours = "hours",
+            days = "days",
+            ago = "%1\$d %2\$s ago",
+            badPattern = "bad date pattern",
+        )
+        assertEquals(listOf("2024-12-30 23:59"), dateColumnSamples(DateFormat.Local, "", words))
+        val short = dateColumnSamples(DateFormat.Short, "1999-01-01", words)
+        assertEquals(25, short.size)
+        assertEquals("23:59", short.first())
+        assertEquals(12, short.count { it.contains("30") })
+        assertEquals(12, short.count { it.contains("2024") })
+        assertFalse(short.contains("1999-01-01"))
+        val relative = dateColumnSamples(DateFormat.Relative, "", words)
+        assertTrue(relative.contains("now"))
+        assertTrue(relative.contains("59 min ago"))
+        assertTrue(relative.contains("23 hours ago"))
+        assertTrue(relative.contains("6 days ago"))
+        assertTrue(relative.containsAll(short))
+        assertEquals(
+            listOf("2024", "bad date pattern"),
+            dateColumnSamples(DateFormat.Custom, "yyyy", words),
+        )
+        assertEquals(
+            listOf("bad date pattern", "bad date pattern"),
+            dateColumnSamples(DateFormat.Custom, "", words),
+        )
+        assertEquals(
+            dateColumnSamples(DateFormat.Short, "", words),
+            dateColumnSamples(DateFormat.Short, "yyyy-MM-dd", words),
+        )
     }
 
     @Test
