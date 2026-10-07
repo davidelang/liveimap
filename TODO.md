@@ -68,3 +68,7 @@
 - Watch more folders for new mail, each with its own IDLE connection within a connection budget (roadmap M8.6; recommendations D22)
 
 - JMAP accounts on Cyrus 3.x, chosen by the server's JMAP capability (roadmap M9; sandbox/research/liveimap-roadmap-20261003.md)
+
+- A long press on an icon or menu action shows a short explanation of that control. Do this later with the expanded manual, once the UI is stable, so the text does not go stale.
+
+- Move OpenSSL from 1.1.1w to 3.x before a public release. IMAP TLS may ship on 1.1.1w (roadmap M4.3; recommendations section 12).

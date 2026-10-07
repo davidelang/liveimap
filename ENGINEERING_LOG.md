@@ -2110,3 +2110,8 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - StartTls uses the existing TCP connect, reads capabilities, and fails before login when STARTTLS is absent. It then calls mailimap_socket_starttls_with_server_name_callback with the account host.
 - Implicit calls mailimap_ssl_connect_with_callback. The SSL callback sets TLS 1.2 as the minimum and records the peer chain, leaf first, while letting the handshake finish. No recorded certificate fails with certificate rejected before login.
 - PeerTrust.check runs before mailimap_login. A failure closes the session and returns that text. The password is not sent. No socket from this turn. No install.
+
+## 2026-10-07 - TODO backlog update execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/todo-backlog-update-20261007-1629-plan.md
+- TODO: long-press icon help waits for the expanded manual. OpenSSL 3.x stays before a public release. IMAP TLS may ship on 1.1.1w.
