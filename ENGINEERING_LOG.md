@@ -2037,3 +2037,10 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Display has a Full screen switch after the multi-pane choice. strings.xml appends collapse, expand, and full screen labels.
 - MainActivity keeps fullScreen from the same settings load as theme. Full screen hides the status and navigation bars and shows them on a swipe. Off shows them. Light and dark icons stay. Cutout insets are unchanged.
 - No install.
+
+## 2026-10-07 - Reader header collapse phase 2
+
+- DebugStatusIcon replaces DebugConnectionStatus. Empty text draws nothing. Other text draws a 24 dp info icon. Folder, index, and reader bars show it before the customizable icons. The index shows it on the normal bar and the multi-select bar. ConnectionStatusStrip stays in the column.
+- The reader collapse button is fixed, not a toolbar action. Expanded and ready shows the header at its own height. Collapsed does not compose it. The body slot is weight 1 with no half-pane cap. readerBodyMinPx, readerHeaderMaxPx, and readerPaneGivesBodyHalf are gone.
+- Show images is a fixed image icon when HTML is shown and images are still blocked. The body button is gone. The WebView size callback still posts layout and invalidate and does not load.
+- No install.

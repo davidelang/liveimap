@@ -21,14 +21,12 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,6 +39,8 @@ import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -76,6 +76,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -84,7 +85,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -135,7 +135,7 @@ import org.dlang.liveimap.ui.contacts.bookHasAddress
 import org.dlang.liveimap.ui.contacts.readPineBook
 import org.dlang.liveimap.ui.contacts.writePineBook
 import org.dlang.liveimap.ui.ConnectionStatusStrip
-import org.dlang.liveimap.ui.DebugConnectionStatus
+import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
@@ -386,6 +386,7 @@ fun MessageReaderScreen(
     var saveOffer by remember { mutableStateOf("") }
     var confirmTake by remember { mutableStateOf(false) }
     var takeChoices by remember { mutableStateOf<List<TakeAddress>>(emptyList()) }
+    var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
@@ -1317,6 +1318,24 @@ fun MessageReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { headerExpanded = !headerExpanded }) {
+                        Icon(
+                            imageVector = if (headerExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = stringResource(
+                                if (headerExpanded) R.string.reader_collapse_header
+                                else R.string.reader_expand_header,
+                            ),
+                        )
+                    }
+                    DebugStatusIcon(debugStatus)
+                    if (renderedHtml && !allowImages) {
+                        IconButton(onClick = { allowImages = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Image,
+                                contentDescription = stringResource(R.string.reader_show_images),
+                            )
+                        }
+                    }
                     val readerIcons = ArrayList<@Composable () -> Unit>(barActions.size)
                     for (action in barActions) {
                         if (action == ReaderToolbarAction.Refresh) {
@@ -1493,7 +1512,6 @@ fun MessageReaderScreen(
                 loadToken += 1
             }
         }
-        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier
@@ -1510,47 +1528,28 @@ fun MessageReaderScreen(
             }
         }
         val absent = missing
-        val headerScroll = rememberScrollState()
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            val panePx = constraints.maxHeight
-            val headerMax = with(LocalDensity.current) { readerHeaderMaxPx(panePx).toDp() }
-            val bodyMin = with(LocalDensity.current) { readerBodyMinPx(panePx).toDp() }
-            Column(Modifier.fillMaxSize()) {
-                if (headerReady) {
-                    Column(
-                        Modifier
-                            .heightIn(max = headerMax)
-                            .verticalScroll(headerScroll)
-                            .fillMaxWidth(),
-                    ) {
-                        ReaderHeaderCard(
-                            from = headerFrom,
-                            toLine = recipientLine(headerTo, headerCc),
-                            date = headerDate,
-                            subject = headerSubject,
-                            deleted = "\\Deleted" in rowFlags,
-                            onUndelete = { undeleteMessage() },
-                        )
-                    }
-                }
-                PullToRefreshBox(
-                    isRefreshing = loading,
-                    onRefresh = { if (!loading) loadToken += 1 },
-                    modifier = if (headerReady) {
-                        Modifier
-                            .weight(1f)
-                            .heightIn(min = bodyMin)
-                            .fillMaxWidth()
-                    } else {
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    },
-                ) {
+            if (headerExpanded && headerReady) {
+                ReaderHeaderCard(
+                    from = headerFrom,
+                    toLine = recipientLine(headerTo, headerCc),
+                    date = headerDate,
+                    subject = headerSubject,
+                    deleted = "\\Deleted" in rowFlags,
+                    onUndelete = { undeleteMessage() },
+                )
+            }
+            PullToRefreshBox(
+                isRefreshing = loading,
+                onRefresh = { if (!loading) loadToken += 1 },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
             Column(Modifier.fillMaxSize()) {
                 if (attachments.isNotEmpty()) {
                     FlowRow(
@@ -1592,7 +1591,6 @@ fun MessageReaderScreen(
                         Column(Modifier.weight(1f).fillMaxWidth()) {
                         val note = charsetNote
                         if (note != null) Text(note, modifier = Modifier.padding(horizontal = 8.dp))
-                        TextButton(onClick = { allowImages = true }) { Text(stringResource(R.string.reader_show_images)) }
                         AndroidView(
                             factory = { webContext ->
                                 object : WebView(webContext) {
@@ -1694,7 +1692,6 @@ fun MessageReaderScreen(
                 }
             }
         }
-            }
         }
     }
         SnackbarHost(
@@ -1997,16 +1994,6 @@ private fun applyHtmlDark(settings: WebSettings) {
         @Suppress("DEPRECATION")
         settings.forceDark = WebSettings.FORCE_DARK_OFF
     }
-}
-
-internal fun readerBodyMinPx(panePx: Int): Int {
-    if (panePx <= 0) return 0
-    return panePx / 2
-}
-
-internal fun readerHeaderMaxPx(panePx: Int): Int {
-    if (panePx <= 0) return 0
-    return panePx - readerBodyMinPx(panePx)
 }
 
 internal fun readerBarActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {

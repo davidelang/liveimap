@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,10 +59,11 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
 }
 
 @Composable
-fun DebugConnectionStatus(text: String) {
+fun DebugStatusIcon(text: String) {
     if (text.isEmpty()) return
-    Text(
-        text = text,
-        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+    Icon(
+        imageVector = Icons.Filled.Info,
+        contentDescription = text,
+        modifier = Modifier.size(24.dp),
     )
 }

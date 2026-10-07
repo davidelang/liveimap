@@ -153,7 +153,7 @@ import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
-import org.dlang.liveimap.ui.DebugConnectionStatus
+import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.pollIntervalSeconds
@@ -1836,6 +1836,7 @@ fun MessageIndexScreen(
                         trashKnown,
                     )
                     if (multiSelect) {
+                        DebugStatusIcon(debugStatus)
                         val selectionLayout = account.selectionBar
                         val seenText = stringResource(
                             if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
@@ -2042,6 +2043,7 @@ fun MessageIndexScreen(
                             }
                         }
                     } else {
+                        DebugStatusIcon(debugStatus)
                         val barLayout = account.indexBar
                         if (!connected) {
                             if (IndexBarAction.Refresh in barLayout.toolbar) {
@@ -2403,7 +2405,6 @@ fun MessageIndexScreen(
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
-        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier

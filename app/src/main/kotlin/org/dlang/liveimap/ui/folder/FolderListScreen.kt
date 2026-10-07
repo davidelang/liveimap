@@ -109,7 +109,7 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.ConnectionStatusStrip
-import org.dlang.liveimap.ui.DebugConnectionStatus
+import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.ui.compose.readCopies
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
@@ -532,6 +532,7 @@ fun FolderListScreen(
                         }
                     },
                     actions = {
+                        DebugStatusIcon(debugStatus)
                         val refreshFolderList = {
                             if (!loading) {
                                 refreshListed = true
@@ -681,7 +682,6 @@ fun FolderListScreen(
         if (hostKnown && imapHost.isBlank()) {
             TextButton(onClick = onOpenHelp) { Text(stringResource(R.string.help_title)) }
         }
-        DebugConnectionStatus(debugStatus)
         if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier
