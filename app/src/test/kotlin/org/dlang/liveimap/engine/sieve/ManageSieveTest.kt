@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -345,6 +346,152 @@ class ManageSieveTest {
         assertEquals("", activateConsented(transport, plan, consent = true))
         assertEquals(listOf("SETACTIVE \"liveimap\""), transport.written)
         assertTrue(transport.writtenBytes.isEmpty())
+    }
+
+    @Test
+    fun choosesCramMd5BeforePlain() {
+        assertEquals(
+            "CRAM-MD5",
+            chooseSieveSasl(listOf("plain", "Cram-Md5"), plaintextOk = false),
+        )
+        assertEquals(
+            "CRAM-MD5",
+            chooseSieveSasl(listOf("SCRAM-SHA-256 PLAIN", "CRAM-MD5"), plaintextOk = true),
+        )
+        assertEquals("PLAIN", chooseSieveSasl(listOf("LOGIN", "plain"), plaintextOk = true))
+        assertEquals("PLAIN", chooseSieveSasl(listOf("SCRAM-SHA-256 PLAIN"), plaintextOk = true))
+        assertNull(chooseSieveSasl(listOf("PLAIN"), plaintextOk = false))
+        assertNull(
+            chooseSieveSasl(
+                listOf("SCRAM-SHA-256", "LOGIN", "DIGEST-MD5", "CRAM-MD5-PLUS", "APLAIN"),
+                plaintextOk = true,
+            ),
+        )
+        assertNull(chooseSieveSasl(emptyList(), plaintextOk = true))
+    }
+
+    @Test
+    fun saslVectorsHideThePassword() {
+        assertEquals("AGFkYQBzZWNyZXQ=", plainSaslInitial("ada", "secret"))
+        val challenge = "<1234@example.com>".toByteArray(StandardCharsets.UTF_8)
+        assertEquals(
+            "YWRhIDJiNjhkODE1ZDI3MTM4ZTQ0ODk1Nzc5ZmI3MThiZDM3",
+            cramMd5Response("ada", "secret", challenge),
+        )
+    }
+
+    @Test
+    fun emptySaslWritesNothing() = runBlocking {
+        val plainUser = ListTransport(emptyList())
+        try {
+            authenticatePlain(plainUser, "", "secret")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), plainUser.written)
+
+        val plainPassword = ListTransport(emptyList())
+        try {
+            authenticatePlain(plainPassword, "ada", "")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), plainPassword.written)
+
+        val cramUser = ListTransport(emptyList())
+        try {
+            authenticateCramMd5(cramUser, "", "secret")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), cramUser.written)
+
+        val cramPassword = ListTransport(emptyList())
+        try {
+            authenticateCramMd5(cramPassword, "ada", "")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), cramPassword.written)
+    }
+
+    @Test
+    fun plainAuthenticateUsesTheServerText() = runBlocking {
+        val ok = ListTransport(listOf("OK \"ready\""))
+        assertEquals("ready", authenticatePlain(ok, "ada", "secret"))
+        assertEquals(
+            listOf("AUTHENTICATE \"PLAIN\" \"AGFkYQBzZWNyZXQ=\""),
+            ok.written,
+        )
+        assertTrue(ok.written.none { it.contains("secret") })
+
+        val no = ListTransport(listOf("NO \"no sasl\""))
+        try {
+            authenticatePlain(no, "ada", "secret")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("no sasl", failure.text)
+        }
+        assertEquals(
+            listOf("AUTHENTICATE \"PLAIN\" \"AGFkYQBzZWNyZXQ=\""),
+            no.written,
+        )
+        assertTrue(no.written.none { it.contains("secret") })
+    }
+
+    @Test
+    fun cramAuthenticateUsesQuotedAndLiteralChallenges() = runBlocking {
+        val quoted = ListTransport(
+            listOf("\"PDEyMzRAZXhhbXBsZS5jb20+\"", "OK \"in\""),
+        )
+        assertEquals("in", authenticateCramMd5(quoted, "ada", "secret"))
+        assertEquals(
+            listOf(
+                "AUTHENTICATE \"CRAM-MD5\"",
+                "\"YWRhIDJiNjhkODE1ZDI3MTM4ZTQ0ODk1Nzc5ZmI3MThiZDM3\"",
+            ),
+            quoted.written,
+        )
+        assertTrue(quoted.written.none { it.contains("secret") })
+
+        val encoded = "PDEyMzRAZXhhbXBsZS5jb20+"
+        val literal = ListTransport(
+            listOf("{${encoded.length}}", "OK"),
+            listOf(encoded.toByteArray(StandardCharsets.UTF_8)),
+        )
+        assertEquals("", authenticateCramMd5(literal, "ada", "secret"))
+        assertEquals(
+            listOf(
+                "AUTHENTICATE \"CRAM-MD5\"",
+                "\"YWRhIDJiNjhkODE1ZDI3MTM4ZTQ0ODk1Nzc5ZmI3MThiZDM3\"",
+            ),
+            literal.written,
+        )
+        assertTrue(literal.written.none { it.contains("secret") })
+
+        val denied = ListTransport(listOf("NO \"denied\""))
+        try {
+            authenticateCramMd5(denied, "ada", "secret")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("denied", failure.text)
+        }
+        assertEquals(listOf("AUTHENTICATE \"CRAM-MD5\""), denied.written)
+        assertTrue(denied.written.none { it.contains("secret") })
+
+        val later = ListTransport(listOf("\"PDEyMzRAZXhhbXBsZS5jb20+\"", "NO \"later\""))
+        try {
+            authenticateCramMd5(later, "ada", "secret")
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("later", failure.text)
+        }
+        assertEquals(2, later.written.size)
+        assertTrue(later.written.none { it.contains("secret") })
     }
 }
 

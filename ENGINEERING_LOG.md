@@ -2061,3 +2061,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - withLiveimapInclude appends include :personal "liveimap"; once. planLiveimapActivation chooses None, Include, or SetActive. Upload checks, then PUTSCRIPT names liveimap only.
 - SETACTIVE and the include rewrite write nothing without consent. An empty SETACTIVE name writes nothing. No socket and no install.
+
+## 2026-10-07 - ManageSieve SASL execution start
+
+- Approved plan: sandbox/plans/sieve-sasl-20261007-1542-plan.md. Status set to APPROVED.
+- Phase 1: choose CRAM-MD5, else PLAIN only when plaintext auth is allowed. AUTHENTICATE both on the injected transport. Fake transport only.
+- No socket. No STARTTLS. No SCRAM. No account setting. No FilterScreen. No install. Base builds tag 368ddbd. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - ManageSieve SASL phase 1
+
+- chooseSieveSasl returns CRAM-MD5 when that whole token is present, ignoring case. Otherwise PLAIN only when plaintext auth is allowed. SCRAM-SHA-256, LOGIN, DIGEST-MD5, and other tokens are not chosen.
+- plainSaslInitial is standard Base64 of NUL, username, NUL, password. cramMd5Response HMACs the challenge bytes with HmacMD5 and returns standard Base64 of username, one space, and the lowercase hex digest.
+- authenticatePlain and authenticateCramMd5 write on the injected transport. Empty username or password writes nothing. NO throws the server text. A CRAM response token writes no second line. Quoted and whole-line literal challenges are Base64.
+- No socket. No STARTTLS. No SCRAM. No account setting. No FilterScreen. No install.

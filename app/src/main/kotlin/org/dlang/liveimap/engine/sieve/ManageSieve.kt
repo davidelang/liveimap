@@ -1,6 +1,9 @@
 package org.dlang.liveimap.engine.sieve
 
 import java.nio.charset.StandardCharsets
+import java.util.Base64
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** One ManageSieve line. The transport does not include a trailing CR or LF. */
 interface SieveLineTransport {
@@ -176,6 +179,89 @@ suspend fun activateConsented(
         throw SieveFailure("consent")
     }
     return setActive(transport, liveimapScriptName)
+}
+
+/** Picks CRAM-MD5, else PLAIN when plaintext auth is allowed. Does not open a socket. */
+fun chooseSieveSasl(mechanisms: List<String>, plaintextOk: Boolean): String? {
+    val tokens = ArrayList<String>()
+    for (mechanism in mechanisms) tokens.addAll(splitTokens(mechanism))
+    if (tokens.any { it.equals("CRAM-MD5", ignoreCase = true) }) return "CRAM-MD5"
+    if (plaintextOk && tokens.any { it.equals("PLAIN", ignoreCase = true) }) return "PLAIN"
+    return null
+}
+
+/** SASL PLAIN initial response. No authorization id. */
+fun plainSaslInitial(username: String, password: String): String {
+    val user = username.toByteArray(StandardCharsets.UTF_8)
+    val pass = password.toByteArray(StandardCharsets.UTF_8)
+    val raw = ByteArray(user.size + pass.size + 2)
+    user.copyInto(raw, destinationOffset = 1)
+    pass.copyInto(raw, destinationOffset = user.size + 2)
+    return Base64.getEncoder().encodeToString(raw)
+}
+
+/** CRAM-MD5 client response. Does not decode the challenge. */
+fun cramMd5Response(username: String, password: String, challenge: ByteArray): String {
+    val mac = Mac.getInstance("HmacMD5")
+    mac.init(SecretKeySpec(password.toByteArray(StandardCharsets.UTF_8), "HmacMD5"))
+    val hex = hexLower(mac.doFinal(challenge))
+    val message = "$username $hex".toByteArray(StandardCharsets.UTF_8)
+    return Base64.getEncoder().encodeToString(message)
+}
+
+/** AUTHENTICATE PLAIN. An empty username or password writes nothing. Does not open a socket. */
+suspend fun authenticatePlain(
+    transport: SieveLineTransport,
+    username: String,
+    password: String,
+): String {
+    if (username.isEmpty() || password.isEmpty()) throw SieveFailure("sasl")
+    val initial = quoteScriptName(plainSaslInitial(username, password))
+    transport.writeLine("AUTHENTICATE ${quoteScriptName("PLAIN")} $initial")
+    return commandResult(transport, transport.readLine())
+}
+
+/** AUTHENTICATE CRAM-MD5. An empty username or password writes nothing. Does not open a socket. */
+suspend fun authenticateCramMd5(
+    transport: SieveLineTransport,
+    username: String,
+    password: String,
+): String {
+    if (username.isEmpty() || password.isEmpty()) throw SieveFailure("sasl")
+    transport.writeLine("AUTHENTICATE ${quoteScriptName("CRAM-MD5")}")
+    val line = transport.readLine()
+    if (responseToken(line) != null) {
+        throw SieveFailure(commandFailureText(transport, line))
+    }
+    val encoded = saslChallengeText(transport, line)
+    val challenge = try {
+        Base64.getDecoder().decode(encoded)
+    } catch (_: IllegalArgumentException) {
+        throw SieveFailure("sasl")
+    }
+    transport.writeLine(quoteScriptName(cramMd5Response(username, password, challenge)))
+    return commandResult(transport, transport.readLine())
+}
+
+private fun hexLower(bytes: ByteArray): String {
+    val digits = "0123456789abcdef"
+    val out = StringBuilder(bytes.size * 2)
+    for (b in bytes) {
+        val value = b.toInt() and 0xff
+        out.append(digits[value ushr 4])
+        out.append(digits[value and 0x0f])
+    }
+    return out.toString()
+}
+
+private suspend fun saslChallengeText(transport: SieveLineTransport, line: String): String {
+    if (line.isNotEmpty() && line[0] == '"') {
+        val quoted = readQuoted(line, 0)
+        if (skipBlank(line, quoted.second) != line.length) throw SieveFailure("sasl")
+        return quoted.first
+    }
+    val count = wholeLineLiteral(line) ?: throw SieveFailure("sasl")
+    return String(transport.readBytes(count), StandardCharsets.UTF_8)
 }
 
 private fun scriptHasLiveimapInclude(script: String): Boolean {
