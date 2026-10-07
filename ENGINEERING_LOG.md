@@ -2088,3 +2088,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - AccountSettings stores sieveHost (default empty) and sievePort (default 4190) after fullScreen. Encode omits an empty host and port 4190. A missing host decodes as empty. A missing port, or a port outside 1..65535, decodes as 4190.
 - sieveEndpoint uses the sieve host when it is not blank, otherwise the IMAP host, with sievePort. Server fields follow the IMAP port. The server summary stays the IMAP host and port.
 - No socket. No STARTTLS. No openPlainSieve. No ManageSieve.kt or FilterScreen edits. No install.
+
+## 2026-10-07 - IMAP TLS connect execution start
+
+- Approved plan: sandbox/plans/imap-tls-connect-20261007-1604-plan.md. Status set to APPROVED.
+- Phase 1: save TlsMode on the account, compare it in the IMAP identity, and check the peer chain with PeerTrust before any password is sent.
+- Phase 2: STARTTLS and implicit TLS in nativeOpen. None stays plaintext. No pin prompt, SCRAM, SMTP TLS, or ManageSieve TLS.
+- Do not open a socket. Do not install. Base builds tag ab6dd98. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - IMAP TLS connect phase 1
+
+- TlsMode is None, StartTls, or Implicit. AccountSettings.tlsMode defaults to None after sievePort. Encode omits None. A missing key decodes as None. StartTls and Implicit round-trip.
+- sameImapIdentity is false when the TLS modes differ. The Server TLS choice follows the IMAP port and precedes the Sieve host.
+- PeerTrust.check returns empty only for a non-empty chain the platform trust manager accepts and whose leaf matches the host. An empty chain returns a failure string and does not throw.
+- No socket. No install.

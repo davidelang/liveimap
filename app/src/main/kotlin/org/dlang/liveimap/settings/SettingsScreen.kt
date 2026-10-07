@@ -510,6 +510,14 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_imap_port), settings.imapPort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(imapPort = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_tls),
+                TlsMode.entries,
+                settings.tlsMode,
+                { tlsName(it) },
+            ) { mode ->
+                editor.persist(editor.settings.copy(tlsMode = mode))
+            }
             LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
                 editor.persist(editor.settings.copy(sieveHost = it))
             }
@@ -1848,6 +1856,15 @@ private fun swipeActionName(action: SwipeAction): String = stringResource(
         SwipeAction.SetFlag -> R.string.label_set_flag
         SwipeAction.ClearFlag -> R.string.label_clear_flag
         SwipeAction.FlagScreen -> R.string.label_flag_screen
+    },
+)
+
+@Composable
+private fun tlsName(mode: TlsMode): String = stringResource(
+    when (mode) {
+        TlsMode.None -> R.string.settings_tls_none
+        TlsMode.StartTls -> R.string.settings_tls_starttls
+        TlsMode.Implicit -> R.string.settings_tls_implicit
     },
 )
 

@@ -149,6 +149,23 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun tlsModeRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("tlsMode="))
+        assertEquals(TlsMode.None, decodeAccountSettings(defaults).tlsMode)
+        val start = AccountSettings(tlsMode = TlsMode.StartTls)
+        val startText = start.encode()
+        assertTrue(startText.contains("tlsMode=StartTls"))
+        assertEquals(start, decodeAccountSettings(startText))
+        assertEquals(startText, decodeAccountSettings(startText).encode())
+        val implicit = AccountSettings(tlsMode = TlsMode.Implicit)
+        val implicitText = implicit.encode()
+        assertTrue(implicitText.contains("tlsMode=Implicit"))
+        assertEquals(implicit, decodeAccountSettings(implicitText))
+        assertEquals(implicitText, decodeAccountSettings(implicitText).encode())
+    }
+
+    @Test
     fun fullScreenRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("fullScreen="))
