@@ -704,6 +704,26 @@ class IndexModel(
         return replaceWindow { fetchCurrent() }
     }
 
+    suspend fun jumpToSequence(sequence: Int): Boolean {
+        if (usesArrivalSequences()) {
+            val total = arrivalTotal
+            if (sequence !in 1..total) return false
+            val displayIndex = if (view.newestFirst) total - sequence else sequence - 1
+            replaceWindow {
+                pageAnchor = clampedAnchor(total, null, displayIndex)
+                val loaded = fetchArrivalWindow()
+                rememberStart(displayIndex, loaded.size)
+                loaded
+            }
+            return !windowFailed
+        }
+        val index = rows.indexOfFirst { it.sequence == sequence }
+        if (index < 0) return false
+        startInHeld = index
+        lastVisibleIndex = index
+        return true
+    }
+
     fun acknowledgeNewMail() {
         pendingNew = 0
         newMailUnnumbered = false

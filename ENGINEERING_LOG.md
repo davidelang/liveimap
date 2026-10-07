@@ -1747,3 +1747,9 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - An untouched index bar shows Search, with Refresh and Filter in the overflow. An untouched selection shows Delete, with Seen, Flag, and Move in the overflow. An untouched reader shows Reply and Delete, with Refresh, Reply all, Forward, Move, Spam, and Bounce in the overflow
 - resetReaderToolbar is that reader layout. A null readerToolbar with the default readerBar uses it. Any other null readerBar still follows readerToolbarFrom. A saved readerToolbar still wins. readerBar encoding is unchanged
 - An omitted indexBar or selectionBar decodes to the new default. T:Refresh,Search,Filter|O:|H: and T:Seen,Flag,Move,Delete|O:|H: still decode to those toolbars. defaultsRoundTrip still ends at altAddresses. Folder and compose defaults stay. No install
+
+## 2026-10-06 - Jump to sequence execution start
+
+- Approved plan: sandbox/plans/alpine-jump-20261006-2321-plan.md
+- SEQ 54 REVISION 1. Phase 1: jumpToSequence, Sort menu dialog, strings, help sentence, and tests.
+- No install. Builds tip at start is 0670e5a.

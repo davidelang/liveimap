@@ -111,6 +111,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -771,6 +772,8 @@ fun MessageIndexScreen(
     var pendingPermanent by remember { mutableStateOf<PendingDelete?>(null) }
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var folderInfo by remember { mutableStateOf<SelectResult?>(null) }
+    var jumpOpen by remember { mutableStateOf(false) }
+    var jumpText by remember { mutableStateOf("") }
     var leavingIndex by remember { mutableStateOf(false) }
     var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
     var undoToken by remember { mutableIntStateOf(0) }
@@ -781,13 +784,14 @@ fun MessageIndexScreen(
     val watchMailboxNow = rememberUpdatedState(watchMailbox)
     val allowNewer = remember { mutableStateOf(true) }
 
-    val overlayBack = prompt != null || filterOpen || menuOpen || openAt || flagUid != null ||
-        searchVisible || multiSelect
+    val overlayBack = prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
+        flagUid != null || searchVisible || multiSelect
     BackHandler(enabled = overlayBack) {
         when {
             prompt != null -> prompt = null
             filterOpen -> filterOpen = false
             openAt -> openAt = false
+            jumpOpen -> jumpOpen = false
             menuOpen -> menuOpen = false
             flagUid != null -> flagUid = null
             searchVisible -> {
@@ -2279,6 +2283,14 @@ fun MessageIndexScreen(
                                 }
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.index_jump)) },
+                            onClick = {
+                                menuOpen = false
+                                jumpText = ""
+                                jumpOpen = true
+                            },
+                        )
                         for (entry in indexMenuTail(barLayout)) {
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()
@@ -2815,6 +2827,40 @@ fun MessageIndexScreen(
             confirmButton = {
                 TextButton(onClick = { folderInfo = null }) {
                     Text(stringResource(R.string.index_close))
+                }
+            },
+        )
+    }
+    if (jumpOpen) {
+        AlertDialog(
+            onDismissRequest = { jumpOpen = false },
+            text = {
+                OutlinedTextField(
+                    value = jumpText,
+                    onValueChange = { jumpText = it },
+                    label = { Text(stringResource(R.string.index_jump)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val sequence = jumpText.trim().toIntOrNull() ?: return@TextButton
+                    jumpOpen = false
+                    scope.launch {
+                        val found = gate.withLock {
+                            val landed = model.jumpToSequence(sequence)
+                            pull()
+                            landed
+                        }
+                        if (found) scrollToStart()
+                        else postSnack(appContext.getString(R.string.index_jump_missing, sequence))
+                    }
+                }) { Text("Jump") }
+            },
+            dismissButton = {
+                TextButton(onClick = { jumpOpen = false }) {
+                    Text(stringResource(R.string.index_cancel))
                 }
             },
         )

@@ -1581,6 +1581,105 @@ class IndexWindowTest {
         assertEquals(listOf(1L), model.rows.map { it.uid })
         assertTrue(model.orderMailboxes.isEmpty())
     }
+
+    @Test
+    fun jumpArrivalNewestLoadsSequenceAndRejectsOutside() {
+        val session = folder(300)
+        val model = model(session, StartRule.Newest, newestFirst = true)
+        val initial = runImmediate { model.loadWindow() }
+        val initialSequences = initial.map { it.sequence }
+        val initialStart = model.startIndex
+        val fetches = session.fetchRequests.size
+        val searches = session.startSearches.size
+        assertFalse(runImmediate { model.jumpToSequence(0) })
+        assertFalse(runImmediate { model.jumpToSequence(301) })
+        assertEquals(initialSequences, model.rows.map { it.sequence })
+        assertEquals(initialStart, model.startIndex)
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(searches, session.startSearches.size)
+        assertTrue(runImmediate { model.jumpToSequence(20) })
+        assertTrue(model.rows.any { it.sequence == 20 })
+        assertEquals(20, model.rows[model.startIndex].sequence)
+        assertEquals(searches, session.startSearches.size)
+        assertTrue(session.searchCalls.isEmpty())
+        assertTrue(session.fetchRequests.size > fetches)
+        assertEquals(IndexMode.ArrivalRange, session.fetchRequests.last().mode)
+    }
+
+    @Test
+    fun jumpArrivalOldestUsesSequenceIndex() {
+        val session = folder(300)
+        val model = model(session, StartRule.Newest, newestFirst = false)
+        runImmediate { model.loadWindow() }
+        val searches = session.startSearches.size
+        assertTrue(runImmediate { model.jumpToSequence(20) })
+        assertEquals(20, model.rows[model.startIndex].sequence)
+        assertEquals(searches, session.startSearches.size)
+        assertTrue(session.searchCalls.isEmpty())
+    }
+
+    @Test
+    fun jumpLoadedNonArrivalDoesNotRefetch() {
+        val session = FakeMailSession()
+        val uids = (200L downTo 1L).toList()
+        session.sortUids = uids
+        uids.forEach { session.rows[it] = row(it) }
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.From, newestFirst = true)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val loaded = runImmediate { model.loadWindow() }
+        assertEquals(uids.take(IndexPageSize * 2), loaded.map { it.uid })
+        val fetches = session.fetchRequests.size
+        val sorts = session.sortCalls.size
+        val searches = session.searchCalls.size
+        assertTrue(runImmediate { model.jumpToSequence(loaded[4].sequence) })
+        assertEquals(4, model.startIndex)
+        assertEquals(loaded.map { it.uid }, model.rows.map { it.uid })
+        assertFalse(runImmediate { model.jumpToSequence(1) })
+        assertEquals(4, model.startIndex)
+        assertEquals(loaded.map { it.uid }, model.rows.map { it.uid })
+        assertTrue(model.rows.none { it.sequence == 1 })
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(sorts, session.sortCalls.size)
+        assertEquals(searches, session.searchCalls.size)
+    }
+
+    @Test
+    fun jumpFilterAndSearchStayOnLoadedRows() {
+        val filtered = folder(300)
+        filtered.searchUids = listOf(12L, 40L)
+        val filterModel = model(filtered, StartRule.Newest, newestFirst = true)
+        runImmediate { filterModel.loadWindow() }
+        runImmediate { filterModel.applyCriterion("From", "ada", false, "From") }
+        val filterRows = filterModel.rows.map { it.uid }
+        assertEquals(listOf(40L, 12L), filterRows)
+        val filterFetches = filtered.fetchRequests.size
+        val filterSearches = filtered.searchCalls.size
+        assertTrue(runImmediate { filterModel.jumpToSequence(40) })
+        assertEquals(0, filterModel.startIndex)
+        assertFalse(runImmediate { filterModel.jumpToSequence(20) })
+        assertEquals(0, filterModel.startIndex)
+        assertEquals(filterRows, filterModel.rows.map { it.uid })
+        assertEquals(filterFetches, filtered.fetchRequests.size)
+        assertEquals(filterSearches, filtered.searchCalls.size)
+
+        val searched = folder(30)
+        searched.searchUids = listOf(4L, 9L)
+        val searchModel = model(searched, StartRule.Newest, newestFirst = true)
+        runImmediate { searchModel.loadWindow() }
+        runImmediate { searchModel.applySearch("ada") }
+        val searchRows = searchModel.rows.map { it.uid }
+        assertEquals(listOf(9L, 4L), searchRows)
+        val searchFetches = searched.fetchRequests.size
+        val searchCalls = searched.searchCalls.size
+        assertTrue(runImmediate { searchModel.jumpToSequence(4) })
+        assertEquals(searchModel.rows.indexOfFirst { it.sequence == 4 }, searchModel.startIndex)
+        assertFalse(runImmediate { searchModel.jumpToSequence(8) })
+        assertEquals(searchRows, searchModel.rows.map { it.uid })
+        assertEquals(searchFetches, searched.fetchRequests.size)
+        assertEquals(searchCalls, searched.searchCalls.size)
+    }
 }
 
 private fun scopedSession(): FakeMailSession {

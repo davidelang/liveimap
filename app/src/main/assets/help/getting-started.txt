@@ -35,3 +35,5 @@ Toolbar rows sets how many rows the bar may use. Actions that do not fit stay on
 TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. The move is announced.
 
 Until you customize them, the index bar shows Search, a selection shows Delete, and the reader shows Reply and Delete.
+
+Jump to number… in the index Sort menu moves the list to that sequence number.
