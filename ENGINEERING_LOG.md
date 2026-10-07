@@ -1530,3 +1530,9 @@
 - CLOSE is sent only for Auto-expunge on a read-write selected mailbox, on folder change, unselect, and background close. A failed background CLOSE still closes the socket. No plain EXPUNGE.
 - knownTrash uses the saved Trash mailbox, or one LIST of each personal namespace when LIST-EXTENDED is advertised. It caches that result, including empty, until close. It does not guess a name.
 - Confirm before expunge, Auto-expunge, Delete button, Move method, and Trash are in Settings. The help paragraph is last. No install.
+
+## 2026-10-06 - Delete and expunge phase 2
+
+- The selection trash icon, reader Delete, and swipe Delete use effectiveDeletePolicy. The other two policies are on the selection menu and the reader more menu when they are possible. A fallen-back policy is not listed again.
+- Delete permanently asks before STORE when Confirm is on, then STORE \Deleted and UID EXPUNGE. All-mailbox uses uidExpungeDeleted. Without UIDPLUS neither expunge method runs.
+- Expunge… is on the sort menu after the sort items, then Select all, then Folder info. The list-column button is gone. Forward as attachment stays on the selection menu. Index Back calls expungeOnLeave. Reader Back does not. No install.

@@ -16,7 +16,9 @@ import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.Density
+import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
@@ -229,6 +231,185 @@ class IndexWindowTest {
         assertEquals(listOf(CopyWrite(listOf(1L), "Trash")), session.copies)
         assertTrue(session.stores.isEmpty())
         assertTrue(model.rows.isEmpty())
+    }
+
+    @Test
+    fun effectiveDeletePolicyFallbacks() {
+        assertEquals(
+            DeletePolicy.DeletePermanently,
+            effectiveDeletePolicy(DeletePolicy.MarkDeleted, inTrash = true, uidPlus = true, trashKnown = true),
+        )
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = false, trashKnown = true),
+        )
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = false, trashKnown = false),
+        )
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = true, trashKnown = false),
+        )
+        assertEquals(
+            DeletePolicy.MoveToTrash,
+            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = false, trashKnown = true),
+        )
+        assertEquals(
+            DeletePolicy.DeletePermanently,
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = true, trashKnown = false),
+        )
+    }
+
+    @Test
+    fun alternatePoliciesOmitTheEffectiveAndTheImpossible() {
+        assertEquals(
+            emptyList<DeletePolicy>(),
+            alternateDeletePolicies(DeletePolicy.MarkDeleted, uidPlus = false, trashKnown = false),
+        )
+        assertEquals(
+            listOf(DeletePolicy.MoveToTrash),
+            alternateDeletePolicies(DeletePolicy.MarkDeleted, uidPlus = false, trashKnown = true),
+        )
+        assertEquals(
+            listOf(DeletePolicy.MarkDeleted, DeletePolicy.MoveToTrash),
+            alternateDeletePolicies(DeletePolicy.DeletePermanently, uidPlus = true, trashKnown = true),
+        )
+    }
+
+    @Test
+    fun defaultMoveStillCopiesWhenMoveIsAdvertised() {
+        val session = FakeMailSession(capabilities = setOf("MOVE"))
+        session.arrivalRows = listOf(row(1))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.moveMessages(listOf(1L), "Archive") }
+        assertEquals(listOf(CopyWrite(listOf(1L), "Archive")), session.copies)
+        assertEquals(false, model.mailUndo?.usedMove)
+    }
+
+    @Test
+    fun imapMoveSetsUsedMoveOnlyWhenAdvertised() {
+        val advertised = FakeMailSession(capabilities = setOf("MOVE"))
+        advertised.arrivalRows = listOf(row(1))
+        val chosen = MemorySettingsStore(AccountSettings(moveMethod = MoveMethod.ImapMove))
+        val model = IndexModel(advertised, chosen, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.moveMessages(listOf(1L), "Archive") }
+        assertEquals(listOf(CopyWrite(listOf(1L), "Archive")), advertised.copies)
+        assertEquals(true, model.mailUndo?.usedMove)
+        val silent = FakeMailSession()
+        silent.arrivalRows = listOf(row(1))
+        val fallback = IndexModel(silent, MemorySettingsStore(AccountSettings(moveMethod = MoveMethod.ImapMove)), "INBOX")
+        runImmediate { fallback.loadWindow() }
+        runImmediate { fallback.moveMessages(listOf(1L), "Archive") }
+        assertEquals(listOf(CopyWrite(listOf(1L), "Archive")), silent.copies)
+        assertEquals(false, fallback.mailUndo?.usedMove)
+    }
+
+    @Test
+    fun swipeDeleteFollowsTrashAndPermanentPolicy() {
+        val trash = FakeMailSession()
+        trash.knownTrashName = "Trash"
+        trash.arrivalRows = listOf(row(6))
+        val moveModel = IndexModel(
+            trash,
+            MemorySettingsStore(AccountSettings(deletePolicy = DeletePolicy.MoveToTrash)),
+            "INBOX",
+        )
+        runImmediate { moveModel.loadWindow() }
+        runImmediate { moveModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(CopyWrite(listOf(6L), "Trash")), trash.copies)
+        assertTrue(trash.stores.isEmpty())
+        assertTrue(trash.uidExpunges.isEmpty())
+
+        val missing = FakeMailSession()
+        missing.arrivalRows = listOf(row(6))
+        val missingModel = IndexModel(
+            missing,
+            MemorySettingsStore(AccountSettings(deletePolicy = DeletePolicy.MoveToTrash)),
+            "INBOX",
+        )
+        runImmediate { missingModel.loadWindow() }
+        runImmediate { missingModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), missing.stores)
+        assertTrue(missing.copies.isEmpty())
+
+        val permanent = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        permanent.arrivalRows = listOf(row(6, flags = setOf("\\Seen")))
+        val permanentModel = IndexModel(
+            permanent,
+            MemorySettingsStore(AccountSettings(deletePolicy = DeletePolicy.DeletePermanently)),
+            "INBOX",
+        )
+        runImmediate { permanentModel.loadWindow() }
+        runImmediate { permanentModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), permanent.stores)
+        assertEquals(listOf(listOf(6L)), permanent.uidExpunges)
+        assertEquals(0, permanent.expungeCount)
+        assertNull(permanentModel.mailUndo)
+        assertTrue(permanentModel.rows.isEmpty())
+
+        val noPlus = FakeMailSession()
+        noPlus.arrivalRows = listOf(row(6))
+        val noPlusModel = IndexModel(
+            noPlus,
+            MemorySettingsStore(AccountSettings(deletePolicy = DeletePolicy.DeletePermanently)),
+            "INBOX",
+        )
+        runImmediate { noPlusModel.loadWindow() }
+        runImmediate { noPlusModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), noPlus.stores)
+        assertTrue(noPlus.uidExpunges.isEmpty())
+        assertEquals(0, noPlus.expungeCount)
+
+        val inTrash = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        inTrash.knownTrashName = "Trash"
+        inTrash.arrivalRows = listOf(row(6))
+        val inTrashModel = IndexModel(inTrash, MemorySettingsStore(AccountSettings()), "Trash")
+        runImmediate { inTrashModel.loadWindow() }
+        runImmediate { inTrashModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(listOf(6L)), inTrash.uidExpunges)
+        assertNull(inTrashModel.mailUndo)
+
+        val trashNoPlus = FakeMailSession()
+        trashNoPlus.knownTrashName = "Trash"
+        trashNoPlus.arrivalRows = listOf(row(6))
+        val trashNoPlusModel = IndexModel(
+            trashNoPlus,
+            MemorySettingsStore(AccountSettings(deletePolicy = DeletePolicy.DeletePermanently)),
+            "Trash",
+        )
+        runImmediate { trashNoPlusModel.loadWindow() }
+        runImmediate { trashNoPlusModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), trashNoPlus.stores)
+        assertTrue(trashNoPlus.uidExpunges.isEmpty())
+        assertEquals(0, trashNoPlus.expungeCount)
+    }
+
+    @Test
+    fun deletePermanentlyAllMailboxUsesUidExpungeDeleted() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        session.arrivalRows = listOf(row(1), row(2))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.deletePermanently(emptyList(), allMailbox = true) }
+        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Deleted"), emptySet())), session.stores)
+        assertEquals(1, session.expungeCount)
+        assertTrue(session.uidExpunges.isEmpty())
+        assertTrue(model.rows.isEmpty())
+        assertNull(model.mailUndo)
+    }
+
+    @Test
+    fun expungeWithoutUidPlusDoesNotSend() {
+        val session = FakeMailSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.expunge() }
+        assertEquals(0, session.expungeCount)
+        runImmediate { model.deletePermanently(listOf(4L)) }
+        assertTrue(session.stores.isEmpty())
+        assertTrue(session.uidExpunges.isEmpty())
     }
 
     @Test
@@ -1110,6 +1291,8 @@ private class FakeMailSession(
     var peekCount: Int = 0
     var appendCount: Int = 0
     var expungeCount: Int = 0
+    var knownTrashName: String = ""
+    val uidExpunges = mutableListOf<List<Long>>()
     val watchMailboxes = mutableListOf<String>()
     var stopWatchCount: Int = 0
 
@@ -1213,10 +1396,22 @@ private class FakeMailSession(
         return row.copy(flags = (row.flags + add) - remove)
     }
 
+    override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
+        throwIfArmed()
+        stores += FlagWrite(emptyList(), add, remove)
+    }
+
     override suspend fun uidExpungeDeleted() {
         throwIfArmed()
         expungeCount += 1
     }
+
+    override suspend fun uidExpunge(uids: List<Long>) {
+        throwIfArmed()
+        uidExpunges += uids
+    }
+
+    override suspend fun knownTrash(): String = knownTrashName
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
         throwIfArmed()

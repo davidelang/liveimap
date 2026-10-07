@@ -150,11 +150,13 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.pollIntervalSeconds
 import org.dlang.liveimap.settings.slowerClientSort
 import org.dlang.liveimap.settings.slowerClientThread
@@ -191,6 +193,12 @@ private data class FilterChoice(
     val kind: String = "",
     val needsValue: Boolean = false,
     val role: FilterRole = FilterRole.Criterion,
+)
+
+private data class PendingDelete(
+    val uids: List<Long>,
+    val allMailbox: Boolean,
+    val fromSwipe: Boolean,
 )
 
 private val filterChoices = listOf(
@@ -611,6 +619,10 @@ fun MessageIndexScreen(
     var selectionMore by remember { mutableStateOf(false) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var pendingExpungeUids by remember { mutableStateOf<List<Long>?>(null) }
+    var pendingPermanent by remember { mutableStateOf<PendingDelete?>(null) }
+    var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
+    var folderInfo by remember { mutableStateOf<SelectResult?>(null) }
+    var leavingIndex by remember { mutableStateOf(false) }
     var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
     var undoToken by remember { mutableIntStateOf(0) }
     var snackMode by remember { mutableStateOf("retry") }
@@ -620,9 +632,9 @@ fun MessageIndexScreen(
     val watchMailboxNow = rememberUpdatedState(watchMailbox)
     val allowNewer = remember { mutableStateOf(true) }
 
-    BackHandler(
-        enabled = prompt != null || filterOpen || menuOpen || openAt || flagUid != null || searchVisible || multiSelect,
-    ) {
+    val overlayBack = prompt != null || filterOpen || menuOpen || openAt || flagUid != null ||
+        searchVisible || multiSelect
+    BackHandler(enabled = overlayBack) {
         when {
             prompt != null -> prompt = null
             filterOpen -> filterOpen = false
@@ -644,6 +656,36 @@ fun MessageIndexScreen(
         snackMessage = text
         snackMode = "retry"
         snackEvent += 1
+    }
+
+    fun leaveIndex() {
+        if (leavingIndex) return
+        leavingIndex = true
+        scope.launch {
+            try {
+                gate.withLock { session.expungeOnLeave() }
+                onBack()
+            } catch (error: CancellationException) {
+                leavingIndex = false
+                throw error
+            } catch (error: MailFailure) {
+                leavingIndex = false
+                postSnack(error.text)
+            }
+        }
+    }
+
+    BackHandler(enabled = !overlayBack) { leaveIndex() }
+
+    LaunchedEffect(mailbox, account.trashMailbox, connected) {
+        if (!connected) return@LaunchedEffect
+        knownTrashName = try {
+            gate.withLock { session.knownTrash() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            ""
+        }
     }
 
     fun clearSelection() {
@@ -780,6 +822,75 @@ fun MessageIndexScreen(
     }
 
     fun pull() { sync.block() }
+
+    fun selectAllMessages() {
+        when (val target = selectAllTarget(filterActive, model.order)) {
+            is SelectAllTarget.Uids -> {
+                allMailbox = false
+                selected = target.uids
+                multiSelect = true
+            }
+            SelectAllTarget.EntireMailbox -> {
+                scope.launch {
+                    val exists = gate.withLock { session.selectedExists() }
+                    allMailbox = true
+                    mailboxExists = exists
+                    folderExists = exists
+                    selected = emptyList()
+                    multiSelect = true
+                }
+            }
+        }
+    }
+
+    suspend fun readKnownTrash(): String {
+        val trash = try {
+            gate.withLock { session.knownTrash() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            ""
+        }
+        knownTrashName = trash
+        return trash
+    }
+
+    suspend fun applyDeletePolicy(
+        policy: DeletePolicy,
+        uids: List<Long>,
+        entire: Boolean,
+        trash: String,
+    ) {
+        var undo: MailUndo? = null
+        gate.withLock {
+            model.clearMailUndo()
+            when (policy) {
+                DeletePolicy.MarkDeleted -> model.deleteMessages(uids, entire)
+                DeletePolicy.MoveToTrash -> model.moveMessages(uids, trash, entire)
+                DeletePolicy.DeletePermanently -> model.deletePermanently(uids, entire)
+            }
+            pull()
+            undo = model.mailUndo
+        }
+        val pending = undo
+        if (pending != null) publishUndo(pending)
+    }
+
+    suspend fun finishSwipe(uid: Long, binding: SwipeBinding) {
+        var undo: MailUndo? = null
+        gate.withLock {
+            model.clearMailUndo()
+            when (val command = model.performSwipe(uid, binding)) {
+                is IndexCommand.Compose -> onCompose(command.seed)
+                is IndexCommand.ShowFlags -> flagUid = command.uid
+                IndexCommand.None -> Unit
+            }
+            pull()
+            undo = model.mailUndo
+        }
+        val pending = undo
+        if (pending != null) publishUndo(pending)
+    }
 
     fun onNewMailPill() {
         scope.launch {
@@ -1472,7 +1583,7 @@ fun MessageIndexScreen(
                             )
                         }
                     } else {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = { leaveIndex() }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.index_back),
@@ -1481,6 +1592,14 @@ fun MessageIndexScreen(
                     }
                 },
                 actions = {
+                    val trashKnown = knownTrashName.isNotEmpty()
+                    val uidPlusNow = session.featureCaps.uidPlus
+                    val effectivePolicy = effectiveDeletePolicy(
+                        account.deletePolicy,
+                        trashKnown && mailbox == knownTrashName,
+                        uidPlusNow,
+                        trashKnown,
+                    )
                     if (multiSelect) {
                         IconButton(
                             onClick = {
@@ -1531,21 +1650,24 @@ fun MessageIndexScreen(
                                 val uids = selected.toList()
                                 val entire = allMailbox
                                 scope.launch {
-                                    var undo: MailUndo? = null
-                                    gate.withLock {
-                                        model.clearMailUndo()
-                                        model.deleteMessages(uids, entire)
-                                        pull()
-                                        undo = model.mailUndo
+                                    val trash = readKnownTrash()
+                                    val policy = effectiveDeletePolicy(
+                                        account.deletePolicy,
+                                        trash.isNotEmpty() && mailbox == trash,
+                                        session.featureCaps.uidPlus,
+                                        trash.isNotEmpty(),
+                                    )
+                                    if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                                        pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
+                                    } else {
+                                        applyDeletePolicy(policy, uids, entire, trash)
                                     }
-                                    val pending = undo
-                                    if (pending != null) publishUndo(pending)
                                 }
                             },
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Delete,
-                                contentDescription = stringResource(R.string.index_delete),
+                                contentDescription = deletePolicyLabel(effectivePolicy),
                             )
                         }
                         Box {
@@ -1563,25 +1685,27 @@ fun MessageIndexScreen(
                                     text = { Text(stringResource(R.string.index_select_all)) },
                                     onClick = {
                                         selectionMore = false
-                                        when (val target = selectAllTarget(filterActive, model.order)) {
-                                            is SelectAllTarget.Uids -> {
-                                                allMailbox = false
-                                                selected = target.uids
-                                                multiSelect = true
-                                            }
-                                            SelectAllTarget.EntireMailbox -> {
-                                                scope.launch {
-                                                    val exists = gate.withLock { session.selectedExists() }
-                                                    allMailbox = true
-                                                    mailboxExists = exists
-                                                    folderExists = exists
-                                                    selected = emptyList()
-                                                    multiSelect = true
-                                                }
-                                            }
-                                        }
+                                        selectAllMessages()
                                     },
                                 )
+                                for (policy in alternateDeletePolicies(effectivePolicy, uidPlusNow, trashKnown)) {
+                                    DropdownMenuItem(
+                                        text = { Text(deletePolicyLabel(policy)) },
+                                        onClick = {
+                                            selectionMore = false
+                                            val uids = selected.toList()
+                                            val entire = allMailbox
+                                            scope.launch {
+                                                val trash = readKnownTrash()
+                                                if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
+                                                } else {
+                                                    applyDeletePolicy(policy, uids, entire, trash)
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.index_mark_answered)) },
                                     onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
@@ -1803,6 +1927,61 @@ fun MessageIndexScreen(
                                 },
                             )
                         }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.index_expunge_menu))
+                                    if (!uidPlusNow) {
+                                        Text(
+                                            text = stringResource(R.string.settings_reason_uidplus),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = uidPlusNow,
+                            onClick = {
+                                if (!uidPlusNow) return@DropdownMenuItem
+                                menuOpen = false
+                                if (account.askBeforeExpunge) {
+                                    pendingExpungeUids = null
+                                    confirmExpunge = true
+                                } else {
+                                    scope.launch {
+                                        gate.withLock {
+                                            model.expunge()
+                                            pull()
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.index_select_all)) },
+                            onClick = {
+                                menuOpen = false
+                                selectAllMessages()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.index_folder_info)) },
+                            onClick = {
+                                menuOpen = false
+                                scope.launch {
+                                    val info = try {
+                                        gate.withLock { session.selectedInfo() }
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: MailFailure) {
+                                        postSnack(error.text)
+                                        return@launch
+                                    }
+                                    folderInfo = info
+                                }
+                            },
+                        )
                     }
                 }
                     }
@@ -1833,22 +2012,6 @@ fun MessageIndexScreen(
             }
         }
         if (connected) {
-                TextButton(
-                    onClick = {
-                        val uidPlus = session.featureCaps.uidPlus
-                        if (account.askBeforeExpunge || !uidPlus) {
-                            pendingExpungeUids = null
-                            confirmExpunge = true
-                        } else {
-                            scope.launch {
-                                gate.withLock {
-                                    model.expunge()
-                                    pull()
-                                }
-                            }
-                        }
-                    },
-                ) { Text(stringResource(R.string.index_expunge)) }
                 if (confirmExpunge) {
                     val uidPlus = session.featureCaps.uidPlus
                     val body = buildString {
@@ -2133,19 +2296,24 @@ fun MessageIndexScreen(
                                     if (!allMailbox && row.uid !in selected) selected = selected + row.uid
                                 },
                                 onSwipe = { binding ->
-                                    var undo: MailUndo? = null
-                                    gate.withLock {
-                                        model.clearMailUndo()
-                                        when (val command = model.performSwipe(row.uid, binding)) {
-                                            is IndexCommand.Compose -> onCompose(command.seed)
-                                            is IndexCommand.ShowFlags -> flagUid = command.uid
-                                            IndexCommand.None -> Unit
+                                    if (binding.action == SwipeAction.Delete && account.askBeforeExpunge) {
+                                        val trash = readKnownTrash()
+                                        val policy = effectiveDeletePolicy(
+                                            account.deletePolicy,
+                                            trash.isNotEmpty() && mailbox == trash,
+                                            session.featureCaps.uidPlus,
+                                            trash.isNotEmpty(),
+                                        )
+                                        if (policy == DeletePolicy.DeletePermanently) {
+                                            pendingPermanent = PendingDelete(
+                                                listOf(row.uid),
+                                                allMailbox = false,
+                                                fromSwipe = true,
+                                            )
+                                            return@onSwipe
                                         }
-                                        pull()
-                                        undo = model.mailUndo
                                     }
-                                    val pending = undo
-                                    if (pending != null) publishUndo(pending)
+                                    finishSwipe(row.uid, binding)
                                 },
                             )
                         }
@@ -2202,6 +2370,63 @@ fun MessageIndexScreen(
             }
         }
     }
+    }
+    val askedPermanent = pendingPermanent
+    if (askedPermanent != null) {
+        AlertDialog(
+            onDismissRequest = { pendingPermanent = null },
+            text = { Text(stringResource(R.string.index_permanent_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val request = askedPermanent
+                    pendingPermanent = null
+                    scope.launch {
+                        if (request.fromSwipe) {
+                            finishSwipe(request.uids.single(), SwipeBinding(SwipeAction.Delete))
+                        } else {
+                            applyDeletePolicy(
+                                DeletePolicy.DeletePermanently,
+                                request.uids,
+                                request.allMailbox,
+                                knownTrashName,
+                            )
+                        }
+                    }
+                }) {
+                    Text(
+                        stringResource(R.string.settings_delete_permanently),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPermanent = null }) {
+                    Text(stringResource(R.string.index_cancel))
+                }
+            },
+        )
+    }
+    val shownFolder = folderInfo
+    if (shownFolder != null) {
+        AlertDialog(
+            onDismissRequest = { folderInfo = null },
+            title = { Text(stringResource(R.string.index_folder_info)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.index_folder_info_body,
+                        mailbox,
+                        shownFolder.exists,
+                        shownFolder.uidValidity,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { folderInfo = null }) {
+                    Text(stringResource(R.string.index_close))
+                }
+            },
+        )
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {
@@ -2582,6 +2807,15 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
+    when (policy) {
+        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
+        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
+        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+    },
+)
 
 @Composable
 private fun startRuleName(rule: StartRule): String = stringResource(

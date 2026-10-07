@@ -11,11 +11,13 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartAfterChange
+import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.settings.slowerClientSort
 import org.dlang.liveimap.settings.slowerClientThread
 import org.dlang.liveimap.settings.StartRule
@@ -115,6 +117,31 @@ fun selectionTitle(allMailbox: Boolean, count: Int, exists: Int): String {
     if (exists > 0 && count == exists) return "All ${format.format(count)} selected"
     return "${format.format(count)} selected"
 }
+
+fun effectiveDeletePolicy(
+    policy: DeletePolicy,
+    inTrash: Boolean,
+    uidPlus: Boolean,
+    trashKnown: Boolean,
+): DeletePolicy {
+    if (inTrash) return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
+    if (policy == DeletePolicy.DeletePermanently && !uidPlus) return DeletePolicy.MarkDeleted
+    if (policy == DeletePolicy.MoveToTrash && !trashKnown) return DeletePolicy.MarkDeleted
+    return policy
+}
+
+fun alternateDeletePolicies(
+    effective: DeletePolicy,
+    uidPlus: Boolean,
+    trashKnown: Boolean,
+): List<DeletePolicy> =
+    DeletePolicy.entries.filter { candidate ->
+        candidate != effective && when (candidate) {
+            DeletePolicy.MarkDeleted -> true
+            DeletePolicy.MoveToTrash -> trashKnown
+            DeletePolicy.DeletePermanently -> uidPlus
+        }
+    }
 
 sealed class SelectAllTarget {
     data class Uids(val uids: List<Long>) : SelectAllTarget()
@@ -769,11 +796,13 @@ class IndexModel(
             return heldRows
         }
         if (!allMailbox && uids.isEmpty()) return heldRows
+        val settings = store.load()
+        account = settings
         try {
             if (allMailbox) session.copyAllThenDelete(moveMailbox)
             else session.copyThenDelete(uids, moveMailbox)
             val dest = session.takeCopiedUids()
-            val usedMove = session.featureCaps.move
+            val usedMove = moveCommandKind(settings.moveMethod, session.featureCaps.move) == "Move"
             if (allMailbox) {
                 order = emptyList()
                 heldRows = emptyList()
@@ -791,6 +820,32 @@ class IndexModel(
                 destUids = dest,
                 usedMove = usedMove,
             )
+            OpenMessageOrder.publish(mailbox, order, heldRows)
+        } catch (failure: MailFailure) {
+            notice = failure.text
+            mailUndo = null
+        }
+        return heldRows
+    }
+
+    suspend fun deletePermanently(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
+        if (!session.featureCaps.uidPlus) return heldRows
+        if (!allMailbox && uids.isEmpty()) return heldRows
+        try {
+            if (allMailbox) {
+                session.storeFlagsAll(setOf("\\Deleted"), emptySet())
+                session.uidExpungeDeleted()
+                order = emptyList()
+                heldRows = emptyList()
+            } else {
+                session.storeFlags(uids, setOf("\\Deleted"), emptySet())
+                session.uidExpunge(uids)
+                val gone = uids.toSet()
+                order = order.filter { it !in gone }
+                heldRows = heldRows.filter { it.uid !in gone }
+            }
+            notice = null
+            mailUndo = null
             OpenMessageOrder.publish(mailbox, order, heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
@@ -871,6 +926,7 @@ class IndexModel(
     }
 
     suspend fun expunge(): List<IndexRow> {
+        if (!session.featureCaps.uidPlus) return heldRows
         try {
             session.uidExpungeDeleted()
         } catch (failure: MailFailure) {
@@ -896,7 +952,22 @@ class IndexModel(
 
     suspend fun performSwipe(uid: Long, binding: SwipeBinding): IndexCommand {
         when (binding.action) {
-            SwipeAction.Delete -> deleteMessages(listOf(uid))
+            SwipeAction.Delete -> {
+                val settings = store.load()
+                account = settings
+                val trash = session.knownTrash()
+                val policy = effectiveDeletePolicy(
+                    settings.deletePolicy,
+                    trash.isNotEmpty() && mailbox == trash,
+                    session.featureCaps.uidPlus,
+                    trash.isNotEmpty(),
+                )
+                when (policy) {
+                    DeletePolicy.MarkDeleted -> deleteMessages(listOf(uid))
+                    DeletePolicy.MoveToTrash -> moveMessages(listOf(uid), trash)
+                    DeletePolicy.DeletePermanently -> deletePermanently(listOf(uid))
+                }
+            }
             SwipeAction.Move -> moveMessages(listOf(uid), binding.moveMailbox)
             SwipeAction.Reply -> return IndexCommand.Compose(actionSeed(ComposeKind.Reply, listOf(uid)))
             SwipeAction.ReplyAll -> return IndexCommand.Compose(actionSeed(ComposeKind.ReplyAll, listOf(uid)))

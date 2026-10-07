@@ -118,15 +118,19 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.ReaderAction
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.ThemeMode
+import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
+import org.dlang.liveimap.ui.index.alternateDeletePolicies
+import org.dlang.liveimap.ui.index.effectiveDeletePolicy
 import org.dlang.liveimap.ui.index.formatIndexDate
 import org.dlang.liveimap.ui.index.MailboxTitleLines
 import org.dlang.liveimap.ui.index.mailboxTitleFor
@@ -316,9 +320,11 @@ fun MessageReaderScreen(
     var advanceAfterUndo by remember { mutableStateOf(false) }
     var advanceTarget by remember { mutableStateOf<Pair<Long, Int>?>(null) }
     var confirmExpunge by remember { mutableStateOf(false) }
+    var confirmPermanent by remember { mutableStateOf(false) }
     var expungeUids by remember { mutableStateOf<List<Long>>(emptyList()) }
     val laterRetry = remember { LaterRetry() }
     var account by held.accountState
+    var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var structure by held.structureState
     var selectedView by held.selectedViewState
     var renderedHtml by held.renderedHtmlState
@@ -355,6 +361,17 @@ fun MessageReaderScreen(
     }
     BackHandler(enabled = moreMenu) {
         moreMenu = false
+    }
+
+    LaunchedEffect(mailbox, account.trashMailbox, connected) {
+        if (!connected) return@LaunchedEffect
+        knownTrashName = try {
+            gate.withLock { session.knownTrash() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            ""
+        }
     }
 
     fun postSnack(text: String) {
@@ -1060,19 +1077,77 @@ fun MessageReaderScreen(
         }
     }
 
-    fun runDelete() {
-        scope.launch {
-            gate.withLock {
-                val target = nextAfterDeleteOrMove()
-                try {
+    suspend fun runReaderPolicyLocked(policy: DeletePolicy) {
+        val target = nextAfterDeleteOrMove()
+        try {
+            when (policy) {
+                DeletePolicy.MarkDeleted -> {
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    postSnack(error.text)
+                }
+                DeletePolicy.MoveToTrash -> {
+                    val trash = session.knownTrash()
+                    knownTrashName = trash
+                    if (trash.isEmpty()) return
+                    session.copyThenDelete(listOf(uid), trash)
+                    val dest = session.takeCopiedUids()
+                    val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
+                    showActionUndo(
+                        MailUndo(
+                            delete = false,
+                            uids = listOf(uid),
+                            targetMailbox = trash,
+                            destUids = dest,
+                            usedMove = usedMove,
+                        ),
+                        target,
+                    )
+                }
+                DeletePolicy.DeletePermanently -> {
+                    if (!session.featureCaps.uidPlus) return
+                    session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                    session.uidExpunge(listOf(uid))
+                    openNextOrIndex(target)
                 }
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            postSnack(error.text)
+        }
+    }
+
+    fun runChosenPolicy(policy: DeletePolicy) {
+        scope.launch {
+            if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                confirmPermanent = true
+                return@launch
+            }
+            gate.withLock { runReaderPolicyLocked(policy) }
+        }
+    }
+
+    fun runDelete() {
+        scope.launch {
+            val trash = try {
+                gate.withLock { session.knownTrash() }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+                ""
+            }
+            knownTrashName = trash
+            val policy = effectiveDeletePolicy(
+                account.deletePolicy,
+                trash.isNotEmpty() && mailbox == trash,
+                session.featureCaps.uidPlus,
+                trash.isNotEmpty(),
+            )
+            if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                confirmPermanent = true
+                return@launch
+            }
+            gate.withLock { runReaderPolicyLocked(policy) }
         }
     }
 
@@ -1085,7 +1160,7 @@ fun MessageReaderScreen(
                 try {
                     session.copyThenDelete(listOf(uid), spamMailbox)
                     val dest = session.takeCopiedUids()
-                    val usedMove = session.featureCaps.move
+                    val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                     showActionUndo(
                         MailUndo(
                             delete = false,
@@ -1163,6 +1238,14 @@ fun MessageReaderScreen(
     }
     val barActions = readerBarActions(account.readerBar, account.spamMailbox)
     val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
+    val trashKnown = knownTrashName.isNotEmpty()
+    val readerUidPlus = session.featureCaps.uidPlus
+    val effectivePolicy = effectiveDeletePolicy(
+        account.deletePolicy,
+        trashKnown && mailbox == knownTrashName,
+        readerUidPlus,
+        trashKnown,
+    )
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -1187,7 +1270,11 @@ fun MessageReaderScreen(
                     IconButton(onClick = { runReaderAction(action) }) {
                         Icon(
                             imageVector = readerActionImage(action),
-                            contentDescription = readerActionName(action),
+                            contentDescription = if (action == ReaderAction.Delete) {
+                                deletePolicyLabel(effectivePolicy)
+                            } else {
+                                readerActionName(action)
+                            },
                         )
                     }
                 }
@@ -1199,9 +1286,23 @@ fun MessageReaderScreen(
                     )
                 }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                for (policy in alternateDeletePolicies(effectivePolicy, readerUidPlus, trashKnown)) {
+                    DropdownMenuItem(
+                        text = { Text(deletePolicyLabel(policy)) },
+                        onClick = {
+                            moreMenu = false
+                            runChosenPolicy(policy)
+                        },
+                    )
+                }
                 for (action in menuActions) {
                     DropdownMenuItem(
-                        text = { Text(readerActionName(action)) },
+                        text = {
+                            Text(
+                                if (action == ReaderAction.Delete) deletePolicyLabel(effectivePolicy)
+                                else readerActionName(action),
+                            )
+                        },
                         onClick = {
                             moreMenu = false
                             runReaderAction(action)
@@ -1492,6 +1593,30 @@ fun MessageReaderScreen(
             },
         )
     }
+    if (confirmPermanent) {
+        AlertDialog(
+            onDismissRequest = { confirmPermanent = false },
+            text = { Text(stringResource(R.string.index_permanent_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmPermanent = false
+                    scope.launch {
+                        gate.withLock { runReaderPolicyLocked(DeletePolicy.DeletePermanently) }
+                    }
+                }) {
+                    Text(
+                        stringResource(R.string.settings_delete_permanently),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPermanent = false }) {
+                    Text(stringResource(R.string.reader_cancel))
+                }
+            },
+        )
+    }
     if (choosingMove) {
         MailboxChooser(
             store = store,
@@ -1508,7 +1633,7 @@ fun MessageReaderScreen(
                             try {
                                 session.copyThenDelete(listOf(uid), picked)
                                 val dest = session.takeCopiedUids()
-                                val usedMove = session.featureCaps.move
+                                val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                                 showActionUndo(
                                     MailUndo(
                                         delete = false,
@@ -1580,6 +1705,15 @@ internal fun readerMenuActions(saved: List<ReaderAction>, spamMailbox: String): 
     val off = ReaderAction.entries.filter { action -> action !in saved }
     return overflow + off
 }
+
+@Composable
+private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
+    when (policy) {
+        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
+        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
+        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+    },
+)
 
 @Composable
 private fun readerActionName(action: ReaderAction): String = stringResource(
