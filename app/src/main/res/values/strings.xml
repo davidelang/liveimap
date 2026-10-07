@@ -550,4 +550,6 @@
     <string name="index_jump_missing">No message %1$d</string>
     <string name="index_next_unread">Next unread</string>
     <string name="index_no_unread">No unread messages</string>
+    <string name="index_next_folder">Go to %1$s? It has unread mail.</string>
+    <string name="index_next_folder_go">Go</string>
 </resources>

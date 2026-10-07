@@ -122,6 +122,95 @@ class FolderListModel(
         return rows
     }
 
+    suspend fun unseenFolderOrder(): List<Pair<String, Int?>> {
+        val namespaces = session.namespaces()
+        val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
+        val other = namespaces.filter { it.kind == NamespaceKind.Other }
+        val shared = namespaces.filter { it.kind == NamespaceKind.Shared }
+
+        val siblings = mutableListOf<LevelNode>()
+        val inboxChildren = mutableListOf<LevelNode>()
+        var inbox: LevelNode? = null
+        var inboxPrefix: String? = null
+        var inboxDelimiter: Char = '\u0000'
+        var sawInboxPrefixLevel = false
+        var inboxFromSiblingLevel = false
+
+        for (ns in personal) {
+            if (inboxDelimiter == '\u0000') inboxDelimiter = ns.delimiter
+            val level = session.listLevel(ns.prefix, null, true)
+            val mark = inboxChildPrefix(ns.delimiter)
+            val levelIsInboxChildren = mark != null && ns.prefix == mark
+            if (levelIsInboxChildren) {
+                sawInboxPrefixLevel = true
+                if (inboxPrefix == null) inboxPrefix = ns.prefix
+                for (entry in level) {
+                    if (entry.mailbox == "INBOX") {
+                        if (inbox == null) {
+                            inbox = entryNode(entry, ns.prefix)
+                            inboxPrefix = ns.prefix
+                        }
+                    } else {
+                        addChild(inboxChildren, entryNode(entry, ns.prefix))
+                    }
+                }
+            } else {
+                for (entry in level) {
+                    val underInbox = mark != null &&
+                        entry.mailbox != "INBOX" &&
+                        entry.mailbox.startsWith(mark)
+                    if (underInbox) {
+                        addChild(inboxChildren, entryNode(entry, ns.prefix))
+                    } else if (entry.mailbox == "INBOX") {
+                        if (inbox == null) {
+                            inbox = entryNode(entry, ns.prefix)
+                            inboxPrefix = ns.prefix
+                            inboxFromSiblingLevel = true
+                        }
+                    } else if (siblings.none { it.mailbox == entry.mailbox }) {
+                        siblings += entryNode(entry, ns.prefix)
+                    }
+                }
+            }
+        }
+
+        val childrenComplete = sawInboxPrefixLevel && !inboxFromSiblingLevel
+        val foundInbox = inbox
+        val inboxNode = if (foundInbox != null) {
+            foundInbox.copy(
+                hasChildren = foundInbox.hasChildren || inboxChildren.isNotEmpty(),
+                cachedChildren = inboxChildren.toList(),
+                childrenComplete = childrenComplete,
+            )
+        } else if (personal.isNotEmpty()) {
+            LevelNode(
+                mailbox = "INBOX",
+                leaf = "INBOX",
+                hasChildren = inboxChildren.isNotEmpty(),
+                namespacePrefix = inboxPrefix ?: personal.first().prefix,
+                namespaceRoot = false,
+                cachedChildren = inboxChildren.toList(),
+                childrenComplete = childrenComplete,
+                delimiter = inboxDelimiter,
+            )
+        } else {
+            null
+        }
+
+        val roots = mutableListOf<LevelNode>()
+        if (inboxNode != null) roots += inboxNode
+        roots += orderedLevel(siblings)
+        roots += orderedLevel(other.map { namespaceNode(it) })
+        roots += orderedLevel(shared.map { namespaceNode(it) })
+
+        val rows = mutableListOf<Pair<String, Int?>>()
+        val emitted = mutableSetOf<String>()
+        for (root in roots) {
+            appendUnseen(root, emptySet(), emitted, rows)
+        }
+        return rows
+    }
+
     suspend fun refreshVisibleCounts(visible: List<FolderRow>): List<FolderRow> {
         val settings = store.load()
         if (!session.featureCaps.listStatus && !settings.forceSlowerFallbacks && !settings.statusVisibleCounts) {
@@ -266,6 +355,37 @@ class FolderListModel(
         return fetched + extra
     }
 
+    private suspend fun appendUnseen(
+        node: LevelNode,
+        path: Set<String>,
+        emitted: MutableSet<String>,
+        rows: MutableList<Pair<String, Int?>>,
+    ) {
+        if (node.mailbox in path) return
+        if (!node.namespaceRoot && !emitted.add(node.mailbox)) return
+        if (!node.namespaceRoot) rows += node.mailbox to node.unseen
+        if (!node.hasChildren) return
+        val nextPath = path + node.mailbox
+        val seen = mutableSetOf<String>()
+        for (child in orderedLevel(unseenChildren(node))) {
+            if (!seen.add(child.mailbox)) continue
+            appendUnseen(child, nextPath, emitted, rows)
+        }
+    }
+
+    private suspend fun unseenChildren(node: LevelNode): List<LevelNode> {
+        if (node.namespaceRoot) {
+            return session.listLevel(node.namespacePrefix, null, true)
+                .map { entryNode(it, node.namespacePrefix) }
+        }
+        if (node.childrenComplete) return node.cachedChildren.orEmpty()
+        val fetched = session.listLevel(node.namespacePrefix, node.mailbox, true)
+            .map { entryNode(it, node.namespacePrefix) }
+        val seen = fetched.map { it.mailbox }.toSet()
+        val extra = node.cachedChildren.orEmpty().filter { it.mailbox !in seen }
+        return fetched + extra
+    }
+
     private fun addChild(into: MutableList<LevelNode>, node: LevelNode) {
         if (into.none { it.mailbox == node.mailbox }) into += node
     }
@@ -363,4 +483,18 @@ class FolderListModel(
         val unseen: Int? = null,
         val delimiter: Char = '\u0000',
     )
+}
+
+fun nextUnseenFolder(current: String, ordered: List<Pair<String, Int?>>): String? {
+    val start = ordered.indexOfFirst { it.first == current }
+    if (start < 0) {
+        return ordered.firstOrNull { (it.second ?: 0) > 0 }?.first
+    }
+    val size = ordered.size
+    for (step in 1 until size) {
+        val item = ordered[(start + step) % size]
+        val count = item.second
+        if (count != null && count > 0) return item.first
+    }
+    return null
 }

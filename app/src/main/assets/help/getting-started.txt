@@ -39,3 +39,5 @@ Until you customize them, the index bar shows Search, a selection shows Delete, 
 Jump to number… in the index Sort menu moves the list to that sequence number.
 
 Next unread in the index Sort menu moves to the next unread message in this folder.
+
+When this folder has no later unread message, Next unread asks before opening the next folder that has unread mail.

@@ -154,6 +154,91 @@ class FolderListModelTest {
         assertEquals("imap.example.com", store.settings.imapHost)
         assertTrue(runModel { model.loadLevel() }.single { it.mailbox == "Sent" }.expanded)
     }
+
+    @Test
+    fun nextUnseenFolderSkipsEmptyCountsAndWrapsOnce() {
+        val ordered = listOf(
+            "INBOX" to 0,
+            "Archive" to 2,
+            "Lists" to 0,
+            "Later" to 1,
+        )
+        assertEquals("Archive", nextUnseenFolder("INBOX", ordered))
+        assertEquals("Later", nextUnseenFolder("Archive", ordered))
+        assertEquals("Archive", nextUnseenFolder("Later", ordered))
+        assertEquals("Archive", nextUnseenFolder("not-in-the-list", ordered))
+        assertEquals(
+            null,
+            nextUnseenFolder("Later", listOf("INBOX" to 0, "Archive" to 0, "Lists" to 0, "Later" to 1)),
+        )
+        val withNull = listOf(
+            "INBOX" to null,
+            "Archive" to 2,
+            "Lists" to null,
+            "Later" to 1,
+        )
+        assertEquals("Archive", nextUnseenFolder("INBOX", withNull))
+        assertEquals("Later", nextUnseenFolder("Archive", withNull))
+        assertEquals("Archive", nextUnseenFolder("Later", withNull))
+        assertEquals(null, nextUnseenFolder("Later", listOf("INBOX" to null, "Later" to 1)))
+    }
+
+    @Test
+    fun unseenFolderOrderIncludesCollapsedChildren() {
+        val session = treeSession()
+        val store = ModelSettingsStore(AccountSettings(showUnreadCounts = false))
+        val model = FolderListModel(session, store)
+        val order = runModel { model.unseenFolderOrder() }
+        assertEquals(
+            listOf(
+                "INBOX" to 2,
+                "INBOX.sent" to 1,
+                "Archive" to null,
+                "Archive.b" to null,
+                "Sent" to null,
+                "Sent.x" to null,
+            ),
+            order,
+        )
+        assertEquals("INBOX.sent", nextUnseenFolder("INBOX", order))
+        assertEquals(
+            listOf(
+                ModelListCall("", null, true),
+                ModelListCall("", "INBOX", true),
+                ModelListCall("", "Archive", true),
+                ModelListCall("", "Sent", true),
+            ),
+            session.listCalls,
+        )
+        assertEquals(false, store.settings.showUnreadCounts)
+        assertEquals(emptySet<String>(), store.settings.expandedFolders)
+
+        runModel { model.loadLevel() }
+        session.listCalls.clear()
+        val again = runModel { model.unseenFolderOrder() }
+        assertEquals(order, again)
+        assertTrue(session.listCalls.isNotEmpty())
+        assertTrue(session.listCalls.all { it.unreadCounts })
+    }
+
+    @Test
+    fun unseenFolderOrderPropagatesListFailure() {
+        val session = ModelMailSession(
+            namespaces = listOf(Namespace("", '.', NamespaceKind.Personal)),
+            levels = emptyMap(),
+            listFailure = MailFailure("list failed"),
+        )
+        val model = FolderListModel(session, ModelSettingsStore(AccountSettings()))
+        var order: List<Pair<String, Int?>>? = null
+        var failed: MailFailure? = null
+        try {
+            order = runModel { model.unseenFolderOrder() }
+        } catch (error: MailFailure) {
+            failed = error
+        }
+        assertEquals(null, order)
+        assertEquals("list failed", failed?.text)
+    }
 }
 
 private fun treeSession(): ModelMailSession = ModelMailSession(
@@ -176,7 +261,11 @@ private fun treeSession(): ModelMailSession = ModelMailSession(
     ),
 )
 
-private data class ModelListCall(val prefix: String, val parentMailbox: String?)
+private data class ModelListCall(
+    val prefix: String,
+    val parentMailbox: String?,
+    val unreadCounts: Boolean = false,
+)
 
 private class ModelSettingsStore(initial: AccountSettings) : SettingsStore {
     var settings: AccountSettings = initial
@@ -197,6 +286,7 @@ private class ModelSettingsStore(initial: AccountSettings) : SettingsStore {
 private class ModelMailSession(
     private val namespaces: List<Namespace>,
     private val levels: Map<ModelListCall, List<FolderEntry>>,
+    private val listFailure: MailFailure? = null,
 ) : MailSession {
     val listCalls = mutableListOf<ModelListCall>()
 
@@ -207,9 +297,10 @@ private class ModelMailSession(
     override suspend fun namespaces(): List<Namespace> = namespaces
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
-        val call = ModelListCall(prefix, parentMailbox)
-        listCalls += call
-        return levels[call] ?: emptyList()
+        listCalls += ModelListCall(prefix, parentMailbox, unreadCounts)
+        val failure = listFailure
+        if (failure != null) throw failure
+        return levels[ModelListCall(prefix, parentMailbox)] ?: emptyList()
     }
 
     override suspend fun select(mailbox: String): SelectResult = unused()

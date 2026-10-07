@@ -171,6 +171,8 @@ import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.startRuleFor
 import org.dlang.liveimap.settings.startRuleIsRecent
 import org.dlang.liveimap.settings.SwipeBinding
+import org.dlang.liveimap.ui.folder.FolderListModel
+import org.dlang.liveimap.ui.folder.nextUnseenFolder
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
@@ -669,6 +671,7 @@ fun MessageIndexScreen(
     advancedQuery: String? = null,
     advancedScope: SearchScope = SearchScope.Current,
     onAdvancedConsumed: () -> Unit = {},
+    onOpenFolder: (String) -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val emptyIndexSentence = stringResource(R.string.index_empty)
@@ -685,6 +688,7 @@ fun MessageIndexScreen(
     val indexBadPattern = stringResource(R.string.index_bad_pattern)
     val store = remember { DataStoreSettingsStore(appContext) }
     val session = remember { mailSession() }
+    val folderList = remember { FolderListModel(session, store) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<IndexScreenHeld>()
@@ -774,6 +778,7 @@ fun MessageIndexScreen(
     var folderInfo by remember { mutableStateOf<SelectResult?>(null) }
     var jumpOpen by remember { mutableStateOf(false) }
     var jumpText by remember { mutableStateOf("") }
+    var nextFolderTarget by remember { mutableStateOf<String?>(null) }
     var leavingIndex by remember { mutableStateOf(false) }
     var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
     var undoToken by remember { mutableIntStateOf(0) }
@@ -785,13 +790,14 @@ fun MessageIndexScreen(
     val allowNewer = remember { mutableStateOf(true) }
 
     val overlayBack = prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
-        flagUid != null || searchVisible || multiSelect
+        nextFolderTarget != null || flagUid != null || searchVisible || multiSelect
     BackHandler(enabled = overlayBack) {
         when {
             prompt != null -> prompt = null
             filterOpen -> filterOpen = false
             openAt -> openAt = false
             jumpOpen -> jumpOpen = false
+            nextFolderTarget != null -> nextFolderTarget = null
             menuOpen -> menuOpen = false
             flagUid != null -> flagUid = null
             searchVisible -> {
@@ -2296,14 +2302,34 @@ fun MessageIndexScreen(
                             onClick = {
                                 menuOpen = false
                                 scope.launch {
-                                    val moved = gate.withLock {
-                                        val landed = model.nextUnread()
-                                        pull()
-                                        landed
+                                    var moved = false
+                                    var snackNone = false
+                                    var askName: String? = null
+                                    try {
+                                        gate.withLock {
+                                            val landed = model.nextUnread()
+                                            pull()
+                                            if (landed) {
+                                                moved = true
+                                            } else if (model.notice == null) {
+                                                val name = nextUnseenFolder(
+                                                    mailbox,
+                                                    folderList.unseenFolderOrder(),
+                                                )
+                                                if (name == null) snackNone = true else askName = name
+                                            }
+                                        }
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: MailFailure) {
+                                        postSnack(error.text)
+                                        return@launch
                                     }
                                     if (moved) scrollToStart()
-                                    else if (model.notice == null) {
+                                    else if (snackNone) {
                                         postSnack(appContext.getString(R.string.index_no_unread))
+                                    } else if (askName != null) {
+                                        nextFolderTarget = askName
                                     }
                                 }
                             },
@@ -2877,6 +2903,24 @@ fun MessageIndexScreen(
             },
             dismissButton = {
                 TextButton(onClick = { jumpOpen = false }) {
+                    Text(stringResource(R.string.index_cancel))
+                }
+            },
+        )
+    }
+    val askedFolder = nextFolderTarget
+    if (askedFolder != null) {
+        AlertDialog(
+            onDismissRequest = { nextFolderTarget = null },
+            text = { Text(stringResource(R.string.index_next_folder, askedFolder)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onOpenFolder(askedFolder)
+                    nextFolderTarget = null
+                }) { Text(stringResource(R.string.index_next_folder_go)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { nextFolderTarget = null }) {
                     Text(stringResource(R.string.index_cancel))
                 }
             },

@@ -1765,3 +1765,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - nextUnread searches UNDELETED UNSEEN. Arrival chooses the next sequence in the current direction and calls jumpToSequence. Sorted, filtered, search, and thread views walk forward from the first visible row.
 - The connected Sort menu lists Next unread after Jump to number…. No later unread says "No unread messages" and stays in this folder. A search failure keeps the rows and shows that notice.
 - No install.
+
+## 2026-10-06 - Next folder execution start
+
+- Approved plan: sandbox/plans/alpine-next-folder-20261006-2355-plan.md
+- SEQ 56 REVISION 1. Phase 1: nextUnseenFolder, unseenFolderOrder, confirm dialog, navigation callbacks, strings, help sentence, and tests.
+- No install. Builds tip at start is 1db15ad.
+
+## 2026-10-06 - Next folder phase 1
+
+- Next unread with no later message in this folder asks before opening the next folder that has unread mail.
+- Go opens that index. Cancel stays. No unread folder still says "No unread messages".
+- No install.

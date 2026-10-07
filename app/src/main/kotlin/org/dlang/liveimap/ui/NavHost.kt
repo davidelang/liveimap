@@ -244,6 +244,9 @@ fun LiveImapNavHost() {
                             advancedQuery = advancedQuery.ifEmpty { null },
                             advancedScope = advancedScope,
                             onAdvancedConsumed = { consumeAdvanced() },
+                            onOpenFolder = { name ->
+                                navController.navigate("index/${Uri.encode(name)}")
+                            },
                         )
                     }
                 } else {
@@ -290,6 +293,9 @@ fun LiveImapNavHost() {
                                     advancedQuery = advancedQuery.ifEmpty { null },
                                     advancedScope = advancedScope,
                                     onAdvancedConsumed = { consumeAdvanced() },
+                                    onOpenFolder = { name ->
+                                        navController.navigate("index/${Uri.encode(name)}")
+                                    },
                                 )
                             }
                         },
