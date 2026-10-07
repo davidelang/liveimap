@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlainSieveTransportTest {
@@ -54,7 +53,8 @@ class PlainSieveTransportTest {
         thread.start()
         try {
             val caps = greetPlain("127.0.0.1", port)
-            assertTrue(thread.join(10_000))
+            thread.join(10_000)
+            assertFalse(thread.isAlive)
             val error = failure.get()
             if (error != null) throw error
             assertEquals("Example timsieved", caps.implementation)
