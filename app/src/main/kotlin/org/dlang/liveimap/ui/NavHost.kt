@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -754,17 +755,35 @@ fun LiveImapNavHost() {
                         Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface)
-                            .windowInsetsPadding(mailScreenInsets())
+                            .windowInsetsPadding(
+                                mailScreenInsets().only(
+                                    WindowInsetsSides.Vertical + WindowInsetsSides.Start,
+                                ),
+                            )
                             .verticalScroll(rememberScrollState()),
                     ) {
                         drawerSheet()
                     }
                 },
                 trailing = {
+                    val resolvedDrawerDp = if (drawerWidthDp >= 0f) {
+                        drawerWidthDp
+                    } else {
+                        initialDrawerDp(availableDpState.intValue, readerOpen).toFloat()
+                    }
+                    val hostModifier = if (resolvedDrawerDp > 0f) {
+                        Modifier
+                            .fillMaxSize()
+                            .consumeWindowInsets(
+                                mailScreenInsets().only(WindowInsetsSides.Start),
+                            )
+                    } else {
+                        Modifier.fillMaxSize()
+                    }
                     NavHost(
                         navController = navController,
                         startDestination = "folders",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = hostModifier,
                         builder = navGraph,
                     )
                 },
@@ -773,7 +792,9 @@ fun LiveImapNavHost() {
             ModalNavigationDrawer(
                 drawerContent = {
                     ModalDrawerSheet(
-                        windowInsets = mailScreenInsets(),
+                        windowInsets = mailScreenInsets().only(
+                            WindowInsetsSides.Vertical + WindowInsetsSides.Start,
+                        ),
                         content = drawerSheet,
                     )
                 },

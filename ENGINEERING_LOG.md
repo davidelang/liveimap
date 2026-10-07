@@ -2003,3 +2003,8 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - fetchArrival still returns the filter list unchanged. When selected exists is not positive it selects that mailbox once. A still-empty mailbox clears the window and does not call fetchIndex. A positive exists does not select. MailFailure from select propagates.
 - FakeMailSession.existsBeforeSelect is returned only while the mailbox name is empty, and that check is before exists. New tests cover a cold Inbox of 8 and an empty mailbox. Arrival fixtures that already expected a fetch set exists to 1 so they do not select.
+
+## 2026-10-07 - Cold index phase 2
+
+- The split drawer column and the modal sheet pad mail screen insets on the vertical and start sides only. The index and reader split is unchanged.
+- When the resolved drawer width is above 0, the trailing NavHost consumes the start inset. Width 0 does not. Top, bottom, and end are not consumed. No install.
