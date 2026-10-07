@@ -7,6 +7,7 @@ import java.security.cert.Certificate
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLSession
 import javax.net.ssl.SSLSessionContext
 import javax.net.ssl.TrustManagerFactory
@@ -42,6 +43,10 @@ private class LeafSession(
     private val host: String,
 ) : SSLSession {
     override fun getPeerCertificates(): Array<Certificate> = arrayOf(leaf)
+
+    @Suppress("DEPRECATION")
+    override fun getPeerCertificateChain(): Array<javax.security.cert.X509Certificate> =
+        throw SSLPeerUnverifiedException("peer certificate chain")
 
     override fun getPeerPrincipal(): Principal = leaf.subjectX500Principal
 
