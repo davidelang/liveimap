@@ -454,6 +454,18 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun savedMailboxRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("savedMailbox="))
+        assertEquals("", decodeAccountSettings(text).savedMailbox)
+        val saved = AccountSettings(savedMailbox = "Saved Mail")
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("savedMailbox=Saved%20Mail"))
+        assertEquals(saved, decodeAccountSettings(encoded))
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+    }
+
+    @Test
     fun indexBarRoundTrip() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("indexBar"))

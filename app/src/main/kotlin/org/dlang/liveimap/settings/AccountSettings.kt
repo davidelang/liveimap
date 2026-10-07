@@ -329,6 +329,7 @@ data class AccountSettings(
     val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
     val trashMailbox: String = "",
+    val savedMailbox: String = "",
     val threadIndexStyle: ThreadIndexStyle = ThreadIndexStyle.Expanded,
     val indexBar: IndexBarLayout = defaultIndexBar(),
     val selectionBar: SelectionBarLayout = defaultSelectionBar(),
@@ -406,6 +407,7 @@ private val fieldNames = listOf(
     "deletePolicy",
     "moveMethod",
     "trashMailbox",
+    "savedMailbox",
     "threadIndexStyle",
     "indexBar",
     "selectionBar",
@@ -464,7 +466,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -483,6 +485,7 @@ fun AccountSettings.encode(): String = buildString {
     if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
     if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
+    if (savedMailbox.isNotEmpty()) appendLine("savedMailbox=${percentEncode(savedMailbox)}")
     if (threadIndexStyle != ThreadIndexStyle.Expanded) {
         appendLine("threadIndexStyle=${threadIndexStyle.name}")
     }
@@ -558,6 +561,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "deletePolicy" ||
             key == "moveMethod" ||
             key == "trashMailbox" ||
+            key == "savedMailbox" ||
             key == "threadIndexStyle" ||
             key == "indexBar" ||
             key == "selectionBar" ||
@@ -632,6 +636,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         deletePolicy = values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted,
         moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
+        savedMailbox = values["savedMailbox"]?.let { percentDecode(it) } ?: "",
         threadIndexStyle = values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
             ?: ThreadIndexStyle.Expanded,
         indexBar = values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar(),

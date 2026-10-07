@@ -553,4 +553,7 @@
     <string name="index_next_folder">Go to %1$s? It has unread mail.</string>
     <string name="index_next_folder_go">Go</string>
     <string name="reader_saved">Saved</string>
+    <string name="settings_saved_mailbox">Saved mailbox</string>
+    <string name="reader_save_to">Save to %1$s?</string>
+    <string name="reader_save_choose">Choose</string>
 </resources>

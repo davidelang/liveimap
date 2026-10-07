@@ -361,14 +361,16 @@ fun MessageReaderScreen(
     var selectedMailbox by held.selectedMailboxState
     var choosingMove by remember { mutableStateOf(false) }
     var choosingSave by remember { mutableStateOf(false) }
+    var confirmSave by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
-    BackHandler(enabled = (choosingMove || choosingSave) && !moreMenu) {
+    BackHandler(enabled = (choosingMove || choosingSave || confirmSave) && !moreMenu) {
         choosingMove = false
         choosingSave = false
+        confirmSave = false
     }
     BackHandler(enabled = moreMenu) {
         moreMenu = false
@@ -1368,7 +1370,11 @@ fun MessageReaderScreen(
                     text = { Text(stringResource(R.string.reader_save)) },
                     onClick = {
                         moreMenu = false
-                        choosingSave = true
+                        if (account.savedMailbox.isNotEmpty()) {
+                            confirmSave = true
+                        } else {
+                            choosingSave = true
+                        }
                     },
                 )
                 DropdownMenuItem(
@@ -1702,6 +1708,43 @@ fun MessageReaderScreen(
                 }
             },
             onDismiss = { choosingMove = false },
+        )
+    }
+    if (confirmSave) {
+        val mailbox = account.savedMailbox
+        AlertDialog(
+            onDismissRequest = { confirmSave = false },
+            text = { Text(stringResource(R.string.reader_save_to, mailbox)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmSave = false
+                    if (mailbox.isNotEmpty()) {
+                        scope.launch {
+                            gate.withLock {
+                                try {
+                                    session.copyUids(listOf(uid), mailbox)
+                                    postSnack(savedText)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: MailFailure) {
+                                    postSnack(error.text)
+                                }
+                            }
+                        }
+                    }
+                }) { Text(stringResource(R.string.reader_save)) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        confirmSave = false
+                        choosingSave = true
+                    }) { Text(stringResource(R.string.reader_save_choose)) }
+                    TextButton(onClick = { confirmSave = false }) {
+                        Text(stringResource(R.string.reader_cancel))
+                    }
+                }
+            },
         )
     }
     if (choosingSave) {

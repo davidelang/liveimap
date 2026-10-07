@@ -632,6 +632,9 @@ private fun MailboxesGroup(editor: SettingsEditor) {
             MailboxLine(stringResource(R.string.settings_trash_mailbox), settings.trashMailbox, { picking = MailboxPick.Trash }) {
                 editor.persist(editor.settings.copy(trashMailbox = it))
             }
+            MailboxLine(stringResource(R.string.settings_saved_mailbox), settings.savedMailbox, { picking = MailboxPick.Saved }) {
+                editor.persist(editor.settings.copy(savedMailbox = it))
+            }
         }
     }
     MailboxPickDialog(editor, picking) { picking = it }
@@ -1928,6 +1931,7 @@ private enum class MailboxPick {
     AddressBook,
     Spam,
     Trash,
+    Saved,
     TrailingMove,
     LeadingMove,
 }
@@ -1939,6 +1943,7 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         MailboxPick.AddressBook -> base.copy(addressBookMailbox = mailbox)
         MailboxPick.Spam -> base.copy(spamMailbox = mailbox)
         MailboxPick.Trash -> base.copy(trashMailbox = mailbox)
+        MailboxPick.Saved -> base.copy(savedMailbox = mailbox)
         MailboxPick.TrailingMove -> base.copy(
             swipeTrailing = base.swipeTrailing.copy(moveMailbox = mailbox),
         )

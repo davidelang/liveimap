@@ -1789,3 +1789,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Kind Copy is UID COPY and does not store Deleted. Move still UID MOVEs. Other kinds still copy and then store Deleted.
 - Reader More Save copies the open message into the chosen folder and stays. Saved is the success text. A copy failure shows that failure text.
 - No install.
+
+## 2026-10-07 - Saved mailbox execution start
+
+- Approved plan: sandbox/plans/alpine-save-folder-20261007-0017-plan.md
+- SEQ 58 REVISION 1. Phase 1: savedMailbox next to trash, settings row after Trash, reader Save confirm, strings, help sentence, round-trip test.
+- No name rule. No install. Builds tip at start is fc81319.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - Saved mailbox phase 1
+
+- savedMailbox sits next to trashMailbox. Empty is omitted from encode. A missing key decodes as "". Saved Mail round-trips as savedMailbox=Saved%20Mail. defaultsRoundTrip still ends at altAddresses.
+- The special-use section shows Saved mailbox after Trash. Clearing the row stores "". mailboxSetCount is unchanged.
+- When a saved mailbox is set, Save asks before copying there. Save uses copyUids and leaves the original. Choose opens the folder list. Cancel, dismiss, and Back do not copy. An empty setting still opens the folder list.
+- No name rule. No install.
