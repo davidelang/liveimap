@@ -528,4 +528,12 @@
     <string name="index_search_folder_progress">Folder %1$d of %2$d</string>
     <string name="index_search_skipped">Skipped %1$s.</string>
     <string name="index_search_open_folder">Open that folder to change these messages.</string>
+    <string name="toolbar_customize">Customize toolbar…</string>
+    <string name="toolbar_reset">Reset to default</string>
+    <string name="toolbar_section_toolbar">Toolbar</string>
+    <string name="toolbar_section_overflow">Overflow</string>
+    <string name="toolbar_section_hidden">Hidden</string>
+    <string name="toolbar_move_up">Move up</string>
+    <string name="toolbar_move_down">Move down</string>
+    <string name="toolbar_move_to">Move to %1$s</string>
 </resources>

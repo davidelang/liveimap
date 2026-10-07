@@ -172,6 +172,9 @@ import org.dlang.liveimap.settings.startRuleIsRecent
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
+import org.dlang.liveimap.ui.toolbar.IndexBarAction
+import org.dlang.liveimap.ui.toolbar.IndexMenuEntry
+import org.dlang.liveimap.ui.toolbar.indexMenuTail
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.Month
@@ -235,6 +238,55 @@ private val filterChoices = listOf(
     FilterChoice(R.string.index_filter_narrow, role = FilterRole.Narrow),
     FilterChoice(R.string.index_filter_widen, role = FilterRole.Widen),
 )
+
+@Composable
+private fun IndexFilterMenu(
+    expanded: Boolean,
+    filterActive: Boolean,
+    canWiden: Boolean,
+    onDismiss: () -> Unit,
+    onShowAll: () -> Unit,
+    onNarrow: () -> Unit,
+    onWiden: () -> Unit,
+    onNeedsValue: (FilterChoice) -> Unit,
+    onCriterion: (String, String) -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+    ) {
+        for (choice in filterChoices) {
+            val label = stringResource(choice.labelRes)
+            val enabled = when (choice.role) {
+                FilterRole.Narrow -> filterActive
+                FilterRole.Widen -> canWiden
+                else -> true
+            }
+            DropdownMenuItem(
+                text = { Text(label) },
+                enabled = enabled,
+                onClick = {
+                    onDismiss()
+                    when (choice.role) {
+                        FilterRole.All -> onShowAll()
+                        FilterRole.Narrow -> if (filterActive) onNarrow()
+                        FilterRole.Widen -> if (canWiden) onWiden()
+                        FilterRole.Criterion -> {
+                            if (choice.needsValue) onNeedsValue(choice)
+                            else onCriterion(choice.kind, label)
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+private fun indexBarActionRes(action: IndexBarAction): Int = when (action) {
+    IndexBarAction.Refresh -> R.string.index_refresh
+    IndexBarAction.Search -> R.string.index_search
+    IndexBarAction.Filter -> R.string.index_filter
+}
 
 data class IndexAppearance(
     val alpha: Float,
@@ -604,6 +656,7 @@ fun MessageIndexScreen(
     onOpen: (Long, Int, String) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
+    onCustomize: () -> Unit = {},
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -1911,63 +1964,63 @@ fun MessageIndexScreen(
                             }
                         }
                     } else {
-                    IconButton(onClick = { refreshIndex() }) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.index_refresh),
-                        )
-                    }
-                    if (connected) {
-                IconButton(onClick = {
-                    searchFieldOpen = false
-                    searchVisible = true
-                }) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = stringResource(R.string.index_search),
-                    )
-                }
-                Box {
-                    IconButton(onClick = { filterOpen = true }) {
-                        Icon(
-                            imageVector = filterImage,
-                            contentDescription = stringResource(R.string.index_filter),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = filterOpen,
-                        onDismissRequest = { filterOpen = false },
-                    ) {
-                        for (choice in filterChoices) {
-                            val label = stringResource(choice.labelRes)
-                            val enabled = when (choice.role) {
-                                FilterRole.Narrow -> filterActive
-                                FilterRole.Widen -> canWiden
-                                else -> true
+                        val barLayout = account.indexBar
+                        if (!connected && IndexBarAction.Refresh in barLayout.toolbar) {
+                            IconButton(onClick = { refreshIndex() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = stringResource(R.string.index_refresh),
+                                )
                             }
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                enabled = enabled,
-                                onClick = {
-                                    filterOpen = false
-                                    when (choice.role) {
-                                        FilterRole.All -> runShowAll()
-                                        FilterRole.Narrow -> if (filterActive) narrowArmed = true
-                                        FilterRole.Widen -> if (canWiden) runWiden()
-                                        FilterRole.Criterion -> {
-                                            if (choice.needsValue) {
+                        }
+                        if (connected) {
+                        for (action in barLayout.toolbar) {
+                            when (action) {
+                                IndexBarAction.Refresh -> {
+                                    IconButton(onClick = { refreshIndex() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Refresh,
+                                            contentDescription = stringResource(R.string.index_refresh),
+                                        )
+                                    }
+                                }
+                                IndexBarAction.Search -> {
+                                    IconButton(onClick = {
+                                        searchFieldOpen = false
+                                        searchVisible = true
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Search,
+                                            contentDescription = stringResource(R.string.index_search),
+                                        )
+                                    }
+                                }
+                                IndexBarAction.Filter -> {
+                                    Box {
+                                        IconButton(onClick = { filterOpen = true }) {
+                                            Icon(
+                                                imageVector = filterImage,
+                                                contentDescription = stringResource(R.string.index_filter),
+                                            )
+                                        }
+                                        IndexFilterMenu(
+                                            expanded = filterOpen,
+                                            filterActive = filterActive,
+                                            canWiden = canWiden,
+                                            onDismiss = { filterOpen = false },
+                                            onShowAll = { runShowAll() },
+                                            onNarrow = { narrowArmed = true },
+                                            onWiden = { runWiden() },
+                                            onNeedsValue = { choice ->
                                                 prompt = choice
                                                 promptText = ""
-                                            } else {
-                                                runCriterion(choice.kind, "", label)
-                                            }
-                                        }
+                                            },
+                                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
+                                        )
                                     }
-                                },
-                            )
+                                }
+                            }
                         }
-                    }
-                }
                 Box {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { menuOpen = true }) {
@@ -2150,6 +2203,52 @@ fun MessageIndexScreen(
                                     folderInfo = info
                                 }
                             },
+                        )
+                        for (entry in indexMenuTail(barLayout)) {
+                            when (entry) {
+                                IndexMenuEntry.Divider -> HorizontalDivider()
+                                is IndexMenuEntry.Action -> {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(indexBarActionRes(entry.action))) },
+                                        onClick = {
+                                            menuOpen = false
+                                            when (entry.action) {
+                                                IndexBarAction.Refresh -> refreshIndex()
+                                                IndexBarAction.Search -> {
+                                                    searchFieldOpen = false
+                                                    searchVisible = true
+                                                }
+                                                IndexBarAction.Filter -> filterOpen = true
+                                            }
+                                        },
+                                    )
+                                }
+                                IndexMenuEntry.Customize -> {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.toolbar_customize)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            onCustomize()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (IndexBarAction.Filter !in barLayout.toolbar) {
+                        IndexFilterMenu(
+                            expanded = filterOpen,
+                            filterActive = filterActive,
+                            canWiden = canWiden,
+                            onDismiss = { filterOpen = false },
+                            onShowAll = { runShowAll() },
+                            onNarrow = { narrowArmed = true },
+                            onWiden = { runWiden() },
+                            onNeedsValue = { choice ->
+                                prompt = choice
+                                promptText = ""
+                            },
+                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
                         )
                     }
                 }

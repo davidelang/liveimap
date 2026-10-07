@@ -17,3 +17,5 @@ The search icon searches the current folder. Subject is the usual field. Full te
 Advanced search combines terms with And or Or. Body and Full text search every message and are slow on a large folder.
 
 Advanced search can cover this folder, the folders under it, subscribed folders, or every folder. Count returns the number and does not download messages.
+
+The index Sort menu ends with Customize toolbar…. That screen moves Refresh, Search, and Filter onto the bar, into the menu, or out of sight.

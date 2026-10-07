@@ -88,6 +88,7 @@ import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
+import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -235,6 +236,7 @@ fun LiveImapNavHost() {
                             },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
+                            onCustomize = { navController.navigate("toolbar/index") },
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
                             advancedScope = advancedScope,
@@ -278,6 +280,7 @@ fun LiveImapNavHost() {
                                     },
                                     onCompose = { seed -> openCompose(seed) },
                                     onBack = { navController.popBackStack() },
+                                    onCustomize = { navController.navigate("toolbar/index") },
                                     watchMailbox = paneUid < 0L,
                                     onAdvanced = { openAdvanced() },
                                     advancedQuery = advancedQuery.ifEmpty { null },
@@ -328,6 +331,11 @@ fun LiveImapNavHost() {
                         navController.popBackStack()
                     },
                 )
+            }
+            composable("toolbar/index") {
+                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                    ToolbarEditorScreen()
+                }
             }
             composable(
                 route = "reader/{mailbox}/{uid}/{sequence}",

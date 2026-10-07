@@ -1,5 +1,9 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.ui.toolbar.BarSection
+import org.dlang.liveimap.ui.toolbar.IndexBarAction
+import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.moveIndexAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -434,6 +438,36 @@ class AccountSettingsTest {
         assertEquals(chosen, decodeAccountSettings(stored))
         val absent = decodeAccountSettings(text.lineSequence().filter { it.isNotEmpty() }.joinToString("\n"))
         assertEquals(AccountSettings(), absent)
+    }
+
+    @Test
+    fun indexBarRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("indexBar"))
+        assertEquals(defaultIndexBar(), decodeAccountSettings(text).indexBar)
+        val explicit = text.trimEnd() + "\nindexBar=T:Refresh,Search,Filter|O:|H:\n"
+        assertEquals(defaultIndexBar(), decodeAccountSettings(explicit).indexBar)
+        val moved = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
+        val saved = AccountSettings(indexBar = moved)
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("indexBar=T:Refresh,Filter|O:Search|H:"))
+        assertEquals(moved, decodeAccountSettings(encoded).indexBar)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val badValues = listOf(
+            "T:Refresh|O:Search,Search|H:Filter",
+            "T:Sort|O:|H:",
+            "T:Refresh|O:|H:Filter",
+            "nope",
+        )
+        for (value in badValues) {
+            val bad = text.trimEnd() + "\nindexBar=$value\n"
+            try {
+                decodeAccountSettings(bad)
+                fail(value)
+            } catch (error: IllegalArgumentException) {
+                assertEquals(value, "bad indexBar", error.message)
+            }
+        }
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

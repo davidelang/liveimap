@@ -5,6 +5,10 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CharsetDecoder
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import org.dlang.liveimap.ui.toolbar.IndexBarLayout
+import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.encodeIndexBar
+import org.dlang.liveimap.ui.toolbar.parseIndexBar
 
 enum class Density {
     Compact,
@@ -311,6 +315,7 @@ data class AccountSettings(
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
     val trashMailbox: String = "",
     val threadIndexStyle: ThreadIndexStyle = ThreadIndexStyle.Expanded,
+    val indexBar: IndexBarLayout = defaultIndexBar(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -378,6 +383,7 @@ private val fieldNames = listOf(
     "moveMethod",
     "trashMailbox",
     "threadIndexStyle",
+    "indexBar",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -429,7 +435,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, and threadIndexStyle when Expanded.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, and indexBar when it is the default.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -450,6 +456,9 @@ fun AccountSettings.encode(): String = buildString {
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
     if (threadIndexStyle != ThreadIndexStyle.Expanded) {
         appendLine("threadIndexStyle=${threadIndexStyle.name}")
+    }
+    if (indexBar != defaultIndexBar()) {
+        appendLine("indexBar=${encodeIndexBar(indexBar)}")
     }
 }
 
@@ -507,7 +516,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "deletePolicy" ||
             key == "moveMethod" ||
             key == "trashMailbox" ||
-            key == "threadIndexStyle"
+            key == "threadIndexStyle" ||
+            key == "indexBar"
         ) {
             continue
         }
@@ -577,6 +587,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
         threadIndexStyle = values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
             ?: ThreadIndexStyle.Expanded,
+        indexBar = values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar(),
     )
 }
 

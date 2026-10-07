@@ -1607,3 +1607,19 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - MULTISEARCH is a capability flag. Cyrus is false. Moon is true. The fixture lines are unchanged.
 - A wider search with MULTISEARCH sends one ESEARCH IN. Subtree names the home mailbox. Subscribed uses subscribed. All uses personal only when every namespace is Personal. Any other namespace stays on the folder loop. Current stays one search.
 - Count sends RETURN (COUNT) and sums the per-mailbox counts. The result list sends RETURN (ALL). There is no SELECT before that command. CapabilityGateTest 7 and IndexWindowTest 75 passed. Native assembleDebug compiled. No install.
+
+## 2026-10-06 - index toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-index-bar-20261006-2102-plan.md
+- Status set to APPROVED
+- builds before edit: 40bf7a0
+- Phase 1 of 1: index bar layout for Refresh, Search, and Filter. Sort stays pinned. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - index toolbar customize phase 1
+
+- IndexBarLayout keeps Refresh, Search, and Filter in exactly one section. Sort is not an action and stays pinned on the bar
+- A default encode omits indexBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad indexBar
+- The Sort menu ends with Customize toolbar…. That screen moves the three onto the bar, into the menu, or out of sight, and saves indexBar with the account
+- No install
