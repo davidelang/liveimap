@@ -8,6 +8,17 @@ import org.dlang.liveimap.settings.StartRule
 
 val connectedConnection: StateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Connected)
 
+data class CertPrompt(
+    val reason: String,
+    val subject: String,
+    val issuer: String,
+    val notBefore: String,
+    val notAfter: String,
+    val fingerprint: String,
+    val host: String,
+    val port: Int,
+)
+
 interface MailSession {
     val capabilities: Set<String>
     val featureCaps: Capabilities
@@ -17,6 +28,7 @@ interface MailSession {
     suspend fun resume() {}
     suspend fun suspendConnections() {}
     suspend fun open(account: AccountSettings): OpenResult
+    fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {}
     suspend fun namespaces(): List<Namespace>
     suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry>
     suspend fun mailboxListed(name: String): Boolean = throw MailFailure("list failed")

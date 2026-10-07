@@ -72,12 +72,17 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlin.math.roundToInt
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.seedCriteria
+import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
@@ -108,6 +113,11 @@ import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 
+private class PendingCert(
+    val prompt: CertPrompt,
+    val resume: (Boolean) -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun LiveImapNavHost() {
@@ -118,6 +128,26 @@ fun LiveImapNavHost() {
     val splitNow = rememberUpdatedState(split)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
+    val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
+    DisposableEffect(Unit) {
+        mailSession().setCertConfirmer { prompt ->
+            withContext(Dispatchers.Main.immediate) {
+                suspendCancellableCoroutine { cont ->
+                    certPrompt.value = PendingCert(prompt) { accepted ->
+                        certPrompt.value = null
+                        if (cont.isActive) cont.resume(accepted)
+                    }
+                    cont.invokeOnCancellation { certPrompt.value = null }
+                }
+            }
+        }
+        onDispose {
+            val pending = certPrompt.value
+            certPrompt.value = null
+            pending?.resume(false)
+            mailSession().setCertConfirmer(null)
+        }
+    }
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -823,6 +853,48 @@ fun LiveImapNavHost() {
                 onSave = { saveEditingFavorite() },
                 onDelete = { deleteEditingFavorite() },
                 onDismiss = { editingFavorite = null },
+            )
+        }
+        val pendingCert = certPrompt.value
+        if (pendingCert != null) {
+            val changed = pendingCert.prompt.reason == "certificate changed"
+            val decline = {
+                pendingCert.resume(false)
+            }
+            AlertDialog(
+                onDismissRequest = decline,
+                title = {
+                    Text(
+                        stringResource(
+                            if (changed) R.string.cert_changed_title else R.string.cert_trust_title,
+                        ),
+                    )
+                },
+                text = {
+                    Column {
+                        if (changed) Text(stringResource(R.string.cert_changed_body))
+                        Text(pendingCert.prompt.subject)
+                        Text(pendingCert.prompt.issuer)
+                        Text(pendingCert.prompt.notBefore)
+                        Text(pendingCert.prompt.notAfter)
+                        Text(pendingCert.prompt.fingerprint)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { pendingCert.resume(true) }) {
+                        Text(
+                            stringResource(
+                                R.string.cert_trust_confirm,
+                                "${pendingCert.prompt.host}:${pendingCert.prompt.port}",
+                            ),
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = decline) {
+                        Text(stringResource(R.string.cert_trust_decline))
+                    }
+                },
             )
         }
     }

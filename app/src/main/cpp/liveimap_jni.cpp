@@ -140,6 +140,7 @@ struct LiveSession {
     std::string user;
     std::string password;
     std::string tlsMode = "None";
+    std::string certPin;
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
@@ -172,6 +173,13 @@ std::mutex gLiveMu;
 std::unordered_set<LiveSession *> gLive;
 std::mutex gErrMu;
 std::string gLastError;
+std::mutex gCertOfferMu;
+std::vector<std::string> gCertOffer;
+
+void clearCertOffer() {
+    std::lock_guard<std::mutex> lock(gCertOfferMu);
+    gCertOffer.clear();
+}
 int (* gKeepUnselect)(mailimap *) = mailimap_unselect;
 
 struct JniCache {
@@ -2236,7 +2244,55 @@ bool hasStartTls(struct mailimap_capability_data * cap) {
     return false;
 }
 
-std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<std::vector<unsigned char>> & ders) {
+bool promptableTrust(const std::string & text) {
+    return text == "certificate untrusted" || text == "certificate changed";
+}
+
+void storePeerOffer(JNIEnv * env, jclass cls, jobject list) {
+    jmethodID method = env->GetStaticMethodID(cls, "offer", "(Ljava/util/List;)[Ljava/lang/String;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        clearCertOffer();
+        return;
+    }
+    jobject result = env->CallStaticObjectMethod(cls, method, list);
+    if (env->ExceptionCheck() || result == nullptr) {
+        env->ExceptionClear();
+        if (result != nullptr) env->DeleteLocalRef(result);
+        clearCertOffer();
+        return;
+    }
+    auto * arr = static_cast<jobjectArray>(result);
+    jsize count = env->GetArrayLength(arr);
+    std::vector<std::string> lines;
+    if (count == 5) {
+        for (jsize i = 0; i < count; ++i) {
+            jobject item = env->GetObjectArrayElement(arr, i);
+            if (item == nullptr || env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (item != nullptr) env->DeleteLocalRef(item);
+                lines.clear();
+                break;
+            }
+            lines.push_back(utf8FromJava(env, static_cast<jstring>(item)));
+            env->DeleteLocalRef(item);
+        }
+    }
+    env->DeleteLocalRef(result);
+    std::lock_guard<std::mutex> lock(gCertOfferMu);
+    if (lines.size() == 5) gCertOffer = std::move(lines);
+    else gCertOffer.clear();
+}
+
+std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<std::vector<unsigned char>> & ders,
+    const char * pin, bool publish) {
+    struct OfferGate {
+        bool publish;
+        bool keep = false;
+        ~OfferGate() {
+            if (publish && !keep) clearCertOffer();
+        }
+    } gate{publish};
     if (env == nullptr) return "certificate rejected";
     if (env->ExceptionCheck()) env->ExceptionClear();
     jclass cls = env->FindClass("org/dlang/liveimap/engine/PeerTrust");
@@ -2245,7 +2301,7 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         return "certificate rejected";
     }
     jmethodID method = env->GetStaticMethodID(
-        cls, "check", "(Ljava/lang/String;Ljava/util/List;)Ljava/lang/String;");
+        cls, "check", "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         env->DeleteLocalRef(cls);
@@ -2293,7 +2349,16 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         env->DeleteLocalRef(cls);
         return "certificate rejected";
     }
-    jobject result = env->CallStaticObjectMethod(cls, method, jhost, list);
+    jstring jpin = newString(env, pin != nullptr ? pin : "");
+    if (jpin == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (jpin != nullptr) env->DeleteLocalRef(jpin);
+        env->DeleteLocalRef(jhost);
+        env->DeleteLocalRef(list);
+        env->DeleteLocalRef(cls);
+        return "certificate rejected";
+    }
+    jobject result = env->CallStaticObjectMethod(cls, method, jhost, list, jpin);
     std::string text = "certificate rejected";
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
@@ -2301,6 +2366,11 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         text = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
     }
+    if (gate.publish && promptableTrust(text)) {
+        storePeerOffer(env, cls, list);
+        gate.keep = true;
+    }
+    env->DeleteLocalRef(jpin);
     env->DeleteLocalRef(jhost);
     env->DeleteLocalRef(list);
     env->DeleteLocalRef(cls);
@@ -2375,7 +2445,8 @@ mailimap * openPlain(const char * host, int port, const char * user, const char 
 }
 
 mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port, const char * user,
-    const char * password, LiveSession * live, std::string * error, std::string * connectedAddress) {
+    const char * password, LiveSession * live, std::string * error, std::string * connectedAddress,
+    const char * pin, bool publishOffer) {
     TlsCapture capture;
     tlsCapture = &capture;
     std::string address;
@@ -2450,7 +2521,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         tlsCapture = nullptr;
         return nullptr;
     }
-    std::string trust = peerTrustCheck(env, host, capture.ders);
+    std::string trust = peerTrustCheck(env, host, capture.ders, pin, publishOffer);
     tlsCapture = nullptr;
     if (!trust.empty()) {
         *error = trust;
@@ -4277,10 +4348,43 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeError(JNIEnv * env,
     return newString(env, takeLastError().c_str());
 }
 
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * env, jclass) {
+    if (!ensureJni(env)) return nullptr;
+    std::vector<std::string> lines;
+    {
+        std::lock_guard<std::mutex> lock(gCertOfferMu);
+        lines = gCertOffer;
+    }
+    if (lines.size() != 5) return nullptr;
+    jclass stringCls = env->FindClass("java/lang/String");
+    if (stringCls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    jobjectArray arr = env->NewObjectArray(5, stringCls, nullptr);
+    env->DeleteLocalRef(stringCls);
+    if (arr == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    for (jsize i = 0; i < 5; ++i) {
+        jstring js = newString(env, lines[static_cast<size_t>(i)].c_str());
+        if (js == nullptr || env->ExceptionCheck()) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(arr);
+            return nullptr;
+        }
+        env->SetObjectArrayElement(arr, i, js);
+        env->DeleteLocalRef(js);
+    }
+    return arr;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode) {
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -4290,6 +4394,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars fr(env, from);
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
+    JChars pin(env, certPin);
+    clearCertOffer();
     auto * session = new LiveSession();
     session->host = h.c();
     session->imapPort = port;
@@ -4302,6 +4408,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->logImapTraffic = logFlag == JNI_TRUE;
     session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
+    session->certPin = pin.c();
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;
@@ -4309,7 +4416,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     if (strcmp(mode.c(), "None") == 0) {
         imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
     } else {
-        imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address);
+        imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address, session->certPin.c_str(), true);
     }
     if (imap == nullptr) {
         flushTrafficTail(session);
@@ -6282,7 +6389,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (session->tlsMode == "None") {
         watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
     } else {
-        watch = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+        watch = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr, session->certPin.c_str(), false);
     }
     if (watch == nullptr) {
         throwFailure(env, error);

@@ -518,6 +518,14 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { mode ->
                 editor.persist(editor.settings.copy(tlsMode = mode))
             }
+            if (settings.certPin.isBlank()) {
+                Text(stringResource(R.string.settings_cert_pin_none))
+            } else {
+                Text(settings.certPin)
+                TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
+                    Text(stringResource(R.string.settings_cert_pin_clear))
+                }
+            }
             LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
                 editor.persist(editor.settings.copy(sieveHost = it))
             }

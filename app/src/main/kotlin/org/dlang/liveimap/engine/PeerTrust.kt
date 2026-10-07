@@ -2,10 +2,16 @@ package org.dlang.liveimap.engine
 
 import java.io.ByteArrayInputStream
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.Principal
 import java.security.cert.Certificate
+import java.security.cert.CertificateExpiredException
 import java.security.cert.CertificateFactory
+import java.security.cert.CertificateNotYetValidException
 import java.security.cert.X509Certificate
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLSession
@@ -15,27 +21,90 @@ import javax.net.ssl.X509TrustManager
 
 object PeerTrust {
     @JvmStatic
-    fun check(host: String, ders: List<ByteArray>): String {
+    fun check(host: String, ders: List<ByteArray>, pin: String): String {
         if (ders.isEmpty()) return "empty certificate chain"
-        return try {
+        val chain = try {
             val factory = CertificateFactory.getInstance("X.509")
-            val chain = Array(ders.size) { index ->
+            Array(ders.size) { index ->
                 factory.generateCertificate(ByteArrayInputStream(ders[index])) as X509Certificate
             }
-            val managers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        } catch (_: Exception) {
+            return "certificate rejected"
+        }
+        val leaf = chain[0]
+        val named = try {
+            HttpsURLConnection.getDefaultHostnameVerifier().verify(host, LeafSession(leaf, host))
+        } catch (_: Exception) {
+            false
+        }
+        if (!named) return "name mismatch"
+        try {
+            leaf.checkValidity()
+        } catch (_: CertificateExpiredException) {
+            return "certificate expired"
+        } catch (_: CertificateNotYetValidException) {
+            return "certificate expired"
+        }
+        val normalized = normalizePin(pin)
+        val fingerprint = fingerprintOf(leaf)
+        if (normalized.isNotEmpty() && normalized == fingerprint) return ""
+        if (normalized.isNotEmpty()) return "certificate changed"
+        val managers = try {
+            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        } catch (_: Exception) {
+            return "certificate rejected"
+        }
+        try {
             managers.init(null as KeyStore?)
-            val trust = managers.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
-                ?: return "certificate rejected"
-            val auth = chain[0].publicKey.algorithm.ifBlank { "RSA" }
+        } catch (_: Exception) {
+            return "certificate rejected"
+        }
+        val trust = managers.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
+            ?: return "certificate rejected"
+        val auth = leaf.publicKey.algorithm.ifBlank { "RSA" }
+        return try {
             trust.checkServerTrusted(chain, auth)
-            val accepted = HttpsURLConnection.getDefaultHostnameVerifier()
-                .verify(host, LeafSession(chain[0], host))
-            if (!accepted) return "name mismatch"
             ""
         } catch (_: Exception) {
-            "certificate rejected"
+            "certificate untrusted"
         }
     }
+
+    @JvmStatic
+    fun offer(ders: List<ByteArray>): Array<String>? {
+        if (ders.isEmpty()) return null
+        return try {
+            val factory = CertificateFactory.getInstance("X.509")
+            val leaf = factory.generateCertificate(ByteArrayInputStream(ders[0])) as X509Certificate
+            val format = SimpleDateFormat("yyyy-MM-dd HH:mm 'UTC'", Locale.US)
+            format.timeZone = TimeZone.getTimeZone("UTC")
+            arrayOf(
+                leaf.subjectX500Principal.name,
+                leaf.issuerX500Principal.name,
+                format.format(leaf.notBefore),
+                format.format(leaf.notAfter),
+                fingerprintOf(leaf),
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+private const val FINGERPRINT_HEX = "0123456789abcdef"
+
+private fun normalizePin(pin: String): String =
+    pin.trim().replace(" ", "").replace(":", "").lowercase()
+
+private fun fingerprintOf(leaf: X509Certificate): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
+    val out = StringBuilder(digest.size * 2)
+    for (byte in digest) {
+        val value = byte.toInt() and 0xFF
+        out.append(FINGERPRINT_HEX[value ushr 4])
+        out.append(FINGERPRINT_HEX[value and 0x0F])
+    }
+    return out.toString()
 }
 
 private class LeafSession(

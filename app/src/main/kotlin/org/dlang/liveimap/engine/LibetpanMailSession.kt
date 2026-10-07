@@ -5,6 +5,7 @@ import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.session.Capabilities
+import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -77,6 +78,9 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var watchMailbox: String? = null
 
+    @Volatile
+    private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
+
     private val cache = mutableMapOf<CacheKey, Any>()
     private val link = SessionLink()
     private val keeper = ConnectionKeeper(
@@ -144,7 +148,35 @@ class LibetpanMailSession : MailSession {
         if (handle != 0L) {
             close()
         }
-        val opened = login(account, password)
+        var opened = login(account, password)
+        if (opened is OpenResult.Failed && promptableCert(opened.text)) {
+            val parts = nativeTakeCertOffer()
+            val confirm = certConfirmer
+            if (parts != null && parts.size == 5 && confirm != null) {
+                val prompt = CertPrompt(
+                    reason = opened.text,
+                    subject = parts[0],
+                    issuer = parts[1],
+                    notBefore = parts[2],
+                    notAfter = parts[3],
+                    fingerprint = parts[4],
+                    host = account.imapHost,
+                    port = account.imapPort,
+                )
+                if (confirm(prompt)) {
+                    val pinned = account.copy(certPin = prompt.fingerprint)
+                    val text = opened.text
+                    try {
+                        DataStoreSettingsStore(context).save(pinned)
+                        opened = login(pinned, password)
+                    } catch (error: kotlinx.coroutines.CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        opened = OpenResult.Failed(error.message ?: text)
+                    }
+                }
+            }
+        }
         if (opened is OpenResult.Connected) {
             selectedMailbox = null
             selectedReadWrite = false
@@ -153,6 +185,10 @@ class LibetpanMailSession : MailSession {
             keeper.markUsed()
         }
         return opened
+    }
+
+    override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
+        certConfirmer = confirm
     }
 
     private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
@@ -188,6 +224,7 @@ class LibetpanMailSession : MailSession {
             account.logImapTraffic,
             trafficPath,
             account.tlsMode.name,
+            account.certPin,
         )
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -950,6 +987,7 @@ class LibetpanMailSession : MailSession {
         log: Boolean,
         logPath: String,
         tlsMode: String,
+        certPin: String,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
@@ -1088,8 +1126,14 @@ class LibetpanMailSession : MailSession {
 
         @JvmStatic
         private external fun nativeTakeError(): String
+
+        @JvmStatic
+        private external fun nativeTakeCertOffer(): Array<String>?
     }
 }
+
+private fun promptableCert(text: String): Boolean =
+    text == "certificate untrusted" || text == "certificate changed"
 
 private fun imapTrafficLogPath(context: Context?): String {
     if (context == null) return ""

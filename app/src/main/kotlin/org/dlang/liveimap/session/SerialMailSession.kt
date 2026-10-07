@@ -35,6 +35,10 @@ class SerialMailSession(
     override suspend fun open(account: AccountSettings): OpenResult =
         onLane { inner.open(account) }
 
+    override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
+        inner.setCertConfirmer(confirm)
+    }
+
     override suspend fun namespaces(): List<Namespace> =
         onLane { inner.namespaces() }
 

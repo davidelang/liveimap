@@ -149,6 +149,23 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun certPinRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("certPin="))
+        val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
+        assertEquals("altAddresses", keys.last())
+        assertFalse(keys.contains("certPin"))
+        assertEquals("", decodeAccountSettings(defaults).certPin)
+        val pin = "ab cd:ef"
+        val set = AccountSettings(certPin = pin)
+        val text = set.encode()
+        assertTrue(text.contains("certPin=ab%20cd%3Aef"))
+        assertEquals(pin, decodeAccountSettings(text).certPin)
+        assertEquals(text, decodeAccountSettings(text).encode())
+        assertEquals("", decodeAccountSettings(defaults.trimEnd() + "\n").certPin)
+    }
+
+    @Test
     fun tlsModeRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("tlsMode="))

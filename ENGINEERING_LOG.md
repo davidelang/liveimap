@@ -2117,3 +2117,5 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - TODO: long-press icon help waits for the expanded manual. OpenSSL 3.x stays before a public release. IMAP TLS may ship on 1.1.1w.
 
 ## 2026-10-07 - IDLE watch uses the account TLS mode. None stays plaintext.
+
+## 2026-10-07 - A certificate pin can accept one named, in-date leaf, and the login prompt asks before saving it.

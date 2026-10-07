@@ -368,6 +368,7 @@ data class AccountSettings(
     val sieveHost: String = "",
     val sievePort: Int = 4190,
     val tlsMode: TlsMode = TlsMode.None,
+    val certPin: String = "",
     val inboundRules: List<InboundRule> = emptyList(),
 ) {
     val preferHtml: Boolean
@@ -456,6 +457,7 @@ private val fieldNames = listOf(
     "sieveHost",
     "sievePort",
     "tlsMode",
+    "certPin",
     "inboundRules",
 )
 
@@ -508,7 +510,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, and inboundRules when empty.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, and inboundRules when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -555,6 +557,7 @@ fun AccountSettings.encode(): String = buildString {
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
+    if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
 }
 
@@ -636,6 +639,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "sieveHost" ||
             key == "sievePort" ||
             key == "tlsMode" ||
+            key == "certPin" ||
             key == "inboundRules"
         ) {
             continue
@@ -721,6 +725,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
         tlsMode = values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None,
+        certPin = values["certPin"]?.let { percentDecode(it) } ?: "",
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
     )
 }
