@@ -85,6 +85,7 @@ import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.help.HelpScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
+import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 
@@ -213,23 +214,30 @@ fun LiveImapNavHost() {
                 val advancedQuery by entry.savedStateHandle
                     .getStateFlow("advancedQuery", "")
                     .collectAsState()
+                val advancedScopeName by entry.savedStateHandle
+                    .getStateFlow("advancedScope", "")
+                    .collectAsState()
+                val advancedScope = searchScopeOrCurrent(advancedScopeName)
                 fun openAdvanced() {
                     navController.navigate("search/${Uri.encode(mailbox)}")
                 }
                 fun consumeAdvanced() {
                     entry.savedStateHandle.remove<String>("advancedQuery")
+                    entry.savedStateHandle.remove<String>("advancedScope")
                 }
                 if (!expanded) {
                     key(folderViewToken) {
                         MessageIndexScreen(
                             mailbox = mailbox,
-                            onOpen = { uid, sequence ->
-                                navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
+                            onOpen = { uid, sequence, rowMailbox ->
+                                val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
+                                navController.navigate("reader/${Uri.encode(target)}/$uid/$sequence")
                             },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
+                            advancedScope = advancedScope,
                             onAdvancedConsumed = { consumeAdvanced() },
                         )
                     }
@@ -257,15 +265,23 @@ fun LiveImapNavHost() {
                             key(shownViewToken) {
                                 MessageIndexScreen(
                                     mailbox = mailbox,
-                                    onOpen = { uid, sequence ->
-                                        paneUid = uid
-                                        paneSequence = sequence
+                                    onOpen = { uid, sequence, rowMailbox ->
+                                        val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
+                                        if (target == mailbox) {
+                                            paneUid = uid
+                                            paneSequence = sequence
+                                        } else {
+                                            navController.navigate(
+                                                "reader/${Uri.encode(target)}/$uid/$sequence",
+                                            )
+                                        }
                                     },
                                     onCompose = { seed -> openCompose(seed) },
                                     onBack = { navController.popBackStack() },
                                     watchMailbox = paneUid < 0L,
                                     onAdvanced = { openAdvanced() },
                                     advancedQuery = advancedQuery.ifEmpty { null },
+                                    advancedScope = advancedScope,
                                     onAdvancedConsumed = { consumeAdvanced() },
                                 )
                             }
@@ -300,12 +316,14 @@ fun LiveImapNavHost() {
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
                 val mailbox = Uri.decode(encoded)
                 AdvancedSearchScreen(
+                    mailbox = mailbox,
                     onBack = { navController.popBackStack() },
-                    onSearch = { text ->
+                    onSearch = { text, scope ->
                         val previous = navController.previousBackStackEntry
                         val indexMailbox = previous?.arguments?.getString("mailbox")?.let(Uri::decode)
                         if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
                             previous.savedStateHandle["advancedQuery"] = text
+                            previous.savedStateHandle["advancedScope"] = scope.name
                         }
                         navController.popBackStack()
                     },
@@ -762,6 +780,13 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 internal fun postponedDrawerMailbox(value: String): String? {
     if (value.isEmpty()) return null
     return value
+}
+
+private fun searchScopeOrCurrent(name: String): SearchScope {
+    for (scope in SearchScope.entries) {
+        if (scope.name == name) return scope
+    }
+    return SearchScope.Current
 }
 
 @Composable

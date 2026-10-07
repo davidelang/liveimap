@@ -508,6 +508,38 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun searchCount(kind: String, argument: String): Int {
+        if (featureCaps.searchKind() != "Esearch") {
+            return searchCriterion(kind, argument).size
+        }
+        return keeper.read("search") {
+            val h = requireHandle()
+            val withCharset = searchNeedsCharset(argument)
+            val count = if (kind == "Advanced") {
+                val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
+                if (parsed.steps.isEmpty()) throw MailFailure("bad search")
+                nativeSearchAdvancedCount(
+                    h,
+                    parsed.combiner.name,
+                    BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
+                    Array(parsed.steps.size) { parsed.steps[it].kind },
+                    Array(parsed.steps.size) { parsed.steps[it].argument },
+                    withCharset,
+                )
+            } else {
+                nativeSearchCriterionCount(h, kind, argument, withCharset)
+            }
+            if (count < 0L || count > Int.MAX_VALUE) throw MailFailure("search failed")
+            count.toInt()
+        }
+    }
+
+    override suspend fun subscribedMailboxes(): List<String> = keeper.read("list") {
+        val rows = nativeSubscribedMailboxes(requireHandle(), featureCaps.listExtended)
+            ?: throw MailFailure("list failed")
+        rows.toList()
+    }
+
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {
         if (rule == StartRule.Newest) return emptyList()
         return keeper.read("search") {
@@ -862,6 +894,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
     private external fun nativeHierarchyDelimiter(handle: Long): Char
     private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
+    private external fun nativeSubscribedMailboxes(handle: Long, extended: Boolean): Array<String>?
     private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
@@ -920,6 +953,22 @@ class LibetpanMailSession : MailSession {
         useEsearch: Boolean,
         withCharset: Boolean,
     ): LongArray?
+
+    private external fun nativeSearchCriterionCount(
+        handle: Long,
+        kind: String,
+        argument: String,
+        withCharset: Boolean,
+    ): Long
+
+    private external fun nativeSearchAdvancedCount(
+        handle: Long,
+        combiner: String,
+        negated: BooleanArray,
+        kinds: Array<String>,
+        arguments: Array<String>,
+        withCharset: Boolean,
+    ): Long
 
     private external fun nativeSearchStart(
         handle: Long,

@@ -100,6 +100,12 @@ class SerialMailSession(
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> =
         onLane { inner.searchCriterion(kind, argument) }
 
+    override suspend fun searchCount(kind: String, argument: String): Int =
+        onLane { inner.searchCount(kind, argument) }
+
+    override suspend fun subscribedMailboxes(): List<String> =
+        onLane { inner.subscribedMailboxes() }
+
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         onLane { inner.searchStart(rule, byUid, edge) }
 

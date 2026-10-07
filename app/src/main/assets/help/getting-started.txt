@@ -15,3 +15,5 @@ The index sort lasts until you leave the app. Settings, Folders, holds the folde
 The search icon searches the current folder. Subject is the usual field. Full text is not the simple search.
 
 Advanced search combines terms with And or Or. Body and Full text search every message and are slow on a large folder.
+
+Advanced search can cover this folder, the folders under it, subscribed folders, or every folder. Count returns the number and does not download messages.

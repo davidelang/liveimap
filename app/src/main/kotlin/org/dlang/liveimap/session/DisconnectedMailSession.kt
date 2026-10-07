@@ -40,6 +40,10 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = notConnected()
 
+    override suspend fun searchCount(kind: String, argument: String): Int = notConnected()
+
+    override suspend fun subscribedMailboxes(): List<String> = notConnected()
+
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         notConnected()
 

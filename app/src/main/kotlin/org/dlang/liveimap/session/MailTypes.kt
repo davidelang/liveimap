@@ -85,6 +85,7 @@ data class IndexRow(
     val toMe: Boolean = false,
     val hasAttachment: Boolean = false,
     val recipients: String = "",
+    val mailbox: String = "",
 )
 
 data class MimePart(

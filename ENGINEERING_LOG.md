@@ -1578,3 +1578,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - The open bar gains Advanced after the text field. It opens search/{mailbox} for the current folder. The filter menu stays. There is no scope control.
 - The page starts on And, with one Subject row and Not off. Add term adds a Subject row. Body and Full text show the cost sentence and are not the starting field. Search sends one criterion of kind Advanced. A blank valued row is dropped. The form is not saved.
 - A sort keeps that search. A simple search clears it. Select all during a search selects the search uids. Body uses the BODY key. One folded key is sent. No install.
+
+## 2026-10-06 - Search scope and count execution start
+
+- Approved plan: sandbox/plans/search-scope-and-count-20261006-2001-plan.md
+- Phase 1: scope choice, per-folder search, Count without FETCH, folder name on the row, cancel, and the tests. No ESEARCH IN. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Search scope and count phase 1
+
+- Scope is This folder, This folder and below, Subscribed, or All folders. This folder starts selected and is not saved. Search stores advancedScope with the encoded text.
+- A wider search walks one folder at a time, can cancel, reports Folder N of M, names the folder on the row, and selects the index mailbox again. Current stays one search and does not list children.
+- Count uses searchCount and does not fetch. ESEARCH sends RETURN (COUNT). A failed select is skipped. No ESEARCH IN. No install.

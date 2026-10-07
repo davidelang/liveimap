@@ -1,7 +1,9 @@
 package org.dlang.liveimap.ui.index
 
+import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -94,6 +96,116 @@ fun parseAdvancedQuery(text: String): AdvancedQuery? {
         steps.add(AdvancedStep(negated, parts[1], parts[2]))
     }
     return AdvancedQuery(combiner, steps)
+}
+
+enum class SearchScope {
+    Current,
+    Subtree,
+    Subscribed,
+    All,
+}
+
+data class SearchCount(
+    val count: Int,
+    val skipped: List<String>,
+)
+
+fun blocksFolderSelection(orderMailboxes: List<String>, indexMailbox: String): Boolean {
+    for (name in orderMailboxes) {
+        if (name.isNotEmpty() && name != indexMailbox) return true
+    }
+    return false
+}
+
+suspend fun expandMailboxes(
+    roots: List<String>,
+    children: suspend (String) -> List<FolderEntry>,
+): List<String> {
+    val seen = LinkedHashSet<String>()
+    val order = ArrayList<String>()
+    val pending = ArrayDeque<String>()
+    for (root in roots) {
+        if (root.isEmpty() || !seen.add(root)) continue
+        order.add(root)
+        pending.add(root)
+    }
+    while (pending.isNotEmpty()) {
+        val mailbox = pending.removeFirst()
+        for (child in children(mailbox)) {
+            val name = child.mailbox
+            if (name.isEmpty() || !seen.add(name)) continue
+            order.add(name)
+            if (child.hasChildren) pending.add(name)
+        }
+    }
+    return order
+}
+
+suspend fun mailboxesFor(scope: SearchScope, home: String, session: MailSession): List<String> {
+    return when (scope) {
+        SearchScope.Current -> listOf(home)
+        SearchScope.Subtree -> expandMailboxes(listOf(home)) { parent ->
+            session.listLevel("", parent, false)
+        }
+        SearchScope.Subscribed -> session.subscribedMailboxes()
+        SearchScope.All -> {
+            val roots = ArrayList<String>()
+            for (namespace in session.namespaces()) {
+                for (entry in session.listLevel(namespace.prefix, null, false)) {
+                    if (entry.mailbox.isEmpty()) continue
+                    roots.add(entry.mailbox)
+                }
+            }
+            expandMailboxes(roots) { parent ->
+                session.listLevel("", parent, false)
+            }
+        }
+    }
+}
+
+suspend fun countHits(
+    session: MailSession,
+    home: String,
+    text: String,
+    scope: SearchScope,
+    cancelled: () -> Boolean = { false },
+    onProgress: (Int, Int) -> Unit = { _, _ -> },
+): SearchCount {
+    if (scope == SearchScope.Current) {
+        if (cancelled()) return SearchCount(0, emptyList())
+        onProgress(1, 1)
+        return SearchCount(session.searchCount("Advanced", text), emptyList())
+    }
+    val boxes = mailboxesFor(scope, home, session)
+    var total = 0
+    val skipped = ArrayList<String>()
+    var leftHome = false
+    try {
+        for ((index, box) in boxes.withIndex()) {
+            if (cancelled()) break
+            onProgress(index + 1, boxes.size)
+            try {
+                session.select(box)
+                if (box != home) leftHome = true
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+                skipped.add(box)
+                continue
+            }
+            total += session.searchCount("Advanced", text)
+        }
+    } finally {
+        if (leftHome) {
+            try {
+                session.select(home)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+            }
+        }
+    }
+    return SearchCount(total, skipped)
 }
 
 data class AppliedFilter(
@@ -402,11 +514,16 @@ class IndexModel(
     private var heldRows: List<IndexRow> = emptyList()
     var order: List<Long> = emptyList()
         private set
+    var orderMailboxes: List<String> = emptyList()
+        private set
     private var loadedWindow = false
     private var pageAnchor: Int = 0
     private var includePreview: Boolean = false
     private var activeSearch: String? = null
     private var activeAdvanced: String? = null
+    private var activeScope: SearchScope = SearchScope.Current
+    private var scopeCancel: () -> Boolean = { false }
+    private var scopeProgress: (Int, Int) -> Unit = { _, _ -> }
     private var activeSearchField: SimpleSearchField = SimpleSearchField.Subject
     private var filterUids: Set<Long>? = null
     private val filterStack = ArrayDeque<Set<Long>>()
@@ -432,6 +549,10 @@ class IndexModel(
 
     var notice: String? = null
         private set
+
+    fun reportNotice(text: String) {
+        notice = text
+    }
 
     var view: FolderView = FolderView(SortKey.Arrival, newestFirst = true)
     private var arrivalInstead: FolderView? = null
@@ -554,6 +675,7 @@ class IndexModel(
     suspend fun loadWindow(): List<IndexRow> {
         activeSearch = null
         activeAdvanced = null
+        clearSearchScope()
         honourKeep = false
         forceNewest = false
         keepSnapshot = null
@@ -600,6 +722,7 @@ class IndexModel(
         filterStack.clear()
         appliedFilters.clear()
         activeAdvanced = null
+        clearSearchScope()
         if (query.isEmpty()) {
             if (activeSearch == null && !hadFilter) return heldRows
             activeSearch = null
@@ -615,7 +738,12 @@ class IndexModel(
         return replaceWindow { fetchSearch(query) }
     }
 
-    suspend fun applyAdvanced(text: String): List<IndexRow> {
+    suspend fun applyAdvanced(
+        text: String,
+        scope: SearchScope = SearchScope.Current,
+        cancelled: () -> Boolean = { false },
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): List<IndexRow> {
         filterUids = null
         filterStack.clear()
         appliedFilters.clear()
@@ -623,6 +751,9 @@ class IndexModel(
         includePreview = account.density != Density.Compact
         activeAdvanced = text
         activeSearch = text
+        activeScope = scope
+        scopeCancel = cancelled
+        scopeProgress = onProgress
         armKeep()
         return replaceWindow { fetchSearch(text) }
     }
@@ -639,12 +770,15 @@ class IndexModel(
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
         val savedAdvanced = activeAdvanced
+        val savedScope = activeScope
+        val savedMailboxes = orderMailboxes
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         account = loaded
         includePreview = loaded.density != Density.Compact
         activeSearch = null
         activeAdvanced = null
+        clearSearchScope()
         val foundSet = found.toSet()
         val chip = AppliedFilter(label, argument)
         if (narrow && savedUids != null) {
@@ -665,6 +799,8 @@ class IndexModel(
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
             activeAdvanced = savedAdvanced
+            activeScope = savedScope
+            orderMailboxes = savedMailboxes
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -677,6 +813,8 @@ class IndexModel(
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
         val savedAdvanced = activeAdvanced
+        val savedScope = activeScope
+        val savedMailboxes = orderMailboxes
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         if (savedUids == null && savedStack.isEmpty() && savedSearch == null && savedFilters.isEmpty()) return heldRows
@@ -684,6 +822,7 @@ class IndexModel(
         filterStack.clear()
         activeSearch = null
         activeAdvanced = null
+        clearSearchScope()
         appliedFilters.clear()
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
@@ -693,6 +832,8 @@ class IndexModel(
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
             activeAdvanced = savedAdvanced
+            activeScope = savedScope
+            orderMailboxes = savedMailboxes
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -706,12 +847,15 @@ class IndexModel(
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
         val savedAdvanced = activeAdvanced
+        val savedScope = activeScope
+        val savedMailboxes = orderMailboxes
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         filterUids = filterStack.removeLast()
         if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
         activeSearch = null
         activeAdvanced = null
+        clearSearchScope()
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
         if (windowFailed) {
@@ -720,6 +864,8 @@ class IndexModel(
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
             activeAdvanced = savedAdvanced
+            activeScope = savedScope
+            orderMailboxes = savedMailboxes
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -734,6 +880,8 @@ class IndexModel(
         val savedStack = filterStack.toList()
         val savedSearch = activeSearch
         val savedAdvanced = activeAdvanced
+        val savedScope = activeScope
+        val savedMailboxes = orderMailboxes
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
         repeat(appliedFilters.size - index) {
@@ -742,6 +890,7 @@ class IndexModel(
         appliedFilters.subList(index, appliedFilters.size).clear()
         activeSearch = null
         activeAdvanced = null
+        clearSearchScope()
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
         if (windowFailed) {
@@ -750,6 +899,8 @@ class IndexModel(
             filterStack.addAll(savedStack)
             activeSearch = savedSearch
             activeAdvanced = savedAdvanced
+            activeScope = savedScope
+            orderMailboxes = savedMailboxes
             activeSearchField = savedSearchField
             appliedFilters.clear()
             appliedFilters.addAll(savedFilters)
@@ -1551,6 +1702,10 @@ class IndexModel(
     private suspend fun fetchSearch(query: String, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
         val advanced = activeAdvanced
+        if (advanced != null && activeScope != SearchScope.Current) {
+            return fetchScopedAdvanced(advanced, preserveAnchor)
+        }
+        orderMailboxes = emptyList()
         val found = if (advanced != null) {
             session.searchCriterion("Advanced", advanced)
         } else {
@@ -1576,10 +1731,14 @@ class IndexModel(
         return loaded
     }
 
-    private suspend fun fetchByUid(uids: List<Long>, preview: Boolean = includePreview): List<IndexRow> {
+    private suspend fun fetchByUid(
+        uids: List<Long>,
+        preview: Boolean = includePreview,
+        folder: String = mailbox,
+    ): List<IndexRow> {
         return session.fetchIndex(
             IndexRequest(
-                mailbox = mailbox,
+                mailbox = folder,
                 mode = IndexMode.ByUid,
                 uids = uids,
                 limit = IndexPageSize,
@@ -1587,6 +1746,94 @@ class IndexModel(
                 includePreview = preview,
             ),
         )
+    }
+
+    private fun clearSearchScope() {
+        activeScope = SearchScope.Current
+        orderMailboxes = emptyList()
+    }
+
+    private suspend fun reselectHome() {
+        try {
+            session.select(mailbox)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+        }
+    }
+
+    private suspend fun fetchScopedAdvanced(text: String, preserveAnchor: Int?): List<IndexRow> {
+        val boxes = mailboxesFor(activeScope, mailbox, session)
+        val hits = ArrayList<Long>()
+        val hitBoxes = ArrayList<String>()
+        val cancelled = scopeCancel
+        val progress = scopeProgress
+        scopeCancel = { false }
+        scopeProgress = { _, _ -> }
+        try {
+            for ((index, box) in boxes.withIndex()) {
+                if (cancelled()) break
+                progress(index + 1, boxes.size)
+                val opened = try {
+                    session.select(box)
+                    true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    false
+                }
+                if (!opened) continue
+                val found = session.searchCriterion("Advanced", text)
+                val ordered = if (view.newestFirst) found.sortedDescending() else found.sorted()
+                for (uid in ordered) {
+                    hits.add(uid)
+                    hitBoxes.add(box)
+                }
+            }
+        } finally {
+            reselectHome()
+        }
+        order = hits
+        orderMailboxes = hitBoxes
+        arrivalTotal = 0
+        pendingNew = 0
+        val target = resolveTarget(hits.size, preserveAnchor)
+        pageAnchor = clampedAnchor(hits.size, preserveAnchor, target ?: 0)
+        val loaded = pagesOfMailboxes(hits, hitBoxes)
+        if (target != null) rememberStart(target, loaded.size)
+        return loaded
+    }
+
+    private suspend fun pagesOfMailboxes(uids: List<Long>, mailboxes: List<String>): List<IndexRow> {
+        val start = pageAnchor * IndexPageSize
+        if (start >= uids.size) return emptyList()
+        val end = minOf(uids.size, start + IndexPageSize * 2)
+        val loaded = ArrayList<IndexRow>()
+        try {
+            var index = start
+            while (index < end) {
+                val box = mailboxes[index]
+                var next = index + 1
+                while (next < end && mailboxes[next] == box) next += 1
+                val slice = uids.subList(index, next)
+                val opened = try {
+                    session.select(box)
+                    true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    false
+                }
+                if (opened) {
+                    val fetched = align(slice, fetchByUid(slice, folder = box))
+                    for (row in fetched) loaded.add(row.copy(mailbox = box))
+                }
+                index = next
+            }
+        } finally {
+            reselectHome()
+        }
+        return loaded
     }
 
     private suspend fun rememberExists() {

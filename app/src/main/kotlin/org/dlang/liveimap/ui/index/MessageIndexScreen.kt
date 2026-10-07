@@ -601,12 +601,13 @@ private fun Context.hostActivity(): Activity? {
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
-    onOpen: (Long, Int) -> Unit,
+    onOpen: (Long, Int, String) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
+    advancedScope: SearchScope = SearchScope.Current,
     onAdvancedConsumed: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
@@ -640,6 +641,8 @@ fun MessageIndexScreen(
         true
     }
     val scope = rememberCoroutineScope()
+    val cancelSearch = remember { mutableStateOf(false) }
+    var searchProgress by remember { mutableStateOf<String?>(null) }
     val watchRecovery = remember { WatchBackoff() }
     val gate = remember { Mutex() }
     val sync = remember { SnapshotSync() }
@@ -912,6 +915,11 @@ fun MessageIndexScreen(
     fun pull() { sync.block() }
 
     fun selectAllMessages() {
+        if (blocksFolderSelection(model.orderMailboxes, mailbox)) {
+            model.reportNotice(appContext.getString(R.string.index_search_open_folder))
+            pull()
+            return
+        }
         when (val target = selectAllTarget(filterActive || model.searchActive, model.order)) {
             is SelectAllTarget.Uids -> {
                 allMailbox = false
@@ -1369,11 +1377,27 @@ fun MessageIndexScreen(
             }
         }
         val pendingAdvanced = advancedQuery
+        val pendingScope = advancedScope
         if (!pendingAdvanced.isNullOrEmpty() && held.windowReady) {
-            gate.withLock {
-                noteVisibleTop()
-                model.applyAdvanced(pendingAdvanced)
-                pull()
+            cancelSearch.value = false
+            try {
+                gate.withLock {
+                    noteVisibleTop()
+                    model.applyAdvanced(
+                        pendingAdvanced,
+                        pendingScope,
+                        cancelled = { cancelSearch.value },
+                    ) { current, total ->
+                        searchProgress = appContext.getString(
+                            R.string.index_search_folder_progress,
+                            current,
+                            total,
+                        )
+                    }
+                    pull()
+                }
+            } finally {
+                searchProgress = null
             }
             onAdvancedConsumed()
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -2456,7 +2480,7 @@ fun MessageIndexScreen(
                                         }
                                     } else {
                                         val seed = model.openSeed(row.uid)
-                                        if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence)
+                                        if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence, row.mailbox)
                                     }
                                 },
                                 onLongPress = {
@@ -2496,6 +2520,29 @@ fun MessageIndexScreen(
                 }
             }
             }
+            }
+            val progress = searchProgress
+            if (progress != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = progress,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = { cancelSearch.value = true }) {
+                            Text(stringResource(R.string.index_search_cancel))
+                        }
+                    }
+                }
             }
             if (newMailUnnumbered || pendingNew > 0) {
                 NewMailPill(
@@ -2886,6 +2933,16 @@ private fun IndexMessageRow(
                         modifier = Modifier.padding(end = 4.dp),
                     )
                     Column(Modifier.weight(1f)) {
+                        if (row.mailbox.isNotEmpty()) {
+                            Text(
+                                text = row.mailbox,
+                                color = textColor,
+                                textDecoration = decoration,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (depth > 6) {
                                 Text(
@@ -3258,7 +3315,11 @@ private sealed class IndexEntry {
     abstract val key: String
 
     data class Message(val row: IndexRow, val member: Boolean = false, val depth: Int = 0) : IndexEntry() {
-        override val key: String = "m${row.uid}"
+        override val key: String = if (row.mailbox.isEmpty()) {
+            "m${row.uid}"
+        } else {
+            "m${row.mailbox}\u0000${row.uid}"
+        }
     }
 
     data class Summary(val rootUid: Long, val text: String) : IndexEntry() {

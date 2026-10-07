@@ -519,4 +519,13 @@
     <string name="index_search_body">Body</string>
     <string name="index_search_full_text">Full text</string>
     <string name="index_search_body_cost">Searches every message body; slow on large folders.</string>
+    <string name="index_search_scope_folder">This folder</string>
+    <string name="index_search_scope_below">This folder and below</string>
+    <string name="index_search_scope_subscribed">Subscribed</string>
+    <string name="index_search_scope_all">All folders</string>
+    <string name="index_search_count">Count</string>
+    <string name="index_search_cancel">Cancel</string>
+    <string name="index_search_folder_progress">Folder %1$d of %2$d</string>
+    <string name="index_search_skipped">Skipped %1$s.</string>
+    <string name="index_search_open_folder">Open that folder to change these messages.</string>
 </resources>

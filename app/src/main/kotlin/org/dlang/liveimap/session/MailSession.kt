@@ -36,6 +36,10 @@ interface MailSession {
     suspend fun takeCopiedUids(): List<Long> = emptyList()
     suspend fun searchText(query: String): List<Long>
     suspend fun searchCriterion(kind: String, argument: String): List<Long>
+    suspend fun searchCount(kind: String, argument: String): Int =
+        searchCriterion(kind, argument).size
+
+    suspend fun subscribedMailboxes(): List<String> = emptyList()
     suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         throw MailFailure("searchStart")
 

@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,15 +28,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import org.dlang.liveimap.R
+import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.UpTopAppBar
 import org.dlang.liveimap.ui.index.AdvancedCombiner
 import org.dlang.liveimap.ui.index.AdvancedStep
+import org.dlang.liveimap.ui.index.SearchScope
+import org.dlang.liveimap.ui.index.countHits
 import org.dlang.liveimap.ui.index.encodeAdvancedQuery
 import org.dlang.liveimap.ui.mailScreenInsets
 
@@ -107,12 +116,36 @@ private fun advancedFieldLabel(kind: String): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdvancedSearchScreen(
-    onSearch: (String) -> Unit,
+    mailbox: String,
+    onSearch: (String, SearchScope) -> Unit,
     onBack: () -> Unit,
 ) {
     var combiner by remember { mutableStateOf(AdvancedCombiner.And) }
     var rows by remember { mutableStateOf(listOf(AdvancedDraft("Subject", "", false))) }
     var openRow by remember { mutableIntStateOf(-1) }
+    var scope by remember { mutableStateOf(SearchScope.Current) }
+    var counting by remember { mutableStateOf(false) }
+    var countProgress by remember { mutableStateOf<String?>(null) }
+    var countNumber by remember { mutableStateOf<Int?>(null) }
+    var skippedLines by remember { mutableStateOf<List<String>>(emptyList()) }
+    var countError by remember { mutableStateOf<String?>(null) }
+    val cancelCount = remember { mutableStateOf(false) }
+    val scopeRunner = rememberCoroutineScope()
+    val session = remember { mailSession() }
+    val context = LocalContext.current
+    fun encodedQuery(): String? {
+        val kept = ArrayList<AdvancedStep>()
+        for (row in rows) {
+            if (row.kind in valuedAdvancedKinds) {
+                if (row.value.isBlank()) continue
+                kept.add(AdvancedStep(row.negated, row.kind, row.value))
+            } else {
+                kept.add(AdvancedStep(row.negated, row.kind, ""))
+            }
+        }
+        if (kept.isEmpty()) return null
+        return encodeAdvancedQuery(combiner, kept)
+    }
     Scaffold(topBar = { UpTopAppBar(stringResource(R.string.index_search_advanced), onBack) }) { innerPadding ->
         Column(
             Modifier
@@ -135,6 +168,32 @@ fun AdvancedSearchScreen(
                     selected = combiner == AdvancedCombiner.Or,
                     onClick = { combiner = AdvancedCombiner.Or },
                     label = { Text(stringResource(R.string.index_search_or)) },
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = scope == SearchScope.Current,
+                    onClick = { scope = SearchScope.Current },
+                    enabled = !counting,
+                    label = { Text(stringResource(R.string.index_search_scope_folder)) },
+                )
+                FilterChip(
+                    selected = scope == SearchScope.Subtree,
+                    onClick = { scope = SearchScope.Subtree },
+                    enabled = !counting,
+                    label = { Text(stringResource(R.string.index_search_scope_below)) },
+                )
+                FilterChip(
+                    selected = scope == SearchScope.Subscribed,
+                    onClick = { scope = SearchScope.Subscribed },
+                    enabled = !counting,
+                    label = { Text(stringResource(R.string.index_search_scope_subscribed)) },
+                )
+                FilterChip(
+                    selected = scope == SearchScope.All,
+                    onClick = { scope = SearchScope.All },
+                    enabled = !counting,
+                    label = { Text(stringResource(R.string.index_search_scope_all)) },
                 )
             }
             rows.forEachIndexed { index, row ->
@@ -205,22 +264,76 @@ fun AdvancedSearchScreen(
                     rows = rows + AdvancedDraft("Subject", "", false)
                 },
             ) { Text(stringResource(R.string.index_search_add_term)) }
-            TextButton(
-                onClick = {
-                    val kept = ArrayList<AdvancedStep>()
-                    for (row in rows) {
-                        if (row.kind in valuedAdvancedKinds) {
-                            if (row.value.isBlank()) continue
-                            kept.add(AdvancedStep(row.negated, row.kind, row.value))
-                        } else {
-                            kept.add(AdvancedStep(row.negated, row.kind, ""))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    enabled = !counting,
+                    onClick = {
+                        val text = encodedQuery() ?: return@TextButton
+                        onSearch(text, scope)
+                    },
+                ) { Text(stringResource(R.string.index_search)) }
+                TextButton(
+                    enabled = !counting,
+                    onClick = {
+                        val text = encodedQuery() ?: return@TextButton
+                        val chosen = scope
+                        cancelCount.value = false
+                        counting = true
+                        countProgress = null
+                        countNumber = null
+                        skippedLines = emptyList()
+                        countError = null
+                        scopeRunner.launch {
+                            try {
+                                val result = countHits(
+                                    session,
+                                    mailbox,
+                                    text,
+                                    chosen,
+                                    cancelled = { cancelCount.value },
+                                ) { current, total ->
+                                    countProgress = context.getString(
+                                        R.string.index_search_folder_progress,
+                                        current,
+                                        total,
+                                    )
+                                }
+                                countNumber = result.count
+                                skippedLines = result.skipped.map { name ->
+                                    context.getString(R.string.index_search_skipped, name)
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: MailFailure) {
+                                countError = error.text
+                            } finally {
+                                counting = false
+                                countProgress = null
+                            }
                         }
+                    },
+                ) { Text(stringResource(R.string.index_search_count)) }
+            }
+            val progress = countProgress
+            if (progress != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = progress, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { cancelCount.value = true }) {
+                        Text(stringResource(R.string.index_search_cancel))
                     }
-                    if (kept.isEmpty()) return@TextButton
-                    val text = encodeAdvancedQuery(combiner, kept) ?: return@TextButton
-                    onSearch(text)
-                },
-            ) { Text(stringResource(R.string.index_search)) }
+                }
+            }
+            val shownCount = countNumber
+            if (shownCount != null) {
+                Text(text = shownCount.toString())
+            }
+            val shownError = countError
+            if (shownError != null) {
+                Text(text = shownError)
+            }
+            for (line in skippedLines) {
+                Text(text = line)
+            }
         }
     }
 }

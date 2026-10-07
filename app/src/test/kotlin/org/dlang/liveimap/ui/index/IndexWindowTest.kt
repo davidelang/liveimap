@@ -1286,6 +1286,11 @@ class IndexWindowTest {
         assertEquals(listOf("Advanced"), session.searchKinds)
         assertEquals(listOf(text), session.searchCalls)
         assertTrue(session.textSearches.isEmpty())
+        assertTrue(session.listCalls.isEmpty())
+        assertTrue(session.selects.isEmpty())
+        assertTrue(model.orderMailboxes.isEmpty())
+        assertTrue(searched.all { it.mailbox.isEmpty() })
+        assertFalse(blocksFolderSelection(model.orderMailboxes, "INBOX"))
         assertEquals(listOf(9L, 8L), model.order)
         assertEquals(listOf(9L, 8L), searched.map { it.uid })
         assertEquals(
@@ -1305,6 +1310,8 @@ class IndexWindowTest {
         assertEquals(listOf("Advanced", "Advanced", "Advanced", "Subject"), session.searchKinds)
         assertEquals(listOf(text, text, text, "needle"), session.searchCalls)
         assertTrue(session.textSearches.isEmpty())
+        assertTrue(session.listCalls.isEmpty())
+        assertTrue(model.orderMailboxes.isEmpty())
 
         val failedSession = FakeMailSession()
         failedSession.arrivalRows = listOf(row(1, sequence = 4))
@@ -1316,7 +1323,140 @@ class IndexWindowTest {
         assertEquals(listOf(1L), failed.rows.map { it.uid })
         assertEquals(4, failed.rows.single().sequence)
         assertTrue(failedSession.textSearches.isEmpty())
+        assertTrue(failedSession.listCalls.isEmpty())
     }
+
+    @Test
+    fun expandMailboxesAddsChildAndDoesNotLoop() {
+        val expanded = runImmediate {
+            expandMailboxes(listOf("INBOX")) { parent ->
+                if (parent == "INBOX") {
+                    listOf(FolderEntry("INBOX.Sent", "Sent", false, '.'))
+                } else {
+                    emptyList()
+                }
+            }
+        }
+        assertEquals(listOf("INBOX", "INBOX.Sent"), expanded)
+        val looped = runImmediate {
+            expandMailboxes(listOf("INBOX")) {
+                listOf(
+                    FolderEntry("INBOX", "INBOX", true, '.'),
+                    FolderEntry("INBOX.Sent", "Sent", true, '.'),
+                )
+            }
+        }
+        assertEquals(listOf("INBOX", "INBOX.Sent"), looped)
+    }
+
+    @Test
+    fun subtreeAdvancedSearchesEachFolder() {
+        val steps = listOf(
+            AdvancedStep(false, "Subject", "budget"),
+            AdvancedStep(true, "From", "ada"),
+        )
+        val text = checkNotNull(encodeAdvancedQuery(AdvancedCombiner.And, steps))
+        val session = scopedSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val progress = ArrayList<Pair<Int, Int>>()
+        val searched = runImmediate {
+            model.applyAdvanced(text, SearchScope.Subtree) { current, total ->
+                progress += current to total
+            }
+        }
+        assertEquals(listOf("Advanced", "Advanced"), session.searchKinds)
+        assertEquals(listOf(text, text), session.searchCalls)
+        assertEquals(listOf("INBOX", "INBOX.Sent"), session.searchMailboxes)
+        assertEquals("INBOX", session.selects.last())
+        assertEquals(listOf(1 to 2, 2 to 2), progress)
+        assertTrue(searched.any { it.mailbox == "INBOX.Sent" })
+        assertTrue(blocksFolderSelection(model.orderMailboxes, "INBOX"))
+        val orderBeforeNotice = model.order
+        model.reportNotice("Open that folder to change these messages.")
+        assertEquals("Open that folder to change these messages.", model.notice)
+        assertEquals(orderBeforeNotice, model.order)
+    }
+
+    @Test
+    fun subtreeAdvancedCancelKeepsTheFirstFolder() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = scopedSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val searched = runImmediate {
+            model.applyAdvanced(
+                text,
+                SearchScope.Subtree,
+                cancelled = { session.searchKinds.isNotEmpty() },
+            )
+        }
+        assertEquals(listOf("Advanced"), session.searchKinds)
+        assertEquals(listOf("INBOX"), session.searchMailboxes)
+        assertEquals("INBOX", session.selects.last())
+        assertTrue(session.selects.none { it == "INBOX.Sent" })
+        assertTrue(searched.all { it.mailbox == "INBOX" })
+        assertTrue(searched.isNotEmpty())
+    }
+
+    @Test
+    fun countHitsCurrentDoesNotFetch() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession()
+        session.searchCountResult = 7
+        val result = runImmediate { countHits(session, "INBOX", text, SearchScope.Current) }
+        assertEquals(SearchCount(7, emptyList()), result)
+        assertEquals(listOf("Advanced" to text), session.searchCountCalls)
+        assertTrue(session.fetchRequests.isEmpty())
+        assertTrue(session.listCalls.isEmpty())
+        assertTrue(session.searchKinds.isEmpty())
+        assertTrue(session.selects.isEmpty())
+    }
+
+    @Test
+    fun countHitsSkipsAFailedSelect() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = scopedSession()
+        session.failSelect += "INBOX.Sent"
+        session.searchCountResult = 4
+        val result = runImmediate { countHits(session, "INBOX", text, SearchScope.Subtree) }
+        assertEquals(SearchCount(4, listOf("INBOX.Sent")), result)
+        assertEquals(listOf("Advanced" to text), session.searchCountCalls)
+        assertTrue(session.fetchRequests.isEmpty())
+        assertTrue(session.searchKinds.isEmpty())
+        assertEquals(listOf("INBOX", "INBOX.Sent"), session.selects)
+    }
+}
+
+private fun scopedSession(): FakeMailSession {
+    val session = FakeMailSession()
+    session.arrivalRows = listOf(row(1), row(2), row(3))
+    session.searchUids = listOf(9L, 8L)
+    session.rows[9L] = row(9)
+    session.rows[8L] = row(8)
+    session.levels = { _, parent ->
+        if (parent == "INBOX") {
+            listOf(FolderEntry("INBOX.Sent", "Sent", false, '.'))
+        } else {
+            emptyList()
+        }
+    }
+    return session
 }
 
 private fun model(session: FakeMailSession, rule: StartRule, newestFirst: Boolean): IndexModel {
@@ -1384,7 +1524,15 @@ private class FakeMailSession(
     val threadCalls = mutableListOf<SortKey>()
     val searchCalls = mutableListOf<String>()
     val searchKinds = mutableListOf<String>()
+    val searchMailboxes = mutableListOf<String>()
+    val searchCountCalls = mutableListOf<Pair<String, String>>()
+    var searchCountResult: Int = 0
     val textSearches = mutableListOf<String>()
+    val listCalls = mutableListOf<Triple<String, String?, Boolean>>()
+    var levels: (String, String?) -> List<FolderEntry> = { _, _ -> emptyList() }
+    val selects = mutableListOf<String>()
+    val failSelect = mutableSetOf<String>()
+    var selectedName: String = ""
     val startSearches = mutableListOf<StartSearch>()
     val locateCalls = mutableListOf<Long>()
     val unseenSeq = HashSet<Int>()
@@ -1419,10 +1567,17 @@ private class FakeMailSession(
 
     override suspend fun namespaces(): List<Namespace> = unused()
 
-    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
-        unused()
+    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
+        listCalls += Triple(prefix, parentMailbox, unreadCounts)
+        return levels(prefix, parentMailbox)
+    }
 
-    override suspend fun select(mailbox: String): SelectResult = unused()
+    override suspend fun select(mailbox: String): SelectResult {
+        selects += mailbox
+        if (mailbox in failSelect) throw MailFailure("select failed")
+        selectedName = mailbox
+        return SelectResult(uidValidity = 1L, uidNext = 1L, exists = exists.coerceAtLeast(0))
+    }
 
     override suspend fun unselect() = Unit
 
@@ -1547,8 +1702,14 @@ private class FakeMailSession(
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
         searchCalls += argument
         searchKinds += kind
+        searchMailboxes += selectedName
         throwIfArmed()
         return searchUids
+    }
+
+    override suspend fun searchCount(kind: String, argument: String): Int {
+        searchCountCalls += kind to argument
+        return searchCountResult
     }
 
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {
