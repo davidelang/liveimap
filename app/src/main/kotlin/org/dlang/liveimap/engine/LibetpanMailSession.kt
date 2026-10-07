@@ -89,9 +89,12 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var capSet: Set<String> = emptySet()
     private var account: AccountSettings? = null
+    private var loggedInPassword: String? = null
     private var compressed = false
     private var selectedMailbox: String? = null
+    private var selectedReadWrite = false
     private var selected = SelectResult(0, 0, 0)
+    private var namespaceList: List<Namespace>? = null
 
     @Volatile
     private var sequencesStale = false
@@ -133,8 +136,17 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun open(account: AccountSettings): OpenResult {
+        val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
+        val password = try {
+            DataStoreSettingsStore(context).password()
+        } catch (error: Exception) {
+            return OpenResult.Failed(error.message ?: "keystore unavailable")
+        }
         val held = this.account
-        if (handle != 0L && held != null && sameImapIdentity(held, account)) {
+        val knownPassword = loggedInPassword
+        if (handle != 0L && held != null && knownPassword != null &&
+            sameImapIdentity(held, account, knownPassword, password)
+        ) {
             if (nativeSessionDead(handle)) {
                 close()
             } else {
@@ -160,9 +172,10 @@ class LibetpanMailSession : MailSession {
         if (handle != 0L) {
             close()
         }
-        val opened = login(account)
+        val opened = login(account, password)
         if (opened is OpenResult.Connected) {
             selectedMailbox = null
+            selectedReadWrite = false
             sequencesStale = false
             keeper.forgetFolder()
             keeper.markUsed()
@@ -170,15 +183,20 @@ class LibetpanMailSession : MailSession {
         return opened
     }
 
-    private fun login(account: AccountSettings): OpenResult {
-        val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
-        val password = try {
-            // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
-            runBlocking {
-                DataStoreSettingsStore(context).password()
+    private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
+        namespaceList = null
+        val password = if (knownPassword != null) {
+            knownPassword
+        } else {
+            val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
+            try {
+                // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
+                runBlocking {
+                    DataStoreSettingsStore(context).password()
+                }
+            } catch (error: Exception) {
+                return OpenResult.Failed(error.message ?: "keystore unavailable")
             }
-        } catch (error: Exception) {
-            return OpenResult.Failed(error.message ?: "keystore unavailable")
         }
         val from = if (account.email.isNotEmpty()) account.email else account.username
         val trafficPath = prepareTraffic(account)
@@ -214,6 +232,7 @@ class LibetpanMailSession : MailSession {
         if (account.logImapTraffic) TrafficLog.noteCapability(line)
         handle = opened
         this.account = account
+        loggedInPassword = password
         capSet = capabilityTokens(line).toSet()
         cache.clear()
         compressed = false
@@ -238,18 +257,27 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    private fun selectNow(mailbox: String): SelectResult {
+    private fun openMailbox(mailbox: String, write: Boolean): SelectResult {
+        val same = selectedMailbox == mailbox
+        val wasReadWrite = selectedReadWrite
+        val sufficient = same && !sequencesStale && (wasReadWrite || !write)
+        if (sufficient) {
+            return selected
+        }
         val current = selectedMailbox
         if (current != null && current != mailbox && hasCap(advertised(), "UNSELECT")) {
             nativeUnselect(requireHandle())
             selectedMailbox = null
+            selectedReadWrite = false
             selected = SelectResult(0, 0, 0)
         }
-        val result = nativeSelect(requireHandle(), mailbox) ?: run {
+        val readWrite = write || (same && sequencesStale && wasReadWrite)
+        val result = nativeSelect(requireHandle(), mailbox, readWrite) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
         selectedMailbox = mailbox
+        selectedReadWrite = readWrite
         selected = result
         sequencesStale = false
         keeper.noteSelected(result)
@@ -257,9 +285,20 @@ class LibetpanMailSession : MailSession {
         return result
     }
 
+    private fun selectNow(mailbox: String): SelectResult = openMailbox(mailbox, write = false)
+
+    private fun ensureReadWrite() {
+        val mailbox = selectedMailbox ?: return
+        openMailbox(mailbox, write = true)
+    }
+
     override suspend fun namespaces(): List<Namespace> = keeper.read("namespace") {
+        val held = namespaceList
+        if (held != null) return@read held
         val rows = nativeNamespaces(requireHandle()) ?: throw MailFailure("namespace failed")
-        rows.toList()
+        val list = rows.toList()
+        namespaceList = list
+        list
     }
 
     override suspend fun listLevel(
@@ -288,8 +327,25 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun unselect() {
-        if (capSet.none { it.equals("UNSELECT", ignoreCase = true) }) return
-        nativeUnselect(requireHandle())
+        val mailbox = selectedMailbox
+        if (hasCap(advertised(), "UNSELECT")) {
+            nativeUnselect(requireHandle())
+            selectedMailbox = null
+            selectedReadWrite = false
+            selected = SelectResult(0, 0, 0)
+            return
+        }
+        if (mailbox == null) return
+        val result = nativeSelect(requireHandle(), mailbox, false) ?: run {
+            noteTraffic("Error select failed")
+            throw MailFailure("select failed")
+        }
+        selectedMailbox = mailbox
+        selectedReadWrite = false
+        selected = result
+        sequencesStale = false
+        keeper.noteSelected(result)
+        noteTraffic("Selected $mailbox")
     }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = keeper.read("fetch") {
@@ -342,18 +398,21 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
         keeper.write("store") {
+            ensureReadWrite()
             nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
         }
     }
 
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
         keeper.write("store") {
+            ensureReadWrite()
             nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
         }
     }
 
     override suspend fun uidExpungeDeleted() {
         keeper.write("expunge") {
+            ensureReadWrite()
             nativeUidExpungeDeleted(requireHandle())
         }
     }
@@ -361,6 +420,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun uidExpunge(uids: List<Long>) {
         if (uids.isEmpty()) return
         keeper.write("expunge") {
+            ensureReadWrite()
             nativeUidExpunge(requireHandle(), uids.toLongArray())
         }
     }
@@ -368,12 +428,14 @@ class LibetpanMailSession : MailSession {
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
         if (uids.isEmpty()) return
         keeper.write("copy") {
+            ensureReadWrite()
             nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, moveKind(advertised()))
         }
     }
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         keeper.write("copy") {
+            ensureReadWrite()
             nativeCopyAllThenDelete(requireHandle(), targetMailbox, moveKind(advertised()))
         }
     }
@@ -503,7 +565,10 @@ class LibetpanMailSession : MailSession {
         closeSockets()
         capSet = emptySet()
         account = null
+        loggedInPassword = null
+        namespaceList = null
         selectedMailbox = null
+        selectedReadWrite = false
         sequencesStale = false
         watchCallback = null
         cache.clear()
@@ -557,8 +622,10 @@ class LibetpanMailSession : MailSession {
 
         override fun reselect(): SelectResult? {
             val mailbox = selectedMailbox ?: return null
-            val result = nativeSelect(requireHandle(), mailbox) ?: throw MailFailure("select failed")
+            val readWrite = selectedReadWrite
+            val result = nativeSelect(requireHandle(), mailbox, readWrite) ?: throw MailFailure("select failed")
             selectedMailbox = mailbox
+            selectedReadWrite = readWrite
             selected = result
             cache.clear()
             sequencesStale = true
@@ -655,7 +722,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
     private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
     private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
-    private external fun nativeSelect(handle: Long, mailbox: String): SelectResult?
+    private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeFetchIndex(
         handle: Long,

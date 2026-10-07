@@ -60,6 +60,7 @@ int mailimap_mailbox_send(mailstream * fd, const char * mb);
 int mailimap_flag_list_send(mailstream * fd, struct mailimap_flag_list * flag_list);
 int mailimap_astring_send(mailstream * fd, const char * astring);
 int mailimap_select_send(mailstream * fd, const char * mb, int condstore);
+int mailimap_examine_send(mailstream * fd, const char * mb, int condstore);
 int mailimap_oparenth_send(mailstream * fd);
 int mailimap_cparenth_send(mailstream * fd);
 int mailimap_number_send(mailstream * fd, uint32_t number);
@@ -114,6 +115,8 @@ struct LiveSession {
     std::map<std::string, char> delims;
     bool qresync = false;
     std::map<std::string, ResyncState> resyncByMailbox;
+    std::string selectedMailbox;
+    bool selectedReadWrite = false;
 
     mailimap * watch = nullptr;
     std::thread watchThread;
@@ -1250,23 +1253,26 @@ std::vector<Row> rowsFromList(clist * list, const char * accountEmail, const cha
     return rows;
 }
 
-int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq);
+int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command);
 int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
-    uint64_t knownModseq, uint64_t * modseq);
+    uint64_t knownModseq, uint64_t * modseq, const char * command);
 
-bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox) {
+bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bool readWrite) {
     int r;
     uint64_t mod = 0;
+    const char * command = readWrite ? "SELECT" : "EXAMINE";
     std::string name = mailbox != nullptr ? mailbox : "";
     auto stored = session->resyncByMailbox.find(name);
     bool haveStored = stored != session->resyncByMailbox.end()
         && stored->second.uidvalidity != 0 && stored->second.modseq != 0;
     if (session->qresync && haveStored) {
-        r = selectQresyncCapture(session->imap, mailbox, stored->second.uidvalidity, stored->second.modseq, &mod);
+        r = selectQresyncCapture(session->imap, mailbox, stored->second.uidvalidity, stored->second.modseq, &mod, command);
     } else if (session->qresync) {
-        r = selectFullCapture(session->imap, mailbox, &mod);
-    } else {
+        r = selectFullCapture(session->imap, mailbox, &mod, command);
+    } else if (readWrite) {
         r = mailimap_select(session->imap, mailbox);
+    } else {
+        r = mailimap_examine(session->imap, mailbox);
     }
     if (!cmdOk(r)) {
         throwImap(env, session, r, "select failed");
@@ -1280,6 +1286,8 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox) {
             session->resyncByMailbox.erase(name);
         }
     }
+    session->selectedMailbox = name;
+    session->selectedReadWrite = readWrite;
     return true;
 }
 
@@ -2194,6 +2202,8 @@ void freeSession(LiveSession * session, JNIEnv * env) {
         mailimap_free(session->imap);
         session->imap = nullptr;
     }
+    session->selectedMailbox.clear();
+    session->selectedReadWrite = false;
     flushTrafficTail(session);
     session->mu.unlock();
     if (tlsWatch != session) {
@@ -2277,11 +2287,11 @@ void freeExtensionList(mailimap * imap) {
 }
 
 int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
-    uint64_t knownModseq, uint64_t * modseq) {
+    uint64_t knownModseq, uint64_t * modseq, const char * command) {
     *modseq = 0;
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_token_send(imap->imap_stream, "SELECT");
+    r = mailimap_token_send(imap->imap_stream, command);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -2335,11 +2345,15 @@ int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvali
     return MAILIMAP_NO_ERROR;
 }
 
-int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq) {
+int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command) {
     *modseq = 0;
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_select_send(imap->imap_stream, mailbox, 0);
+    if (command != nullptr && strcmp(command, "EXAMINE") == 0) {
+        r = mailimap_examine_send(imap->imap_stream, mailbox, 0);
+    } else {
+        r = mailimap_select_send(imap->imap_stream, mailbox, 0);
+    }
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -3787,12 +3801,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jobject, jlong handle, jstring mailbox) {
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jobject, jlong handle, jstring mailbox,
+    jboolean readWrite) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars mb(env, mailbox);
-    if (!selectMailbox(env, session, mb.c())) {
+    if (!selectMailbox(env, session, mb.c(), readWrite == JNI_TRUE)) {
         unlockSession(session);
         return nullptr;
     }
@@ -3813,6 +3828,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
     int r = mailimap_unselect(session->imap);
     if (!cmdOk(r)) {
         throwImap(env, session, r, "unselect failed");
+    } else {
+        session->selectedMailbox.clear();
+        session->selectedReadWrite = false;
     }
     unlockSession(session);
 }
@@ -3828,9 +3846,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
     JChars accountEmailChars(env, accountEmail);
     JChars altChars(env, altAddresses);
     JChars mb(env, mailbox);
-    if (!selectMailbox(env, session, mb.c())) {
-        unlockSession(session);
-        return nullptr;
+    if (session->selectedMailbox != mb.c()) {
+        if (!selectMailbox(env, session, mb.c(), false)) {
+            unlockSession(session);
+            return nullptr;
+        }
     }
     struct mailimap_selection_info * info = session->imap->imap_selection_info;
     uint32_t exists = info != nullptr ? info->sel_exists : 0;
@@ -4792,7 +4812,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         unlockSession(session);
         return;
     }
-    int r = mailimap_select(watch, mb.c());
+    int r = mailimap_examine(watch, mb.c());
     if (!cmdOk(r)) {
         if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
             mailimap_free(watch);

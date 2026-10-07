@@ -16,12 +16,13 @@ class ImapIdentityTest {
             smtpPort = 25,
             displayName = "Ada",
         )
-        assertTrue(sameImapIdentity(base, base.copy()))
-        assertFalse(sameImapIdentity(base, base.copy(imapHost = "other.example")))
-        assertFalse(sameImapIdentity(base, base.copy(imapPort = 993)))
-        assertFalse(sameImapIdentity(base, base.copy(username = "bob")))
-        assertFalse(sameImapIdentity(base, base.copy(smtpHost = "other.example")))
-        assertFalse(sameImapIdentity(base, base.copy(smtpPort = 587)))
-        assertTrue(sameImapIdentity(base, base.copy(displayName = "Augusta")))
+        assertTrue(sameImapIdentity(base, base.copy(), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(imapHost = "other.example"), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(imapPort = 993), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(username = "bob"), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(smtpHost = "other.example"), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(smtpPort = 587), "secret", "secret"))
+        assertTrue(sameImapIdentity(base, base.copy(displayName = "Augusta"), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(), "secret", "changed"))
     }
 }

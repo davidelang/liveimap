@@ -1478,3 +1478,16 @@
 - Folder list, index, reader, and mailbox chooser keep their models in viewModel() instances owned by the navigation entry.
 - The index holds the model, rows, selected UIDs, and the first visible UID with its pixel offset. The folder list and the chooser hold the folder model and rows. The reader holds the fetched body for the open UID and that body's scroll offset.
 - Those load effects skip loadLevel, the index window fetch, and the body fetch when that held state is already loaded. A new process still starts empty. rememberSaveable fields stay. No configChanges, no orientation lock, no install.
+
+## 2026-10-06 - Session select and examine execution start
+
+- Approved plan: sandbox/plans/session-select-examine-20261006-1653-plan.md
+- Phase 1: a read sends EXAMINE. SELECT is only the read-write upgrade or a stale resync of a mailbox that is already read-write. The watch connection examines, then idles. NAMESPACE is once per connection. A password change logs in again. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Session select and examine phase 1
+
+- A read sends EXAMINE. SELECT is the read-write upgrade, or a stale resync of a mailbox that is already read-write. The same mailbox with fresh sequences and a sufficient mode sends neither.
+- The watch connection sends EXAMINE, then IDLE, and not QRESYNC. NAMESPACE stays on the session. login and close clear it. A kept session does not.
+- sameImapIdentity takes both passwords. A different password logs in again. A different display name does not. The password is not stored on AccountSettings and is not written to the traffic log.
+- Leaving a mailbox sends no CLOSE. UNSELECT clears the open mailbox. Without UNSELECT, unselect examines the same mailbox and leaves it read-only. No install.
