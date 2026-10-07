@@ -1717,3 +1717,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A full toolbar wraps onto another row. The last row scrolls when the chosen cap is too small. No action is dropped into the overflow
 - Toolbar rows defaults to 2 and is omitted from a default encode. A value outside 1..4 throws bad toolbarRows. The editor stepper saves toolbarRows only and warns with a 3-slot budget
 - Sort, More, and Send stay on the bar. The disconnected index Refresh stays one icon. Bounce still draws neither Send nor More. No TalkBack custom actions. No install
+
+## 2026-10-06 - toolbar talkback execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-talkback-20261006-2254-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 52 IMPLEMENT revision 1. builds before edit: bb85b3b
+- Phase 1 of 1: TalkBack custom actions on the shared toolbar editor. Move up, Move down, and Move to stay. A move is announced. No Material default change. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar talkback phase 1
+
+- TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. The drag handle stays out of the focus order. The Move buttons stay, at least 48.dp, and the Toolbar rows steppers do too
+- A move is announced in a polite live region. Move up says Moved Search up. Move to Overflow says Moved Search to Overflow. A drag that lands Filter in Hidden says Moved Filter to Hidden. A header drag does not change the announcement
+- dragLanding of the index default from 2 to 3 is Search in Toolbar, from 3 to 5 is Filter in Hidden, and from 0 to 3 is null. No bar default, toolbarRows, or pinned control changed. No install

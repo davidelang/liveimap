@@ -1,9 +1,12 @@
 package org.dlang.liveimap.ui.toolbar
 
 import androidx.compose.foundation.horizontalScroll
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,7 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
@@ -114,22 +120,45 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
     val store = remember { DataStoreSettingsStore(appContext) }
     val holder = remember(store) { ToolbarSettings(store) }
     LaunchedEffect(holder) { holder.load() }
-    val loaded = holder.settings ?: return
-    when (screen) {
+    var announcement by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        Text(
+            text = announcement,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        val loaded = holder.settings ?: return@Column
+        when (screen) {
         ToolbarScreen.Index -> SectionEditor(
             rowsIn = { section -> loaded.indexBar.actionsIn(section) },
             labelRes = ::indexBarActionRes,
             onMoveBy = { action, delta ->
                 val current = holder.settings?.indexBar
-                if (current != null) holder.persistIndex(moveIndexActionBy(current, action, delta))
+                if (current != null) {
+                    holder.persistIndex(moveIndexActionBy(current, action, delta))
+                    movedBySentence(appContext, action, delta, ::indexBarActionRes)?.let { announcement = it }
+                }
             },
             onMoveTo = { action, target ->
                 val current = holder.settings?.indexBar
-                if (current != null) holder.persistIndex(moveIndexAction(current, action, target))
+                if (current != null) {
+                    holder.persistIndex(moveIndexAction(current, action, target))
+                    announcement = movedToSentence(appContext, action, target, ::indexBarActionRes)
+                }
             },
             onDrag = { from, to ->
                 val current = holder.settings?.indexBar
-                if (current != null) holder.persistIndex(dragIndexLayout(current, from, to))
+                if (current != null) {
+                    val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
+                    holder.persistIndex(dragIndexLayout(current, from, to))
+                    if (landing != null) {
+                        val (action, section) = landing
+                        announcement = movedToSentence(appContext, action, section, ::indexBarActionRes)
+                    }
+                }
             },
             onReset = { holder.persistIndex(resetIndexBar()) },
             toolbarRows = loaded.toolbarRows,
@@ -140,15 +169,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             labelRes = ::selectionBarActionRes,
             onMoveBy = { action, delta ->
                 val current = holder.settings?.selectionBar
-                if (current != null) holder.persistSelection(moveSelectionActionBy(current, action, delta))
+                if (current != null) {
+                    holder.persistSelection(moveSelectionActionBy(current, action, delta))
+                    movedBySentence(appContext, action, delta, ::selectionBarActionRes)?.let { announcement = it }
+                }
             },
             onMoveTo = { action, target ->
                 val current = holder.settings?.selectionBar
-                if (current != null) holder.persistSelection(moveSelectionAction(current, action, target))
+                if (current != null) {
+                    holder.persistSelection(moveSelectionAction(current, action, target))
+                    announcement = movedToSentence(appContext, action, target, ::selectionBarActionRes)
+                }
             },
             onDrag = { from, to ->
                 val current = holder.settings?.selectionBar
-                if (current != null) holder.persistSelection(dragSelectionLayout(current, from, to))
+                if (current != null) {
+                    val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
+                    holder.persistSelection(dragSelectionLayout(current, from, to))
+                    if (landing != null) {
+                        val (action, section) = landing
+                        announcement = movedToSentence(appContext, action, section, ::selectionBarActionRes)
+                    }
+                }
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
             toolbarRows = loaded.toolbarRows,
@@ -159,15 +201,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             labelRes = ::folderBarActionRes,
             onMoveBy = { action, delta ->
                 val current = holder.settings?.folderBar
-                if (current != null) holder.persistFolder(moveFolderActionBy(current, action, delta))
+                if (current != null) {
+                    holder.persistFolder(moveFolderActionBy(current, action, delta))
+                    movedBySentence(appContext, action, delta, ::folderBarActionRes)?.let { announcement = it }
+                }
             },
             onMoveTo = { action, target ->
                 val current = holder.settings?.folderBar
-                if (current != null) holder.persistFolder(moveFolderAction(current, action, target))
+                if (current != null) {
+                    holder.persistFolder(moveFolderAction(current, action, target))
+                    announcement = movedToSentence(appContext, action, target, ::folderBarActionRes)
+                }
             },
             onDrag = { from, to ->
                 val current = holder.settings?.folderBar
-                if (current != null) holder.persistFolder(dragFolderLayout(current, from, to))
+                if (current != null) {
+                    val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
+                    holder.persistFolder(dragFolderLayout(current, from, to))
+                    if (landing != null) {
+                        val (action, section) = landing
+                        announcement = movedToSentence(appContext, action, section, ::folderBarActionRes)
+                    }
+                }
             },
             onReset = { holder.persistFolder(resetFolderBar()) },
             toolbarRows = loaded.toolbarRows,
@@ -178,15 +233,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             labelRes = ::readerToolbarActionRes,
             onMoveBy = { action, delta ->
                 val current = holder.settings?.let { effectiveReaderToolbar(it) }
-                if (current != null) holder.persistReader(moveReaderActionBy(current, action, delta))
+                if (current != null) {
+                    holder.persistReader(moveReaderActionBy(current, action, delta))
+                    movedBySentence(appContext, action, delta, ::readerToolbarActionRes)?.let { announcement = it }
+                }
             },
             onMoveTo = { action, target ->
                 val current = holder.settings?.let { effectiveReaderToolbar(it) }
-                if (current != null) holder.persistReader(moveReaderAction(current, action, target))
+                if (current != null) {
+                    holder.persistReader(moveReaderAction(current, action, target))
+                    announcement = movedToSentence(appContext, action, target, ::readerToolbarActionRes)
+                }
             },
             onDrag = { from, to ->
                 val current = holder.settings?.let { effectiveReaderToolbar(it) }
-                if (current != null) holder.persistReader(dragReaderLayout(current, from, to))
+                if (current != null) {
+                    val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
+                    holder.persistReader(dragReaderLayout(current, from, to))
+                    if (landing != null) {
+                        val (action, section) = landing
+                        announcement = movedToSentence(appContext, action, section, ::readerToolbarActionRes)
+                    }
+                }
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
             toolbarRows = loaded.toolbarRows,
@@ -197,25 +265,39 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
             labelRes = ::composeBarActionRes,
             onMoveBy = { action, delta ->
                 val current = holder.settings?.composeBar
-                if (current != null) holder.persistCompose(moveComposeActionBy(current, action, delta))
+                if (current != null) {
+                    holder.persistCompose(moveComposeActionBy(current, action, delta))
+                    movedBySentence(appContext, action, delta, ::composeBarActionRes)?.let { announcement = it }
+                }
             },
             onMoveTo = { action, target ->
                 val current = holder.settings?.composeBar
-                if (current != null) holder.persistCompose(moveComposeAction(current, action, target))
+                if (current != null) {
+                    holder.persistCompose(moveComposeAction(current, action, target))
+                    announcement = movedToSentence(appContext, action, target, ::composeBarActionRes)
+                }
             },
             onDrag = { from, to ->
                 val current = holder.settings?.composeBar
-                if (current != null) holder.persistCompose(dragComposeLayout(current, from, to))
+                if (current != null) {
+                    val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
+                    holder.persistCompose(dragComposeLayout(current, from, to))
+                    if (landing != null) {
+                        val (action, section) = landing
+                        announcement = movedToSentence(appContext, action, section, ::composeBarActionRes)
+                    }
+                }
             },
             onReset = { holder.persistCompose(resetComposeBar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
         )
+        }
     }
 }
 
 @Composable
-private fun <A : Enum<A>> SectionEditor(
+private fun <A : Enum<A>> ColumnScope.SectionEditor(
     rowsIn: (BarSection) -> List<A>,
     labelRes: (A) -> Int,
     onMoveBy: (A, Int) -> Unit,
@@ -232,8 +314,8 @@ private fun <A : Enum<A>> SectionEditor(
     LazyColumn(
         state = lazyListState,
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+            .weight(1f)
+            .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         for (section in BarSection.entries) {
@@ -274,12 +356,14 @@ private fun <A : Enum<A>> SectionEditor(
                     TextButton(
                         onClick = { onToolbarRows(toolbarRows - 1) },
                         enabled = toolbarRows > 1,
+                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                     ) {
                         Text("−")
                     }
                     TextButton(
                         onClick = { onToolbarRows(toolbarRows + 1) },
                         enabled = toolbarRows < 4,
+                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                     ) {
                         Text("+")
                     }
@@ -302,7 +386,43 @@ private fun ReorderableCollectionItemScope.ToolbarEditorRow(
     onMoveBy: (Int) -> Unit,
     onMoveTo: (BarSection) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    val moveUp = stringResource(R.string.toolbar_move_up)
+    val moveDown = stringResource(R.string.toolbar_move_down)
+    val moveTo = BarSection.entries.filter { it != section }.map { target ->
+        target to stringResource(R.string.toolbar_move_to, sectionTitle(target))
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                customActions = buildList {
+                    if (index > 0) {
+                        add(
+                            CustomAccessibilityAction(moveUp) {
+                                onMoveBy(-1)
+                                true
+                            },
+                        )
+                    }
+                    if (index < count - 1) {
+                        add(
+                            CustomAccessibilityAction(moveDown) {
+                                onMoveBy(1)
+                                true
+                            },
+                        )
+                    }
+                    for ((target, label) in moveTo) {
+                        add(
+                            CustomAccessibilityAction(label) {
+                                onMoveTo(target)
+                                true
+                            },
+                        )
+                    }
+                }
+            },
+    ) {
         Text(stringResource(labelRes))
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -318,32 +438,65 @@ private fun ReorderableCollectionItemScope.ToolbarEditorRow(
                 )
             }
             if (index > 0) {
-                TextButton(onClick = { onMoveBy(-1) }) {
-                    Text(stringResource(R.string.toolbar_move_up))
+                TextButton(
+                    onClick = { onMoveBy(-1) },
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                ) {
+                    Text(moveUp)
                 }
             }
             if (index < count - 1) {
-                TextButton(onClick = { onMoveBy(1) }) {
-                    Text(stringResource(R.string.toolbar_move_down))
+                TextButton(
+                    onClick = { onMoveBy(1) },
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                ) {
+                    Text(moveDown)
                 }
             }
-            for (target in BarSection.entries) {
-                if (target == section) continue
-                TextButton(onClick = { onMoveTo(target) }) {
-                    Text(stringResource(R.string.toolbar_move_to, sectionTitle(target)))
+            for ((target, label) in moveTo) {
+                TextButton(
+                    onClick = { onMoveTo(target) },
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                ) {
+                    Text(label)
                 }
             }
         }
     }
 }
 
+private fun sectionTitleRes(section: BarSection): Int = when (section) {
+    BarSection.Toolbar -> R.string.toolbar_section_toolbar
+    BarSection.Overflow -> R.string.toolbar_section_overflow
+    BarSection.Hidden -> R.string.toolbar_section_hidden
+}
+
 @Composable
-private fun sectionTitle(section: BarSection): String = stringResource(
-    when (section) {
-        BarSection.Toolbar -> R.string.toolbar_section_toolbar
-        BarSection.Overflow -> R.string.toolbar_section_overflow
-        BarSection.Hidden -> R.string.toolbar_section_hidden
-    },
+private fun sectionTitle(section: BarSection): String = stringResource(sectionTitleRes(section))
+
+private fun <A> movedBySentence(
+    context: Context,
+    action: A,
+    delta: Int,
+    labelOf: (A) -> Int,
+): String? {
+    val res = when (delta) {
+        -1 -> R.string.toolbar_moved_up
+        1 -> R.string.toolbar_moved_down
+        else -> return null
+    }
+    return context.getString(res, context.getString(labelOf(action)))
+}
+
+private fun <A> movedToSentence(
+    context: Context,
+    action: A,
+    section: BarSection,
+    labelOf: (A) -> Int,
+): String = context.getString(
+    R.string.toolbar_moved_to,
+    context.getString(labelOf(action)),
+    context.getString(sectionTitleRes(section)),
 )
 
 private fun indexBarActionRes(action: IndexBarAction): Int = when (action) {

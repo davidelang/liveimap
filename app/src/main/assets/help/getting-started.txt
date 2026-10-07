@@ -31,3 +31,5 @@ The compose More menu ends with Customize toolbar…. That screen moves Postpone
 In Customize toolbar…, drag a row to change its order. Move up, Move down, and Move to stay on the row.
 
 Toolbar rows sets how many rows the bar may use. Actions that do not fit stay on the bar, and the last row scrolls.
+
+TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. The move is announced.

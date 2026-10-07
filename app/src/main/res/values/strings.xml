@@ -543,4 +543,7 @@
     <string name="toolbar_drag">Drag to reorder</string>
     <string name="toolbar_rows">Toolbar rows</string>
     <string name="toolbar_rows_warning">These actions need more than %1$d rows. The last row scrolls.</string>
+    <string name="toolbar_moved_up">Moved %1$s up</string>
+    <string name="toolbar_moved_down">Moved %1$s down</string>
+    <string name="toolbar_moved_to">Moved %1$s to %2$s</string>
 </resources>

@@ -345,6 +345,23 @@ class IndexBarLayoutTest {
     }
 
     @Test
+    fun dragLandingOfTheIndexDefault() {
+        val layout = defaultIndexBar()
+        assertEquals(
+            IndexBarAction.Search to BarSection.Toolbar,
+            dragLanding(layout.toolbar, layout.overflow, layout.hidden, 2, 3),
+        )
+        assertEquals(
+            IndexBarAction.Filter to BarSection.Hidden,
+            dragLanding(layout.toolbar, layout.overflow, layout.hidden, 3, 5),
+        )
+        assertEquals(
+            null,
+            dragLanding(layout.toolbar, layout.overflow, layout.hidden, 0, 3),
+        )
+    }
+
+    @Test
     fun dragComposeOntoTheToolbar() {
         val dragged = dragComposeLayout(defaultComposeBar(), 2, 0)
         assertEquals(listOf(ComposeBarAction.Postpone), dragged.toolbar)

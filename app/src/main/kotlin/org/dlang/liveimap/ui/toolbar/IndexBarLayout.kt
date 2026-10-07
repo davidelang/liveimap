@@ -58,6 +58,35 @@ fun <A> dragActions(
     return Triple(nextToolbar, nextOverflow, nextHidden)
 }
 
+fun <A> dragLanding(
+    toolbar: List<A>,
+    overflow: List<A>,
+    hidden: List<A>,
+    from: Int,
+    to: Int,
+): Pair<A, BarSection>? {
+    val (nextToolbar, nextOverflow, nextHidden) = dragActions(toolbar, overflow, hidden, from, to)
+    if (nextToolbar == toolbar && nextOverflow == overflow && nextHidden == hidden) return null
+    val lines = ArrayList<DragLine<A>>(toolbar.size + overflow.size + hidden.size + 3)
+    lines.add(DragLine.Header(BarSection.Toolbar))
+    for (action in toolbar) lines.add(DragLine.Item(action))
+    lines.add(DragLine.Header(BarSection.Overflow))
+    for (action in overflow) lines.add(DragLine.Item(action))
+    lines.add(DragLine.Header(BarSection.Hidden))
+    for (action in hidden) lines.add(DragLine.Item(action))
+    val moved = when (val line = lines.getOrNull(from)) {
+        is DragLine.Item -> line.action
+        else -> return null
+    }
+    val section = when {
+        moved in nextToolbar -> BarSection.Toolbar
+        moved in nextOverflow -> BarSection.Overflow
+        moved in nextHidden -> BarSection.Hidden
+        else -> return null
+    }
+    return moved to section
+}
+
 data class IndexBarLayout(
     val toolbar: List<IndexBarAction>,
     val overflow: List<IndexBarAction>,
