@@ -158,6 +158,11 @@ enum class DateFormat {
     Custom,
 }
 
+enum class ThreadIndexStyle {
+    Expanded,
+    Collapsed,
+}
+
 fun dateFormatLabel(format: DateFormat): String = when (format) {
     DateFormat.Local -> "Local"
     DateFormat.Short -> "Short"
@@ -305,6 +310,7 @@ data class AccountSettings(
     val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
     val trashMailbox: String = "",
+    val threadIndexStyle: ThreadIndexStyle = ThreadIndexStyle.Expanded,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -371,6 +377,7 @@ private val fieldNames = listOf(
     "deletePolicy",
     "moveMethod",
     "trashMailbox",
+    "threadIndexStyle",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -422,7 +429,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, and the delete fields.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, and threadIndexStyle when Expanded.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -441,6 +448,9 @@ fun AccountSettings.encode(): String = buildString {
     if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
     if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
+    if (threadIndexStyle != ThreadIndexStyle.Expanded) {
+        appendLine("threadIndexStyle=${threadIndexStyle.name}")
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -496,7 +506,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "autoExpunge" ||
             key == "deletePolicy" ||
             key == "moveMethod" ||
-            key == "trashMailbox"
+            key == "trashMailbox" ||
+            key == "threadIndexStyle"
         ) {
             continue
         }
@@ -564,6 +575,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         deletePolicy = values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted,
         moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
+        threadIndexStyle = values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
+            ?: ThreadIndexStyle.Expanded,
     )
 }
 

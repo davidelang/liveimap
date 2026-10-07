@@ -121,7 +121,6 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.ReaderAction
-import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.ConnectionStatusStrip
@@ -1326,29 +1325,6 @@ fun MessageReaderScreen(
                         },
                     )
                 }
-                SortKey.entries.forEach { key ->
-                    DropdownMenuItem(
-                        text = { Text(sortKeyName(key)) },
-                        onClick = {
-                            moreMenu = false
-                            saveMailboxView { current -> current.copy(key = key) }
-                        },
-                    )
-                }
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.reader_newest)) },
-                    onClick = {
-                        moreMenu = false
-                        saveMailboxView { current -> current.copy(newestFirst = true) }
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.reader_oldest)) },
-                    onClick = {
-                        moreMenu = false
-                        saveMailboxView { current -> current.copy(newestFirst = false) }
-                    },
-                )
             }
                     }
                 },
@@ -1736,21 +1712,6 @@ private fun bodyViewName(view: BodyView): String = stringResource(
         BodyView.PlainOrText -> R.string.label_html_text
         BodyView.Headers -> R.string.label_headers
         BodyView.Raw -> R.string.label_raw
-    },
-)
-
-@Composable
-private fun sortKeyName(key: SortKey): String = stringResource(
-    when (key) {
-        SortKey.Arrival -> R.string.label_arrival
-        SortKey.Date -> R.string.label_date
-        SortKey.From -> R.string.label_from
-        SortKey.Subject -> R.string.compose_subject
-        SortKey.To -> R.string.compose_to
-        SortKey.Cc -> R.string.compose_cc
-        SortKey.Size -> R.string.label_size
-        SortKey.ThreadReferences -> R.string.label_thread
-        SortKey.ThreadOrderedSubject -> R.string.label_ordered_subject
     },
 )
 

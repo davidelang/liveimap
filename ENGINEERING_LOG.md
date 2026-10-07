@@ -1548,3 +1548,7 @@
 - Status slots stay 16 dp, 10 dp, and 16 dp. A selected row has no check icon. The row background and selected semantics stay.
 - Sequence width uses existsColumnChars(folderExists). 999 is 3 digits and 1000 is 4. sequenceColumnChars stays. Opening copies selected EXISTS when the ask path did not.
 - Date width uses dateColumnSamples for the format. Loaded row dates are not measured.
+
+## 2026-10-06 - Index layout and sort phase 2
+
+Session sort stays in memory. The index menu is Newest, Oldest, then the criteria, with a quiet sort line under the mailbox title. The reader more menu no longer changes the sort. A thread count sits on the root row. A null-uid parent is siblings at that level. Thread index is Expanded or Collapsed and is omitted from encode when Expanded.

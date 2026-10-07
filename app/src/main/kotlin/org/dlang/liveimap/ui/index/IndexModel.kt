@@ -238,7 +238,7 @@ private fun preorderUids(current: ThreadNode): List<Long> {
 }
 
 fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThread> {
-    val children = node.children.sortedWith { left, right ->
+    val children = flattenNullParents(node.children).sortedWith { left, right ->
         val leftKey = subtreeMaxUid(left)
         val rightKey = subtreeMaxUid(right)
         when {
@@ -254,6 +254,18 @@ fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThre
         val uids = preorderUids(child)
         if (uids.isEmpty()) continue
         out.add(CollapsedThread(uids.first(), uids.drop(1), threadDepths(child)))
+    }
+    return out
+}
+
+private fun flattenNullParents(nodes: List<ThreadNode>): List<ThreadNode> {
+    val out = ArrayList<ThreadNode>()
+    for (item in nodes) {
+        if (item.uid == null) {
+            out.addAll(flattenNullParents(item.children))
+        } else {
+            out.add(item.copy(children = flattenNullParents(item.children)))
+        }
     }
     return out
 }
@@ -498,14 +510,12 @@ class IndexModel(
     suspend fun applyView(next: FolderView): List<IndexRow> {
         arrivalInstead = null
         val loaded = store.load()
-        val saved = loaded.copy(folderViews = loaded.folderViews + (mailbox to next))
-        store.save(saved)
-        account = saved
+        account = loaded
         activeSearch = null
         filterUids = null
         filterStack.clear()
         appliedFilters.clear()
-        includePreview = saved.density != Density.Compact
+        includePreview = loaded.density != Density.Compact
         view = next
         armKeep()
         return replaceWindow { fetchView(next) }
@@ -1045,7 +1055,11 @@ class IndexModel(
         includePreview = loaded.density != Density.Compact
         val query = activeSearch
         if (query != null) return fetchSearch(query, preserveAnchor)
-        val saved = loaded.folderViews[mailbox] ?: loaded.defaultView
+        val saved = if (loadedWindow) {
+            view
+        } else {
+            loaded.folderViews[mailbox] ?: loaded.defaultView
+        }
         val resolved = arrivalInstead ?: saved
         view = resolved
         return fetchView(resolved, preserveAnchor)

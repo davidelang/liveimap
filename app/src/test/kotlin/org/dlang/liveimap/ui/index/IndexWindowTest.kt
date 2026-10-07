@@ -109,7 +109,7 @@ class IndexWindowTest {
         val store = MemorySettingsStore(original)
         val model = IndexModel(session, store, "Archive")
         runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = false)) }
-        assertEquals(FolderView(SortKey.From, newestFirst = false), store.settings.folderViews["Archive"])
+        assertEquals(original.folderViews, store.settings.folderViews)
         assertEquals(FolderView(SortKey.Subject, newestFirst = true), store.settings.folderViews["INBOX"])
         assertEquals(original.defaultView, store.settings.defaultView)
         assertEquals(original.expandedFolders, store.settings.expandedFolders)

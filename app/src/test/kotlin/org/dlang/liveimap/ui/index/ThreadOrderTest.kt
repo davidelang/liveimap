@@ -58,5 +58,42 @@ class ThreadOrderTest {
             newestFirst = false,
         )
         assertEquals(listOf(4L), dropped.map { it.rootUid })
+        val siblings = collapsedThreads(
+            ThreadNode(
+                uid = null,
+                children = listOf(
+                    ThreadNode(
+                        uid = null,
+                        children = listOf(
+                            ThreadNode(1L, emptyList()),
+                            ThreadNode(2L, emptyList()),
+                        ),
+                    ),
+                ),
+            ),
+            newestFirst = true,
+        )
+        assertEquals(listOf(2L, 1L), siblings.map { it.rootUid })
+        assertEquals(emptyList<Long>(), siblings[0].hiddenUids)
+        assertEquals(emptyList<Long>(), siblings[1].hiddenUids)
+        val nested = collapsedThreads(
+            ThreadNode(
+                uid = null,
+                children = listOf(
+                    ThreadNode(
+                        5L,
+                        listOf(
+                            ThreadNode(
+                                null,
+                                listOf(ThreadNode(1L, emptyList()), ThreadNode(2L, emptyList())),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            newestFirst = false,
+        )
+        assertEquals(listOf(5L), nested.map { it.rootUid })
+        assertEquals(listOf(1L, 2L), nested.single().hiddenUids)
     }
 }

@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -165,6 +164,7 @@ import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
+import org.dlang.liveimap.settings.ThreadIndexStyle
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.startRuleFor
@@ -537,6 +537,7 @@ internal class IndexScreenHeld : ViewModel() {
     var recordAnchor: Boolean = true
     var headingLeaf: String = ""
     var headingParent: String = ""
+    val expandedThreadsState = mutableStateOf<Set<Long>>(emptySet())
 
     fun bind(session: MailSession, store: SettingsStore, mailbox: String): IndexModel {
         val current = model
@@ -554,6 +555,7 @@ internal class IndexScreenHeld : ViewModel() {
         recordAnchor = true
         headingLeaf = ""
         headingParent = ""
+        expandedThreadsState.value = emptySet()
         return created
     }
 
@@ -570,6 +572,7 @@ internal class IndexScreenHeld : ViewModel() {
         recordAnchor = true
         headingLeaf = ""
         headingParent = ""
+        expandedThreadsState.value = emptySet()
     }
 }
 
@@ -673,8 +676,7 @@ fun MessageIndexScreen(
     var fallbackAsk by remember { mutableStateOf<FolderView?>(null) }
     var fallbackAskFromConnect by remember { mutableStateOf(false) }
     var fallbackExists by remember { mutableIntStateOf(0) }
-    var expandedText by rememberSaveable(mailbox) { mutableStateOf("") }
-    val expandedThreads = parseExpandedThreads(expandedText)
+    var expandedThreads by held.expandedThreadsState
     model.noteExpanded(expandedThreads)
     val threadChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
     val fallbackChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
@@ -793,7 +795,6 @@ fun MessageIndexScreen(
         for (row in model.rows) {
             if (seen == target) break
             lazyIndex += 1
-            if (model.summaries.containsKey(row.uid)) lazyIndex += 1
             if (row.uid in expandedThreads) {
                 for (uid in model.threadHidden[row.uid].orEmpty()) {
                     if (model.threadMembers.containsKey(uid)) lazyIndex += 1
@@ -976,10 +977,21 @@ fun MessageIndexScreen(
         }
     }
 
+    fun seedExpandedFromStyle() {
+        val next: Set<Long> = if (model.account.threadIndexStyle == ThreadIndexStyle.Collapsed) {
+            emptySet()
+        } else {
+            LinkedHashSet(model.order)
+        }
+        expandedThreads = next
+        model.noteExpanded(next)
+        model.publishMessageOrder()
+    }
+
     fun toggleThread(rootUid: Long) {
         scope.launch {
             gate.withLock {
-                val current = parseExpandedThreads(expandedText)
+                val current = expandedThreads
                 val opening = rootUid !in current
                 if (opening && !model.cacheThreadMembers(rootUid)) {
                     pull()
@@ -987,9 +999,9 @@ fun MessageIndexScreen(
                 }
                 val next = LinkedHashSet(current)
                 if (opening) next.add(rootUid) else next.remove(rootUid)
+                expandedThreads = next
                 model.noteExpanded(next)
                 model.publishMessageOrder()
-                expandedText = formatExpandedThreads(next)
                 pull()
             }
         }
@@ -1058,6 +1070,7 @@ fun MessageIndexScreen(
             gate.withLock {
                 noteVisibleTop()
                 model.applyView(pending)
+                seedExpandedFromStyle()
                 pull()
             }
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1083,6 +1096,7 @@ fun MessageIndexScreen(
                 model.allowLargeClientFallback = continueFallback
                 val next = if (continueFallback) pending else FolderView(SortKey.Arrival, newestFirst = true)
                 model.applyView(next)
+                seedExpandedFromStyle()
                 pull()
             }
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1151,6 +1165,7 @@ fun MessageIndexScreen(
     }
 
     LaunchedEffect(session, mailbox, loadToken) {
+        val opening = !held.windowReady
         val reuse = held.windowReady && held.boundMailbox == mailbox && loadToken == 0
         var pendingThread: FolderView? = null
         var pendingFallback: FolderView? = null
@@ -1165,8 +1180,7 @@ fun MessageIndexScreen(
             if (uid != null) {
                 val entries = buildIndexEntries(
                     model.rows,
-                    model.summaries,
-                    parseExpandedThreads(expandedText),
+                    expandedThreads,
                     model.threadMembers,
                     model.threadHidden,
                     model.threadDepth,
@@ -1270,6 +1284,7 @@ fun MessageIndexScreen(
                 }
             }
             model.loadWindow()
+            if (opening) seedExpandedFromStyle()
             if (pendingExists <= 0) {
                 pendingExists = try {
                     session.selectedExists()
@@ -1299,6 +1314,7 @@ fun MessageIndexScreen(
                     model.allowLargeClientFallback = false
                     model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                 }
+                seedExpandedFromStyle()
                 connected = true
                 pull()
             }
@@ -1318,6 +1334,7 @@ fun MessageIndexScreen(
                     } else {
                         model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                     }
+                    seedExpandedFromStyle()
                     connected = true
                     pull()
                 }
@@ -1450,7 +1467,6 @@ fun MessageIndexScreen(
 
     val indexEntries = buildIndexEntries(
         rows,
-        summaries,
         expandedThreads,
         threadMembers,
         threadHidden,
@@ -1650,7 +1666,22 @@ fun MessageIndexScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                     } else {
-                        MailboxTitleLines(heading.leaf, heading.parent)
+                        Column {
+                            MailboxTitleLines(heading.leaf, heading.parent)
+                            Text(
+                                text = stringResource(
+                                    R.string.settings_sort_line,
+                                    sortShortLabel(view.key),
+                                    stringResource(
+                                        if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
+                                    ),
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -1940,11 +1971,39 @@ fun MessageIndexScreen(
                                 gate.withLock {
                                     noteVisibleTop()
                                     model.applyView(FolderView(key, view.newestFirst))
+                                    seedExpandedFromStyle()
                                     pull()
                                 }
                                 if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         }
+                        val chooseDirection: (Boolean) -> Unit = { newestFirst ->
+                            menuOpen = false
+                            val next = view.copy(newestFirst = newestFirst)
+                            query = ""
+                            narrowArmed = false
+                            prompt = null
+                            scope.launch {
+                                if (needsLargeClientAsk(next)) return@launch
+                                gate.withLock {
+                                    noteVisibleTop()
+                                    model.applyView(next)
+                                    seedExpandedFromStyle()
+                                    pull()
+                                }
+                                if (model.rows.isNotEmpty()) scrollToStart()
+                            }
+                        }
+                        DirectionMenuChoice(
+                            label = stringResource(R.string.index_newest),
+                            selected = view.newestFirst,
+                            onClick = { chooseDirection(true) },
+                        )
+                        DirectionMenuChoice(
+                            label = stringResource(R.string.index_oldest),
+                            selected = !view.newestFirst,
+                            onClick = { chooseDirection(false) },
+                        )
                         fieldKeys.forEach { key ->
                             SortMenuChoice(
                                 key = key,
@@ -1972,31 +2031,6 @@ fun MessageIndexScreen(
                                 onClick = { chooseSort(key) },
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_newest_first)) },
-                            onClick = {
-                                menuOpen = false
-                                val next = view.copy(newestFirst = !view.newestFirst)
-                                query = ""
-                                narrowArmed = false
-                                prompt = null
-                                scope.launch {
-                                    if (needsLargeClientAsk(next)) return@launch
-                                    gate.withLock {
-                                        noteVisibleTop()
-                                        model.applyView(next)
-                                        pull()
-                                    }
-                                    if (model.rows.isNotEmpty()) scrollToStart()
-                                }
-                            },
-                            trailingIcon = {
-                                Checkbox(
-                                    checked = view.newestFirst,
-                                    onCheckedChange = null,
-                                )
-                            },
-                        )
                         if (account.openAtInIndexMenu) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.label_open_at)) },
@@ -2318,6 +2352,13 @@ fun MessageIndexScreen(
                     when (entry) {
                         is IndexEntry.Message -> {
                             val row = entry.row
+                            val summary = if (entry.member) null else summaries[row.uid]
+                            val threadCount = if (summary == null || summary.hidden <= 0) {
+                                null
+                            } else {
+                                val unread = summary.unread + if ("\\Seen" !in row.flags) 1 else 0
+                                threadCountMark(summary.hidden + 1, unread)
+                            }
                             IndexMessageRow(
                                 row = row,
                                 mailbox = mailbox,
@@ -2341,6 +2382,8 @@ fun MessageIndexScreen(
                                 agoPhrase = indexAgo,
                                 aheadPhrase = indexAhead,
                                 badPattern = indexBadPattern,
+                                threadCount = threadCount,
+                                onToggleThread = { toggleThread(row.uid) },
                                 onClick = {
                                     if (multiSelect) {
                                         if (allMailbox) {
@@ -2622,6 +2665,8 @@ private fun IndexMessageRow(
     agoPhrase: String,
     aheadPhrase: String,
     badPattern: String,
+    threadCount: String? = null,
+    onToggleThread: () -> Unit = {},
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onSwipe: suspend (SwipeBinding) -> Unit,
@@ -2822,13 +2867,29 @@ private fun IndexMessageRow(
                                 textAlign = TextAlign.End,
                             )
                         }
-                        Text(
-                            text = row.subject,
-                            color = textColor,
-                            textDecoration = decoration,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val mark = threadCount
+                            if (mark != null) {
+                                Text(
+                                    text = mark,
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .clickable(role = Role.Button, onClick = onToggleThread),
+                                    color = textColor,
+                                    textDecoration = decoration,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                )
+                            }
+                            Text(
+                                text = row.subject,
+                                modifier = Modifier.weight(1f),
+                                color = textColor,
+                                textDecoration = decoration,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 val lines = previewLineCount(account.density)
@@ -2955,6 +3016,23 @@ internal fun usesClientFallback(
         SortKey.ThreadOrderedSubject -> !capabilities.threadOrderedSubject && clientThread
         else -> false
     }
+}
+
+@Composable
+private fun DirectionMenuChoice(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(label) },
+        onClick = onClick,
+        leadingIcon = if (selected) {
+            { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
@@ -3126,21 +3204,8 @@ private sealed class IndexEntry {
     }
 }
 
-private fun parseExpandedThreads(text: String): LinkedHashSet<Long> {
-    val out = LinkedHashSet<Long>()
-    if (text.isEmpty()) return out
-    for (part in text.split(',')) {
-        val uid = part.toLongOrNull() ?: continue
-        out.add(uid)
-    }
-    return out
-}
-
-private fun formatExpandedThreads(uids: Collection<Long>): String = uids.joinToString(",")
-
 private fun buildIndexEntries(
     rows: List<IndexRow>,
-    summaries: Map<Long, ThreadSummary>,
     expanded: Set<Long>,
     threadMembers: Map<Long, IndexRow>,
     threadHidden: Map<Long, List<Long>>,
@@ -3149,16 +3214,6 @@ private fun buildIndexEntries(
     val entries = ArrayList<IndexEntry>(rows.size)
     for (row in rows) {
         entries.add(IndexEntry.Message(row))
-        val summary = summaries[row.uid]
-        if (summary != null) {
-            val text = if (row.uid in expanded) {
-                threadSummaryLine(summary)
-            } else {
-                val unread = summary.unread + if ("\\Seen" !in row.flags) 1 else 0
-                threadCountMark(summary.hidden + 1, unread)
-            }
-            entries.add(IndexEntry.Summary(row.uid, text))
-        }
         if (row.uid !in expanded) continue
         for (uid in threadHidden[row.uid].orEmpty()) {
             val member = threadMembers[uid] ?: continue

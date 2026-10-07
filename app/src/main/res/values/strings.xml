@@ -504,4 +504,9 @@
     <string name="index_folder_info">Folder info</string>
     <string name="index_folder_info_body">%1$s\n%2$d messages\nUID validity %3$d</string>
     <string name="index_permanent_body">The messages will be removed permanently.</string>
+    <string name="index_newest">Newest</string>
+    <string name="index_oldest">Oldest</string>
+    <string name="settings_thread_index">Thread index</string>
+    <string name="settings_thread_expanded">Expanded</string>
+    <string name="settings_thread_collapsed">Collapsed</string>
 </resources>

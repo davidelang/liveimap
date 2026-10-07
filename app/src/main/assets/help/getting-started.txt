@@ -9,3 +9,5 @@ When an IMAP host is set, About says the connection is not encrypted. The passwo
 Settings, Slower fallbacks, is off. Turn a switch on only when the server does not offer that feature. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.
 
 Settings, Reading, Deleting: Confirm before expunge is on, and Auto-expunge is off. The Delete button follows that setting. Auto-expunge on sends CLOSE when you leave a folder.
+
+The index sort lasts until you leave the app. Settings, Folders, holds the folder's usual sort. Threads start expanded unless Thread index is set to start collapsed.

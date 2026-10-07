@@ -676,6 +676,14 @@ private fun FoldersGroup(
             BoolField(stringResource(R.string.reader_newest), settings.defaultView.newestFirst) { newest ->
                 editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
             }
+            ChoiceField(
+                stringResource(R.string.settings_thread_index),
+                ThreadIndexStyle.entries,
+                settings.threadIndexStyle,
+                { threadIndexStyleName(it) },
+            ) { style ->
+                editor.persist(editor.settings.copy(threadIndexStyle = style))
+            }
             OpenRow(stringResource(R.string.settings_folder_views), onOpenViews)
         }
         SettingsSection(
@@ -1634,6 +1642,14 @@ private fun StartRuleField(
     }
     if (startRuleIsRecent(selected)) Text(stringResource(R.string.label_recent_note))
 }
+
+@Composable
+private fun threadIndexStyleName(style: ThreadIndexStyle): String = stringResource(
+    when (style) {
+        ThreadIndexStyle.Expanded -> R.string.settings_thread_expanded
+        ThreadIndexStyle.Collapsed -> R.string.settings_thread_collapsed
+    },
+)
 
 @Composable
 private fun sortKeyName(key: SortKey): String = stringResource(
