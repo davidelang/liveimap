@@ -1952,3 +1952,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - PlainSieveTransport connects on Dispatchers.IO. Connect timeout is 30 seconds and read timeout is 60 seconds. readLine, writeLine, and close also run on Dispatchers.IO.
 - writeLine sends the line, then CR LF, as UTF-8, and flushes. readLine stops at LF, drops one trailing CR, and rejects a line longer than 8192 characters. A closed peer is SieveFailure("read"). A failed connect is SieveFailure("connect"). close is safe to call more than once.
 - greetPlain reads the greeting, sends LOGOUT, and closes in a finally block. The localhost test peer is 127.0.0.1. No AUTHENTICATE, no PUTSCRIPT, and no install.
+
+## 2026-10-07 - inbound rules commands execution start
+
+- Approved plan: sandbox/plans/inbound-rules-commands-20261007-0339-plan.md. Status set to APPROVED.
+- Phase 1: LISTSCRIPTS, GETSCRIPT, PUTSCRIPT, and CHECKSCRIPT on an injected transport, including script literals.
+- Do not authenticate. Do not SETACTIVE. Do not install. Base builds tag b98cde1. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules commands phase 1
+
+- SieveLineTransport.readBytes and writeBytes default to SieveFailure("literal"). A negative count is "literal". PlainSieveTransport reads an exact count on Dispatchers.IO or throws SieveFailure("read"), and writeBytes writes those bytes and flushes.
+- listScripts sends LISTSCRIPTS. A quoted name is inactive. A quoted name plus ACTIVE, compared without case, is active. OK ends the list and keeps that order. NO or BYE uses the greeting response text.
+- getScript sends GETSCRIPT and the quoted name, reads a whole-line {count} or {count+} literal as UTF-8, and returns that text after OK. putScript and checkScript send {count+} and the script bytes with no extra CR LF. Plain OK returns "". OK (WARNINGS) returns the quoted warning text. NO {count} uses the literal bytes as the failure text.
+- Names are wrapped in double quotes with \ and " escaped. No AUTHENTICATE, SETACTIVE, DELETESCRIPT, HAVESPACE, emitSieve, or greetPlain from these commands. No install.

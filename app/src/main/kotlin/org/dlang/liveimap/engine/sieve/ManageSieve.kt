@@ -1,9 +1,20 @@
 package org.dlang.liveimap.engine.sieve
 
+import java.nio.charset.StandardCharsets
+
 /** One ManageSieve line. The transport does not include a trailing CR or LF. */
 interface SieveLineTransport {
     suspend fun readLine(): String
     suspend fun writeLine(line: String)
+
+    suspend fun readBytes(count: Int): ByteArray {
+        if (count < 0) throw SieveFailure("literal")
+        throw SieveFailure("literal")
+    }
+
+    suspend fun writeBytes(bytes: ByteArray) {
+        throw SieveFailure("literal")
+    }
 }
 
 data class SieveCapabilities(
@@ -16,6 +27,11 @@ data class SieveCapabilities(
 
 class SieveFailure(val text: String) : Exception(text)
 
+data class ListedScript(
+    val name: String,
+    val active: Boolean,
+)
+
 /** Greeting only. Does not open a socket. */
 suspend fun readGreeting(transport: SieveLineTransport): SieveCapabilities {
     return readUntilResponse(transport, recordCapabilities = true)
@@ -25,6 +41,51 @@ suspend fun readGreeting(transport: SieveLineTransport): SieveCapabilities {
 suspend fun logout(transport: SieveLineTransport) {
     transport.writeLine("LOGOUT")
     readUntilResponse(transport, recordCapabilities = false)
+}
+
+/** Lists script names in server order. Does not open a socket. */
+suspend fun listScripts(transport: SieveLineTransport): List<ListedScript> {
+    transport.writeLine("LISTSCRIPTS")
+    val scripts = ArrayList<ListedScript>()
+    while (true) {
+        val line = transport.readLine()
+        if (line.isEmpty()) throw SieveFailure("empty")
+        if (hasUnquotedBrace(line)) throw SieveFailure("literal")
+        val token = responseToken(line)
+        if (token != null) {
+            if (token == "OK") {
+                responseHumanText(line)
+                return scripts
+            }
+            throw SieveFailure(responseHumanText(line) ?: line)
+        }
+        scripts.add(listedScript(line))
+    }
+}
+
+/** Reads one script literal. Does not open a socket. */
+suspend fun getScript(transport: SieveLineTransport, name: String): String {
+    transport.writeLine("GETSCRIPT ${quoteScriptName(name)}")
+    val header = transport.readLine()
+    if (header.isEmpty()) throw SieveFailure("empty")
+    val token = responseToken(header)
+    if (token == "NO" || token == "BYE") {
+        throw SieveFailure(commandFailureText(transport, header))
+    }
+    val count = wholeLineLiteral(header) ?: throw SieveFailure("literal")
+    val text = String(transport.readBytes(count), StandardCharsets.UTF_8)
+    commandResult(transport, transport.readLine())
+    return text
+}
+
+/** Uploads one script. Plain OK returns an empty warnings string. */
+suspend fun putScript(transport: SieveLineTransport, name: String, script: String): String {
+    return writeScriptCommand(transport, "PUTSCRIPT ${quoteScriptName(name)}", script)
+}
+
+/** Checks one script. Plain OK returns an empty warnings string. */
+suspend fun checkScript(transport: SieveLineTransport, script: String): String {
+    return writeScriptCommand(transport, "CHECKSCRIPT", script)
 }
 
 private class CapabilityBuilder {
@@ -240,4 +301,81 @@ private fun hasUnquotedBrace(line: String): Boolean {
         index++
     }
     return false
+}
+
+private suspend fun writeScriptCommand(
+    transport: SieveLineTransport,
+    command: String,
+    script: String,
+): String {
+    val bytes = script.toByteArray(StandardCharsets.UTF_8)
+    transport.writeLine("$command {${bytes.size}+}")
+    transport.writeBytes(bytes)
+    return commandResult(transport, transport.readLine())
+}
+
+private suspend fun commandResult(transport: SieveLineTransport, line: String): String {
+    if (line.isEmpty()) throw SieveFailure("empty")
+    val token = responseToken(line) ?: throw SieveFailure("bad capability")
+    if (token == "OK") {
+        if (responseLiteralCount(line) != null) throw SieveFailure("literal")
+        return responseHumanText(line) ?: ""
+    }
+    throw SieveFailure(commandFailureText(transport, line))
+}
+
+private suspend fun commandFailureText(transport: SieveLineTransport, line: String): String {
+    val count = responseLiteralCount(line)
+    if (count != null) {
+        return String(transport.readBytes(count), StandardCharsets.UTF_8)
+    }
+    return responseHumanText(line) ?: line
+}
+
+private fun listedScript(line: String): ListedScript {
+    if (line.isEmpty() || line[0] != '"') throw SieveFailure("bad capability")
+    val quoted = readQuoted(line, 0)
+    var index = skipBlank(line, quoted.second)
+    if (index >= line.length) return ListedScript(quoted.first, active = false)
+    val tokenStart = index
+    while (index < line.length && line[index] != ' ' && line[index] != '\t') index++
+    val token = line.substring(tokenStart, index)
+    if (skipBlank(line, index) != line.length) throw SieveFailure("bad capability")
+    if (!token.equals("ACTIVE", ignoreCase = true)) throw SieveFailure("bad capability")
+    return ListedScript(quoted.first, active = true)
+}
+
+/** Same quoting as the Sieve emitter: wrap in quotes and escape \ and ". */
+private fun quoteScriptName(raw: String): String {
+    val cleaned = raw.filter { it != '\r' && it != '\n' && it != '\u0000' }
+    val escaped = StringBuilder(cleaned.length + 2)
+    for (ch in cleaned) {
+        when (ch) {
+            '\\' -> escaped.append("\\\\")
+            '"' -> escaped.append("\\\"")
+            else -> escaped.append(ch)
+        }
+    }
+    return "\"$escaped\""
+}
+
+private fun wholeLineLiteral(line: String): Int? {
+    if (line.length < 3 || line[0] != '{' || line[line.length - 1] != '}') return null
+    var body = line.substring(1, line.length - 1)
+    if (body.endsWith("+")) body = body.dropLast(1)
+    if (body.isEmpty() || body.any { it !in '0'..'9' }) return null
+    val value = body.toLongOrNull() ?: return null
+    if (value > Int.MAX_VALUE) throw SieveFailure("literal")
+    return value.toInt()
+}
+
+private fun responseLiteralCount(line: String): Int? {
+    val token = responseToken(line) ?: return null
+    var index = skipBlank(line, token.length)
+    if (index < line.length && line[index] == '(') {
+        index = skipParenthesized(line, index)
+        index = skipBlank(line, index)
+    }
+    if (index >= line.length || line[index] != '{') return null
+    return wholeLineLiteral(line.substring(index)) ?: throw SieveFailure("literal")
 }

@@ -48,6 +48,31 @@ class PlainSieveTransport internal constructor(
         }
     }
 
+    override suspend fun readBytes(count: Int): ByteArray {
+        if (count < 0) throw SieveFailure("literal")
+        return withContext(Dispatchers.IO) {
+            val bytes = ByteArray(count)
+            var offset = 0
+            while (offset < count) {
+                val n = try {
+                    input.read(bytes, offset, count - offset)
+                } catch (e: IOException) {
+                    throw SieveFailure("read")
+                }
+                if (n <= 0) throw SieveFailure("read")
+                offset += n
+            }
+            bytes
+        }
+    }
+
+    override suspend fun writeBytes(bytes: ByteArray) {
+        withContext(Dispatchers.IO) {
+            output.write(bytes)
+            output.flush()
+        }
+    }
+
     override fun close() {
         runBlocking(Dispatchers.IO) {
             if (!closed.compareAndSet(false, true)) return@runBlocking
