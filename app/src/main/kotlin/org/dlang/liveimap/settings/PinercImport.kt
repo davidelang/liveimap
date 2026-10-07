@@ -2,6 +2,8 @@ package org.dlang.liveimap.settings
 
 import java.util.Locale
 import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.NamespaceKind
 
 data class PinercPreview(
     val next: AccountSettings,
@@ -45,6 +47,7 @@ data class PinercPhrases(
     val inboxBraces: String,
     val missingFolder: String,
     val folderCheck: String,
+    val favorite: String,
 )
 
 fun parsePinerc(text: String): Map<String, String?> =
@@ -54,6 +57,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     val entries = parseEntries(text)
     var next = current
     val skipped = mutableListOf<String>()
+    val addedFavorites = mutableListOf<FolderFavorite>()
     var omitted = 0
     var inboxUserApplied = false
 
@@ -166,6 +170,37 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         if (chosen != null) next = next.copy(addressBookMailbox = chosen)
     }
 
+    val incoming = entries["incoming-folders"]
+    if (incoming != null && incoming.raw.isNotEmpty()) {
+        val built = next.favorites.toMutableList()
+        for (piece in splitOutsideQuotes(incoming.raw)) {
+            val (label, specText) = nicknameSplit(piece)
+            val spec = if (specText.startsWith("=")) specText.substring(1) else specText
+            when (val folder = classifyFolder(spec, allowPlain = true, comparisonHost, collectionRaw)) {
+                FolderKind.Local -> skipped.add(phrases.local)
+                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+                FolderKind.Empty -> Unit
+                is FolderKind.Mailbox -> {
+                    if (folder.name.equals("INBOX", ignoreCase = true)) {
+                        Unit
+                    } else if (built.any { sameLeaf(it, folder.name) }) {
+                        Unit
+                    } else {
+                        val favorite = FolderFavorite(
+                            node = false,
+                            mailbox = folder.name,
+                            delimiter = '.',
+                            label = label,
+                        )
+                        built.add(favorite)
+                        addedFavorites.add(favorite)
+                    }
+                }
+            }
+        }
+        next = next.copy(favorites = built)
+    }
+
     val history = entries["remote-abook-history"]
     if (history != null) {
         val raw = history.decoded?.trim().orEmpty()
@@ -225,7 +260,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
             continue
         }
         when (name) {
-            "incoming-folders", "stay-open-folders", "folder-collections" ->
+            "stay-open-folders", "folder-collections" ->
                 skipped.add(phrases.folders)
             "signature-file", "literal-signature" ->
                 skipped.add(phrases.signature)
@@ -247,6 +282,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         rows.removeAll { it.startsWith(inboxPrefix) }
         rows.add(phrases.inboxDefault)
     }
+    for (favorite in addedFavorites) rows.add(favoriteRow(favorite, phrases))
     return PinercPreview(
         next = next,
         rows = rows,
@@ -323,6 +359,91 @@ fun withoutCheckedMailboxes(
     return preview.copy(next = next, rows = rows, skipped = preview.skipped + phrases.folderCheck)
 }
 
+fun favoriteDelimiter(namespaces: List<Namespace>): Char {
+    val personal = namespaces.firstOrNull { it.kind == NamespaceKind.Personal } ?: return '.'
+    if (personal.delimiter == '\u0000') return '.'
+    return personal.delimiter
+}
+
+fun withFavoriteDelimiter(
+    preview: PinercPreview,
+    current: AccountSettings,
+    delimiter: Char,
+): PinercPreview {
+    val fresh = newLeafMailboxes(preview.next.favorites, current.favorites).toSet()
+    if (fresh.isEmpty()) return preview
+    var changed = false
+    val favorites = preview.next.favorites.map { favorite ->
+        if (!favorite.node && favorite.mailbox in fresh && favorite.delimiter != delimiter) {
+            changed = true
+            favorite.copy(delimiter = delimiter)
+        } else {
+            favorite
+        }
+    }
+    if (!changed) return preview
+    return preview.copy(next = preview.next.copy(favorites = favorites))
+}
+
+fun withoutMissingFavorites(
+    preview: PinercPreview,
+    current: AccountSettings,
+    missing: Set<String>,
+    phrases: PinercPhrases,
+): PinercPreview {
+    val fresh = newLeafMailboxes(preview.next.favorites, current.favorites).toSet()
+    if (fresh.isEmpty() || missing.isEmpty()) return preview
+    val dropped = preview.next.favorites.filter { favorite ->
+        !favorite.node && favorite.mailbox in fresh && favorite.mailbox in missing
+    }
+    if (dropped.isEmpty()) return preview
+    val dropMailboxes = dropped.map { it.mailbox }.toSet()
+    val favorites = preview.next.favorites.filter { favorite ->
+        favorite.node || favorite.mailbox !in fresh || favorite.mailbox !in dropMailboxes
+    }
+    val notes = dropped.map { phrases.missingFolder.format(it.mailbox) }
+    return preview.copy(
+        next = preview.next.copy(favorites = favorites),
+        rows = removeExactRows(preview.rows, dropped.map { favoriteRow(it, phrases) }),
+        skipped = preview.skipped + notes,
+    )
+}
+
+fun withoutCheckedFavorites(
+    preview: PinercPreview,
+    current: AccountSettings,
+    phrases: PinercPhrases,
+): PinercPreview {
+    val fresh = newLeafMailboxes(preview.next.favorites, current.favorites)
+    if (fresh.isEmpty()) return preview
+    val freshSet = fresh.toSet()
+    val dropped = preview.next.favorites.filter { !it.node && it.mailbox in freshSet }
+    val favorites = preview.next.favorites.filter { it.node || it.mailbox !in freshSet }
+    val skipped = if (phrases.folderCheck in preview.skipped) {
+        preview.skipped
+    } else {
+        preview.skipped + phrases.folderCheck
+    }
+    return preview.copy(
+        next = preview.next.copy(favorites = favorites),
+        rows = removeExactRows(preview.rows, dropped.map { favoriteRow(it, phrases) }),
+        skipped = skipped,
+    )
+}
+
+internal fun newLeafMailboxes(
+    favorites: List<FolderFavorite>,
+    current: List<FolderFavorite>,
+): List<String> {
+    val names = ArrayList<String>()
+    for (favorite in favorites) {
+        if (favorite.node) continue
+        if (current.any { sameLeaf(it, favorite.mailbox) }) continue
+        names.add(favorite.mailbox)
+    }
+    return names
+}
+
 private val appliedNames = setOf(
     "inbox-path",
     "smtp-server",
@@ -333,6 +454,7 @@ private val appliedNames = setOf(
     "default-fcc",
     "postponed-folder",
     "address-book",
+    "incoming-folders",
     "remote-abook-history",
     "sort-key",
     "feature-list",
@@ -449,6 +571,105 @@ private fun unescapeLoose(body: String): String {
         i++
     }
     return sb.toString()
+}
+
+private fun favoriteRow(favorite: FolderFavorite, phrases: PinercPhrases): String =
+    if (favorite.label.isEmpty()) {
+        "${phrases.favorite}: ${favorite.mailbox}"
+    } else {
+        "${phrases.favorite}: ${favorite.mailbox} (${favorite.label})"
+    }
+
+private fun removeExactRows(rows: List<String>, drop: List<String>): List<String> {
+    if (drop.isEmpty()) return rows
+    val left = drop.toMutableList()
+    val kept = ArrayList<String>(rows.size)
+    for (row in rows) {
+        val index = left.indexOf(row)
+        if (index >= 0) left.removeAt(index) else kept.add(row)
+    }
+    return kept
+}
+
+private fun sameLeaf(favorite: FolderFavorite, mailbox: String): Boolean {
+    if (favorite.node) return false
+    return if (mailbox.equals("INBOX", ignoreCase = true)) {
+        favorite.mailbox.equals("INBOX", ignoreCase = true)
+    } else {
+        favorite.mailbox == mailbox
+    }
+}
+
+private fun isNicknameSpace(c: Char): Boolean = when (c) {
+    ' ', '\t', '\r', '\n', '\u000B', '\u000C' -> true
+    else -> false
+}
+
+private fun splitOutsideQuotes(value: String): List<String> {
+    val items = mutableListOf<String>()
+    val sb = StringBuilder()
+    var quoted = false
+    var i = 0
+    while (i < value.length) {
+        val c = value[i]
+        if (c == '\\' && i + 1 < value.length && value[i + 1] == '"') {
+            sb.append(c)
+            sb.append('"')
+            i += 2
+            continue
+        }
+        if (c == '"') {
+            quoted = !quoted
+            sb.append(c)
+            i++
+            continue
+        }
+        if (c == ',' && !quoted) {
+            val piece = sb.toString().trim()
+            if (piece.isNotEmpty()) items.add(piece)
+            sb.clear()
+            i++
+            continue
+        }
+        sb.append(c)
+        i++
+    }
+    val piece = sb.toString().trim()
+    if (piece.isNotEmpty()) items.add(piece)
+    return items
+}
+
+private fun nicknameSplit(piece: String): Pair<String, String> {
+    var quoted = false
+    var last = -1
+    var i = 0
+    while (i < piece.length) {
+        val c = piece[i]
+        if (c == '\\' && i + 1 < piece.length && piece[i + 1] == '"') {
+            i += 2
+            continue
+        }
+        if (c == '"') {
+            quoted = !quoted
+            i++
+            continue
+        }
+        if (!quoted && isNicknameSpace(c)) last = i
+        i++
+    }
+    if (last < 0) return "" to unquoteWrapped(piece.trim())
+    var start = last
+    while (start > 0 && isNicknameSpace(piece[start - 1])) start--
+    var end = last + 1
+    while (end < piece.length && isNicknameSpace(piece[end])) end++
+    val label = unquoteWrapped(piece.substring(0, start).trim())
+    val spec = unquoteWrapped(piece.substring(end).trim())
+    return label to spec
+}
+
+private fun unquoteWrapped(side: String): String {
+    if (side.length < 2 || side.first() != '"' || side.last() != '"') return side
+    return unescapeLoose(side.substring(1, side.length - 1))
 }
 
 private fun splitList(value: String): List<String> {

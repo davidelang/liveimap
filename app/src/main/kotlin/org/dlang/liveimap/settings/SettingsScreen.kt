@@ -415,6 +415,7 @@ private fun AccountGroup(editor: SettingsEditor) {
         inboxBraces = stringResource(R.string.pinerc_inbox_braces),
         missingFolder = stringResource(R.string.pinerc_folder_missing),
         folderCheck = stringResource(R.string.pinerc_folder_check),
+        favorite = stringResource(R.string.pinerc_favorite),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -442,18 +443,41 @@ private fun AccountGroup(editor: SettingsEditor) {
                     ) {
                         names.add(built.next.addressBookMailbox)
                     }
-                    val shown = if (names.isEmpty()) {
-                        built
-                    } else {
-                        try {
+                    val shown = try {
+                        val checked = if (names.isEmpty()) {
+                            built
+                        } else {
                             val missing = linkedSetOf<String>()
                             for (name in names) {
                                 if (!pinercMailboxListed(mailSession(), name)) missing.add(name)
                             }
                             withoutMissingMailboxes(built, current, missing, pinercPhrases)
-                        } catch (_: MailFailure) {
-                            withoutCheckedMailboxes(built, current, pinercPhrases)
                         }
+                        val fresh = newLeafMailboxes(checked.next.favorites, current.favorites)
+                        if (fresh.isEmpty()) {
+                            checked
+                        } else {
+                            try {
+                                val delimiter = favoriteDelimiter(mailSession().namespaces())
+                                val missingFavorites = linkedSetOf<String>()
+                                for (name in fresh) {
+                                    if (!pinercMailboxListed(mailSession(), name)) missingFavorites.add(name)
+                                }
+                                withFavoriteDelimiter(
+                                    withoutMissingFavorites(checked, current, missingFavorites, pinercPhrases),
+                                    current,
+                                    delimiter,
+                                )
+                            } catch (_: MailFailure) {
+                                withoutCheckedFavorites(checked, current, pinercPhrases)
+                            }
+                        }
+                    } catch (_: MailFailure) {
+                        withoutCheckedFavorites(
+                            withoutCheckedMailboxes(built, current, pinercPhrases),
+                            current,
+                            pinercPhrases,
+                        )
                     }
                     if (importGeneration == generation) importPreview = shown
                 }

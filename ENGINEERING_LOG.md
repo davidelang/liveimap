@@ -1863,3 +1863,8 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A missing Sent, Postponed, or address-book name is put back and reported. A failed check drops those changes once, with no missing-folder line.
 - The import dialog stays closed until that check finishes. A newer read discards the older result. pinercPreview does not open a session.
 - No incoming-folder import. smtp-server is unchanged. No install.
+
+## 2026-10-07 - Import pinerc incoming-folders as favorites
+
+- Execute alpine-pinerc-incoming-20261007-0151-plan.md from step 1 on master at 7d224d1.
+- incoming-folders become extra leaf favorites. LIST each new name. Do not import stay-open-folders. Do not install.

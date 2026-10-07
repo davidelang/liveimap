@@ -9,6 +9,7 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
@@ -287,12 +288,16 @@ class PinercImportTest {
                 "Signature is not a setting",
                 "Folder lists are not imported",
                 "Folder lists are not imported",
-                "Folder lists are not imported",
             ),
             notes.skipped,
         )
         assertEquals(0, notes.omittedCount)
-        assertEquals(AccountSettings(), notes.next)
+        assertEquals(
+            listOf(FolderFavorite(node = false, mailbox = "a", delimiter = '.', label = "")),
+            notes.next.favorites,
+        )
+        assertEquals(listOf("Favorite: a"), notes.rows)
+        assertEquals(AccountSettings(), notes.next.copy(favorites = emptyList()))
         assertEquals(listOf("Display name: Old → Ada"), previewPinerc(
             "personal-name=Ada\n",
             AccountSettings(displayName = "Old"),
@@ -672,6 +677,179 @@ class PinercImportTest {
         assertFalse(pinercMailboxListed(session, "INBOX.sent-mail"))
         assertEquals(listOf("INBOX.sent-mail", "INBOX.sent-mail"), session.calls)
     }
+
+    @Test
+    fun incomingFoldersBecomeFavorites() {
+        val host = AccountSettings(imapHost = "imap.example.com")
+        val listed = previewPinerc(
+            "incoming-folders=Lists {imap.example.com}INBOX.lists\n",
+            host,
+        )
+        assertEquals(
+            listOf(FolderFavorite(node = false, mailbox = "INBOX.lists", delimiter = '.', label = "Lists")),
+            listed.next.favorites,
+        )
+        assertEquals(listOf("Favorite: INBOX.lists (Lists)"), listed.rows)
+        assertTrue(listed.skipped.none { it == "Folder lists are not imported" })
+
+        val plain = previewPinerc("incoming-folders=My Lists INBOX.lists\n", host)
+        assertEquals("My Lists", plain.next.favorites.single().label)
+        assertEquals("INBOX.lists", plain.next.favorites.single().mailbox)
+
+        val spaced = previewPinerc("incoming-folders=\"INBOX.my lists\"\n", host)
+        assertEquals("", spaced.next.favorites.single().label)
+        assertEquals("INBOX.my lists", spaced.next.favorites.single().mailbox)
+
+        val both = previewPinerc("incoming-folders=\"My Lists\" \"INBOX.my lists\"\n", host)
+        assertEquals("My Lists", both.next.favorites.single().label)
+        assertEquals("INBOX.my lists", both.next.favorites.single().mailbox)
+
+        val marked = previewPinerc("incoming-folders=={imap.example.com}INBOX.lists\n", host)
+        assertEquals("", marked.next.favorites.single().label)
+        assertEquals("INBOX.lists", marked.next.favorites.single().mailbox)
+
+        val collection = previewPinerc(
+            "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\nincoming-folders==lists\n",
+            host,
+        )
+        assertEquals("", collection.next.favorites.single().label)
+        assertEquals("INBOX.lists", collection.next.favorites.single().mailbox)
+
+        val emptyHost = previewPinerc(
+            "incoming-folders={imap.example.com}INBOX.lists\n",
+            AccountSettings(),
+        )
+        assertEquals("INBOX.lists", emptyHost.next.favorites.single().mailbox)
+        assertEquals("", emptyHost.next.imapHost)
+
+        val other = previewPinerc("incoming-folders={other.example.com}INBOX.lists\n", host)
+        assertTrue(other.next.favorites.isEmpty())
+        assertTrue(other.skipped.contains("other.example.com is a different server"))
+
+        val inbox = previewPinerc("incoming-folders=INBOX, {imap.example.com}inbox\n", host)
+        assertEquals(host, inbox.next)
+        assertTrue(inbox.rows.isEmpty())
+        assertTrue(inbox.skipped.isEmpty())
+
+        val stored = FolderFavorite(node = false, mailbox = "INBOX.lists", delimiter = '/', label = "Keep")
+        val kept = previewPinerc(
+            "incoming-folders=Lists {imap.example.com}INBOX.lists\n",
+            host.copy(favorites = listOf(stored)),
+        )
+        assertEquals(listOf(stored), kept.next.favorites)
+        assertTrue(kept.rows.none { it.startsWith("Favorite:") })
+
+        val twice = previewPinerc(
+            "incoming-folders=Lists INBOX.lists, Other INBOX.lists\n",
+            host,
+        )
+        assertEquals(
+            listOf(FolderFavorite(node = false, mailbox = "INBOX.lists", delimiter = '.', label = "Lists")),
+            twice.next.favorites,
+        )
+        assertEquals(listOf("Favorite: INBOX.lists (Lists)"), twice.rows)
+
+        val old = FolderFavorite(node = false, mailbox = "INBOX.old", delimiter = '/', label = "Old")
+        val ahead = previewPinerc(
+            "incoming-folders=New {imap.example.com}INBOX.new\n",
+            host.copy(favorites = listOf(old)),
+        )
+        assertEquals(
+            listOf(
+                old,
+                FolderFavorite(node = false, mailbox = "INBOX.new", delimiter = '.', label = "New"),
+            ),
+            ahead.next.favorites,
+        )
+
+        val keep = FolderFavorite(node = false, mailbox = "INBOX.keep", delimiter = '/', label = "Keep")
+        val node = FolderFavorite(node = true, mailbox = "INBOX.tree", delimiter = '/', label = "Tree")
+        val current = AccountSettings(
+            imapHost = "imap.example.com",
+            sentMailbox = "old-sent",
+            favorites = listOf(keep, node),
+        )
+        val preview = previewPinerc(
+            "default-fcc=INBOX.sent-mail\nincoming-folders=One INBOX.one, Two INBOX.two\n",
+            current,
+        )
+        val phrases = testPinercPhrases()
+        val missing = withoutMissingFavorites(
+            preview,
+            current,
+            setOf("INBOX.one", "INBOX.keep"),
+            phrases,
+        )
+        assertEquals(
+            listOf(
+                keep,
+                node,
+                FolderFavorite(node = false, mailbox = "INBOX.two", delimiter = '.', label = "Two"),
+            ),
+            missing.next.favorites,
+        )
+        assertEquals("INBOX.sent-mail", missing.next.sentMailbox)
+        assertEquals(current.postponedMailbox, missing.next.postponedMailbox)
+        assertEquals(current.addressBookMailbox, missing.next.addressBookMailbox)
+        assertTrue(missing.rows.any { it.startsWith("Sent mailbox:") })
+        assertTrue(missing.rows.none { it == "Favorite: INBOX.one (One)" })
+        assertTrue(missing.rows.contains("Favorite: INBOX.two (Two)"))
+        assertTrue(missing.skipped.contains("INBOX.one was not found"))
+        assertTrue(missing.skipped.none { it == "INBOX.keep was not found" })
+        assertEquals(preview.offerAutoExpunge, missing.offerAutoExpunge)
+        assertEquals(preview.omittedCount, missing.omittedCount)
+
+        val checked = withoutCheckedFavorites(preview, current, phrases)
+        assertEquals(listOf(keep, node), checked.next.favorites)
+        assertEquals("INBOX.sent-mail", checked.next.sentMailbox)
+        assertEquals(current.postponedMailbox, checked.next.postponedMailbox)
+        assertEquals(current.addressBookMailbox, checked.next.addressBookMailbox)
+        assertTrue(checked.rows.any { it.startsWith("Sent mailbox:") })
+        assertTrue(checked.rows.none { it.startsWith("Favorite:") })
+        assertEquals(1, checked.skipped.count { it == "Could not check folders" })
+        assertTrue(checked.skipped.none { "was not found" in it })
+        val again = withoutCheckedFavorites(
+            preview.copy(skipped = preview.skipped + "Could not check folders"),
+            current,
+            phrases,
+        )
+        assertEquals(1, again.skipped.count { it == "Could not check folders" })
+        assertEquals(listOf(keep, node), again.next.favorites)
+        val plainPreview = previewPinerc("personal-name=Ada\n", AccountSettings())
+        assertSame(plainPreview, withoutCheckedFavorites(plainPreview, AccountSettings(), phrases))
+
+        assertEquals(
+            '/',
+            favoriteDelimiter(
+                listOf(
+                    Namespace("INBOX.", '/', NamespaceKind.Personal),
+                    Namespace("", '.', NamespaceKind.Other),
+                ),
+            ),
+        )
+        assertEquals('.', favoriteDelimiter(emptyList()))
+        assertEquals(
+            '.',
+            favoriteDelimiter(listOf(Namespace("", '\u0000', NamespaceKind.Personal))),
+        )
+        val stamped = withFavoriteDelimiter(preview, current, '#')
+        assertEquals(keep, stamped.next.favorites[0])
+        assertEquals(node, stamped.next.favorites[1])
+        assertEquals('#', stamped.next.favorites[2].delimiter)
+        assertEquals('#', stamped.next.favorites[3].delimiter)
+        assertEquals("One", stamped.next.favorites[2].label)
+        assertEquals("Two", stamped.next.favorites[3].label)
+        assertSame(plainPreview, withFavoriteDelimiter(plainPreview, AccountSettings(), '#'))
+
+        val sent = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        assertEquals("INBOX.sent-mail", sent.next.sentMailbox)
+        val stay = previewPinerc("stay-open-folders=b\n", AccountSettings())
+        assertEquals(listOf("Folder lists are not imported"), stay.skipped)
+        assertTrue(stay.next.favorites.isEmpty())
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        assertEquals("smtp.example.com", submit.next.smtpHost)
+        assertEquals(587, submit.next.smtpPort)
+    }
 }
 
 internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
@@ -708,6 +886,7 @@ internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
     inboxBraces = "inbox-path needs a server in braces",
     missingFolder = "%1\$s was not found",
     folderCheck = "Could not check folders",
+    favorite = "Favorite",
 )
 
 internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =
