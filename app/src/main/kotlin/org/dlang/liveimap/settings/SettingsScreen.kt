@@ -1255,6 +1255,14 @@ private fun AppearanceGroup(editor: SettingsEditor) {
                     editor.persist(editor.settings.copy(datePattern = it))
                 }
             }
+            ChoiceField(
+                stringResource(R.string.settings_multi_pane),
+                MultiPane.entries,
+                settings.multiPane,
+                { multiPaneName(it) },
+            ) {
+                editor.persist(editor.settings.copy(multiPane = it))
+            }
         }
     }
 }
@@ -1850,6 +1858,14 @@ private fun dateFormatName(format: DateFormat): String = stringResource(
         DateFormat.Short -> R.string.label_short
         DateFormat.Relative -> R.string.label_relative
         DateFormat.Custom -> R.string.label_custom
+    },
+)
+
+@Composable
+private fun multiPaneName(mode: MultiPane): String = stringResource(
+    when (mode) {
+        MultiPane.Off -> R.string.settings_multi_pane_off
+        MultiPane.Wide -> R.string.settings_multi_pane_wide
     },
 )
 

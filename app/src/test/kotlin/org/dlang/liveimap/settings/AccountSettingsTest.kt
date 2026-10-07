@@ -114,6 +114,13 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun multiPaneOffRoundTrip() {
+        val text = AccountSettings(multiPane = MultiPane.Off).encode()
+        assertTrue(text.contains("multiPane=Off"))
+        assertEquals(MultiPane.Off, decodeAccountSettings(text).multiPane)
+    }
+
+    @Test
     fun nonDefaultRoundTrip() {
         val original = AccountSettings(
             imapHost = "imap.example.com",

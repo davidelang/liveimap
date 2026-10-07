@@ -3,40 +3,48 @@ package org.dlang.liveimap.ui
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.PermanentDrawerSheet
-import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
-import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
-import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldValue
-import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,12 +53,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -59,6 +70,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.window.core.layout.WindowWidthSizeClass
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -72,6 +84,7 @@ import org.dlang.liveimap.settings.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.FolderStartsScreen
 import org.dlang.liveimap.settings.FolderViewsScreen
+import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.SettingsGroup
 import org.dlang.liveimap.settings.SettingsGroupList
 import org.dlang.liveimap.settings.SettingsGroupScreen
@@ -94,9 +107,11 @@ import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun LiveImapNavHost() {
-    val expandedWindow =
+    val expandedWidth =
         currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.EXPANDED
-    val expandedNow = rememberUpdatedState(expandedWindow)
+    var multiPane by remember { mutableStateOf(MultiPane.Wide) }
+    val split = useMultiPane(multiPane, expandedWidth)
+    val splitNow = rememberUpdatedState(split)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val navController = rememberNavController()
@@ -118,11 +133,23 @@ fun LiveImapNavHost() {
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     val favoriteMutex = remember { Mutex() }
+    val availableDpState = remember { mutableIntStateOf(0) }
+    var readerOpen by remember { mutableStateOf(false) }
+    var userSized by rememberSaveable { mutableStateOf(false) }
+    var drawerWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
+    var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
-        if (expandedWindow) {
-            null
-        } else {
+        if (!split) {
             { scope.launch { drawerState.open() } }
+        } else if (drawerWidthDp >= 0f && drawerWidthDp <= 0f) {
+            {
+                val available = availableDpState.intValue
+                if (available > 0) {
+                    drawerWidthDp = minOf(360, available).toFloat()
+                }
+            }
+        } else {
+            null
         },
     )
 
@@ -131,10 +158,11 @@ fun LiveImapNavHost() {
         header = if (account.email.isNotBlank()) account.email else account.username
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
+        multiPane = account.multiPane
     }
 
-    LaunchedEffect(expandedWindow, route, currentEntry?.id) {
-        if (!foldReaderIntoIndex(expandedWindow, route)) return@LaunchedEffect
+    LaunchedEffect(split, route, currentEntry?.id) {
+        if (!foldReaderIntoIndex(split, route)) return@LaunchedEffect
         val reader = navController.currentBackStackEntry ?: return@LaunchedEffect
         val previous = navController.previousBackStackEntry ?: return@LaunchedEffect
         if (previous.destination.route != "index/{mailbox}") return@LaunchedEffect
@@ -181,9 +209,10 @@ fun LiveImapNavHost() {
             ) { entry ->
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
                 val mailbox = Uri.decode(encoded)
-                val expanded = expandedNow.value
+                val useSplit = splitNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
                 var paneSequence by rememberSaveable { mutableIntStateOf(0) }
+                var contentSpan by remember { mutableFloatStateOf(0f) }
                 val folderViewToken by entry.savedStateHandle
                     .getStateFlow("folderViewToken", 0)
                     .collectAsState()
@@ -206,12 +235,37 @@ fun LiveImapNavHost() {
                     paneSequence = foldedSequence
                     paneUid = foldedUid
                 }
-                LaunchedEffect(expanded, paneUid, paneSequence) {
-                    if (!expanded && paneUid >= 0L) {
+                LaunchedEffect(useSplit, paneUid, paneSequence) {
+                    if (!useSplit && paneUid >= 0L) {
                         val uid = paneUid
                         val sequence = paneSequence
                         paneUid = -1L
                         navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
+                    }
+                }
+                LaunchedEffect(useSplit, paneUid, availableDpState.intValue) {
+                    if (!useSplit) {
+                        readerOpen = false
+                        return@LaunchedEffect
+                    }
+                    val open = paneUid >= 0L
+                    readerOpen = open
+                    val available = availableDpState.intValue
+                    if (userSized || available <= 0) return@LaunchedEffect
+                    drawerWidthDp = initialDrawerDp(available, open).toFloat()
+                }
+                DisposableEffect(Unit) {
+                    onDispose {
+                        readerOpen = false
+                        val available = availableDpState.intValue
+                        if (!userSized && available > 0) {
+                            drawerWidthDp = initialDrawerDp(available, false).toFloat()
+                        }
+                    }
+                }
+                LaunchedEffect(useSplit, paneUid, contentSpan, userSized) {
+                    if (useSplit && paneUid >= 0L && !userSized && contentSpan > 8f) {
+                        indexWidthDp = (contentSpan - 8f) / 2f
                     }
                 }
                 val advancedQuery by entry.savedStateHandle
@@ -228,18 +282,26 @@ fun LiveImapNavHost() {
                     entry.savedStateHandle.remove<String>("advancedQuery")
                     entry.savedStateHandle.remove<String>("advancedScope")
                 }
-                if (!expanded) {
-                    key(folderViewToken) {
+                fun openMessage(uid: Long, sequence: Int, rowMailbox: String) {
+                    val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
+                    if (useSplit && target == mailbox) {
+                        paneUid = uid
+                        paneSequence = sequence
+                    } else {
+                        navController.navigate("reader/${Uri.encode(target)}/$uid/$sequence")
+                    }
+                }
+                @Composable
+                fun IndexBody(viewKey: Int, watch: Boolean) {
+                    key(viewKey) {
                         MessageIndexScreen(
                             mailbox = mailbox,
-                            onOpen = { uid, sequence, rowMailbox ->
-                                val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
-                                navController.navigate("reader/${Uri.encode(target)}/$uid/$sequence")
-                            },
+                            onOpen = { uid, sequence, rowMailbox -> openMessage(uid, sequence, rowMailbox) },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
                             onCustomize = { navController.navigate("toolbar/index") },
                             onCustomizeSelection = { navController.navigate("toolbar/selection") },
+                            watchMailbox = watch,
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
                             advancedScope = advancedScope,
@@ -249,73 +311,46 @@ fun LiveImapNavHost() {
                             },
                         )
                     }
+                }
+                BackHandler(enabled = useSplit && paneUid >= 0L) {
+                    paneUid = -1L
+                }
+                if (!useSplit) {
+                    IndexBody(folderViewToken, watch = true)
+                } else if (paneUid < 0L) {
+                    IndexBody(shownViewToken, watch = true)
                 } else {
-                    BackHandler(enabled = expanded && paneUid >= 0L) {
-                        paneUid = -1L
-                    }
-                    val scaffoldValue = if (paneUid < 0L) {
-                        ThreePaneScaffoldValue(
-                            primary = PaneAdaptedValue.Hidden,
-                            secondary = PaneAdaptedValue.Expanded,
-                            tertiary = PaneAdaptedValue.Hidden,
-                        )
-                    } else {
-                        ThreePaneScaffoldValue(
-                            primary = PaneAdaptedValue.Expanded,
-                            secondary = PaneAdaptedValue.Expanded,
-                            tertiary = PaneAdaptedValue.Hidden,
-                        )
-                    }
-                    ListDetailPaneScaffold(
-                        directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo()),
-                        value = scaffoldValue,
-                        listPane = {
-                            key(shownViewToken) {
-                                MessageIndexScreen(
-                                    mailbox = mailbox,
-                                    onOpen = { uid, sequence, rowMailbox ->
-                                        val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
-                                        if (target == mailbox) {
-                                            paneUid = uid
-                                            paneSequence = sequence
-                                        } else {
-                                            navController.navigate(
-                                                "reader/${Uri.encode(target)}/$uid/$sequence",
-                                            )
-                                        }
-                                    },
-                                    onCompose = { seed -> openCompose(seed) },
-                                    onBack = { navController.popBackStack() },
-                                    onCustomize = { navController.navigate("toolbar/index") },
-                                    onCustomizeSelection = { navController.navigate("toolbar/selection") },
-                                    watchMailbox = paneUid < 0L,
-                                    onAdvanced = { openAdvanced() },
-                                    advancedQuery = advancedQuery.ifEmpty { null },
-                                    advancedScope = advancedScope,
-                                    onAdvancedConsumed = { consumeAdvanced() },
-                                    onOpenFolder = { name ->
-                                        navController.navigate("index/${Uri.encode(name)}")
-                                    },
-                                )
+                    DragSplit(
+                        leadingDp = indexWidthDp,
+                        fallback = { span -> ((span - 8f) / 2f).coerceAtLeast(0f) },
+                        onSpan = { contentSpan = it },
+                        onDrag = { delta, span ->
+                            userSized = true
+                            val max = (span - 8f).coerceAtLeast(0f)
+                            val base = if (indexWidthDp < 0f) (span - 8f) / 2f else indexWidthDp
+                            val next = base.coerceIn(0f, max) + delta
+                            if (next + 8f >= span) {
+                                paneUid = -1L
+                            } else {
+                                indexWidthDp = next.coerceAtLeast(0f)
                             }
                         },
-                        detailPane = {
+                        leading = { IndexBody(shownViewToken, watch = false) },
+                        trailing = {
                             key(paneUid) {
-                                if (paneUid >= 0L) {
-                                    MessageReaderScreen(
-                                        mailbox = mailbox,
-                                        uid = paneUid,
-                                        sequence = paneSequence,
-                                        onCompose = { seed -> openCompose(seed) },
-                                        onAdvance = { nextUid, nextSequence ->
-                                            paneUid = nextUid
-                                            paneSequence = nextSequence
-                                        },
-                                        onBack = { paneUid = -1L },
-                                        onFolderViewSaved = { noteFolderView() },
-                                        onCustomize = { navController.navigate("toolbar/reader") },
-                                    )
-                                }
+                                MessageReaderScreen(
+                                    mailbox = mailbox,
+                                    uid = paneUid,
+                                    sequence = paneSequence,
+                                    onCompose = { seed -> openCompose(seed) },
+                                    onAdvance = { nextUid, nextSequence ->
+                                        paneUid = nextUid
+                                        paneSequence = nextSequence
+                                    },
+                                    onBack = { paneUid = -1L },
+                                    onFolderViewSaved = { noteFolderView() },
+                                    onCustomize = { navController.navigate("toolbar/reader") },
+                                )
                             }
                         },
                     )
@@ -642,23 +677,43 @@ fun LiveImapNavHost() {
     }
 
     LiveImapScaffold {
-        if (expandedWindow) {
-            PermanentNavigationDrawer(
-                drawerContent = {
-                    PermanentDrawerSheet(
-                        windowInsets = mailScreenInsets(),
-                        content = drawerSheet,
+        if (split) {
+            DragSplit(
+                leadingDp = drawerWidthDp,
+                fallback = { span ->
+                    initialDrawerDp(span.roundToInt(), readerOpen).toFloat()
+                },
+                onSpan = { availableDpState.intValue = it.roundToInt() },
+                onDrag = { delta, span ->
+                    userSized = true
+                    val max = (span - 8f).coerceAtLeast(0f)
+                    val base = if (drawerWidthDp < 0f) {
+                        initialDrawerDp(span.roundToInt(), readerOpen).toFloat()
+                    } else {
+                        drawerWidthDp
+                    }
+                    drawerWidthDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
+                },
+                leading = {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                            .windowInsetsPadding(mailScreenInsets())
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        drawerSheet()
+                    }
+                },
+                trailing = {
+                    NavHost(
+                        navController = navController,
+                        startDestination = "folders",
+                        modifier = Modifier.fillMaxSize(),
+                        builder = navGraph,
                     )
                 },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                NavHost(
-                    navController = navController,
-                    startDestination = "folders",
-                    modifier = Modifier.fillMaxSize(),
-                    builder = navGraph,
-                )
-            }
+            )
         } else {
             ModalNavigationDrawer(
                 drawerContent = {
@@ -816,6 +871,79 @@ internal fun favoriteDrawerLabel(favorite: FolderFavorite): String {
 
 internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
     return expanded && route == "reader/{mailbox}/{uid}/{sequence}"
+}
+
+internal fun useMultiPane(mode: MultiPane, expandedWidth: Boolean): Boolean =
+    mode == MultiPane.Wide && expandedWidth
+
+internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean): Int {
+    if (!readerOpen) return minOf(360, availableDp)
+    return if (availableDp < 1000) 0 else 360
+}
+
+private const val unsetPaneDp = -1f
+
+@Composable
+private fun DragSplit(
+    leadingDp: Float,
+    fallback: (Float) -> Float,
+    onSpan: (Float) -> Unit,
+    onDrag: (Float, Float) -> Unit,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val span = maxWidth.value
+        SideEffect { onSpan(span) }
+        val maxLeading = (span - 8f).coerceAtLeast(0f)
+        val raw = if (leadingDp < 0f) fallback(span) else leadingDp
+        val width = raw.coerceIn(0f, maxLeading).dp
+        val drag = rememberUpdatedState(onDrag)
+        val spanNow = rememberUpdatedState(span)
+        val density = LocalDensity.current
+        val densityNow = rememberUpdatedState(density)
+        val label = stringResource(R.string.pane_resize)
+        Box(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize()) {
+                if (width > 0.dp) {
+                    Box(
+                        Modifier
+                            .width(width)
+                            .fillMaxHeight(),
+                    ) {
+                        leading()
+                    }
+                }
+                Box(
+                    Modifier
+                        .width(8.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    trailing()
+                }
+            }
+            Box(
+                Modifier
+                    .offset(x = width + 4.dp - 24.dp)
+                    .width(48.dp)
+                    .fillMaxHeight()
+                    .zIndex(1f)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { _, dragPx ->
+                            drag.value(dragPx / densityNow.value.density, spanNow.value)
+                        }
+                    }
+                    .focusable()
+                    .semantics { contentDescription = label },
+            )
+        }
+    }
 }
 
 internal fun postponedDrawerMailbox(value: String): String? {

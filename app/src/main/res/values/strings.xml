@@ -323,6 +323,10 @@
     <string name="settings_theme">Theme</string>
     <string name="settings_dynamic_color">Dynamic color</string>
     <string name="settings_display">Display</string>
+    <string name="settings_multi_pane">Multi-pane</string>
+    <string name="settings_multi_pane_off">Off</string>
+    <string name="settings_multi_pane_wide">When wide</string>
+    <string name="pane_resize">Resize pane</string>
     <string name="settings_density">Density</string>
     <string name="settings_date_format">Date format</string>
     <string name="settings_date_pattern">Date pattern</string>

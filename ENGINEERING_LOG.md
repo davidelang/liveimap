@@ -1966,3 +1966,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - listScripts sends LISTSCRIPTS. A quoted name is inactive. A quoted name plus ACTIVE, compared without case, is active. OK ends the list and keeps that order. NO or BYE uses the greeting response text.
 - getScript sends GETSCRIPT and the quoted name, reads a whole-line {count} or {count+} literal as UTF-8, and returns that text after OK. putScript and checkScript send {count+} and the script bytes with no extra CR LF. Plain OK returns "". OK (WARNINGS) returns the quoted warning text. NO {count} uses the literal bytes as the failure text.
 - Names are wrapped in double quotes with \ and " escaped. No AUTHENTICATE, SETACTIVE, DELETESCRIPT, HAVESPACE, emitSieve, or greetPlain from these commands. No install.
+
+## 2026-10-07 - Multi-pane resize execution start
+
+- Approved plan: sandbox/plans/multi-pane-resize-20261007-1213-plan.md. Status set to APPROVED.
+- Phase 1: Multi-pane Off or When wide (default Wide, omitted from encode), drag bars in NavHost, and the two pane tests.
+- Do not bump Compose. Do not install. Base builds tag 20f502b. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Multi-pane resize phase 1
+
+- MultiPane is Off or Wide. Wide is the default and encode omits it. Off round-trips as multiPane=Off. An unknown value throws from enumValueOf. defaultsRoundTrip still ends at altAddresses.
+- When wide on an expanded width, the drawer, index, and open message are panes with an 8 dp resize bar. Dragging a pane to the edge closes it. Off keeps today's single-pane drawer and reader route. Widths are rememberSaveable, not account settings.
+- Appearance, Display offers Off and When wide. Did not install. Compose BOM stays 2024.10.00.

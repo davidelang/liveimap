@@ -255,6 +255,11 @@ val defaultReaderBar: List<ReaderAction> = listOf(
 
 const val pineSourceId: String = "pine"
 
+enum class MultiPane {
+    Off,
+    Wide,
+}
+
 enum class DeletePolicy {
     MarkDeleted,
     MoveToTrash,
@@ -348,6 +353,7 @@ data class AccountSettings(
     val composeBar: ComposeBarLayout = defaultComposeBar(),
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
+    val multiPane: MultiPane = MultiPane.Wide,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -430,6 +436,7 @@ private val fieldNames = listOf(
     "composeBar",
     "toolbarRows",
     "composerWrapColumn",
+    "multiPane",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -481,7 +488,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, and composerWrapColumn when it is 74.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, and multiPane when Wide.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -523,6 +530,7 @@ fun AccountSettings.encode(): String = buildString {
     }
     if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
     if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
+    if (multiPane != MultiPane.Wide) appendLine("multiPane=${multiPane.name}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -589,7 +597,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "readerToolbar" ||
             key == "composeBar" ||
             key == "toolbarRows" ||
-            key == "composerWrapColumn"
+            key == "composerWrapColumn" ||
+            key == "multiPane"
         ) {
             continue
         }
@@ -669,6 +678,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         composeBar = values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar(),
         toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
         composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
+        multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Wide,
     )
 }
 
