@@ -22,11 +22,14 @@ import org.dlang.liveimap.session.SortField
 import org.dlang.liveimap.session.ThreadHeader
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.session.clientThreads
+import org.dlang.liveimap.session.mailboxMarkedTrash
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
+import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
 // ServerProbe and ServerProbeTest still read this list. The gate does not.
@@ -57,6 +60,8 @@ class LibetpanMailSession : MailSession {
     private var selectedReadWrite = false
     private var selected = SelectResult(0, 0, 0)
     private var namespaceList: List<Namespace>? = null
+    private var trashListed = false
+    private var listedTrash = ""
 
     @Volatile
     private var sequencesStale = false
@@ -219,6 +224,39 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    private fun closeLiveSession() {
+        val h = handle
+        if (h != 0L) {
+            try {
+                nativeStopWatch(h)
+            } catch (_: Exception) {
+            }
+            if (account?.autoExpunge == true && selectedMailbox != null && selectedReadWrite) {
+                try {
+                    nativeCloseMailbox(h)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        closeSockets()
+        trashListed = false
+        listedTrash = ""
+    }
+
+    private fun closeSelectedMailbox() {
+        nativeCloseMailbox(requireHandle())
+        selectedMailbox = null
+        selectedReadWrite = false
+        selected = SelectResult(0, 0, 0)
+    }
+
+    private fun unselectSelectedMailbox() {
+        nativeUnselect(requireHandle())
+        selectedMailbox = null
+        selectedReadWrite = false
+        selected = SelectResult(0, 0, 0)
+    }
+
     private fun openMailbox(mailbox: String, write: Boolean): SelectResult {
         val same = selectedMailbox == mailbox
         val wasReadWrite = selectedReadWrite
@@ -227,11 +265,12 @@ class LibetpanMailSession : MailSession {
             return selected
         }
         val current = selectedMailbox
-        if (current != null && current != mailbox && featureCaps.unselect) {
-            nativeUnselect(requireHandle())
-            selectedMailbox = null
-            selectedReadWrite = false
-            selected = SelectResult(0, 0, 0)
+        if (current != null && current != mailbox) {
+            if (account?.autoExpunge == true && wasReadWrite) {
+                closeSelectedMailbox()
+            } else if (featureCaps.unselect) {
+                unselectSelectedMailbox()
+            }
         }
         val readWrite = write || (same && sequencesStale && wasReadWrite)
         val result = nativeSelect(requireHandle(), mailbox, readWrite) ?: run {
@@ -297,11 +336,12 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun unselect() {
         val mailbox = selectedMailbox
+        if (account?.autoExpunge == true && mailbox != null && selectedReadWrite) {
+            closeSelectedMailbox()
+            return
+        }
         if (featureCaps.unselect) {
-            nativeUnselect(requireHandle())
-            selectedMailbox = null
-            selectedReadWrite = false
-            selected = SelectResult(0, 0, 0)
+            unselectSelectedMailbox()
             return
         }
         if (mailbox == null) return
@@ -398,14 +438,23 @@ class LibetpanMailSession : MailSession {
         if (uids.isEmpty()) return
         keeper.write("copy") {
             ensureReadWrite()
-            nativeCopyThenDelete(requireHandle(), uids.toLongArray(), targetMailbox, featureCaps.moveKind())
+            nativeCopyThenDelete(
+                requireHandle(),
+                uids.toLongArray(),
+                targetMailbox,
+                moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
+            )
         }
     }
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         keeper.write("copy") {
             ensureReadWrite()
-            nativeCopyAllThenDelete(requireHandle(), targetMailbox, featureCaps.moveKind())
+            nativeCopyAllThenDelete(
+                requireHandle(),
+                targetMailbox,
+                moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
+            )
         }
     }
 
@@ -562,6 +611,38 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun knownTrash(): String {
+        val named = account?.trashMailbox.orEmpty()
+        if (named.isNotEmpty()) return named
+        if (!featureCaps.listExtended) return ""
+        if (trashListed) return listedTrash
+        var found = ""
+        for (space in namespaces()) {
+            if (space.kind != NamespaceKind.Personal) continue
+            val marked = mailboxMarkedTrash(listLevel(space.prefix, null, false))
+            if (marked.isNotEmpty()) {
+                found = marked
+                break
+            }
+        }
+        listedTrash = found
+        trashListed = true
+        return found
+    }
+
+    override suspend fun expungeOnLeave() {
+        if (account?.autoExpunge != true) return
+        if (selectedMailbox == null || !selectedReadWrite) return
+        val h = handle
+        if (h == 0L) return
+        nativeCloseMailbox(h)
+        selectedMailbox = null
+        selectedReadWrite = false
+        selected = SelectResult(0, 0, 0)
+    }
+
+    override suspend fun selectedInfo(): SelectResult = selected
+
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
             nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
@@ -580,7 +661,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override fun close() {
-        closeSockets()
+        closeLiveSession()
         capabilityLine = ""
         account = null
         loggedInPassword = null
@@ -659,7 +740,7 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun close() {
-            closeSockets()
+            closeLiveSession()
         }
 
         override fun emit(change: MailboxChange) {
@@ -760,6 +841,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
+    private external fun nativeCloseMailbox(handle: Long)
     private external fun nativeFetchIndex(
         handle: Long,
         mailbox: String,

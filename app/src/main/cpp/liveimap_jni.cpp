@@ -3897,6 +3897,26 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
     unlockSession(session);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    if (session->selectedMailbox.empty() || session->imap == nullptr) {
+        throwFailure(env, "close failed");
+        unlockSession(session);
+        return;
+    }
+    int r = mailimap_close(session->imap);
+    if (!cmdOk(r)) {
+        throwImap(env, session, r, "close failed");
+    } else {
+        session->selectedMailbox.clear();
+        session->selectedReadWrite = false;
+    }
+    unlockSession(session);
+}
+
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jint mode, jint firstSequence, jint lastSequence, jlongArray uids, jint limit,

@@ -405,6 +405,37 @@ class AccountSettingsTest {
         assertEquals(null, openAtMenuText(AccountSettings()))
     }
 
+    @Test
+    fun moveCommandKindFollowsMethodAndMove() {
+        assertEquals("CopyThenDelete", moveCommandKind(MoveMethod.CopyThenMarkDeleted, true))
+        assertEquals("Move", moveCommandKind(MoveMethod.ImapMove, true))
+        assertEquals("CopyThenDelete", moveCommandKind(MoveMethod.ImapMove, false))
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("autoExpunge="))
+        assertFalse(text.contains("deletePolicy="))
+        assertFalse(text.contains("moveMethod="))
+        assertFalse(text.contains("trashMailbox="))
+        val decoded = decodeAccountSettings(text)
+        assertFalse(decoded.autoExpunge)
+        assertEquals(DeletePolicy.MarkDeleted, decoded.deletePolicy)
+        assertEquals(MoveMethod.CopyThenMarkDeleted, decoded.moveMethod)
+        assertEquals("", decoded.trashMailbox)
+        val chosen = AccountSettings(
+            autoExpunge = true,
+            deletePolicy = DeletePolicy.DeletePermanently,
+            moveMethod = MoveMethod.ImapMove,
+            trashMailbox = "Trash Can",
+        )
+        val stored = chosen.encode()
+        assertTrue(stored.contains("autoExpunge=true"))
+        assertTrue(stored.contains("deletePolicy=DeletePermanently"))
+        assertTrue(stored.contains("moveMethod=ImapMove"))
+        assertTrue(stored.contains("trashMailbox=Trash%20Can"))
+        assertEquals(chosen, decodeAccountSettings(stored))
+        val absent = decodeAccountSettings(text.lineSequence().filter { it.isNotEmpty() }.joinToString("\n"))
+        assertEquals(AccountSettings(), absent)
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

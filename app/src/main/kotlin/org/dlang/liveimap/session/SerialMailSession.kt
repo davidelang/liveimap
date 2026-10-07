@@ -129,6 +129,14 @@ class SerialMailSession(
         onLane { inner.noop() }
     }
 
+    override suspend fun knownTrash(): String = onLane { inner.knownTrash() }
+
+    override suspend fun expungeOnLeave() {
+        onLane { inner.expungeOnLeave() }
+    }
+
+    override suspend fun selectedInfo(): SelectResult = onLane { inner.selectedInfo() }
+
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         onLane { inner.append(mailbox, rfc822, flags) }
     }

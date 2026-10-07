@@ -39,6 +39,14 @@ data class FolderEntry(
     val unseen: Int? = null,
 )
 
+fun mailboxMarkedTrash(entries: List<FolderEntry>): String {
+    for (entry in entries) {
+        val tokens = entry.specialUse.orEmpty().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (tokens.any { it.equals("\\Trash", ignoreCase = true) }) return entry.mailbox
+    }
+    return ""
+}
+
 enum class SearchEdge {
     All,
     Min,

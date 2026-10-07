@@ -286,7 +286,7 @@
     <string name="settings_message_view">Message view</string>
     <string name="settings_monospace">Plain text in monospace</string>
     <string name="settings_deleting">Deleting</string>
-    <string name="settings_ask_expunge">Ask before expunge</string>
+    <string name="settings_ask_expunge">Confirm before expunge</string>
     <string name="settings_expunge_without">Expunge without asking</string>
     <string name="settings_counts">Counts</string>
     <string name="settings_unread_on">Unread counts on</string>
@@ -486,4 +486,22 @@
         <item quantity="one">This folder has %d message. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.</item>
         <item quantity="other">This folder has %d messages. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.</item>
     </plurals>
+    <string name="settings_auto_expunge">Auto-expunge</string>
+    <string name="settings_auto_expunge_note">Leaving a folder expunges deleted messages. Off sends no CLOSE.</string>
+    <string name="settings_delete_button">Delete button</string>
+    <string name="settings_mark_deleted">Mark as deleted</string>
+    <string name="settings_move_to_trash">Move to Trash</string>
+    <string name="settings_delete_permanently">Delete permanently</string>
+    <string name="settings_move_method">Move method</string>
+    <string name="settings_copy_then_mark">Copy, then mark deleted</string>
+    <string name="settings_imap_move">IMAP MOVE</string>
+    <string name="settings_trash_mailbox">Trash mailbox</string>
+    <string name="settings_trash_needed">A Trash mailbox is still needed.</string>
+    <string name="settings_reason_no_trash">No Trash mailbox is set, and LIST-EXTENDED is not advertised.</string>
+    <string name="settings_reason_uidplus">UIDPLUS is not advertised.</string>
+    <string name="settings_reason_move">MOVE is not advertised.</string>
+    <string name="index_expunge_menu">Expunge…</string>
+    <string name="index_folder_info">Folder info</string>
+    <string name="index_folder_info_body">%1$s\n%2$d messages\nUID validity %3$d</string>
+    <string name="index_permanent_body">The messages will be removed permanently.</string>
 </resources>

@@ -51,6 +51,9 @@ interface MailSession {
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)
     suspend fun stopWatch()
     suspend fun noop() {}
+    suspend fun knownTrash(): String = ""
+    suspend fun expungeOnLeave() {}
+    suspend fun selectedInfo(): SelectResult = SelectResult(0, 0, 0)
     suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String> = emptySet())
     suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String> = emptySet()): Long {
         append(mailbox, rfc822, flags)

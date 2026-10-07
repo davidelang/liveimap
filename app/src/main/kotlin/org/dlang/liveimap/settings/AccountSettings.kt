@@ -231,6 +231,20 @@ val defaultReaderBar: List<ReaderAction> = listOf(
 
 const val pineSourceId: String = "pine"
 
+enum class DeletePolicy {
+    MarkDeleted,
+    MoveToTrash,
+    DeletePermanently,
+}
+
+enum class MoveMethod {
+    CopyThenMarkDeleted,
+    ImapMove,
+}
+
+fun moveCommandKind(method: MoveMethod, moveAdvertised: Boolean): String =
+    if (method == MoveMethod.ImapMove && moveAdvertised) "Move" else "CopyThenDelete"
+
 data class AccountSettings(
     val imapHost: String = "",
     val imapPort: Int = 143,
@@ -287,6 +301,10 @@ data class AccountSettings(
     val statusVisibleCounts: Boolean = false,
     val forceSlowerFallbacks: Boolean = false,
     val hiddenCapabilities: Set<String> = emptySet(),
+    val autoExpunge: Boolean = false,
+    val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
+    val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
+    val trashMailbox: String = "",
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -349,6 +367,10 @@ private val fieldNames = listOf(
     "statusVisibleCounts",
     "forceSlowerFallbacks",
     "hiddenCapabilities",
+    "autoExpunge",
+    "deletePolicy",
+    "moveMethod",
+    "trashMailbox",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -400,7 +422,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, and the slower-fallback fields.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, and the delete fields.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -415,6 +437,10 @@ fun AccountSettings.encode(): String = buildString {
     if (hiddenCapabilities.isNotEmpty()) {
         appendLine("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
     }
+    if (autoExpunge) appendLine("autoExpunge=true")
+    if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
+    if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
+    if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -466,7 +492,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "pollSeconds" ||
             key == "statusVisibleCounts" ||
             key == "forceSlowerFallbacks" ||
-            key == "hiddenCapabilities"
+            key == "hiddenCapabilities" ||
+            key == "autoExpunge" ||
+            key == "deletePolicy" ||
+            key == "moveMethod" ||
+            key == "trashMailbox"
         ) {
             continue
         }
@@ -530,6 +560,10 @@ fun decodeAccountSettings(text: String): AccountSettings {
         statusVisibleCounts = values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false,
         forceSlowerFallbacks = values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false,
         hiddenCapabilities = values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet(),
+        autoExpunge = values["autoExpunge"]?.let { parseBoolean(it) } ?: false,
+        deletePolicy = values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted,
+        moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
+        trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
     )
 }
 

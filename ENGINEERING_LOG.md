@@ -1516,3 +1516,17 @@
 - Client sort sends one UID FETCH of UID plus one field and sorts in Kotlin. Client thread sends one UID FETCH of Message-ID, References, In-Reply-To, and Subject with BODY.PEEK.
 - A folder over 5000 messages asks before that download. Continue runs the client call. Cancel leaves the view at Arrival.
 - SerialMailSession forwards clientOrder and clientThread so the open session reaches LibetpanMailSession. No install.
+
+## 2026-10-06 - Delete and expunge execution start
+
+- Approved plan: sandbox/plans/delete-and-expunge-20261006-1819-plan.md. Mailbox SEQ 39 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: settings, moveCommandKind, CLOSE on leave and background close, trash resolution, and the help paragraph. Phase 2: delete policy on the selection bar, swipe, reader, both menus, Expunge, and Folder info. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag 0436609. Commits stay on master.
+
+## 2026-10-06 - Delete and expunge phase 1
+
+- Settings omit autoExpunge, deletePolicy, moveMethod, and trashMailbox at their defaults. Missing lines decode as off, Mark as deleted, Copy then mark deleted, and empty.
+- moveCommandKind returns Move only when the method is IMAP MOVE and MOVE is advertised. Both copy methods pass that. A null account stays CopyThenDelete.
+- CLOSE is sent only for Auto-expunge on a read-write selected mailbox, on folder change, unselect, and background close. A failed background CLOSE still closes the socket. No plain EXPUNGE.
+- knownTrash uses the saved Trash mailbox, or one LIST of each personal namespace when LIST-EXTENDED is advertised. It caches that result, including empty, until close. It does not guess a name.
+- Confirm before expunge, Auto-expunge, Delete button, Move method, and Trash are in Settings. The help paragraph is last. No install.

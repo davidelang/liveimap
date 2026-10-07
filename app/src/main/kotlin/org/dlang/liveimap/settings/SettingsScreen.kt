@@ -629,6 +629,9 @@ private fun MailboxesGroup(editor: SettingsEditor) {
             MailboxLine(stringResource(R.string.settings_spam_mailbox), settings.spamMailbox, { picking = MailboxPick.Spam }) {
                 editor.persist(editor.settings.copy(spamMailbox = it))
             }
+            MailboxLine(stringResource(R.string.settings_trash_mailbox), settings.trashMailbox, { picking = MailboxPick.Trash }) {
+                editor.persist(editor.settings.copy(trashMailbox = it))
+            }
         }
     }
     MailboxPickDialog(editor, picking) { picking = it }
@@ -759,6 +762,54 @@ private fun ReadingGroup(editor: SettingsEditor) {
         ) {
             BoolField(stringResource(R.string.settings_ask_expunge), settings.askBeforeExpunge) {
                 editor.persist(editor.settings.copy(askBeforeExpunge = it))
+            }
+            BoolField(
+                stringResource(R.string.settings_auto_expunge),
+                settings.autoExpunge,
+                note = stringResource(R.string.settings_auto_expunge_note),
+            ) {
+                editor.persist(editor.settings.copy(autoExpunge = it))
+            }
+            val caps = mailSession().featureCaps
+            val trashSet = settings.trashMailbox.isNotEmpty()
+            ReasonChoice(
+                stringResource(R.string.settings_delete_button),
+                listOf(
+                    ReasonOption(DeletePolicy.MarkDeleted, true, null),
+                    ReasonOption(
+                        DeletePolicy.MoveToTrash,
+                        trashSet || caps.listExtended,
+                        when {
+                            trashSet -> null
+                            caps.listExtended -> stringResource(R.string.settings_trash_needed)
+                            else -> stringResource(R.string.settings_reason_no_trash)
+                        },
+                    ),
+                    ReasonOption(
+                        DeletePolicy.DeletePermanently,
+                        caps.uidPlus,
+                        if (caps.uidPlus) null else stringResource(R.string.settings_reason_uidplus),
+                    ),
+                ),
+                settings.deletePolicy,
+                { deletePolicyName(it) },
+            ) { policy ->
+                editor.persist(editor.settings.copy(deletePolicy = policy))
+            }
+            ReasonChoice(
+                stringResource(R.string.settings_move_method),
+                listOf(
+                    ReasonOption(MoveMethod.CopyThenMarkDeleted, true, null),
+                    ReasonOption(
+                        MoveMethod.ImapMove,
+                        caps.move,
+                        if (caps.move) null else stringResource(R.string.settings_reason_move),
+                    ),
+                ),
+                settings.moveMethod,
+                { moveMethodName(it) },
+            ) { method ->
+                editor.persist(editor.settings.copy(moveMethod = method))
             }
         }
         SettingsSection(
@@ -1338,6 +1389,7 @@ private fun mailboxSetCount(settings: AccountSettings): String {
         settings.postponedMailbox,
         settings.addressBookMailbox,
         settings.spamMailbox,
+        settings.trashMailbox,
     ).count { it.isNotEmpty() }
     return stringResource(R.string.settings_mailboxes_set, count)
 }
@@ -1693,6 +1745,85 @@ private fun readerActionName(action: ReaderAction): String = stringResource(
     },
 )
 
+@Composable
+private fun deletePolicyName(policy: DeletePolicy): String = stringResource(
+    when (policy) {
+        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
+        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
+        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+    },
+)
+
+@Composable
+private fun moveMethodName(method: MoveMethod): String = stringResource(
+    when (method) {
+        MoveMethod.CopyThenMarkDeleted -> R.string.settings_copy_then_mark
+        MoveMethod.ImapMove -> R.string.settings_imap_move
+    },
+)
+
+private data class ReasonOption<T>(
+    val value: T,
+    val enabled: Boolean,
+    val reason: String?,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> ReasonChoice(
+    label: String,
+    options: List<ReasonOption<T>>,
+    selected: T,
+    name: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = name(selected),
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(name(option.value))
+                            val reason = option.reason
+                            if (reason != null) {
+                                Text(
+                                    reason,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    },
+                    enabled = option.enabled,
+                    onClick = {
+                        onSelect(option.value)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun <T> ChoiceField(
@@ -1780,6 +1911,7 @@ private enum class MailboxPick {
     Postponed,
     AddressBook,
     Spam,
+    Trash,
     TrailingMove,
     LeadingMove,
 }
@@ -1790,6 +1922,7 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         MailboxPick.Postponed -> base.copy(postponedMailbox = mailbox)
         MailboxPick.AddressBook -> base.copy(addressBookMailbox = mailbox)
         MailboxPick.Spam -> base.copy(spamMailbox = mailbox)
+        MailboxPick.Trash -> base.copy(trashMailbox = mailbox)
         MailboxPick.TrailingMove -> base.copy(
             swipeTrailing = base.swipeTrailing.copy(moveMailbox = mailbox),
         )
