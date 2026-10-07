@@ -1680,6 +1680,168 @@ class IndexWindowTest {
         assertEquals(searchFetches, searched.fetchRequests.size)
         assertEquals(searchCalls, searched.searchCalls.size)
     }
+
+    @Test
+    fun nextUnreadArrivalNewestPicksGreatestBelowAnchor() {
+        val session = folder(100)
+        session.unseenSeq.addAll(listOf(10, 40, 70, 100))
+        session.deletedSeq.add(70)
+        val model = model(session, StartRule.Newest, newestFirst = true)
+        runImmediate { model.loadWindow() }
+        assertTrue(runImmediate { model.jumpToSequence(100) })
+        assertEquals(100, model.rows[model.startIndex].sequence)
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(40, model.rows[model.startIndex].sequence)
+        val search = session.startSearches.last()
+        assertEquals(StartRule.FirstUnseen.name, search.rule)
+        assertEquals(false, search.byUid)
+        assertEquals(SearchEdge.All.name, search.edge)
+        assertEquals("UNDELETED UNSEEN", search.key)
+        assertTrue(runImmediate { model.jumpToSequence(10) })
+        val stayed = model.rows.map { it.sequence }
+        val start = model.startIndex
+        assertEquals(10, model.rows[start].sequence)
+        assertFalse(runImmediate { model.nextUnread() })
+        assertEquals(stayed, model.rows.map { it.sequence })
+        assertEquals(start, model.startIndex)
+        assertNull(model.notice)
+    }
+
+    @Test
+    fun nextUnreadArrivalOldestPicksSmallestAboveAnchor() {
+        val session = folder(100)
+        session.unseenSeq.addAll(listOf(10, 40, 100))
+        val model = model(session, StartRule.Newest, newestFirst = false)
+        runImmediate { model.loadWindow() }
+        assertTrue(runImmediate { model.jumpToSequence(10) })
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(40, model.rows[model.startIndex].sequence)
+        assertEquals(false, session.startSearches.last().byUid)
+    }
+
+    @Test
+    fun nextUnreadArrivalAnchorZeroUsesExtreme() {
+        val newestSession = folder(30)
+        newestSession.unseenSeq.addAll(listOf(10, 25))
+        val newest = model(newestSession, StartRule.Newest, newestFirst = true)
+        runImmediate { newest.loadWindow() }
+        assertTrue(newest.rows.size < IndexPageSize)
+        runImmediate { newest.onFirstVisible(IndexPageSize - 1) }
+        assertTrue(runImmediate { newest.nextUnread() })
+        assertEquals(25, newest.rows[newest.startIndex].sequence)
+        val oldestSession = folder(30)
+        oldestSession.unseenSeq.addAll(listOf(10, 25))
+        val oldest = model(oldestSession, StartRule.Newest, newestFirst = false)
+        runImmediate { oldest.loadWindow() }
+        runImmediate { oldest.onFirstVisible(IndexPageSize - 1) }
+        assertTrue(runImmediate { oldest.nextUnread() })
+        assertEquals(10, oldest.rows[oldest.startIndex].sequence)
+    }
+
+    @Test
+    fun nextUnreadSortedWalksOrderAfterVisibleUid() {
+        val session = FakeMailSession()
+        val uids = listOf(1L, 4L, 9L, 12L)
+        session.sortUids = uids
+        uids.forEach { session.rows[it] = row(it) }
+        session.unseenUids.addAll(listOf(4L, 12L))
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.Newest,
+                defaultView = FolderView(SortKey.From, newestFirst = true),
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.onFirstVisible(0) }
+        assertEquals(1L, model.rows[0].uid)
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(4L, model.rows[model.startIndex].uid)
+        val search = session.startSearches.single()
+        assertEquals(StartRule.FirstUnseen.name, search.rule)
+        assertEquals(true, search.byUid)
+        assertEquals(SearchEdge.All.name, search.edge)
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(12L, model.rows[model.startIndex].uid)
+        val stayed = model.rows.map { it.uid }
+        val start = model.startIndex
+        assertFalse(runImmediate { model.nextUnread() })
+        assertEquals(stayed, model.rows.map { it.uid })
+        assertEquals(start, model.startIndex)
+        assertNull(model.notice)
+    }
+
+    @Test
+    fun nextUnreadSearchFailureSetsNoticeAndDoesNotMove() {
+        val session = FakeMailSession()
+        val uids = listOf(1L, 4L, 9L)
+        session.sortUids = uids
+        uids.forEach { session.rows[it] = row(it) }
+        session.unseenUids.add(9L)
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.Newest,
+                defaultView = FolderView(SortKey.From, newestFirst = true),
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.onFirstVisible(0) }
+        val stayed = model.rows.map { it.uid }
+        val start = model.startIndex
+        session.startFailure = MailFailure("search failed")
+        assertFalse(runImmediate { model.nextUnread() })
+        assertEquals("search failed", model.notice)
+        assertEquals(stayed, model.rows.map { it.uid })
+        assertEquals(start, model.startIndex)
+    }
+
+    @Test
+    fun nextUnreadFilterWalksUidsAfterVisible() {
+        val session = folder(30)
+        session.searchUids = listOf(4L, 9L, 12L)
+        session.unseenUids.addAll(listOf(4L, 12L))
+        val model = model(session, StartRule.Newest, newestFirst = true)
+        runImmediate { model.loadWindow() }
+        val filtered = runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        assertEquals(listOf(12L, 9L, 4L), filtered.map { it.uid })
+        runImmediate { model.onFirstVisible(0) }
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(4L, model.rows[model.startIndex].uid)
+        assertEquals(true, session.startSearches.last().byUid)
+    }
+
+    @Test
+    fun nextUnreadThreadLandsOnThreadWithHiddenUid() {
+        val session = FakeMailSession()
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(3L, emptyList()),
+                ThreadNode(5L, listOf(ThreadNode(1L, emptyList()))),
+                ThreadNode(9L, listOf(ThreadNode(8L, emptyList()))),
+            ),
+        )
+        listOf(3L, 5L, 1L, 9L, 8L).forEach { session.rows[it] = row(it) }
+        session.unseenUids.add(8L)
+        val store = MemorySettingsStore(
+            AccountSettings(
+                inboxStart = StartRule.Newest,
+                defaultView = FolderView(SortKey.ThreadReferences, newestFirst = false),
+            ),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        val loaded = runImmediate { model.loadWindow() }
+        assertEquals(listOf(3L, 5L, 9L), loaded.map { it.uid })
+        runImmediate { model.onFirstVisible(0) }
+        assertTrue(runImmediate { model.nextUnread() })
+        assertEquals(9L, model.rows[model.startIndex].uid)
+        assertEquals(true, session.startSearches.last().byUid)
+        val stayed = model.rows.map { it.uid }
+        assertFalse(runImmediate { model.nextUnread() })
+        assertEquals(stayed, model.rows.map { it.uid })
+        assertNull(model.notice)
+    }
 }
 
 private fun scopedSession(): FakeMailSession {

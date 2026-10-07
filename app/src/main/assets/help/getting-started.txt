@@ -37,3 +37,5 @@ TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. 
 Until you customize them, the index bar shows Search, a selection shows Delete, and the reader shows Reply and Delete.
 
 Jump to number… in the index Sort menu moves the list to that sequence number.
+
+Next unread in the index Sort menu moves to the next unread message in this folder.

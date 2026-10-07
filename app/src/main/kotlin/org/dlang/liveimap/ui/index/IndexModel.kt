@@ -724,6 +724,93 @@ class IndexModel(
         return true
     }
 
+    suspend fun nextUnread(): Boolean {
+        val anchor = rows.getOrNull(lastVisibleIndex)
+        try {
+            if (usesArrivalSequences()) {
+                val chosen = nextArrivalSequence(anchor?.sequence ?: 0) ?: return false
+                return jumpToSequence(chosen)
+            }
+            val index = if (threading) {
+                nextThreadIndex(anchor?.uid)
+            } else {
+                nextOrderedIndex(anchor?.uid)
+            }
+            if (index == null) return false
+            return placeUnread(index)
+        } catch (failure: MailFailure) {
+            if (pendingNotice == null) pendingNotice = failure.text
+            notice = pendingNotice
+            pendingNotice = null
+            return false
+        }
+    }
+
+    private suspend fun nextArrivalSequence(anchorSequence: Int): Int? {
+        val matches = session.searchStart(StartRule.FirstUnseen, false, SearchEdge.All)
+        if (matches.isEmpty()) return null
+        if (anchorSequence == 0) {
+            val chosen = if (view.newestFirst) matches.maxOrNull() else matches.minOrNull()
+            return chosen?.toInt()
+        }
+        val anchorId = anchorSequence.toLong()
+        val chosen = if (view.newestFirst) {
+            matches.filter { it < anchorId }.maxOrNull()
+        } else {
+            matches.filter { it > anchorId }.minOrNull()
+        }
+        return chosen?.toInt()
+    }
+
+    private suspend fun nextOrderedIndex(anchorUid: Long?): Int? {
+        val found = session.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        if (found.isEmpty()) return null
+        val start = if (anchorUid == null) {
+            0
+        } else {
+            val at = order.indexOf(anchorUid)
+            if (at < 0) 0 else at + 1
+        }
+        for (index in start until order.size) {
+            if (order[index] in found) return index
+        }
+        return null
+    }
+
+    private suspend fun nextThreadIndex(anchorUid: Long?): Int? {
+        val found = session.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        if (found.isEmpty()) return null
+        val anchorThread = if (anchorUid == null) {
+            -1
+        } else {
+            threadPlan.indexOfFirst { part ->
+                part.rootUid == anchorUid || anchorUid in part.hiddenUids
+            }
+        }
+        val start = if (anchorThread < 0) 0 else anchorThread + 1
+        for (index in start until threadPlan.size) {
+            val part = threadPlan[index]
+            if (part.rootUid in found || part.hiddenUids.any { it in found }) return index
+        }
+        return null
+    }
+
+    private suspend fun placeUnread(index: Int): Boolean {
+        val count = order.size
+        if (index < 0 || index >= count) return false
+        replaceWindow {
+            pageAnchor = clampedAnchor(count, null, index)
+            val loaded = when {
+                threading -> loadThreadPage()
+                orderMailboxes.isNotEmpty() -> pagesOfMailboxes(order, orderMailboxes)
+                else -> pagesOf(order)
+            }
+            rememberStart(index, loaded.size)
+            loaded
+        }
+        return !windowFailed
+    }
+
     fun acknowledgeNewMail() {
         pendingNew = 0
         newMailUnnumbered = false

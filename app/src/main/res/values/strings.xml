@@ -548,4 +548,6 @@
     <string name="toolbar_moved_to">Moved %1$s to %2$s</string>
     <string name="index_jump">Jump to number…</string>
     <string name="index_jump_missing">No message %1$d</string>
+    <string name="index_next_unread">Next unread</string>
+    <string name="index_no_unread">No unread messages</string>
 </resources>

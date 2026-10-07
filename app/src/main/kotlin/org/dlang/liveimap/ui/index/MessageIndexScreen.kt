@@ -2291,6 +2291,23 @@ fun MessageIndexScreen(
                                 jumpOpen = true
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.index_next_unread)) },
+                            onClick = {
+                                menuOpen = false
+                                scope.launch {
+                                    val moved = gate.withLock {
+                                        val landed = model.nextUnread()
+                                        pull()
+                                        landed
+                                    }
+                                    if (moved) scrollToStart()
+                                    else if (model.notice == null) {
+                                        postSnack(appContext.getString(R.string.index_no_unread))
+                                    }
+                                }
+                            },
+                        )
                         for (entry in indexMenuTail(barLayout)) {
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()

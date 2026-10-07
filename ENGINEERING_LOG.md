@@ -1753,3 +1753,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - Approved plan: sandbox/plans/alpine-jump-20261006-2321-plan.md
 - SEQ 54 REVISION 1. Phase 1: jumpToSequence, Sort menu dialog, strings, help sentence, and tests.
 - No install. Builds tip at start is 0670e5a.
+
+## 2026-10-06 - Next unread execution start
+
+- Approved plan: sandbox/plans/alpine-next-unread-20261006-2333-plan.md
+- SEQ 55 REVISION 1. Phase 1: nextUnread, Sort menu row, strings, help sentence, and tests.
+- No install. Builds tip at start is 4673e1f.
+
+## 2026-10-06 - Next unread phase 1
+
+- nextUnread searches UNDELETED UNSEEN. Arrival chooses the next sequence in the current direction and calls jumpToSequence. Sorted, filtered, search, and thread views walk forward from the first visible row.
+- The connected Sort menu lists Next unread after Jump to number…. No later unread says "No unread messages" and stays in this folder. A search failure keeps the rows and shows that notice.
+- No install.
