@@ -205,6 +205,8 @@ private class ReaderHeld : ViewModel() {
     val headerFromState = mutableStateOf("")
     val headerToState = mutableStateOf("")
     val headerCcState = mutableStateOf("")
+    val headerSenderState = mutableStateOf("")
+    val headerResentToState = mutableStateOf("")
     val headerDateState = mutableStateOf("")
     val headerSubjectState = mutableStateOf("")
     val headerReadyState = mutableStateOf(false)
@@ -240,6 +242,8 @@ private class ReaderHeld : ViewModel() {
         headerFromState.value = ""
         headerToState.value = ""
         headerCcState.value = ""
+        headerSenderState.value = ""
+        headerResentToState.value = ""
         headerDateState.value = ""
         headerSubjectState.value = ""
         headerReadyState.value = false
@@ -346,6 +350,8 @@ fun MessageReaderScreen(
     var headerFrom by held.headerFromState
     var headerTo by held.headerToState
     var headerCc by held.headerCcState
+    var headerSender by held.headerSenderState
+    var headerResentTo by held.headerResentToState
     var headerDate by held.headerDateState
     var headerSubject by held.headerSubjectState
     var headerReady by held.headerReadyState
@@ -362,6 +368,7 @@ fun MessageReaderScreen(
     var choosingMove by remember { mutableStateOf(false) }
     var choosingSave by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
+    var saveOffer by remember { mutableStateOf("") }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
@@ -809,6 +816,8 @@ fun MessageReaderScreen(
         headerFrom = ""
         headerTo = ""
         headerCc = ""
+        headerSender = ""
+        headerResentTo = ""
         headerDate = ""
         headerSubject = ""
         headerReady = false
@@ -918,6 +927,8 @@ fun MessageReaderScreen(
                     if (fields.from.contains('@')) headerFrom = fields.from
                     headerTo = fields.to
                     headerCc = fields.cc
+                    headerSender = fields.sender
+                    headerResentTo = fields.resentTo
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1370,7 +1381,17 @@ fun MessageReaderScreen(
                     text = { Text(stringResource(R.string.reader_save)) },
                     onClick = {
                         moreMenu = false
-                        if (account.savedMailbox.isNotEmpty()) {
+                        val offered = saveFolderName(
+                            account.saveNameRule,
+                            account.savedMailbox,
+                            account.lastSaveMailbox,
+                            headerFrom,
+                            headerSender,
+                            headerTo,
+                            headerResentTo,
+                        )
+                        if (offered.isNotEmpty()) {
+                            saveOffer = offered
                             confirmSave = true
                         } else {
                             choosingSave = true
@@ -1710,28 +1731,46 @@ fun MessageReaderScreen(
             onDismiss = { choosingMove = false },
         )
     }
+    fun copySavedMessage(destination: String) {
+        if (destination.isEmpty()) return
+        scope.launch {
+            var copied = false
+            gate.withLock {
+                try {
+                    session.copyUids(listOf(uid), destination)
+                    postSnack(savedText)
+                    copied = true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+            if (!copied) return@launch
+            try {
+                saveMutex.withLock {
+                    val loaded = store.load()
+                    val updated = loaded.copy(lastSaveMailbox = destination)
+                    store.save(updated)
+                    account = updated
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // A failed store write leaves the Saved snack and the copy.
+            }
+        }
+    }
+
     if (confirmSave) {
-        val mailbox = account.savedMailbox
+        val mailbox = saveOffer
         AlertDialog(
             onDismissRequest = { confirmSave = false },
             text = { Text(stringResource(R.string.reader_save_to, mailbox)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSave = false
-                    if (mailbox.isNotEmpty()) {
-                        scope.launch {
-                            gate.withLock {
-                                try {
-                                    session.copyUids(listOf(uid), mailbox)
-                                    postSnack(savedText)
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (error: MailFailure) {
-                                    postSnack(error.text)
-                                }
-                            }
-                        }
-                    }
+                    copySavedMessage(mailbox)
                 }) { Text(stringResource(R.string.reader_save)) }
             },
             dismissButton = {
@@ -1756,20 +1795,7 @@ fun MessageReaderScreen(
             },
             onPick = { picked ->
                 choosingSave = false
-                if (picked.isNotEmpty()) {
-                    scope.launch {
-                        gate.withLock {
-                            try {
-                                session.copyUids(listOf(uid), picked)
-                                postSnack(savedText)
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (error: MailFailure) {
-                                postSnack(error.text)
-                            }
-                        }
-                    }
-                }
+                copySavedMessage(picked)
             },
             onDismiss = { choosingSave = false },
         )

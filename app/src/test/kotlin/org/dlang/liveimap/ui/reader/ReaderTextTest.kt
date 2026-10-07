@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.reader
 
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
+import org.dlang.liveimap.settings.SaveNameRule
 import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
@@ -43,6 +44,107 @@ class ReaderTextTest {
         assertEquals("one@example.com, two@example.com", fields.to)
         assertEquals("first@example.com second@example.com", fields.cc)
         assertEquals("Ada <ada@example.com>", fields.from)
+    }
+
+    @Test
+    fun headerFieldsKeepsFirstSenderAndLastResentTo() {
+        val header = "From: Ada <ada@example.com>\r\n" +
+            "To: one@example.com\r\n" +
+            "Cc: cc@example.com\r\n" +
+            "Sender: First <first@example.com>\r\n" +
+            "Sender: Second <second@example.com>\r\n" +
+            "Resent-To: early@example.com\r\n" +
+            "Resent-To: late@example.com\r\n"
+        val fields = headerFields(header)
+        assertEquals("Ada <ada@example.com>", fields.from)
+        assertEquals("one@example.com", fields.to)
+        assertEquals("cc@example.com", fields.cc)
+        assertEquals("First <first@example.com>", fields.sender)
+        assertEquals("late@example.com", fields.resentTo)
+    }
+
+    @Test
+    fun saveFolderNameRules() {
+        assertEquals(
+            "Saved",
+            saveFolderName(SaveNameRule.DefaultFolder, "Saved", "Archive", "Ada <Ada@Example.com>", "", "", ""),
+        )
+        assertEquals(
+            "Archive",
+            saveFolderName(SaveNameRule.LastFolderUsed, "Saved", "Archive", "", "", "", ""),
+        )
+        assertEquals(
+            "Saved",
+            saveFolderName(SaveNameRule.LastFolderUsed, "Saved", "", "", "", "", ""),
+        )
+        assertEquals(
+            "ada",
+            saveFolderName(
+                SaveNameRule.ByFrom,
+                "Saved",
+                "",
+                "Ada <Ada@Example.com>",
+                "Bob <bob@example.com>",
+                "",
+                "",
+            ),
+        )
+        assertEquals(
+            "bob",
+            saveFolderName(SaveNameRule.ByFrom, "Saved", "", "", "Bob <bob@example.com>", "", ""),
+        )
+        assertEquals(
+            "Saved",
+            saveFolderName(SaveNameRule.ByFrom, "Saved", "", "", "", "", ""),
+        )
+        assertEquals(
+            "bob",
+            saveFolderName(
+                SaveNameRule.BySender,
+                "Saved",
+                "",
+                "Ada <Ada@Example.com>",
+                "Bob <bob@example.com>",
+                "",
+                "",
+            ),
+        )
+        assertEquals(
+            "ada",
+            saveFolderName(SaveNameRule.BySender, "Saved", "", "Ada <Ada@Example.com>", "", "", ""),
+        )
+        assertEquals(
+            "Saved",
+            saveFolderName(SaveNameRule.BySender, "Saved", "", "", "", "", ""),
+        )
+        assertEquals(
+            "cara",
+            saveFolderName(
+                SaveNameRule.ByRecipient,
+                "Saved",
+                "",
+                "",
+                "",
+                "Ada <Ada@Example.com>",
+                "Cara <Cara@Example.com>",
+            ),
+        )
+        assertEquals(
+            "ada",
+            saveFolderName(SaveNameRule.ByRecipient, "Saved", "", "", "", "Ada <Ada@Example.com>", ""),
+        )
+        assertEquals(
+            "Saved",
+            saveFolderName(SaveNameRule.ByRecipient, "Saved", "", "", "", "", ""),
+        )
+        assertEquals(
+            "ann",
+            saveFolderName(SaveNameRule.ByFrom, "Saved", "", "bob!ann%extra@host", "", "", ""),
+        )
+        assertEquals(
+            "a",
+            saveFolderName(SaveNameRule.ByFrom, "Saved", "", "a:b@host", "", "", ""),
+        )
     }
 
     @Test

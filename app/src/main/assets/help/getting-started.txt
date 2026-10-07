@@ -45,3 +45,5 @@ When this folder has no later unread message, Next unread asks before opening th
 Save in the reader More menu copies the open message to another folder and leaves the original where it is.
 
 When a saved mailbox is set, Save asks before copying there. Choose opens the folder list.
+
+The save name rule chooses the folder Save offers: the saved mailbox, the last folder used, or the From, Sender, or recipient name.

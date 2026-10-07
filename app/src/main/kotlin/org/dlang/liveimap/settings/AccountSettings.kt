@@ -269,6 +269,14 @@ enum class MoveMethod {
 fun moveCommandKind(method: MoveMethod, moveAdvertised: Boolean): String =
     if (method == MoveMethod.ImapMove && moveAdvertised) "Move" else "CopyThenDelete"
 
+enum class SaveNameRule {
+    DefaultFolder,
+    ByFrom,
+    BySender,
+    ByRecipient,
+    LastFolderUsed,
+}
+
 data class AccountSettings(
     val imapHost: String = "",
     val imapPort: Int = 143,
@@ -330,6 +338,8 @@ data class AccountSettings(
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
     val trashMailbox: String = "",
     val savedMailbox: String = "",
+    val saveNameRule: SaveNameRule = SaveNameRule.DefaultFolder,
+    val lastSaveMailbox: String = "",
     val threadIndexStyle: ThreadIndexStyle = ThreadIndexStyle.Expanded,
     val indexBar: IndexBarLayout = defaultIndexBar(),
     val selectionBar: SelectionBarLayout = defaultSelectionBar(),
@@ -408,6 +418,8 @@ private val fieldNames = listOf(
     "moveMethod",
     "trashMailbox",
     "savedMailbox",
+    "saveNameRule",
+    "lastSaveMailbox",
     "threadIndexStyle",
     "indexBar",
     "selectionBar",
@@ -466,7 +478,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -486,6 +498,8 @@ fun AccountSettings.encode(): String = buildString {
     if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
     if (savedMailbox.isNotEmpty()) appendLine("savedMailbox=${percentEncode(savedMailbox)}")
+    if (saveNameRule != SaveNameRule.DefaultFolder) appendLine("saveNameRule=${saveNameRule.name}")
+    if (lastSaveMailbox.isNotEmpty()) appendLine("lastSaveMailbox=${percentEncode(lastSaveMailbox)}")
     if (threadIndexStyle != ThreadIndexStyle.Expanded) {
         appendLine("threadIndexStyle=${threadIndexStyle.name}")
     }
@@ -562,6 +576,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "moveMethod" ||
             key == "trashMailbox" ||
             key == "savedMailbox" ||
+            key == "saveNameRule" ||
+            key == "lastSaveMailbox" ||
             key == "threadIndexStyle" ||
             key == "indexBar" ||
             key == "selectionBar" ||
@@ -637,6 +653,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
         savedMailbox = values["savedMailbox"]?.let { percentDecode(it) } ?: "",
+        saveNameRule = values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder,
+        lastSaveMailbox = values["lastSaveMailbox"]?.let { percentDecode(it) } ?: "",
         threadIndexStyle = values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
             ?: ThreadIndexStyle.Expanded,
         indexBar = values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar(),

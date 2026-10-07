@@ -1803,3 +1803,15 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - The special-use section shows Saved mailbox after Trash. Clearing the row stores "". mailboxSetCount is unchanged.
 - When a saved mailbox is set, Save asks before copying there. Save uses copyUids and leaves the original. Choose opens the folder list. Cancel, dismiss, and Back do not copy. An empty setting still opens the folder list.
 - No name rule. No install.
+
+## 2026-10-07 - Save name rule execution start
+
+- Approved plan: sandbox/plans/alpine-save-name-20261007-0026-plan.md. Mailbox SEQ 59 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: SaveNameRule, saveFolderName, the settings choice, the reader offer, the last-folder store, the strings, the help sentence, and the tests. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag 4ba5f81. Commits stay on master.
+
+## 2026-10-07 - Save name rule phase 1
+
+- SaveNameRule is Default folder, By From, By Sender, By recipient, or Last folder used. Default folder and an empty last folder are omitted from encode. A missing key decodes as the default.
+- saveFolderName offers the saved mailbox, the last folder, or the local part of From, Sender, or the recipient. Ada <Ada@Example.com> is ada. bob!ann%extra@host is ann.
+- The choice sits after Saved mailbox. Save asks with that name, or opens the folder list when the name is empty. A successful copy stores the destination as the last folder. Cancel does not. No install.

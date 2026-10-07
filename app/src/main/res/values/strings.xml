@@ -556,4 +556,10 @@
     <string name="settings_saved_mailbox">Saved mailbox</string>
     <string name="reader_save_to">Save to %1$s?</string>
     <string name="reader_save_choose">Choose</string>
+    <string name="settings_save_rule">Save name rule</string>
+    <string name="settings_save_default">Default folder</string>
+    <string name="settings_save_from">By From</string>
+    <string name="settings_save_sender">By Sender</string>
+    <string name="settings_save_recipient">By recipient</string>
+    <string name="settings_save_last">Last folder used</string>
 </resources>

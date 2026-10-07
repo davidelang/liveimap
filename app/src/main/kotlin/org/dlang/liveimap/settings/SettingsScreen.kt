@@ -635,6 +635,14 @@ private fun MailboxesGroup(editor: SettingsEditor) {
             MailboxLine(stringResource(R.string.settings_saved_mailbox), settings.savedMailbox, { picking = MailboxPick.Saved }) {
                 editor.persist(editor.settings.copy(savedMailbox = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_save_rule),
+                SaveNameRule.entries,
+                settings.saveNameRule,
+                { saveNameRuleName(it) },
+            ) { rule ->
+                editor.persist(editor.settings.copy(saveNameRule = rule))
+            }
         }
     }
     MailboxPickDialog(editor, picking) { picking = it }
@@ -1392,6 +1400,17 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
         if (settings.logImapTraffic) R.string.settings_traffic_on else R.string.settings_traffic_off,
     )
 }
+
+@Composable
+private fun saveNameRuleName(rule: SaveNameRule): String = stringResource(
+    when (rule) {
+        SaveNameRule.DefaultFolder -> R.string.settings_save_default
+        SaveNameRule.ByFrom -> R.string.settings_save_from
+        SaveNameRule.BySender -> R.string.settings_save_sender
+        SaveNameRule.ByRecipient -> R.string.settings_save_recipient
+        SaveNameRule.LastFolderUsed -> R.string.settings_save_last
+    },
+)
 
 @Composable
 private fun mailboxSetCount(settings: AccountSettings): String {

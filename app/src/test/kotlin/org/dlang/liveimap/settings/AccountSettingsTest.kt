@@ -466,6 +466,37 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun saveNameRuleRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("saveNameRule="))
+        assertFalse(text.contains("lastSaveMailbox="))
+        assertEquals(SaveNameRule.DefaultFolder, decodeAccountSettings(text).saveNameRule)
+        assertEquals("", decodeAccountSettings(text).lastSaveMailbox)
+        val saved = AccountSettings(saveNameRule = SaveNameRule.ByFrom, lastSaveMailbox = "Archive")
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("saveNameRule=ByFrom"))
+        assertTrue(encoded.contains("lastSaveMailbox=Archive"))
+        assertEquals(saved, decodeAccountSettings(encoded))
+        assertEquals(SaveNameRule.ByFrom, decodeAccountSettings(encoded).saveNameRule)
+        assertEquals("Archive", decodeAccountSettings(encoded).lastSaveMailbox)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val missing = encoded.lineSequence()
+            .filter { line ->
+                line.isNotEmpty() &&
+                    !line.startsWith("saveNameRule=") &&
+                    !line.startsWith("lastSaveMailbox=")
+            }
+            .joinToString("\n")
+        assertEquals(SaveNameRule.DefaultFolder, decodeAccountSettings(missing).saveNameRule)
+        assertEquals("", decodeAccountSettings(missing).lastSaveMailbox)
+        val spaced = AccountSettings(lastSaveMailbox = "My Archive")
+        val spacedText = spaced.encode()
+        assertTrue(spacedText.contains("lastSaveMailbox=My%20Archive"))
+        assertFalse(spacedText.contains("saveNameRule="))
+        assertEquals(spaced, decodeAccountSettings(spacedText))
+    }
+
+    @Test
     fun indexBarRoundTrip() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("indexBar"))
