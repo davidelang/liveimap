@@ -1815,3 +1815,9 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - SaveNameRule is Default folder, By From, By Sender, By recipient, or Last folder used. Default folder and an empty last folder are omitted from encode. A missing key decodes as the default.
 - saveFolderName offers the saved mailbox, the last folder, or the local part of From, Sender, or the recipient. Ada <Ada@Example.com> is ada. bob!ann%extra@host is ann.
 - The choice sits after Saved mailbox. Save asks with that name, or opens the folder list when the name is empty. A successful copy stores the destination as the last folder. Cancel does not. No install.
+
+## 2026-10-07 - Take address execution start
+
+- Approved plan: sandbox/plans/alpine-take-address-20261007-0042-plan.md. Mailbox SEQ 60 REVISION 1 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: takeAddresses, bookHasAddress, the reader Take address menu and confirm, the strings, the help sentence, and the tests. No install. Do not mark messages read.
+- First action per standard-plan-compliance-block.md. Base builds tag 4007657. Commits stay on master.

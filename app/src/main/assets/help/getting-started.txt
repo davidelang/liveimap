@@ -47,3 +47,5 @@ Save in the reader More menu copies the open message to another folder and leave
 When a saved mailbox is set, Save asks before copying there. Choose opens the folder list.
 
 The save name rule chooses the folder Save offers: the saved mailbox, the last folder used, or the From, Sender, or recipient name.
+
+Take address in the reader More menu adds a header address to the address book after you confirm.

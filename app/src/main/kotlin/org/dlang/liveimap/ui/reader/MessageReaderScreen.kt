@@ -125,6 +125,12 @@ import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.ReaderAction
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
+import org.dlang.liveimap.ui.contacts.AlpineEntry
+import org.dlang.liveimap.ui.contacts.PineRead
+import org.dlang.liveimap.ui.contacts.PineWriteResult
+import org.dlang.liveimap.ui.contacts.bookHasAddress
+import org.dlang.liveimap.ui.contacts.readPineBook
+import org.dlang.liveimap.ui.contacts.writePineBook
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugConnectionStatus
 import org.dlang.liveimap.ui.folder.MailboxChooser
@@ -286,6 +292,11 @@ fun MessageReaderScreen(
     val noAppFound = stringResource(R.string.reader_no_app)
     val notConnected = stringResource(R.string.reader_not_connected)
     val savedText = stringResource(R.string.reader_saved)
+    val noAddressBookText = stringResource(R.string.reader_no_address_book)
+    val noAddressesText = stringResource(R.string.reader_no_addresses)
+    val addressAddedText = stringResource(R.string.reader_address_added)
+    val addressExistsText = stringResource(R.string.reader_address_exists)
+    val copyChangedText = stringResource(R.string.copy_changed)
     val retryLabel = stringResource(R.string.reader_retry)
     val noTextPartText = stringResource(R.string.reader_no_text)
     val noHtmlPartText = stringResource(R.string.reader_no_html)
@@ -369,15 +380,18 @@ fun MessageReaderScreen(
     var choosingSave by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
     var saveOffer by remember { mutableStateOf("") }
+    var confirmTake by remember { mutableStateOf(false) }
+    var takeChoices by remember { mutableStateOf<List<TakeAddress>>(emptyList()) }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
-    BackHandler(enabled = (choosingMove || choosingSave || confirmSave) && !moreMenu) {
+    BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake) && !moreMenu) {
         choosingMove = false
         choosingSave = false
         confirmSave = false
+        confirmTake = false
     }
     BackHandler(enabled = moreMenu) {
         moreMenu = false
@@ -1399,6 +1413,29 @@ fun MessageReaderScreen(
                     },
                 )
                 DropdownMenuItem(
+                    text = { Text(stringResource(R.string.reader_take_address)) },
+                    onClick = {
+                        moreMenu = false
+                        if (account.addressBookMailbox.isEmpty()) {
+                            postSnack(noAddressBookText)
+                        } else {
+                            val found = takeAddresses(
+                                headerFrom,
+                                headerSender,
+                                headerTo,
+                                headerCc,
+                                headerResentTo,
+                            )
+                            if (found.isEmpty()) {
+                                postSnack(noAddressesText)
+                            } else {
+                                takeChoices = found
+                                confirmTake = true
+                            }
+                        }
+                    },
+                )
+                DropdownMenuItem(
                     text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                     onClick = {
                         moreMenu = false
@@ -1798,6 +1835,81 @@ fun MessageReaderScreen(
                 copySavedMessage(picked)
             },
             onDismiss = { choosingSave = false },
+        )
+    }
+    fun takeChosenAddress(choice: TakeAddress) {
+        scope.launch {
+            gate.withLock {
+                try {
+                    val book = account.addressBookMailbox
+                    when (val read = readPineBook(session, book)) {
+                        is PineRead.NotBook -> postSnack(read.notice)
+                        is PineRead.Ready -> {
+                            if (bookHasAddress(read.state.entries, choice.email)) {
+                                postSnack(addressExistsText)
+                            } else {
+                                val added = read.state.entries + AlpineEntry(
+                                    nickname = choice.email.substringBefore('@'),
+                                    fullname = choice.name,
+                                    address = choice.email,
+                                    fcc = "",
+                                    comments = "",
+                                )
+                                when (val wrote = writePineBook(
+                                    session,
+                                    book,
+                                    read.state.lastUid,
+                                    added,
+                                    account.addressBookHistory,
+                                    account.addressBookNeverTrim,
+                                )) {
+                                    is PineWriteResult.Wrote -> postSnack(addressAddedText)
+                                    is PineWriteResult.Stale -> postSnack(copyChangedText)
+                                    is PineWriteResult.NotBook -> postSnack(wrote.notice)
+                                }
+                            }
+                        }
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+                try {
+                    session.select(mailbox)
+                    selectedMailbox = mailbox
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+    if (confirmTake) {
+        AlertDialog(
+            onDismissRequest = { confirmTake = false },
+            text = { Text(stringResource(R.string.reader_take_prompt)) },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    for (choice in takeChoices) {
+                        val label = if (choice.name.isEmpty()) {
+                            choice.email
+                        } else {
+                            "${choice.name} <${choice.email}>"
+                        }
+                        TextButton(onClick = {
+                            confirmTake = false
+                            takeChosenAddress(choice)
+                        }) { Text(label) }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmTake = false }) {
+                    Text(stringResource(R.string.reader_cancel))
+                }
+            },
         )
     }
 }

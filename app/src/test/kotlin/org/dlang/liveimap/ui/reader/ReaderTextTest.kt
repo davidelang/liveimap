@@ -157,4 +157,36 @@ class ReaderTextTest {
             .joinToString("\n")
         assertFalse(decodeAccountSettings(absent).plainTextMonospace)
     }
+
+    @Test
+    fun takeAddressesKeepsFirstCopyThenLaterHeaders() {
+        assertEquals(
+            listOf(
+                TakeAddress("Ada Lovelace", "Ada@Example.com"),
+                TakeAddress("Bob", "bob@example.com"),
+                TakeAddress("Cara", "cara@example.com"),
+                TakeAddress("Dee", "dee@example.com"),
+                TakeAddress("Eve", "eve@example.com"),
+            ),
+            takeAddresses(
+                "Ada Lovelace <Ada@Example.com>, Bob <bob@example.com>",
+                "Ada@Example.com",
+                "Cara <cara@example.com>",
+                "Dee <dee@example.com>",
+                "Eve <eve@example.com>",
+            ),
+        )
+        assertEquals(
+            listOf(TakeAddress("", "ann@example.com")),
+            takeAddresses("", "", "ann@example.com", "", ""),
+        )
+        assertEquals(
+            emptyList<TakeAddress>(),
+            takeAddresses("undisclosed-recipients:;", "", "", "", ""),
+        )
+        assertEquals(
+            listOf(TakeAddress("Ada Lovelace", "ada@example.com")),
+            takeAddresses("\"Ada Lovelace\" <ada@example.com>", "", "", "", ""),
+        )
+    }
 }

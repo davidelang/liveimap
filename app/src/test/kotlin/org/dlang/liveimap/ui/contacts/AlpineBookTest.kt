@@ -165,6 +165,16 @@ class AlpineBookTest {
         }
         assertEquals("select broke", error?.text)
     }
+
+    @Test
+    fun bookHasAddressMatchesEmailWithoutCase() {
+        val entries = listOf(AlpineEntry("ada", "Ada", "Ada@Example.com", "", ""))
+        assertTrue(bookHasAddress(entries, "ada@example.com"))
+        assertFalse(bookHasAddress(entries, "other@example.com"))
+        val named = listOf(AlpineEntry("ada", "Ada", "Ada Lovelace <Ada@Example.com>", "", ""))
+        assertTrue(bookHasAddress(named, "ada@example.com"))
+        assertFalse(bookHasAddress(named, "other@example.com"))
+    }
 }
 
 private fun ascii(text: String): ByteArray = text.toByteArray(Charsets.US_ASCII)

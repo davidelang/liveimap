@@ -562,4 +562,10 @@
     <string name="settings_save_sender">By Sender</string>
     <string name="settings_save_recipient">By recipient</string>
     <string name="settings_save_last">Last folder used</string>
+    <string name="reader_take_address">Take address</string>
+    <string name="reader_take_prompt">Add to the address book?</string>
+    <string name="reader_no_address_book">Address book mailbox is not set</string>
+    <string name="reader_no_addresses">No addresses</string>
+    <string name="reader_address_added">Added to the address book</string>
+    <string name="reader_address_exists">Already in the address book</string>
 </resources>

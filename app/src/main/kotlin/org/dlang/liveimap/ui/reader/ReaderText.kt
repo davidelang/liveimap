@@ -1,7 +1,9 @@
 package org.dlang.liveimap.ui.reader
 
 import org.dlang.liveimap.settings.SaveNameRule
+import org.dlang.liveimap.ui.compose.addrSpec
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
+import org.dlang.liveimap.ui.compose.splitAddresses
 
 data class HeaderFields(
     val from: String,
@@ -73,6 +75,41 @@ private fun joinHeader(current: String, value: String): String {
     if (value.isEmpty()) return current
     if (current.isEmpty()) return value
     return "$current, $value"
+}
+
+data class TakeAddress(
+    val name: String,
+    val email: String,
+)
+
+fun takeAddresses(
+    from: String,
+    sender: String,
+    to: String,
+    cc: String,
+    resentTo: String,
+): List<TakeAddress> {
+    val found = ArrayList<TakeAddress>()
+    for (header in listOf(from, sender, to, cc, resentTo)) {
+        for (piece in splitAddresses(header)) {
+            val email = addrSpec(piece)
+            if (!email.contains('@')) continue
+            if (found.any { it.email.equals(email, ignoreCase = true) }) continue
+            found.add(TakeAddress(takeAddressName(piece, email), email))
+        }
+    }
+    return found
+}
+
+private fun takeAddressName(piece: String, email: String): String {
+    val open = piece.indexOf('<')
+    val before = if (open >= 0) piece.substring(0, open) else piece
+    var name = before.trim()
+    if (name.length >= 2 && name.first() == '"' && name.last() == '"') {
+        name = name.substring(1, name.length - 1).trim()
+    }
+    if (name.isEmpty() || name.equals(email, ignoreCase = true)) return ""
+    return name
 }
 
 private fun unfoldedHeaderLines(header: String): List<String> {

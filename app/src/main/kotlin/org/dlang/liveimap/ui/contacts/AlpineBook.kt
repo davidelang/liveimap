@@ -101,6 +101,14 @@ fun formatAlpineBook(entries: List<AlpineEntry>): String = buildString {
     }
 }
 
+fun bookHasAddress(entries: List<AlpineEntry>, email: String): Boolean {
+    for (entry in entries) {
+        if (entry.address.equals(email, ignoreCase = true)) return true
+        if (addrSpec(entry.address).equals(email, ignoreCase = true)) return true
+    }
+    return false
+}
+
 fun revisionsToExpunge(
     uids: List<Long>,
     headerUid: Long,
