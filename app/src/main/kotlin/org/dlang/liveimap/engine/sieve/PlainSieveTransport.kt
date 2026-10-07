@@ -24,7 +24,7 @@ private const val CR = '\r'.code
 private const val LF = '\n'.code
 private val CR_LF = byteArrayOf(CR.toByte(), LF.toByte())
 
-class PlainSieveTransport private constructor(
+class PlainSieveTransport internal constructor(
     private val socket: Socket,
 ) : SieveLineTransport, Closeable {
     private val input: InputStream = socket.getInputStream()
@@ -67,7 +67,7 @@ class PlainSieveTransport private constructor(
             raw.write(next)
         }
         val bytes = raw.toByteArray()
-        if (bytes.isNotEmpty() && bytes[bytes.size - 1] == CR) {
+        if (bytes.isNotEmpty() && bytes[bytes.size - 1] == CR.toByte()) {
             return bytes.copyOf(bytes.size - 1)
         }
         return bytes
