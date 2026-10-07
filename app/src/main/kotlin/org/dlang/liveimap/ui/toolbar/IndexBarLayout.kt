@@ -514,3 +514,122 @@ private fun ReaderToolbarLayout.withSection(
     BarSection.Overflow -> copy(overflow = actions)
     BarSection.Hidden -> copy(hidden = actions)
 }
+
+enum class ComposeBarAction {
+    Postpone,
+}
+
+data class ComposeBarLayout(
+    val toolbar: List<ComposeBarAction>,
+    val overflow: List<ComposeBarAction>,
+    val hidden: List<ComposeBarAction>,
+)
+
+sealed interface ComposeMenuEntry {
+    data class Action(val action: ComposeBarAction) : ComposeMenuEntry
+    data object Divider : ComposeMenuEntry
+    data object Customize : ComposeMenuEntry
+}
+
+fun defaultComposeBar(): ComposeBarLayout = ComposeBarLayout(
+    toolbar = emptyList(),
+    overflow = listOf(ComposeBarAction.Postpone),
+    hidden = emptyList(),
+)
+
+fun resetComposeBar(): ComposeBarLayout = defaultComposeBar()
+
+fun moveComposeAction(
+    layout: ComposeBarLayout,
+    action: ComposeBarAction,
+    section: BarSection,
+): ComposeBarLayout {
+    val current = layout.sectionOf(action) ?: return layout
+    if (current == section) return layout
+    val cleared = layout.copy(
+        toolbar = layout.toolbar.filterNot { it == action },
+        overflow = layout.overflow.filterNot { it == action },
+        hidden = layout.hidden.filterNot { it == action },
+    )
+    return cleared.withSection(section, cleared.section(section) + action)
+}
+
+fun moveComposeActionBy(
+    layout: ComposeBarLayout,
+    action: ComposeBarAction,
+    delta: Int,
+): ComposeBarLayout {
+    if (delta != -1 && delta != 1) return layout
+    val section = layout.sectionOf(action) ?: return layout
+    val list = layout.section(section)
+    val index = list.indexOf(action)
+    if (index < 0) return layout
+    val target = index + delta
+    if (target !in list.indices) return layout
+    val next = list.toMutableList()
+    next.removeAt(index)
+    next.add(target, action)
+    return layout.withSection(section, next)
+}
+
+fun composeMenu(layout: ComposeBarLayout): List<ComposeMenuEntry> {
+    val items = ArrayList<ComposeMenuEntry>()
+    for (action in layout.overflow) items.add(ComposeMenuEntry.Action(action))
+    items.add(ComposeMenuEntry.Divider)
+    items.add(ComposeMenuEntry.Customize)
+    return items
+}
+
+fun encodeComposeBar(layout: ComposeBarLayout): String =
+    "T:${layout.toolbar.joinToString(",") { it.name }}" +
+        "|O:${layout.overflow.joinToString(",") { it.name }}" +
+        "|H:${layout.hidden.joinToString(",") { it.name }}"
+
+fun parseComposeBar(value: String): ComposeBarLayout {
+    val match = composeBarShape.matchEntire(value) ?: throw IllegalArgumentException("bad composeBar")
+    val toolbar = parseComposeNames(match.groupValues[1])
+    val overflow = parseComposeNames(match.groupValues[2])
+    val hidden = parseComposeNames(match.groupValues[3])
+    val all = toolbar + overflow + hidden
+    if (all.toSet() != ComposeBarAction.entries.toSet() || all.size != all.toSet().size) {
+        throw IllegalArgumentException("bad composeBar")
+    }
+    return ComposeBarLayout(toolbar, overflow, hidden)
+}
+
+private val composeBarShape = Regex(
+    "^T:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|O:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|H:([A-Za-z]+(?:,[A-Za-z]+)*)?$",
+)
+
+private fun parseComposeNames(text: String): List<ComposeBarAction> {
+    if (text.isEmpty()) return emptyList()
+    return text.split(',').map { name ->
+        try {
+            enumValueOf<ComposeBarAction>(name)
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("bad composeBar")
+        }
+    }
+}
+
+private fun ComposeBarLayout.sectionOf(action: ComposeBarAction): BarSection? = when {
+    action in toolbar -> BarSection.Toolbar
+    action in overflow -> BarSection.Overflow
+    action in hidden -> BarSection.Hidden
+    else -> null
+}
+
+private fun ComposeBarLayout.section(section: BarSection): List<ComposeBarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun ComposeBarLayout.withSection(
+    section: BarSection,
+    actions: List<ComposeBarAction>,
+): ComposeBarLayout = when (section) {
+    BarSection.Toolbar -> copy(toolbar = actions)
+    BarSection.Overflow -> copy(overflow = actions)
+    BarSection.Hidden -> copy(hidden = actions)
+}

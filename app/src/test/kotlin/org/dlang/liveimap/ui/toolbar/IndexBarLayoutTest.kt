@@ -290,4 +290,39 @@ class IndexBarLayoutTest {
         val pinned = AccountSettings(readerBar = listOf(ReaderAction.Reply), readerToolbar = layout)
         assertEquals(layout, effectiveReaderToolbar(pinned))
     }
+
+    @Test
+    fun composePostponeMovesAndMenu() {
+        val layout = defaultComposeBar()
+        assertEquals(emptyList<ComposeBarAction>(), layout.toolbar)
+        assertEquals(listOf(ComposeBarAction.Postpone), layout.overflow)
+        assertEquals(emptyList<ComposeBarAction>(), layout.hidden)
+        assertEquals(
+            listOf(
+                ComposeMenuEntry.Action(ComposeBarAction.Postpone),
+                ComposeMenuEntry.Divider,
+                ComposeMenuEntry.Customize,
+            ),
+            composeMenu(layout),
+        )
+        assertEquals(layout, resetComposeBar())
+        val onBar = moveComposeAction(layout, ComposeBarAction.Postpone, BarSection.Toolbar)
+        assertEquals(listOf(ComposeBarAction.Postpone), onBar.toolbar)
+        assertEquals(emptyList<ComposeBarAction>(), onBar.overflow)
+        assertEquals(emptyList<ComposeBarAction>(), onBar.hidden)
+        assertEquals(
+            listOf(ComposeMenuEntry.Divider, ComposeMenuEntry.Customize),
+            composeMenu(onBar),
+        )
+        val hidden = moveComposeAction(layout, ComposeBarAction.Postpone, BarSection.Hidden)
+        assertFalse(hidden.toolbar.contains(ComposeBarAction.Postpone))
+        assertFalse(hidden.overflow.contains(ComposeBarAction.Postpone))
+        assertEquals(listOf(ComposeBarAction.Postpone), hidden.hidden)
+        assertEquals(
+            listOf(ComposeMenuEntry.Divider, ComposeMenuEntry.Customize),
+            composeMenu(hidden),
+        )
+        assertEquals(layout, moveComposeActionBy(layout, ComposeBarAction.Postpone, 1))
+        assertEquals(layout, moveComposeActionBy(layout, ComposeBarAction.Postpone, -1))
+    }
 }

@@ -357,6 +357,11 @@ fun LiveImapNavHost() {
                     ToolbarEditorScreen(ToolbarScreen.Reader)
                 }
             }
+            composable("toolbar/compose") {
+                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                    ToolbarEditorScreen(ToolbarScreen.Compose)
+                }
+            }
             composable(
                 route = "reader/{mailbox}/{uid}/{sequence}",
                 arguments = listOf(
@@ -410,6 +415,7 @@ fun LiveImapNavHost() {
                     unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
                     retryOnOpen = composeRetryOnOpen.value,
                     onOpenUnsent = { navController.navigate("unsent") },
+                    onCustomize = { navController.navigate("toolbar/compose") },
                 )
             }
             composable("unsent") {

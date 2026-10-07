@@ -18,12 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +54,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import java.util.UUID
 import org.dlang.liveimap.R
 import kotlinx.coroutines.CancellationException
@@ -86,6 +89,9 @@ import org.dlang.liveimap.ui.contacts.pineEntriesOnce
 import org.dlang.liveimap.ui.contacts.suggestionText
 import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
+import org.dlang.liveimap.ui.toolbar.ComposeBarAction
+import org.dlang.liveimap.ui.toolbar.ComposeMenuEntry
+import org.dlang.liveimap.ui.toolbar.composeMenu
 
 private enum class AddressTarget {
     To,
@@ -183,6 +189,7 @@ fun ComposeScreen(
     unsentId: String? = null,
     retryOnOpen: Boolean = false,
     onOpenUnsent: () -> Unit = {},
+    onCustomize: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val acceptedNotice = stringResource(R.string.compose_accepted)
@@ -778,6 +785,20 @@ fun ComposeScreen(
         return copy
     }
 
+    LifecycleStartEffect(store) {
+        val job = scope.launch {
+            val loaded = try {
+                store.load()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            if (loaded != null) account = loaded
+        }
+        onStopOrDispose { job.cancel() }
+    }
+
     LaunchedEffect(seed, unsentId, retryOnOpen) {
         val storedId = unsentId?.takeIf { it.isNotEmpty() }
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
@@ -956,6 +977,21 @@ fun ComposeScreen(
                 },
                 actions = {
                     if (seed.kind != ComposeKind.Bounce) {
+                        if (!deliveryDone) {
+                            for (action in account.composeBar.toolbar) {
+                                when (action) {
+                                    ComposeBarAction.Postpone -> IconButton(
+                                        onClick = { postponeDraft() },
+                                        enabled = account.postponedMailbox.isNotEmpty(),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Save,
+                                            contentDescription = stringResource(R.string.compose_postpone),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         IconButton(onClick = { sendMessage() }) {
                             Icon(
                                 imageVector = Icons.Filled.Send,
@@ -980,14 +1016,28 @@ fun ComposeScreen(
                                     expanded = overflow,
                                     onDismissRequest = { overflow = false },
                                 ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.compose_postpone)) },
-                                        onClick = {
-                                            overflow = false
-                                            postponeDraft()
-                                        },
-                                        enabled = account.postponedMailbox.isNotEmpty(),
-                                    )
+                                    for (entry in composeMenu(account.composeBar)) {
+                                        when (entry) {
+                                            is ComposeMenuEntry.Action -> when (entry.action) {
+                                                ComposeBarAction.Postpone -> DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.compose_postpone)) },
+                                                    onClick = {
+                                                        overflow = false
+                                                        postponeDraft()
+                                                    },
+                                                    enabled = account.postponedMailbox.isNotEmpty(),
+                                                )
+                                            }
+                                            ComposeMenuEntry.Divider -> HorizontalDivider()
+                                            ComposeMenuEntry.Customize -> DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.toolbar_customize)) },
+                                                onClick = {
+                                                    overflow = false
+                                                    onCustomize()
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

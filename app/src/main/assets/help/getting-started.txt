@@ -25,3 +25,5 @@ The selection More menu ends with Customize toolbar…. That screen moves Mark r
 The folder list More menu ends with Customize toolbar…. That screen moves Refresh, Collapse all, Save as default view, and Reset to default view onto the bar, into that menu, or out of sight.
 
 The reader More menu ends with Customize toolbar…. That screen moves Refresh and the message actions onto the bar, into that menu, or out of sight.
+
+The compose More menu ends with Customize toolbar…. That screen moves Postpone onto the bar, into that menu, or out of sight.

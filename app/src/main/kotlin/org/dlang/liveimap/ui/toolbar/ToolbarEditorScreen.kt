@@ -39,6 +39,7 @@ enum class ToolbarScreen {
     Selection,
     Folders,
     Reader,
+    Compose,
 }
 
 private class ToolbarSettings(val store: DataStoreSettingsStore) {
@@ -70,6 +71,12 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
     fun persistReader(next: ReaderToolbarLayout) {
         val current = settings ?: return
         settings = current.copy(readerToolbar = next)
+        save()
+    }
+
+    fun persistCompose(next: ComposeBarLayout) {
+        val current = settings ?: return
+        settings = current.copy(composeBar = next)
         save()
     }
 
@@ -142,6 +149,19 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistReader(moveReaderAction(current, action, target))
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
+        )
+        ToolbarScreen.Compose -> SectionEditor(
+            rowsIn = { section -> loaded.composeBar.actionsIn(section) },
+            labelRes = ::composeBarActionRes,
+            onMoveBy = { action, delta ->
+                val current = holder.settings?.composeBar
+                if (current != null) holder.persistCompose(moveComposeActionBy(current, action, delta))
+            },
+            onMoveTo = { action, target ->
+                val current = holder.settings?.composeBar
+                if (current != null) holder.persistCompose(moveComposeAction(current, action, target))
+            },
+            onReset = { holder.persistCompose(resetComposeBar()) },
         )
     }
 }
@@ -259,6 +279,10 @@ private fun readerToolbarActionRes(action: ReaderToolbarAction): Int = when (act
     ReaderToolbarAction.Bounce -> R.string.compose_bounce
 }
 
+private fun composeBarActionRes(action: ComposeBarAction): Int = when (action) {
+    ComposeBarAction.Postpone -> R.string.compose_postpone
+}
+
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
@@ -278,6 +302,12 @@ private fun FolderBarLayout.actionsIn(section: BarSection): List<FolderBarAction
 }
 
 private fun ReaderToolbarLayout.actionsIn(section: BarSection): List<ReaderToolbarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun ComposeBarLayout.actionsIn(section: BarSection): List<ComposeBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
     BarSection.Hidden -> hidden

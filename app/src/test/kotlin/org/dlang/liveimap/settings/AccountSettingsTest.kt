@@ -1,13 +1,16 @@
 package org.dlang.liveimap.settings
 
 import org.dlang.liveimap.ui.toolbar.BarSection
+import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
 import org.dlang.liveimap.ui.toolbar.SelectionBarAction
+import org.dlang.liveimap.ui.toolbar.defaultComposeBar
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
+import org.dlang.liveimap.ui.toolbar.moveComposeAction
 import org.dlang.liveimap.ui.toolbar.moveFolderAction
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
 import org.dlang.liveimap.ui.toolbar.moveReaderAction
@@ -569,6 +572,36 @@ class AccountSettingsTest {
             fail("T:Refresh|O:Reply,Reply|H:")
         } catch (error: IllegalArgumentException) {
             assertEquals("bad readerToolbar", error.message)
+        }
+    }
+
+    @Test
+    fun composeBarRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("composeBar"))
+        assertEquals(defaultComposeBar(), decodeAccountSettings(text).composeBar)
+        val explicit = text.trimEnd() + "\ncomposeBar=T:|O:Postpone|H:\n"
+        assertEquals(defaultComposeBar(), decodeAccountSettings(explicit).composeBar)
+        val onBar = moveComposeAction(defaultComposeBar(), ComposeBarAction.Postpone, BarSection.Toolbar)
+        val saved = AccountSettings(composeBar = onBar)
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("composeBar=T:Postpone|O:|H:"))
+        assertEquals(onBar, decodeAccountSettings(encoded).composeBar)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val badValues = listOf(
+            "T:Postpone|O:Postpone|H:",
+            "T:|O:|H:",
+            "T:Send|O:Postpone|H:",
+            "nope",
+        )
+        for (value in badValues) {
+            val bad = text.trimEnd() + "\ncomposeBar=$value\n"
+            try {
+                decodeAccountSettings(bad)
+                fail(value)
+            } catch (error: IllegalArgumentException) {
+                assertEquals("bad composeBar", error.message)
+            }
         }
     }
 
