@@ -3,15 +3,19 @@ package org.dlang.liveimap.settings
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
 import org.dlang.liveimap.ui.toolbar.SelectionBarAction
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 import org.dlang.liveimap.ui.toolbar.moveFolderAction
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
+import org.dlang.liveimap.ui.toolbar.moveReaderAction
 import org.dlang.liveimap.ui.toolbar.moveSelectionAction
+import org.dlang.liveimap.ui.toolbar.readerToolbarFrom
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -531,6 +535,40 @@ class AccountSettingsTest {
             fail("T:Refresh|O:CollapseAll,CollapseAll|H:")
         } catch (error: IllegalArgumentException) {
             assertEquals("bad folderBar", error.message)
+        }
+    }
+
+    @Test
+    fun readerToolbarRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("readerToolbar"))
+        assertNull(decodeAccountSettings(text).readerToolbar)
+        assertTrue(text.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
+        val layout = readerToolbarFrom(defaultReaderBar)
+        val saved = AccountSettings(readerToolbar = layout)
+        val encoded = saved.encode()
+        assertTrue(
+            encoded.contains(
+                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete|O:Move,Spam,Bounce|H:",
+            ),
+        )
+        assertTrue(encoded.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
+        assertEquals(layout, decodeAccountSettings(encoded).readerToolbar)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val moved = moveReaderAction(layout, ReaderToolbarAction.Bounce, BarSection.Toolbar)
+        val movedText = AccountSettings(readerToolbar = moved).encode()
+        assertTrue(
+            movedText.contains(
+                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete,Bounce|O:Move,Spam|H:",
+            ),
+        )
+        assertEquals(moved, decodeAccountSettings(movedText).readerToolbar)
+        val bad = text.trimEnd() + "\nreaderToolbar=T:Refresh|O:Reply,Reply|H:\n"
+        try {
+            decodeAccountSettings(bad)
+            fail("T:Refresh|O:Reply,Reply|H:")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("bad readerToolbar", error.message)
         }
     }
 

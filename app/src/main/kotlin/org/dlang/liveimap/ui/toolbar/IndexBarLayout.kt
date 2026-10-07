@@ -1,5 +1,9 @@
 package org.dlang.liveimap.ui.toolbar
 
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.ReaderAction
+import org.dlang.liveimap.settings.defaultReaderBar
+
 enum class IndexBarAction {
     Refresh,
     Search,
@@ -365,6 +369,147 @@ private fun FolderBarLayout.withSection(
     section: BarSection,
     actions: List<FolderBarAction>,
 ): FolderBarLayout = when (section) {
+    BarSection.Toolbar -> copy(toolbar = actions)
+    BarSection.Overflow -> copy(overflow = actions)
+    BarSection.Hidden -> copy(hidden = actions)
+}
+
+enum class ReaderToolbarAction {
+    Refresh,
+    Reply,
+    ReplyAll,
+    Forward,
+    Delete,
+    Move,
+    Spam,
+    Bounce,
+}
+
+data class ReaderToolbarLayout(
+    val toolbar: List<ReaderToolbarAction>,
+    val overflow: List<ReaderToolbarAction>,
+    val hidden: List<ReaderToolbarAction>,
+)
+
+fun readerToolbarFrom(saved: List<ReaderAction>): ReaderToolbarLayout {
+    val shown = saved.map { it.toToolbarAction() }
+    val missing = ReaderAction.entries
+        .filter { it !in saved }
+        .map { it.toToolbarAction() }
+    return ReaderToolbarLayout(
+        toolbar = listOf(ReaderToolbarAction.Refresh) + shown.take(4),
+        overflow = shown.drop(4) + missing,
+        hidden = emptyList(),
+    )
+}
+
+fun resetReaderToolbar(): ReaderToolbarLayout = readerToolbarFrom(defaultReaderBar)
+
+fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout =
+    settings.readerToolbar ?: readerToolbarFrom(settings.readerBar)
+
+fun visibleReaderActions(
+    actions: List<ReaderToolbarAction>,
+    spamMailbox: String,
+): List<ReaderToolbarAction> =
+    if (spamMailbox.isEmpty()) {
+        actions.filter { it != ReaderToolbarAction.Spam }
+    } else {
+        actions
+    }
+
+fun moveReaderAction(
+    layout: ReaderToolbarLayout,
+    action: ReaderToolbarAction,
+    section: BarSection,
+): ReaderToolbarLayout {
+    val current = layout.sectionOf(action) ?: return layout
+    if (current == section) return layout
+    val cleared = layout.copy(
+        toolbar = layout.toolbar.filterNot { it == action },
+        overflow = layout.overflow.filterNot { it == action },
+        hidden = layout.hidden.filterNot { it == action },
+    )
+    return cleared.withSection(section, cleared.section(section) + action)
+}
+
+fun moveReaderActionBy(
+    layout: ReaderToolbarLayout,
+    action: ReaderToolbarAction,
+    delta: Int,
+): ReaderToolbarLayout {
+    if (delta != -1 && delta != 1) return layout
+    val section = layout.sectionOf(action) ?: return layout
+    val list = layout.section(section)
+    val index = list.indexOf(action)
+    if (index < 0) return layout
+    val target = index + delta
+    if (target !in list.indices) return layout
+    val next = list.toMutableList()
+    next.removeAt(index)
+    next.add(target, action)
+    return layout.withSection(section, next)
+}
+
+fun encodeReaderToolbar(layout: ReaderToolbarLayout): String =
+    "T:${layout.toolbar.joinToString(",") { it.name }}" +
+        "|O:${layout.overflow.joinToString(",") { it.name }}" +
+        "|H:${layout.hidden.joinToString(",") { it.name }}"
+
+fun parseReaderToolbar(value: String): ReaderToolbarLayout {
+    val match = readerToolbarShape.matchEntire(value) ?: throw IllegalArgumentException("bad readerToolbar")
+    val toolbar = parseReaderToolbarNames(match.groupValues[1])
+    val overflow = parseReaderToolbarNames(match.groupValues[2])
+    val hidden = parseReaderToolbarNames(match.groupValues[3])
+    val all = toolbar + overflow + hidden
+    if (all.toSet() != ReaderToolbarAction.entries.toSet() || all.size != all.toSet().size) {
+        throw IllegalArgumentException("bad readerToolbar")
+    }
+    return ReaderToolbarLayout(toolbar, overflow, hidden)
+}
+
+private val readerToolbarShape = Regex(
+    "^T:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|O:([A-Za-z]+(?:,[A-Za-z]+)*)?\\|H:([A-Za-z]+(?:,[A-Za-z]+)*)?$",
+)
+
+private fun parseReaderToolbarNames(text: String): List<ReaderToolbarAction> {
+    if (text.isEmpty()) return emptyList()
+    return text.split(',').map { name ->
+        try {
+            enumValueOf<ReaderToolbarAction>(name)
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("bad readerToolbar")
+        }
+    }
+}
+
+private fun ReaderAction.toToolbarAction(): ReaderToolbarAction = when (this) {
+    ReaderAction.Reply -> ReaderToolbarAction.Reply
+    ReaderAction.ReplyAll -> ReaderToolbarAction.ReplyAll
+    ReaderAction.Forward -> ReaderToolbarAction.Forward
+    ReaderAction.Delete -> ReaderToolbarAction.Delete
+    ReaderAction.Move -> ReaderToolbarAction.Move
+    ReaderAction.Spam -> ReaderToolbarAction.Spam
+    ReaderAction.Bounce -> ReaderToolbarAction.Bounce
+}
+
+private fun ReaderToolbarLayout.sectionOf(action: ReaderToolbarAction): BarSection? = when {
+    action in toolbar -> BarSection.Toolbar
+    action in overflow -> BarSection.Overflow
+    action in hidden -> BarSection.Hidden
+    else -> null
+}
+
+private fun ReaderToolbarLayout.section(section: BarSection): List<ReaderToolbarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun ReaderToolbarLayout.withSection(
+    section: BarSection,
+    actions: List<ReaderToolbarAction>,
+): ReaderToolbarLayout = when (section) {
     BarSection.Toolbar -> copy(toolbar = actions)
     BarSection.Overflow -> copy(overflow = actions)
     BarSection.Hidden -> copy(hidden = actions)

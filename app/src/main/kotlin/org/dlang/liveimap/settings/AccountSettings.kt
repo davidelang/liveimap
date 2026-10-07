@@ -7,15 +7,18 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import org.dlang.liveimap.ui.toolbar.FolderBarLayout
 import org.dlang.liveimap.ui.toolbar.IndexBarLayout
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarLayout
 import org.dlang.liveimap.ui.toolbar.SelectionBarLayout
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 import org.dlang.liveimap.ui.toolbar.encodeFolderBar
 import org.dlang.liveimap.ui.toolbar.encodeIndexBar
+import org.dlang.liveimap.ui.toolbar.encodeReaderToolbar
 import org.dlang.liveimap.ui.toolbar.encodeSelectionBar
 import org.dlang.liveimap.ui.toolbar.parseFolderBar
 import org.dlang.liveimap.ui.toolbar.parseIndexBar
+import org.dlang.liveimap.ui.toolbar.parseReaderToolbar
 import org.dlang.liveimap.ui.toolbar.parseSelectionBar
 
 enum class Density {
@@ -326,6 +329,7 @@ data class AccountSettings(
     val indexBar: IndexBarLayout = defaultIndexBar(),
     val selectionBar: SelectionBarLayout = defaultSelectionBar(),
     val folderBar: FolderBarLayout = defaultFolderBar(),
+    val readerToolbar: ReaderToolbarLayout? = null,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -396,6 +400,7 @@ private val fieldNames = listOf(
     "indexBar",
     "selectionBar",
     "folderBar",
+    "readerToolbar",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -447,7 +452,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, and folderBar when it is the default.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, and readerToolbar while it is null.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -477,6 +482,9 @@ fun AccountSettings.encode(): String = buildString {
     }
     if (folderBar != defaultFolderBar()) {
         appendLine("folderBar=${encodeFolderBar(folderBar)}")
+    }
+    if (readerToolbar != null) {
+        appendLine("readerToolbar=${encodeReaderToolbar(readerToolbar)}")
     }
 }
 
@@ -537,7 +545,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "threadIndexStyle" ||
             key == "indexBar" ||
             key == "selectionBar" ||
-            key == "folderBar"
+            key == "folderBar" ||
+            key == "readerToolbar"
         ) {
             continue
         }
@@ -610,6 +619,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         indexBar = values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar(),
         selectionBar = values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar(),
         folderBar = values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar(),
+        readerToolbar = values["readerToolbar"]?.let { parseReaderToolbar(it) },
     )
 }
 

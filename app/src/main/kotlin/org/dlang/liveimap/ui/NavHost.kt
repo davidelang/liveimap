@@ -307,6 +307,7 @@ fun LiveImapNavHost() {
                                         },
                                         onBack = { paneUid = -1L },
                                         onFolderViewSaved = { noteFolderView() },
+                                        onCustomize = { navController.navigate("toolbar/reader") },
                                     )
                                 }
                             }
@@ -351,6 +352,11 @@ fun LiveImapNavHost() {
                     ToolbarEditorScreen(ToolbarScreen.Folders)
                 }
             }
+            composable("toolbar/reader") {
+                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                    ToolbarEditorScreen(ToolbarScreen.Reader)
+                }
+            }
             composable(
                 route = "reader/{mailbox}/{uid}/{sequence}",
                 arguments = listOf(
@@ -384,6 +390,7 @@ fun LiveImapNavHost() {
                             handle["folderViewToken"] = next
                         }
                     },
+                    onCustomize = { navController.navigate("toolbar/reader") },
                 )
             }
             composable("compose") {

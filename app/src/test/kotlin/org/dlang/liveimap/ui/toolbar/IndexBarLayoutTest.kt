@@ -1,5 +1,8 @@
 package org.dlang.liveimap.ui.toolbar
 
+import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.ReaderAction
+import org.dlang.liveimap.settings.defaultReaderBar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -213,5 +216,78 @@ class IndexBarLayoutTest {
             defaultFolderBar(),
             moveFolderActionBy(defaultFolderBar(), FolderBarAction.ResetDefault, 1),
         )
+    }
+
+    @Test
+    fun readerToolbarFollowsReaderBarUntilSaved() {
+        val layout = readerToolbarFrom(defaultReaderBar)
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.Reply,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+            ),
+            layout.toolbar,
+        )
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+            ),
+            layout.overflow,
+        )
+        assertEquals(emptyList<ReaderToolbarAction>(), layout.hidden)
+        val replyOnly = readerToolbarFrom(listOf(ReaderAction.Reply))
+        assertEquals(
+            listOf(ReaderToolbarAction.Refresh, ReaderToolbarAction.Reply),
+            replyOnly.toolbar,
+        )
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+            ),
+            replyOnly.overflow,
+        )
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Bounce,
+            ),
+            visibleReaderActions(replyOnly.overflow, ""),
+        )
+        assertEquals(replyOnly.overflow, visibleReaderActions(replyOnly.overflow, "Junk"))
+        val appended = moveReaderAction(layout, ReaderToolbarAction.Bounce, BarSection.Toolbar)
+        assertEquals(layout.toolbar + ReaderToolbarAction.Bounce, appended.toolbar)
+        assertFalse(appended.overflow.contains(ReaderToolbarAction.Bounce))
+        assertEquals(emptyList<ReaderToolbarAction>(), appended.hidden)
+        assertEquals(layout, resetReaderToolbar())
+        val swapped = moveReaderActionBy(layout, ReaderToolbarAction.ReplyAll, -1)
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Reply,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+            ),
+            swapped.toolbar,
+        )
+        assertEquals(layout, moveReaderActionBy(layout, ReaderToolbarAction.Refresh, -1))
+        assertEquals(layout, effectiveReaderToolbar(AccountSettings()))
+        val followed = effectiveReaderToolbar(AccountSettings(readerBar = listOf(ReaderAction.Reply)))
+        assertEquals(replyOnly, followed)
+        val pinned = AccountSettings(readerBar = listOf(ReaderAction.Reply), readerToolbar = layout)
+        assertEquals(layout, effectiveReaderToolbar(pinned))
     }
 }

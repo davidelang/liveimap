@@ -48,6 +48,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +96,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -142,6 +144,9 @@ import org.dlang.liveimap.ui.index.mailUndoText
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.nextWireCount
 import org.dlang.liveimap.ui.compose.textPart
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
+import org.dlang.liveimap.ui.toolbar.effectiveReaderToolbar
+import org.dlang.liveimap.ui.toolbar.visibleReaderActions
 
 private class Utf8Carry {
     var pending: ByteArray = ByteArray(0)
@@ -268,6 +273,7 @@ fun MessageReaderScreen(
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
+    onCustomize: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -360,6 +366,20 @@ fun MessageReaderScreen(
     }
     BackHandler(enabled = moreMenu) {
         moreMenu = false
+    }
+
+    LifecycleStartEffect(store) {
+        val job = scope.launch {
+            val loaded = try {
+                store.load()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            if (loaded != null) account = loaded
+        }
+        onStopOrDispose { job.cancel() }
     }
 
     LaunchedEffect(mailbox, account.trashMailbox, connected) {
@@ -1235,8 +1255,9 @@ fun MessageReaderScreen(
             quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
         }
     }
-    val barActions = readerBarActions(account.readerBar, account.spamMailbox)
-    val menuActions = readerMenuActions(account.readerBar, account.spamMailbox)
+    val readerLayout = effectiveReaderToolbar(account)
+    val barActions = visibleReaderActions(readerLayout.toolbar, account.spamMailbox)
+    val menuActions = visibleReaderActions(readerLayout.overflow, account.spamMailbox)
     val trashKnown = knownTrashName.isNotEmpty()
     val readerUidPlus = session.featureCaps.uidPlus
     val effectivePolicy = effectiveDeletePolicy(
@@ -1259,24 +1280,30 @@ fun MessageReaderScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { if (!loading) loadToken += 1 }) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.reader_refresh),
-                        )
+                    for (action in barActions) {
+                        if (action == ReaderToolbarAction.Refresh) {
+                            IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = stringResource(R.string.reader_refresh),
+                                )
+                            }
+                        } else {
+                            val reader = action.readerAction()
+                            if (reader != null) {
+                                IconButton(onClick = { runReaderAction(reader) }) {
+                                    Icon(
+                                        imageVector = readerActionImage(reader),
+                                        contentDescription = if (reader == ReaderAction.Delete) {
+                                            deletePolicyLabel(effectivePolicy)
+                                        } else {
+                                            readerActionName(reader)
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
-                for (action in barActions) {
-                    IconButton(onClick = { runReaderAction(action) }) {
-                        Icon(
-                            imageVector = readerActionImage(action),
-                            contentDescription = if (action == ReaderAction.Delete) {
-                                deletePolicyLabel(effectivePolicy)
-                            } else {
-                                readerActionName(action)
-                            },
-                        )
-                    }
-                }
                     Box {
                 IconButton(onClick = { moreMenu = true }) {
                     Icon(
@@ -1295,18 +1322,31 @@ fun MessageReaderScreen(
                     )
                 }
                 for (action in menuActions) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (action == ReaderAction.Delete) deletePolicyLabel(effectivePolicy)
-                                else readerActionName(action),
+                    if (action == ReaderToolbarAction.Refresh) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.reader_refresh)) },
+                            onClick = {
+                                moreMenu = false
+                                if (!loading) loadToken += 1
+                            },
+                        )
+                    } else {
+                        val reader = action.readerAction()
+                        if (reader != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (reader == ReaderAction.Delete) deletePolicyLabel(effectivePolicy)
+                                        else readerActionName(reader),
+                                    )
+                                },
+                                onClick = {
+                                    moreMenu = false
+                                    runReaderAction(reader)
+                                },
                             )
-                        },
-                        onClick = {
-                            moreMenu = false
-                            runReaderAction(action)
-                        },
-                    )
+                        }
+                    }
                 }
                 DropdownMenuItem(
                     text = { Text(forwardStyleName(account.forwardAsAttachment)) },
@@ -1325,6 +1365,14 @@ fun MessageReaderScreen(
                         },
                     )
                 }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.toolbar_customize)) },
+                    onClick = {
+                        moreMenu = false
+                        onCustomize()
+                    },
+                )
             }
                     }
                 },
@@ -1719,6 +1767,17 @@ private fun bodyViewName(view: BodyView): String = stringResource(
 private fun forwardStyleName(asAttachment: Boolean): String = stringResource(
     if (asAttachment) R.string.label_forward_inline else R.string.settings_forward_attachment,
 )
+
+private fun ReaderToolbarAction.readerAction(): ReaderAction? = when (this) {
+    ReaderToolbarAction.Refresh -> null
+    ReaderToolbarAction.Reply -> ReaderAction.Reply
+    ReaderToolbarAction.ReplyAll -> ReaderAction.ReplyAll
+    ReaderToolbarAction.Forward -> ReaderAction.Forward
+    ReaderToolbarAction.Delete -> ReaderAction.Delete
+    ReaderToolbarAction.Move -> ReaderAction.Move
+    ReaderToolbarAction.Spam -> ReaderAction.Spam
+    ReaderToolbarAction.Bounce -> ReaderAction.Bounce
+}
 
 private fun readerActionImage(action: ReaderAction) = when (action) {
     ReaderAction.Reply -> Icons.AutoMirrored.Filled.Reply

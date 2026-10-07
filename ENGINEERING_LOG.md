@@ -1655,3 +1655,19 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A default encode omits folderBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad folderBar
 - The folder list More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves folderBar. toolbar/index still saves indexBar only. toolbar/selection still saves selectionBar only
 - No install
+
+## 2026-10-06 - reader toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-reader-bar-20261006-2149-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 48 IMPLEMENT revision 1. builds before edit: bed945c
+- Phase 1 of 1: reader bar for Refresh and the message actions. Until a layout is saved it follows the Message bar list. More stays pinned. readerBar encoding stays. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - reader toolbar customize phase 1
+
+- ReaderToolbarLayout keeps Refresh and the message actions in exactly one section. Until readerToolbar is saved it follows readerBar. Spam is only a display filter. More stays pinned
+- A default encode omits readerToolbar. defaultsRoundTrip keeps its key list. readerBar stays. A repeated, unknown, or missing action throws bad readerToolbar
+- The reader More menu ends with Customize toolbar…. That screen moves Refresh and the message actions onto the bar, into that menu, or out of sight, and saves readerToolbar. The other toolbar routes stay on their own layouts
+- No install

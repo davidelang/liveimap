@@ -38,6 +38,7 @@ enum class ToolbarScreen {
     Index,
     Selection,
     Folders,
+    Reader,
 }
 
 private class ToolbarSettings(val store: DataStoreSettingsStore) {
@@ -63,6 +64,12 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
     fun persistFolder(next: FolderBarLayout) {
         val current = settings ?: return
         settings = current.copy(folderBar = next)
+        save()
+    }
+
+    fun persistReader(next: ReaderToolbarLayout) {
+        val current = settings ?: return
+        settings = current.copy(readerToolbar = next)
         save()
     }
 
@@ -122,6 +129,19 @@ fun ToolbarEditorScreen(screen: ToolbarScreen) {
                 if (current != null) holder.persistFolder(moveFolderAction(current, action, target))
             },
             onReset = { holder.persistFolder(resetFolderBar()) },
+        )
+        ToolbarScreen.Reader -> SectionEditor(
+            rowsIn = { section -> effectiveReaderToolbar(loaded).actionsIn(section) },
+            labelRes = ::readerToolbarActionRes,
+            onMoveBy = { action, delta ->
+                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                if (current != null) holder.persistReader(moveReaderActionBy(current, action, delta))
+            },
+            onMoveTo = { action, target ->
+                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                if (current != null) holder.persistReader(moveReaderAction(current, action, target))
+            },
+            onReset = { holder.persistReader(resetReaderToolbar()) },
         )
     }
 }
@@ -228,6 +248,17 @@ private fun folderBarActionRes(action: FolderBarAction): Int = when (action) {
     FolderBarAction.ResetDefault -> R.string.folders_reset_default
 }
 
+private fun readerToolbarActionRes(action: ReaderToolbarAction): Int = when (action) {
+    ReaderToolbarAction.Refresh -> R.string.reader_refresh
+    ReaderToolbarAction.Reply -> R.string.compose_reply
+    ReaderToolbarAction.ReplyAll -> R.string.compose_reply_all
+    ReaderToolbarAction.Forward -> R.string.compose_forward
+    ReaderToolbarAction.Delete -> R.string.drawer_delete
+    ReaderToolbarAction.Move -> R.string.label_move
+    ReaderToolbarAction.Spam -> R.string.label_spam
+    ReaderToolbarAction.Bounce -> R.string.compose_bounce
+}
+
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
@@ -241,6 +272,12 @@ private fun SelectionBarLayout.actionsIn(section: BarSection): List<SelectionBar
 }
 
 private fun FolderBarLayout.actionsIn(section: BarSection): List<FolderBarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun ReaderToolbarLayout.actionsIn(section: BarSection): List<ReaderToolbarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
     BarSection.Hidden -> hidden
