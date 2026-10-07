@@ -1594,3 +1594,16 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 ## 2026-10-06 - Search scope and count phase 1 layout
 
 - The scope chips use FlowRow with the same ExperimentalLayoutApi opt-in as the other chip rows. No install.
+
+## 2026-10-06 - ESEARCH IN execution start
+
+- Approved plan: sandbox/plans/search-esearch-in-20261006-2037-plan.md
+- Mailbox SEQ 44 IMPLEMENT revision 1 is the approval. Status set to APPROVED.
+- Phase 1: MULTISEARCH flag, ESEARCH IN for Subtree, Subscribed, and Personal All, correlator parser, count sum, and the tests. The per-folder loop stays when MULTISEARCH is absent and when All includes a namespace that is not Personal. No install.
+- First action per standard-plan-compliance-block.md. Base tip d5891cc. Commits stay on master.
+
+## 2026-10-06 - ESEARCH IN phase 1
+
+- MULTISEARCH is a capability flag. Cyrus is false. Moon is true. The fixture lines are unchanged.
+- A wider search with MULTISEARCH sends one ESEARCH IN. Subtree names the home mailbox. Subscribed uses subscribed. All uses personal only when every namespace is Personal. Any other namespace stays on the folder loop. Current stays one search.
+- Count sends RETURN (COUNT) and sums the per-mailbox counts. The result list sends RETURN (ALL). There is no SELECT before that command. CapabilityGateTest 7 and IndexWindowTest 75 passed. Native assembleDebug compiled. No install.

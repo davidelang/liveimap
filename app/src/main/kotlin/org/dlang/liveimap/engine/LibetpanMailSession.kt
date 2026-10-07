@@ -12,6 +12,7 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.MailboxUids
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
@@ -534,6 +535,57 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun searchScope(
+        scopeName: String,
+        home: String,
+        kind: String,
+        argument: String,
+    ): List<MailboxUids> = keeper.read("search") {
+        if (kind != "Advanced") throw MailFailure("search failed")
+        if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
+        val h = requireHandle()
+        val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
+        if (parsed.steps.isEmpty()) throw MailFailure("bad search")
+        val withCharset = searchNeedsCharset(argument)
+        val rows = nativeSearchScope(
+            h,
+            scopeName,
+            home,
+            parsed.combiner.name,
+            BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
+            Array(parsed.steps.size) { parsed.steps[it].kind },
+            Array(parsed.steps.size) { parsed.steps[it].argument },
+            withCharset,
+        ) ?: throw MailFailure("search failed")
+        rows.toList()
+    }
+
+    override suspend fun searchScopeCount(
+        scopeName: String,
+        home: String,
+        kind: String,
+        argument: String,
+    ): Int = keeper.read("search") {
+        if (kind != "Advanced") throw MailFailure("search failed")
+        if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
+        val h = requireHandle()
+        val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
+        if (parsed.steps.isEmpty()) throw MailFailure("bad search")
+        val withCharset = searchNeedsCharset(argument)
+        val count = nativeSearchScopeCount(
+            h,
+            scopeName,
+            home,
+            parsed.combiner.name,
+            BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
+            Array(parsed.steps.size) { parsed.steps[it].kind },
+            Array(parsed.steps.size) { parsed.steps[it].argument },
+            withCharset,
+        )
+        if (count < 0L || count > Int.MAX_VALUE) throw MailFailure("search failed")
+        count.toInt()
+    }
+
     override suspend fun subscribedMailboxes(): List<String> = keeper.read("list") {
         val rows = nativeSubscribedMailboxes(requireHandle(), featureCaps.listExtended)
             ?: throw MailFailure("list failed")
@@ -963,6 +1015,28 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeSearchAdvancedCount(
         handle: Long,
+        combiner: String,
+        negated: BooleanArray,
+        kinds: Array<String>,
+        arguments: Array<String>,
+        withCharset: Boolean,
+    ): Long
+
+    private external fun nativeSearchScope(
+        handle: Long,
+        scope: String,
+        home: String,
+        combiner: String,
+        negated: BooleanArray,
+        kinds: Array<String>,
+        arguments: Array<String>,
+        withCharset: Boolean,
+    ): Array<MailboxUids>?
+
+    private external fun nativeSearchScopeCount(
+        handle: Long,
+        scope: String,
+        home: String,
         combiner: String,
         negated: BooleanArray,
         kinds: Array<String>,

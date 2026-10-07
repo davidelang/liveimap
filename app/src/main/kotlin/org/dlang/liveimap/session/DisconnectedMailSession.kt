@@ -42,6 +42,12 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun searchCount(kind: String, argument: String): Int = notConnected()
 
+    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+        notConnected()
+
+    override suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
+        notConnected()
+
     override suspend fun subscribedMailboxes(): List<String> = notConnected()
 
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =

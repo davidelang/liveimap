@@ -10,8 +10,10 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.MailboxUids
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
@@ -1441,6 +1443,144 @@ class IndexWindowTest {
         assertTrue(session.searchKinds.isEmpty())
         assertEquals(listOf("INBOX", "INBOX.Sent"), session.selects)
     }
+
+    @Test
+    fun countHitsCurrentWithMultisearchStaysOneSearch() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.searchCountResult = 7
+        val result = runImmediate { countHits(session, "INBOX", text, SearchScope.Current) }
+        assertEquals(SearchCount(7, emptyList()), result)
+        assertEquals(listOf("Advanced" to text), session.searchCountCalls)
+        assertTrue(session.scopeCountCalls.isEmpty())
+        assertTrue(session.scopeCalls.isEmpty())
+    }
+
+    @Test
+    fun countHitsSubtreeWithMultisearchIsOneScopeCount() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.scopeCount = 5
+        val progress = ArrayList<Pair<Int, Int>>()
+        val result = runImmediate {
+            countHits(session, "INBOX", text, SearchScope.Subtree) { current, total ->
+                progress += current to total
+            }
+        }
+        assertEquals(SearchCount(5, emptyList()), result)
+        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text)), session.scopeCountCalls)
+        assertTrue(session.scopeCalls.isEmpty())
+        assertTrue(session.searchCountCalls.isEmpty())
+        assertTrue(session.selects.isEmpty())
+        assertTrue(session.listCalls.isEmpty())
+        assertTrue(session.fetchRequests.isEmpty())
+        assertEquals(listOf(1 to 1), progress)
+    }
+
+    @Test
+    fun countHitsSubscribedWithMultisearchIsOneScopeCount() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.scopeCount = 2
+        val result = runImmediate { countHits(session, "INBOX", text, SearchScope.Subscribed) }
+        assertEquals(SearchCount(2, emptyList()), result)
+        assertEquals(listOf(scopeCall("Subscribed", "INBOX", "Advanced", text)), session.scopeCountCalls)
+    }
+
+    @Test
+    fun fastSubtreeAdvancedUsesOneScopeSearch() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.arrivalRows = listOf(row(1))
+        session.scopeHits = listOf(
+            MailboxUids("INBOX", listOf(9L, 8L)),
+            MailboxUids("INBOX.Sent", listOf(4L)),
+        )
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val searched = runImmediate { model.applyAdvanced(text, SearchScope.Subtree) }
+        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text, emptyList())), session.scopeCalls)
+        assertTrue(session.searchKinds.isEmpty())
+        assertTrue(session.listCalls.isEmpty())
+        assertTrue(searched.any { it.mailbox == "INBOX" })
+        assertTrue(searched.any { it.mailbox == "INBOX.Sent" })
+        assertEquals("INBOX", session.selects.last())
+    }
+
+    @Test
+    fun fastAllPersonalUsesOneScopeSearch() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.namespaceRows = listOf(Namespace("", '/', NamespaceKind.Personal))
+        session.scopeHits = listOf(MailboxUids("INBOX", listOf(9L)))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.applyAdvanced(text, SearchScope.All) }
+        assertEquals("All", session.scopeCalls.single().scopeName)
+        assertTrue(session.listCalls.isEmpty())
+    }
+
+    @Test
+    fun allWithSharedNamespaceStaysOnTheFolderLoop() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.namespaceRows = listOf(
+            Namespace("", '/', NamespaceKind.Personal),
+            Namespace("Shared/", '/', NamespaceKind.Shared),
+        )
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.applyAdvanced(text, SearchScope.All) }
+        assertTrue(session.scopeCalls.isEmpty())
+        assertTrue(session.listCalls.isNotEmpty())
+    }
+
+    @Test
+    fun fastScopeFailureKeepsThePreviousRow() {
+        val text = checkNotNull(
+            encodeAdvancedQuery(
+                AdvancedCombiner.And,
+                listOf(AdvancedStep(false, "Subject", "budget")),
+            ),
+        )
+        val session = FakeMailSession(setOf("MULTISEARCH"))
+        session.arrivalRows = listOf(row(1, sequence = 4))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        session.scopeFailure = MailFailure("search failed")
+        runImmediate { model.applyAdvanced(text, SearchScope.Subtree) }
+        assertEquals("search failed", model.notice)
+        assertEquals(listOf(1L), model.rows.map { it.uid })
+        assertTrue(model.orderMailboxes.isEmpty())
+    }
 }
 
 private fun scopedSession(): FakeMailSession {
@@ -1516,6 +1656,22 @@ private data class StartSearch(val rule: String, val byUid: Boolean, val edge: S
 
 private data class CopyWrite(val uids: List<Long>, val target: String)
 
+private data class ScopeCall(
+    val scopeName: String,
+    val home: String,
+    val kind: String,
+    val argument: String,
+    val selects: List<String> = emptyList(),
+)
+
+private fun scopeCall(
+    scopeName: String,
+    home: String,
+    kind: String,
+    argument: String,
+    selects: List<String> = emptyList(),
+) = ScopeCall(scopeName, home, kind, argument, selects)
+
 private class FakeMailSession(
     override var capabilities: Set<String> = emptySet(),
 ) : MailSession {
@@ -1527,6 +1683,12 @@ private class FakeMailSession(
     val searchMailboxes = mutableListOf<String>()
     val searchCountCalls = mutableListOf<Pair<String, String>>()
     var searchCountResult: Int = 0
+    val scopeCalls = mutableListOf<ScopeCall>()
+    val scopeCountCalls = mutableListOf<ScopeCall>()
+    var scopeHits: List<MailboxUids> = emptyList()
+    var scopeCount: Int = 0
+    var scopeFailure: MailFailure? = null
+    var namespaceRows: List<Namespace>? = null
     val textSearches = mutableListOf<String>()
     val listCalls = mutableListOf<Triple<String, String?, Boolean>>()
     var levels: (String, String?) -> List<FolderEntry> = { _, _ -> emptyList() }
@@ -1565,7 +1727,11 @@ private class FakeMailSession(
 
     override suspend fun open(account: AccountSettings): OpenResult = unused()
 
-    override suspend fun namespaces(): List<Namespace> = unused()
+    override suspend fun namespaces(): List<Namespace> {
+        val rows = namespaceRows
+        if (rows != null) return rows
+        return unused()
+    }
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
         listCalls += Triple(prefix, parentMailbox, unreadCounts)
@@ -1710,6 +1876,30 @@ private class FakeMailSession(
     override suspend fun searchCount(kind: String, argument: String): Int {
         searchCountCalls += kind to argument
         return searchCountResult
+    }
+
+    override suspend fun searchScope(
+        scopeName: String,
+        home: String,
+        kind: String,
+        argument: String,
+    ): List<MailboxUids> {
+        scopeCalls += ScopeCall(scopeName, home, kind, argument, selects.toList())
+        val pending = scopeFailure
+        if (pending != null) throw pending
+        return scopeHits
+    }
+
+    override suspend fun searchScopeCount(
+        scopeName: String,
+        home: String,
+        kind: String,
+        argument: String,
+    ): Int {
+        scopeCountCalls += ScopeCall(scopeName, home, kind, argument, selects.toList())
+        val pending = scopeFailure
+        if (pending != null) throw pending
+        return scopeCount
     }
 
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {

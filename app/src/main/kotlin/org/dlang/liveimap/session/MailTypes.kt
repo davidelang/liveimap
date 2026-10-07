@@ -53,6 +53,11 @@ enum class SearchEdge {
     Max,
 }
 
+data class MailboxUids(
+    val mailbox: String,
+    val uids: List<Long>,
+)
+
 enum class IndexMode {
     ArrivalNewest,
     ArrivalOldest,

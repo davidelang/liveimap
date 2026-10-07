@@ -39,6 +39,12 @@ interface MailSession {
     suspend fun searchCount(kind: String, argument: String): Int =
         searchCriterion(kind, argument).size
 
+    suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+        throw MailFailure("search failed")
+
+    suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
+        throw MailFailure("search failed")
+
     suspend fun subscribedMailboxes(): List<String> = emptyList()
     suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
         throw MailFailure("searchStart")

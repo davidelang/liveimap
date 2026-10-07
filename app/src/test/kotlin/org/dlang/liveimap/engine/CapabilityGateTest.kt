@@ -3,6 +3,7 @@ package org.dlang.liveimap.engine
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.OpenResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,6 +52,7 @@ class CapabilityGateTest {
         assertEquals("Plain", caps.listKind(false))
         assertEquals("FullSelect", caps.resyncKind())
         assertEquals("UidSearch", caps.searchKind())
+        assertFalse(caps.multisearch)
         assertEquals("UidSort", caps.sortKind())
         assertEquals("BodyPeek", caps.previewKind())
         assertEquals("BodyPeek", caps.fetchKind())
@@ -78,6 +80,7 @@ class CapabilityGateTest {
         assertEquals("ExtendedWithMessages", caps.listKind(false))
         assertEquals("Qresync", caps.resyncKind())
         assertEquals("Esearch", caps.searchKind())
+        assertTrue(caps.multisearch)
         assertEquals("Esort", caps.sortKind())
         assertEquals("Preview", caps.previewKind())
         assertEquals("BinaryPeek", caps.fetchKind())

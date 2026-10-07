@@ -57,6 +57,9 @@ int mailimap_status_send(mailstream * fd, const char * mb,
 int mailimap_space_send(mailstream * fd);
 int mailimap_token_send(mailstream * fd, const char * atom);
 int mailimap_mailbox_send(mailstream * fd, const char * mb);
+int mailimap_mailbox_parse(mailstream * fd, MMAPString * buffer,
+    struct mailimap_parser_context * parser_ctx, size_t * indx, char ** result,
+    size_t progr_rate, progress_function * progr_fun);
 int mailimap_flag_list_send(mailstream * fd, struct mailimap_flag_list * flag_list);
 int mailimap_astring_send(mailstream * fd, const char * astring);
 int mailimap_select_send(mailstream * fd, const char * mb, int condstore);
@@ -85,6 +88,15 @@ enum {
     LIVE_PREVIEW = 1,
     LIVE_BINARY = 2,
     LIVE_ESEARCH = 3,
+    LIVE_SCOPE = 4,
+};
+
+struct LiveScopeHit {
+    char * mailbox;
+    clist * uids;
+    int hasAll;
+    int hasCount;
+    int64_t count;
 };
 
 struct LiveBlob {
@@ -164,6 +176,8 @@ struct JniCache {
     jclass threadHeader = nullptr;
     jmethodID sortFieldInit = nullptr;
     jmethodID threadHeaderInit = nullptr;
+    jclass mailboxUids = nullptr;
+    jmethodID mailboxUidsInit = nullptr;
     jmethodID listInit = nullptr;
     jmethodID listAdd = nullptr;
     jmethodID setInit = nullptr;
@@ -420,6 +434,13 @@ bool ensureJni(JNIEnv * env) {
             gJni.threadHeader,
             "<init>",
             "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    }
+    local = env->FindClass("org/dlang/liveimap/session/MailboxUids");
+    if (local != nullptr) {
+        gJni.mailboxUids = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+        gJni.mailboxUidsInit = env->GetMethodID(
+            gJni.mailboxUids, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
     }
     if (env->ExceptionCheck()) env->ExceptionClear();
     gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
@@ -2642,6 +2663,13 @@ void freeUidList(clist * list) {
     clist_free(list);
 }
 
+void freeScopeHit(LiveScopeHit * hit) {
+    if (hit == nullptr) return;
+    free(hit->mailbox);
+    freeUidList(hit->uids);
+    free(hit);
+}
+
 bool appendUid(clist * list, uint32_t uid) {
     if (uid == 0 || list == nullptr) return true;
     auto * n = static_cast<uint32_t *>(malloc(sizeof(uint32_t)));
@@ -2734,6 +2762,123 @@ bool parseDecimal(MMAPString * buffer, size_t * indx, int64_t * out) {
     return true;
 }
 
+int failEsearch(clist * uids, char * mailbox, int r) {
+    freeUidList(uids);
+    free(mailbox);
+    return r;
+}
+
+int parseCorrelatorGroup(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
+    char ** mailbox, bool * sawMailbox) {
+    size_t cur = *indx;
+    int r = mailimap_oparenth_parse(fd, buffer, ctx, &cur);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    bool sawTag = false;
+    bool sawBox = false;
+    bool sawValidity = false;
+    bool any = false;
+    char * box = nullptr;
+    for (;;) {
+        if (peekChar(buffer, cur) == ')') break;
+        if (any) {
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+        }
+        char * atom = nullptr;
+        r = mailimap_atom_parse(fd, buffer, ctx, &cur, &atom, 0, nullptr);
+        if (r != MAILIMAP_NO_ERROR) {
+            free(box);
+            return r;
+        }
+        std::string name = atom != nullptr ? atom : "";
+        free(atom);
+        any = true;
+        if (strcasecmp(name.c_str(), "TAG") == 0) {
+            if (sawTag) {
+                free(box);
+                return MAILIMAP_ERROR_PARSE;
+            }
+            sawTag = true;
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+            r = parseTagValue(fd, buffer, ctx, &cur);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+            continue;
+        }
+        if (strcasecmp(name.c_str(), "MAILBOX") == 0) {
+            if (sawBox || *sawMailbox) {
+                free(box);
+                return MAILIMAP_ERROR_PARSE;
+            }
+            sawBox = true;
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+            char * parsed = nullptr;
+            r = mailimap_mailbox_parse(fd, buffer, ctx, &cur, &parsed, 0, nullptr);
+            if (r != MAILIMAP_NO_ERROR || parsed == nullptr) {
+                free(parsed);
+                free(box);
+                return r != MAILIMAP_NO_ERROR ? r : MAILIMAP_ERROR_PARSE;
+            }
+            free(box);
+            box = parsed;
+            continue;
+        }
+        if (strcasecmp(name.c_str(), "UIDVALIDITY") == 0) {
+            if (sawValidity) {
+                free(box);
+                return MAILIMAP_ERROR_PARSE;
+            }
+            sawValidity = true;
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+            uint32_t number = 0;
+            r = mailimap_nz_number_parse(fd, buffer, ctx, &cur, &number);
+            if (r != MAILIMAP_NO_ERROR) {
+                free(box);
+                return r;
+            }
+            (void)number;
+            continue;
+        }
+        free(box);
+        return MAILIMAP_ERROR_PARSE;
+    }
+    if (!any) {
+        free(box);
+        return MAILIMAP_ERROR_PARSE;
+    }
+    r = mailimap_cparenth_parse(fd, buffer, ctx, &cur);
+    if (r != MAILIMAP_NO_ERROR) {
+        free(box);
+        return r;
+    }
+    if (sawBox) {
+        free(*mailbox);
+        *mailbox = box;
+        *sawMailbox = true;
+    } else {
+        free(box);
+    }
+    *indx = cur;
+    return MAILIMAP_NO_ERROR;
+}
+
 int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
     struct mailimap_extension_data ** result) {
     size_t cur = *indx;
@@ -2741,6 +2886,11 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
     if (r != MAILIMAP_NO_ERROR) return r;
     clist * uids = clist_new();
     if (uids == nullptr) return MAILIMAP_ERROR_MEMORY;
+    char * mailbox = nullptr;
+    bool sawMailbox = false;
+    bool hasAll = false;
+    bool sawCount = false;
+    int64_t countValue = 0;
     for (;;) {
         size_t save = cur;
         r = mailimap_space_parse(fd, buffer, &cur);
@@ -2749,59 +2899,71 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             break;
         }
         if (peekChar(buffer, cur) == '(') {
-            r = mailimap_oparenth_parse(fd, buffer, ctx, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
-            r = mailimap_token_case_insensitive_parse(fd, buffer, &cur, "TAG");
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
-            r = mailimap_space_parse(fd, buffer, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
-            r = parseTagValue(fd, buffer, ctx, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
-            r = mailimap_cparenth_parse(fd, buffer, ctx, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            r = parseCorrelatorGroup(fd, buffer, ctx, &cur, &mailbox, &sawMailbox);
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             continue;
         }
         char * atom = nullptr;
         r = mailimap_atom_parse(fd, buffer, ctx, &cur, &atom, 0, nullptr);
-        if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+        if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
         std::string name = atom != nullptr ? atom : "";
         free(atom);
         if (strcasecmp(name.c_str(), "UID") == 0) continue;
         if (strcasecmp(name.c_str(), "ALL") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             r = parseSeqSet(fd, buffer, ctx, &cur, uids);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            hasAll = true;
             continue;
         }
         if (strcasecmp(name.c_str(), "MIN") == 0 || strcasecmp(name.c_str(), "MAX") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             uint32_t number = 0;
             r = mailimap_nz_number_parse(fd, buffer, ctx, &cur, &number);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
-            if (!appendUid(uids, number)) { freeUidList(uids); return MAILIMAP_ERROR_MEMORY; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            if (!appendUid(uids, number)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_MEMORY);
             continue;
         }
         if (strcasecmp(name.c_str(), "COUNT") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             int64_t number = 0;
-            if (!parseDecimal(buffer, &cur, &number)) { freeUidList(uids); return MAILIMAP_ERROR_PARSE; }
-            if (tlsImap != nullptr && tlsLive != nullptr && tlsLive->imap == tlsImap) {
-                tlsLive->esearchCount = number;
-            }
+            if (!parseDecimal(buffer, &cur, &number)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
+            sawCount = true;
+            countValue = number;
             continue;
         }
         if (strcasecmp(name.c_str(), "MODSEQ") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
-            if (r != MAILIMAP_NO_ERROR) { freeUidList(uids); return r; }
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             while (peekChar(buffer, cur) >= '0' && peekChar(buffer, cur) <= '9') cur += 1;
             continue;
         }
-        freeUidList(uids);
-        return MAILIMAP_ERROR_PARSE;
+        return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
     }
+    if (!sawMailbox && sawCount && tlsImap != nullptr && tlsLive != nullptr && tlsLive->imap == tlsImap) {
+        tlsLive->esearchCount = countValue;
+    }
+    if (sawMailbox) {
+        auto * hit = static_cast<LiveScopeHit *>(calloc(1, sizeof(LiveScopeHit)));
+        if (hit == nullptr) return failEsearch(uids, mailbox, MAILIMAP_ERROR_MEMORY);
+        hit->mailbox = mailbox;
+        hit->uids = uids;
+        hit->hasAll = hasAll ? 1 : 0;
+        hit->hasCount = sawCount ? 1 : 0;
+        hit->count = countValue;
+        struct mailimap_extension_data * ext = mailimap_extension_data_new(&liveimap_extra_extension, LIVE_SCOPE, hit);
+        if (ext == nullptr) {
+            freeScopeHit(hit);
+            return MAILIMAP_ERROR_MEMORY;
+        }
+        *result = ext;
+        *indx = cur;
+        return MAILIMAP_NO_ERROR;
+    }
+    free(mailbox);
     struct mailimap_extension_data * ext = mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, uids);
     if (ext == nullptr) {
         freeUidList(uids);
@@ -2911,6 +3073,8 @@ static void live_ext_free(struct mailimap_extension_data * ext_data) {
         }
     } else if (ext_data->ext_type == LIVE_ESEARCH) {
         freeUidList(static_cast<clist *>(ext_data->ext_data));
+    } else if (ext_data->ext_type == LIVE_SCOPE) {
+        freeScopeHit(static_cast<LiveScopeHit *>(ext_data->ext_data));
     }
     free(ext_data);
 }
@@ -2943,6 +3107,179 @@ clist * takeEsearch(mailimap * imap) {
     freeExtensionList(imap);
     if (uids == nullptr) uids = clist_new();
     return uids;
+}
+
+bool scopeSource(const char * scopeName, const char ** source, bool * subtree);
+int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, const char * ret, bool withCharset,
+    struct mailimap_search_key * key, struct mailimap_response ** response);
+
+void freeScopeHits(clist * hits) {
+    if (hits == nullptr) return;
+    for (clistiter * cur = clist_begin(hits); cur != nullptr; cur = clist_next(cur)) {
+        freeScopeHit(static_cast<LiveScopeHit *>(clist_content(cur)));
+    }
+    clist_free(hits);
+}
+
+clist * takeScopeHits(mailimap * imap) {
+    clist * hits = clist_new();
+    if (hits == nullptr) {
+        freeExtensionList(imap);
+        return nullptr;
+    }
+    if (imap->imap_response_info != nullptr && imap->imap_response_info->rsp_extension_list != nullptr) {
+        for (clistiter * cur = clist_begin(imap->imap_response_info->rsp_extension_list); cur != nullptr; cur = clist_next(cur)) {
+            auto * ext = static_cast<struct mailimap_extension_data *>(clist_content(cur));
+            if (ext == nullptr) continue;
+            if (ext->ext_extension == &liveimap_extra_extension && ext->ext_type == LIVE_SCOPE) {
+                if (clist_append(hits, ext->ext_data) != 0) {
+                    freeScopeHits(hits);
+                    freeExtensionList(imap);
+                    return nullptr;
+                }
+                ext->ext_data = nullptr;
+                ext->ext_type = -1;
+            }
+        }
+    }
+    freeExtensionList(imap);
+    return hits;
+}
+
+jobject scopeUidList(JNIEnv * env, clist * uids) {
+    jobject list = env->NewObject(gJni.arrayList, gJni.listInit);
+    if (list == nullptr || uids == nullptr) return list;
+    for (clistiter * cur = clist_begin(uids); cur != nullptr; cur = clist_next(cur)) {
+        auto * n = static_cast<uint32_t *>(clist_content(cur));
+        if (n == nullptr) continue;
+        jobject boxed = env->CallStaticObjectMethod(gJni.longCls, gJni.longValueOf, static_cast<jlong>(*n));
+        if (boxed == nullptr) continue;
+        env->CallBooleanMethod(list, gJni.listAdd, boxed);
+        env->DeleteLocalRef(boxed);
+    }
+    return list;
+}
+
+jobjectArray scopeUidArray(JNIEnv * env, clist * hits) {
+    std::vector<jobject> built;
+    if (hits != nullptr) {
+        for (clistiter * cur = clist_begin(hits); cur != nullptr; cur = clist_next(cur)) {
+            auto * hit = static_cast<LiveScopeHit *>(clist_content(cur));
+            if (hit == nullptr || hit->mailbox == nullptr || !hit->hasAll) continue;
+            jstring name = newString(env, hit->mailbox);
+            jobject list = scopeUidList(env, hit->uids);
+            jobject obj = env->NewObject(gJni.mailboxUids, gJni.mailboxUidsInit, name, list);
+            if (name != nullptr) env->DeleteLocalRef(name);
+            if (list != nullptr) env->DeleteLocalRef(list);
+            if (env->ExceptionCheck() || obj == nullptr) {
+                for (jobject old : built) env->DeleteLocalRef(old);
+                return nullptr;
+            }
+            built.push_back(obj);
+        }
+    }
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(built.size()), gJni.mailboxUids, nullptr);
+    if (arr == nullptr) {
+        for (jobject old : built) env->DeleteLocalRef(old);
+        return nullptr;
+    }
+    for (jsize i = 0; i < static_cast<jsize>(built.size()); ++i) {
+        env->SetObjectArrayElement(arr, i, built[static_cast<size_t>(i)]);
+        env->DeleteLocalRef(built[static_cast<size_t>(i)]);
+    }
+    return arr;
+}
+
+jlong scopeCountOf(clist * hits) {
+    int64_t sum = 0;
+    if (hits == nullptr) return 0;
+    for (clistiter * cur = clist_begin(hits); cur != nullptr; cur = clist_next(cur)) {
+        auto * hit = static_cast<LiveScopeHit *>(clist_content(cur));
+        if (hit == nullptr || !hit->hasCount) continue;
+        if (hit->count < 0 || sum > INT64_MAX - hit->count) return -1;
+        sum += hit->count;
+    }
+    return static_cast<jlong>(sum);
+}
+
+bool scopeSendable(const char * scope, const char * home) {
+    const char * source = nullptr;
+    bool subtree = false;
+    if (!scopeSource(scope, &source, &subtree)) return false;
+    if (subtree && (home == nullptr || home[0] == 0)) return false;
+    return true;
+}
+
+jobjectArray runScopeSearch(JNIEnv * env, LiveSession * session, const char * scope, const char * home,
+    struct mailimap_search_key * key, jboolean withCharset) {
+    if (key == nullptr || !scopeSendable(scope, home) || gJni.mailboxUids == nullptr || gJni.mailboxUidsInit == nullptr) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    struct mailimap_response * response = nullptr;
+    int r = sendEsearchIn(session->imap, scope, home, "ALL", withCharset == JNI_TRUE, key, &response);
+    mailimap_search_key_free(key);
+    if (r != MAILIMAP_NO_ERROR) {
+        throwImap(env, session, r, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    clist * hits = takeScopeHits(session->imap);
+    bool ok = response != nullptr && taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok || hits == nullptr) {
+        freeScopeHits(hits);
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jobjectArray arr = scopeUidArray(env, hits);
+    freeScopeHits(hits);
+    if (env->ExceptionCheck() || arr == nullptr) {
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    unlockSession(session);
+    return arr;
+}
+
+jlong runScopeCount(JNIEnv * env, LiveSession * session, const char * scope, const char * home,
+    struct mailimap_search_key * key, jboolean withCharset) {
+    if (key == nullptr || !scopeSendable(scope, home)) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return -1;
+    }
+    struct mailimap_response * response = nullptr;
+    int r = sendEsearchIn(session->imap, scope, home, "COUNT", withCharset == JNI_TRUE, key, &response);
+    mailimap_search_key_free(key);
+    if (r != MAILIMAP_NO_ERROR) {
+        throwImap(env, session, r, "search failed");
+        unlockSession(session);
+        return -1;
+    }
+    clist * hits = takeScopeHits(session->imap);
+    bool ok = response != nullptr && taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok || hits == nullptr) {
+        freeScopeHits(hits);
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return -1;
+    }
+    jlong sum = scopeCountOf(hits);
+    freeScopeHits(hits);
+    if (sum < 0) {
+        throwFailure(env, "search failed");
+        unlockSession(session);
+        return -1;
+    }
+    unlockSession(session);
+    return sum;
 }
 
 clist * takeSort(mailimap * imap) {
@@ -2990,6 +3327,74 @@ int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset,
         if (r != MAILIMAP_NO_ERROR) return r;
     }
     r = sendWord(imap->imap_stream, "SEARCH", byUid);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "RETURN", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "(", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, ret, false);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, ")", false);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (withCharset) {
+        r = sendWord(imap->imap_stream, "CHARSET", true);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_astring_send(imap->imap_stream, "UTF-8");
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_search_key_send(imap->imap_stream, key);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    return finishParsed(imap, response);
+}
+
+bool scopeSource(const char * scopeName, const char ** source, bool * subtree) {
+    *source = nullptr;
+    *subtree = false;
+    if (scopeName == nullptr) return false;
+    if (strcmp(scopeName, "Subtree") == 0) {
+        *source = "subtree";
+        *subtree = true;
+        return true;
+    }
+    if (strcmp(scopeName, "Subscribed") == 0) {
+        *source = "subscribed";
+        return true;
+    }
+    if (strcmp(scopeName, "All") == 0) {
+        *source = "personal";
+        return true;
+    }
+    return false;
+}
+
+int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, const char * ret, bool withCharset,
+    struct mailimap_search_key * key, struct mailimap_response ** response) {
+    if (ret == nullptr || (strcmp(ret, "ALL") != 0 && strcmp(ret, "COUNT") != 0)) return MAILIMAP_ERROR_INVAL;
+    const char * source = nullptr;
+    bool subtree = false;
+    if (!scopeSource(scopeName, &source, &subtree)) return MAILIMAP_ERROR_INVAL;
+    if (subtree && (home == nullptr || home[0] == 0)) return MAILIMAP_ERROR_INVAL;
+    int r = mailimap_send_current_tag(imap);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "ESEARCH", false);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "IN", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "(", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, source, false);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (subtree) {
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_mailbox_send(imap->imap_stream, home);
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    r = sendWord(imap->imap_stream, ")", false);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "RETURN", true);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -5006,6 +5411,46 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvancedCount(JNI
         return -1;
     }
     return completeCount(env, session, key, withCharset);
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScope(JNIEnv * env, jobject, jlong handle,
+    jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
+    jboolean withCharset) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars scopeChars(env, scope);
+    JChars homeChars(env, home);
+    JChars combinerChars(env, combiner);
+    struct mailimap_search_key * key = advancedKey(env, combinerChars.c(), negated, kinds, arguments);
+    if (env->ExceptionCheck() || key == nullptr) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    return runScopeSearch(env, session, scopeChars.c(), homeChars.c(), key, withCharset);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv * env, jobject, jlong handle,
+    jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
+    jboolean withCharset) {
+    if (!ensureJni(env)) return -1;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return -1;
+    JChars scopeChars(env, scope);
+    JChars homeChars(env, home);
+    JChars combinerChars(env, combiner);
+    struct mailimap_search_key * key = advancedKey(env, combinerChars.c(), negated, kinds, arguments);
+    if (env->ExceptionCheck() || key == nullptr) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return -1;
+    }
+    return runScopeCount(env, session, scopeChars.c(), homeChars.c(), key, withCharset);
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

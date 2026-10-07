@@ -103,6 +103,12 @@ class SerialMailSession(
     override suspend fun searchCount(kind: String, argument: String): Int =
         onLane { inner.searchCount(kind, argument) }
 
+    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+        onLane { inner.searchScope(scopeName, home, kind, argument) }
+
+    override suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
+        onLane { inner.searchScopeCount(scopeName, home, kind, argument) }
+
     override suspend fun subscribedMailboxes(): List<String> =
         onLane { inner.subscribedMailboxes() }
 

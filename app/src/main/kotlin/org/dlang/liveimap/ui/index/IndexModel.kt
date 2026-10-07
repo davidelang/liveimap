@@ -10,6 +10,7 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
@@ -163,6 +164,15 @@ suspend fun mailboxesFor(scope: SearchScope, home: String, session: MailSession)
     }
 }
 
+suspend fun usesFastScope(session: MailSession, scope: SearchScope): Boolean {
+    if (!session.featureCaps.multisearch || scope == SearchScope.Current) return false
+    if (scope != SearchScope.All) return true
+    for (namespace in session.namespaces()) {
+        if (namespace.kind != NamespaceKind.Personal) return false
+    }
+    return true
+}
+
 suspend fun countHits(
     session: MailSession,
     home: String,
@@ -175,6 +185,11 @@ suspend fun countHits(
         if (cancelled()) return SearchCount(0, emptyList())
         onProgress(1, 1)
         return SearchCount(session.searchCount("Advanced", text), emptyList())
+    }
+    if (usesFastScope(session, scope)) {
+        if (cancelled()) return SearchCount(0, emptyList())
+        onProgress(1, 1)
+        return SearchCount(session.searchScopeCount(scope.name, home, "Advanced", text), emptyList())
     }
     val boxes = mailboxesFor(scope, home, session)
     var total = 0
@@ -1763,13 +1778,40 @@ class IndexModel(
     }
 
     private suspend fun fetchScopedAdvanced(text: String, preserveAnchor: Int?): List<IndexRow> {
-        val boxes = mailboxesFor(activeScope, mailbox, session)
-        val hits = ArrayList<Long>()
-        val hitBoxes = ArrayList<String>()
         val cancelled = scopeCancel
         val progress = scopeProgress
         scopeCancel = { false }
         scopeProgress = { _, _ -> }
+        if (usesFastScope(session, activeScope)) {
+            if (cancelled()) {
+                order = emptyList()
+                orderMailboxes = emptyList()
+                return emptyList()
+            }
+            progress(1, 1)
+            val groups = session.searchScope(activeScope.name, mailbox, "Advanced", text)
+            val hits = ArrayList<Long>()
+            val hitBoxes = ArrayList<String>()
+            for (group in groups) {
+                val ordered = if (view.newestFirst) group.uids.sortedDescending() else group.uids.sorted()
+                for (uid in ordered) {
+                    hits.add(uid)
+                    hitBoxes.add(group.mailbox)
+                }
+            }
+            order = hits
+            orderMailboxes = hitBoxes
+            arrivalTotal = 0
+            pendingNew = 0
+            val target = resolveTarget(hits.size, preserveAnchor)
+            pageAnchor = clampedAnchor(hits.size, preserveAnchor, target ?: 0)
+            val loaded = pagesOfMailboxes(hits, hitBoxes)
+            if (target != null) rememberStart(target, loaded.size)
+            return loaded
+        }
+        val boxes = mailboxesFor(activeScope, mailbox, session)
+        val hits = ArrayList<Long>()
+        val hitBoxes = ArrayList<String>()
         try {
             for ((index, box) in boxes.withIndex()) {
                 if (cancelled()) break
