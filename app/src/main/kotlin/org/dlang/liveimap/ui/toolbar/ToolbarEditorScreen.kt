@@ -34,6 +34,11 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 private val toolbarIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+enum class ToolbarScreen {
+    Index,
+    Selection,
+}
+
 private class ToolbarSettings(val store: DataStoreSettingsStore) {
     var settings by mutableStateOf<AccountSettings?>(null)
     private val gate = Mutex()
@@ -42,9 +47,19 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
         settings = store.load()
     }
 
-    fun persist(next: IndexBarLayout) {
+    fun persistIndex(next: IndexBarLayout) {
         val current = settings ?: return
         settings = current.copy(indexBar = next)
+        save()
+    }
+
+    fun persistSelection(next: SelectionBarLayout) {
+        val current = settings ?: return
+        settings = current.copy(selectionBar = next)
+        save()
+    }
+
+    private fun save() {
         toolbarIo.launch {
             gate.withLock {
                 val latest = settings ?: return@withLock
@@ -55,12 +70,50 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
 }
 
 @Composable
-fun ToolbarEditorScreen() {
+fun ToolbarEditorScreen(screen: ToolbarScreen) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val holder = remember(store) { ToolbarSettings(store) }
     LaunchedEffect(holder) { holder.load() }
     val loaded = holder.settings ?: return
+    when (screen) {
+        ToolbarScreen.Index -> SectionEditor(
+            rowsIn = { section -> loaded.indexBar.actionsIn(section) },
+            labelRes = ::indexBarActionRes,
+            onMoveBy = { action, delta ->
+                val current = holder.settings?.indexBar
+                if (current != null) holder.persistIndex(moveIndexActionBy(current, action, delta))
+            },
+            onMoveTo = { action, target ->
+                val current = holder.settings?.indexBar
+                if (current != null) holder.persistIndex(moveIndexAction(current, action, target))
+            },
+            onReset = { holder.persistIndex(resetIndexBar()) },
+        )
+        ToolbarScreen.Selection -> SectionEditor(
+            rowsIn = { section -> loaded.selectionBar.actionsIn(section) },
+            labelRes = ::selectionBarActionRes,
+            onMoveBy = { action, delta ->
+                val current = holder.settings?.selectionBar
+                if (current != null) holder.persistSelection(moveSelectionActionBy(current, action, delta))
+            },
+            onMoveTo = { action, target ->
+                val current = holder.settings?.selectionBar
+                if (current != null) holder.persistSelection(moveSelectionAction(current, action, target))
+            },
+            onReset = { holder.persistSelection(resetSelectionBar()) },
+        )
+    }
+}
+
+@Composable
+private fun <A> SectionEditor(
+    rowsIn: (BarSection) -> List<A>,
+    labelRes: (A) -> Int,
+    onMoveBy: (A, Int) -> Unit,
+    onMoveTo: (A, BarSection) -> Unit,
+    onReset: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -73,33 +126,27 @@ fun ToolbarEditorScreen() {
                 text = sectionTitle(section),
                 style = MaterialTheme.typography.titleSmall,
             )
-            val rows = loaded.indexBar.actionsIn(section)
+            val rows = rowsIn(section)
             rows.forEachIndexed { index, action ->
-                IndexBarEditorRow(
-                    action = action,
+                ToolbarEditorRow(
+                    labelRes = labelRes(action),
                     section = section,
                     index = index,
                     count = rows.size,
-                    onMoveBy = { delta ->
-                        val current = holder.settings?.indexBar
-                        if (current != null) holder.persist(moveIndexActionBy(current, action, delta))
-                    },
-                    onMoveTo = { target ->
-                        val current = holder.settings?.indexBar
-                        if (current != null) holder.persist(moveIndexAction(current, action, target))
-                    },
+                    onMoveBy = { delta -> onMoveBy(action, delta) },
+                    onMoveTo = { target -> onMoveTo(action, target) },
                 )
             }
         }
-        TextButton(onClick = { holder.persist(resetIndexBar()) }) {
+        TextButton(onClick = onReset) {
             Text(stringResource(R.string.toolbar_reset))
         }
     }
 }
 
 @Composable
-private fun IndexBarEditorRow(
-    action: IndexBarAction,
+private fun ToolbarEditorRow(
+    labelRes: Int,
     section: BarSection,
     index: Int,
     count: Int,
@@ -107,7 +154,7 @@ private fun IndexBarEditorRow(
     onMoveTo: (BarSection) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(indexBarActionRes(action)))
+        Text(stringResource(labelRes))
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
@@ -147,7 +194,20 @@ private fun indexBarActionRes(action: IndexBarAction): Int = when (action) {
     IndexBarAction.Filter -> R.string.index_filter
 }
 
+private fun selectionBarActionRes(action: SelectionBarAction): Int = when (action) {
+    SelectionBarAction.Seen -> R.string.toolbar_mark_read
+    SelectionBarAction.Flag -> R.string.toolbar_flag
+    SelectionBarAction.Move -> R.string.index_move
+    SelectionBarAction.Delete -> R.string.drawer_delete
+}
+
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {
+    BarSection.Toolbar -> toolbar
+    BarSection.Overflow -> overflow
+    BarSection.Hidden -> hidden
+}
+
+private fun SelectionBarLayout.actionsIn(section: BarSection): List<SelectionBarAction> = when (section) {
     BarSection.Toolbar -> toolbar
     BarSection.Overflow -> overflow
     BarSection.Hidden -> hidden

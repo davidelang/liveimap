@@ -19,3 +19,5 @@ Advanced search combines terms with And or Or. Body and Full text search every m
 Advanced search can cover this folder, the folders under it, subscribed folders, or every folder. Count returns the number and does not download messages.
 
 The index Sort menu ends with Customize toolbar…. That screen moves Refresh, Search, and Filter onto the bar, into the menu, or out of sight.
+
+The selection More menu ends with Customize toolbar…. That screen moves Mark read, Flag, Move, and Delete onto the bar, into that menu, or out of sight.

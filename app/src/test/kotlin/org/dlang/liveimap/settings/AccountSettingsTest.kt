@@ -2,8 +2,11 @@ package org.dlang.liveimap.settings
 
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
+import org.dlang.liveimap.ui.toolbar.SelectionBarAction
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
+import org.dlang.liveimap.ui.toolbar.moveSelectionAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -466,6 +469,38 @@ class AccountSettingsTest {
                 fail(value)
             } catch (error: IllegalArgumentException) {
                 assertEquals(value, "bad indexBar", error.message)
+            }
+        }
+    }
+
+    @Test
+    fun selectionBarRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("selectionBar"))
+        assertEquals(defaultSelectionBar(), decodeAccountSettings(text).selectionBar)
+        val explicit = text.trimEnd() + "\nselectionBar=T:Seen,Flag,Move,Delete|O:|H:\n"
+        assertEquals(defaultSelectionBar(), decodeAccountSettings(explicit).selectionBar)
+        val moved = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Move, BarSection.Overflow)
+        val saved = AccountSettings(selectionBar = moved)
+        val encoded = saved.encode()
+        assertFalse(encoded.contains("indexBar"))
+        assertTrue(encoded.contains("selectionBar=T:Seen,Flag,Delete|O:Move|H:"))
+        assertEquals(moved, decodeAccountSettings(encoded).selectionBar)
+        assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        val badValues = listOf(
+            "T:Seen|O:Move,Move|H:Delete",
+            "T:Sort|O:|H:",
+            "T:Seen|O:|H:Delete",
+            "nope",
+        )
+        for (value in badValues) {
+            val bad = text.trimEnd() + "\nselectionBar=$value\n"
+            try {
+                decodeAccountSettings(bad)
+                fail(value)
+            } catch (error: IllegalArgumentException) {
+                assertEquals(value, "bad selectionBar", error.message)
             }
         }
     }

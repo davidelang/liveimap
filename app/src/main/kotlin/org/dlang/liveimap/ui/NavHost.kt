@@ -89,6 +89,7 @@ import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
+import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -237,6 +238,7 @@ fun LiveImapNavHost() {
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
                             onCustomize = { navController.navigate("toolbar/index") },
+                            onCustomizeSelection = { navController.navigate("toolbar/selection") },
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
                             advancedScope = advancedScope,
@@ -281,6 +283,7 @@ fun LiveImapNavHost() {
                                     onCompose = { seed -> openCompose(seed) },
                                     onBack = { navController.popBackStack() },
                                     onCustomize = { navController.navigate("toolbar/index") },
+                                    onCustomizeSelection = { navController.navigate("toolbar/selection") },
                                     watchMailbox = paneUid < 0L,
                                     onAdvanced = { openAdvanced() },
                                     advancedQuery = advancedQuery.ifEmpty { null },
@@ -334,7 +337,12 @@ fun LiveImapNavHost() {
             }
             composable("toolbar/index") {
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen()
+                    ToolbarEditorScreen(ToolbarScreen.Index)
+                }
+            }
+            composable("toolbar/selection") {
+                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                    ToolbarEditorScreen(ToolbarScreen.Selection)
                 }
             }
             composable(

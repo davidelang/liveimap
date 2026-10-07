@@ -536,4 +536,8 @@
     <string name="toolbar_move_up">Move up</string>
     <string name="toolbar_move_down">Move down</string>
     <string name="toolbar_move_to">Move to %1$s</string>
+    <string name="toolbar_mark_read">Mark read</string>
+    <string name="toolbar_mark_unread">Mark unread</string>
+    <string name="toolbar_flag">Flag</string>
+    <string name="toolbar_unflag">Unflag</string>
 </resources>

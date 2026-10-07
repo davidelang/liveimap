@@ -1623,3 +1623,19 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - A default encode omits indexBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad indexBar
 - The Sort menu ends with Customize toolbar…. That screen moves the three onto the bar, into the menu, or out of sight, and saves indexBar with the account
 - No install
+
+## 2026-10-06 - selection toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-selection-bar-20261006-2123-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 46 IMPLEMENT revision 1. builds before edit: cf2a6da
+- Phase 1 of 1: selection bar for Mark read, Flag, Move, and Delete. More stays pinned. The index bar stays. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - selection toolbar customize phase 1
+
+- SelectionBarLayout keeps Seen, Flag, Move, and Delete in exactly one section. More is not an action and stays pinned
+- A default encode omits selectionBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad selectionBar
+- The selection More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves selectionBar. toolbar/index still saves indexBar only
+- No install

@@ -174,7 +174,10 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.IndexMenuEntry
+import org.dlang.liveimap.ui.toolbar.SelectionBarAction
+import org.dlang.liveimap.ui.toolbar.SelectionMenuEntry
 import org.dlang.liveimap.ui.toolbar.indexMenuTail
+import org.dlang.liveimap.ui.toolbar.selectionMenuTail
 import java.time.DateTimeException
 import java.time.Instant
 import java.time.Month
@@ -657,6 +660,7 @@ fun MessageIndexScreen(
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
     onCustomize: () -> Unit = {},
+    onCustomizeSelection: () -> Unit = {},
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -1817,74 +1821,92 @@ fun MessageIndexScreen(
                         trashKnown,
                     )
                     if (multiSelect) {
-                        IconButton(
-                            onClick = {
-                                if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
-                                else applySelectionFlags(emptySet(), setOf("\\Seen"))
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
-                                contentDescription = if (markUnread) "Mark unread" else "Mark read",
-                            )
+                        val selectionLayout = account.selectionBar
+                        val seenText = stringResource(
+                            if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
+                        )
+                        val flagText = stringResource(
+                            if (clearFlag) R.string.toolbar_unflag else R.string.toolbar_flag,
+                        )
+                        val moveText = stringResource(R.string.index_move)
+                        val toggleSeen = {
+                            if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Seen"))
                         }
-                        IconButton(
-                            onClick = {
-                                if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
-                                else applySelectionFlags(emptySet(), setOf("\\Flagged"))
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Flag,
-                                contentDescription = if (clearFlag) "Unflag" else "Flag",
-                            )
+                        val toggleFlag = {
+                            if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Flagged"))
                         }
-                        IconButton(
-                            onClick = {
-                                val uids = selected.toList()
-                                val entire = allMailbox
-                                scope.launch {
-                                    var undo: MailUndo? = null
-                                    gate.withLock {
-                                        model.clearMailUndo()
-                                        model.moveMessages(uids, barMoveMailbox(account), entire)
-                                        pull()
-                                        undo = model.mailUndo
-                                    }
-                                    val pending = undo
-                                    if (pending != null) publishUndo(pending)
+                        val moveSelected = {
+                            val uids = selected.toList()
+                            val entire = allMailbox
+                            scope.launch {
+                                var undo: MailUndo? = null
+                                gate.withLock {
+                                    model.clearMailUndo()
+                                    model.moveMessages(uids, barMoveMailbox(account), entire)
+                                    pull()
+                                    undo = model.mailUndo
                                 }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DriveFileMove,
-                                contentDescription = stringResource(R.string.index_move),
-                            )
+                                val pending = undo
+                                if (pending != null) publishUndo(pending)
+                            }
+                            Unit
                         }
-                        IconButton(
-                            onClick = {
-                                val uids = selected.toList()
-                                val entire = allMailbox
-                                scope.launch {
-                                    val trash = readKnownTrash()
-                                    val policy = effectiveDeletePolicy(
-                                        account.deletePolicy,
-                                        trash.isNotEmpty() && mailbox == trash,
-                                        session.featureCaps.uidPlus,
-                                        trash.isNotEmpty(),
-                                    )
-                                    if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                                        pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
-                                    } else {
-                                        applyDeletePolicy(policy, uids, entire, trash)
+                        val deleteSelected = {
+                            val uids = selected.toList()
+                            val entire = allMailbox
+                            scope.launch {
+                                val trash = readKnownTrash()
+                                val policy = effectiveDeletePolicy(
+                                    account.deletePolicy,
+                                    trash.isNotEmpty() && mailbox == trash,
+                                    session.featureCaps.uidPlus,
+                                    trash.isNotEmpty(),
+                                )
+                                if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
+                                } else {
+                                    applyDeletePolicy(policy, uids, entire, trash)
+                                }
+                            }
+                            Unit
+                        }
+                        for (action in selectionLayout.toolbar) {
+                            when (action) {
+                                SelectionBarAction.Seen -> {
+                                    IconButton(onClick = { toggleSeen() }) {
+                                        Icon(
+                                            imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
+                                            contentDescription = seenText,
+                                        )
                                     }
                                 }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = deletePolicyLabel(effectivePolicy),
-                            )
+                                SelectionBarAction.Flag -> {
+                                    IconButton(onClick = { toggleFlag() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Flag,
+                                            contentDescription = flagText,
+                                        )
+                                    }
+                                }
+                                SelectionBarAction.Move -> {
+                                    IconButton(onClick = { moveSelected() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DriveFileMove,
+                                            contentDescription = moveText,
+                                        )
+                                    }
+                                }
+                                SelectionBarAction.Delete -> {
+                                    IconButton(onClick = { deleteSelected() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Delete,
+                                            contentDescription = deletePolicyLabel(effectivePolicy),
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Box {
                             IconButton(onClick = { selectionMore = true }) {
@@ -1961,6 +1983,41 @@ fun MessageIndexScreen(
                                     text = { Text(stringResource(R.string.index_clear_selection)) },
                                     onClick = { clearSelection() },
                                 )
+                                for (entry in selectionMenuTail(selectionLayout)) {
+                                    when (entry) {
+                                        SelectionMenuEntry.Divider -> HorizontalDivider()
+                                        is SelectionMenuEntry.Action -> {
+                                            val action = entry.action
+                                            val label = when (action) {
+                                                SelectionBarAction.Seen -> seenText
+                                                SelectionBarAction.Flag -> flagText
+                                                SelectionBarAction.Move -> moveText
+                                                SelectionBarAction.Delete -> deletePolicyLabel(effectivePolicy)
+                                            }
+                                            DropdownMenuItem(
+                                                text = { Text(label) },
+                                                onClick = {
+                                                    selectionMore = false
+                                                    when (action) {
+                                                        SelectionBarAction.Seen -> toggleSeen()
+                                                        SelectionBarAction.Flag -> toggleFlag()
+                                                        SelectionBarAction.Move -> moveSelected()
+                                                        SelectionBarAction.Delete -> deleteSelected()
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        SelectionMenuEntry.Customize -> {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.toolbar_customize)) },
+                                                onClick = {
+                                                    selectionMore = false
+                                                    onCustomizeSelection()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {

@@ -62,4 +62,69 @@ class IndexBarLayoutTest {
         val stayed = moveIndexActionBy(defaultIndexBar(), IndexBarAction.Refresh, -1)
         assertEquals(defaultIndexBar(), stayed)
     }
+
+    @Test
+    fun defaultSelectionLayoutAndTail() {
+        val layout = defaultSelectionBar()
+        assertEquals(
+            listOf(
+                SelectionBarAction.Seen,
+                SelectionBarAction.Flag,
+                SelectionBarAction.Move,
+                SelectionBarAction.Delete,
+            ),
+            layout.toolbar,
+        )
+        assertEquals(emptyList<SelectionBarAction>(), layout.overflow)
+        assertEquals(emptyList<SelectionBarAction>(), layout.hidden)
+        assertEquals(
+            listOf(SelectionMenuEntry.Divider, SelectionMenuEntry.Customize),
+            selectionMenuTail(layout),
+        )
+        assertEquals(layout, resetSelectionBar())
+    }
+
+    @Test
+    fun moveSelectionToOverflowAndHidden() {
+        val overflow = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Move, BarSection.Overflow)
+        assertEquals(
+            listOf(SelectionBarAction.Seen, SelectionBarAction.Flag, SelectionBarAction.Delete),
+            overflow.toolbar,
+        )
+        assertEquals(listOf(SelectionBarAction.Move), overflow.overflow)
+        assertEquals(emptyList<SelectionBarAction>(), overflow.hidden)
+        assertEquals(
+            listOf(
+                SelectionMenuEntry.Divider,
+                SelectionMenuEntry.Action(SelectionBarAction.Move),
+                SelectionMenuEntry.Divider,
+                SelectionMenuEntry.Customize,
+            ),
+            selectionMenuTail(overflow),
+        )
+        val hidden = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Move, BarSection.Hidden)
+        assertFalse(hidden.toolbar.contains(SelectionBarAction.Move))
+        assertFalse(hidden.overflow.contains(SelectionBarAction.Move))
+        assertEquals(listOf(SelectionBarAction.Move), hidden.hidden)
+    }
+
+    @Test
+    fun moveSelectionByOneLeavesTheStart() {
+        val swapped = moveSelectionActionBy(defaultSelectionBar(), SelectionBarAction.Flag, 1)
+        assertEquals(
+            listOf(
+                SelectionBarAction.Seen,
+                SelectionBarAction.Move,
+                SelectionBarAction.Flag,
+                SelectionBarAction.Delete,
+            ),
+            swapped.toolbar,
+        )
+        assertEquals(emptyList<SelectionBarAction>(), swapped.overflow)
+        assertEquals(emptyList<SelectionBarAction>(), swapped.hidden)
+        assertEquals(
+            defaultSelectionBar(),
+            moveSelectionActionBy(defaultSelectionBar(), SelectionBarAction.Seen, -1),
+        )
+    }
 }
