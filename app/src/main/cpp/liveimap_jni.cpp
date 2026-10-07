@@ -6070,6 +6070,42 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv * env,
     unlockSession(session);
 }
 
+bool lineIs8bitCte(const char * line, size_t n) {
+    const char prefix[] = "content-transfer-encoding:";
+    const size_t prefixLen = sizeof(prefix) - 1;
+    if (n < prefixLen) return false;
+    for (size_t i = 0; i < prefixLen; ++i) {
+        unsigned char c = static_cast<unsigned char>(line[i]);
+        if (c >= 'A' && c <= 'Z') c = static_cast<unsigned char>(c - 'A' + 'a');
+        if (c != static_cast<unsigned char>(prefix[i])) return false;
+    }
+    size_t begin = prefixLen;
+    while (begin < n && (line[begin] == ' ' || line[begin] == '\t')) begin++;
+    size_t end = n;
+    while (end > begin && (line[end - 1] == ' ' || line[end - 1] == '\t')) end--;
+    if (end - begin != 4) return false;
+    const char eight[] = "8bit";
+    for (size_t i = 0; i < 4; ++i) {
+        unsigned char c = static_cast<unsigned char>(line[begin + i]);
+        if (c >= 'A' && c <= 'Z') c = static_cast<unsigned char>(c - 'A' + 'a');
+        if (c != static_cast<unsigned char>(eight[i])) return false;
+    }
+    return true;
+}
+
+bool messageHas8bitCte(const char * bytes, size_t n) {
+    size_t start = 0;
+    for (size_t i = 0; i <= n; ++i) {
+        if (i == n || bytes[i] == '\n') {
+            size_t end = i;
+            if (end > start && bytes[end - 1] == '\r') end--;
+            if (end > start && lineIs8bitCte(bytes + start, end - start)) return true;
+            start = i + 1;
+        }
+    }
+    return false;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
     jbyteArray message, jobjectArray recipients) {
@@ -6111,14 +6147,45 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
-    r = mailsmtp_helo(smtp);
-    if (r != MAILSMTP_NO_ERROR) {
+    bool allow8bit = false;
+    r = mailesmtp_ehlo(smtp);
+    if (r == MAILSMTP_NO_ERROR) {
+        allow8bit = (smtp->esmtp & MAILSMTP_ESMTP_8BITMIME) != 0;
+    } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||
+        r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
+        r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
+        r = mailsmtp_helo(smtp);
+        if (r != MAILSMTP_NO_ERROR) {
+            std::string why = where + asciiSafe(smtp->response, "smtp error");
+            mailsmtp_free(smtp);
+            throwFailure(env, why);
+            unlockSession(session);
+            return;
+        }
+    } else {
         std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);
         return;
     }
+    jsize nmsg = message != nullptr ? env->GetArrayLength(message) : 0;
+    jbyte * raw = nmsg > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
+    if (env->ExceptionCheck()) {
+        if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
+        mailsmtp_free(smtp);
+        unlockSession(session);
+        return;
+    }
+    if (!allow8bit && raw != nullptr &&
+        messageHas8bitCte(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg))) {
+        env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
+        mailsmtp_free(smtp);
+        throwFailure(env, "8bitmime");
+        unlockSession(session);
+        return;
+    }
+    if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
     r = mailsmtp_mail(smtp, session->from.c_str());
     if (r != MAILSMTP_NO_ERROR) {
         std::string why = where + asciiSafe(smtp->response, "smtp error");

@@ -352,13 +352,13 @@ fun looksLikeBase64(bytes: ByteArray): Boolean {
 /** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
 fun buildPlain(message: PlainMessage): BuiltMail {
     val recipients = envelopeRecipients(message.to, message.cc, message.bcc)
-    val body = normalizeNewlines(message.body)
+    val (encoding, payload) = textPart(message.body, allowEightBit = true)
     val bytes = if (message.attachments.isEmpty()) {
-        val headers = baseHeaders(message, "text/plain; charset=utf-8", transferEncoding(body))
+        val headers = baseHeaders(message, "text/plain; charset=utf-8", encoding)
         val out = ByteArrayOutputStream()
         out.write(headers.toByteArray(Charsets.UTF_8))
         out.write("\r\n".toByteArray(Charsets.US_ASCII))
-        out.write(body.toByteArray(Charsets.UTF_8))
+        out.write(payload)
         out.toByteArray()
     } else {
         val token = message.messageId.filter { it.isLetterOrDigit() }.ifEmpty { "part" }
@@ -371,9 +371,9 @@ fun buildPlain(message: PlainMessage): BuiltMail {
             out,
             boundary,
             "text/plain; charset=utf-8",
-            transferEncoding(body),
+            encoding,
             null,
-            body.toByteArray(Charsets.UTF_8),
+            payload,
         )
         for (part in message.attachments) {
             val encoded = if (part.wireBase64) part.bytes else mimeBase64(part.bytes)
@@ -532,9 +532,243 @@ private fun normalizeNewlines(body: String): String {
     return if (unified.endsWith("\r\n")) unified else "$unified\r\n"
 }
 
-private fun transferEncoding(body: String): String {
-    val bytes = body.toByteArray(Charsets.UTF_8)
-    return if (bytes.any { (it.toInt() and 0xFF) > 127 }) "8bit" else "7bit"
+/** Optimistic 8-bit only when allowed and every line is at most 998 octets. */
+internal fun textPart(body: String, allowEightBit: Boolean): Pair<String, ByteArray> {
+    val text = normalizeNewlines(body)
+    val raw = text.toByteArray(Charsets.UTF_8)
+    if (allowEightBit && !lineExceeds(raw, 998)) {
+        val encoding = if (raw.any { (it.toInt() and 0xFF) > 127 }) "8bit" else "7bit"
+        return encoding to raw
+    }
+    return "quoted-printable" to quotedPrintable(raw)
+}
+
+internal fun quotedPrintable(bytes: ByteArray): ByteArray {
+    val hex = "0123456789ABCDEF".toByteArray(Charsets.US_ASCII)
+    val out = ByteArrayOutputStream()
+    var column = 0
+    var i = 0
+    while (i < bytes.size) {
+        val b = bytes[i].toInt() and 0xFF
+        if (b == '\r'.code && i + 1 < bytes.size && (bytes[i + 1].toInt() and 0xFF) == '\n'.code) {
+            out.write('\r'.code)
+            out.write('\n'.code)
+            column = 0
+            i += 2
+            continue
+        }
+        val literal = b in 33..60 || b in 62..126
+        val need = if (literal) 1 else 3
+        if (column + need > 73) {
+            out.write('='.code)
+            out.write('\r'.code)
+            out.write('\n'.code)
+            column = 0
+        }
+        if (literal) {
+            out.write(b)
+            column += 1
+        } else {
+            out.write('='.code)
+            out.write(hex[b ushr 4].toInt())
+            out.write(hex[b and 0x0F].toInt())
+            column += 3
+        }
+        i++
+    }
+    return out.toByteArray()
+}
+
+fun withoutEightBit(rfc822: ByteArray): ByteArray {
+    if (!messageHas8bitCte(rfc822)) return rfc822
+    val sep = indexOfCrlfCrlf(rfc822)
+    if (sep < 0) return rfc822
+    val header = rfc822.copyOfRange(0, sep)
+    val body = rfc822.copyOfRange(sep + 4, rfc822.size)
+    val contentType = unfoldedHeader(header, "Content-Type")
+    if (!contentType.trim().lowercase().startsWith("multipart/")) {
+        if (!headerHas8bitCte(header)) return rfc822
+        return joinHeaderBody(replace8bitCte(header), quotedPrintable(body))
+    }
+    val boundary = headerParam(contentType, "boundary")
+    if (boundary.isEmpty()) return rfc822
+    val head = if (headerHas8bitCte(header)) replace8bitCte(header) else header
+    return joinHeaderBody(head, rewriteMultipartBody(body, boundary))
+}
+
+private fun lineExceeds(bytes: ByteArray, limit: Int): Boolean {
+    var count = 0
+    var i = 0
+    while (i < bytes.size) {
+        val b = bytes[i].toInt() and 0xFF
+        if (b == '\n'.code) {
+            if (count > limit) return true
+            count = 0
+        } else if (b != '\r'.code) {
+            count++
+            if (count > limit) return true
+        }
+        i++
+    }
+    return count > limit
+}
+
+private fun messageHas8bitCte(bytes: ByteArray): Boolean {
+    var found = false
+    eachLine(bytes) { line ->
+        if (is8bitCteLine(line)) found = true
+    }
+    return found
+}
+
+private fun headerHas8bitCte(header: ByteArray): Boolean = messageHas8bitCte(header)
+
+private fun is8bitCteLine(line: String): Boolean {
+    val prefix = "content-transfer-encoding:"
+    if (line.length < prefix.length) return false
+    if (!line.regionMatches(0, prefix, 0, prefix.length, ignoreCase = true)) return false
+    return line.substring(prefix.length).trim().equals("8bit", ignoreCase = true)
+}
+
+private fun eachLine(bytes: ByteArray, block: (String) -> Unit) {
+    var start = 0
+    var i = 0
+    while (i <= bytes.size) {
+        if (i == bytes.size || bytes[i] == '\n'.code.toByte()) {
+            var end = i
+            if (end > start && bytes[end - 1] == '\r'.code.toByte()) end--
+            if (end > start || i < bytes.size) {
+                block(bytes.copyOfRange(start, end).toString(Charsets.ISO_8859_1))
+            }
+            start = i + 1
+        }
+        i++
+    }
+}
+
+private fun indexOfCrlfCrlf(bytes: ByteArray): Int {
+    var i = 0
+    while (i + 3 < bytes.size) {
+        if (bytes[i] == '\r'.code.toByte() &&
+            bytes[i + 1] == '\n'.code.toByte() &&
+            bytes[i + 2] == '\r'.code.toByte() &&
+            bytes[i + 3] == '\n'.code.toByte()
+        ) {
+            return i
+        }
+        i++
+    }
+    return -1
+}
+
+private fun unfoldedHeader(header: ByteArray, name: String): String {
+    val prefix = "$name:"
+    for (line in unfoldHeaderLines(header)) {
+        if (line.length >= prefix.length && line.startsWith(prefix, ignoreCase = true)) {
+            return line.substring(prefix.length).trim()
+        }
+    }
+    return ""
+}
+
+private fun replace8bitCte(header: ByteArray): ByteArray {
+    val out = ByteArrayOutputStream()
+    var start = 0
+    var i = 0
+    while (i <= header.size) {
+        if (i == header.size || header[i] == '\n'.code.toByte()) {
+            var end = i
+            if (end > start && header[end - 1] == '\r'.code.toByte()) end--
+            val line = header.copyOfRange(start, end).toString(Charsets.ISO_8859_1)
+            if (is8bitCteLine(line)) {
+                val colon = line.indexOf(':')
+                out.write(line.substring(0, colon + 1).toByteArray(Charsets.ISO_8859_1))
+                out.write(" quoted-printable".toByteArray(Charsets.US_ASCII))
+            } else if (end > start) {
+                out.write(header, start, end - start)
+            }
+            if (i < header.size) out.write(header, end, i - end + 1)
+            start = i + 1
+        }
+        i++
+    }
+    return out.toByteArray()
+}
+
+private fun joinHeaderBody(header: ByteArray, body: ByteArray): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.write(header)
+    out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
+    out.write(body)
+    return out.toByteArray()
+}
+
+private fun rewriteMultipartBody(body: ByteArray, boundary: String): ByteArray {
+    val marker = "--$boundary".toByteArray(Charsets.US_ASCII)
+    val starts = ArrayList<Int>()
+    var i = 0
+    while (i + marker.size <= body.size) {
+        if (matchesAt(body, i, marker) && atLineStart(body, i) && boundaryEnds(body, i + marker.size)) {
+            starts.add(i)
+            i += marker.size
+        } else {
+            i++
+        }
+    }
+    if (starts.isEmpty()) return body
+    val out = ByteArrayOutputStream()
+    if (starts[0] > 0) out.write(body, 0, starts[0])
+    for (index in starts.indices) {
+        val at = starts[index]
+        var cursor = at + marker.size
+        val closing = cursor + 1 < body.size &&
+            body[cursor] == '-'.code.toByte() &&
+            body[cursor + 1] == '-'.code.toByte()
+        if (closing) {
+            out.write(body, at, body.size - at)
+            break
+        }
+        val lineEnd = lineEndAfter(body, cursor)
+        val next = if (index + 1 < starts.size) starts[index + 1] else body.size
+        out.write(body, at, lineEnd - at)
+        out.write(rewriteOnePart(body.copyOfRange(lineEnd, next)))
+    }
+    return out.toByteArray()
+}
+
+private fun boundaryEnds(body: ByteArray, after: Int): Boolean {
+    if (after >= body.size) return true
+    val c = body[after]
+    return c == '\r'.code.toByte() ||
+        c == '\n'.code.toByte() ||
+        c == ' '.code.toByte() ||
+        c == '\t'.code.toByte() ||
+        c == '-'.code.toByte()
+}
+
+private fun lineEndAfter(body: ByteArray, from: Int): Int {
+    var i = from
+    while (i < body.size && body[i] != '\n'.code.toByte()) i++
+    if (i < body.size) i++
+    return i
+}
+
+private fun rewriteOnePart(part: ByteArray): ByteArray {
+    val sep = indexOfCrlfCrlf(part)
+    if (sep < 0) return part
+    val header = part.copyOfRange(0, sep)
+    if (!headerHas8bitCte(header)) return part
+    val rawBody = part.copyOfRange(sep + 4, part.size)
+    val keepBreak = rawBody.size >= 2 &&
+        rawBody[rawBody.size - 2] == '\r'.code.toByte() &&
+        rawBody[rawBody.size - 1] == '\n'.code.toByte()
+    val content = if (keepBreak) rawBody.copyOfRange(0, rawBody.size - 2) else rawBody
+    val out = ByteArrayOutputStream()
+    out.write(replace8bitCte(header))
+    out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
+    out.write(quotedPrintable(content))
+    if (keepBreak) out.write("\r\n".toByteArray(Charsets.US_ASCII))
+    return out.toByteArray()
 }
 
 private fun mimeBase64(bytes: ByteArray): ByteArray {

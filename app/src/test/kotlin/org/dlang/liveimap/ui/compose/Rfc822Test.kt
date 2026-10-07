@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.compose
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -163,6 +164,144 @@ class Rfc822Test {
         val header = built.rfc822.toString(Charsets.UTF_8).substringBefore("\r\n\r\n")
         assertTrue(header.contains("In-Reply-To: <orig@example.com>"))
         assertTrue(header.contains("References: <a@example.com> <orig@example.com>"))
+    }
+
+    @Test
+    fun shortAsciiBodyIs7bit() {
+        val built = plain("Hello")
+        assertEquals("7bit", cte(built.rfc822))
+        assertTrue(built.rfc822.toString(Charsets.UTF_8).contains("Hello"))
+        assertSame(built.rfc822, withoutEightBit(built.rfc822))
+    }
+
+    @Test
+    fun shortNonAsciiBodyIs8bitUntilRewritten() {
+        val built = plain("caf\u00e9")
+        assertEquals("8bit", cte(built.rfc822))
+        val rewritten = withoutEightBit(built.rfc822)
+        val text = rewritten.toString(Charsets.ISO_8859_1)
+        assertEquals("quoted-printable", cte(rewritten))
+        assertFalse(has8bitCte(rewritten))
+        assertTrue(text.contains("=C3=A9"))
+        assertFalse(text.contains("=c3"))
+        assertLinesAtMost76(rewritten)
+        assertEquals(loadEditor(built.rfc822).body, loadEditor(rewritten).body)
+    }
+
+    @Test
+    fun longAsciiLineIsQuotedPrintable() {
+        val built = plain("a".repeat(1200))
+        assertEquals("quoted-printable", cte(built.rfc822))
+        assertFalse(has8bitCte(built.rfc822))
+        assertLinesAtMost76(built.rfc822)
+        assertEquals("a".repeat(1200), loadEditor(built.rfc822).body.trimEnd('\n'))
+    }
+
+    @Test
+    fun lineOf998Stays7bitAnd999IsQuotedPrintable() {
+        assertEquals("7bit", cte(plain("a".repeat(998)).rfc822))
+        assertEquals("8bit", cte(plain("\u00e9".repeat(499)).rfc822))
+        val over = plain("a".repeat(999))
+        assertEquals("quoted-printable", cte(over.rfc822))
+        assertLinesAtMost76(over.rfc822)
+        val wide = plain("\u00e9".repeat(500))
+        assertEquals("quoted-printable", cte(wide.rfc822))
+        assertLinesAtMost76(wide.rfc822)
+    }
+
+    @Test
+    fun quotedPrintableRoundTripsTrailingSpaceAndSoftBreaks() {
+        val source = "hello  \n" + "x".repeat(90) + "\na=b\n\u00e9\n"
+        val (encoding, payload) = textPart(source, allowEightBit = false)
+        assertEquals("quoted-printable", encoding)
+        assertLinesAtMost76(payload)
+        val text = payload.toString(Charsets.US_ASCII)
+        assertTrue(text.contains("hello=20=20\r\n"))
+        assertTrue(text.contains("a=3Db\r\n"))
+        assertTrue(text.contains("=C3=A9\r\n"))
+        val wrapped = (
+            "Content-Type: text/plain; charset=utf-8\r\n" +
+                "Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+            ).toByteArray(Charsets.US_ASCII) + payload
+        assertEquals(source, loadEditor(wrapped).body)
+    }
+
+    @Test
+    fun multipart8bitTextBecomesQuotedPrintableAndBase64Stays() {
+        val file = byteArrayOf(0, 1, 2, 3, 4, 5, 6, 7)
+        val built = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = "caf\u00e9",
+                messageId = "<part@example.com>",
+                date = "Tue, 30 Sep 2026 00:00:00 +0000",
+                attachments = listOf(
+                    OutgoingPart("a.bin", "application/octet-stream", file, wireBase64 = false),
+                ),
+            ),
+        )
+        val before = built.rfc822
+        assertTrue(has8bitCte(before))
+        val after = withoutEightBit(before)
+        assertFalse(has8bitCte(after))
+        assertTrue(after.toString(Charsets.ISO_8859_1).contains("--liveimap_partexamplecom--"))
+        assertEquals(base64Slice(before), base64Slice(after))
+        assertEquals(loadEditor(before).body, loadEditor(after).body)
+        assertEquals(file.toList(), loadEditor(after).attachments.single().bytes.toList())
+    }
+
+    private fun plain(body: String): BuiltMail = buildPlain(
+        PlainMessage(
+            fromName = "Me",
+            fromEmail = "me@example.com",
+            to = listOf("ann@example.com"),
+            cc = emptyList(),
+            bcc = listOf("secret@example.com"),
+            subject = "Hi",
+            body = body,
+            messageId = "<new@example.com>",
+            date = "Tue, 30 Sep 2026 00:00:00 +0000",
+        ),
+    )
+
+    private fun cte(bytes: ByteArray): String {
+        val header = bytes.toString(Charsets.ISO_8859_1).substringBefore("\r\n\r\n")
+        val line = header.lineSequence().first { it.startsWith("Content-Transfer-Encoding:", ignoreCase = true) }
+        return line.substringAfter(':').trim()
+    }
+
+    private fun has8bitCte(bytes: ByteArray): Boolean {
+        val text = bytes.toString(Charsets.ISO_8859_1)
+        return text.split('\n').any { line ->
+            val bare = line.trimEnd('\r')
+            bare.length >= "content-transfer-encoding:".length &&
+                bare.regionMatches(0, "content-transfer-encoding:", 0, "content-transfer-encoding:".length, ignoreCase = true) &&
+                bare.substringAfter(':').trim().equals("8bit", ignoreCase = true)
+        }
+    }
+
+    private fun assertLinesAtMost76(bytes: ByteArray) {
+        var start = 0
+        for (i in bytes.indices) {
+            if (bytes[i] == '\n'.code.toByte()) {
+                assertTrue(i - start + 1 <= 76)
+                start = i + 1
+            }
+        }
+        if (start < bytes.size) assertTrue(bytes.size - start <= 76)
+    }
+
+    private fun base64Slice(message: ByteArray): String {
+        val text = message.toString(Charsets.ISO_8859_1)
+        val marker = "Content-Transfer-Encoding: base64\r\n"
+        val at = text.indexOf(marker)
+        assertTrue(at >= 0)
+        return text.substring(at, text.indexOf("\r\n--liveimap_", at))
     }
 
     private fun rfc(text: String): ParsedRfc822 {

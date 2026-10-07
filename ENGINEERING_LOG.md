@@ -1868,3 +1868,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 
 - Execute alpine-pinerc-incoming-20261007-0151-plan.md from step 1 on master at 7d224d1.
 - incoming-folders become extra leaf favorites. LIST each new name. Do not import stay-open-folders. Do not install.
+
+## 2026-10-07 - SMTP EHLO and quoted-printable execution start
+
+- Approved plan: sandbox/plans/smtp-ehlo-20261007-0212-plan.md. Mailbox SEQ 66 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: EHLO, HELO only for the three refusal codes, 8bitmime before MAIL, quoted-printable when 8-bit is off or a line exceeds 998, and one ComposeScreen retry.
+- No STARTTLS. No AUTH. No install. Base builds tag 38fec60. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - SMTP EHLO and quoted-printable phase 1
+
+- nativeSmtp sends EHLO. HELO runs only after NOT_IMPLEMENTED, UNEXPECTED_CODE, or ACTION_NOT_TAKEN. Any other EHLO result fails with the host prefix and does not send HELO.
+- When 8BITMIME is absent, a Content-Transfer-Encoding: 8bit header throws 8bitmime before MAIL. ComposeScreen retries that failure once with withoutEightBit and does not keep a device copy for the first failure.
+- A text part stays 8bit or 7bit only when 8-bit is allowed and no line exceeds 998 octets. Otherwise it is quoted-printable, with lines of at most 76 octets including CRLF. Attachments stay base64. Bcc stays off the message.
+- No STARTTLS. No AUTH. No install.

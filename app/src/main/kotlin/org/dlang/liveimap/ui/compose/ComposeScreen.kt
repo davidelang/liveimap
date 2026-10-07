@@ -567,6 +567,18 @@ fun ComposeScreen(
         }
     }
 
+    suspend fun sendSmtp(bytes: ByteArray, recipients: List<String>): ByteArray {
+        try {
+            session.smtpSend(bytes, recipients)
+            return bytes
+        } catch (error: MailFailure) {
+            if (error.text != "8bitmime") throw error
+        }
+        val rewritten = withoutEightBit(bytes)
+        session.smtpSend(rewritten, recipients)
+        return rewritten
+    }
+
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
         if (copy.appendOnly) {
             if (copy.mailbox.isEmpty()) {
@@ -590,8 +602,8 @@ fun ComposeScreen(
             removePostponedSource()
             return true
         }
-        try {
-            session.smtpSend(copy.bytes, copy.recipients)
+        val accepted = try {
+            sendSmtp(copy.bytes, copy.recipients)
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
@@ -602,11 +614,11 @@ fun ComposeScreen(
         storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
         if (copy.mailbox.isNotEmpty()) {
             try {
-                session.append(copy.mailbox, copy.bytes)
+                session.append(copy.mailbox, accepted)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
-                val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, copy.bytes)
+                val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted)
                 writeCopy(appContext, saved)
                 if (held?.id == copy.id) held = saved
                 notice = error.text
@@ -921,8 +933,8 @@ fun ComposeScreen(
                         return@launchLocked false
                     }
                     val id = saved?.id ?: UUID.randomUUID().toString()
-                    try {
-                        session.smtpSend(built.rfc822, built.recipients)
+                    val accepted = try {
+                        sendSmtp(built.rfc822, built.recipients)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
@@ -935,11 +947,11 @@ fun ComposeScreen(
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
                     try {
-                        session.append(account.sentMailbox, built.rfc822)
+                        session.append(account.sentMailbox, accepted)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, built.rfc822)
+                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted)
                         writeCopy(appContext, copy)
                         held = copy
                         notice = error.text
@@ -1138,8 +1150,8 @@ fun ComposeScreen(
                         )
                         val id = UUID.randomUUID().toString()
                         val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                        try {
-                            session.smtpSend(bounced, listOf(recipient))
+                        val accepted = try {
+                            sendSmtp(bounced, listOf(recipient))
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: MailFailure) {
@@ -1153,11 +1165,11 @@ fun ComposeScreen(
                         storeAcceptedFlags(listOf(uid))
                         if (!account.bounceFcc) continue
                         try {
-                            session.append(account.sentMailbox, bounced)
+                            session.append(account.sentMailbox, accepted)
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: MailFailure) {
-                            val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), bounced)
+                            val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), accepted)
                             writeCopy(appContext, copy)
                             held = copy
                             notice = error.text
