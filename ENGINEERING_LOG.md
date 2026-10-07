@@ -1732,3 +1732,18 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. The drag handle stays out of the focus order. The Move buttons stay, at least 48.dp, and the Toolbar rows steppers do too
 - A move is announced in a polite live region. Move up says Moved Search up. Move to Overflow says Moved Search to Overflow. A drag that lands Filter in Hidden says Moved Filter to Hidden. A header drag does not change the announcement
 - dragLanding of the index default from 2 to 3 is Search in Toolbar, from 3 to 5 is Filter in Hidden, and from 0 to 3 is null. No bar default, toolbarRows, or pinned control changed. No install
+
+## 2026-10-06 - toolbar material defaults execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-material-defaults-20261006-2310-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 53 IMPLEMENT revision 1. builds before edit: d9fb7d6
+- Phase 1 of 1: index default is Search, selection default is Delete, reader default is Reply and Delete. Bounce starts in the reader overflow. Folder and compose defaults stay. No new index action. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar material defaults phase 1
+
+- An untouched index bar shows Search, with Refresh and Filter in the overflow. An untouched selection shows Delete, with Seen, Flag, and Move in the overflow. An untouched reader shows Reply and Delete, with Refresh, Reply all, Forward, Move, Spam, and Bounce in the overflow
+- resetReaderToolbar is that reader layout. A null readerToolbar with the default readerBar uses it. Any other null readerBar still follows readerToolbarFrom. A saved readerToolbar still wins. readerBar encoding is unchanged
+- An omitted indexBar or selectionBar decodes to the new default. T:Refresh,Search,Filter|O:|H: and T:Seen,Flag,Move,Delete|O:|H: still decode to those toolbars. defaultsRoundTrip still ends at altAddresses. Folder and compose defaults stay. No install

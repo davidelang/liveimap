@@ -459,11 +459,17 @@ class AccountSettingsTest {
         assertFalse(text.contains("indexBar"))
         assertEquals(defaultIndexBar(), decodeAccountSettings(text).indexBar)
         val explicit = text.trimEnd() + "\nindexBar=T:Refresh,Search,Filter|O:|H:\n"
-        assertEquals(defaultIndexBar(), decodeAccountSettings(explicit).indexBar)
-        val moved = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
+        val storedIndex = decodeAccountSettings(explicit).indexBar
+        assertEquals(
+            listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
+            storedIndex.toolbar,
+        )
+        assertEquals(emptyList<IndexBarAction>(), storedIndex.overflow)
+        assertEquals(emptyList<IndexBarAction>(), storedIndex.hidden)
+        val moved = moveIndexAction(defaultIndexBar(), IndexBarAction.Refresh, BarSection.Toolbar)
         val saved = AccountSettings(indexBar = moved)
         val encoded = saved.encode()
-        assertTrue(encoded.contains("indexBar=T:Refresh,Filter|O:Search|H:"))
+        assertTrue(encoded.contains("indexBar=T:Search,Refresh|O:Filter|H:"))
         assertEquals(moved, decodeAccountSettings(encoded).indexBar)
         assertEquals(encoded, decodeAccountSettings(encoded).encode())
         val badValues = listOf(
@@ -489,12 +495,23 @@ class AccountSettingsTest {
         assertFalse(text.contains("selectionBar"))
         assertEquals(defaultSelectionBar(), decodeAccountSettings(text).selectionBar)
         val explicit = text.trimEnd() + "\nselectionBar=T:Seen,Flag,Move,Delete|O:|H:\n"
-        assertEquals(defaultSelectionBar(), decodeAccountSettings(explicit).selectionBar)
-        val moved = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Move, BarSection.Overflow)
+        val storedSelection = decodeAccountSettings(explicit).selectionBar
+        assertEquals(
+            listOf(
+                SelectionBarAction.Seen,
+                SelectionBarAction.Flag,
+                SelectionBarAction.Move,
+                SelectionBarAction.Delete,
+            ),
+            storedSelection.toolbar,
+        )
+        assertEquals(emptyList<SelectionBarAction>(), storedSelection.overflow)
+        assertEquals(emptyList<SelectionBarAction>(), storedSelection.hidden)
+        val moved = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Delete, BarSection.Overflow)
         val saved = AccountSettings(selectionBar = moved)
         val encoded = saved.encode()
         assertFalse(encoded.contains("indexBar"))
-        assertTrue(encoded.contains("selectionBar=T:Seen,Flag,Delete|O:Move|H:"))
+        assertTrue(encoded.contains("selectionBar=T:|O:Seen,Flag,Move,Delete|H:"))
         assertEquals(moved, decodeAccountSettings(encoded).selectionBar)
         assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
         assertEquals(encoded, decodeAccountSettings(encoded).encode())

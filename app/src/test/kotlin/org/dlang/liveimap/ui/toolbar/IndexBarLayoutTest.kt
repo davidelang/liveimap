@@ -12,14 +12,17 @@ class IndexBarLayoutTest {
     @Test
     fun defaultLayoutAndTail() {
         val layout = defaultIndexBar()
-        assertEquals(
-            listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
-            layout.toolbar,
-        )
-        assertEquals(emptyList<IndexBarAction>(), layout.overflow)
+        assertEquals(listOf(IndexBarAction.Search), layout.toolbar)
+        assertEquals(listOf(IndexBarAction.Refresh, IndexBarAction.Filter), layout.overflow)
         assertEquals(emptyList<IndexBarAction>(), layout.hidden)
         assertEquals(
-            listOf(IndexMenuEntry.Divider, IndexMenuEntry.Customize),
+            listOf(
+                IndexMenuEntry.Divider,
+                IndexMenuEntry.Action(IndexBarAction.Refresh),
+                IndexMenuEntry.Action(IndexBarAction.Filter),
+                IndexMenuEntry.Divider,
+                IndexMenuEntry.Customize,
+            ),
             indexMenuTail(layout),
         )
         assertEquals(layout, resetIndexBar())
@@ -28,12 +31,17 @@ class IndexBarLayoutTest {
     @Test
     fun moveToOverflowAndHidden() {
         val overflow = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
-        assertEquals(listOf(IndexBarAction.Refresh, IndexBarAction.Filter), overflow.toolbar)
-        assertEquals(listOf(IndexBarAction.Search), overflow.overflow)
+        assertEquals(emptyList<IndexBarAction>(), overflow.toolbar)
+        assertEquals(
+            listOf(IndexBarAction.Refresh, IndexBarAction.Filter, IndexBarAction.Search),
+            overflow.overflow,
+        )
         assertEquals(emptyList<IndexBarAction>(), overflow.hidden)
         assertEquals(
             listOf(
                 IndexMenuEntry.Divider,
+                IndexMenuEntry.Action(IndexBarAction.Refresh),
+                IndexMenuEntry.Action(IndexBarAction.Filter),
                 IndexMenuEntry.Action(IndexBarAction.Search),
                 IndexMenuEntry.Divider,
                 IndexMenuEntry.Customize,
@@ -45,7 +53,13 @@ class IndexBarLayoutTest {
         assertFalse(hidden.overflow.contains(IndexBarAction.Search))
         assertEquals(listOf(IndexBarAction.Search), hidden.hidden)
         assertEquals(
-            listOf(IndexMenuEntry.Divider, IndexMenuEntry.Customize),
+            listOf(
+                IndexMenuEntry.Divider,
+                IndexMenuEntry.Action(IndexBarAction.Refresh),
+                IndexMenuEntry.Action(IndexBarAction.Filter),
+                IndexMenuEntry.Divider,
+                IndexMenuEntry.Customize,
+            ),
             indexMenuTail(hidden),
         )
         assertEquals(
@@ -56,33 +70,36 @@ class IndexBarLayoutTest {
 
     @Test
     fun moveByOneLeavesTheEnds() {
-        val swapped = moveIndexActionBy(defaultIndexBar(), IndexBarAction.Search, 1)
-        assertEquals(
-            listOf(IndexBarAction.Refresh, IndexBarAction.Filter, IndexBarAction.Search),
-            swapped.toolbar,
-        )
-        assertEquals(emptyList<IndexBarAction>(), swapped.overflow)
+        val swapped = moveIndexActionBy(defaultIndexBar(), IndexBarAction.Filter, -1)
+        assertEquals(listOf(IndexBarAction.Search), swapped.toolbar)
+        assertEquals(listOf(IndexBarAction.Filter, IndexBarAction.Refresh), swapped.overflow)
         assertEquals(emptyList<IndexBarAction>(), swapped.hidden)
-        val stayed = moveIndexActionBy(defaultIndexBar(), IndexBarAction.Refresh, -1)
+        val stayed = moveIndexActionBy(defaultIndexBar(), IndexBarAction.Search, 1)
         assertEquals(defaultIndexBar(), stayed)
     }
 
     @Test
     fun defaultSelectionLayoutAndTail() {
         val layout = defaultSelectionBar()
+        assertEquals(listOf(SelectionBarAction.Delete), layout.toolbar)
         assertEquals(
             listOf(
                 SelectionBarAction.Seen,
                 SelectionBarAction.Flag,
                 SelectionBarAction.Move,
-                SelectionBarAction.Delete,
             ),
-            layout.toolbar,
+            layout.overflow,
         )
-        assertEquals(emptyList<SelectionBarAction>(), layout.overflow)
         assertEquals(emptyList<SelectionBarAction>(), layout.hidden)
         assertEquals(
-            listOf(SelectionMenuEntry.Divider, SelectionMenuEntry.Customize),
+            listOf(
+                SelectionMenuEntry.Divider,
+                SelectionMenuEntry.Action(SelectionBarAction.Seen),
+                SelectionMenuEntry.Action(SelectionBarAction.Flag),
+                SelectionMenuEntry.Action(SelectionBarAction.Move),
+                SelectionMenuEntry.Divider,
+                SelectionMenuEntry.Customize,
+            ),
             selectionMenuTail(layout),
         )
         assertEquals(layout, resetSelectionBar())
@@ -90,17 +107,25 @@ class IndexBarLayoutTest {
 
     @Test
     fun moveSelectionToOverflowAndHidden() {
-        val overflow = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Move, BarSection.Overflow)
+        val overflow = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Delete, BarSection.Overflow)
+        assertEquals(emptyList<SelectionBarAction>(), overflow.toolbar)
         assertEquals(
-            listOf(SelectionBarAction.Seen, SelectionBarAction.Flag, SelectionBarAction.Delete),
-            overflow.toolbar,
+            listOf(
+                SelectionBarAction.Seen,
+                SelectionBarAction.Flag,
+                SelectionBarAction.Move,
+                SelectionBarAction.Delete,
+            ),
+            overflow.overflow,
         )
-        assertEquals(listOf(SelectionBarAction.Move), overflow.overflow)
         assertEquals(emptyList<SelectionBarAction>(), overflow.hidden)
         assertEquals(
             listOf(
                 SelectionMenuEntry.Divider,
+                SelectionMenuEntry.Action(SelectionBarAction.Seen),
+                SelectionMenuEntry.Action(SelectionBarAction.Flag),
                 SelectionMenuEntry.Action(SelectionBarAction.Move),
+                SelectionMenuEntry.Action(SelectionBarAction.Delete),
                 SelectionMenuEntry.Divider,
                 SelectionMenuEntry.Customize,
             ),
@@ -115,16 +140,15 @@ class IndexBarLayoutTest {
     @Test
     fun moveSelectionByOneLeavesTheStart() {
         val swapped = moveSelectionActionBy(defaultSelectionBar(), SelectionBarAction.Flag, 1)
+        assertEquals(listOf(SelectionBarAction.Delete), swapped.toolbar)
         assertEquals(
             listOf(
                 SelectionBarAction.Seen,
                 SelectionBarAction.Move,
                 SelectionBarAction.Flag,
-                SelectionBarAction.Delete,
             ),
-            swapped.toolbar,
+            swapped.overflow,
         )
-        assertEquals(emptyList<SelectionBarAction>(), swapped.overflow)
         assertEquals(emptyList<SelectionBarAction>(), swapped.hidden)
         assertEquals(
             defaultSelectionBar(),
@@ -170,19 +194,8 @@ class IndexBarLayoutTest {
             folderMenu(layout, showUnsent = true),
         )
         assertEquals(layout, resetFolderBar())
-        assertEquals(
-            listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
-            defaultIndexBar().toolbar,
-        )
-        assertEquals(
-            listOf(
-                SelectionBarAction.Seen,
-                SelectionBarAction.Flag,
-                SelectionBarAction.Move,
-                SelectionBarAction.Delete,
-            ),
-            defaultSelectionBar().toolbar,
-        )
+        assertEquals(listOf(IndexBarAction.Search), defaultIndexBar().toolbar)
+        assertEquals(listOf(SelectionBarAction.Delete), defaultSelectionBar().toolbar)
     }
 
     @Test
@@ -272,7 +285,27 @@ class IndexBarLayoutTest {
         assertEquals(layout.toolbar + ReaderToolbarAction.Bounce, appended.toolbar)
         assertFalse(appended.overflow.contains(ReaderToolbarAction.Bounce))
         assertEquals(emptyList<ReaderToolbarAction>(), appended.hidden)
-        assertEquals(layout, resetReaderToolbar())
+        val fresh = defaultReaderToolbar()
+        val freshActions = fresh.toolbar + fresh.overflow + fresh.hidden
+        assertEquals(
+            listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
+            fresh.toolbar,
+        )
+        assertEquals(
+            listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+            ),
+            fresh.overflow,
+        )
+        assertEquals(emptyList<ReaderToolbarAction>(), fresh.hidden)
+        assertEquals(ReaderToolbarAction.entries.toSet(), freshActions.toSet())
+        assertEquals(freshActions.size, freshActions.toSet().size)
+        assertEquals(fresh, resetReaderToolbar())
         val swapped = moveReaderActionBy(layout, ReaderToolbarAction.ReplyAll, -1)
         assertEquals(
             listOf(
@@ -285,7 +318,7 @@ class IndexBarLayoutTest {
             swapped.toolbar,
         )
         assertEquals(layout, moveReaderActionBy(layout, ReaderToolbarAction.Refresh, -1))
-        assertEquals(layout, effectiveReaderToolbar(AccountSettings()))
+        assertEquals(defaultReaderToolbar(), effectiveReaderToolbar(AccountSettings()))
         val followed = effectiveReaderToolbar(AccountSettings(readerBar = listOf(ReaderAction.Reply)))
         assertEquals(replyOnly, followed)
         val pinned = AccountSettings(readerBar = listOf(ReaderAction.Reply), readerToolbar = layout)
@@ -329,24 +362,33 @@ class IndexBarLayoutTest {
 
     @Test
     fun dragIndexWithinAndAcrossSections() {
-        val swapped = dragIndexLayout(defaultIndexBar(), 2, 3)
+        val layout = IndexBarLayout(
+            toolbar = listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
+            overflow = emptyList(),
+            hidden = emptyList(),
+        )
+        val swapped = dragIndexLayout(layout, 2, 3)
         assertEquals(
             listOf(IndexBarAction.Refresh, IndexBarAction.Filter, IndexBarAction.Search),
             swapped.toolbar,
         )
         assertEquals(emptyList<IndexBarAction>(), swapped.overflow)
         assertEquals(emptyList<IndexBarAction>(), swapped.hidden)
-        val hidden = dragIndexLayout(defaultIndexBar(), 3, 5)
+        val hidden = dragIndexLayout(layout, 3, 5)
         assertEquals(listOf(IndexBarAction.Refresh, IndexBarAction.Search), hidden.toolbar)
         assertEquals(emptyList<IndexBarAction>(), hidden.overflow)
         assertEquals(listOf(IndexBarAction.Filter), hidden.hidden)
-        assertEquals(defaultIndexBar(), dragIndexLayout(defaultIndexBar(), 0, 3))
-        assertEquals(defaultIndexBar(), dragIndexLayout(defaultIndexBar(), 1, 6))
+        assertEquals(layout, dragIndexLayout(layout, 0, 3))
+        assertEquals(layout, dragIndexLayout(layout, 1, 6))
     }
 
     @Test
     fun dragLandingOfTheIndexDefault() {
-        val layout = defaultIndexBar()
+        val layout = IndexBarLayout(
+            toolbar = listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
+            overflow = emptyList(),
+            hidden = emptyList(),
+        )
         assertEquals(
             IndexBarAction.Search to BarSection.Toolbar,
             dragLanding(layout.toolbar, layout.overflow, layout.hidden, 2, 3),

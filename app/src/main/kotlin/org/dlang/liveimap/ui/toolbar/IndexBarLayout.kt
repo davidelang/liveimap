@@ -100,8 +100,8 @@ sealed interface IndexMenuEntry {
 }
 
 fun defaultIndexBar(): IndexBarLayout = IndexBarLayout(
-    toolbar = listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
-    overflow = emptyList(),
+    toolbar = listOf(IndexBarAction.Search),
+    overflow = listOf(IndexBarAction.Refresh, IndexBarAction.Filter),
     hidden = emptyList(),
 )
 
@@ -220,13 +220,12 @@ sealed interface SelectionMenuEntry {
 }
 
 fun defaultSelectionBar(): SelectionBarLayout = SelectionBarLayout(
-    toolbar = listOf(
+    toolbar = listOf(SelectionBarAction.Delete),
+    overflow = listOf(
         SelectionBarAction.Seen,
         SelectionBarAction.Flag,
         SelectionBarAction.Move,
-        SelectionBarAction.Delete,
     ),
-    overflow = emptyList(),
     hidden = emptyList(),
 )
 
@@ -489,10 +488,27 @@ fun readerToolbarFrom(saved: List<ReaderAction>): ReaderToolbarLayout {
     )
 }
 
-fun resetReaderToolbar(): ReaderToolbarLayout = readerToolbarFrom(defaultReaderBar)
+fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
+    toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
+    overflow = listOf(
+        ReaderToolbarAction.Refresh,
+        ReaderToolbarAction.ReplyAll,
+        ReaderToolbarAction.Forward,
+        ReaderToolbarAction.Move,
+        ReaderToolbarAction.Spam,
+        ReaderToolbarAction.Bounce,
+    ),
+    hidden = emptyList(),
+)
 
-fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout =
-    settings.readerToolbar ?: readerToolbarFrom(settings.readerBar)
+fun resetReaderToolbar(): ReaderToolbarLayout = defaultReaderToolbar()
+
+fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout {
+    val saved = settings.readerToolbar
+    if (saved != null) return saved
+    if (settings.readerBar == defaultReaderBar) return defaultReaderToolbar()
+    return readerToolbarFrom(settings.readerBar)
+}
 
 fun visibleReaderActions(
     actions: List<ReaderToolbarAction>,
