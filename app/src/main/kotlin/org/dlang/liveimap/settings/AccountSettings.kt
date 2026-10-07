@@ -347,12 +347,14 @@ data class AccountSettings(
     val readerToolbar: ReaderToolbarLayout? = null,
     val composeBar: ComposeBarLayout = defaultComposeBar(),
     val toolbarRows: Int = 2,
+    val composerWrapColumn: Int = 74,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
 
     init {
         if (toolbarRows !in 1..4) throw IllegalArgumentException("bad toolbarRows")
+        if (composerWrapColumn !in 0..998) throw IllegalArgumentException("bad composerWrapColumn")
     }
 }
 
@@ -427,6 +429,7 @@ private val fieldNames = listOf(
     "readerToolbar",
     "composeBar",
     "toolbarRows",
+    "composerWrapColumn",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -478,7 +481,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, and toolbarRows when it is 2.
+    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, and composerWrapColumn when it is 74.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -519,6 +522,7 @@ fun AccountSettings.encode(): String = buildString {
         appendLine("composeBar=${encodeComposeBar(composeBar)}")
     }
     if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
+    if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -584,7 +588,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "folderBar" ||
             key == "readerToolbar" ||
             key == "composeBar" ||
-            key == "toolbarRows"
+            key == "toolbarRows" ||
+            key == "composerWrapColumn"
         ) {
             continue
         }
@@ -663,6 +668,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         readerToolbar = values["readerToolbar"]?.let { parseReaderToolbar(it) },
         composeBar = values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar(),
         toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
+        composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
     )
 }
 

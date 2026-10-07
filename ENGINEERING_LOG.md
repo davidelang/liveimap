@@ -1882,3 +1882,17 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 - When 8BITMIME is absent, a Content-Transfer-Encoding: 8bit header throws 8bitmime before MAIL. ComposeScreen retries that failure once with withoutEightBit and does not keep a device copy for the first failure.
 - A text part stays 8bit or 7bit only when 8-bit is allowed and no line exceeds 998 octets. Otherwise it is quoted-printable, with lines of at most 76 octets including CRLF. Attachments stay base64. Bcc stays off the message.
 - No STARTTLS. No AUTH. No install.
+
+## 2026-10-07 - SMTP wrap column execution start
+
+- Approved plan: sandbox/plans/smtp-wrap-column-20261007-0236-plan.md. Mailbox SEQ 67 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: composerWrapColumn default 74, Sending wrap-column row, wrapPlain before textPart, assemble passes the setting, tests, and the help sentence.
+- No format=flowed. Do not import composer-wrap-column. No STARTTLS. No AUTH. No install. Base builds tag 55bd748. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - SMTP wrap column phase 1
+
+- composerWrapColumn defaults to 74 and is omitted from encode. A stored value is coerced into 0..998. The constructor rejects anything outside that range.
+- Settings, Sending has a Wrap column row after the SMTP port. Empty text, a non-digit, or a value outside 0..998 restores the stored number and does not persist. The section summary stays the SMTP host and port.
+- wrapPlain breaks plain text on spaces and tabs at the column, repeats a > quote prefix, and leaves a long word whole. Column 0 does not insert breaks. buildPlain wraps before the existing 998 rule. No format=flowed. Bounce is unchanged.
+- No composer-wrap-column import. No STARTTLS. No AUTH. No install.

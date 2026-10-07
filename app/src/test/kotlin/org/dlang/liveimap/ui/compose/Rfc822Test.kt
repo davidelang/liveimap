@@ -255,6 +255,42 @@ class Rfc822Test {
         assertEquals(file.toList(), loadEditor(after).attachments.single().bytes.toList())
     }
 
+    @Test
+    fun wrapsAtColumnOnSpaces() {
+        assertEquals("one two\nthree four", wrapPlain("one two three four", 10))
+        assertEquals("one two\nthree four", wrapPlain("one\ttwo three four", 10))
+        assertEquals("one two three four", wrapPlain("one two three four", 0))
+        val built = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = "one two three four",
+                messageId = "<new@example.com>",
+                date = "Tue, 30 Sep 2026 00:00:00 +0000",
+                wrapColumn = 10,
+            ),
+        )
+        val text = built.rfc822.toString(Charsets.UTF_8)
+        assertEquals("7bit", cte(built.rfc822))
+        assertTrue(text.contains("Content-Type: text/plain; charset=utf-8"))
+        assertFalse(text.contains("flowed"))
+        assertTrue(text.contains("one two\r\nthree four"))
+    }
+
+    @Test
+    fun quotedWrapKeepsPrefix() {
+        assertEquals("> one two\n> three", wrapPlain("> one two three", 10))
+    }
+
+    @Test
+    fun longWordIsNotSplit() {
+        assertEquals("abcdefghijk", wrapPlain("abcdefghijk", 5))
+    }
+
     private fun plain(body: String): BuiltMail = buildPlain(
         PlainMessage(
             fromName = "Me",

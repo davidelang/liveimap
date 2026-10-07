@@ -559,6 +559,27 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(smtpPort = it))
             }
+            LineField(
+                stringResource(R.string.settings_wrap_column),
+                settings.composerWrapColumn.toString(),
+                keyboardType = KeyboardType.Number,
+                ready = editor.ready,
+                interpret = { draft, _ ->
+                    val text = draft.trim()
+                    if (text.isEmpty() || text.any { !it.isDigit() }) {
+                        null
+                    } else {
+                        val number = text.toIntOrNull()
+                        if (number == null || number !in 0..998) null else number.toString()
+                    }
+                },
+                onCommit = { text ->
+                    val number = text.toIntOrNull()
+                    if (number != null && number in 0..998) {
+                        editor.persist(editor.settings.copy(composerWrapColumn = number))
+                    }
+                },
+            )
         }
         SettingsSection(
             title = stringResource(R.string.settings_import),

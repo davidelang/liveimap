@@ -536,6 +536,7 @@ fun ComposeScreen(
                 inReplyTo = inReplyTo,
                 references = referencesHeader,
                 attachments = parts,
+                wrapColumn = settings.composerWrapColumn,
             ),
         )
     }

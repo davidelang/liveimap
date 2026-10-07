@@ -577,4 +577,5 @@
     <string name="pinerc_folder_missing">%1$s was not found</string>
     <string name="pinerc_folder_check">Could not check folders</string>
     <string name="pinerc_favorite">Favorite</string>
+    <string name="settings_wrap_column">Wrap column</string>
 </resources>

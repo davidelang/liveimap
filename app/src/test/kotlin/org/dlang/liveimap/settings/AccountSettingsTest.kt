@@ -666,6 +666,29 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun composerWrapColumnRoundTrips() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("composerWrapColumn"))
+        assertEquals(74, decodeAccountSettings(text).composerWrapColumn)
+        val saved = AccountSettings(composerWrapColumn = 72)
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("composerWrapColumn=72"))
+        assertEquals(72, decodeAccountSettings(encoded).composerWrapColumn)
+        assertEquals(encoded, decodeAccountSettings(encoded).encode())
+        assertEquals(0, decodeAccountSettings(text.trimEnd() + "\ncomposerWrapColumn=0\n").composerWrapColumn)
+        assertEquals(998, decodeAccountSettings(text.trimEnd() + "\ncomposerWrapColumn=2000\n").composerWrapColumn)
+        assertEquals(0, decodeAccountSettings(text.trimEnd() + "\ncomposerWrapColumn=-3\n").composerWrapColumn)
+        for (value in listOf(-1, 999)) {
+            try {
+                AccountSettings(composerWrapColumn = value)
+                fail(value.toString())
+            } catch (error: IllegalArgumentException) {
+                assertEquals("bad composerWrapColumn", error.message)
+            }
+        }
+    }
+
+    @Test
     fun toolbarRowsRoundTrip() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("toolbarRows"))

@@ -45,6 +45,7 @@ class PlainMessage(
     val inReplyTo: String = "",
     val references: String = "",
     val attachments: List<OutgoingPart> = emptyList(),
+    val wrapColumn: Int = 74,
 )
 
 class BuiltMail(
@@ -349,10 +350,60 @@ fun looksLikeBase64(bytes: ByteArray): Boolean {
     return count > 0 && count % 4 == 0
 }
 
+/** Break plain text on spaces at the column. Column 0 leaves the body unchanged. */
+internal fun wrapPlain(body: String, column: Int): String {
+    if (column <= 0) return body
+    val normalized = body.replace("\r\n", "\n").replace('\r', '\n')
+    return normalized.split('\n').joinToString("\n") { wrapPlainLine(it, column) }
+}
+
+private fun wrapPlainLine(line: String, column: Int): String {
+    if (line.codePointCount(0, line.length) <= column) return line
+    val prefix = quotePrefix(line)
+    val prefixCount = prefix.codePointCount(0, prefix.length)
+    if (prefixCount >= column) return line
+    val words = line.substring(prefix.length).split(Regex("[ \t]+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return line
+    val lines = ArrayList<String>()
+    val current = StringBuilder(prefix)
+    var count = prefixCount
+    var hasWord = false
+    for (word in words) {
+        val wordCount = word.codePointCount(0, word.length)
+        if (hasWord && count + 1 + wordCount > column) {
+            lines.add(current.toString())
+            current.setLength(0)
+            current.append(prefix)
+            count = prefixCount
+            hasWord = false
+        }
+        if (!hasWord && prefixCount + wordCount > column) {
+            lines.add(prefix + word)
+            continue
+        }
+        if (hasWord) {
+            current.append(' ')
+            count += 1
+        }
+        current.append(word)
+        count += wordCount
+        hasWord = true
+    }
+    if (hasWord) lines.add(current.toString())
+    return lines.joinToString("\n")
+}
+
+private fun quotePrefix(line: String): String {
+    var end = 0
+    while (end < line.length && line[end] == '>') end++
+    if (end < line.length && line[end] == ' ') end++
+    return line.substring(0, end)
+}
+
 /** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
 fun buildPlain(message: PlainMessage): BuiltMail {
     val recipients = envelopeRecipients(message.to, message.cc, message.bcc)
-    val (encoding, payload) = textPart(message.body, allowEightBit = true)
+    val (encoding, payload) = textPart(wrapPlain(message.body, message.wrapColumn), allowEightBit = true)
     val bytes = if (message.attachments.isEmpty()) {
         val headers = baseHeaders(message, "text/plain; charset=utf-8", encoding)
         val out = ByteArrayOutputStream()
