@@ -381,6 +381,7 @@ data class AccountSettings(
     val extraIdleBudget: Int = 2,
     val savedSearches: List<SavedSearch> = emptyList(),
     val savedAdvanced: List<SavedAdvanced> = emptyList(),
+    val emailSubmission: Boolean = false,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -477,6 +478,7 @@ private val fieldNames = listOf(
     "extraIdleBudget",
     "savedSearches",
     "savedAdvanced",
+    "emailSubmission",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -529,7 +531,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, and savedAdvanced when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, and emailSubmission when false.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -590,6 +592,7 @@ fun AccountSettings.encode(): String = buildString {
     if (savedAdvanced.isNotEmpty()) {
         appendLine("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
     }
+    if (emailSubmission) appendLine("emailSubmission=true")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -678,7 +681,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
             key == "savedSearches" ||
-            key == "savedAdvanced"
+            key == "savedAdvanced" ||
+            key == "emailSubmission"
         ) {
             continue
         }
@@ -772,6 +776,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
         savedSearches = values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList(),
         savedAdvanced = values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList(),
+        emailSubmission = values["emailSubmission"]?.let { parseBoolean(it) } ?: false,
     )
 }
 

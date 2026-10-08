@@ -804,6 +804,13 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { enabled ->
                 editor.persist(editor.settings.copy(quellFlowed = !enabled))
             }
+            BoolField(
+                stringResource(R.string.settings_email_submission),
+                settings.emailSubmission,
+                note = stringResource(R.string.settings_email_submission_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(emailSubmission = enabled))
+            }
         }
         SettingsSection(
             title = stringResource(R.string.settings_import),

@@ -2478,3 +2478,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD f83b048
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Store the JMAP EmailSubmission choice
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-toggle-20261008-1216-plan.md
+- Work: store the JMAP EmailSubmission choice on the account. Sending stays SMTP. This slice does not connect and does not send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 8563545
+- Host: /home/dlang/git/liveimap/master

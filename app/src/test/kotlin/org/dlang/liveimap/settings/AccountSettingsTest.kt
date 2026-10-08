@@ -972,6 +972,20 @@ class AccountSettingsTest {
         assertEquals(emptyList<SavedAdvanced>(), decodeAccountSettings(defaults).savedAdvanced)
     }
 
+    @Test
+    fun emailSubmissionRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("emailSubmission"))
+        assertFalse(decodeAccountSettings(text).emailSubmission)
+        val saved = AccountSettings(emailSubmission = true)
+        val encoded = saved.encode()
+        assertTrue(encoded.lines().contains("emailSubmission=true"))
+        assertTrue(decodeAccountSettings(encoded).emailSubmission)
+        assertEquals(saved, decodeAccountSettings(encoded))
+        assertFalse(decodeAccountSettings(text.trimEnd() + "\nemailSubmission=false\n").emailSubmission)
+        assertTrue(decodeAccountSettings(text.trimEnd() + "\nemailSubmission=true\n").emailSubmission)
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()
