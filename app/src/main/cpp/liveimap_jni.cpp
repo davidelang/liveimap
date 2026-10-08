@@ -102,6 +102,32 @@ int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
     size_t contextlen, int use_context);
 }
 
+static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
+    size_t * bindingLen, const char ** bindingName) {
+    *bindingLen = 0;
+    *bindingName = nullptr;
+    if (stream == nullptr) return;
+    ssl_st * ssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(stream));
+    if (ssl == nullptr) return;
+    int version = SSL_version(ssl);
+    if (version == 0x0304) {
+        // RFC 9266 label is 24 octets. The NUL is not part of it.
+        static const char label[] = "EXPORTER-Channel-Binding";
+        int exported = SSL_export_keying_material(
+            ssl, binding, 32, label, sizeof(label) - 1, nullptr, 0, 1);
+        if (exported == 1) {
+            *bindingName = "tls-exporter";
+            *bindingLen = 32;
+        }
+    } else if (version == 0x0303) {
+        size_t n = SSL_get_peer_finished(ssl, binding, 64);
+        if (n > 0 && n <= 64) {
+            *bindingName = "tls-unique";
+            *bindingLen = n;
+        }
+    }
+}
+
 std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 
@@ -2443,26 +2469,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     size_t bindingLen = 0;
     const char * bindingName = nullptr;
     if (tls) {
-        ssl_st * ssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(imap->imap_stream));
-        if (ssl != nullptr) {
-            int version = SSL_version(ssl);
-            if (version == 0x0304) {
-                // RFC 9266 label is 24 octets. The NUL is not part of it.
-                static const char label[] = "EXPORTER-Channel-Binding";
-                int exported = SSL_export_keying_material(
-                    ssl, binding, 32, label, sizeof(label) - 1, nullptr, 0, 1);
-                if (exported == 1) {
-                    bindingName = "tls-exporter";
-                    bindingLen = 32;
-                }
-            } else if (version == 0x0303) {
-                size_t n = SSL_get_peer_finished(ssl, binding, 64);
-                if (n > 0 && n <= 64) {
-                    bindingName = "tls-unique";
-                    bindingLen = n;
-                }
-            }
-        }
+        fillTlsChannelBinding(imap->imap_stream, binding, &bindingLen, &bindingName);
     }
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
@@ -6809,7 +6816,7 @@ bool offeredPlainOrLogin(const std::string & offered) {
 }
 
 bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool plaintextOk,
-    std::string * mechanism) {
+    bool channelBinding, std::string * mechanism) {
     mechanism->clear();
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
@@ -6835,7 +6842,7 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
-    args[3].z = JNI_FALSE;
+    args[3].z = channelBinding ? JNI_TRUE : JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     env->DeleteLocalRef(cls);
@@ -7035,12 +7042,32 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         return;
     }
     const bool smtpTls = mode == "StartTls" || mode == "Implicit";
+    unsigned char binding[64];
+    size_t bindingLen = 0;
+    const char * bindingName = nullptr;
+    if (smtpTls) {
+        fillTlsChannelBinding(smtp->stream, binding, &bindingLen, &bindingName);
+    }
     std::string mechanism;
-    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, session->allowPlaintextAuth, &mechanism)) {
+    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, session->allowPlaintextAuth,
+            bindingLen > 0, &mechanism)) {
         mailsmtp_free(smtp);
         throwFailure(env, "auth choice failed");
         unlockSession(session);
         return;
+    }
+    bool plus = mechanism.size() >= 5
+        && mechanism.compare(mechanism.size() - 5, 5, "-PLUS") == 0;
+    if (plus && bindingLen > 0) {
+        int br = mailsmtp_set_channel_binding(smtp, bindingName, binding, bindingLen);
+        if (br != 0) {
+            mailsmtp_free(smtp);
+            throwFailure(env, "channel binding failed");
+            unlockSession(session);
+            return;
+        }
+    } else {
+        mailsmtp_set_channel_binding(smtp, nullptr, nullptr, 0);
     }
     if (!mechanism.empty()) {
         if (authUser.empty()) {

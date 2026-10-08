@@ -560,3 +560,141 @@ index 7895c11..fe50938 100644
    } imap_sasl;
    
    time_t imap_idle_timestamp;
+diff --git a/src/low-level/smtp/mailsmtp.c b/src/low-level/smtp/mailsmtp.c
+--- a/src/low-level/smtp/mailsmtp.c
++++ b/src/low-level/smtp/mailsmtp.c
+@@ -138,6 +138,9 @@
+   session->auth = MAILSMTP_AUTH_NOT_CHECKED;
+   
+   session->smtp_sasl.sasl_conn = NULL;
++  session->smtp_sasl.sasl_cb_name = NULL;
++  session->smtp_sasl.sasl_cb_data = NULL;
++  session->smtp_sasl.sasl_cb_len = 0;
+   
+   session->smtp_max_msg_size = 0;
+   session->smtp_progress_fun = NULL;
+@@ -158,6 +161,15 @@
+   return NULL;
+ }
+ 
++static void mailsmtp_channel_binding_clear(mailsmtp * session)
++{
++  free(session->smtp_sasl.sasl_cb_name);
++  free(session->smtp_sasl.sasl_cb_data);
++  session->smtp_sasl.sasl_cb_name = NULL;
++  session->smtp_sasl.sasl_cb_data = NULL;
++  session->smtp_sasl.sasl_cb_len = 0;
++}
++
+ void mailsmtp_free(mailsmtp * session)
+ {
+ #ifdef USE_SASL
+@@ -166,6 +178,7 @@
+     mailsasl_unref();
+   }
+ #endif
++  mailsmtp_channel_binding_clear(session);
+   
+   if (session->stream)
+     mailsmtp_quit(session);
+@@ -1522,6 +1535,36 @@
+ }
+ #endif
+ 
++LIBETPAN_EXPORT
++int mailsmtp_set_channel_binding(mailsmtp * session, const char * name,
++    const unsigned char * data, size_t len)
++{
++  char * name_copy;
++  unsigned char * data_copy;
++
++  if (name == NULL || data == NULL || len == 0) {
++    mailsmtp_channel_binding_clear(session);
++    return 0;
++  }
++
++  name_copy = strdup(name);
++  if (name_copy == NULL)
++    return MAILSMTP_ERROR_MEMORY;
++  data_copy = malloc(len);
++  if (data_copy == NULL) {
++    free(name_copy);
++    return MAILSMTP_ERROR_MEMORY;
++  }
++  memcpy(data_copy, data, len);
++
++  free(session->smtp_sasl.sasl_cb_name);
++  free(session->smtp_sasl.sasl_cb_data);
++  session->smtp_sasl.sasl_cb_name = name_copy;
++  session->smtp_sasl.sasl_cb_data = data_copy;
++  session->smtp_sasl.sasl_cb_len = len;
++  return 0;
++}
++
+ int mailesmtp_auth_sasl(mailsmtp * session, const char * auth_type,
+     const char * server_fqdn,
+     const char * local_ip_port,
+@@ -1542,6 +1585,7 @@
+   char * encoded;
+   unsigned int encoded_len;
+   unsigned int max_encoded;
++  sasl_channel_binding_t channel_binding;
+   
+   sasl_callback[0].id = SASL_CB_GETREALM;
+   sasl_callback[0].proc =  (int(*)(void)) sasl_getrealm;
+@@ -1598,6 +1642,21 @@
+     if (r != SASL_OK) {
+       res = MAILSMTP_ERROR_AUTH_LOGIN;
+       goto free_sasl_conn;
++    }
++  }
++
++  if (session->smtp_sasl.sasl_cb_name != NULL &&
++      session->smtp_sasl.sasl_cb_data != NULL &&
++      session->smtp_sasl.sasl_cb_len != 0) {
++    channel_binding.name = session->smtp_sasl.sasl_cb_name;
++    channel_binding.critical = 1;
++    channel_binding.len = (unsigned long) session->smtp_sasl.sasl_cb_len;
++    channel_binding.data = session->smtp_sasl.sasl_cb_data;
++    r = sasl_setprop(session->smtp_sasl.sasl_conn, SASL_CHANNEL_BINDING,
++        &channel_binding);
++    if (r != SASL_OK) {
++      res = MAILSMTP_ERROR_AUTH_LOGIN;
++      goto free_sasl_conn;
+     }
+   }
+   
+diff --git a/src/low-level/smtp/mailsmtp.h b/src/low-level/smtp/mailsmtp.h
+--- a/src/low-level/smtp/mailsmtp.h
++++ b/src/low-level/smtp/mailsmtp.h
+@@ -169,6 +169,17 @@
+     const char * login, const char * auth_name,
+     const char * password, const char * realm);
+ 
++/*
++   mailsmtp_set_channel_binding()
++
++   Store a SASL channel binding copied for the next authenticate.
++   A null name, a null data pointer, or a zero length clears it.
++*/
++
++LIBETPAN_EXPORT
++int mailsmtp_set_channel_binding(mailsmtp * session, const char * name,
++    const unsigned char * data, size_t len);
++
+ LIBETPAN_EXPORT
+ int mailsmtp_noop(mailsmtp * session);
+ 
+diff --git a/src/low-level/smtp/mailsmtp_types.h b/src/low-level/smtp/mailsmtp_types.h
+--- a/src/low-level/smtp/mailsmtp_types.h
++++ b/src/low-level/smtp/mailsmtp_types.h
+@@ -125,6 +125,9 @@
+     const char * sasl_password;
+     const char * sasl_realm;
+     void * sasl_secret;
++    char * sasl_cb_name;
++    unsigned char * sasl_cb_data;
++    size_t sasl_cb_len;
+   } smtp_sasl;
+ 
+   size_t smtp_max_msg_size;

@@ -2286,3 +2286,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 84870c6
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - SMTP SCRAM-PLUS execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-scram-plus-20261008-0801-plan.md
+- Work: SMTP AUTH prefers SCRAM-PLUS when this TLS connection has channel-binding bytes. The bytes are stored on the SMTP SASL session before sasl_client_start. A failed -PLUS AUTH is not retried.
+- Phase 1 of 1. TLS 1.3 label length is 24. IMAP uses the same filler. No install. No message sent. src stays untracked.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD cbc7960
+- Host: /home/dlang/git/liveimap/master
