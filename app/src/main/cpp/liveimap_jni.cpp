@@ -1,4 +1,5 @@
 #include <libetpan/libetpan.h>
+#include <libetpan/charconv.h>
 #include <libetpan/unselect.h>
 #include <libetpan/esearch.h>
 #include <libetpan/mailimap_socket.h>
@@ -4395,8 +4396,194 @@ std::string decodePreviewBytes(const char * bytes, size_t length, const std::str
     return text;
 }
 
+jclass gMailCharsetsKt = nullptr;
+jclass gMailCharconvCls = nullptr;
+jmethodID gMailCharconv = nullptr;
+jmethodID gMailCharconvCode = nullptr;
+jmethodID gMailCharconvBytes = nullptr;
+
+struct CharconvEnv {
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    bool ok = false;
+    CharconvEnv() {
+        if (gVm == nullptr) return;
+        jint got = gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+        if (got != JNI_OK) {
+            if (gVm->AttachCurrentThread(&env, nullptr) != 0 || env == nullptr) {
+                env = nullptr;
+                return;
+            }
+            attached = true;
+        }
+        ok = env != nullptr;
+    }
+    ~CharconvEnv() {
+        if (attached && gVm != nullptr) gVm->DetachCurrentThread();
+    }
+};
+
+void dropLocal(JNIEnv * env, jobject ref) {
+    if (ref != nullptr) env->DeleteLocalRef(ref);
+}
+
+extern "C" int liveimapCharconv(const char * tocode, const char * fromcode, const char * str,
+    size_t length, char * result, size_t * result_len) {
+    if (tocode == nullptr || fromcode == nullptr || result == nullptr || result_len == nullptr) {
+        return 2;
+    }
+    if (str == nullptr && length != 0) return 2;
+    if (gVm == nullptr || gMailCharsetsKt == nullptr || gMailCharconvCls == nullptr
+        || gMailCharconv == nullptr || gMailCharconvCode == nullptr || gMailCharconvBytes == nullptr) {
+        return 2;
+    }
+    if (length > static_cast<size_t>(INT_MAX)) return 2;
+    const size_t capacity = *result_len;
+    CharconvEnv thread;
+    if (!thread.ok) return 2;
+    JNIEnv * env = thread.env;
+    if (env->ExceptionCheck()) env->ExceptionClear();
+
+    jstring jTo = env->NewStringUTF(tocode);
+    jstring jFrom = env->NewStringUTF(fromcode);
+    jbyteArray input = env->NewByteArray(static_cast<jsize>(length));
+    if (jTo == nullptr || jFrom == nullptr || input == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        dropLocal(env, jTo);
+        dropLocal(env, jFrom);
+        dropLocal(env, input);
+        return 2;
+    }
+    if (length > 0) {
+        env->SetByteArrayRegion(input, 0, static_cast<jsize>(length),
+            reinterpret_cast<const jbyte *>(str));
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            dropLocal(env, jTo);
+            dropLocal(env, jFrom);
+            dropLocal(env, input);
+            return 2;
+        }
+    }
+    jobject converted = env->CallStaticObjectMethod(gMailCharsetsKt, gMailCharconv, jTo, jFrom, input);
+    dropLocal(env, jTo);
+    dropLocal(env, jFrom);
+    dropLocal(env, input);
+    if (env->ExceptionCheck() || converted == nullptr) {
+        env->ExceptionClear();
+        dropLocal(env, converted);
+        return 2;
+    }
+    jint conv = env->CallIntMethod(converted, gMailCharconvCode);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        dropLocal(env, converted);
+        return 2;
+    }
+    if (conv == 1) {
+        dropLocal(env, converted);
+        return 1;
+    }
+    if (conv != 0) {
+        dropLocal(env, converted);
+        return 2;
+    }
+    auto * bytes = static_cast<jbyteArray>(env->CallObjectMethod(converted, gMailCharconvBytes));
+    if (env->ExceptionCheck() || bytes == nullptr) {
+        env->ExceptionClear();
+        dropLocal(env, bytes);
+        dropLocal(env, converted);
+        return 2;
+    }
+    jsize count = env->GetArrayLength(bytes);
+    if (env->ExceptionCheck() || count < 0) {
+        env->ExceptionClear();
+        dropLocal(env, bytes);
+        dropLocal(env, converted);
+        return 2;
+    }
+    if (static_cast<size_t>(count) > capacity) {
+        dropLocal(env, bytes);
+        dropLocal(env, converted);
+        return 2;
+    }
+    if (count > 0) {
+        std::vector<jbyte> tmp(static_cast<size_t>(count));
+        env->GetByteArrayRegion(bytes, 0, count, tmp.data());
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            dropLocal(env, bytes);
+            dropLocal(env, converted);
+            return 2;
+        }
+        std::memcpy(result, tmp.data(), static_cast<size_t>(count));
+    }
+    *result_len = static_cast<size_t>(count);
+    dropLocal(env, bytes);
+    dropLocal(env, converted);
+    return 0;
+}
+
+bool installMailCharconv(JNIEnv * env) {
+    jclass kt = env->FindClass("org/dlang/liveimap/engine/MailCharsetsKt");
+    if (kt == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    jmethodID method = env->GetStaticMethodID(
+        kt, "mailCharconv",
+        "(Ljava/lang/String;Ljava/lang/String;[B)Lorg/dlang/liveimap/engine/MailCharconv;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(kt);
+        return false;
+    }
+    jclass cls = env->FindClass("org/dlang/liveimap/engine/MailCharconv");
+    if (cls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(kt);
+        return false;
+    }
+    jmethodID getCode = env->GetMethodID(cls, "getCode", "()I");
+    if (getCode == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        env->DeleteLocalRef(kt);
+        return false;
+    }
+    jmethodID getBytes = env->GetMethodID(cls, "getBytes", "()[B");
+    if (getBytes == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        env->DeleteLocalRef(kt);
+        return false;
+    }
+    jclass ktGlobal = static_cast<jclass>(env->NewGlobalRef(kt));
+    jclass clsGlobal = static_cast<jclass>(env->NewGlobalRef(cls));
+    env->DeleteLocalRef(kt);
+    env->DeleteLocalRef(cls);
+    if (ktGlobal == nullptr || clsGlobal == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (ktGlobal != nullptr) env->DeleteGlobalRef(ktGlobal);
+        if (clsGlobal != nullptr) env->DeleteGlobalRef(clsGlobal);
+        return false;
+    }
+    gMailCharsetsKt = ktGlobal;
+    gMailCharconvCls = clsGlobal;
+    gMailCharconv = method;
+    gMailCharconvCode = getCode;
+    gMailCharconvBytes = getBytes;
+    extended_charconv = liveimapCharconv;
+    return true;
+}
+
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
     gVm = vm;
+    JNIEnv * env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        installMailCharconv(env);
+    }
     gKeepUnselect = mailimap_unselect;
     registerExtensions();
     setPreviewDecoder(decodePreviewBytes);

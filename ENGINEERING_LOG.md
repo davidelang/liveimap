@@ -2231,3 +2231,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start builds tag 0abeb2d
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Hook libetpan charset conversion
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jni-charconv-20261008-0647-plan.md
+- Work: JNI_OnLoad points extended_charconv at mailCharconv. Code 1 still falls through to libiconv
+- Phase 1 of 1. libiconv stays linked. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 2131476
+- Host: /home/dlang/git/liveimap/master
