@@ -86,6 +86,7 @@ import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
@@ -175,6 +176,7 @@ fun LiveImapNavHost() {
     val route = currentEntry?.destination?.route
     val drawerGestures = route == "folders"
     var header by remember { mutableStateOf("") }
+    var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
     var favorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var postponedMailbox by remember { mutableStateOf("") }
     val focusMailbox = remember { mutableStateOf<String?>(null) }
@@ -218,6 +220,7 @@ fun LiveImapNavHost() {
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
         multiPane = account.multiPane
+        accounts = store.listAccounts()
     }
 
     LaunchedEffect(split, route, currentEntry?.id) {
@@ -645,7 +648,7 @@ fun LiveImapNavHost() {
         }
     }
 
-    fun navigateFromDrawer(go: () -> Unit) {
+    fun navigateFromDrawer(go: suspend () -> Unit) {
         scope.launch {
             drawerState.close()
             go()
@@ -726,11 +729,31 @@ fun LiveImapNavHost() {
     val drawerSheet: @Composable ColumnScope.() -> Unit = {
         DrawerSheetContent(
             header = header,
+            inboxes = drawerInboxes(accounts),
             postponedMailbox = postponedMailbox,
             favorites = favorites,
             onInbox = {
                 navigateFromDrawer {
                     navController.navigate("index/${Uri.encode("INBOX")}")
+                }
+            },
+            onAccountInbox = { choice ->
+                navigateFromDrawer {
+                    if (!choice.chosen) {
+                        store.selectAccount(choice.id)
+                        val account = store.load()
+                        header = if (account.email.isNotBlank()) account.email else account.username
+                        if (editingFavorite == null) favorites = account.favorites
+                        postponedMailbox = account.postponedMailbox
+                        multiPane = account.multiPane
+                        accounts = store.listAccounts()
+                        navController.navigate("index/${Uri.encode("INBOX")}") {
+                            popUpTo("folders")
+                            launchSingleTop = false
+                        }
+                    } else {
+                        navController.navigate("index/${Uri.encode("INBOX")}")
+                    }
                 }
             },
             onPostponed = { row ->
@@ -945,9 +968,11 @@ fun LiveImapNavHost() {
 @Composable
 private fun ColumnScope.DrawerSheetContent(
     header: String,
+    inboxes: List<AccountChoice>,
     postponedMailbox: String,
     favorites: List<FolderFavorite>,
     onInbox: () -> Unit,
+    onAccountInbox: (AccountChoice) -> Unit,
     onPostponed: (String) -> Unit,
     onAllFolders: () -> Unit,
     onFavorite: (FolderFavorite) -> Unit,
@@ -958,15 +983,29 @@ private fun ColumnScope.DrawerSheetContent(
     onHelp: () -> Unit,
     onAbout: () -> Unit,
 ) {
-    Text(
-        text = header,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-    )
-    NavigationDrawerItem(
-        label = { Text(stringResource(R.string.drawer_inbox)) },
-        selected = false,
-        onClick = onInbox,
-    )
+    if (inboxes.isEmpty()) {
+        Text(
+            text = header,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.drawer_inbox)) },
+            selected = false,
+            onClick = onInbox,
+        )
+    } else {
+        for (choice in inboxes) {
+            Text(
+                text = choice.name,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.drawer_inbox)) },
+                selected = false,
+                onClick = { onAccountInbox(choice) },
+            )
+        }
+    }
     val postponedDescription = stringResource(R.string.drawer_postponed)
     val postponedRow = postponedDrawerMailbox(postponedMailbox)
     if (postponedRow != null) {
@@ -1145,6 +1184,11 @@ private fun DragSplit(
             )
         }
     }
+}
+
+internal fun drawerInboxes(choices: List<AccountChoice>): List<AccountChoice> {
+    if (choices.size < 2) return emptyList()
+    return choices
 }
 
 internal fun postponedDrawerMailbox(value: String): String? {
