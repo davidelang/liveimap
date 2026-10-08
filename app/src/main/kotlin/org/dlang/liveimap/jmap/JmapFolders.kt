@@ -9,6 +9,7 @@ data class JmapFolderRow(
     val total: Long,
     val unread: Long,
     val hasChildren: Boolean,
+    val parentId: String? = null,
 )
 
 fun jmapFolderRows(
@@ -23,6 +24,7 @@ fun jmapFolderRows(
             total = mailbox.totalEmails,
             unread = mailbox.unreadEmails,
             hasChildren = mailbox.id in parentIdsWithChildren,
+            parentId = mailbox.parentId,
         )
     }
 }
