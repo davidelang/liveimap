@@ -2568,3 +2568,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 55d9ada
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Bounce through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/bounce-email-submission-20261008-1338-plan.md
+- Work: The bounce button uses EmailSubmission when the switch is on. The switch off stays SMTP. A missing submission capability fails and does not use SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b4c45f5
+- Host: /home/dlang/git/liveimap/master

@@ -1305,42 +1305,114 @@ private fun ComposeLoaded(
                     ensureMailbox(box)
                     val recipient = addrSpec(resentTo).ifEmpty { resentTo }
                     val resentFrom = formatMailbox(account.displayName, account.email)
-                    for (uid in seed.uids) {
-                        val original = session.fetchRfc822(uid)
-                        val bounced = buildBounce(
-                            original,
-                            resentFrom = resentFrom,
-                            resentTo = resentTo,
-                            resentDate = rfc822Date(),
-                            resentMessageId = newMessageId(account.email),
-                        )
-                        val id = UUID.randomUUID().toString()
-                        val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                        val accepted = try {
-                            sendSmtp(bounced, listOf(recipient))
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: MailFailure) {
-                            val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
-                            notice = error.text
-                            status = notSentNotice
-                            return@launchLocked false
+                    when (bounceDelivery(account.emailSubmission)) {
+                        BounceDelivery.Smtp -> {
+                            for (uid in seed.uids) {
+                                val original = session.fetchRfc822(uid)
+                                val bounced = buildBounce(
+                                    original,
+                                    resentFrom = resentFrom,
+                                    resentTo = resentTo,
+                                    resentDate = rfc822Date(),
+                                    resentMessageId = newMessageId(account.email),
+                                )
+                                val id = UUID.randomUUID().toString()
+                                val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
+                                val accepted = try {
+                                    sendSmtp(bounced, listOf(recipient))
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: MailFailure) {
+                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                                    writeCopy(appContext, copy, accountId)
+                                    held = copy
+                                    notice = error.text
+                                    status = notSentNotice
+                                    return@launchLocked false
+                                }
+                                storeAcceptedFlags(listOf(uid))
+                                if (!account.bounceFcc) continue
+                                try {
+                                    session.append(account.sentMailbox, accepted)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: MailFailure) {
+                                    val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), accepted)
+                                    writeCopy(appContext, copy, accountId)
+                                    held = copy
+                                    notice = error.text
+                                    status = acceptedNotice
+                                    return@launchLocked false
+                                }
+                            }
                         }
-                        storeAcceptedFlags(listOf(uid))
-                        if (!account.bounceFcc) continue
-                        try {
-                            session.append(account.sentMailbox, accepted)
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: MailFailure) {
-                            val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), accepted)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
-                            notice = error.text
-                            status = acceptedNotice
-                            return@launchLocked false
+                        BounceDelivery.Submission -> {
+                            val password = try {
+                                store.password()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                notice = error.message ?: notConnected
+                                return@launchLocked false
+                            }
+                            for (uid in seed.uids) {
+                                val original = session.fetchRfc822(uid)
+                                val bounced = buildBounce(
+                                    original,
+                                    resentFrom = resentFrom,
+                                    resentTo = resentTo,
+                                    resentDate = rfc822Date(),
+                                    resentMessageId = newMessageId(account.email),
+                                )
+                                val id = UUID.randomUUID().toString()
+                                val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
+                                try {
+                                    val offer = offerForAccount(account, ::platformJmapExchange)
+                                    when (
+                                        jmapSendChosen(
+                                            true,
+                                            offer,
+                                            bounced,
+                                            account.email,
+                                            listOf(recipient),
+                                            account.username,
+                                            password,
+                                            account.certPin,
+                                            ::platformJmapUpload,
+                                            ::platformJmapPost,
+                                        )
+                                    ) {
+                                        is JmapSendChoice.Submitted -> {
+                                            storeAcceptedFlags(listOf(uid))
+                                            continue
+                                        }
+                                        JmapSendChoice.Smtp -> return@launchLocked false
+                                    }
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: JmapFailure) {
+                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                                    writeCopy(appContext, copy, accountId)
+                                    held = copy
+                                    notice = error.text
+                                    status = notSentNotice
+                                    return@launchLocked false
+                                } catch (error: MailFailure) {
+                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                                    writeCopy(appContext, copy, accountId)
+                                    held = copy
+                                    notice = error.text
+                                    status = notSentNotice
+                                    return@launchLocked false
+                                } catch (error: Exception) {
+                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                                    writeCopy(appContext, copy, accountId)
+                                    held = copy
+                                    notice = error.message ?: notConnected
+                                    status = notSentNotice
+                                    return@launchLocked false
+                                }
+                            }
                         }
                     }
                     notice = null
