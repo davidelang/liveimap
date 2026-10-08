@@ -2419,11 +2419,67 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
     return imap;
 }
 
-bool loginImap(mailimap * imap, const char * host, int port, const char * user, const char * password,
-    const std::string & address, std::string * error) {
-    int r = mailimap_login(imap, user, password);
+bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
+    const char * password, const std::string & address, std::string * error, bool tls) {
+    struct mailimap_capability_data * caps = nullptr;
+    int r = mailimap_capability(imap, &caps);
+    if (!cmdOk(r) || caps == nullptr) {
+        if (caps != nullptr) mailimap_capability_data_free(caps);
+        *error = serviceLabel("IMAP", host, port) + " (" + address + "): capability failed: "
+            + imapText(imap, "capability failed");
+        return false;
+    }
+    std::string line = joinCapabilities(caps);
+    mailimap_capability_data_free(caps);
+    jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
+    if (cls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (cls != nullptr) env->DeleteLocalRef(cls);
+        *error = "auth choice failed";
+        return false;
+    }
+    jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
+        "(Ljava/lang/String;ZZ)Ljava/lang/String;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        *error = "auth choice failed";
+        return false;
+    }
+    jstring jline = newString(env, line.c_str());
+    if (jline == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (jline != nullptr) env->DeleteLocalRef(jline);
+        env->DeleteLocalRef(cls);
+        *error = "auth choice failed";
+        return false;
+    }
+    jvalue args[3];
+    args[0].l = jline;
+    args[1].z = tls ? JNI_TRUE : JNI_FALSE;
+    args[2].z = JNI_FALSE;
+    jobject result = env->CallStaticObjectMethodA(cls, method, args);
+    env->DeleteLocalRef(jline);
+    env->DeleteLocalRef(cls);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (result != nullptr) env->DeleteLocalRef(result);
+        *error = "auth choice failed";
+        return false;
+    }
+    std::string mechanism;
+    if (result != nullptr) {
+        mechanism = utf8FromJava(env, static_cast<jstring>(result));
+        env->DeleteLocalRef(result);
+    }
+    const char * name = user != nullptr ? user : "";
+    if (mechanism.empty() || name[0] == '\0') {
+        r = mailimap_login(imap, user, password);
+    } else {
+        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr, user, user,
+            password, nullptr);
+    }
     if (!cmdOk(r)) {
-        const char * name = user != nullptr ? user : "";
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed");
         return false;
@@ -2431,12 +2487,12 @@ bool loginImap(mailimap * imap, const char * host, int port, const char * user, 
     return true;
 }
 
-mailimap * openPlain(const char * host, int port, const char * user, const char * password,
+mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * user, const char * password,
     LiveSession * live, std::string * error, std::string * connectedAddress) {
     std::string address;
     mailimap * imap = openTcp(host, port, live, error, &address);
     if (imap == nullptr) return nullptr;
-    if (!loginImap(imap, host, port, user, password, address, error)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, false)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -2528,7 +2584,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         rejectImap(imap);
         return nullptr;
     }
-    if (!loginImap(imap, host, port, user, password, address, error)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, true)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -4414,7 +4470,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     std::string address;
     mailimap * imap = nullptr;
     if (strcmp(mode.c(), "None") == 0) {
-        imap = openPlain(h.c(), port, u.c(), p.c(), session, &error, &address);
+        imap = openPlain(env, h.c(), port, u.c(), p.c(), session, &error, &address);
     } else {
         imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address, session->certPin.c_str(), true);
     }
@@ -6387,7 +6443,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     std::string error;
     mailimap * watch = nullptr;
     if (session->tlsMode == "None") {
-        watch = openPlain(session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+        watch = openPlain(env, session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
     } else {
         watch = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr, session->certPin.c_str(), false);
     }
