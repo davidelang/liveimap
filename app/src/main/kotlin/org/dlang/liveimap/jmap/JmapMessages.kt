@@ -17,6 +17,7 @@ data class JmapMessage(
 data class JmapMessagePage(
     val total: Long?,
     val messages: List<JmapMessage>,
+    val emailState: String? = null,
 )
 
 data class JmapEmailChanges(
@@ -376,8 +377,10 @@ fun parseJmapMessages(text: String): JmapMessagePage {
     if (root !is Json.Obj) throw JmapFailure("jmap message response is not an object")
     val responses = root.fields["methodResponses"]
     val total = queryTotal(responses)
-    val list = emailGetList(responses) ?: throw JmapFailure("jmap message response lacks get")
-    return JmapMessagePage(total, list.map { parseMessage(it) })
+    val args = methodArgs(responses, "Email/get") ?: throw JmapFailure("jmap message response lacks get")
+    val list = args["list"] ?: throw JmapFailure("jmap message response lacks get")
+    if (list !is Json.Arr) throw JmapFailure("jmap message response lacks get")
+    return JmapMessagePage(total, list.values.map { parseMessage(it) }, emailState(args["state"]))
 }
 
 private fun queryTotal(responses: Json?): Long? {
@@ -391,6 +394,13 @@ private fun emailGetList(responses: Json?): List<Json>? {
     val list = args["list"] ?: return null
     if (list !is Json.Arr) return null
     return list.values
+}
+
+private fun emailState(value: Json?): String? {
+    if (value == null) return null
+    if (value !is Json.Str) throw JmapFailure("jmap message state is not text")
+    if (value.text.isBlank()) return null
+    return value.text
 }
 
 private fun changesState(value: Json?): String {

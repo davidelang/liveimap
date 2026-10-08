@@ -2,6 +2,7 @@ package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
 import java.net.URI
+import javax.net.ssl.HttpsURLConnection
 
 data class JmapPushEvent(
     val name: String,
@@ -104,6 +105,40 @@ fun jmapApplyPush(
     }
     if (found == null || found == sinceState) return null
     return jmapEmailChanges(session, sinceState, username, password, pin, post, trust)
+}
+
+fun platformJmapEventSource(url: String, authorization: String): JmapHttpExchange {
+    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+        instanceFollowRedirects = false
+        connectTimeout = 15_000
+        readTimeout = 15_000
+        requestMethod = "GET"
+        setRequestProperty("Accept", "text/event-stream")
+        setRequestProperty("Authorization", authorization)
+    }
+    return object : JmapHttpExchange {
+        override val status: Int
+            get() = connection.responseCode
+
+        override fun peerDer(): List<ByteArray> =
+            connection.serverCertificates.map { it.encoded }
+
+        override fun header(name: String): String? = connection.getHeaderField(name)
+
+        override fun body(): String {
+            val stream = if (connection.responseCode < 400) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+            if (stream == null) return ""
+            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+        }
+
+        override fun close() {
+            connection.disconnect()
+        }
+    }
 }
 
 private fun eventSourceIsHttps(url: String): Boolean {

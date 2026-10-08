@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -22,10 +23,13 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapFolderRow
 import org.dlang.liveimap.jmap.JmapFolderScreenModel
+import org.dlang.liveimap.jmap.JmapListPush
 import org.dlang.liveimap.jmap.JmapMessage
 import org.dlang.liveimap.jmap.JmapMessagePage
 import org.dlang.liveimap.jmap.jmapFolderLabel
 import org.dlang.liveimap.jmap.jmapMessageLine
+import org.dlang.liveimap.jmap.jmapMessageListKeeps
+import org.dlang.liveimap.jmap.jmapReadMessageListPush
 
 @Composable
 fun JmapFolderList(
@@ -59,6 +63,9 @@ fun JmapFolderRoute(
     var searchText by remember(model) { mutableStateOf("") }
     var searchMore by remember(model) { mutableStateOf("") }
     var searchOperator by remember(model) { mutableStateOf("AND") }
+    var openingMessage by remember(model) { mutableStateOf(false) }
+    var listEpoch by remember(model) { mutableIntStateOf(0) }
+    val listPush = remember(model) { JmapListPush() }
     val gate = remember(model) { Mutex() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) {
@@ -99,6 +106,9 @@ fun JmapFolderRoute(
                         }
                         opened = null
                         body = null
+                        openingMessage = false
+                        listPush.clear()
+                        listEpoch += 1
                         page = loaded
                         mailboxId = id
                     } catch (error: CancellationException) {
@@ -117,6 +127,8 @@ fun JmapFolderRoute(
         val text = body
         Column {
             Button(onClick = {
+                listPush.clear()
+                openingMessage = false
                 page = null
                 opened = null
                 body = null
@@ -128,6 +140,40 @@ fun JmapFolderRoute(
                 Text(stringResource(R.string.folders_title))
             }
             if (shown == null || text == null) {
+                if (!openingMessage) {
+                    val epoch = listEpoch
+                    LaunchedEffect(model, epoch) {
+                        val listed = page ?: return@LaunchedEffect
+                        val box = mailboxId
+                        try {
+                            val next = gate.withLock {
+                                withContext(Dispatchers.IO) {
+                                    jmapReadMessageListPush(
+                                        listed,
+                                        box,
+                                        listPush,
+                                        apply = { state ->
+                                            model.applyPush(state, model.pushOpen())
+                                        },
+                                        reload = { id -> model.messages(id) },
+                                        stillOpen = {
+                                            listEpoch == epoch && !openingMessage && page != null
+                                        },
+                                    )
+                                }
+                            }
+                            if (listEpoch != epoch || openingMessage || page == null) {
+                                return@LaunchedEffect
+                            }
+                            page = next
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (failure: JmapFailure) {
+                            val current = page
+                            if (current != null) page = jmapMessageListKeeps(current, failure)
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
@@ -166,6 +212,9 @@ fun JmapFolderRoute(
                             if (page == null) return@launch
                             opened = null
                             body = null
+                            openingMessage = false
+                            listPush.clear()
+                            listEpoch += 1
                             page = loaded
                         } catch (error: CancellationException) {
                             throw error
@@ -177,6 +226,7 @@ fun JmapFolderRoute(
                 }
                 open.messages.forEach { message ->
                     Button(onClick = {
+                        openingMessage = true
                         scope.launch {
                             try {
                                 val loaded = gate.withLock {
@@ -185,6 +235,7 @@ fun JmapFolderRoute(
                                 if (page == null) return@launch
                                 opened = message
                                 body = loaded
+                                openingMessage = false
                                 if (message.unread) {
                                     gate.withLock {
                                         withContext(Dispatchers.IO) { model.markSeen(message.id) }
@@ -205,6 +256,7 @@ fun JmapFolderRoute(
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (_: JmapFailure) {
+                                openingMessage = false
                             }
                         }
                     }) {
@@ -213,6 +265,7 @@ fun JmapFolderRoute(
                 }
             } else {
                 Button(onClick = {
+                    openingMessage = false
                     opened = null
                     body = null
                 }) {

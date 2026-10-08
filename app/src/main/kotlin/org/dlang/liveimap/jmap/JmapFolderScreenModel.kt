@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.settings.DeletePolicy
 
@@ -137,6 +138,96 @@ class JmapFolderScreenModel(
             trust,
         )
     }
+
+    fun applyPush(
+        sinceState: String,
+        open: (String) -> JmapHttpExchange,
+    ): JmapEmailChanges? {
+        return jmapApplyPush(
+            session,
+            sinceState,
+            username,
+            password,
+            pin,
+            open,
+            post,
+            trust,
+        )
+    }
+
+    fun pushOpen(): (String) -> JmapHttpExchange {
+        val authorization = jmapBasicAuthorization(username, password)
+        return { url -> platformJmapEventSource(url, authorization) }
+    }
+}
+
+class JmapListPush {
+    var recorded: String? = null
+        private set
+
+    fun clear() {
+        recorded = null
+    }
+
+    fun begin(emailState: String?): String? {
+        if (emailState.isNullOrBlank()) return null
+        if (recorded == emailState) return null
+        recorded = emailState
+        return emailState
+    }
+
+    fun after(
+        page: JmapMessagePage,
+        changes: JmapEmailChanges?,
+        reloaded: JmapMessagePage? = null,
+    ): JmapMessagePage {
+        if (changes == null) return page
+        if (changes.created.isNotEmpty() || changes.updated.isNotEmpty()) {
+            val loaded = reloaded ?: return page
+            val next = loaded.emailState
+            if (!next.isNullOrBlank()) recorded = next
+            return loaded
+        }
+        recorded = changes.newState
+        val gone = changes.destroyed.toSet()
+        return page.copy(
+            messages = page.messages.filter { it.id !in gone },
+            emailState = changes.newState,
+        )
+    }
+}
+
+fun jmapReadMessageListPush(
+    page: JmapMessagePage,
+    mailboxId: String?,
+    push: JmapListPush,
+    apply: (String) -> JmapEmailChanges?,
+    reload: (String) -> JmapMessagePage,
+    stillOpen: () -> Boolean,
+): JmapMessagePage {
+    if (!stillOpen()) return page
+    val state = push.begin(page.emailState) ?: return page
+    val result = try {
+        apply(state)
+    } catch (error: CancellationException) {
+        throw error
+    }
+    if (!stillOpen()) return page
+    if (result == null || (result.created.isEmpty() && result.updated.isEmpty())) {
+        return push.after(page, result)
+    }
+    if (mailboxId.isNullOrBlank()) return page
+    val loaded = try {
+        reload(mailboxId)
+    } catch (error: CancellationException) {
+        throw error
+    }
+    if (!stillOpen()) return page
+    return push.after(page, result, loaded)
+}
+
+fun jmapMessageListKeeps(page: JmapMessagePage, failure: JmapFailure): JmapMessagePage {
+    return if (failure.text.isEmpty()) page else page
 }
 
 private fun indexOfFolder(rows: List<JmapFolderRow>, id: String): Int {

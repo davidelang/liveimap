@@ -2215,3 +2215,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Read a JMAP event source.
 
 ## 2026-10-08 - Apply a JMAP push state.
+
+## 2026-10-08 - Show JMAP push on the list.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-push-list-20261008-0612-plan.md
+- The open message list reads one event source and shows the changes. The same Email state does not post. A failure leaves the list up.
+- First action per standard-plan-compliance-block.md. No install. No message sent.
