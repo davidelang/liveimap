@@ -103,7 +103,10 @@ import org.dlang.liveimap.engine.sieve.greetSieve
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.dropMailSession
+import org.dlang.liveimap.session.extraIdleBudgetFromText
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.session.watchedFolderText
+import org.dlang.liveimap.session.watchedFoldersFromText
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
 import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
 import org.dlang.liveimap.ui.contacts.hasReadContacts
@@ -676,6 +679,42 @@ private fun AccountGroup(editor: SettingsEditor) {
                 Text(stringResource(R.string.settings_sieve_check))
             }
             if (sieveReport.isNotEmpty()) Text(sieveReport)
+        }
+        val watchedNames = settings.watchedFolders
+        SettingsSection(
+            title = stringResource(R.string.settings_watched_folders),
+            summary = if (watchedNames.isEmpty()) {
+                stringResource(R.string.settings_watched_none)
+            } else {
+                watchedNames.size.toString()
+            },
+            expanded = "watched" in sections.open,
+            onToggle = { sections.toggle("watched") },
+        ) {
+            Text(stringResource(R.string.settings_watched_folder_note))
+            LineField(
+                label = stringResource(R.string.settings_extra_folders),
+                value = watchedFolderText(watchedNames),
+                singleLine = false,
+                ready = editor.ready,
+                interpret = { draft, stored ->
+                    val next = watchedFolderText(watchedFoldersFromText(draft))
+                    if (next == stored) null else next
+                },
+                onCommit = { text ->
+                    editor.persist(editor.settings.copy(watchedFolders = watchedFoldersFromText(text)))
+                },
+            )
+            LineField(
+                label = stringResource(R.string.settings_extra_idle_budget),
+                value = settings.extraIdleBudget.toString(),
+                ready = editor.ready,
+                interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
+                onCommit = { text ->
+                    val budget = extraIdleBudgetFromText(text) ?: return@LineField
+                    editor.persist(editor.settings.copy(extraIdleBudget = budget))
+                },
+            )
         }
         val noUser = stringResource(R.string.settings_no_user)
         SettingsSection(
@@ -1832,6 +1871,7 @@ private fun LineField(
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     password: Boolean = false,
+    singleLine: Boolean = true,
     ready: Boolean = true,
     commitOnLeave: Boolean = true,
     onDraft: ((String) -> Unit)? = null,
@@ -1871,9 +1911,12 @@ private fun LineField(
             onDraft?.invoke(next)
         },
         label = { Text(label) },
-        singleLine = true,
+        singleLine = singleLine,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = keyboardType,
+            imeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
+        ),
         keyboardActions = KeyboardActions(onDone = {
             committer.commit()
             focusManager.clearFocus()

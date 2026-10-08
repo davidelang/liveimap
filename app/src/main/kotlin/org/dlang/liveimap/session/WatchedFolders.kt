@@ -24,6 +24,27 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
 fun extraWatchPlan(settings: AccountSettings): WatchPlan =
     planWatchedFolders(settings.watchedFolders, settings.extraIdleBudget)
 
+/** One stored name on each line. Does not open a socket. */
+fun watchedFolderText(names: List<String>): String = names.joinToString("\n")
+
+/** Trims each line, drops a blank line, and keeps a repeated name. Does not open a socket. */
+fun watchedFoldersFromText(text: String): List<String> {
+    val names = ArrayList<String>()
+    for (line in text.lineSequence()) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) continue
+        names.add(trimmed)
+    }
+    return names
+}
+
+/** Optional minus and digits that fit in an Int, or null. Does not open a socket. */
+fun extraIdleBudgetFromText(text: String): Int? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty() || !trimmed.matches(Regex("-?\\d+"))) return null
+    return trimmed.toIntOrNull()
+}
+
 /** Opens extra IDLE names and checks STATUS names. Does not open a socket. */
 interface ExtraWatchLink {
     suspend fun openIdle(mailbox: String)

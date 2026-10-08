@@ -116,6 +116,34 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun folderLinesTrimDropBlanksAndKeepSentMail() {
+        assertEquals(
+            listOf("A", "B", "Sent Mail"),
+            watchedFoldersFromText("A\n B \n\nSent Mail"),
+        )
+    }
+
+    @Test
+    fun repeatedInboxStaysAndEmptyTextIsEmpty() {
+        assertEquals(listOf("INBOX", "INBOX"), watchedFoldersFromText("INBOX\nINBOX"))
+        assertEquals(emptyList<String>(), watchedFoldersFromText(""))
+    }
+
+    @Test
+    fun watchedFolderTextUsesOneNamePerLine() {
+        assertEquals("A\nSent Mail", watchedFolderText(listOf("A", "Sent Mail")))
+    }
+
+    @Test
+    fun extraIdleBudgetParsesIntsAndRejectsOtherText() {
+        assertEquals(2, extraIdleBudgetFromText("2"))
+        assertEquals(0, extraIdleBudgetFromText("0"))
+        assertEquals(-1, extraIdleBudgetFromText("-1"))
+        assertEquals(null, extraIdleBudgetFromText(""))
+        assertEquals(null, extraIdleBudgetFromText("x"))
+    }
+
+    @Test
     fun statusOnlyDoesNotOpenIdle() = runBlocking {
         val link = RecordingLink()
         val apply = ExtraWatchApply()
