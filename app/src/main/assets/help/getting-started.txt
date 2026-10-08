@@ -61,3 +61,5 @@ Check ManageSieve reads the greeting and logs out, and it does not upload a scri
 On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask.
 
 SMTP signs in with the same username and password. A clear-text SMTP password uses the same acceptance as IMAP.
+
+Settings, Sending, SMTP username overrides the IMAP username for SMTP. Blank uses the IMAP username. The password stays the IMAP password.

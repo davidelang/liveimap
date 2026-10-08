@@ -6635,10 +6635,12 @@ bool messageHas8bitCte(const char * bytes, size_t n) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
-    jbyteArray message, jobjectArray recipients) {
+    jbyteArray message, jobjectArray recipients, jstring smtpUsername) {
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
+    std::string authUser = utf8FromJava(env, smtpUsername);
+    if (authUser.empty()) authUser = session->user;
     const std::string & mode = session->tlsMode;
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
@@ -6808,14 +6810,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         return;
     }
     if (!mechanism.empty()) {
-        if (session->user.empty()) {
+        if (authUser.empty()) {
             mailsmtp_free(smtp);
             throwFailure(env, "no usable SMTP authentication");
             unlockSession(session);
             return;
         }
         r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
-            nullptr, session->user.c_str(), session->user.c_str(), session->password.c_str(),
+            nullptr, authUser.c_str(), authUser.c_str(), session->password.c_str(),
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = asciiSafe(smtp->response, "smtp error");
@@ -6825,7 +6827,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return;
         }
     } else if (!offeredAuth.empty()) {
-        if (!session->user.empty() && !smtpTls && !session->allowPlaintextAuth &&
+        if (!authUser.empty() && !smtpTls && !session->allowPlaintextAuth &&
             offeredPlainOrLogin(offeredAuth)) {
             mailsmtp_free(smtp);
             throwFailure(env, "The password was not sent.");

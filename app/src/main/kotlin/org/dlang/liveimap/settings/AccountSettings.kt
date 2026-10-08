@@ -297,6 +297,7 @@ data class AccountSettings(
     val imapPort: Int = 143,
     val smtpHost: String = "",
     val smtpPort: Int = 25,
+    val smtpUsername: String = "",
     val username: String = "",
     val displayName: String = "",
     val email: String = "",
@@ -386,6 +387,7 @@ private val fieldNames = listOf(
     "imapPort",
     "smtpHost",
     "smtpPort",
+    "smtpUsername",
     "username",
     "displayName",
     "email",
@@ -470,6 +472,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("imapPort=$imapPort")
     appendLine("smtpHost=${percentEncode(smtpHost)}")
     appendLine("smtpPort=$smtpPort")
+    if (smtpUsername.isNotEmpty()) appendLine("smtpUsername=${percentEncode(smtpUsername)}")
     appendLine("username=${percentEncode(username)}")
     appendLine("displayName=${percentEncode(displayName)}")
     appendLine("email=${percentEncode(email)}")
@@ -512,7 +515,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, and inboundRules when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, and inboundRules when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -585,6 +588,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
     }
     for (key in fieldNames) {
         if (
+            key == "smtpUsername" ||
             key == "friendlyName" ||
             key == "theme" ||
             key == "showUnreadCounts" ||
@@ -655,6 +659,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         imapPort = parseIntField(values.getValue("imapPort")),
         smtpHost = percentDecode(values.getValue("smtpHost")),
         smtpPort = parseIntField(values.getValue("smtpPort")),
+        smtpUsername = values["smtpUsername"]?.let { percentDecode(it) } ?: "",
         username = percentDecode(values.getValue("username")),
         displayName = percentDecode(values.getValue("displayName")),
         email = percentDecode(values.getValue("email")),

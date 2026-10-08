@@ -629,6 +629,10 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(smtpPort = it))
             }
+            Text(stringResource(R.string.settings_smtp_username_hint))
+            LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpUsername = it))
+            }
             LineField(
                 stringResource(R.string.settings_wrap_column),
                 settings.composerWrapColumn.toString(),

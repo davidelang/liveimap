@@ -26,6 +26,7 @@ class ImapIdentityTest {
         assertFalse(sameImapIdentity(base, base.copy(username = "bob"), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(smtpHost = "other.example"), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(smtpPort = 587), "secret", "secret"))
+        assertTrue(sameImapIdentity(base, base.copy(smtpUsername = "postmaster"), "secret", "secret"))
         assertTrue(sameImapIdentity(base, base.copy(displayName = "Augusta"), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(), "secret", "changed"))
     }

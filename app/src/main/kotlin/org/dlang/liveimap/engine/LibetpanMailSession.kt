@@ -849,7 +849,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
         keeper.write("send") {
-            nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray())
+            nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray(), account?.smtpUsername ?: "")
         }
     }
 
@@ -1148,7 +1148,12 @@ class LibetpanMailSession : MailSession {
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)
     private external fun nativeStopWatch(handle: Long)
-    private external fun nativeSmtp(handle: Long, message: ByteArray, recipients: Array<String>)
+    private external fun nativeSmtp(
+        handle: Long,
+        message: ByteArray,
+        recipients: Array<String>,
+        smtpUsername: String,
+    )
 
     companion object {
         init {

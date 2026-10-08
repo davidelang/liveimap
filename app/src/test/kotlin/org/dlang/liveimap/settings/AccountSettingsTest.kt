@@ -182,6 +182,19 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun smtpUsernameRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("smtpUsername="))
+        assertEquals("", decodeAccountSettings(defaults).smtpUsername)
+        val set = AccountSettings(smtpUsername = "post master")
+        val text = set.encode()
+        assertTrue(text.contains("smtpUsername=post%20master"))
+        assertEquals("post master", decodeAccountSettings(text).smtpUsername)
+        assertEquals(set, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+    }
+
+    @Test
     fun tlsModeRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("tlsMode="))
