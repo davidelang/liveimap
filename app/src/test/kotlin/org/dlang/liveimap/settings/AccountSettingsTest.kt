@@ -845,6 +845,56 @@ class AccountSettingsTest {
         assertEquals(text, decodeAccountSettings(text).encode())
     }
 
+    @Test
+    fun watchedFoldersRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("watchedFolders="))
+        assertFalse(defaults.contains("extraIdleBudget="))
+        val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
+        assertEquals("altAddresses", keys.last())
+        val decodedDefaults = decodeAccountSettings(defaults)
+        assertEquals(emptyList<String>(), decodedDefaults.watchedFolders)
+        assertEquals(2, decodedDefaults.extraIdleBudget)
+
+        val spaced = AccountSettings(
+            watchedFolders = listOf("INBOX", "Sent Mail"),
+            extraIdleBudget = 0,
+        )
+        val spacedText = spaced.encode()
+        assertTrue(spacedText.contains("watchedFolders=INBOX,Sent%20Mail"))
+        assertTrue(spacedText.contains("extraIdleBudget=0"))
+        assertEquals(spaced, decodeAccountSettings(spacedText))
+
+        val four = AccountSettings(
+            watchedFolders = listOf("A", "B", "C", "D"),
+            extraIdleBudget = 2,
+        )
+        val fourText = four.encode()
+        assertTrue(fourText.contains("watchedFolders=A,B,C,D"))
+        assertFalse(fourText.contains("extraIdleBudget="))
+        assertEquals(four, decodeAccountSettings(fourText))
+
+        val duplicates = AccountSettings(
+            watchedFolders = listOf("INBOX", "INBOX", "Sent"),
+            extraIdleBudget = 1,
+        )
+        val duplicatesText = duplicates.encode()
+        assertTrue(duplicatesText.contains("watchedFolders=INBOX,INBOX,Sent"))
+        assertTrue(duplicatesText.contains("extraIdleBudget=1"))
+        assertEquals(listOf("INBOX", "INBOX", "Sent"), decodeAccountSettings(duplicatesText).watchedFolders)
+        assertEquals(duplicates, decodeAccountSettings(duplicatesText))
+
+        val missingBudget = defaults.trimEnd() + "\nwatchedFolders=INBOX\n"
+        val missingDecoded = decodeAccountSettings(missingBudget)
+        assertEquals(listOf("INBOX"), missingDecoded.watchedFolders)
+        assertEquals(2, missingDecoded.extraIdleBudget)
+        val storedZero = defaults.trimEnd() + "\nextraIdleBudget=0\n"
+        assertEquals(0, decodeAccountSettings(storedZero).extraIdleBudget)
+        assertEquals(emptyList<String>(), decodeAccountSettings(storedZero).watchedFolders)
+        val storedNegative = defaults.trimEnd() + "\nextraIdleBudget=-3\n"
+        assertEquals(-3, decodeAccountSettings(storedNegative).extraIdleBudget)
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

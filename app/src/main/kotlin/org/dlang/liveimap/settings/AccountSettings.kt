@@ -373,6 +373,8 @@ data class AccountSettings(
     val certPin: String = "",
     val allowPlaintextAuth: Boolean = false,
     val inboundRules: List<InboundRule> = emptyList(),
+    val watchedFolders: List<String> = emptyList(),
+    val extraIdleBudget: Int = 2,
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -465,6 +467,8 @@ private val fieldNames = listOf(
     "certPin",
     "allowPlaintextAuth",
     "inboundRules",
+    "watchedFolders",
+    "extraIdleBudget",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -517,7 +521,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, and inboundRules when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, and extraIdleBudget when 2.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -568,6 +572,10 @@ fun AccountSettings.encode(): String = buildString {
     if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
     if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
+    if (watchedFolders.isNotEmpty()) {
+        appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
+    }
+    if (extraIdleBudget != 2) appendLine("extraIdleBudget=$extraIdleBudget")
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -652,7 +660,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "tlsMode" ||
             key == "certPin" ||
             key == "allowPlaintextAuth" ||
-            key == "inboundRules"
+            key == "inboundRules" ||
+            key == "watchedFolders" ||
+            key == "extraIdleBudget"
         ) {
             continue
         }
@@ -742,6 +752,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         certPin = values["certPin"]?.let { percentDecode(it) } ?: "",
         allowPlaintextAuth = values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false,
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
+        watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
+        extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
     )
 }
 
@@ -782,6 +794,14 @@ private fun decodeHiddenCapabilities(value: String): Set<String> {
         if (token.isNotEmpty()) out.add(token.uppercase())
     }
     return out
+}
+
+private fun encodeWatchedFolders(values: List<String>): String =
+    values.joinToString(",") { percentEncode(it) }
+
+private fun decodeWatchedFolders(value: String): List<String> {
+    if (value.isEmpty()) return emptyList()
+    return value.split(',').map { percentDecode(it) }
 }
 
 private fun encodeAltAddresses(values: List<String>): String =

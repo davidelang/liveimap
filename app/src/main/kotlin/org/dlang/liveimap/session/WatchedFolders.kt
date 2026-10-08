@@ -1,5 +1,7 @@
 package org.dlang.liveimap.session
 
+import org.dlang.liveimap.settings.AccountSettings
+
 data class WatchPlan(
     val idle: List<String>,
     val status: List<String>,
@@ -17,6 +19,10 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
     val slots = idleBudget.coerceAtLeast(0)
     return WatchPlan(kept.take(slots), kept.drop(slots))
 }
+
+/** Feeds the stored extra folders into the splitter. Does not open a socket. */
+fun extraWatchPlan(settings: AccountSettings): WatchPlan =
+    planWatchedFolders(settings.watchedFolders, settings.extraIdleBudget)
 
 /** Opens extra IDLE names and checks STATUS names. Does not open a socket. */
 interface ExtraWatchLink {

@@ -1,6 +1,7 @@
 package org.dlang.liveimap.session
 
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.settings.AccountSettings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -91,6 +92,27 @@ class WatchedFoldersTest {
         apply.apply(WatchPlan(emptyList(), emptyList()), link)
         assertEquals(listOf("closeIdle A"), link.calls)
         assertEquals(emptyList<String>(), apply.openNames())
+    }
+
+    @Test
+    fun extraWatchPlanUsesStoredListAndBudget() {
+        val statusOnly = extraWatchPlan(
+            AccountSettings(watchedFolders = listOf("INBOX", "Sent Mail"), extraIdleBudget = 0),
+        )
+        assertEquals(emptyList<String>(), statusOnly.idle)
+        assertEquals(listOf("INBOX", "Sent Mail"), statusOnly.status)
+
+        val split = extraWatchPlan(
+            AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
+        )
+        assertEquals(listOf("A", "B"), split.idle)
+        assertEquals(listOf("C", "D"), split.status)
+
+        val duplicates = extraWatchPlan(
+            AccountSettings(watchedFolders = listOf("INBOX", "INBOX", "Sent"), extraIdleBudget = 1),
+        )
+        assertEquals(listOf("INBOX"), duplicates.idle)
+        assertEquals(listOf("Sent"), duplicates.status)
     }
 
     @Test
