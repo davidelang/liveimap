@@ -212,6 +212,7 @@ fun FolderListScreen(
                     store.password(),
                     settings.certPin,
                     ::platformJmapPost,
+                    markSeenOnOpen = settings.markSeenOnOpen,
                 )
             }
         } catch (error: CancellationException) {

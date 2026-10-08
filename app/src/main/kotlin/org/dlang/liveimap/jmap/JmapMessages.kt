@@ -47,6 +47,45 @@ fun jmapMessageBodyRequest(accountId: String, emailId: String): String {
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/get",{"accountId":$account,"ids":[$id],"properties":["textBody","bodyValues"],"fetchTextBodyValues":true,"maxBodyValueBytes":32768},"0"]]}"""
 }
 
+fun jmapSeenRequest(accountId: String, emailId: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val account = quoted(accountId)
+    val id = quoted(emailId)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/set",{"accountId":$account,"update":{$id:{"keywords/${'$'}seen":true}}},"0"]]}"""
+}
+
+fun jmapSeenWasSet(text: String, emailId: String): Boolean {
+    return try {
+        val root = JsonParser(text).parseDocument()
+        if (root !is Json.Obj) return false
+        val args = methodArgs(root.fields["methodResponses"], "Email/set") ?: return false
+        val updated = args["updated"] ?: return false
+        updated is Json.Obj && updated.fields.containsKey(emailId)
+    } catch (_: Exception) {
+        false
+    }
+}
+
+fun jmapMarkSeen(
+    session: JmapSession,
+    emailId: String,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+) {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val request = jmapSeenRequest(accountId, emailId)
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    if (!jmapSeenWasSet(result.body, emailId)) throw JmapFailure("jmap seen was not set")
+}
+
 fun jmapMessageBody(
     session: JmapSession,
     emailId: String,

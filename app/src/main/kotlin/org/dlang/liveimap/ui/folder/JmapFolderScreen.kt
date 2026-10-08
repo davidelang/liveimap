@@ -124,9 +124,25 @@ fun JmapFolderRoute(
                                 val loaded = gate.withLock {
                                     withContext(Dispatchers.IO) { model.body(message.id) }
                                 }
-                                if (page != null) {
-                                    opened = message
-                                    body = loaded
+                                if (page == null) return@launch
+                                opened = message
+                                body = loaded
+                                if (message.unread) {
+                                    gate.withLock {
+                                        withContext(Dispatchers.IO) { model.markSeen(message.id) }
+                                    }
+                                    val current = page
+                                    if (current != null) {
+                                        page = current.copy(
+                                            messages = current.messages.map { item ->
+                                                if (item.id == message.id) {
+                                                    item.copy(unread = false)
+                                                } else {
+                                                    item
+                                                }
+                                            },
+                                        )
+                                    }
                                 }
                             } catch (error: CancellationException) {
                                 throw error

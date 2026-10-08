@@ -46,6 +46,7 @@ class JmapFolderScreenModel(
     private val pin: String,
     private val post: (String, String, String) -> JmapHttpExchange,
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    private val markSeenOnOpen: Boolean = true,
 ) {
     private val expanded = HashSet<String>()
 
@@ -81,6 +82,11 @@ class JmapFolderScreenModel(
 
     fun body(emailId: String): String {
         return jmapMessageBody(session, emailId, username, password, pin, post, trust)
+    }
+
+    fun markSeen(emailId: String) {
+        if (!markSeenOnOpen) return
+        jmapMarkSeen(session, emailId, username, password, pin, post, trust)
     }
 }
 
