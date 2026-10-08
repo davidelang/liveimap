@@ -62,6 +62,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.dlang.liveimap.jmap.JmapFailure
+import org.dlang.liveimap.jmap.JmapSendChoice
+import org.dlang.liveimap.jmap.jmapSendChosen
+import org.dlang.liveimap.jmap.offerForAccount
+import org.dlang.liveimap.jmap.platformJmapExchange
+import org.dlang.liveimap.jmap.platformJmapPost
+import org.dlang.liveimap.jmap.platformJmapUpload
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -966,6 +973,71 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     val id = saved?.id ?: UUID.randomUUID().toString()
+                    if (account.emailSubmission) {
+                        val password = try {
+                            store.password()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                            writeCopy(appContext, copy, accountId)
+                            held = copy
+                            notice = error.message ?: notConnected
+                            status = notSentNotice
+                            return@launchLocked false
+                        }
+                        try {
+                            val offer = offerForAccount(account, ::platformJmapExchange)
+                            when (
+                                jmapSendChosen(
+                                    true,
+                                    offer,
+                                    built.rfc822,
+                                    account.email,
+                                    built.recipients,
+                                    account.username,
+                                    password,
+                                    account.certPin,
+                                    ::platformJmapUpload,
+                                    ::platformJmapPost,
+                                )
+                            ) {
+                                is JmapSendChoice.Submitted -> Unit
+                                JmapSendChoice.Smtp -> return@launchLocked false
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: JmapFailure) {
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                            writeCopy(appContext, copy, accountId)
+                            held = copy
+                            notice = error.text
+                            status = notSentNotice
+                            return@launchLocked false
+                        } catch (error: MailFailure) {
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                            writeCopy(appContext, copy, accountId)
+                            held = copy
+                            notice = error.text
+                            status = notSentNotice
+                            return@launchLocked false
+                        } catch (error: Exception) {
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
+                            writeCopy(appContext, copy, accountId)
+                            held = copy
+                            notice = error.message ?: notConnected
+                            status = notSentNotice
+                            return@launchLocked false
+                        }
+                        storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                        deleteCopy(appContext, id, accountId)
+                        held = null
+                        deliveryDone = true
+                        notice = null
+                        status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                        removePostponedSource()
+                        return@launchLocked true
+                    }
                     val accepted = try {
                         sendSmtp(built.rfc822, built.recipients)
                     } catch (error: CancellationException) {

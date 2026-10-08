@@ -101,6 +101,47 @@ fun jmapDeliver(
     )
 }
 
+sealed class JmapSendChoice {
+    data object Smtp : JmapSendChoice()
+    data class Submitted(val submissionId: String) : JmapSendChoice()
+}
+
+fun jmapSendChosen(
+    chosen: Boolean,
+    offer: JmapOffer,
+    bytes: ByteArray,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    upload: (String, ByteArray, String, String) -> JmapHttpExchange,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): JmapSendChoice {
+    if (!chosen) return JmapSendChoice.Smtp
+    val session = when (offer) {
+        JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
+        is JmapOffer.Mail -> offer.session
+    }
+    if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    val mailboxId = jmapFindSentMailbox(session, username, password, pin, post, trust)
+    val submissionId = jmapDeliver(
+        session,
+        bytes,
+        mailboxId,
+        mailFrom,
+        rcptTo,
+        username,
+        password,
+        pin,
+        upload,
+        post,
+        trust,
+    )
+    return JmapSendChoice.Submitted(submissionId)
+}
+
 private fun createdId(created: Json?): String? {
     if (created !is Json.Obj) return null
     val row = created.fields["k1"]

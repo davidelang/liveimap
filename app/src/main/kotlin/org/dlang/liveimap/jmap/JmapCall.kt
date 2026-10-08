@@ -112,6 +112,50 @@ fun platformJmapPost(url: String, body: String, authorization: String): JmapHttp
     }
 }
 
+fun platformJmapUpload(
+    url: String,
+    bytes: ByteArray,
+    contentType: String,
+    authorization: String,
+): JmapHttpExchange {
+    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+        instanceFollowRedirects = false
+        connectTimeout = 15_000
+        readTimeout = 15_000
+        requestMethod = "POST"
+        doOutput = true
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Content-Type", contentType)
+        setRequestProperty("Authorization", authorization)
+    }
+    connection.outputStream.use { stream ->
+        stream.write(bytes)
+    }
+    return object : JmapHttpExchange {
+        override val status: Int
+            get() = connection.responseCode
+
+        override fun peerDer(): List<ByteArray> =
+            connection.serverCertificates.map { it.encoded }
+
+        override fun header(name: String): String? = connection.getHeaderField(name)
+
+        override fun body(): String {
+            val stream = if (connection.responseCode < 400) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+            if (stream == null) return ""
+            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+        }
+
+        override fun close() {
+            connection.disconnect()
+        }
+    }
+}
+
 private val apiRedirectStatuses = setOf(301, 302, 303, 307, 308)
 
 private fun httpsApi(url: String): Boolean {

@@ -2548,3 +2548,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 918d435
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Send through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-email-submission-20261008-1318-plan.md
+- Work: When the account EmailSubmission switch is on and the server advertises submission, Send finds the role-sent mailbox and delivers through JMAP. The switch off stays SMTP, then the IMAP sent-copy append.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e2d72f5
+- Host: /home/dlang/git/liveimap/master
