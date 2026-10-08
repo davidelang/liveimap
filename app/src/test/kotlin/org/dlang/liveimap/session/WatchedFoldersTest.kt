@@ -156,6 +156,41 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun storedNamesAndBudgetTwoOpenAAndBOnly() = runBlocking {
+        val made = IdleHolder()
+        applyStoredIdle(
+            made.sessions,
+            AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
+        )
+        assertEquals(2, made.records.size)
+        assertEquals(listOf("open", "select A", "watch A"), made.records[0].calls)
+        assertEquals(listOf("open", "select B", "watch B"), made.records[1].calls)
+        assertEquals(listOf("A", "B"), made.sessions.openNames())
+    }
+
+    @Test
+    fun budgetZeroDoesNotCallTheFactory() = runBlocking {
+        val made = IdleHolder()
+        applyStoredIdle(
+            made.sessions,
+            AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 0),
+        )
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+    }
+
+    @Test
+    fun emptyStoredListDoesNotCallTheFactory() = runBlocking {
+        val made = IdleHolder()
+        applyStoredIdle(
+            made.sessions,
+            AccountSettings(watchedFolders = emptyList(), extraIdleBudget = 2),
+        )
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+    }
+
+    @Test
     fun applyOpensOneSessionPerName() = runBlocking {
         val account = AccountSettings(friendlyName = "extra")
         val made = IdleHolder()

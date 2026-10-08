@@ -24,6 +24,11 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
 fun extraWatchPlan(settings: AccountSettings): WatchPlan =
     planWatchedFolders(settings.watchedFolders, settings.extraIdleBudget)
 
+/** Applies only the stored extra IDLE names. STATUS names are not opened. */
+suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings) {
+    sessions.apply(account, extraWatchPlan(account).idle)
+}
+
 /** One stored name on each line. Does not open a socket. */
 fun watchedFolderText(names: List<String>): String = names.joinToString("\n")
 

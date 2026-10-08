@@ -26,6 +26,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
+import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.applyExtraIdle
+import org.dlang.liveimap.session.stopExtraIdle
 import org.dlang.liveimap.session.suspendMailSessions
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
@@ -33,8 +36,11 @@ import org.dlang.liveimap.ui.LiveImapNavHost
 import org.dlang.liveimap.ui.compose.ComposeBackgroundSave
 
 class MainActivity : ComponentActivity() {
+    private lateinit var store: DataStoreSettingsStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        store = DataStoreSettingsStore(applicationContext)
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()
@@ -45,8 +51,6 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            val appContext = LocalContext.current.applicationContext
-            val store = remember { DataStoreSettingsStore(appContext) }
             var theme by remember { mutableStateOf(ThemeMode.FollowSystem) }
             var dynamicColor by remember { mutableStateOf(true) }
             var fullScreen by remember { mutableStateOf(false) }
@@ -89,6 +93,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch {
+            try {
+                applyExtraIdle(store.load())
+            } catch (_: MailFailure) {
+            }
+        }
+    }
+
     override fun onStop() {
         if (!isChangingConfigurations) {
             lifecycleScope.launch(NonCancellable) {
@@ -96,6 +110,7 @@ class MainActivity : ComponentActivity() {
                     ComposeBackgroundSave.hook?.invoke()
                 } finally {
                     suspendMailSessions()
+                    stopExtraIdle()
                 }
             }
         }
