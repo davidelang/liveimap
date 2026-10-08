@@ -21,6 +21,7 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapFolderRow
 import org.dlang.liveimap.jmap.JmapFolderScreenModel
+import org.dlang.liveimap.jmap.JmapMessage
 import org.dlang.liveimap.jmap.JmapMessagePage
 import org.dlang.liveimap.jmap.jmapFolderLabel
 import org.dlang.liveimap.jmap.jmapMessageLine
@@ -51,6 +52,8 @@ fun JmapFolderRoute(
 ) {
     var rows by remember(model) { mutableStateOf(model.rows) }
     var page by remember(model) { mutableStateOf<JmapMessagePage?>(null) }
+    var opened by remember(model) { mutableStateOf<JmapMessage?>(null) }
+    var body by remember(model) { mutableStateOf<String?>(null) }
     val gate = remember(model) { Mutex() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) {
@@ -89,22 +92,59 @@ fun JmapFolderRoute(
                         val loaded = gate.withLock {
                             withContext(Dispatchers.IO) { model.messages(id) }
                         }
+                        opened = null
+                        body = null
                         page = loaded
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: JmapFailure) {
+                        opened = null
+                        body = null
                         page = null
                     }
                 }
             },
         )
     } else {
+        val shown = opened
+        val text = body
         Column {
-            Button(onClick = { page = null }) {
+            Button(onClick = {
+                page = null
+                opened = null
+                body = null
+            }) {
                 Text(stringResource(R.string.folders_title))
             }
-            open.messages.forEach { message ->
-                Text(jmapMessageLine(message))
+            if (shown == null || text == null) {
+                open.messages.forEach { message ->
+                    Button(onClick = {
+                        scope.launch {
+                            try {
+                                val loaded = gate.withLock {
+                                    withContext(Dispatchers.IO) { model.body(message.id) }
+                                }
+                                if (page != null) {
+                                    opened = message
+                                    body = loaded
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: JmapFailure) {
+                            }
+                        }
+                    }) {
+                        Text(jmapMessageLine(message))
+                    }
+                }
+            } else {
+                Button(onClick = {
+                    opened = null
+                    body = null
+                }) {
+                    Text(jmapMessageLine(shown))
+                }
+                Text(text)
             }
         }
     }

@@ -39,6 +39,52 @@ fun jmapMessageWindowRequest(
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/query",{"accountId":$account,"filter":{"inMailbox":$mailbox},"sort":[{"property":"receivedAt","isAscending":false}],"position":$position,"limit":$limit,"calculateTotal":true},"0"],["Email/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId","keywords","size","receivedAt","subject","from","preview"]},"1"]]}"""
 }
 
+fun jmapMessageBodyRequest(accountId: String, emailId: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val account = quoted(accountId)
+    val id = quoted(emailId)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/get",{"accountId":$account,"ids":[$id],"properties":["textBody","bodyValues"],"fetchTextBodyValues":true,"maxBodyValueBytes":32768},"0"]]}"""
+}
+
+fun jmapMessageBody(
+    session: JmapSession,
+    emailId: String,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): String {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val request = jmapMessageBodyRequest(accountId, emailId)
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return parseJmapMessageBody(result.body)
+}
+
+fun parseJmapMessageBody(text: String): String {
+    if (text.isBlank()) throw JmapFailure("jmap message response is empty")
+    val root = try {
+        JsonParser(text).parseDocument()
+    } catch (_: JsonBroken) {
+        throw JmapFailure("jmap message response is not an object")
+    }
+    if (root !is Json.Obj) throw JmapFailure("jmap message response is not an object")
+    val list = emailGetList(root.fields["methodResponses"])
+        ?: throw JmapFailure("jmap message response lacks get")
+    if (list.isEmpty()) return ""
+    val out = StringBuilder()
+    for (item in list) {
+        if (item !is Json.Obj) continue
+        out.append(plainText(item.fields))
+    }
+    return out.toString()
+}
+
 fun jmapMessageWindow(
     session: JmapSession,
     mailboxId: String,
@@ -146,6 +192,26 @@ private fun messageUnread(fields: Map<String, Json>): Boolean {
     val keywords = fields["keywords"] ?: return true
     if (keywords !is Json.Obj) return true
     return !keywords.fields.containsKey("\$seen")
+}
+
+private fun plainText(fields: Map<String, Json>): String {
+    val textBody = fields["textBody"] ?: return ""
+    if (textBody !is Json.Arr) throw JmapFailure("jmap message text is not a list")
+    if (textBody.values.isEmpty()) return ""
+    val bodyValues = fields["bodyValues"]
+    if (bodyValues !is Json.Obj) return ""
+    val out = StringBuilder()
+    for (part in textBody.values) {
+        if (part !is Json.Obj) continue
+        val partId = part.fields["partId"]
+        if (partId !is Json.Str) continue
+        val stored = bodyValues.fields[partId.text] ?: continue
+        if (stored !is Json.Obj) continue
+        val value = stored.fields["value"]
+        if (value !is Json.Str) continue
+        out.append(value.text)
+    }
+    return out.toString()
 }
 
 private fun messageFrom(fields: Map<String, Json>): String {
