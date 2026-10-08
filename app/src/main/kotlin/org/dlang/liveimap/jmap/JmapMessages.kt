@@ -19,6 +19,15 @@ data class JmapMessagePage(
     val messages: List<JmapMessage>,
 )
 
+data class JmapEmailChanges(
+    val oldState: String,
+    val newState: String,
+    val hasMoreChanges: Boolean,
+    val created: List<String>,
+    val updated: List<String>,
+    val destroyed: List<String>,
+)
+
 fun jmapMessageLine(message: JmapMessage): String {
     val text = if (message.subject.isBlank()) "No subject" else message.subject
     if (message.from.isBlank()) return text
@@ -95,6 +104,14 @@ fun jmapSeenRequest(accountId: String, emailId: String): String {
     val account = quoted(accountId)
     val id = quoted(emailId)
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/set",{"accountId":$account,"update":{$id:{"keywords/${'$'}seen":true}}},"0"]]}"""
+}
+
+fun jmapEmailChangesRequest(accountId: String, sinceState: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (sinceState.isBlank()) throw JmapFailure("jmap changes state is empty")
+    val account = quoted(accountId)
+    val state = quoted(sinceState)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/changes",{"accountId":$account,"sinceState":$state},"0"]]}"""
 }
 
 fun jmapSeenWasSet(text: String, emailId: String): Boolean {
@@ -310,6 +327,45 @@ fun jmapMessageSearchSteps(
     return parseJmapMessages(result.body)
 }
 
+fun jmapEmailChanges(
+    session: JmapSession,
+    sinceState: String,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): JmapEmailChanges {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (sinceState.isBlank()) throw JmapFailure("jmap changes state is empty")
+    val request = jmapEmailChangesRequest(accountId, sinceState)
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return parseJmapEmailChanges(result.body)
+}
+
+fun parseJmapEmailChanges(text: String): JmapEmailChanges {
+    if (text.isBlank()) throw JmapFailure("jmap changes response is empty")
+    val root = try {
+        JsonParser(text).parseDocument()
+    } catch (_: JsonBroken) {
+        throw JmapFailure("jmap changes response is not an object")
+    }
+    if (root !is Json.Obj) throw JmapFailure("jmap changes response is not an object")
+    val args = methodArgs(root.fields["methodResponses"], "Email/changes")
+        ?: throw JmapFailure("jmap changes response lacks changes")
+    return JmapEmailChanges(
+        oldState = changesState(args["oldState"]),
+        newState = changesState(args["newState"]),
+        hasMoreChanges = changesHasMore(args["hasMoreChanges"]),
+        created = changesIds(args["created"]),
+        updated = changesIds(args["updated"]),
+        destroyed = changesIds(args["destroyed"]),
+    )
+}
+
 fun parseJmapMessages(text: String): JmapMessagePage {
     if (text.isBlank()) throw JmapFailure("jmap message response is empty")
     val root = try {
@@ -335,6 +391,26 @@ private fun emailGetList(responses: Json?): List<Json>? {
     val list = args["list"] ?: return null
     if (list !is Json.Arr) return null
     return list.values
+}
+
+private fun changesState(value: Json?): String {
+    if (value !is Json.Str) throw JmapFailure("jmap changes state is not text")
+    return value.text
+}
+
+private fun changesHasMore(value: Json?): Boolean {
+    if (value == null) return false
+    if (value !is Json.Bool) throw JmapFailure("jmap changes hasMoreChanges is not a boolean")
+    return value.value
+}
+
+private fun changesIds(value: Json?): List<String> {
+    if (value == null) return emptyList()
+    if (value !is Json.Arr) throw JmapFailure("jmap changes ids are not a list")
+    return value.values.map { item ->
+        if (item !is Json.Str) throw JmapFailure("jmap changes id is not text")
+        item.text
+    }
 }
 
 private fun methodArgs(responses: Json?, name: String): Map<String, Json>? {

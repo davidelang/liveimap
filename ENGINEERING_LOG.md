@@ -2209,3 +2209,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Search one JMAP folder.
 
 ## 2026-10-08 - Search a JMAP folder with an operator.
+
+## 2026-10-08 - Read JMAP email changes.
