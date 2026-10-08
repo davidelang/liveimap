@@ -2187,3 +2187,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Offer JMAP for an account.
 
 ## 2026-10-08 - Request one JMAP mailbox level.
+
+## 2026-10-08 - Call JMAP for one mailbox level.
