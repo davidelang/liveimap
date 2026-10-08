@@ -59,3 +59,5 @@ When TLS is on, a certificate the phone does not already trust asks before the p
 Check ManageSieve reads the greeting and logs out, and it does not upload a script.
 
 On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask.
+
+SMTP signs in with the same username and password. A clear-text SMTP password uses the same acceptance as IMAP.

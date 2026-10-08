@@ -6536,6 +6536,90 @@ bool lineIs8bitCte(const char * line, size_t n) {
     return true;
 }
 
+std::string smtpAuthOffered(const char * response) {
+    std::string offered;
+    if (response == nullptr) return offered;
+    const char * p = response;
+    while (*p != '\0') {
+        const char * line = p;
+        while (*p != '\0' && *p != '\n' && *p != '\r') p++;
+        size_t n = static_cast<size_t>(p - line);
+        while (*p == '\n' || *p == '\r') p++;
+        if (n < 5 || strncasecmp(line, "AUTH", 4) != 0) continue;
+        if (line[4] != ' ' && line[4] != '=') continue;
+        size_t i = 5;
+        while (i < n) {
+            while (i < n && (line[i] == ' ' || line[i] == '\t')) i++;
+            size_t start = i;
+            while (i < n && line[i] != ' ' && line[i] != '\t') i++;
+            if (i == start) continue;
+            if (!offered.empty()) offered.push_back(' ');
+            offered.append("AUTH=");
+            offered.append(line + start, i - start);
+        }
+    }
+    return offered;
+}
+
+bool offeredPlainOrLogin(const std::string & offered) {
+    size_t i = 0;
+    while (i < offered.size()) {
+        while (i < offered.size() && offered[i] == ' ') i++;
+        if (i >= offered.size()) break;
+        size_t start = i;
+        while (i < offered.size() && offered[i] != ' ') i++;
+        size_t n = i - start;
+        if (n <= 5 || strncasecmp(offered.c_str() + start, "AUTH=", 5) != 0) continue;
+        const char * name = offered.c_str() + start + 5;
+        size_t nameLen = n - 5;
+        if (nameLen == 5 && strncasecmp(name, "PLAIN", 5) == 0) return true;
+        if (nameLen == 5 && strncasecmp(name, "LOGIN", 5) == 0) return true;
+    }
+    return false;
+}
+
+bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool plaintextOk,
+    std::string * mechanism) {
+    mechanism->clear();
+    jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
+    if (cls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (cls != nullptr) env->DeleteLocalRef(cls);
+        return false;
+    }
+    jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
+        "(Ljava/lang/String;ZZ)Ljava/lang/String;");
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        return false;
+    }
+    jstring jline = newString(env, offered.c_str());
+    if (jline == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (jline != nullptr) env->DeleteLocalRef(jline);
+        env->DeleteLocalRef(cls);
+        return false;
+    }
+    jvalue args[3];
+    args[0].l = jline;
+    args[1].z = tls ? JNI_TRUE : JNI_FALSE;
+    args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
+    jobject result = env->CallStaticObjectMethodA(cls, method, args);
+    env->DeleteLocalRef(jline);
+    env->DeleteLocalRef(cls);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (result != nullptr) env->DeleteLocalRef(result);
+        return false;
+    }
+    if (result != nullptr) {
+        *mechanism = utf8FromJava(env, static_cast<jstring>(result));
+        env->DeleteLocalRef(result);
+    }
+    return true;
+}
+
 bool messageHas8bitCte(const char * bytes, size_t n) {
     size_t start = 0;
     for (size_t i = 0; i <= n; ++i) {
@@ -6692,9 +6776,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
     }
     bool allow8bit = false;
+    std::string offeredAuth;
     int r = mailesmtp_ehlo(smtp);
     if (r == MAILSMTP_NO_ERROR) {
         allow8bit = (smtp->esmtp & MAILSMTP_ESMTP_8BITMIME) != 0;
+        offeredAuth = smtpAuthOffered(smtp->response);
     } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||
         r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
         r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
@@ -6710,6 +6796,44 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
+        unlockSession(session);
+        return;
+    }
+    const bool smtpTls = mode == "StartTls" || mode == "Implicit";
+    std::string mechanism;
+    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, session->allowPlaintextAuth, &mechanism)) {
+        mailsmtp_free(smtp);
+        throwFailure(env, "auth choice failed");
+        unlockSession(session);
+        return;
+    }
+    if (!mechanism.empty()) {
+        if (session->user.empty()) {
+            mailsmtp_free(smtp);
+            throwFailure(env, "no usable SMTP authentication");
+            unlockSession(session);
+            return;
+        }
+        r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
+            nullptr, session->user.c_str(), session->user.c_str(), session->password.c_str(),
+            nullptr);
+        if (r != MAILSMTP_NO_ERROR) {
+            std::string why = asciiSafe(smtp->response, "smtp error");
+            mailsmtp_free(smtp);
+            throwFailure(env, why);
+            unlockSession(session);
+            return;
+        }
+    } else if (!offeredAuth.empty()) {
+        if (!session->user.empty() && !smtpTls && !session->allowPlaintextAuth &&
+            offeredPlainOrLogin(offeredAuth)) {
+            mailsmtp_free(smtp);
+            throwFailure(env, "The password was not sent.");
+            unlockSession(session);
+            return;
+        }
+        mailsmtp_free(smtp);
+        throwFailure(env, "no usable SMTP authentication");
         unlockSession(session);
         return;
     }

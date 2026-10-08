@@ -2150,3 +2150,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/smtp-tls-connect-20261007-1824-plan.md. Status set to APPROVED.
 - Phase 1: None stays the plaintext send. StartTls and Implicit encrypt and check the certificate before MAIL. No AUTH. No install.
 - First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - SMTP signs in with the chosen SASL mechanism before MAIL.
