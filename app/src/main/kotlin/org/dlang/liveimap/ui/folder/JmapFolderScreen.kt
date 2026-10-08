@@ -54,6 +54,7 @@ fun JmapFolderRoute(
     var page by remember(model) { mutableStateOf<JmapMessagePage?>(null) }
     var opened by remember(model) { mutableStateOf<JmapMessage?>(null) }
     var body by remember(model) { mutableStateOf<String?>(null) }
+    var mailboxId by remember(model) { mutableStateOf<String?>(null) }
     val gate = remember(model) { Mutex() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) {
@@ -95,12 +96,14 @@ fun JmapFolderRoute(
                         opened = null
                         body = null
                         page = loaded
+                        mailboxId = id
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: JmapFailure) {
                         opened = null
                         body = null
                         page = null
+                        mailboxId = null
                     }
                 }
             },
@@ -113,6 +116,7 @@ fun JmapFolderRoute(
                 page = null
                 opened = null
                 body = null
+                mailboxId = null
             }) {
                 Text(stringResource(R.string.folders_title))
             }
@@ -159,6 +163,31 @@ fun JmapFolderRoute(
                     body = null
                 }) {
                     Text(jmapMessageLine(shown))
+                }
+                Button(onClick = {
+                    val emailId = shown.id
+                    val fromMailboxId = mailboxId.orEmpty()
+                    scope.launch {
+                        try {
+                            gate.withLock {
+                                withContext(Dispatchers.IO) {
+                                    model.deleteMessage(emailId, fromMailboxId)
+                                }
+                            }
+                            val current = page
+                            if (current == null) return@launch
+                            opened = null
+                            body = null
+                            page = current.copy(
+                                messages = current.messages.filter { it.id != emailId },
+                            )
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: JmapFailure) {
+                        }
+                    }
+                }) {
+                    Text(stringResource(R.string.index_delete))
                 }
                 Text(text)
             }

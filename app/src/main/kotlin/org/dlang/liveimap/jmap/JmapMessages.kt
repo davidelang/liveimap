@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.settings.DeletePolicy
 
 data class JmapMessage(
     val id: String,
@@ -84,6 +85,80 @@ fun jmapMarkSeen(
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     if (!jmapSeenWasSet(result.body, emailId)) throw JmapFailure("jmap seen was not set")
+}
+
+fun jmapDestroyRequest(accountId: String, emailId: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val account = quoted(accountId)
+    val id = quoted(emailId)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/set",{"accountId":$account,"destroy":[$id]},"0"]]}"""
+}
+
+fun jmapMoveRequest(
+    accountId: String,
+    emailId: String,
+    fromMailboxId: String,
+    trashId: String,
+): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    if (fromMailboxId.isBlank() || trashId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+    val account = quoted(accountId)
+    val id = quoted(emailId)
+    val fromKey = quoted("mailboxIds/$fromMailboxId")
+    val trashKey = quoted("mailboxIds/$trashId")
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/set",{"accountId":$account,"update":{$id:{$fromKey:null,$trashKey:true}}},"0"]]}"""
+}
+
+fun jmapDeleteWasDone(text: String, emailId: String): Boolean {
+    return try {
+        val root = JsonParser(text).parseDocument()
+        if (root !is Json.Obj) return false
+        val args = methodArgs(root.fields["methodResponses"], "Email/set") ?: return false
+        val destroyed = args["destroyed"]
+        if (destroyed is Json.Arr && destroyed.values.any { it is Json.Str && it.text == emailId }) {
+            return true
+        }
+        val updated = args["updated"]
+        updated is Json.Obj && updated.fields.containsKey(emailId)
+    } catch (_: Exception) {
+        false
+    }
+}
+
+fun jmapDelete(
+    session: JmapSession,
+    emailId: String,
+    fromMailboxId: String,
+    trashId: String,
+    policy: DeletePolicy,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+) {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val request = when (policy) {
+        DeletePolicy.MarkDeleted -> throw JmapFailure("jmap delete marks nothing")
+        DeletePolicy.DeletePermanently -> jmapDestroyRequest(accountId, emailId)
+        DeletePolicy.MoveToTrash -> {
+            if (trashId.isBlank()) throw JmapFailure("jmap trash is not set")
+            if (fromMailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+            if (trashId == fromMailboxId) {
+                jmapDestroyRequest(accountId, emailId)
+            } else {
+                jmapMoveRequest(accountId, emailId, fromMailboxId, trashId)
+            }
+        }
+    }
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    if (!jmapDeleteWasDone(result.body, emailId)) throw JmapFailure("jmap delete was not done")
 }
 
 fun jmapMessageBody(

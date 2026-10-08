@@ -2203,3 +2203,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Read a JMAP message.
 
 ## 2026-10-08 - Mark a JMAP message seen.
+
+## 2026-10-08 - Delete a JMAP message.

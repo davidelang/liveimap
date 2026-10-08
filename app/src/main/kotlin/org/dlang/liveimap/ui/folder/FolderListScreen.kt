@@ -213,6 +213,7 @@ fun FolderListScreen(
                     settings.certPin,
                     ::platformJmapPost,
                     markSeenOnOpen = settings.markSeenOnOpen,
+                    deletePolicy = settings.deletePolicy,
                 )
             }
         } catch (error: CancellationException) {

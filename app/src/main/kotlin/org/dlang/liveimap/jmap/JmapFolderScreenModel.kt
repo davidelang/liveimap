@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.settings.DeletePolicy
 
 fun jmapFolderLine(row: JmapFolderRow): String {
     if (row.unread > 0L) return row.name + " " + row.unread.toString()
@@ -47,6 +48,7 @@ class JmapFolderScreenModel(
     private val post: (String, String, String) -> JmapHttpExchange,
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     private val markSeenOnOpen: Boolean = true,
+    private val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
 ) {
     private val expanded = HashSet<String>()
 
@@ -87,6 +89,22 @@ class JmapFolderScreenModel(
     fun markSeen(emailId: String) {
         if (!markSeenOnOpen) return
         jmapMarkSeen(session, emailId, username, password, pin, post, trust)
+    }
+
+    fun deleteMessage(emailId: String, fromMailboxId: String) {
+        val trashId = rows.firstOrNull { it.role == "trash" }?.id ?: ""
+        jmapDelete(
+            session,
+            emailId,
+            fromMailboxId,
+            trashId,
+            deletePolicy,
+            username,
+            password,
+            pin,
+            post,
+            trust,
+        )
     }
 }
 
