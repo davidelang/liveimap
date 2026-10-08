@@ -1,5 +1,7 @@
 package org.dlang.liveimap.session
 
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import org.dlang.liveimap.settings.AccountSettings
 
 data class WatchPlan(
@@ -50,6 +52,23 @@ fun extraIdleBudgetFromText(text: String): Int? {
     return trimmed.toIntOrNull()
 }
 
+/** Exists and expunge replace the count. Every other change keeps it. Does not open a socket. */
+fun folderMessageCount(current: Int?, change: MailboxChange): Int? = when (change) {
+    is MailboxChange.Exists -> change.exists
+    is MailboxChange.Expunge -> change.exists
+    is MailboxChange.Flags,
+    MailboxChange.UidValidityReset,
+    MailboxChange.WatchLost,
+    MailboxChange.Reconnected,
+    -> current
+}
+
+/** One extra IDLE change for a mailbox. Does not open a socket. */
+data class IdleFolderChange(
+    val mailbox: String,
+    val change: MailboxChange,
+)
+
 /** Opens extra IDLE names and checks STATUS names. Does not open a socket. */
 interface ExtraWatchLink {
     suspend fun openIdle(mailbox: String)
@@ -99,6 +118,10 @@ class ExtraWatchApply {
 /** One session per extra IDLE name. Does not call STATUS or the screen. */
 class ExtraIdleSessions(private val factory: () -> MailSession) {
     private val open = ArrayList<Held>()
+    private val changeFlow = MutableSharedFlow<IdleFolderChange>(extraBufferCapacity = 16)
+
+    /** A full buffer drops the new change. Older changes stay. */
+    val changes: SharedFlow<IdleFolderChange> = changeFlow
 
     fun openNames(): List<String> = open.map { it.name }
 
@@ -123,7 +146,9 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                 OpenResult.Connected -> {
                     try {
                         session.select(name)
-                        session.watch(name) { }
+                        session.watch(name) { change ->
+                            changeFlow.tryEmit(IdleFolderChange(name, change))
+                        }
                     } catch (failure: Throwable) {
                         suppressClose(session, failure)
                         throw failure

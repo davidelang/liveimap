@@ -1,8 +1,11 @@
 package org.dlang.liveimap.session
 
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.fail
@@ -225,6 +228,30 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun existsAndExpungeReplaceTheCount() {
+        assertEquals(9, folderMessageCount(5, MailboxChange.Exists(9)))
+        assertEquals(4, folderMessageCount(5, MailboxChange.Expunge(4)))
+        assertEquals(5, folderMessageCount(5, MailboxChange.Flags(1L, setOf("\\Seen"))))
+        assertEquals(null, folderMessageCount(null, MailboxChange.WatchLost))
+    }
+
+    @Test
+    fun watchOfBEmitsExistsNine() = runBlocking {
+        val record = IdleRecord()
+        record.deliverOnWatch = null
+        val sessions = ExtraIdleSessions { record }
+        sessions.apply(AccountSettings(), listOf("B"))
+        val waiting = async { sessions.changes.first() }
+        yield()
+        val change = MailboxChange.Exists(9)
+        val callback = record.callback ?: return@runBlocking fail("expected watch callback")
+        callback(change)
+        val emitted = waiting.await()
+        assertEquals("B", emitted.mailbox)
+        assertEquals(change, emitted.change)
+    }
+
+    @Test
     fun emptyApplyClosesWithoutANewSession() = runBlocking {
         val made = IdleHolder()
         made.sessions.apply(AccountSettings(), listOf("A"))
@@ -315,6 +342,8 @@ class WatchedFoldersTest {
         var openResult: OpenResult = OpenResult.Connected
         var selectFailure: MailFailure? = null
         var watchFailure: MailFailure? = null
+        var deliverOnWatch: MailboxChange? = MailboxChange.Exists(0)
+        var callback: ((MailboxChange) -> Unit)? = null
 
         override val capabilities: Set<String> = emptySet()
 
@@ -364,7 +393,8 @@ class WatchedFoldersTest {
 
         override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
             calls.add("watch $mailbox")
-            onChange(MailboxChange.Exists(0))
+            callback = onChange
+            deliverOnWatch?.let(onChange)
             watchFailure?.let { throw it }
         }
 

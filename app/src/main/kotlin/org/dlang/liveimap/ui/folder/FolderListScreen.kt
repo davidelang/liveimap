@@ -113,6 +113,8 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.extraIdleChanges
+import org.dlang.liveimap.session.folderMessageCount
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
@@ -339,6 +341,18 @@ private fun FolderListLoaded(
                     null
                 }
                 if (listed != null) rows = listed
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        extraIdleChanges().collect { event ->
+            rows = rows.map { row ->
+                if (row.mailbox != event.mailbox) {
+                    row
+                } else {
+                    row.copy(messages = folderMessageCount(row.messages, event.change))
+                }
             }
         }
     }
