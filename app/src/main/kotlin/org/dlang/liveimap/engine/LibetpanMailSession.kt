@@ -4,6 +4,7 @@ import android.content.Context
 import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ConnectionState
@@ -80,6 +81,9 @@ class LibetpanMailSession : MailSession {
 
     @Volatile
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
+
+    @Volatile
+    private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
     private val cache = mutableMapOf<CacheKey, Any>()
     private val link = SessionLink()
@@ -177,6 +181,27 @@ class LibetpanMailSession : MailSession {
                 }
             }
         }
+        if (opened is OpenResult.Failed && opened.text == "plaintext login needs confirmation") {
+            val confirm = plaintextConfirmer
+            val accepted = confirm != null && confirm()
+            val stopped = context.getString(R.string.plaintext_auth_stopped)
+            if (!accepted) {
+                opened = OpenResult.Failed(stopped)
+            } else {
+                val allowed = account.copy(allowPlaintextAuth = true)
+                try {
+                    DataStoreSettingsStore(context).save(allowed)
+                    opened = login(allowed, password)
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    opened = OpenResult.Failed(error.message ?: stopped)
+                }
+                if (opened is OpenResult.Failed && opened.text == "plaintext login needs confirmation") {
+                    opened = OpenResult.Failed(stopped)
+                }
+            }
+        }
         if (opened is OpenResult.Connected) {
             selectedMailbox = null
             selectedReadWrite = false
@@ -189,6 +214,10 @@ class LibetpanMailSession : MailSession {
 
     override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
         certConfirmer = confirm
+    }
+
+    override fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
+        plaintextConfirmer = confirm
     }
 
     private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
@@ -225,6 +254,7 @@ class LibetpanMailSession : MailSession {
             trafficPath,
             account.tlsMode.name,
             account.certPin,
+            account.allowPlaintextAuth,
         )
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -988,6 +1018,7 @@ class LibetpanMailSession : MailSession {
         logPath: String,
         tlsMode: String,
         certPin: String,
+        allowPlaintextAuth: Boolean,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)

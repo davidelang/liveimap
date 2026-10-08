@@ -148,6 +148,26 @@ fun LiveImapNavHost() {
             mailSession().setCertConfirmer(null)
         }
     }
+    val plaintextPrompt = remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    DisposableEffect(Unit) {
+        mailSession().setPlaintextConfirmer {
+            withContext(Dispatchers.Main.immediate) {
+                suspendCancellableCoroutine { cont ->
+                    plaintextPrompt.value = { accepted ->
+                        plaintextPrompt.value = null
+                        if (cont.isActive) cont.resume(accepted)
+                    }
+                    cont.invokeOnCancellation { plaintextPrompt.value = null }
+                }
+            }
+        }
+        onDispose {
+            val pending = plaintextPrompt.value
+            plaintextPrompt.value = null
+            pending?.invoke(false)
+            mailSession().setPlaintextConfirmer(null)
+        }
+    }
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -893,6 +913,27 @@ fun LiveImapNavHost() {
                 dismissButton = {
                     TextButton(onClick = decline) {
                         Text(stringResource(R.string.cert_trust_decline))
+                    }
+                },
+            )
+        }
+        val pendingPlain = plaintextPrompt.value
+        if (pendingPlain != null) {
+            val decline = {
+                pendingPlain(false)
+            }
+            AlertDialog(
+                onDismissRequest = decline,
+                title = { Text(stringResource(R.string.plaintext_auth_title)) },
+                text = { Text(stringResource(R.string.plaintext_auth_body)) },
+                confirmButton = {
+                    TextButton(onClick = { pendingPlain(true) }) {
+                        Text(stringResource(R.string.plaintext_auth_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = decline) {
+                        Text(stringResource(R.string.plaintext_auth_decline))
                     }
                 },
             )

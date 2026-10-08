@@ -141,6 +141,7 @@ struct LiveSession {
     std::string password;
     std::string tlsMode = "None";
     std::string certPin;
+    bool allowPlaintextAuth = false;
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
@@ -2420,7 +2421,7 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
 }
 
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
-    const char * password, const std::string & address, std::string * error, bool tls) {
+    const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk) {
     struct mailimap_capability_data * caps = nullptr;
     int r = mailimap_capability(imap, &caps);
     if (!cmdOk(r) || caps == nullptr) {
@@ -2457,7 +2458,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     jvalue args[3];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
-    args[2].z = JNI_FALSE;
+    args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     env->DeleteLocalRef(cls);
@@ -2473,6 +2474,10 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         env->DeleteLocalRef(result);
     }
     const char * name = user != nullptr ? user : "";
+    if (!tls && !plaintextOk && mechanism.empty() && name[0] != '\0') {
+        *error = "plaintext login needs confirmation";
+        return false;
+    }
     if (mechanism.empty() || name[0] == '\0') {
         r = mailimap_login(imap, user, password);
     } else {
@@ -2492,7 +2497,8 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
     std::string address;
     mailimap * imap = openTcp(host, port, live, error, &address);
     if (imap == nullptr) return nullptr;
-    if (!loginImap(env, imap, host, port, user, password, address, error, false)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, false,
+            live != nullptr && live->allowPlaintextAuth)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -2584,7 +2590,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         rejectImap(imap);
         return nullptr;
     }
-    if (!loginImap(env, imap, host, port, user, password, address, error, true)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, true, true)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -4440,7 +4446,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin) {
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
+    jboolean allowPlaintext) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -4465,6 +4472,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
     session->certPin = pin.c();
+    session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;

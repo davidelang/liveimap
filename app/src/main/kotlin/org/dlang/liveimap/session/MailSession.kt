@@ -29,6 +29,7 @@ interface MailSession {
     suspend fun suspendConnections() {}
     suspend fun open(account: AccountSettings): OpenResult
     fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {}
+    fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {}
     suspend fun namespaces(): List<Namespace>
     suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry>
     suspend fun mailboxListed(name: String): Boolean = throw MailFailure("list failed")

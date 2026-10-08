@@ -616,6 +616,13 @@
     <string name="cert_trust_title">Trust this certificate?</string>
     <string name="cert_trust_confirm">Trust this certificate for %1$s</string>
     <string name="cert_trust_decline">Don\'t trust</string>
+    <string name="settings_allow_plaintext">Allow a clear-text password</string>
+    <string name="settings_allow_plaintext_note">On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask.</string>
+    <string name="plaintext_auth_title">Send the password in the clear?</string>
+    <string name="plaintext_auth_body">This connection is not encrypted. The password will be sent in the clear.</string>
+    <string name="plaintext_auth_confirm">Send the password</string>
+    <string name="plaintext_auth_decline">Don\'t send</string>
+    <string name="plaintext_auth_stopped">The password was not sent.</string>
     <string name="settings_cert_pin_none">No certificate is pinned.</string>
     <string name="settings_cert_pin_clear">Clear pin</string>
     <string name="about_starttls">This connection uses STARTTLS. The password is sent after the certificate check.</string>

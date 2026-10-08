@@ -531,6 +531,13 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { mode ->
                 editor.persist(editor.settings.copy(tlsMode = mode))
             }
+            BoolField(
+                stringResource(R.string.settings_allow_plaintext),
+                settings.allowPlaintextAuth,
+                note = stringResource(R.string.settings_allow_plaintext_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(allowPlaintextAuth = enabled))
+            }
             if (settings.certPin.isBlank()) {
                 Text(stringResource(R.string.settings_cert_pin_none))
             } else {

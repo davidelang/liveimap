@@ -22,6 +22,7 @@ class ImapIdentityTest {
         assertFalse(sameImapIdentity(base, base.copy(imapPort = 993), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(tlsMode = TlsMode.StartTls), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(certPin = "ab"), "secret", "secret"))
+        assertFalse(sameImapIdentity(base, base.copy(allowPlaintextAuth = true), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(username = "bob"), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(smtpHost = "other.example"), "secret", "secret"))
         assertFalse(sameImapIdentity(base, base.copy(smtpPort = 587), "secret", "secret"))

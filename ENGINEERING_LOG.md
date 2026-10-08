@@ -2138,3 +2138,5 @@ ManageSieve STARTTLS checks the certificate before login. Nothing connects.
 ## 2026-10-07 - IMAP auth choice prefers SCRAM, then CRAM-MD5, and leaves login on the LOGIN command.
 
 ## 2026-10-07 - Login uses mailimap_authenticate when an IMAP SASL mechanism is chosen.
+
+## 2026-10-07 - A plaintext IMAP login asks before sending the password.

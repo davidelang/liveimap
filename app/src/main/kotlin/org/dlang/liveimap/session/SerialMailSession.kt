@@ -39,6 +39,10 @@ class SerialMailSession(
         inner.setCertConfirmer(confirm)
     }
 
+    override fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
+        inner.setPlaintextConfirmer(confirm)
+    }
+
     override suspend fun namespaces(): List<Namespace> =
         onLane { inner.namespaces() }
 

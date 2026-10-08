@@ -149,6 +149,22 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun allowPlaintextAuthRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("allowPlaintextAuth="))
+        val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
+        assertEquals("altAddresses", keys.last())
+        assertFalse(keys.contains("allowPlaintextAuth"))
+        assertFalse(decodeAccountSettings(defaults).allowPlaintextAuth)
+        val set = AccountSettings(allowPlaintextAuth = true)
+        val text = set.encode()
+        assertTrue(text.contains("allowPlaintextAuth=true"))
+        assertTrue(decodeAccountSettings(text).allowPlaintextAuth)
+        assertEquals(set, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+    }
+
+    @Test
     fun certPinRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("certPin="))
