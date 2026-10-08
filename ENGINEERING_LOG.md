@@ -2518,3 +2518,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 2406bab
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Upload a message blob
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/blob-upload-20261008-1250-plan.md
+- Work: Upload RFC822 bytes to the session upload URL and return the blob id. Sending stays SMTP. This slice does not connect and does not send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c5b1d28
+- Host: /home/dlang/git/liveimap/master
