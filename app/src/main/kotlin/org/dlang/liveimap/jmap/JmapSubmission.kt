@@ -61,6 +61,46 @@ fun jmapSubmit(
     return jmapSubmissionId(result.body)
 }
 
+fun jmapDeliver(
+    session: JmapSession,
+    bytes: ByteArray,
+    mailboxId: String,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    upload: (String, ByteArray, String, String) -> JmapHttpExchange,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): String {
+    if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+    if (mailFrom.isBlank()) throw JmapFailure("jmap submission from is empty")
+    if (rcptTo.isEmpty() || rcptTo.any { it.isBlank() }) {
+        throw JmapFailure("jmap submission recipient is empty")
+    }
+    val blobId = jmapUpload(session, bytes, username, password, pin, upload, trust)
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val request = jmapEmailImportRequest(accountId, blobId, mailboxId)
+    val authorization = jmapBasicAuthorization(username, password)
+    val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (imported.status != 200) throw JmapFailure("jmap api status ${imported.status}")
+    val emailId = jmapImportedEmailId(imported.body)
+    return jmapSubmit(
+        session,
+        emailId,
+        mailFrom,
+        rcptTo,
+        username,
+        password,
+        pin,
+        post,
+        trust,
+    )
+}
+
 private fun createdId(created: Json?): String? {
     if (created !is Json.Obj) return null
     val row = created.fields["k1"]

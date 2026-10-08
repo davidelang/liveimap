@@ -2528,3 +2528,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD c5b1d28
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Deliver through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-deliver-20261008-1259-plan.md
+- Work: Upload the message, import it into a mailbox, and submit that email. Leave compose on SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 8c7c66b
+- Host: /home/dlang/git/liveimap/master
