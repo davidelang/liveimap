@@ -2276,3 +2276,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD e88af67
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Prefer SCRAM-PLUS execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/scram-plus-20261008-0752-plan.md
+- Work: TLS IMAP login prefers SCRAM-SHA-256-PLUS then SCRAM-SHA-1-PLUS when this connection has channel-binding bytes; otherwise -PLUS stays skipped
+- Phase 1 of 1. A failed -PLUS login is not retried. SMTP passes channelBinding false. No install. No message sent. libetpan is not rebuilt
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 84870c6
+- Host: /home/dlang/git/liveimap/master

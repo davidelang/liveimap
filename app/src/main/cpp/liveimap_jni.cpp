@@ -82,6 +82,7 @@ int mailimap_atom_parse(mailstream * fd, MMAPString * buffer, struct mailimap_pa
 
 // OpenSSL 1.1.1w symbols. The NDK include path has no openssl headers.
 struct ssl_ctx_st;
+struct ssl_st;
 struct x509_st;
 struct x509_store_ctx_st;
 struct stack_st;
@@ -94,6 +95,11 @@ stack_st * X509_STORE_CTX_get0_chain(x509_store_ctx_st * ctx);
 int OPENSSL_sk_num(const stack_st * sk);
 void * OPENSSL_sk_value(const stack_st * sk, int i);
 int i2d_X509(x509_st * cert, unsigned char ** out);
+int SSL_version(const ssl_st * ssl);
+size_t SSL_get_peer_finished(const ssl_st * ssl, void * buf, size_t count);
+int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
+    const char * label, size_t llen, const unsigned char * context,
+    size_t contextlen, int use_context);
 }
 
 std::string utf8FromJava(JNIEnv * env, jstring value);
@@ -2433,6 +2439,31 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     }
     std::string line = joinCapabilities(caps);
     mailimap_capability_data_free(caps);
+    unsigned char binding[64];
+    size_t bindingLen = 0;
+    const char * bindingName = nullptr;
+    if (tls) {
+        ssl_st * ssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(imap->imap_stream));
+        if (ssl != nullptr) {
+            int version = SSL_version(ssl);
+            if (version == 0x0304) {
+                // RFC 9266 label is 24 octets. The NUL is not part of it.
+                static const char label[] = "EXPORTER-Channel-Binding";
+                int exported = SSL_export_keying_material(
+                    ssl, binding, 32, label, sizeof(label) - 1, nullptr, 0, 1);
+                if (exported == 1) {
+                    bindingName = "tls-exporter";
+                    bindingLen = 32;
+                }
+            } else if (version == 0x0303) {
+                size_t n = SSL_get_peer_finished(ssl, binding, 64);
+                if (n > 0 && n <= 64) {
+                    bindingName = "tls-unique";
+                    bindingLen = n;
+                }
+            }
+        }
+    }
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -2441,7 +2472,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         return false;
     }
     jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
-        "(Ljava/lang/String;ZZ)Ljava/lang/String;");
+        "(Ljava/lang/String;ZZZ)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         env->DeleteLocalRef(cls);
@@ -2456,10 +2487,11 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "auth choice failed";
         return false;
     }
-    jvalue args[3];
+    jvalue args[4];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
+    args[3].z = bindingLen > 0 ? JNI_TRUE : JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     env->DeleteLocalRef(cls);
@@ -2478,6 +2510,17 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (!tls && !plaintextOk && mechanism.empty() && name[0] != '\0') {
         *error = "plaintext login needs confirmation";
         return false;
+    }
+    bool plus = mechanism.size() >= 5
+        && mechanism.compare(mechanism.size() - 5, 5, "-PLUS") == 0;
+    if (plus && bindingLen > 0) {
+        int br = mailimap_set_channel_binding(imap, bindingName, binding, bindingLen);
+        if (br != 0) {
+            *error = "channel binding failed";
+            return false;
+        }
+    } else {
+        mailimap_set_channel_binding(imap, nullptr, nullptr, 0);
     }
     if (mechanism.empty() || name[0] == '\0') {
         r = mailimap_login(imap, user, password);
@@ -6775,7 +6818,7 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
         return false;
     }
     jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
-        "(Ljava/lang/String;ZZ)Ljava/lang/String;");
+        "(Ljava/lang/String;ZZZ)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         env->DeleteLocalRef(cls);
@@ -6788,10 +6831,11 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
         env->DeleteLocalRef(cls);
         return false;
     }
-    jvalue args[3];
+    jvalue args[4];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
+    args[3].z = JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     env->DeleteLocalRef(cls);
