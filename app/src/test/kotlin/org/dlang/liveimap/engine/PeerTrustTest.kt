@@ -49,7 +49,7 @@ class PeerTrustTest {
     }
 
     private fun der(name: String): ByteArray {
-        val bytes = javaClass.classLoader.getResourceAsStream(name)?.use { it.readBytes() }
+        val bytes = checkNotNull(javaClass.classLoader).getResourceAsStream(name)?.use { it.readBytes() }
             ?: error("missing $name")
         val cert = CertificateFactory.getInstance("X.509")
             .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate

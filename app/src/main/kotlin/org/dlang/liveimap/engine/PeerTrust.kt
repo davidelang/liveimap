@@ -32,12 +32,7 @@ object PeerTrust {
             return "certificate rejected"
         }
         val leaf = chain[0]
-        val named = try {
-            HttpsURLConnection.getDefaultHostnameVerifier().verify(host, LeafSession(leaf, host))
-        } catch (_: Exception) {
-            false
-        }
-        if (!named) return "name mismatch"
+        if (!nameMatches(host, leaf)) return "name mismatch"
         try {
             leaf.checkValidity()
         } catch (_: CertificateExpiredException) {
@@ -92,6 +87,45 @@ object PeerTrust {
 }
 
 private const val FINGERPRINT_HEX = "0123456789abcdef"
+
+private fun nameMatches(host: String, leaf: X509Certificate): Boolean {
+    val verifier = HttpsURLConnection.getDefaultHostnameVerifier()
+    val platform = try {
+        verifier.verify(host, LeafSession(leaf, host))
+    } catch (_: Exception) {
+        false
+    }
+    if (platform) return true
+    // The JDK default verifier rejects every name. Android replaces that verifier.
+    if (!verifier.javaClass.name.endsWith("DefaultHostnameVerifier")) return false
+    return leafNameMatches(host, leaf)
+}
+
+private fun leafNameMatches(host: String, leaf: X509Certificate): Boolean {
+    val wanted = host.trim().lowercase()
+    val sans = try {
+        leaf.subjectAlternativeNames
+    } catch (_: Exception) {
+        null
+    }
+    var sawDns = false
+    if (sans != null) {
+        for (san in sans) {
+            if (san.size < 2) continue
+            val type = (san[0] as? Number)?.toInt() ?: continue
+            if (type != 2) continue
+            sawDns = true
+            val name = san[1]?.toString()?.trim()?.lowercase() ?: continue
+            if (name == wanted) return true
+        }
+    }
+    if (sawDns) return false
+    val cn = leaf.subjectX500Principal.name.split(",").firstNotNullOfOrNull { part ->
+        val trimmed = part.trim()
+        if (trimmed.startsWith("CN=", ignoreCase = true)) trimmed.substring(3).trim() else null
+    }
+    return cn != null && cn.lowercase() == wanted
+}
 
 private fun normalizePin(pin: String): String =
     pin.trim().replace(" ", "").replace(":", "").lowercase()
