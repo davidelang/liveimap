@@ -239,6 +239,62 @@ class FolderListModelTest {
         assertEquals(null, order)
         assertEquals("list failed", failed?.text)
     }
+
+    @Test
+    fun refreshWatchedCountsAsksOnlyNamesPastTheIdleBudget() {
+        var now = 1_000L
+        val session = treeSession()
+        session.statusCounts = mapOf("C" to 7, "D" to 4)
+        val model = FolderListModel(
+            session,
+            ModelSettingsStore(
+                AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
+            ),
+        ) { now }
+        val visible = listOf(
+            FolderRow("INBOX", "INBOX", false, 0, null, false, messages = 5),
+            FolderRow("C", "C", false, 0, null, false, messages = 1),
+        )
+        val updated = runModel { model.refreshWatchedCounts(visible) }
+        assertEquals(listOf(listOf("C", "D")), session.statusCalls)
+        assertEquals(7, updated.single { it.mailbox == "C" }.messages)
+        assertEquals(5, updated.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(listOf("INBOX", "C"), updated.map { it.mailbox })
+
+        val sameClock = runModel { model.refreshWatchedCounts(updated) }
+        assertEquals(listOf(listOf("C", "D")), session.statusCalls)
+        assertEquals(7, sameClock.single { it.mailbox == "C" }.messages)
+        assertEquals(5, sameClock.single { it.mailbox == "INBOX" }.messages)
+
+        now += CountFreshMillis
+        session.statusCounts = mapOf("C" to 8, "D" to 9)
+        val later = runModel { model.refreshWatchedCounts(sameClock) }
+        assertEquals(listOf(listOf("C", "D"), listOf("C", "D")), session.statusCalls)
+        assertEquals(8, later.single { it.mailbox == "C" }.messages)
+        assertEquals(5, later.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(listOf("INBOX", "C"), later.map { it.mailbox })
+    }
+
+    @Test
+    fun refreshWatchedCountsBudgetZeroAsksStoredNamesAndEmptyListDoesNotCall() {
+        val session = treeSession()
+        session.statusCounts = mapOf("A" to 3, "B" to 4)
+        val zero = FolderListModel(
+            session,
+            ModelSettingsStore(AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 0)),
+        ) { 10L }
+        val visible = listOf(FolderRow("A", "A", false, 0, null, false, messages = 1))
+        val updated = runModel { zero.refreshWatchedCounts(visible) }
+        assertEquals(listOf(listOf("A", "B")), session.statusCalls)
+        assertEquals(3, updated.single { it.mailbox == "A" }.messages)
+        assertEquals(listOf("A"), updated.map { it.mailbox })
+
+        val emptySession = treeSession()
+        val empty = FolderListModel(emptySession, ModelSettingsStore(AccountSettings())) { 10L }
+        val kept = runModel { empty.refreshWatchedCounts(visible) }
+        assertEquals(emptyList<List<String>>(), emptySession.statusCalls)
+        assertEquals(visible, kept)
+    }
 }
 
 private fun treeSession(): ModelMailSession = ModelMailSession(
@@ -289,6 +345,8 @@ private class ModelMailSession(
     private val listFailure: MailFailure? = null,
 ) : MailSession {
     val listCalls = mutableListOf<ModelListCall>()
+    val statusCalls = mutableListOf<List<String>>()
+    var statusCounts: Map<String, Int> = emptyMap()
 
     override val capabilities: Set<String> = emptySet()
 
@@ -301,6 +359,11 @@ private class ModelMailSession(
         val failure = listFailure
         if (failure != null) throw failure
         return levels[ModelListCall(prefix, parentMailbox)] ?: emptyList()
+    }
+
+    override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
+        statusCalls += mailboxes.toList()
+        return statusCounts.filterKeys { it in mailboxes }
     }
 
     override suspend fun select(mailbox: String): SelectResult = unused()

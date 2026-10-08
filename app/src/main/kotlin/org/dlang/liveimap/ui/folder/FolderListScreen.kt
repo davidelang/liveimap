@@ -461,7 +461,7 @@ private fun FolderListLoaded(
                     val visible = indices.mapNotNull { listed.getOrNull(it) }.filter { !it.namespaceRoot }
                     if (visible.isEmpty()) return@withLock
                     val updated = try {
-                        model.refreshVisibleCounts(visible)
+                        model.refreshWatchedCounts(model.refreshVisibleCounts(visible))
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {

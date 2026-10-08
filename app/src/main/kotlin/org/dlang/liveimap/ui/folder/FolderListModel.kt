@@ -4,6 +4,7 @@ import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
+import org.dlang.liveimap.session.extraWatchPlan
 import org.dlang.liveimap.settings.SettingsStore
 
 internal const val CountFreshMillis = 300_000L
@@ -226,6 +227,25 @@ class FolderListModel(
         val counts = session.statusMessages(due.map { it.mailbox })
         for (row in due) {
             countedAt[row.mailbox] = now
+        }
+        return visible.map { row ->
+            val count = counts[row.mailbox]
+            if (count != null) row.copy(messages = count) else row
+        }
+    }
+
+    suspend fun refreshWatchedCounts(visible: List<FolderRow>): List<FolderRow> {
+        val names = extraWatchPlan(store.load()).status
+        if (names.isEmpty()) return visible
+        val now = nowMillis()
+        val due = names.filter { name ->
+            val at = countedAt[name]
+            at == null || now - at >= CountFreshMillis
+        }
+        if (due.isEmpty()) return visible
+        val counts = session.statusMessages(due)
+        for (name in due) {
+            countedAt[name] = now
         }
         return visible.map { row ->
             val count = counts[row.mailbox]

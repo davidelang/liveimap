@@ -2336,3 +2336,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 2b9f609
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Check watched STATUS folders execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-status-20261008-0841-plan.md
+- Work: STATUS the extra folders past the IDLE budget on the folder screen's current session
+- Phase 1 of 1. No second connection. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5cf07fc
+- Host: /home/dlang/git/liveimap/master
