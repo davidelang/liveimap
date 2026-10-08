@@ -2578,3 +2578,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD b4c45f5
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Turn multi-pane on only from the setting
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/multi-pane-setting-20261008-1348-plan.md
+- Work: Multi-pane turns on only when the account setting says so. The default is Off. Window width does not turn panes on.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5b7b282
+- Host: /home/dlang/git/liveimap/master

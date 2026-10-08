@@ -9,9 +9,8 @@ import org.junit.Test
 class PaneSplitTest {
     @Test
     fun wideOnlyWhenExpanded() {
-        assertTrue(useMultiPane(MultiPane.Wide, true))
-        assertFalse(useMultiPane(MultiPane.Wide, false))
-        assertFalse(useMultiPane(MultiPane.Off, true))
+        assertTrue(useMultiPane(MultiPane.Wide))
+        assertFalse(useMultiPane(MultiPane.Off))
     }
 
     @Test

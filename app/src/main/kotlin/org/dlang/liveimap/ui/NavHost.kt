@@ -35,8 +35,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -70,7 +68,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.window.core.layout.WindowWidthSizeClass
 import kotlin.math.roundToInt
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
@@ -122,13 +119,10 @@ private class PendingCert(
     val resume: (Boolean) -> Unit,
 )
 
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun LiveImapNavHost() {
-    val expandedWidth =
-        currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.EXPANDED
-    var multiPane by remember { mutableStateOf(MultiPane.Wide) }
-    val split = useMultiPane(multiPane, expandedWidth)
+    var multiPane by remember { mutableStateOf(MultiPane.Off) }
+    val split = useMultiPane(multiPane)
     val splitNow = rememberUpdatedState(split)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -1238,8 +1232,7 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
     return expanded && route == "reader/{mailbox}/{uid}/{sequence}"
 }
 
-internal fun useMultiPane(mode: MultiPane, expandedWidth: Boolean): Boolean =
-    mode == MultiPane.Wide && expandedWidth
+internal fun useMultiPane(mode: MultiPane): Boolean = mode == MultiPane.Wide
 
 internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean): Int {
     if (!readerOpen) return minOf(360, availableDp)

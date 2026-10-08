@@ -354,10 +354,10 @@ Avoid:
   selection, expanded folders, cached data) is restored, and the session
   cache is never persisted.
 * No `android:configChanges` override and no orientation lock.
-* An expanded window in When wide shows the drawer, the index, and an open
-  message as panes; a bar between panes resizes them, and dragging a pane to
-  the edge closes it; Multi-pane is Off or When wide, and When wide is the
-  default.
+* Multi-pane is Off or On, and Off is the default. On shows the drawer, the
+  index, and an open message as panes. A bar between panes resizes them, and
+  dragging a pane to the edge closes it. Window width does not choose the
+  panes.
 
 ## Compose and sending
 

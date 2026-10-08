@@ -122,9 +122,14 @@ class AccountSettingsTest {
 
     @Test
     fun multiPaneOffRoundTrip() {
-        val text = AccountSettings(multiPane = MultiPane.Off).encode()
-        assertTrue(text.contains("multiPane=Off"))
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("multiPane="))
         assertEquals(MultiPane.Off, decodeAccountSettings(text).multiPane)
+        val offText = text.trimEnd() + "\nmultiPane=Off\n"
+        assertEquals(MultiPane.Off, decodeAccountSettings(offText).multiPane)
+        val wide = AccountSettings(multiPane = MultiPane.Wide).encode()
+        assertTrue(wide.contains("multiPane=Wide"))
+        assertEquals(MultiPane.Wide, decodeAccountSettings(wide).multiPane)
     }
 
     @Test
