@@ -2468,3 +2468,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 97fa862
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - End the APPEND command after the literal
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/append-literal-crlf-20261008-1207-plan.md
+- Work: after the APPEND literal octets, send the command-ending CRLF
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD f83b048
+- Host: /home/dlang/git/liveimap/master

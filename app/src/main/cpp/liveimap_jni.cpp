@@ -1730,6 +1730,8 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
         if (wrote <= 0) return MAILIMAP_ERROR_STREAM;
         off += static_cast<size_t>(wrote);
     }
+    r = mailimap_crlf_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
     if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
     imap->imap_response = nullptr;
     if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
