@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.decodeAccountSettings
@@ -82,21 +83,89 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun smtpPassword(): String {
+        ensureMigrated()
         return gate.withLock {
-            withContext(Dispatchers.IO) { secretPrefs.getString(smtpPasswordKey, "") ?: "" }
+            withContext(Dispatchers.IO) {
+                val accounts = readAccounts()
+                val chosen = chooseAccount(accounts, selectedId())
+                val id = chosen?.userData?.get(userAccountId)
+                if (!id.isNullOrEmpty() && secretPrefs.contains(smtpPasswordKeyFor(id))) {
+                    return@withContext secretPrefs.getString(smtpPasswordKeyFor(id), "") ?: ""
+                }
+                if (accounts.size == 1) {
+                    return@withContext secretPrefs.getString(smtpPasswordKey, "") ?: ""
+                }
+                ""
+            }
         }
     }
 
     suspend fun setSmtpPassword(value: String) {
+        ensureMigrated()
         gate.withLock {
             withContext(Dispatchers.IO) {
+                val id = smtpAccountId()
+                val key = smtpPasswordKeyFor(id)
                 val edit = secretPrefs.edit()
                 val saved = if (value.isEmpty()) {
-                    edit.remove(smtpPasswordKey).commit()
+                    edit.remove(key).commit()
                 } else {
-                    edit.putString(smtpPasswordKey, value).commit()
+                    edit.putString(key, value).commit()
                 }
                 if (!saved) error("smtp password not saved")
+            }
+        }
+    }
+
+    suspend fun listAccounts(): List<AccountChoice> {
+        ensureMigrated()
+        return gate.withLock {
+            withContext(Dispatchers.IO) {
+                val accounts = readAccounts()
+                val chosen = chooseAccount(accounts, selectedId())
+                accounts.mapNotNull { account ->
+                    val id = account.userData[userAccountId]
+                    if (id.isNullOrEmpty()) return@mapNotNull null
+                    AccountChoice(
+                        id = id,
+                        name = listedName(account),
+                        chosen = account === chosen,
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun selectAccount(accountId: String) {
+        if (accountId.isBlank()) return
+        ensureMigrated()
+        gate.withLock {
+            withContext(Dispatchers.IO) {
+                val known = readAccounts().any { it.userData[userAccountId] == accountId }
+                if (!known) return@withContext
+                writeSelectedId(accountId)
+            }
+        }
+    }
+
+    suspend fun addAccount() {
+        ensureMigrated()
+        gate.withLock {
+            withContext(Dispatchers.IO) {
+                val accounts = readAccounts()
+                if (accounts.size == 1) {
+                    copyLegacySmtpPassword(accounts[0])
+                }
+                val settings = loadLocked()
+                val accountId = java.util.UUID.randomUUID().toString()
+                writeAccount(
+                    accountVisibleName(settings),
+                    accountUserData(accountId, settings, null),
+                    "",
+                    forceInsert = true,
+                )
+                writePreference(accountId, settings.encode())
+                writeSelectedId(accountId)
             }
         }
     }
@@ -138,10 +207,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private fun accountAdapter(): AccountMap = object : AccountMap {
-        override suspend fun accounts(): List<ManagedAccount> {
-            val account = readAccount() ?: return emptyList()
-            return listOf(account)
-        }
+        override suspend fun accounts(): List<ManagedAccount> = readAccounts()
 
         override suspend fun write(name: String, userData: Map<String, String>, passwordSlot: String) {
             writeAccount(name, userData, passwordSlot)
@@ -155,8 +221,9 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun loadLocked(): AccountSettings {
-        val account = readAccount()
-        if (account != null && useNewStoreLocked(account)) {
+        val accounts = readAccounts()
+        val account = chooseAccount(accounts, selectedId())
+        if (account != null && (useNewStoreLocked(account) || accounts.size > 1)) {
             val accountId = account.userData[userAccountId] ?: return AccountSettings()
             val text = storedPreference(accountId) ?: return AccountSettings()
             return overlayAccountFields(decodeAccountSettings(text), account.userData)
@@ -170,7 +237,7 @@ class AccountStore private constructor(private val context: Context) {
         encoded: String,
     ): suspend () -> Unit {
         if (shouldUseLegacyLocked()) return { writeLegacy(encoded) }
-        val existing = readAccount()
+        val existing = chooseAccount(readAccounts(), selectedId())
         val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
             ?: java.util.UUID.randomUUID().toString()
         val marker = existing?.userData?.get(userMigratedFrom)
@@ -182,7 +249,7 @@ class AccountStore private constructor(private val context: Context) {
 
     private suspend fun passwordLocked(): String {
         if (shouldUseLegacyLocked()) return legacyPassword()
-        val account = readAccount() ?: return ""
+        val account = chooseAccount(readAccounts(), selectedId()) ?: return ""
         val slot = account.passwordSlot
         if (slot.isEmpty()) return ""
         val accountId = account.userData[userAccountId] ?: return ""
@@ -194,7 +261,7 @@ class AccountStore private constructor(private val context: Context) {
             writeLegacyPassword(value)
             return {}
         }
-        val existing = readAccount()
+        val existing = chooseAccount(readAccounts(), selectedId())
         if (existing == null) {
             val settings = loadLocked()
             val accountId = java.util.UUID.randomUUID().toString()
@@ -210,7 +277,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private fun themeText(prefs: androidx.datastore.preferences.core.Preferences): String? {
-        val account = readAccount()
+        val account = chooseAccount(readAccounts(), prefs[stringPreferencesKey(selectedAccountIdKey)])
         val legacy = prefs[stringPreferencesKey(legacyAccountKey)]
         val accountId = account?.userData?.get(userAccountId)
         val migrated = account?.userData?.get(userMigratedFrom) == migratedFromDatastoreV1
@@ -229,8 +296,10 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun shouldUseLegacyLocked(): Boolean {
-        val account = readAccount()
-        if (account?.userData?.get(userMigratedFrom) == migratedFromDatastoreV1) return false
+        val accounts = readAccounts()
+        if (accounts.size > 1) return false
+        val account = chooseAccount(accounts, selectedId())
+        if (useNewStoreLocked(account)) return false
         return legacyEncoded() != null
     }
 
@@ -250,29 +319,37 @@ class AccountStore private constructor(private val context: Context) {
         return if (existing.name == previous) next else existing.name
     }
 
-    private fun readAccount(): ManagedAccount? {
+    private fun readAccounts(): List<ManagedAccount> {
         val manager = AccountManager.get(context)
-        val account = manager.getAccountsByType(liveimapAccountType).firstOrNull() ?: return null
-        val data = linkedMapOf<String, String>()
-        for (key in accountUserKeys) {
-            val value = manager.getUserData(account, key) ?: continue
-            data[key] = value
+        return manager.getAccountsByType(liveimapAccountType).map { account ->
+            val data = linkedMapOf<String, String>()
+            for (key in accountUserKeys) {
+                val value = manager.getUserData(account, key) ?: continue
+                data[key] = value
+            }
+            ManagedAccount(account.name, data, manager.getPassword(account) ?: "")
         }
-        return ManagedAccount(account.name, data, manager.getPassword(account) ?: "")
     }
 
-    private fun writeAccount(name: String, userData: Map<String, String>, passwordSlot: String) {
+    private fun writeAccount(
+        name: String,
+        userData: Map<String, String>,
+        passwordSlot: String,
+        forceInsert: Boolean = false,
+    ) {
         val manager = AccountManager.get(context)
-        val existing = manager.getAccountsByType(liveimapAccountType)
-        val account = if (existing.isEmpty()) {
-            val created = Account(name, liveimapAccountType)
+        val accountId = userData[userAccountId]
+        val existing = if (forceInsert) null else findUpdatable(manager, accountId)
+        val account = if (existing == null) {
+            val createdName = uniqueAccountName(manager, name, accountId.orEmpty())
+            val created = Account(createdName, liveimapAccountType)
             val bundle = android.os.Bundle()
             for ((key, value) in userData) bundle.putString(key, value)
             // passwordSlot is ciphertext, or empty when no password has been set.
             if (!manager.addAccountExplicitly(created, passwordSlot, bundle)) error("account not added")
             created
         } else {
-            renameIfNeeded(manager, existing[0], name)
+            renameIfNeeded(manager, existing, name)
         }
         val live = manager.getAccountsByType(liveimapAccountType).firstOrNull { it.name == account.name }
             ?: account
@@ -286,10 +363,76 @@ class AccountStore private constructor(private val context: Context) {
         manager.setPassword(live, passwordSlot)
     }
 
+    private fun findUpdatable(manager: AccountManager, accountId: String?): Account? {
+        val existing = manager.getAccountsByType(liveimapAccountType)
+        if (!accountId.isNullOrEmpty()) {
+            existing.firstOrNull { manager.getUserData(it, userAccountId) == accountId }?.let { return it }
+        }
+        if (existing.size == 1 && manager.getUserData(existing[0], userAccountId).isNullOrEmpty()) {
+            return existing[0]
+        }
+        return null
+    }
+
+    private fun uniqueAccountName(manager: AccountManager, name: String, accountId: String): String {
+        val taken = manager.getAccountsByType(liveimapAccountType).map { it.name }.toSet()
+        if (name.isNotEmpty() && name !in taken) return name
+        if (accountId.isNotEmpty() && accountId !in taken) return accountId
+        val base = accountId.ifEmpty { "account" }
+        var suffix = 2
+        var candidate = "$base-$suffix"
+        while (candidate in taken) {
+            suffix += 1
+            candidate = "$base-$suffix"
+        }
+        return candidate
+    }
+
     private fun renameIfNeeded(manager: AccountManager, account: Account, name: String): Account {
-        if (account.name == name) return account
+        if (account.name == name || name.isEmpty()) return account
+        if (manager.getAccountsByType(liveimapAccountType).any { it.name == name }) return account
         return manager.renameAccount(account, name, null, null)
             .getResult(5, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    private fun listedName(account: ManagedAccount): String {
+        val email = account.userData[userEmail].orEmpty()
+        if (email.isNotEmpty()) return email
+        return "${account.userData[userUsername].orEmpty()}@${account.userData[userImapHost].orEmpty()}"
+    }
+
+    private suspend fun selectedId(): String? {
+        return context.accountSettingsDataStore.data.first()[stringPreferencesKey(selectedAccountIdKey)]
+    }
+
+    private suspend fun writeSelectedId(accountId: String) {
+        context.accountSettingsDataStore.edit { prefs ->
+            prefs[stringPreferencesKey(selectedAccountIdKey)] = accountId
+        }
+    }
+
+    private suspend fun smtpAccountId(): String {
+        val accounts = readAccounts()
+        val chosenId = chooseAccount(accounts, selectedId())
+            ?.userData
+            ?.get(userAccountId)
+            ?.takeIf { it.isNotEmpty() }
+        if (chosenId != null) return chosenId
+        if (accounts.isNotEmpty()) error("smtp password not saved")
+        val settings = loadLocked()
+        val accountId = java.util.UUID.randomUUID().toString()
+        writeAccount(accountVisibleName(settings), accountUserData(accountId, settings, null), "")
+        return accountId
+    }
+
+    private fun copyLegacySmtpPassword(account: ManagedAccount) {
+        val accountId = account.userData[userAccountId]
+        if (accountId.isNullOrEmpty()) return
+        val perId = smtpPasswordKeyFor(accountId)
+        val legacy = secretPrefs.getString(smtpPasswordKey, "") ?: ""
+        if (secretPrefs.contains(perId) || legacy.isEmpty()) return
+        val saved = secretPrefs.edit().putString(perId, legacy).commit()
+        if (!saved) error("smtp password not saved")
     }
 
     private suspend fun legacyEncoded(): String? {

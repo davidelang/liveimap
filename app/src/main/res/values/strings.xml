@@ -243,6 +243,8 @@
     <string name="compose_fetch_failed">fetch failed</string>
     <string name="compose_quote_header">From: %1$s\nDate: %2$s\nSubject: %3$s</string>
     <string name="settings_account">Account</string>
+    <string name="settings_accounts">Accounts</string>
+    <string name="settings_add_account">Add account</string>
     <string name="settings_mailboxes">Mailboxes</string>
     <string name="settings_folders">Folders</string>
     <string name="settings_reading">Reading</string>

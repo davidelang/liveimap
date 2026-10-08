@@ -162,6 +162,31 @@ class AccountMigrationTest {
         assertEquals(sampleSettings().encode(), legacy.encodedText)
     }
 
+    @Test
+    fun chooseAccountKeepsTheSelectedId() {
+        val only = ManagedAccount("one", mapOf(userAccountId to "one"), "")
+        assertEquals(only, chooseAccount(listOf(only), null))
+
+        val first = ManagedAccount("one", mapOf(userAccountId to "one"), "")
+        val second = ManagedAccount("two", mapOf(userAccountId to "two"), "")
+        assertEquals(second, chooseAccount(listOf(first, second), "two"))
+
+        val other = ManagedAccount("new", mapOf(userAccountId to "new"), "")
+        val migrated = ManagedAccount(
+            "old",
+            mapOf(userAccountId to "old", userMigratedFrom to migratedFromDatastoreV1),
+            "",
+        )
+        assertEquals(migrated, chooseAccount(listOf(other, migrated), "missing"))
+
+        val plainA = ManagedAccount("a", mapOf(userAccountId to "a"), "")
+        val plainB = ManagedAccount("b", mapOf(userAccountId to "b"), "")
+        assertEquals(plainA, chooseAccount(listOf(plainA, plainB), "missing"))
+
+        assertNull(chooseAccount(emptyList(), "missing"))
+        assertEquals("smtpPassword.abc", smtpPasswordKeyFor("abc"))
+    }
+
     private fun sampleSettings(): AccountSettings = AccountSettings(
         imapHost = "imap.example.com",
         imapPort = 993,

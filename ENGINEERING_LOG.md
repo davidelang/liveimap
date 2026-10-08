@@ -2167,3 +2167,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-07 - Plain text sends as format=flowed.
 
 ## 2026-10-07 - Deleting an open message skips messages that are already deleted.
+
+## 2026-10-07 - The checked account is the one the app opens.

@@ -12,6 +12,18 @@ internal const val legacyAccountKey: String = "account"
 internal const val legacySecretFile: String = "liveimap_secret"
 internal const val legacyPasswordKey: String = "password"
 internal const val smtpPasswordKey: String = "smtpPassword"
+internal const val selectedAccountIdKey: String = "selectedAccountId"
+
+internal fun smtpPasswordKeyFor(accountId: String): String = "$smtpPasswordKey.$accountId"
+
+internal fun chooseAccount(accounts: List<ManagedAccount>, selectedId: String?): ManagedAccount? {
+    if (accounts.isEmpty()) return null
+    if (!selectedId.isNullOrBlank()) {
+        accounts.firstOrNull { it.userData[userAccountId] == selectedId }?.let { return it }
+    }
+    if (accounts.size == 1) return accounts.first()
+    return accounts.firstOrNull { !it.userData[userMigratedFrom].isNullOrEmpty() } ?: accounts.first()
+}
 
 internal const val userAccountId: String = "accountId"
 internal const val userSchema: String = "schema"

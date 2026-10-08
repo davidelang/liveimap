@@ -44,6 +44,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -139,10 +140,12 @@ private class SettingsEditor(
     val settingsState = mutableStateOf(AccountSettings())
     val passwordState = mutableStateOf("")
     val smtpPasswordState = mutableStateOf("")
+    val accountsState = mutableStateOf<List<AccountChoice>>(emptyList())
     var ready by mutableStateOf(false)
     var settings by settingsState
     var password by passwordState
     var smtpPassword by smtpPasswordState
+    var accounts by accountsState
 
     fun persist(next: AccountSettings) {
         if (!ready) return
@@ -170,13 +173,34 @@ private class SettingsEditor(
 
     fun load() {
         settingsIo.launch {
+            settingsMutex.withLock { reloadLocked() }
+        }
+    }
+
+    fun selectAccount(id: String) {
+        settingsIo.launch {
             settingsMutex.withLock {
-                settings = store.load()
-                password = store.password()
-                smtpPassword = store.smtpPassword()
-                ready = true
+                store.selectAccount(id)
+                reloadLocked()
             }
         }
+    }
+
+    fun addAccount() {
+        settingsIo.launch {
+            settingsMutex.withLock {
+                store.addAccount()
+                reloadLocked()
+            }
+        }
+    }
+
+    private suspend fun reloadLocked() {
+        settings = store.load()
+        password = store.password()
+        smtpPassword = store.smtpPassword()
+        accounts = store.listAccounts()
+        ready = true
     }
 }
 
@@ -521,6 +545,31 @@ private fun AccountGroup(editor: SettingsEditor) {
         }
     }
     SettingsPage {
+        val accountRows = editor.accounts
+        SettingsSection(
+            title = stringResource(R.string.settings_accounts),
+            summary = accountRows.firstOrNull { it.chosen }?.name.orEmpty(),
+            expanded = "accounts" in sections.open,
+            onToggle = { sections.toggle("accounts") },
+        ) {
+            accountRows.forEach { account ->
+                ListItem(
+                    headlineContent = { Text(account.name) },
+                    leadingContent = {
+                        RadioButton(
+                            selected = account.chosen,
+                            onClick = { editor.selectAccount(account.id) },
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { editor.selectAccount(account.id) },
+                )
+            }
+            TextButton(onClick = { editor.addAccount() }) {
+                Text(stringResource(R.string.settings_add_account))
+            }
+        }
         SettingsSection(
             title = stringResource(R.string.settings_server),
             summary = hostAndPort(
