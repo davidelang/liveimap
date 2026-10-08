@@ -2197,3 +2197,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Open the JMAP folder list when discovery offers mail.
 
 ## 2026-10-08 - Read a JMAP message window.
+
+## 2026-10-08 - Open a JMAP folder onto its message window.

@@ -74,6 +74,10 @@ class JmapFolderScreenModel(
         rows = next
         expanded.add(id)
     }
+
+    fun messages(mailboxId: String): JmapMessagePage {
+        return jmapMessageWindow(session, mailboxId, 0, 60, username, password, pin, post, trust)
+    }
 }
 
 private fun indexOfFolder(rows: List<JmapFolderRow>, id: String): Int {

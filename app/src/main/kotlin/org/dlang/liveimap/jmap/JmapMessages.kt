@@ -18,6 +18,12 @@ data class JmapMessagePage(
     val messages: List<JmapMessage>,
 )
 
+fun jmapMessageLine(message: JmapMessage): String {
+    val text = if (message.subject.isBlank()) "No subject" else message.subject
+    if (message.from.isBlank()) return text
+    return message.from + "  " + text
+}
+
 fun jmapMessageWindowRequest(
     accountId: String,
     mailboxId: String,
