@@ -57,6 +57,8 @@ fun JmapFolderRoute(
     var body by remember(model) { mutableStateOf<String?>(null) }
     var mailboxId by remember(model) { mutableStateOf<String?>(null) }
     var searchText by remember(model) { mutableStateOf("") }
+    var searchMore by remember(model) { mutableStateOf("") }
+    var searchOperator by remember(model) { mutableStateOf("AND") }
     val gate = remember(model) { Mutex() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) {
@@ -120,6 +122,8 @@ fun JmapFolderRoute(
                 body = null
                 mailboxId = null
                 searchText = ""
+                searchMore = ""
+                searchOperator = "AND"
             }) {
                 Text(stringResource(R.string.folders_title))
             }
@@ -129,14 +133,35 @@ fun JmapFolderRoute(
                     onValueChange = { searchText = it },
                     singleLine = true,
                 )
+                OutlinedTextField(
+                    value = searchMore,
+                    onValueChange = { searchMore = it },
+                    singleLine = true,
+                )
+                Button(onClick = { searchOperator = "AND" }) {
+                    Text(stringResource(R.string.index_search_and))
+                }
+                Button(onClick = { searchOperator = "OR" }) {
+                    Text(stringResource(R.string.index_search_or))
+                }
+                Button(onClick = { searchOperator = "NOT" }) {
+                    Text(stringResource(R.string.index_search_not))
+                }
                 Button(onClick = {
-                    val term = searchText
+                    val first = searchText
+                    val second = searchMore
+                    val op = searchOperator
                     val id = mailboxId
-                    if (term.isBlank() || id == null) return@Button
+                    if (first.isBlank() || id == null) return@Button
+                    val terms = if (op == "NOT" || second.isBlank()) {
+                        listOf(first)
+                    } else {
+                        listOf(first, second)
+                    }
                     scope.launch {
                         try {
                             val loaded = gate.withLock {
-                                withContext(Dispatchers.IO) { model.search(id, term) }
+                                withContext(Dispatchers.IO) { model.searchSteps(id, op, terms) }
                             }
                             if (page == null) return@launch
                             opened = null

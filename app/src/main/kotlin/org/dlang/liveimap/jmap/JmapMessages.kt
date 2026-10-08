@@ -58,6 +58,29 @@ fun jmapMessageSearchRequest(
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/query",{"accountId":$account,"filter":{"operator":"AND","conditions":[{"inMailbox":$mailbox},{"text":$term}]},"sort":[{"property":"receivedAt","isAscending":false}],"position":$position,"limit":$limit,"calculateTotal":true},"0"],["Email/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId","keywords","size","receivedAt","subject","from","preview"]},"1"]]}"""
 }
 
+fun jmapMessageSearchStepsRequest(
+    accountId: String,
+    mailboxId: String,
+    operator: String,
+    terms: List<String>,
+    position: Int,
+    limit: Int,
+): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+    if (operator != "AND" && operator != "OR" && operator != "NOT") {
+        throw JmapFailure("jmap search operator is invalid")
+    }
+    if (terms.isEmpty() || terms.any { it.isBlank() }) throw JmapFailure("jmap search text is empty")
+    if (operator == "NOT" && terms.size != 1) throw JmapFailure("jmap search not takes one term")
+    if (position < 0) throw JmapFailure("jmap message position is invalid")
+    if (limit !in 1..120) throw JmapFailure("jmap message limit is invalid")
+    val account = quoted(accountId)
+    val mailbox = quoted(mailboxId)
+    val filter = searchStepsFilter(operator, mailbox, terms)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/query",{"accountId":$account,"filter":$filter,"sort":[{"property":"receivedAt","isAscending":false}],"position":$position,"limit":$limit,"calculateTotal":true},"0"],["Email/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId","keywords","size","receivedAt","subject","from","preview"]},"1"]]}"""
+}
+
 fun jmapMessageBodyRequest(accountId: String, emailId: String): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
     if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
@@ -258,6 +281,35 @@ fun jmapMessageSearch(
     return parseJmapMessages(result.body)
 }
 
+fun jmapMessageSearchSteps(
+    session: JmapSession,
+    mailboxId: String,
+    operator: String,
+    terms: List<String>,
+    position: Int,
+    limit: Int,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): JmapMessagePage {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val request = jmapMessageSearchStepsRequest(
+        accountId,
+        mailboxId,
+        operator,
+        terms,
+        position,
+        limit,
+    )
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return parseJmapMessages(result.body)
+}
+
 fun parseJmapMessages(text: String): JmapMessagePage {
     if (text.isBlank()) throw JmapFailure("jmap message response is empty")
     val root = try {
@@ -377,6 +429,14 @@ private fun messageFrom(fields: Map<String, Json>): String {
     val email = first.fields["email"]
     if (email is Json.Str) return email.text
     return ""
+}
+
+private fun searchStepsFilter(operator: String, mailbox: String, terms: List<String>): String {
+    val texts = terms.joinToString(",") { "{\"text\":${quoted(it)}}" }
+    if (operator == "AND") {
+        return "{\"operator\":\"AND\",\"conditions\":[{\"inMailbox\":$mailbox},$texts]}"
+    }
+    return "{\"operator\":\"AND\",\"conditions\":[{\"inMailbox\":$mailbox},{\"operator\":\"$operator\",\"conditions\":[$texts]}]}"
 }
 
 private fun quoted(text: String): String {

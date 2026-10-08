@@ -97,6 +97,22 @@ class JmapFolderScreenModel(
         )
     }
 
+    fun searchSteps(mailboxId: String, operator: String, terms: List<String>): JmapMessagePage {
+        return jmapMessageSearchSteps(
+            session,
+            mailboxId,
+            operator,
+            terms,
+            0,
+            60,
+            username,
+            password,
+            pin,
+            post,
+            trust,
+        )
+    }
+
     fun body(emailId: String): String {
         return jmapMessageBody(session, emailId, username, password, pin, post, trust)
     }
