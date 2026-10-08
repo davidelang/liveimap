@@ -25,20 +25,33 @@ import androidx.compose.ui.unit.dp
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.TlsMode
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
+
+internal fun aboutConnectionNotice(host: String, mode: TlsMode): Int? {
+    if (host.isBlank()) return null
+    return when (mode) {
+        TlsMode.None -> R.string.about_plaintext
+        TlsMode.StartTls -> R.string.about_starttls
+        TlsMode.Implicit -> R.string.about_implicit_tls
+    }
+}
 
 @Composable
 fun AboutScreen(onOpenLicenses: () -> Unit) {
     val context = LocalContext.current
     val store = remember { DataStoreSettingsStore(context.applicationContext) }
     var imapHost by remember { mutableStateOf("") }
+    var tlsMode by remember { mutableStateOf(TlsMode.None) }
     LaunchedEffect(store) {
-        imapHost = store.load().imapHost
+        val loaded = store.load()
+        imapHost = loaded.imapHost
+        tlsMode = loaded.tlsMode
     }
     val appName = stringResource(R.string.app_name)
     val versionLine = stringResource(R.string.about_version, BuildConfig.VERSION_NAME)
-    val plaintext = stringResource(R.string.about_plaintext)
+    val notice = aboutConnectionNotice(imapHost, tlsMode)?.let { stringResource(it) }
     val support = stringResource(R.string.about_support)
     val licenses = stringResource(R.string.about_licenses)
     val licenseNotice = stringResource(R.string.about_license_notice)
@@ -46,10 +59,10 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
     Column {
         Text(appName)
         Text(versionLine)
-        if (imapHost.isNotBlank()) {
+        if (notice != null) {
             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
-                    plaintext,
+                    notice,
                     modifier = Modifier.padding(16.dp),
                 )
             }

@@ -4,7 +4,7 @@ Open Settings, then Account. Set the IMAP host and port, the username, the passw
 
 Settings, Account, Import reads a .pinerc file.
 
-When an IMAP host is set, About says the connection is not encrypted. The password and the messages travel in the clear.
+When TLS is None, About says the connection is not encrypted; STARTTLS and implicit TLS say the password is sent after the certificate check. The password and the messages travel in the clear.
 
 Settings, Slower fallbacks, is off. Turn a switch on only when the server does not offer that feature. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.
 

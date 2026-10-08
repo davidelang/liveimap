@@ -618,4 +618,6 @@
     <string name="cert_trust_decline">Don\'t trust</string>
     <string name="settings_cert_pin_none">No certificate is pinned.</string>
     <string name="settings_cert_pin_clear">Clear pin</string>
+    <string name="about_starttls">This connection uses STARTTLS. The password is sent after the certificate check.</string>
+    <string name="about_implicit_tls">This connection uses implicit TLS. The password is sent after the certificate check.</string>
 </resources>

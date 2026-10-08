@@ -2119,3 +2119,5 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 ## 2026-10-07 - IDLE watch uses the account TLS mode. None stays plaintext.
 
 ## 2026-10-07 - A certificate pin can accept one named, in-date leaf, and the login prompt asks before saving it.
+
+## 2026-10-07 - About shows the plaintext warning only for TLS None.
