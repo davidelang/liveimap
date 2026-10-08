@@ -2177,3 +2177,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-07 - The drawer lists each account's folders.
 
 ## 2026-10-07 - Settings can remove an account.
+
+## 2026-10-08 - Parse a JMAP session object.
