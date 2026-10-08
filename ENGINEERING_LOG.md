@@ -2408,3 +2408,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Host: /home/dlang/git/liveimap/master
 
 ## 2026-10-08 - Delete one account's unsent copies.
+
+## 2026-10-08 - Store a named simple search
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-store-20261008-1021-plan.md
+- Work: save and recall a named simple-bar search. This slice does not search and does not add a screen.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 3126696
+- Host: /home/dlang/git/liveimap/master
