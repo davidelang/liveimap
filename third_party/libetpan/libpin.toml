@@ -5,7 +5,7 @@ reproducible = false
 build_time = "minutes"
 requires_writable_src = true
 build = ["./build"]
-consumer_note = "LibEtPan Android static archives (arm64-v8a and x86_64) plus OpenSSL, Cyrus SASL, iconv, and libfastjson"
+consumer_note = "LibEtPan Android static archives (arm64-v8a and x86_64) plus OpenSSL, Cyrus SASL, and libfastjson"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libetpan.a"
@@ -28,10 +28,6 @@ path = "artifact/arm64-v8a/libsasl2.a"
 from = "src/out-libs/arm64-v8a/libsasl2.a"
 
 [[artifact]]
-path = "artifact/arm64-v8a/libiconv.a"
-from = "src/out-libs/arm64-v8a/libiconv.a"
-
-[[artifact]]
 path = "artifact/x86_64/libetpan.a"
 from = "src/out-libs/x86_64/libetpan.a"
 
@@ -50,7 +46,3 @@ from = "src/out-libs/x86_64/libcrypto.a"
 [[artifact]]
 path = "artifact/x86_64/libsasl2.a"
 from = "src/out-libs/x86_64/libsasl2.a"
-
-[[artifact]]
-path = "artifact/x86_64/libiconv.a"
-from = "src/out-libs/x86_64/libiconv.a"

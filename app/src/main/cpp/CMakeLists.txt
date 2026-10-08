@@ -22,14 +22,13 @@ if(NOT z-lib OR NOT dl-lib OR NOT log-lib)
     message(FATAL_ERROR "libz, libdl, or liblog not found")
 endif()
 
-# Archive order is the plan contract: etpan, sasl2, ssl, crypto, fastjson, iconv, then z, dl, and log.
+# Archive order is the plan contract: etpan, sasl2, ssl, crypto, fastjson, then z, dl, and log.
 target_link_libraries(liveimap
     "${ART}/libetpan.a"
     "${ART}/libsasl2.a"
     "${ART}/libssl.a"
     "${ART}/libcrypto.a"
     "${ART}/libfastjson.a"
-    "${ART}/libiconv.a"
     ${z-lib}
     ${dl-lib}
     ${log-lib}
