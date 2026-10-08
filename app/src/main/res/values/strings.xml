@@ -547,6 +547,10 @@
     <string name="settings_thread_collapsed">Collapsed</string>
     <string name="index_search_participating">Participating</string>
     <string name="index_search_advanced">Advanced</string>
+    <string name="index_search_save">Save</string>
+    <string name="index_search_saved">Saved</string>
+    <string name="index_search_none">None</string>
+    <string name="index_search_name">Name</string>
     <string name="index_search_and">And</string>
     <string name="index_search_or">Or</string>
     <string name="index_search_not">Not</string>

@@ -2428,3 +2428,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD ec2144a
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Save and recall a simple search execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-screen-20261008-1038-plan.md
+- Work: save the current simple search on the account and recall a saved name from the index
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 795a3a2
+- Host: /home/dlang/git/liveimap/master

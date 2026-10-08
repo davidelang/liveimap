@@ -785,6 +785,10 @@ private fun MessageIndexLoaded(
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var searchFieldOpen by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    var saveNameOpen by remember { mutableStateOf(false) }
+    var saveName by remember { mutableStateOf("") }
+    var savedOpen by remember { mutableStateOf(false) }
+    var savedItems by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
     var filterOpen by remember { mutableStateOf(false) }
     var filterActive by remember { mutableStateOf(reuseWindow && model.filterActive) }
     var canWiden by remember { mutableStateOf(reuseWindow && model.canWiden) }
@@ -837,7 +841,7 @@ private fun MessageIndexLoaded(
     val allowNewer = remember { mutableStateOf(true) }
 
     val overlayBack = confirmMarkAllRead || prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
-        nextFolderTarget != null || flagUid != null || searchVisible || multiSelect
+        nextFolderTarget != null || flagUid != null || searchVisible || multiSelect || saveNameOpen
     BackHandler(enabled = overlayBack) {
         when {
             confirmMarkAllRead -> confirmMarkAllRead = false
@@ -848,8 +852,10 @@ private fun MessageIndexLoaded(
             nextFolderTarget != null -> nextFolderTarget = null
             menuOpen -> menuOpen = false
             flagUid != null -> flagUid = null
+            saveNameOpen -> saveNameOpen = false
             searchVisible -> {
                 searchFieldOpen = false
+                savedOpen = false
                 searchVisible = false
             }
             multiSelect -> {
@@ -2622,6 +2628,71 @@ private fun MessageIndexLoaded(
                         Text(stringResource(R.string.index_search_advanced))
                     }
                 }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = {
+                        if (query.isEmpty()) return@TextButton
+                        saveName = ""
+                        saveNameOpen = true
+                    }) {
+                        Text(stringResource(R.string.index_search_save))
+                    }
+                    Box {
+                        TextButton(onClick = {
+                            scope.launch {
+                                val stored = try {
+                                    store.load()
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    return@launch
+                                }
+                                savedItems = stored.savedSearches
+                                if (searchVisible) savedOpen = true
+                            }
+                        }) {
+                            Text(stringResource(R.string.index_search_saved))
+                        }
+                        DropdownMenu(
+                            expanded = savedOpen,
+                            onDismissRequest = { savedOpen = false },
+                        ) {
+                            if (savedItems.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.index_search_none)) },
+                                    onClick = {},
+                                    enabled = false,
+                                )
+                            } else {
+                                savedItems.forEach { item ->
+                                    DropdownMenuItem(
+                                        text = { Text(item.name) },
+                                        onClick = {
+                                            savedOpen = false
+                                            query = item.query
+                                            held.searchField = item.field
+                                            narrowArmed = false
+                                            prompt = null
+                                            scope.launch {
+                                                gate.withLock {
+                                                    noteVisibleTop()
+                                                    model.applySearch(item.query, item.field)
+                                                    pull()
+                                                }
+                                                if (model.rows.isNotEmpty()) scrollToStart()
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             val flagsFor = flagUid
             if (flagsFor != null) {
@@ -2960,6 +3031,49 @@ private fun MessageIndexLoaded(
             dismissButton = {
                 TextButton(onClick = { jumpOpen = false }) {
                     Text(stringResource(R.string.index_cancel))
+                }
+            },
+        )
+    }
+    if (saveNameOpen) {
+        AlertDialog(
+            onDismissRequest = { saveNameOpen = false },
+            text = {
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text(stringResource(R.string.index_search_name)) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = saveName
+                    saveNameOpen = false
+                    scope.launch {
+                        val stored = try {
+                            store.load()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            return@launch
+                        }
+                        val next = saveSearch(stored.savedSearches, name, query, held.searchField)
+                        if (next != stored.savedSearches) {
+                            try {
+                                store.save(stored.copy(savedSearches = next))
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                return@launch
+                            }
+                        }
+                    }
+                }) { Text(stringResource(R.string.index_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveNameOpen = false }) {
+                    Text(stringResource(R.string.index_search_cancel))
                 }
             },
         )
