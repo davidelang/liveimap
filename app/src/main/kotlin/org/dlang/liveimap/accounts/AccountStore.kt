@@ -194,6 +194,40 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    suspend fun removeAccount(accountId: String): Boolean {
+        ensureMigrated()
+        return gate.withLock {
+            withContext(Dispatchers.IO) {
+                val accounts = readAccounts()
+                val selected = selectedId()
+                val decision = accountRemoval(accounts, accountId, selected)
+                if (!decision.remove) return@withContext false
+                val manager = AccountManager.get(context)
+                val account = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
+                    manager.getUserData(row, userAccountId) == accountId
+                } ?: return@withContext false
+                if (!manager.removeAccountExplicitly(account)) return@withContext false
+                AndroidAccountCipher().delete(accountId)
+                context.accountSettingsDataStore.edit { prefs ->
+                    prefs.remove(stringPreferencesKey(accountId))
+                }
+                if (decision.selectedId != selected) {
+                    val next = decision.selectedId
+                    if (next.isNullOrEmpty()) {
+                        context.accountSettingsDataStore.edit { prefs ->
+                            prefs.remove(stringPreferencesKey(selectedAccountIdKey))
+                        }
+                    } else {
+                        writeSelectedId(next)
+                    }
+                }
+                val saved = secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
+                if (!saved) error("smtp password not removed")
+                true
+            }
+        }
+    }
+
     fun theme(): Flow<ThemeMode> = flow {
         ensureMigrated()
         context.accountSettingsDataStore.data.collect { prefs ->

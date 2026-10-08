@@ -245,6 +245,9 @@
     <string name="settings_account">Account</string>
     <string name="settings_accounts">Accounts</string>
     <string name="settings_add_account">Add account</string>
+    <string name="settings_remove_account">Remove account</string>
+    <string name="settings_remove_account_body">Remove this account from this phone. Mail on the server stays.</string>
+    <string name="settings_cancel">Cancel</string>
     <string name="settings_mailboxes">Mailboxes</string>
     <string name="settings_folders">Folders</string>
     <string name="settings_reading">Reading</string>

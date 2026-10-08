@@ -19,3 +19,7 @@ fun setMailPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
 suspend fun suspendMailSessions() {
     accountSessions.suspendConnections()
 }
+
+suspend fun dropMailSession(accountId: String) {
+    accountSessions.drop(accountId)
+}

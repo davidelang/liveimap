@@ -25,6 +25,27 @@ internal fun chooseAccount(accounts: List<ManagedAccount>, selectedId: String?):
     return accounts.firstOrNull { !it.userData[userMigratedFrom].isNullOrEmpty() } ?: accounts.first()
 }
 
+internal data class AccountRemoval(
+    val remove: Boolean,
+    val selectedId: String?,
+)
+
+internal fun accountRemoval(
+    accounts: List<ManagedAccount>,
+    removeId: String,
+    selectedId: String?,
+): AccountRemoval {
+    val present = removeId.isNotBlank() && accounts.any { it.userData[userAccountId] == removeId }
+    if (!present || accounts.size < 2) return AccountRemoval(remove = false, selectedId = selectedId)
+    val next = if (selectedId == removeId) {
+        val remaining = accounts.filter { it.userData[userAccountId] != removeId }
+        chooseAccount(remaining, null)?.userData?.get(userAccountId)
+    } else {
+        selectedId
+    }
+    return AccountRemoval(remove = true, selectedId = next)
+}
+
 internal const val userAccountId: String = "accountId"
 internal const val userSchema: String = "schema"
 internal const val userMigratedFrom: String = "migratedFrom"

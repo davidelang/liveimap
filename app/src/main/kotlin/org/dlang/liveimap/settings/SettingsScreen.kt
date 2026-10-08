@@ -102,6 +102,7 @@ import org.dlang.liveimap.engine.sieve.SieveFailure
 import org.dlang.liveimap.engine.sieve.greetSieve
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.dropMailSession
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
 import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
@@ -191,6 +192,16 @@ private class SettingsEditor(
         settingsIo.launch {
             settingsMutex.withLock {
                 store.addAccount()
+                reloadLocked()
+            }
+        }
+    }
+
+    fun removeAccount(id: String) {
+        settingsIo.launch {
+            settingsMutex.withLock {
+                if (!store.removeAccount(id)) return@withLock
+                dropMailSession(id)
                 reloadLocked()
             }
         }
@@ -428,6 +439,7 @@ private fun AccountGroup(editor: SettingsEditor) {
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importGeneration by remember { mutableStateOf(0) }
     var importError by remember { mutableStateOf<Int?>(null) }
+    var removingId by remember { mutableStateOf<String?>(null) }
     val settingsState = editor.settingsState
     val contextState = rememberUpdatedState(LocalContext.current)
     val pinercPhrases = PinercPhrases(
@@ -571,6 +583,15 @@ private fun AccountGroup(editor: SettingsEditor) {
                             selected = account.chosen,
                             onClick = { editor.selectAccount(account.id) },
                         )
+                    },
+                    trailingContent = if (accountRows.size < 2) {
+                        null
+                    } else {
+                        {
+                            TextButton(onClick = { removingId = account.id }) {
+                                Text(stringResource(R.string.settings_remove_account))
+                            }
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -793,6 +814,25 @@ private fun AccountGroup(editor: SettingsEditor) {
                 Text(text = line, fontFamily = FontFamily.Monospace)
             }
         }
+    }
+    val removing = removingId
+    if (removing != null) {
+        AlertDialog(
+            onDismissRequest = { removingId = null },
+            title = { Text(stringResource(R.string.settings_remove_account)) },
+            text = { Text(stringResource(R.string.settings_remove_account_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    removingId = null
+                    editor.removeAccount(removing)
+                }) { Text(stringResource(R.string.settings_remove_account)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { removingId = null }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            },
+        )
     }
     val error = importError
     if (error != null) {

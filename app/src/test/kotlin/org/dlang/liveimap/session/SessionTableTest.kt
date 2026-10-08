@@ -75,6 +75,20 @@ class SessionTableTest {
         assertEquals(1, b.suspends)
         assertEquals(made, calls)
     }
+
+    @Test
+    fun dropSuspendsThatIdAndForgetsIt() = runBlocking {
+        val table = SessionTable { RecordingSession() }
+        val storedA = table.session("a") as RecordingSession
+        val storedB = table.session("b")
+        table.drop("a")
+        assertEquals(1, storedA.suspends)
+        assertNotSame(storedA, table.session("a"))
+        assertSame(storedB, table.session("b"))
+        table.drop("missing")
+        assertSame(storedB, table.session("b"))
+        assertEquals(0, (storedB as RecordingSession).suspends)
+    }
 }
 
 private class RecordingSession : MailSession {

@@ -187,6 +187,40 @@ class AccountMigrationTest {
         assertEquals("smtpPassword.abc", smtpPasswordKeyFor("abc"))
     }
 
+    @Test
+    fun accountRemovalKeepsTheLastAccount() {
+        val only = ManagedAccount("one", mapOf(userAccountId to "only"), "")
+        val kept = accountRemoval(listOf(only), "only", "kept")
+        assertFalse(kept.remove)
+        assertEquals("kept", kept.selectedId)
+
+        val a = ManagedAccount("a", mapOf(userAccountId to "a"), "")
+        val b = ManagedAccount("b", mapOf(userAccountId to "b"), "")
+        val removeB = accountRemoval(listOf(a, b), "b", "a")
+        assertTrue(removeB.remove)
+        assertEquals("a", removeB.selectedId)
+        val removeA = accountRemoval(listOf(a, b), "a", "a")
+        assertTrue(removeA.remove)
+        assertEquals("b", removeA.selectedId)
+
+        val blank = accountRemoval(listOf(a, b), "", "a")
+        assertFalse(blank.remove)
+        assertEquals("a", blank.selectedId)
+        val unknown = accountRemoval(listOf(a, b), "missing", "a")
+        assertFalse(unknown.remove)
+        assertEquals("a", unknown.selectedId)
+
+        val c = ManagedAccount("c", mapOf(userAccountId to "c"), "")
+        val migrated = ManagedAccount(
+            "b",
+            mapOf(userAccountId to "b", userMigratedFrom to migratedFromDatastoreV1),
+            "",
+        )
+        val removeSelected = accountRemoval(listOf(c, migrated, a), "a", "a")
+        assertTrue(removeSelected.remove)
+        assertEquals("b", removeSelected.selectedId)
+    }
+
     private fun sampleSettings(): AccountSettings = AccountSettings(
         imapHost = "imap.example.com",
         imapPort = 993,

@@ -45,6 +45,7 @@ interface SettingsStore {
     suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
     suspend fun addAccount() {}
+    suspend fun removeAccount(accountId: String): Boolean = false
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
 
@@ -76,6 +77,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
     override suspend fun selectAccount(accountId: String) = store.selectAccount(accountId)
 
     override suspend fun addAccount() = store.addAccount()
+
+    override suspend fun removeAccount(accountId: String): Boolean = store.removeAccount(accountId)
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 }
