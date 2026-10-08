@@ -294,7 +294,7 @@ private data class CallSeen(
 )
 
 private class CallPost(
-    private val status: Int,
+    private val code: Int,
     private val responseBody: String,
     private val ders: List<ByteArray> = listOf(byteArrayOf(1)),
 ) {
@@ -310,7 +310,7 @@ private class CallPost(
         bodies.add(body)
         authorizations.add(authorization)
         return object : JmapHttpExchange {
-            override val status: Int = status
+            override val status: Int = code
 
             override fun peerDer(): List<ByteArray> = ders
 
