@@ -2221,3 +2221,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-push-list-20261008-0612-plan.md
 - The open message list reads one event source and shows the changes. The same Email state does not post. A failure leaves the list up.
 - First action per standard-plan-compliance-block.md. No install. No message sent.
+
+## 2026-10-08 - mail charconv execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/mail-charconv-20261008-0641-plan.md
+- Work: mailCharconv converts bytes between two Java charsets with REPLACE; a blank or unknown name returns code 1 and no bytes
+- Phase 1 of 1. libiconv stays linked. No native edits. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 0abeb2d
+- Host: /home/dlang/git/liveimap/master
