@@ -352,3 +352,211 @@ diff --git a/build-android/jni/Android.mk b/build-android/jni/Android.mk
    libetpan-android-7/include \
    $(OPENSSL_PATH)/include $(CYRUS_SASL_PATH)/include $(ICONV_PATH)/include	  libetpan-android-7/include/libetpan \
    $(JSON_C_PATH)/include \
+diff --git a/src/data-types/mailstream_openssl.c b/src/data-types/mailstream_openssl.c
+index d8975ef..438f12b 100644
+--- a/src/data-types/mailstream_openssl.c
++++ b/src/data-types/mailstream_openssl.c
+@@ -1184,6 +1184,16 @@ mailstream_low * mailstream_openssl_open_low(int fd,
+       fd, timeout, callback, data);
+ }
+ 
++void * mailstream_openssl_low_get_ssl(mailstream_low * low)
++{
++  struct mailstream_ssl_data * ssl_data;
++
++  if (low == NULL || low->data == NULL)
++    return NULL;
++  ssl_data = low->data;
++  return ssl_data->ssl_conn;
++}
++
+ mailstream_low_driver * mailstream_openssl_low_driver(void)
+ {
+   return mailstream_openssl_ssl_driver;
+diff --git a/src/data-types/mailstream_openssl.h b/src/data-types/mailstream_openssl.h
+index 260404f..8d78924 100644
+--- a/src/data-types/mailstream_openssl.h
++++ b/src/data-types/mailstream_openssl.h
+@@ -28,6 +28,7 @@ int mailstream_openssl_ssl_get_fd(struct mailstream_ssl_context * context);
+ void mailstream_openssl_ssl_init_not_required(void);
+ void mailstream_openssl_ssl_init_lock(void);
+ void mailstream_openssl_ssl_uninit_lock(void);
++void * mailstream_openssl_low_get_ssl(mailstream_low * low);
+ #endif
+ 
+ #endif
+diff --git a/src/data-types/mailstream_ssl.c b/src/data-types/mailstream_ssl.c
+index 005c40f..b928595 100644
+--- a/src/data-types/mailstream_ssl.c
++++ b/src/data-types/mailstream_ssl.c
+@@ -498,6 +498,22 @@ void * mailstream_ssl_get_openssl_ssl_ctx(
+ #endif
+ }
+ 
++void * mailstream_ssl_get_openssl_ssl(mailstream * stream)
++{
++  mailstream_low * low;
++
++  if (stream == NULL)
++    return NULL;
++  low = mailstream_get_low(stream);
++  if (low == NULL)
++    return NULL;
++#ifdef HAVE_OPENSSL
++  return mailstream_openssl_low_get_ssl(low);
++#else
++  return NULL;
++#endif
++}
++
+ int mailstream_ssl_get_fd(struct mailstream_ssl_context * context)
+ {
+   if (context == NULL)
+diff --git a/src/data-types/mailstream_ssl.h b/src/data-types/mailstream_ssl.h
+index 4e515fb..4edbbc1 100644
+--- a/src/data-types/mailstream_ssl.h
++++ b/src/data-types/mailstream_ssl.h
+@@ -173,6 +173,9 @@ void mailstream_ssl_set_server_name_callback(struct mailstream_ssl_context * ssl
+ LIBETPAN_EXPORT
+ void * mailstream_ssl_get_openssl_ssl_ctx(struct mailstream_ssl_context * ssl_context);
+ 
++LIBETPAN_EXPORT
++void * mailstream_ssl_get_openssl_ssl(mailstream * stream);
++
+ LIBETPAN_EXPORT
+ int mailstream_ssl_get_fd(struct mailstream_ssl_context * ssl_context);
+ 
+diff --git a/src/low-level/imap/mailimap.c b/src/low-level/imap/mailimap.c
+index cd4f153..9d16259 100644
+--- a/src/low-level/imap/mailimap.c
++++ b/src/low-level/imap/mailimap.c
+@@ -1742,6 +1742,45 @@ static int sasl_getrealm(void * context, int id,
+ }
+ #endif
+ 
++static void mailimap_channel_binding_clear(mailimap * session)
++{
++  free(session->imap_sasl.sasl_cb_name);
++  free(session->imap_sasl.sasl_cb_data);
++  session->imap_sasl.sasl_cb_name = NULL;
++  session->imap_sasl.sasl_cb_data = NULL;
++  session->imap_sasl.sasl_cb_len = 0;
++}
++
++LIBETPAN_EXPORT
++int mailimap_set_channel_binding(mailimap * session, const char * name,
++    const unsigned char * data, size_t len)
++{
++  char * name_copy;
++  unsigned char * data_copy;
++
++  if (name == NULL || data == NULL || len == 0) {
++    mailimap_channel_binding_clear(session);
++    return 0;
++  }
++
++  name_copy = strdup(name);
++  if (name_copy == NULL)
++    return MAILIMAP_ERROR_MEMORY;
++  data_copy = malloc(len);
++  if (data_copy == NULL) {
++    free(name_copy);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  memcpy(data_copy, data, len);
++
++  free(session->imap_sasl.sasl_cb_name);
++  free(session->imap_sasl.sasl_cb_data);
++  session->imap_sasl.sasl_cb_name = name_copy;
++  session->imap_sasl.sasl_cb_data = data_copy;
++  session->imap_sasl.sasl_cb_len = len;
++  return 0;
++}
++
+ LIBETPAN_EXPORT
+ int mailimap_authenticate(mailimap * session, const char * auth_type,
+     const char * server_fqdn,
+@@ -1762,6 +1801,7 @@ int mailimap_authenticate(mailimap * session, const char * auth_type,
+   sasl_secret_t * secret;
+   int res;
+   size_t len;
++  sasl_channel_binding_t channel_binding;
+   
+   if (session->imap_state != MAILIMAP_STATE_NON_AUTHENTICATED) {
+     res = MAILIMAP_ERROR_BAD_STATE;
+@@ -1825,6 +1865,21 @@ int mailimap_authenticate(mailimap * session, const char * auth_type,
+       goto free_sasl_conn;
+     }
+   }
++
++  if (session->imap_sasl.sasl_cb_name != NULL &&
++      session->imap_sasl.sasl_cb_data != NULL &&
++      session->imap_sasl.sasl_cb_len != 0) {
++    channel_binding.name = session->imap_sasl.sasl_cb_name;
++    channel_binding.critical = 1;
++    channel_binding.len = (unsigned long) session->imap_sasl.sasl_cb_len;
++    channel_binding.data = session->imap_sasl.sasl_cb_data;
++    r = sasl_setprop(session->imap_sasl.sasl_conn, SASL_CHANNEL_BINDING,
++        &channel_binding);
++    if (r != SASL_OK) {
++      res = MAILIMAP_ERROR_LOGIN;
++      goto free_sasl_conn;
++    }
++  }
+   
+   r = sasl_client_start(session->imap_sasl.sasl_conn,
+       auth_type, NULL, &sasl_out, &sasl_out_len, &mechusing);
+@@ -3391,6 +3446,9 @@ mailimap * mailimap_new(size_t imap_progr_rate,
+ #ifdef USE_SASL
+   f->imap_sasl.sasl_conn = NULL;
+ #endif
++  f->imap_sasl.sasl_cb_name = NULL;
++  f->imap_sasl.sasl_cb_data = NULL;
++  f->imap_sasl.sasl_cb_len = 0;
+   
+   f->imap_idle_timestamp = 0;
+   f->imap_idle_maxdelay = 29 * 60; /* IMAP IDLE spec */
+@@ -3435,6 +3493,7 @@ void mailimap_free(mailimap * session)
+     mailsasl_unref();
+   }
+ #endif
++  mailimap_channel_binding_clear(session);
+   
+   if (session->imap_stream)
+     mailimap_logout(session);
+diff --git a/src/low-level/imap/mailimap.h b/src/low-level/imap/mailimap.h
+index 7448d4e..9c5f5c0 100644
+--- a/src/low-level/imap/mailimap.h
++++ b/src/low-level/imap/mailimap.h
+@@ -436,6 +436,17 @@ int mailimap_authenticate(mailimap * session, const char * auth_type,
+     const char * login, const char * auth_name,
+     const char * password, const char * realm);
+ 
++/*
++   mailimap_set_channel_binding()
++
++   Store a SASL channel binding copied for the next authenticate.
++   A null name, a null data pointer, or a zero length clears it.
++*/
++
++LIBETPAN_EXPORT
++int mailimap_set_channel_binding(mailimap * session, const char * name,
++    const unsigned char * data, size_t len);
++
+ /*
+    mailimap_lsub()
+ 
+diff --git a/src/low-level/imap/mailimap_types.h b/src/low-level/imap/mailimap_types.h
+index 7895c11..fe50938 100644
+--- a/src/low-level/imap/mailimap_types.h
++++ b/src/low-level/imap/mailimap_types.h
+@@ -3390,6 +3390,9 @@ struct mailimap {
+     const char * sasl_password;
+     const char * sasl_realm;
+     void * sasl_secret;
++    char * sasl_cb_name;
++    unsigned char * sasl_cb_data;
++    size_t sasl_cb_len;
+   } imap_sasl;
+   
+   time_t imap_idle_timestamp;

@@ -2266,3 +2266,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/openssl-3-5-9-20261008-0728-plan.md
 - Work: OpenSSL build script and patch use version 3.5.9 and no-shared no-engine; rebuild libetpan archives; notice Apache-2.0 (4.1)
+
+## 2026-10-08 - SASL channel binding execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sasl-channel-binding-20261008-0740-plan.md
+- Work: store a SASL channel binding on the IMAP session and pass it with critical 1 before sasl_client_start; expose the OpenSSL SSL pointer for the current stream
+- Phase 1 of 1. chooseImapAuth still skips -PLUS. No install. No message sent. src stays untracked
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e88af67
+- Host: /home/dlang/git/liveimap/master
