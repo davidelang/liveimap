@@ -2366,3 +2366,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 5cc9678
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - stop extra IDLE after suspend failure execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-stop-20261008-0906-plan.md
+- Work: stop the extra IDLE sessions even when suspending the account sessions throws
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5456282
+- Host: /home/dlang/git/liveimap/master

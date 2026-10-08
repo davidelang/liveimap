@@ -109,8 +109,11 @@ class MainActivity : ComponentActivity() {
                 try {
                     ComposeBackgroundSave.hook?.invoke()
                 } finally {
-                    suspendMailSessions()
-                    stopExtraIdle()
+                    try {
+                        suspendMailSessions()
+                    } finally {
+                        stopExtraIdle()
+                    }
                 }
             }
         }
