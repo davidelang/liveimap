@@ -2134,3 +2134,5 @@ ManageSieve STARTTLS checks the certificate before login. Nothing connects.
 - First action per standard-plan-compliance-block.md.
 
 ## 2026-10-07 - Check ManageSieve reads the greeting with the account TLS mode and logs out.
+
+## 2026-10-07 - IMAP auth choice prefers SCRAM, then CRAM-MD5, and leaves login on the LOGIN command.
