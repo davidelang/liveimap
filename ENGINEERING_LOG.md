@@ -2183,3 +2183,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Discover a JMAP session.
 
 ## 2026-10-08 - Fetch JMAP discovery over HTTPS.
+
+## 2026-10-08 - Offer JMAP for an account.
