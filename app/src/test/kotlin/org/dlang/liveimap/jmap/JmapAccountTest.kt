@@ -27,7 +27,7 @@ class JmapAccountTest {
     fun exampleHostOffersMailOnPort443() {
         val url = "https://example.com/.well-known/jmap"
         val ders = listOf(byteArrayOf(9, 8), byteArrayOf(7))
-        val script = Script(url, 200, mailBody, ders)
+        val script = AccountOpen(url, 200, mailBody, ders)
         val offer = offerForAccount(
             AccountSettings(imapHost = "example.com", imapPort = 993, certPin = "ab"),
             script::open,
@@ -45,7 +45,7 @@ class JmapAccountTest {
     @Test
     fun notFoundIsNone() {
         val url = "https://example.com/.well-known/jmap"
-        val script = Script(url, 404, "missing", listOf(byteArrayOf(1)))
+        val script = AccountOpen(url, 404, "missing", listOf(byteArrayOf(1)))
         val offer = offerForAccount(
             AccountSettings(imapHost = "example.com", imapPort = 993, certPin = "ab"),
             script::open,
@@ -58,7 +58,7 @@ class JmapAccountTest {
     @Test
     fun certificateChangedDoesNotReadBody() {
         val url = "https://example.com/.well-known/jmap"
-        val script = Script(url, 200, "secret", listOf(byteArrayOf(1)))
+        val script = AccountOpen(url, 200, "secret", listOf(byteArrayOf(1)))
         try {
             offerForAccount(
                 AccountSettings(imapHost = "example.com", certPin = "ab"),
@@ -94,7 +94,7 @@ class JmapAccountTest {
     @Test
     fun defaultTrustIsPeerTrust() {
         val url = "https://example.com/.well-known/jmap"
-        val script = Script(url, 200, mailBody, emptyList())
+        val script = AccountOpen(url, 200, mailBody, emptyList())
         try {
             offerForAccount(
                 AccountSettings(imapHost = "example.com"),
@@ -132,13 +132,13 @@ private val mailBody = """
     }
 """.trimIndent()
 
-private data class SeenTrust(
+private data class AccountTrust(
     val host: String,
     val ders: List<ByteArray>,
     val pin: String,
 )
 
-private class Script(
+private class AccountOpen(
     private val url: String,
     private val status: Int,
     private val body: String,
@@ -146,13 +146,13 @@ private class Script(
 ) {
     val opens = mutableListOf<String>()
     val reads = mutableListOf<String>()
-    val trusted = mutableListOf<SeenTrust>()
+    val trusted = mutableListOf<AccountTrust>()
 
     fun open(requested: String): JmapHttpExchange {
         opens.add(requested)
         if (requested != url) error("opened $requested")
         return object : JmapHttpExchange {
-            override val status: Int = this@Script.status
+            override val status: Int = this@AccountOpen.status
 
             override fun peerDer(): List<ByteArray> = ders
 
@@ -168,7 +168,7 @@ private class Script(
     }
 
     fun trust(host: String, ders: List<ByteArray>, pin: String): String {
-        trusted.add(SeenTrust(host, ders, pin))
+        trusted.add(AccountTrust(host, ders, pin))
         return ""
     }
 }
