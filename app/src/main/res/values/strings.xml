@@ -256,7 +256,7 @@
     <string name="settings_file_unreadable">Could not read that file.</string>
     <string name="settings_server">Server</string>
     <string name="settings_no_server">No server</string>
-    <string name="settings_plaintext_ports">IMAP port 143 and SMTP port 25 are plaintext.</string>
+    <string name="settings_plaintext_ports">IMAP is plaintext only when TLS is None. STARTTLS and implicit TLS encrypt it. SMTP is still plaintext.</string>
     <string name="settings_imap_host">IMAP host</string>
     <string name="settings_imap_port">IMAP port</string>
     <string name="settings_identity">Identity</string>
