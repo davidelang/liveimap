@@ -11,6 +11,28 @@ data class AccountChoice(
     val chosen: Boolean,
 )
 
+data class DrawerAccount(
+    val id: String,
+    val name: String,
+    val chosen: Boolean,
+    val postponedMailbox: String,
+    val favorites: List<FolderFavorite>,
+)
+
+data class AccountDrawerFolders(
+    val postponedMailbox: String,
+    val favorites: List<FolderFavorite>,
+)
+
+fun accountDrawerFolders(encoded: String?): AccountDrawerFolders {
+    if (encoded == null) return AccountDrawerFolders(postponedMailbox = "", favorites = emptyList())
+    val settings = decodeAccountSettings(encoded)
+    return AccountDrawerFolders(
+        postponedMailbox = settings.postponedMailbox,
+        favorites = settings.favorites,
+    )
+}
+
 interface SettingsStore {
     suspend fun load(): AccountSettings
     suspend fun save(settings: AccountSettings)
@@ -19,6 +41,7 @@ interface SettingsStore {
     suspend fun smtpPassword(): String = ""
     suspend fun setSmtpPassword(value: String) {}
     suspend fun listAccounts(): List<AccountChoice> = emptyList()
+    suspend fun listDrawerAccounts(): List<DrawerAccount> = emptyList()
     suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
     suspend fun addAccount() {}
@@ -41,6 +64,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
     override suspend fun setSmtpPassword(value: String) = store.setSmtpPassword(value)
 
     override suspend fun listAccounts(): List<AccountChoice> = store.listAccounts()
+
+    override suspend fun listDrawerAccounts(): List<DrawerAccount> = store.listDrawerAccounts()
 
     override suspend fun chosenAccountId(): String? {
         val id = store.listAccounts().firstOrNull { it.chosen }?.id

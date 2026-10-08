@@ -27,7 +27,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.ThemeMode
+import org.dlang.liveimap.settings.accountDrawerFolders
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
 
@@ -130,6 +132,28 @@ class AccountStore private constructor(private val context: Context) {
                         id = id,
                         name = listedName(account),
                         chosen = account === chosen,
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun listDrawerAccounts(): List<DrawerAccount> {
+        ensureMigrated()
+        return gate.withLock {
+            withContext(Dispatchers.IO) {
+                val accounts = readAccounts()
+                val chosen = chooseAccount(accounts, selectedId())
+                accounts.mapNotNull { account ->
+                    val id = account.userData[userAccountId]
+                    if (id.isNullOrEmpty()) return@mapNotNull null
+                    val folders = accountDrawerFolders(storedPreference(id))
+                    DrawerAccount(
+                        id = id,
+                        name = listedName(account),
+                        chosen = account === chosen,
+                        postponedMailbox = folders.postponedMailbox,
+                        favorites = folders.favorites,
                     )
                 }
             }
