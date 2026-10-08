@@ -114,6 +114,143 @@ class JmapSubmissionTest {
         }
     }
 
+    @Test
+    fun submitPostsTheA1RequestAndReturnsS1() {
+        val post = SubmitPost(200, createdResponse)
+        val account = session(JMAP_MAIL, JMAP_SUBMISSION)
+        val recipients = listOf("ada@example.com", "bob@example.com")
+        val id = jmapSubmit(
+            account,
+            "M1",
+            "me@example.com",
+            recipients,
+            "user",
+            "secret",
+            "ab",
+            post::post,
+            post::trust,
+        )
+        assertEquals("S1", id)
+        assertEquals(listOf(account.apiUrl), post.urls)
+        assertEquals(
+            listOf(jmapEmailSubmissionRequest("A1", "M1", "me@example.com", recipients)),
+            post.bodies,
+        )
+        assertEquals(listOf(jmapBasicAuthorization("user", "secret")), post.authorizations)
+        assertEquals(listOf(submissionRequest), post.bodies)
+    }
+
+    @Test
+    fun notCreatedDescriptionIsThrownUnchanged() {
+        val post = SubmitPost(200, notCreatedResponse)
+        assertFails("over quota") {
+            jmapSubmit(
+                session(JMAP_SUBMISSION),
+                "M1",
+                "me@example.com",
+                listOf("ada@example.com", "bob@example.com"),
+                "user",
+                "secret",
+                "ab",
+                post::post,
+                post::trust,
+            )
+        }
+        assertEquals(1, post.urls.size)
+    }
+
+    @Test
+    fun refusedCallsDoNotPost() {
+        val recipients = listOf("ada@example.com", "bob@example.com")
+        for (ids in listOf(emptyArray<String>(), arrayOf(JMAP_MAIL))) {
+            val post = SubmitPost(200, createdResponse)
+            assertFails("jmap submission is not offered") {
+                jmapSubmit(
+                    session(*ids),
+                    " ",
+                    " ",
+                    recipients,
+                    " ",
+                    "secret",
+                    "ab",
+                    post::post,
+                    post::trust,
+                )
+            }
+            assertEquals(emptyList<String>(), post.urls)
+        }
+        for (account in listOf(null, "", " ", "\t", "\n")) {
+            val post = SubmitPost(200, createdResponse)
+            assertFails("jmap account id is empty") {
+                jmapSubmit(
+                    session(JMAP_SUBMISSION, account = account),
+                    " ",
+                    "me@example.com",
+                    recipients,
+                    " ",
+                    "secret",
+                    "ab",
+                    post::post,
+                    post::trust,
+                )
+            }
+            assertEquals("$account", emptyList<String>(), post.urls)
+        }
+        for (email in listOf("", " ", "\t", "\n")) {
+            val post = SubmitPost(200, createdResponse)
+            assertFails("jmap message id is empty") {
+                jmapSubmit(
+                    session(JMAP_SUBMISSION),
+                    email,
+                    "me@example.com",
+                    recipients,
+                    " ",
+                    "secret",
+                    "ab",
+                    post::post,
+                    post::trust,
+                )
+            }
+            assertEquals(email, emptyList<String>(), post.urls)
+        }
+        for (username in listOf("", " ", "\t", "\n")) {
+            val post = SubmitPost(200, createdResponse)
+            assertFails("jmap username is empty") {
+                jmapSubmit(
+                    session(JMAP_SUBMISSION),
+                    "M1",
+                    "me@example.com",
+                    recipients,
+                    username,
+                    "secret",
+                    "ab",
+                    post::post,
+                    post::trust,
+                )
+            }
+            assertEquals(username, emptyList<String>(), post.urls)
+        }
+    }
+
+    @Test
+    fun status500Throws() {
+        val post = SubmitPost(500, "no")
+        assertFails("jmap api status 500") {
+            jmapSubmit(
+                session(JMAP_SUBMISSION),
+                "M1",
+                "me@example.com",
+                listOf("ada@example.com", "bob@example.com"),
+                "user",
+                "secret",
+                "ab",
+                post::post,
+                post::trust,
+            )
+        }
+        assertEquals(listOf("https://example.com/jmap/"), post.urls)
+    }
+
     private fun assertFails(message: String, call: () -> Unit) {
         try {
             call()
@@ -123,7 +260,7 @@ class JmapSubmissionTest {
         }
     }
 
-    private fun session(vararg ids: String) = JmapSession(
+    private fun session(vararg ids: String, account: String? = "A1") = JmapSession(
         username = "user@example.com",
         apiUrl = "https://example.com/jmap/",
         downloadUrl = "https://example.com/download/{accountId}/{blobId}/{name}",
@@ -131,8 +268,36 @@ class JmapSubmissionTest {
         eventSourceUrl = "https://example.com/event/?types={types}",
         state = "s1",
         capabilityIds = ids.toSet(),
-        primaryMailAccountId = "A1",
+        primaryMailAccountId = account,
     )
+
+    private class SubmitPost(
+        private val code: Int,
+        private val responseBody: String,
+    ) {
+        val urls = mutableListOf<String>()
+        val bodies = mutableListOf<String>()
+        val authorizations = mutableListOf<String>()
+
+        fun post(url: String, body: String, authorization: String): JmapHttpExchange {
+            urls.add(url)
+            bodies.add(body)
+            authorizations.add(authorization)
+            return object : JmapHttpExchange {
+                override val status: Int = code
+
+                override fun peerDer(): List<ByteArray> = listOf(byteArrayOf(1))
+
+                override fun header(name: String): String? = null
+
+                override fun body(): String = responseBody
+
+                override fun close() {}
+            }
+        }
+
+        fun trust(host: String, ders: List<ByteArray>, pin: String): String = ""
+    }
 
     private fun quotedJson(text: String): String {
         val out = StringBuilder()

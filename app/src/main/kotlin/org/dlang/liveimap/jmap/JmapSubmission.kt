@@ -1,5 +1,7 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.PeerTrust
+
 fun jmapEmailSubmissionRequest(
     accountId: String,
     emailId: String,
@@ -36,6 +38,27 @@ fun jmapSubmissionId(text: String): String {
     val description = notCreatedDescription(args["notCreated"])
     if (description != null) throw JmapFailure(description)
     throw JmapFailure("jmap submission was not created")
+}
+
+fun jmapSubmit(
+    session: JmapSession,
+    emailId: String,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): String {
+    if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val request = jmapEmailSubmissionRequest(accountId, emailId, mailFrom, rcptTo)
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return jmapSubmissionId(result.body)
 }
 
 private fun createdId(created: Json?): String? {
