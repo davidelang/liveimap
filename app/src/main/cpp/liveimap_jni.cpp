@@ -6555,6 +6555,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
+    const std::string & mode = session->tlsMode;
+    if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
+        throwFailure(env, "unknown tls mode");
+        unlockSession(session);
+        return;
+    }
     mailsmtp * smtp = mailsmtp_new(0, nullptr);
     if (smtp == nullptr) {
         throwFailure(env, "smtp error");
@@ -6562,36 +6568,131 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         return;
     }
     mailsmtp_set_timeout(smtp, kReadTimeoutSec);
+    const char * host = session->smtpHost.c_str();
+    int port = session->smtpPort;
     std::string address;
-    std::string dialError;
-    int fd = tcpConnect("SMTP", session->smtpHost.c_str(), session->smtpPort, &address, &dialError);
-    if (fd < 0) {
-        mailsmtp_free(smtp);
-        throwFailure(env, dialError);
-        unlockSession(session);
-        return;
+    std::string where;
+    TlsCapture capture;
+    bool secured = false;
+    if (mode == "Implicit") {
+        address = session->smtpHost;
+        if (port < 1 || port > 65535) {
+            mailsmtp_free(smtp);
+            throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
+            unlockSession(session);
+            return;
+        }
+        tlsCapture = &capture;
+        int r = mailsmtp_ssl_connect_with_callback(
+            smtp, host, static_cast<uint16_t>(port), prepareTls, nullptr);
+        tlsCapture = nullptr;
+        if (r != MAILSMTP_NO_ERROR) {
+            mailsmtp_free(smtp);
+            throwFailure(env, connectFailure("SMTP", host, port, address,
+                asciiSafe(smtp->response, "connection failed")));
+            unlockSession(session);
+            return;
+        }
+        if (capture.ders.empty()) {
+            mailsmtp_free(smtp);
+            throwFailure(env, "certificate rejected");
+            unlockSession(session);
+            return;
+        }
+        secured = true;
+        where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
+    } else {
+        std::string dialError;
+        int fd = tcpConnect("SMTP", host, port, &address, &dialError);
+        if (fd < 0) {
+            mailsmtp_free(smtp);
+            throwFailure(env, dialError);
+            unlockSession(session);
+            return;
+        }
+        mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
+        if (stream == nullptr) {
+            close(fd);
+            mailsmtp_free(smtp);
+            throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
+            unlockSession(session);
+            return;
+        }
+        where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
+        int r = mailsmtp_connect(smtp, stream);
+        if (r != MAILSMTP_NO_ERROR) {
+            std::string why = where + asciiSafe(smtp->response, "connection failed");
+            mailsmtp_free(smtp);
+            throwFailure(env, why);
+            unlockSession(session);
+            return;
+        }
+        if (mode == "StartTls") {
+            r = mailesmtp_ehlo(smtp);
+            if (r == MAILSMTP_NO_ERROR) {
+                if ((smtp->esmtp & MAILSMTP_ESMTP_STARTTLS) == 0) {
+                    mailsmtp_free(smtp);
+                    throwFailure(env, "STARTTLS is not advertised");
+                    unlockSession(session);
+                    return;
+                }
+            } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||
+                r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
+                r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
+                mailsmtp_free(smtp);
+                throwFailure(env, "STARTTLS is not advertised");
+                unlockSession(session);
+                return;
+            } else {
+                std::string why = where + asciiSafe(smtp->response, "smtp error");
+                mailsmtp_free(smtp);
+                throwFailure(env, why);
+                unlockSession(session);
+                return;
+            }
+            tlsCapture = &capture;
+            r = mailsmtp_socket_starttls_with_server_name_callback(smtp, host, prepareTls, nullptr);
+            tlsCapture = nullptr;
+            if (r == MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED) {
+                mailsmtp_free(smtp);
+                throwFailure(env, "STARTTLS is not advertised");
+                unlockSession(session);
+                return;
+            }
+            if (r != MAILSMTP_NO_ERROR) {
+                std::string response = asciiSafe(smtp->response, "");
+                std::string why = response.empty() ? std::string("STARTTLS failed")
+                    : std::string("STARTTLS failed: ") + response;
+                mailsmtp_free(smtp);
+                throwFailure(env, why);
+                unlockSession(session);
+                return;
+            }
+            if (capture.ders.empty()) {
+                mailsmtp_free(smtp);
+                throwFailure(env, "certificate rejected");
+                unlockSession(session);
+                return;
+            }
+            secured = true;
+        }
     }
-    mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
-    if (stream == nullptr) {
-        close(fd);
-        mailsmtp_free(smtp);
-        throwFailure(env, connectFailure("SMTP", session->smtpHost.c_str(), session->smtpPort,
-            address, "connection failed"));
-        unlockSession(session);
-        return;
-    }
-    std::string where = serviceLabel("SMTP", session->smtpHost.c_str(), session->smtpPort)
-        + " (" + address + "): ";
-    int r = mailsmtp_connect(smtp, stream);
-    if (r != MAILSMTP_NO_ERROR) {
-        std::string why = where + asciiSafe(smtp->response, "connection failed");
-        mailsmtp_free(smtp);
-        throwFailure(env, why);
-        unlockSession(session);
-        return;
+    if (secured) {
+        const char * pin = "";
+        if (!session->host.empty() && !session->smtpHost.empty() &&
+            strcmp(session->host.c_str(), host) == 0) {
+            pin = session->certPin.c_str();
+        }
+        std::string trust = peerTrustCheck(env, host, capture.ders, pin, false);
+        if (!trust.empty()) {
+            mailsmtp_free(smtp);
+            throwFailure(env, trust);
+            unlockSession(session);
+            return;
+        }
     }
     bool allow8bit = false;
-    r = mailesmtp_ehlo(smtp);
+    int r = mailesmtp_ehlo(smtp);
     if (r == MAILSMTP_NO_ERROR) {
         allow8bit = (smtp->esmtp & MAILSMTP_ESMTP_8BITMIME) != 0;
     } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||

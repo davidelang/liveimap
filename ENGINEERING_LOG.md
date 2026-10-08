@@ -2142,3 +2142,11 @@ ManageSieve STARTTLS checks the certificate before login. Nothing connects.
 ## 2026-10-07 - A plaintext IMAP login asks before sending the password.
 
 ## 2026-10-07 - Ignore third_party source checkouts and local pin files.
+
+## 2026-10-07 - SMTP TLS connect execution start
+
+SMTP uses the account TLS mode and checks the certificate before MAIL.
+
+- Approved plan: sandbox/plans/smtp-tls-connect-20261007-1824-plan.md. Status set to APPROVED.
+- Phase 1: None stays the plaintext send. StartTls and Implicit encrypt and check the certificate before MAIL. No AUTH. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
