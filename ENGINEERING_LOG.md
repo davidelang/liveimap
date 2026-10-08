@@ -2396,3 +2396,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 6252920
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Use the account unsent directory
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-account-use-20261008-0931-plan.md
+- Work: Read and write unsent copies for the chosen account. Keep a copy that still sits in the old directory.
+- Phase 1 of 1. This slice does not send a message. No install. No connect.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 666b97b
+- Host: /home/dlang/git/liveimap/master

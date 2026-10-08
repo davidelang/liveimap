@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
 import org.dlang.liveimap.R
+import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 @Composable
 fun UnsentScreen(
@@ -32,11 +33,17 @@ fun UnsentScreen(
     onBack: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
     var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
     var discardId by remember { mutableStateOf<String?>(null) }
-
     LaunchedEffect(Unit) {
-        copies = readCopies(appContext)
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId ?: ""
+
+    LaunchedEffect(id) {
+        copies = readCopies(appContext, id)
     }
 
     Column(
@@ -80,8 +87,8 @@ fun UnsentScreen(
             confirmButton = {
                 TextButton(onClick = {
                     discardId = null
-                    deleteCopy(appContext, pending)
-                    copies = readCopies(appContext)
+                    deleteCopy(appContext, pending, id)
+                    copies = readCopies(appContext, id)
                 }) { Text(stringResource(R.string.unsent_discard)) }
             },
             dismissButton = {

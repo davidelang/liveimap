@@ -44,10 +44,25 @@ internal fun unsentAccountDir(filesDir: File, accountId: String): File {
     return File(legacy, id)
 }
 
-internal fun copyDir(context: Context): File = File(context.filesDir, "unsent")
+internal fun unsentDirs(filesDir: File, accountId: String): List<File> {
+    val account = unsentAccountDir(filesDir, accountId)
+    val legacy = File(filesDir, "unsent")
+    if (account == legacy) return listOf(legacy)
+    return listOf(account, legacy)
+}
 
-internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCopy> {
-    val dir = unsentAccountDir(context.filesDir, accountId)
+internal fun mergedAccountCopies(account: List<DeviceCopy>, legacy: List<DeviceCopy>): List<DeviceCopy> {
+    val seen = HashSet<String>()
+    for (copy in account) seen.add(copy.id)
+    val merged = ArrayList<DeviceCopy>(account.size + legacy.size)
+    merged.addAll(account)
+    for (copy in legacy) {
+        if (seen.add(copy.id)) merged.add(copy)
+    }
+    return merged
+}
+
+private fun copiesIn(dir: File): List<DeviceCopy> {
     if (!dir.isDirectory) return emptyList()
     val metas = dir.listFiles { file -> file.isFile && file.name.endsWith(".meta") } ?: return emptyList()
     return metas.sortedBy { it.name }.mapNotNull { meta ->
@@ -73,9 +88,20 @@ internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCo
     }
 }
 
-internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "") {
+internal fun readCopies(filesDir: File, accountId: String): List<DeviceCopy> {
+    var merged = emptyList<DeviceCopy>()
+    for (dir in unsentDirs(filesDir, accountId)) {
+        merged = mergedAccountCopies(merged, copiesIn(dir))
+    }
+    return merged
+}
+
+internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCopy> =
+    readCopies(context.filesDir, accountId)
+
+internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String) {
+    val dir = unsentDirs(filesDir, accountId).firstOrNull() ?: return
     try {
-        val dir = unsentAccountDir(context.filesDir, accountId)
         dir.mkdirs()
         File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
         val text = buildString {
@@ -93,8 +119,17 @@ internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "
     }
 }
 
+internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "") {
+    writeCopy(context.filesDir, copy, accountId)
+}
+
+internal fun deleteCopy(filesDir: File, id: String, accountId: String) {
+    for (dir in unsentDirs(filesDir, accountId)) {
+        File(dir, "$id.rfc822").delete()
+        File(dir, "$id.meta").delete()
+    }
+}
+
 internal fun deleteCopy(context: Context, id: String, accountId: String = "") {
-    val dir = unsentAccountDir(context.filesDir, accountId)
-    File(dir, "$id.rfc822").delete()
-    File(dir, "$id.meta").delete()
+    deleteCopy(context.filesDir, id, accountId)
 }

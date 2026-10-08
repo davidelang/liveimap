@@ -359,7 +359,7 @@ private fun FolderListLoaded(
 
     LaunchedEffect(session, loadToken) {
         val reuse = held.levelReady && !refreshListed && loadToken == 0
-        unsentCount = readCopies(appContext).size
+        unsentCount = readCopies(appContext, accountId).size
         if (!reuse) {
             loading = true
             banner = null

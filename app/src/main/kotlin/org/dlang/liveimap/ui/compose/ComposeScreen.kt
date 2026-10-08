@@ -627,7 +627,7 @@ private fun ComposeLoaded(
                 status = acceptedNotice
                 return false
             }
-            deleteCopy(appContext, copy.id)
+            deleteCopy(appContext, copy.id, accountId)
             if (held?.id == copy.id) held = null
             notice = null
             deliveryDone = true
@@ -652,14 +652,14 @@ private fun ComposeLoaded(
                 throw error
             } catch (error: MailFailure) {
                 val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted)
-                writeCopy(appContext, saved)
+                writeCopy(appContext, saved, accountId)
                 if (held?.id == copy.id) held = saved
                 notice = error.text
                 status = acceptedNotice
                 return false
             }
         }
-        deleteCopy(appContext, copy.id)
+        deleteCopy(appContext, copy.id, accountId)
         if (held?.id == copy.id) held = null
         notice = null
         deliveryDone = true
@@ -754,7 +754,7 @@ private fun ComposeLoaded(
             }
             val current = held
             if (current != null && !current.appendOnly) {
-                deleteCopy(appContext, current.id)
+                deleteCopy(appContext, current.id, accountId)
                 held = null
             }
             notice = null
@@ -820,7 +820,7 @@ private fun ComposeLoaded(
     }
 
     fun loadStoredCopy(id: String): DeviceCopy? {
-        val copy = readCopies(appContext).firstOrNull { it.id == id }
+        val copy = readCopies(appContext, accountId).firstOrNull { it.id == id }
         if (copy == null) {
             notice = unsentGone
             return null
@@ -972,7 +972,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822)
-                        writeCopy(appContext, copy)
+                        writeCopy(appContext, copy, accountId)
                         held = copy
                         notice = error.text
                         status = notSentNotice
@@ -985,13 +985,13 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted)
-                        writeCopy(appContext, copy)
+                        writeCopy(appContext, copy, accountId)
                         held = copy
                         notice = error.text
                         status = acceptedNotice
                         return@launchLocked false
                     }
-                    deleteCopy(appContext, id)
+                    deleteCopy(appContext, id, accountId)
                     held = null
                     deliveryDone = true
                     notice = null
@@ -1189,7 +1189,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: MailFailure) {
                             val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                            writeCopy(appContext, copy)
+                            writeCopy(appContext, copy, accountId)
                             held = copy
                             notice = error.text
                             status = notSentNotice
@@ -1203,7 +1203,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: MailFailure) {
                             val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), accepted)
-                            writeCopy(appContext, copy)
+                            writeCopy(appContext, copy, accountId)
                             held = copy
                             notice = error.text
                             status = acceptedNotice
