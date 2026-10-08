@@ -2140,3 +2140,5 @@ ManageSieve STARTTLS checks the certificate before login. Nothing connects.
 ## 2026-10-07 - Login uses mailimap_authenticate when an IMAP SASL mechanism is chosen.
 
 ## 2026-10-07 - A plaintext IMAP login asks before sending the password.
+
+## 2026-10-07 - Ignore third_party source checkouts and local pin files.
