@@ -55,6 +55,9 @@ private fun jmapHost(host: String): String {
         throw JmapFailure("jmap host is not a name")
     }
     if (host.contains(':')) return ipv6Host(host)
+    if (host.contains('[') || host.contains(']')) {
+        throw JmapFailure("jmap host is not a name")
+    }
     return host
 }
 
