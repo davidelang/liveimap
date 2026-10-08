@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.folder
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +56,7 @@ fun JmapFolderRoute(
     var opened by remember(model) { mutableStateOf<JmapMessage?>(null) }
     var body by remember(model) { mutableStateOf<String?>(null) }
     var mailboxId by remember(model) { mutableStateOf<String?>(null) }
+    var searchText by remember(model) { mutableStateOf("") }
     val gate = remember(model) { Mutex() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) {
@@ -117,10 +119,37 @@ fun JmapFolderRoute(
                 opened = null
                 body = null
                 mailboxId = null
+                searchText = ""
             }) {
                 Text(stringResource(R.string.folders_title))
             }
             if (shown == null || text == null) {
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = { searchText = it },
+                    singleLine = true,
+                )
+                Button(onClick = {
+                    val term = searchText
+                    val id = mailboxId
+                    if (term.isBlank() || id == null) return@Button
+                    scope.launch {
+                        try {
+                            val loaded = gate.withLock {
+                                withContext(Dispatchers.IO) { model.search(id, term) }
+                            }
+                            if (page == null) return@launch
+                            opened = null
+                            body = null
+                            page = loaded
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: JmapFailure) {
+                        }
+                    }
+                }) {
+                    Text(stringResource(R.string.index_search))
+                }
                 open.messages.forEach { message ->
                     Button(onClick = {
                         scope.launch {

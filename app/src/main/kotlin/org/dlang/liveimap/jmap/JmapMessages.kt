@@ -40,6 +40,24 @@ fun jmapMessageWindowRequest(
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/query",{"accountId":$account,"filter":{"inMailbox":$mailbox},"sort":[{"property":"receivedAt","isAscending":false}],"position":$position,"limit":$limit,"calculateTotal":true},"0"],["Email/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId","keywords","size","receivedAt","subject","from","preview"]},"1"]]}"""
 }
 
+fun jmapMessageSearchRequest(
+    accountId: String,
+    mailboxId: String,
+    text: String,
+    position: Int,
+    limit: Int,
+): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+    if (text.isBlank()) throw JmapFailure("jmap search text is empty")
+    if (position < 0) throw JmapFailure("jmap message position is invalid")
+    if (limit !in 1..120) throw JmapFailure("jmap message limit is invalid")
+    val account = quoted(accountId)
+    val mailbox = quoted(mailboxId)
+    val term = quoted(text)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/query",{"accountId":$account,"filter":{"operator":"AND","conditions":[{"inMailbox":$mailbox},{"text":$term}]},"sort":[{"property":"receivedAt","isAscending":false}],"position":$position,"limit":$limit,"calculateTotal":true},"0"],["Email/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId","keywords","size","receivedAt","subject","from","preview"]},"1"]]}"""
+}
+
 fun jmapMessageBodyRequest(accountId: String, emailId: String): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
     if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
@@ -213,6 +231,27 @@ fun jmapMessageWindow(
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapMessageWindowRequest(accountId, mailboxId, position, limit)
+    val authorization = jmapBasicAuthorization(username, password)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return parseJmapMessages(result.body)
+}
+
+fun jmapMessageSearch(
+    session: JmapSession,
+    mailboxId: String,
+    text: String,
+    position: Int,
+    limit: Int,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): JmapMessagePage {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val request = jmapMessageSearchRequest(accountId, mailboxId, text, position, limit)
     val authorization = jmapBasicAuthorization(username, password)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
