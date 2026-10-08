@@ -81,6 +81,31 @@ fun jmapReadPush(
     return parseJmapPushEvents(result.body)
 }
 
+fun jmapApplyPush(
+    session: JmapSession,
+    sinceState: String,
+    username: String,
+    password: String,
+    pin: String,
+    open: (String) -> JmapHttpExchange,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): JmapEmailChanges? {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (sinceState.isBlank()) throw JmapFailure("jmap changes state is empty")
+    jmapBasicAuthorization(username, password)
+    val events = jmapReadPush(session.eventSourceUrl, pin, open, trust)
+    var found: String? = null
+    for (event in events) {
+        val email = jmapPushEmailState(event.data, accountId) ?: continue
+        found = email
+        break
+    }
+    if (found == null || found == sinceState) return null
+    return jmapEmailChanges(session, sinceState, username, password, pin, post, trust)
+}
+
 private fun eventSourceIsHttps(url: String): Boolean {
     val scheme = try {
         URI(url).scheme

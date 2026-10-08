@@ -2213,3 +2213,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Read JMAP email changes.
 
 ## 2026-10-08 - Read a JMAP event source.
+
+## 2026-10-08 - Apply a JMAP push state.
