@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 const val JMAP_MAIL = "urn:ietf:params:jmap:mail"
+const val JMAP_SUBMISSION = "urn:ietf:params:jmap:submission"
 
 class JmapFailure(val text: String) : Exception(text)
 
@@ -15,6 +16,8 @@ data class JmapSession(
     val primaryMailAccountId: String?,
 ) {
     fun offersMail(): Boolean = JMAP_MAIL in capabilityIds
+
+    fun offersSubmission(): Boolean = JMAP_SUBMISSION in capabilityIds
 }
 
 fun parseJmapSession(text: String): JmapSession {
