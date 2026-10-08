@@ -138,9 +138,11 @@ private class SettingsEditor(
 ) {
     val settingsState = mutableStateOf(AccountSettings())
     val passwordState = mutableStateOf("")
+    val smtpPasswordState = mutableStateOf("")
     var ready by mutableStateOf(false)
     var settings by settingsState
     var password by passwordState
+    var smtpPassword by smtpPasswordState
 
     fun persist(next: AccountSettings) {
         if (!ready) return
@@ -158,11 +160,20 @@ private class SettingsEditor(
         }
     }
 
+    fun persistSmtpPassword(value: String) {
+        if (!ready) return
+        smtpPassword = value
+        settingsIo.launch {
+            settingsMutex.withLock { store.setSmtpPassword(smtpPasswordState.value) }
+        }
+    }
+
     fun load() {
         settingsIo.launch {
             settingsMutex.withLock {
                 settings = store.load()
                 password = store.password()
+                smtpPassword = store.smtpPassword()
                 ready = true
             }
         }
@@ -633,6 +644,14 @@ private fun AccountGroup(editor: SettingsEditor) {
             LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
                 editor.persist(editor.settings.copy(smtpUsername = it))
             }
+            Text(stringResource(R.string.settings_smtp_password_hint))
+            LineField(
+                stringResource(R.string.settings_smtp_password),
+                editor.smtpPassword,
+                KeyboardType.Password,
+                password = true,
+                ready = editor.ready,
+            ) { editor.persistSmtpPassword(it) }
             LineField(
                 stringResource(R.string.settings_wrap_column),
                 settings.composerWrapColumn.toString(),

@@ -2159,3 +2159,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - A blank SMTP username still signs in as the IMAP user. A filled one is the SMTP AUTH login and auth name. The password stays the IMAP password.
 - The setting is omitted when empty, round-trips "post master", and does not change IMAP identity. No install. No send.
+
+## 2026-10-07 - SMTP can sign in with a different password.

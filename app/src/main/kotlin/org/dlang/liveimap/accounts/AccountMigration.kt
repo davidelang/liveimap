@@ -11,6 +11,7 @@ internal const val migratedFromDatastoreV1: String = "datastore-v1"
 internal const val legacyAccountKey: String = "account"
 internal const val legacySecretFile: String = "liveimap_secret"
 internal const val legacyPasswordKey: String = "password"
+internal const val smtpPasswordKey: String = "smtpPassword"
 
 internal const val userAccountId: String = "accountId"
 internal const val userSchema: String = "schema"

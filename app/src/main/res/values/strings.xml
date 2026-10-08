@@ -272,6 +272,8 @@
     <string name="settings_smtp_port">SMTP port</string>
     <string name="settings_smtp_username">SMTP username</string>
     <string name="settings_smtp_username_hint">Blank uses the IMAP username.</string>
+    <string name="settings_smtp_password">SMTP password</string>
+    <string name="settings_smtp_password_hint">Blank uses the IMAP password.</string>
     <string name="settings_import">Import</string>
     <string name="settings_import_pinerc">Import from .pinerc…</string>
     <string name="settings_advanced">Advanced</string>

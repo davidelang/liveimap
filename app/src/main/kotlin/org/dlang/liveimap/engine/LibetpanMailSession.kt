@@ -848,8 +848,16 @@ class LibetpanMailSession : MailSession {
         }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
+        val context = currentApplication()
+        val smtpPassword = if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
         keeper.write("send") {
-            nativeSmtp(requireHandle(), rfc822, recipients.toTypedArray(), account?.smtpUsername ?: "")
+            nativeSmtp(
+                requireHandle(),
+                rfc822,
+                recipients.toTypedArray(),
+                account?.smtpUsername ?: "",
+                smtpPassword,
+            )
         }
     }
 
@@ -1153,6 +1161,7 @@ class LibetpanMailSession : MailSession {
         message: ByteArray,
         recipients: Array<String>,
         smtpUsername: String,
+        smtpPassword: String,
     )
 
     companion object {

@@ -6635,12 +6635,14 @@ bool messageHas8bitCte(const char * bytes, size_t n) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
-    jbyteArray message, jobjectArray recipients, jstring smtpUsername) {
+    jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword) {
     if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
     std::string authUser = utf8FromJava(env, smtpUsername);
     if (authUser.empty()) authUser = session->user;
+    std::string authPass = utf8FromJava(env, smtpPassword);
+    if (authPass.empty()) authPass = session->password;
     const std::string & mode = session->tlsMode;
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
@@ -6817,7 +6819,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return;
         }
         r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
-            nullptr, authUser.c_str(), authUser.c_str(), session->password.c_str(),
+            nullptr, authUser.c_str(), authUser.c_str(), authPass.c_str(),
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = asciiSafe(smtp->response, "smtp error");

@@ -81,6 +81,26 @@ class AccountStore private constructor(private val context: Context) {
         writePreferences()
     }
 
+    suspend fun smtpPassword(): String {
+        return gate.withLock {
+            withContext(Dispatchers.IO) { secretPrefs.getString(smtpPasswordKey, "") ?: "" }
+        }
+    }
+
+    suspend fun setSmtpPassword(value: String) {
+        gate.withLock {
+            withContext(Dispatchers.IO) {
+                val edit = secretPrefs.edit()
+                val saved = if (value.isEmpty()) {
+                    edit.remove(smtpPasswordKey).commit()
+                } else {
+                    edit.putString(smtpPasswordKey, value).commit()
+                }
+                if (!saved) error("smtp password not saved")
+            }
+        }
+    }
+
     fun theme(): Flow<ThemeMode> = flow {
         ensureMigrated()
         context.accountSettingsDataStore.data.collect { prefs ->
