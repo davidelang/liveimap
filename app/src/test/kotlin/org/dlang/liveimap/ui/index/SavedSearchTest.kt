@@ -114,4 +114,101 @@ class SavedSearchTest {
         assertEquals(start, deleteSavedSearch(start, "Mail"))
         assertEquals(sent, start[1])
     }
+
+    @Test
+    fun saveAdvancedTrimsNameKeepsPlaceAndRejectsEmpty() {
+        val start = emptyList<SavedAdvanced>()
+        val savedNews = saveAdvanced(start, "  News ", "ada", SearchScope.Current)
+        assertEquals(listOf(SavedAdvanced("News", "ada", SearchScope.Current)), savedNews)
+        assertTrue(savedNews !== start)
+        assertTrue(start.isEmpty())
+
+        val replaced = saveAdvanced(savedNews, "News", "bob", SearchScope.All)
+        assertEquals(listOf(SavedAdvanced("News", "bob", SearchScope.All)), replaced)
+        assertEquals(SearchScope.Current, savedNews[0].scope)
+        assertEquals("ada", savedNews[0].text)
+
+        val withOther = saveAdvanced(replaced, "Other", "x", SearchScope.Subtree)
+        assertEquals(
+            listOf(
+                SavedAdvanced("News", "bob", SearchScope.All),
+                SavedAdvanced("Other", "x", SearchScope.Subtree),
+            ),
+            withOther,
+        )
+        assertEquals("bob", replaced[0].text)
+
+        val newsAgain = saveAdvanced(withOther, "News", "ada", SearchScope.Subscribed)
+        assertEquals(
+            listOf(
+                SavedAdvanced("News", "ada", SearchScope.Subscribed),
+                SavedAdvanced("Other", "x", SearchScope.Subtree),
+            ),
+            newsAgain,
+        )
+        assertEquals(SearchScope.All, withOther[0].scope)
+
+        val emptyName = saveAdvanced(withOther, "", "z", SearchScope.All)
+        val blankName = saveAdvanced(withOther, "   ", "z", SearchScope.All)
+        val emptyText = saveAdvanced(withOther, "Nope", "", SearchScope.All)
+        assertEquals(withOther, emptyName)
+        assertEquals(withOther, blankName)
+        assertEquals(withOther, emptyText)
+        assertEquals(2, withOther.size)
+        assertEquals("News", withOther[0].name)
+        assertEquals("Other", withOther[1].name)
+    }
+
+    @Test
+    fun recallAdvancedIsExactAndSentMailStaysOneName() {
+        val saved = saveAdvanced(
+            saveAdvanced(emptyList(), "  News ", "ada", SearchScope.Current),
+            "News",
+            "bob",
+            SearchScope.All,
+        )
+        val recalled = recallAdvanced(saved, "News")
+        assertEquals("bob", recalled?.text)
+        assertEquals(SearchScope.All, recalled?.scope)
+        assertNull(recallAdvanced(saved, "news"))
+        assertNull(recallAdvanced(saved, "   "))
+        assertNull(recallAdvanced(saved, ""))
+
+        val sent = saveAdvanced(emptyList(), "Sent Mail", "ada", SearchScope.Current)
+        assertEquals(listOf(SavedAdvanced("Sent Mail", "ada", SearchScope.Current)), sent)
+        assertEquals(sent[0], recallAdvanced(sent, "Sent Mail"))
+        assertNull(recallAdvanced(sent, "Sent"))
+        assertNull(recallAdvanced(sent, "Mail"))
+    }
+
+    @Test
+    fun advancedNamesAreCaseSensitiveAndTextIsStoredAsGiven() {
+        val first = saveAdvanced(emptyList(), "News", " ada ", SearchScope.Current)
+        val both = saveAdvanced(first, "news", "And\nYes\tSubject\tada", SearchScope.Subtree)
+        assertEquals(" ada ", both[0].text)
+        assertEquals(SearchScope.Current, both[0].scope)
+        assertEquals("news", both[1].name)
+        assertEquals("And\nYes\tSubject\tada", both[1].text)
+        assertEquals(SearchScope.Subtree, both[1].scope)
+        assertEquals(first[0], recallAdvanced(both, " News "))
+        assertEquals(both[1], recallAdvanced(both, "news"))
+    }
+
+    @Test
+    fun deleteAdvancedDropsEveryTrimmedName() {
+        val news = SavedAdvanced("News", "ada", SearchScope.Current)
+        val other = SavedAdvanced("Other", "x", SearchScope.Subtree)
+        val again = SavedAdvanced("News", "bob", SearchScope.All)
+        val start = listOf(news, other, again)
+        val left = deleteAdvanced(start, " News ")
+        assertEquals(listOf(other), left)
+        assertTrue(left !== start)
+        assertEquals(listOf(news, other, again), start)
+
+        assertEquals(start, deleteAdvanced(start, "news"))
+        assertEquals(start, deleteAdvanced(start, "   "))
+        assertEquals(start, deleteAdvanced(start, ""))
+        assertEquals(start, deleteAdvanced(start, "Missing"))
+        assertEquals(3, start.size)
+    }
 }

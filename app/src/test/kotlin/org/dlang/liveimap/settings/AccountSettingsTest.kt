@@ -3,7 +3,9 @@ package org.dlang.liveimap.settings
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
+import org.dlang.liveimap.ui.index.SavedAdvanced
 import org.dlang.liveimap.ui.index.SavedSearch
+import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.index.SimpleSearchField
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.ComposeBarAction
@@ -924,6 +926,50 @@ class AccountSettingsTest {
             "\nsavedSearches=News|ada|From,News|ada|Nope,only|two,|ada|From,News||From,News|ada|From\n"
         assertEquals(repeated, decodeAccountSettings(dirty).savedSearches)
         assertEquals(emptyList<SavedSearch>(), decodeAccountSettings(defaults).savedSearches)
+    }
+
+    @Test
+    fun savedAdvancedRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("savedAdvanced="))
+        val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
+        assertEquals("altAddresses", keys.last())
+        assertEquals(emptyList<SavedAdvanced>(), decodeAccountSettings(defaults).savedAdvanced)
+
+        val one = SavedAdvanced("News", "And\nYes\tSubject\tada", SearchScope.Current)
+        val oneSettings = AccountSettings(savedAdvanced = listOf(one))
+        val oneText = oneSettings.encode()
+        assertTrue(oneText.lines().contains("savedAdvanced=News|And%0AYes%09Subject%09ada|Current"))
+        assertEquals(listOf(one), decodeAccountSettings(oneText).savedAdvanced)
+        assertEquals(oneSettings, decodeAccountSettings(oneText))
+        assertEquals(oneText, decodeAccountSettings(oneText).encode())
+
+        val saved = listOf(
+            one,
+            SavedAdvanced("Sent Mail", "a|b,c", SearchScope.All),
+            SavedAdvanced("News", "ada", SearchScope.Subtree),
+        )
+        val settings = AccountSettings(savedAdvanced = saved)
+        val text = settings.encode()
+        assertTrue(
+            text.contains(
+                "savedAdvanced=News|And%0AYes%09Subject%09ada|Current,Sent%20Mail|a%7Cb%2Cc|All,News|ada|Subtree",
+            ),
+        )
+        assertEquals(saved, decodeAccountSettings(text).savedAdvanced)
+        assertEquals(settings, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+
+        val repeated = listOf(
+            SavedAdvanced("News", "ada", SearchScope.Current),
+            SavedAdvanced("News", "bob", SearchScope.All),
+        )
+        val dirty = defaults.trimEnd() +
+            "\nsavedAdvanced=News|ada|Current,News|ada|Nope,only|two,|ada|Current,News||Current,News|bob|All\n"
+        assertEquals(repeated, decodeAccountSettings(dirty).savedAdvanced)
+        val dropped = defaults.trimEnd() + "\nsavedAdvanced=News|ada|Nope\n"
+        assertEquals(emptyList<SavedAdvanced>(), decodeAccountSettings(dropped).savedAdvanced)
+        assertEquals(emptyList<SavedAdvanced>(), decodeAccountSettings(defaults).savedAdvanced)
     }
 
     private fun assertThrowsIae(block: () -> Unit) {
