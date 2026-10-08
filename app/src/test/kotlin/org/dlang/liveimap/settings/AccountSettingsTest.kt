@@ -775,6 +775,18 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun quellFlowedRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("quellFlowed="))
+        assertFalse(decodeAccountSettings(text).quellFlowed)
+        val saved = AccountSettings(quellFlowed = true)
+        val encoded = saved.encode()
+        assertTrue(encoded.contains("quellFlowed=true"))
+        assertTrue(decodeAccountSettings(encoded).quellFlowed)
+        assertEquals(saved, decodeAccountSettings(encoded))
+    }
+
+    @Test
     fun composerWrapColumnRoundTrips() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("composerWrapColumn"))

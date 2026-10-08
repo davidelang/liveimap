@@ -537,6 +537,7 @@ fun ComposeScreen(
                 references = referencesHeader,
                 attachments = parts,
                 wrapColumn = settings.composerWrapColumn,
+                flowed = !settings.quellFlowed,
             ),
         )
     }

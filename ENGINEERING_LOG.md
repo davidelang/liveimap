@@ -2163,3 +2163,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-07 - SMTP can sign in with a different password.
 
 ## 2026-10-07 - Pinerc import applies TLS flags and a distinct SMTP user.
+
+## 2026-10-07 - Plain text sends as format=flowed.

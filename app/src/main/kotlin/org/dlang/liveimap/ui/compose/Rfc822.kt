@@ -46,6 +46,7 @@ class PlainMessage(
     val references: String = "",
     val attachments: List<OutgoingPart> = emptyList(),
     val wrapColumn: Int = 74,
+    val flowed: Boolean = true,
 )
 
 class BuiltMail(
@@ -400,12 +401,99 @@ private fun quotePrefix(line: String): String {
     return line.substring(0, end)
 }
 
+/** Soft-break plain text for format=flowed. Column 0 leaves the body unchanged. */
+internal fun flowPlain(body: String, column: Int): String {
+    if (column <= 0) return body
+    val normalized = body.replace("\r\n", "\n").replace('\r', '\n')
+    return normalized.split('\n').joinToString("\n") { flowPlainLine(it, column) }
+}
+
+private fun flowPlainLine(line: String, column: Int): String {
+    if (line == "--" || line == "-- ") return "-- "
+    val trimmed = line.trimEnd(' ', '\t')
+    val prefix = quotePrefix(trimmed)
+    val words = trimmed.substring(prefix.length).split(Regex("[ \t]+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return prefix
+    val pieces = ArrayList<String>()
+    var index = 0
+    while (index < words.size) {
+        val piece = chooseFlowPiece(prefix, words, index, column)
+        pieces.add(piece.text)
+        index += piece.count
+    }
+    return pieces.mapIndexed { at, text ->
+        val lead = if (needsFlowStuff(text)) " " else ""
+        val soft = if (at < pieces.lastIndex) "  " else ""
+        lead + text + soft
+    }.joinToString("\n")
+}
+
+private class FlowPiece(val count: Int, val text: String)
+
+private fun chooseFlowPiece(prefix: String, words: List<String>, start: Int, column: Int): FlowPiece {
+    val wide = (column - 2).coerceAtLeast(1)
+    val wideCount = takeFlowWords(prefix, words, start, wide)
+    val wideText = joinFlowPiece(prefix, words, start, wideCount)
+    if (!needsFlowStuff(wideText)) return FlowPiece(wideCount, wideText)
+    val narrow = (column - 3).coerceAtLeast(1)
+    val narrowCount = takeFlowWords(prefix, words, start, narrow)
+    return FlowPiece(narrowCount, joinFlowPiece(prefix, words, start, narrowCount))
+}
+
+private fun needsFlowStuff(text: String): Boolean {
+    if (text.isEmpty()) return false
+    if (text[0] == ' ' || text[0] == '>') return true
+    return text.startsWith("From ")
+}
+
+private fun takeFlowWords(prefix: String, words: List<String>, start: Int, width: Int): Int {
+    val remaining = words.size - start
+    if (remaining <= 0) return 0
+    val prefixCount = prefix.codePointCount(0, prefix.length)
+    if (prefixCount >= width) return remaining
+    var count = prefixCount
+    var hasWord = false
+    var taken = 0
+    var index = start
+    while (index < words.size) {
+        val wordCount = words[index].codePointCount(0, words[index].length)
+        if (hasWord && count + 1 + wordCount > width) break
+        if (!hasWord && prefixCount + wordCount > width) return 1
+        if (hasWord) count += 1
+        count += wordCount
+        hasWord = true
+        taken++
+        index++
+    }
+    return taken
+}
+
+private fun joinFlowPiece(prefix: String, words: List<String>, start: Int, count: Int): String {
+    val out = StringBuilder(prefix)
+    for (index in 0 until count) {
+        if (index > 0) out.append(' ')
+        out.append(words[start + index])
+    }
+    return out.toString()
+}
+
 /** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
 fun buildPlain(message: PlainMessage): BuiltMail {
     val recipients = envelopeRecipients(message.to, message.cc, message.bcc)
-    val (encoding, payload) = textPart(wrapPlain(message.body, message.wrapColumn), allowEightBit = true)
+    val flowed = message.flowed && message.wrapColumn > 0
+    val plain = if (flowed) {
+        flowPlain(message.body, message.wrapColumn)
+    } else {
+        wrapPlain(message.body, message.wrapColumn)
+    }
+    val (encoding, payload) = textPart(plain, allowEightBit = true)
+    val plainType = if (flowed) {
+        "text/plain; charset=utf-8; format=flowed; delsp=yes"
+    } else {
+        "text/plain; charset=utf-8"
+    }
     val bytes = if (message.attachments.isEmpty()) {
-        val headers = baseHeaders(message, "text/plain; charset=utf-8", encoding)
+        val headers = baseHeaders(message, plainType, encoding)
         val out = ByteArrayOutputStream()
         out.write(headers.toByteArray(Charsets.UTF_8))
         out.write("\r\n".toByteArray(Charsets.US_ASCII))
@@ -421,7 +509,7 @@ fun buildPlain(message: PlainMessage): BuiltMail {
         writePart(
             out,
             boundary,
-            "text/plain; charset=utf-8",
+            plainType,
             encoding,
             null,
             payload,

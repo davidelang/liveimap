@@ -260,6 +260,16 @@ class Rfc822Test {
         assertEquals("one two\nthree four", wrapPlain("one two three four", 10))
         assertEquals("one two\nthree four", wrapPlain("one\ttwo three four", 10))
         assertEquals("one two three four", wrapPlain("one two three four", 0))
+        assertEquals("one two  \nthree  \nfour", flowPlain("one two three four", 10))
+        assertEquals("one two  \nthree  \nfour", flowPlain("one\ttwo three four", 10))
+        assertEquals("one two three four", flowPlain("one two three four", 0))
+        assertEquals("abcdefghijk", flowPlain("abcdefghijk", 5))
+        assertEquals(" > one  \n > two  \n > three", flowPlain("> one two three", 10))
+        assertEquals("-- ", flowPlain("-- ", 10))
+        assertEquals(
+            " From the start of  \nthe line here",
+            flowPlain("From the start of the line here", 20),
+        )
         val built = buildPlain(
             PlainMessage(
                 fromName = "Me",
@@ -276,9 +286,26 @@ class Rfc822Test {
         )
         val text = built.rfc822.toString(Charsets.UTF_8)
         assertEquals("7bit", cte(built.rfc822))
-        assertTrue(text.contains("Content-Type: text/plain; charset=utf-8"))
-        assertFalse(text.contains("flowed"))
-        assertTrue(text.contains("one two\r\nthree four"))
+        assertTrue(text.contains("text/plain; charset=utf-8; format=flowed; delsp=yes"))
+        assertTrue(text.contains("one two  \r\nthree  \r\nfour"))
+        val fixed = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = "one two three four",
+                messageId = "<new@example.com>",
+                date = "Tue, 30 Sep 2026 00:00:00 +0000",
+                wrapColumn = 10,
+                flowed = false,
+            ),
+        )
+        val fixedText = fixed.rfc822.toString(Charsets.UTF_8)
+        assertTrue(fixedText.contains("one two\r\nthree four"))
+        assertFalse(fixedText.contains("flowed"))
     }
 
     @Test

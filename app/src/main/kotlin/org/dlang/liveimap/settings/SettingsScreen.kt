@@ -677,6 +677,13 @@ private fun AccountGroup(editor: SettingsEditor) {
                     }
                 },
             )
+            BoolField(
+                stringResource(R.string.settings_flowed_text),
+                !settings.quellFlowed,
+                note = stringResource(R.string.settings_flowed_text_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(quellFlowed = !enabled))
+            }
         }
         SettingsSection(
             title = stringResource(R.string.settings_import),

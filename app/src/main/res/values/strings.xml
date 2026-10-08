@@ -604,6 +604,8 @@
     <string name="pinerc_folder_check">Could not check folders</string>
     <string name="pinerc_favorite">Favorite</string>
     <string name="settings_wrap_column">Wrap column</string>
+    <string name="settings_flowed_text">Flowed text</string>
+    <string name="settings_flowed_text_note">Off sends fixed lines.</string>
     <string name="reader_collapse_header">Collapse header</string>
     <string name="reader_expand_header">Expand header</string>
     <string name="reader_hide_images">Hide images</string>

@@ -54,7 +54,7 @@ Take address in the reader More menu adds a header address to the address book a
 
 Mark all read in the index Sort menu marks every message in this folder read after you confirm.
 
-Settings, Sending, Wrap column is 74. A sent message breaks its plain text at that column. A word longer than the column stays on one line.
+Settings, Sending, Wrap column is 74. A sent message breaks its plain text at that column. A word longer than the column stays on one line. Settings, Sending, Flowed text is on. A sent message uses format=flowed and soft breaks at the wrap column. Turn it off to send fixed lines.
 
 When TLS is on, a certificate the phone does not already trust asks before the password is sent. Trust pins that certificate for this account. Settings, Account, Server, Clear pin removes it. A changed certificate asks again. A wrong name or an expired certificate is refused.
 
