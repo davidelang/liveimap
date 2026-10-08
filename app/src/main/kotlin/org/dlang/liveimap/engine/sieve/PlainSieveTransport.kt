@@ -8,10 +8,16 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.security.cert.X509Certificate
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.engine.PeerTrust
 
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 60_000
@@ -27,8 +33,9 @@ private val CR_LF = byteArrayOf(CR.toByte(), LF.toByte())
 class PlainSieveTransport internal constructor(
     private val socket: Socket,
 ) : SieveLineTransport, Closeable {
-    private val input: InputStream = socket.getInputStream()
-    private val output: OutputStream = socket.getOutputStream()
+    private var input: InputStream = socket.getInputStream()
+    private var output: OutputStream = socket.getOutputStream()
+    private var layered: SSLSocket? = null
     private val closed = AtomicBoolean(false)
 
     override suspend fun readLine(): String {
@@ -73,13 +80,74 @@ class PlainSieveTransport internal constructor(
         }
     }
 
+    /** Wraps the connected socket. Does not open TCP and does not write AUTHENTICATE. */
+    suspend fun upgradeToTls(host: String, pin: String) {
+        withContext(Dispatchers.IO) {
+            val tls = layeredSocket(host)
+            val protocols = tls.supportedProtocols.filter { it == "TLSv1.2" || it == "TLSv1.3" }
+            if (protocols.isEmpty()) {
+                try {
+                    tls.close()
+                } catch (e: IOException) {
+                }
+                throw SieveFailure("TLS 1.2 required")
+            }
+            tls.enabledProtocols = protocols.toTypedArray()
+            tls.startHandshake()
+            val failure = PeerTrust.check(host, peerEncodings(tls), pin)
+            if (failure.isNotEmpty()) {
+                try {
+                    socket.close()
+                } catch (e: IOException) {
+                }
+                try {
+                    tls.close()
+                } catch (e: IOException) {
+                }
+                throw SieveFailure(failure)
+            }
+            input = tls.inputStream
+            output = tls.outputStream
+            layered = tls
+        }
+    }
+
     override fun close() {
         runBlocking(Dispatchers.IO) {
             if (!closed.compareAndSet(false, true)) return@runBlocking
+            val tls = layered
+            if (tls != null) {
+                try {
+                    tls.close()
+                } catch (e: IOException) {
+                }
+            }
             try {
                 socket.close()
             } catch (e: IOException) {
             }
+        }
+    }
+
+    private fun layeredSocket(host: String): SSLSocket {
+        val context = SSLContext.getInstance("TLS")
+        // The handshake must finish so PeerTrust can see the chain.
+        context.init(null, arrayOf<TrustManager>(HandshakeTrust()), null)
+        val created = context.socketFactory.createSocket(socket, host, socket.port, false)
+        val tls = created as SSLSocket
+        tls.useClientMode = true
+        val params = tls.sslParameters
+        params.endpointIdentificationAlgorithm = null
+        tls.sslParameters = params
+        tls.soTimeout = socket.soTimeout
+        return tls
+    }
+
+    private fun peerEncodings(tls: SSLSocket): List<ByteArray> {
+        return try {
+            tls.session.peerCertificates.map { it.encoded }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
@@ -131,6 +199,14 @@ suspend fun openPlainSieve(host: String, port: Int): PlainSieveTransport {
             }
         }
     }
+}
+
+private class HandshakeTrust : X509TrustManager {
+    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+
+    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+
+    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
 }
 
 suspend fun greetPlain(host: String, port: Int): SieveCapabilities {

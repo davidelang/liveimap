@@ -46,6 +46,38 @@ suspend fun logout(transport: SieveLineTransport) {
     readUntilResponse(transport, recordCapabilities = false)
 }
 
+/** Throws when STARTTLS was not advertised. Writes nothing. */
+fun requireAdvertisedStartTls(caps: SieveCapabilities) {
+    if (!caps.startTls) throw SieveFailure("STARTTLS is not advertised")
+}
+
+/** Writes STARTTLS and reads one line. Does not open a socket. */
+suspend fun requestStartTls(transport: SieveLineTransport) {
+    transport.writeLine("STARTTLS")
+    val line = transport.readLine()
+    when (responseToken(line)) {
+        "OK" -> {
+            responseHumanText(line)
+        }
+        "NO", "BYE" -> throw SieveFailure(responseHumanText(line) ?: line)
+        else -> {
+            if (line.isEmpty()) throw SieveFailure("empty")
+            throw SieveFailure(line)
+        }
+    }
+}
+
+/** STARTTLS, certificate check, then the protected greeting. Does not authenticate. */
+suspend fun completeStartTls(
+    transport: PlainSieveTransport,
+    host: String,
+    pin: String,
+): SieveCapabilities {
+    requestStartTls(transport)
+    transport.upgradeToTls(host, pin)
+    return readGreeting(transport)
+}
+
 /** Lists script names in server order. Does not open a socket. */
 suspend fun listScripts(transport: SieveLineTransport): List<ListedScript> {
     transport.writeLine("LISTSCRIPTS")

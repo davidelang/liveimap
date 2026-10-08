@@ -49,6 +49,66 @@ class ManageSieveTest {
     }
 
     @Test
+    fun startTlsOkWritesTheCommand() = runBlocking {
+        val plain = ListTransport(listOf("OK", "\"STARTTLS\""))
+        requestStartTls(plain)
+        assertEquals(listOf("STARTTLS"), plain.written)
+        assertEquals(listOf("OK"), plain.read)
+        assertTrue(plain.writtenBytes.isEmpty())
+
+        val text = ListTransport(listOf("OK \"ready\"", "OK"))
+        requestStartTls(text)
+        assertEquals(listOf("STARTTLS"), text.written)
+        assertEquals(listOf("OK \"ready\""), text.read)
+        assertTrue(text.written.none { it.contains("AUTHENTICATE") })
+    }
+
+    @Test
+    fun startTlsNoThrows() = runBlocking {
+        val refused = ListTransport(listOf("NO \"refused\"", "OK"))
+        try {
+            requestStartTls(refused)
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("refused", failure.text)
+        }
+        assertEquals(listOf("STARTTLS"), refused.written)
+        assertEquals(listOf("NO \"refused\""), refused.read)
+
+        val bare = ListTransport(listOf("NO"))
+        try {
+            requestStartTls(bare)
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("NO", failure.text)
+        }
+
+        val bye = ListTransport(listOf("BYE \"gone\""))
+        try {
+            requestStartTls(bye)
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("gone", failure.text)
+        }
+        assertEquals(listOf("BYE \"gone\""), bye.read)
+    }
+
+    @Test
+    fun missingStartTlsThrows() = runBlocking {
+        val transport = ListTransport(emptyList())
+        try {
+            requireAdvertisedStartTls(SieveCapabilities(startTls = false))
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("STARTTLS is not advertised", failure.text)
+        }
+        assertEquals(emptyList<String>(), transport.written)
+        assertTrue(transport.writtenBytes.isEmpty())
+        requireAdvertisedStartTls(SieveCapabilities(startTls = true))
+        assertEquals(emptyList<String>(), transport.written)
+    }
+
+    @Test
     fun noTextIsTheFailure() = runBlocking {
         val transport = ListTransport(listOf("NO \"no sieve\""))
         try {

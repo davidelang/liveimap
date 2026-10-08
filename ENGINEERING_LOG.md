@@ -2123,3 +2123,12 @@ Session sort stays in memory. The index menu is Newest, Oldest, then the criteri
 ## 2026-10-07 - About shows the plaintext warning only for TLS None.
 
 ## 2026-10-07 - The Server hint says IMAP is plaintext only when TLS is None.
+
+## 2026-10-07 - ManageSieve STARTTLS execution start
+
+ManageSieve STARTTLS checks the certificate before login. Nothing connects.
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sieve-starttls-20261007-1718-plan.md
+- Status set to APPROVED.
+- Phase 1: STARTTLS on the injected transport, then wrap the existing socket and check the certificate before login.
+- No screen calls it. No upload. No install.
+- First action per standard-plan-compliance-block.md.
