@@ -39,7 +39,7 @@ diff --git a/build-android/build.sh b/build-android/build.sh
 +# The shipped autogen tarball predates LIBETPAN_VERSION_MICRO and
 +# --with-json=libfastjson. Regenerate configure from configure.ac.
 +NOCONFIGURE=1 ./autogen.sh
-+./configure --with-json=libfastjson
++./configure --disable-iconv --with-json=libfastjson
  # `make prepare` creates the include/libetpan symlinks but does NOT build
  # libetpan-config.h (it is a BUILT_SOURCES target, only made by a full `make`).
  # Generate it explicitly so the include/libetpan/libetpan-config.h symlink

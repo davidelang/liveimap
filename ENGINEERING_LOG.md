@@ -2251,3 +2251,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start builds tag builds: af613bd
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - disable iconv configure execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/disable-iconv-configure-20261008-0720-plan.md
+- Work: pass --disable-iconv on the Android libetpan configure line and rebuild both libetpan.a archives
+- Phase 1 of 1. OpenSSL 3 is not this slice. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 63fd331
+- Host: /home/dlang/git/liveimap/master
