@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountChoice
+import org.dlang.liveimap.ui.compose.deleteUnsentAccount
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.ThemeMode
@@ -207,6 +208,7 @@ class AccountStore private constructor(private val context: Context) {
                     manager.getUserData(row, userAccountId) == accountId
                 } ?: return@withContext false
                 if (!manager.removeAccountExplicitly(account)) return@withContext false
+                deleteUnsentAccount(context.filesDir, accountId)
                 AndroidAccountCipher().delete(accountId)
                 context.accountSettingsDataStore.edit { prefs ->
                     prefs.remove(stringPreferencesKey(accountId))
@@ -624,7 +626,7 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
                 prefs.remove(stringPreferencesKey(accountId))
             }
         }
+        deleteUnsentAccount(appContext.filesDir, accountId)
     }
-    File(appContext.filesDir, "unsent").deleteRecursively()
     File(appContext.cacheDir, "imap-traffic.log").delete()
 }

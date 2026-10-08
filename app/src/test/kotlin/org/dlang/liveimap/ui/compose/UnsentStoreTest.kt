@@ -97,4 +97,45 @@ class UnsentStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun deleteRemovesOneAccountDirectory() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val accountDir = File(File(root, "unsent"), "acct-1")
+            val otherDir = File(File(root, "unsent"), "other")
+            val legacyMeta = File(File(root, "unsent"), "old.meta")
+            accountDir.mkdirs()
+            otherDir.mkdirs()
+            File(accountDir, "a.rfc822").writeText("A", Charsets.UTF_8)
+            File(otherDir, "b.rfc822").writeText("B", Charsets.UTF_8)
+            legacyMeta.writeText("old", Charsets.UTF_8)
+            deleteUnsentAccount(root, "acct-1")
+            assertFalse(accountDir.exists())
+            assertTrue(otherDir.isDirectory)
+            assertTrue(File(otherDir, "b.rfc822").isFile)
+            assertTrue(legacyMeta.isFile)
+            assertEquals("old", legacyMeta.readText(Charsets.UTF_8))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun emptyAndSlashIdsLeaveLegacyUnsent() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val legacy = File(root, "unsent")
+            val kept = File(legacy, "kept.meta")
+            legacy.mkdirs()
+            kept.writeText("stay", Charsets.UTF_8)
+            deleteUnsentAccount(root, "")
+            deleteUnsentAccount(root, "a/b")
+            assertTrue(legacy.isDirectory)
+            assertTrue(kept.isFile)
+            assertEquals("stay", kept.readText(Charsets.UTF_8))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }

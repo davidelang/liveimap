@@ -2406,3 +2406,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 666b97b
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Delete one account's unsent copies.

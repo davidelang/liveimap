@@ -133,3 +133,10 @@ internal fun deleteCopy(filesDir: File, id: String, accountId: String) {
 internal fun deleteCopy(context: Context, id: String, accountId: String = "") {
     deleteCopy(context.filesDir, id, accountId)
 }
+
+internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
+    val account = unsentAccountDir(filesDir, accountId)
+    val legacy = File(filesDir, "unsent")
+    if (account == legacy) return
+    account.deleteRecursively()
+}
