@@ -90,3 +90,77 @@ class ExtraWatchApply {
         open.clear()
     }
 }
+
+/** One session per extra IDLE name. Does not call STATUS or the screen. */
+class ExtraIdleSessions(private val factory: () -> MailSession) {
+    private val open = ArrayList<Held>()
+
+    fun openNames(): List<String> = open.map { it.name }
+
+    suspend fun apply(account: AccountSettings, names: List<String>) {
+        val keep = names.toHashSet()
+        for (held in open.toList()) {
+            if (held.name in keep) continue
+            closeHeld(held.session)
+            open.remove(held)
+        }
+        val seen = open.mapTo(HashSet()) { it.name }
+        for (name in names) {
+            if (!seen.add(name)) continue
+            val session = factory()
+            val result = try {
+                session.open(account)
+            } catch (failure: Throwable) {
+                suppressClose(session, failure)
+                throw failure
+            }
+            when (result) {
+                OpenResult.Connected -> {
+                    try {
+                        session.select(name)
+                        session.watch(name) { }
+                    } catch (failure: Throwable) {
+                        suppressClose(session, failure)
+                        throw failure
+                    }
+                    open.add(Held(name, session))
+                }
+                is OpenResult.Failed -> {
+                    val failure = MailFailure(result.text)
+                    suppressClose(session, failure)
+                    throw failure
+                }
+                is OpenResult.Rejected -> {
+                    val failure = MailFailure("watch rejected")
+                    suppressClose(session, failure)
+                    throw failure
+                }
+            }
+        }
+    }
+
+    suspend fun stop() {
+        for (held in open.toList()) {
+            closeHeld(held.session)
+            open.remove(held)
+        }
+    }
+
+    private suspend fun closeHeld(session: MailSession) {
+        try {
+            session.stopWatch()
+        } finally {
+            session.close()
+        }
+    }
+
+    private suspend fun suppressClose(session: MailSession, failure: Throwable) {
+        try {
+            closeHeld(session)
+        } catch (closeFailure: Throwable) {
+            failure.addSuppressed(closeFailure)
+        }
+    }
+
+    private class Held(val name: String, val session: MailSession)
+}

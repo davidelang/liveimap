@@ -2346,3 +2346,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 5cf07fc
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - extra idle sessions execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-sessions-20261008-0848-plan.md
+- Work: open one session per extra IDLE name in the holder only
+- Phase 1 of 1. No screen call. No socket. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e6d920d
+- Host: /home/dlang/git/liveimap/master
