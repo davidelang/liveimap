@@ -736,6 +736,22 @@ class IndexWindowTest {
     }
 
     @Test
+    fun followingUndeletedSkipsAlreadyDeleted() {
+        assertEquals(4L, followingUndeleted(listOf(1L, 2L, 3L, 4L), setOf(2L, 3L), 1L))
+        assertNull(followingUndeleted(listOf(1L, 2L, 3L), setOf(2L, 3L), 1L))
+        assertEquals(2L, followingUndeleted(listOf(1L, 2L), emptySet(), 1L))
+        assertEquals(6L, followingUid(listOf(5L, 6L, 7L), 5L))
+        OpenMessageOrder.clear()
+        OpenMessageOrder.publish(
+            "INBOX",
+            listOf(1L, 2L, 3L),
+            listOf(row(1), row(2, flags = setOf("\\Deleted")), row(3)),
+        )
+        assertEquals(3L, OpenMessageOrder.followingAfterDelete(1L))
+        OpenMessageOrder.clear()
+    }
+
+    @Test
     fun emptyIndexTextBlankAndQuery() {
         val empty = "No messages"
         val format = "No messages match \u201c%1\$s\u201d in %2\$s"

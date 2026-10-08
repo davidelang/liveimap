@@ -497,6 +497,15 @@ fun followingUid(uids: List<Long>, current: Long): Long? {
     return uids[index + 1]
 }
 
+fun followingUndeleted(uids: List<Long>, deleted: Set<Long>, current: Long): Long? {
+    val index = uids.indexOf(current)
+    if (index < 0) return null
+    for (later in index + 1 until uids.size) {
+        if (uids[later] !in deleted) return uids[later]
+    }
+    return null
+}
+
 fun newestAtEnd(view: FolderView): Boolean = !view.newestFirst
 
 internal object OpenMessageOrder {
@@ -505,19 +514,24 @@ internal object OpenMessageOrder {
     var uids: List<Long> = emptyList()
         private set
     private var sequences = emptyMap<Long, Int>()
+    private var deleted = emptySet<Long>()
 
     fun publish(mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
         this.mailbox = mailbox
         this.uids = uids.toList()
         sequences = rows.associate { it.uid to it.sequence }
+        deleted = rows.filter { "\\Deleted" in it.flags }.map { it.uid }.toSet()
     }
 
     fun sequence(uid: Long): Int = sequences[uid] ?: 0
+
+    fun followingAfterDelete(current: Long): Long? = followingUndeleted(uids, deleted, current)
 
     fun clear() {
         mailbox = ""
         uids = emptyList()
         sequences = emptyMap()
+        deleted = emptySet()
     }
 }
 

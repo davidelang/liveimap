@@ -1026,9 +1026,13 @@ fun MessageReaderScreen(
         }
     }
 
-    fun nextAfterDeleteOrMove(): Pair<Long, Int>? {
+    fun nextAfterDeleteOrMove(useFollowingAfterDelete: Boolean = false): Pair<Long, Int>? {
         if (OpenMessageOrder.mailbox != mailbox) return null
-        val next = followingUid(OpenMessageOrder.uids, uid) ?: return null
+        val next = if (useFollowingAfterDelete) {
+            OpenMessageOrder.followingAfterDelete(uid)
+        } else {
+            followingUid(OpenMessageOrder.uids, uid)
+        } ?: return null
         return next to OpenMessageOrder.sequence(next)
     }
 
@@ -1139,7 +1143,7 @@ fun MessageReaderScreen(
     }
 
     suspend fun runReaderPolicyLocked(policy: DeletePolicy) {
-        val target = nextAfterDeleteOrMove()
+        val target = nextAfterDeleteOrMove(useFollowingAfterDelete = true)
         try {
             when (policy) {
                 DeletePolicy.MarkDeleted -> {

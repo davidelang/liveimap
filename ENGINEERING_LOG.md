@@ -2165,3 +2165,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-07 - Pinerc import applies TLS flags and a distinct SMTP user.
 
 ## 2026-10-07 - Plain text sends as format=flowed.
+
+## 2026-10-07 - Deleting an open message skips messages that are already deleted.
