@@ -2558,3 +2558,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD e2d72f5
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Retry an unsent message through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/retry-email-submission-20261008-1329-plan.md
+- Work: Retry an unsent message through EmailSubmission when the switch is on. An accepted copy still retries the sent-folder append. The switch off stays SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 55d9ada
+- Host: /home/dlang/git/liveimap/master

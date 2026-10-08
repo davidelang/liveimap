@@ -620,63 +620,124 @@ private fun ComposeLoaded(
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
-        if (copy.appendOnly) {
-            if (copy.mailbox.isEmpty()) {
-                notice = sentMailboxMissing
-                return false
+        when (retryDelivery(account.emailSubmission, copy.appendOnly)) {
+            RetryDelivery.Append -> {
+                if (copy.mailbox.isEmpty()) {
+                    notice = sentMailboxMissing
+                    return false
+                }
+                try {
+                    session.append(copy.mailbox, copy.bytes)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    notice = error.text
+                    status = acceptedNotice
+                    return false
+                }
+                deleteCopy(appContext, copy.id, accountId)
+                if (held?.id == copy.id) held = null
+                notice = null
+                deliveryDone = true
+                status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                removePostponedSource()
+                return true
             }
-            try {
-                session.append(copy.mailbox, copy.bytes)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: MailFailure) {
-                notice = error.text
-                status = acceptedNotice
-                return false
+            RetryDelivery.Smtp -> {
+                val accepted = try {
+                    sendSmtp(copy.bytes, copy.recipients)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    notice = error.text
+                    status = notSentNotice
+                    return false
+                }
+                storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                if (copy.mailbox.isNotEmpty()) {
+                    try {
+                        session.append(copy.mailbox, accepted)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted)
+                        writeCopy(appContext, saved, accountId)
+                        if (held?.id == copy.id) held = saved
+                        notice = error.text
+                        status = acceptedNotice
+                        return false
+                    }
+                }
+                deleteCopy(appContext, copy.id, accountId)
+                if (held?.id == copy.id) held = null
+                notice = null
+                deliveryDone = true
+                status = if (copy.mailbox.isNotEmpty()) {
+                    appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                } else {
+                    null
+                }
+                removePostponedSource()
+                return true
             }
-            deleteCopy(appContext, copy.id, accountId)
-            if (held?.id == copy.id) held = null
-            notice = null
-            deliveryDone = true
-            status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
-            removePostponedSource()
-            return true
-        }
-        val accepted = try {
-            sendSmtp(copy.bytes, copy.recipients)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: MailFailure) {
-            notice = error.text
-            status = notSentNotice
-            return false
-        }
-        storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-        if (copy.mailbox.isNotEmpty()) {
-            try {
-                session.append(copy.mailbox, accepted)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: MailFailure) {
-                val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted)
-                writeCopy(appContext, saved, accountId)
-                if (held?.id == copy.id) held = saved
-                notice = error.text
-                status = acceptedNotice
-                return false
+            RetryDelivery.Submission -> {
+                val password = try {
+                    store.password()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    notice = error.message ?: notConnected
+                    status = notSentNotice
+                    return false
+                }
+                try {
+                    val offer = offerForAccount(account, ::platformJmapExchange)
+                    when (
+                        jmapSendChosen(
+                            true,
+                            offer,
+                            copy.bytes,
+                            account.email,
+                            copy.recipients,
+                            account.username,
+                            password,
+                            account.certPin,
+                            ::platformJmapUpload,
+                            ::platformJmapPost,
+                        )
+                    ) {
+                        is JmapSendChoice.Submitted -> Unit
+                        JmapSendChoice.Smtp -> return false
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: JmapFailure) {
+                    notice = error.text
+                    status = notSentNotice
+                    return false
+                } catch (error: MailFailure) {
+                    notice = error.text
+                    status = notSentNotice
+                    return false
+                } catch (error: Exception) {
+                    notice = error.message ?: notConnected
+                    status = notSentNotice
+                    return false
+                }
+                storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                deleteCopy(appContext, copy.id, accountId)
+                if (held?.id == copy.id) held = null
+                notice = null
+                deliveryDone = true
+                status = if (copy.mailbox.isNotEmpty()) {
+                    appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                } else {
+                    null
+                }
+                removePostponedSource()
+                return true
             }
         }
-        deleteCopy(appContext, copy.id, accountId)
-        if (held?.id == copy.id) held = null
-        notice = null
-        deliveryDone = true
-        status = if (copy.mailbox.isNotEmpty()) {
-            appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
-        } else {
-            null
-        }
-        removePostponedSource()
-        return true
     }
 
     fun launchLocked(block: suspend () -> Boolean) {
