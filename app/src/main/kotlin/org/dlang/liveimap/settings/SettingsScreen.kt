@@ -96,6 +96,9 @@ import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
+import org.dlang.liveimap.engine.sieve.SieveCapabilities
+import org.dlang.liveimap.engine.sieve.SieveFailure
+import org.dlang.liveimap.engine.sieve.greetSieve
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
@@ -370,12 +373,22 @@ fun FolderStartsScreen() {
     }
 }
 
+private fun sieveCheckText(caps: SieveCapabilities): String {
+    if (caps.implementation.isBlank() && caps.version.isBlank()) return "OK"
+    val parts = ArrayList<String>(2)
+    if (caps.implementation.isNotBlank()) parts.add(caps.implementation)
+    if (caps.version.isNotBlank()) parts.add(caps.version)
+    return parts.joinToString(" ")
+}
+
 @Composable
 private fun AccountGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen("server")
     val settings = editor.settings
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
+    var checkingSieve by remember { mutableStateOf(false) }
+    var sieveReport by remember { mutableStateOf("") }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importGeneration by remember { mutableStateOf(0) }
     var importError by remember { mutableStateOf<Int?>(null) }
@@ -532,6 +545,34 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(sievePort = it))
             }
+            val noSieveHost = stringResource(R.string.settings_sieve_no_host)
+            TextButton(
+                onClick = {
+                    if (checkingSieve) return@TextButton
+                    val (host, port) = sieveEndpoint(editor.settings)
+                    if (host.isBlank()) {
+                        sieveReport = noSieveHost
+                        return@TextButton
+                    }
+                    val mode = editor.settings.tlsMode
+                    val pin = editor.settings.certPin
+                    checkingSieve = true
+                    sieveReport = ""
+                    editor.ui.launch {
+                        try {
+                            sieveReport = sieveCheckText(greetSieve(host, port, mode, pin))
+                        } catch (failure: SieveFailure) {
+                            sieveReport = failure.text
+                        } finally {
+                            checkingSieve = false
+                        }
+                    }
+                },
+                enabled = !checkingSieve,
+            ) {
+                Text(stringResource(R.string.settings_sieve_check))
+            }
+            if (sieveReport.isNotEmpty()) Text(sieveReport)
         }
         val noUser = stringResource(R.string.settings_no_user)
         SettingsSection(

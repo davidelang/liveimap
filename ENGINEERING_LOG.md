@@ -2132,3 +2132,5 @@ ManageSieve STARTTLS checks the certificate before login. Nothing connects.
 - Phase 1: STARTTLS on the injected transport, then wrap the existing socket and check the certificate before login.
 - No screen calls it. No upload. No install.
 - First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Check ManageSieve reads the greeting with the account TLS mode and logs out.

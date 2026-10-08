@@ -69,6 +69,18 @@ class PlainSieveTransportTest {
             thread.join(2_000)
         }
     }
+
+    @Test
+    fun sieveTlsProtocolsDropsLegacyAndKeepsOrder() {
+        assertEquals(
+            listOf("TLSv1.2", "TLSv1.3"),
+            sieveTlsProtocols(arrayOf("TLSv1", "TLSv1.2", "TLSv1.3")),
+        )
+        assertEquals(
+            listOf("TLSv1.3", "TLSv1.2"),
+            sieveTlsProtocols(arrayOf("TLSv1.3", "TLSv1", "TLSv1.2")),
+        )
+    }
 }
 
 private val GREETING = (
