@@ -2386,3 +2386,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 78ba3e2
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Name the unsent directory by account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-account-dir-20261008-0918-plan.md
+- Work: unsentAccountDir names one directory under unsent for a safe account id. Empty, dot, and slash ids stay on the legacy unsent directory. Copy functions take the account id and default to empty.
+- Phase 1 of 1. No screen change. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6252920
+- Host: /home/dlang/git/liveimap/master

@@ -35,10 +35,19 @@ internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
     return missingSubject
 }
 
+internal fun unsentAccountDir(filesDir: File, accountId: String): File {
+    val id = accountId.trim()
+    val legacy = File(filesDir, "unsent")
+    if (id.isEmpty() || id == "." || id == ".." || '/' in id || '\\' in id) {
+        return legacy
+    }
+    return File(legacy, id)
+}
+
 internal fun copyDir(context: Context): File = File(context.filesDir, "unsent")
 
-internal fun readCopies(context: Context): List<DeviceCopy> {
-    val dir = copyDir(context)
+internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCopy> {
+    val dir = unsentAccountDir(context.filesDir, accountId)
     if (!dir.isDirectory) return emptyList()
     val metas = dir.listFiles { file -> file.isFile && file.name.endsWith(".meta") } ?: return emptyList()
     return metas.sortedBy { it.name }.mapNotNull { meta ->
@@ -64,9 +73,9 @@ internal fun readCopies(context: Context): List<DeviceCopy> {
     }
 }
 
-internal fun writeCopy(context: Context, copy: DeviceCopy) {
+internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "") {
     try {
-        val dir = copyDir(context)
+        val dir = unsentAccountDir(context.filesDir, accountId)
         dir.mkdirs()
         File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
         val text = buildString {
@@ -84,8 +93,8 @@ internal fun writeCopy(context: Context, copy: DeviceCopy) {
     }
 }
 
-internal fun deleteCopy(context: Context, id: String) {
-    val dir = copyDir(context)
+internal fun deleteCopy(context: Context, id: String, accountId: String = "") {
+    val dir = unsentAccountDir(context.filesDir, accountId)
     File(dir, "$id.rfc822").delete()
     File(dir, "$id.meta").delete()
 }
