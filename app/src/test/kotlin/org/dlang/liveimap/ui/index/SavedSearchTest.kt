@@ -74,4 +74,44 @@ class SavedSearchTest {
         assertEquals(first[0], recallSearch(both, " News "))
         assertEquals(both[1], recallSearch(both, "news"))
     }
+
+    @Test
+    fun deleteDropsTrimmedNameAndKeepsTheRest() {
+        val news = SavedSearch("News", "ada", SimpleSearchField.From)
+        val other = SavedSearch("Other", "x", SimpleSearchField.To)
+        val start = listOf(news, other)
+        val left = deleteSavedSearch(start, "News")
+        assertEquals(listOf(other), left)
+        assertTrue(left !== start)
+        assertEquals(listOf(news, other), start)
+
+        assertEquals(start, deleteSavedSearch(start, "news"))
+        assertEquals(start, deleteSavedSearch(start, "   "))
+        assertEquals(start, deleteSavedSearch(start, ""))
+        assertEquals(start, deleteSavedSearch(start, "Missing"))
+        assertEquals(2, start.size)
+    }
+
+    @Test
+    fun deleteDropsEveryMatchingName() {
+        val news = SavedSearch("News", "ada", SimpleSearchField.From)
+        val other = SavedSearch("Other", "x", SimpleSearchField.To)
+        val again = SavedSearch("News", "bob", SimpleSearchField.Subject)
+        val start = listOf(news, other, again)
+        val left = deleteSavedSearch(start, " News ")
+        assertEquals(listOf(other), left)
+        assertEquals(listOf(news, other, again), start)
+    }
+
+    @Test
+    fun deleteSentMailLeavesTheOtherNames() {
+        val news = SavedSearch("News", "ada", SimpleSearchField.From)
+        val sent = SavedSearch("Sent Mail", "ada", SimpleSearchField.From)
+        val other = SavedSearch("Other", "x", SimpleSearchField.To)
+        val start = listOf(news, sent, other)
+        assertEquals(listOf(news, other), deleteSavedSearch(start, "Sent Mail"))
+        assertEquals(start, deleteSavedSearch(start, "Sent"))
+        assertEquals(start, deleteSavedSearch(start, "Mail"))
+        assertEquals(sent, start[1])
+    }
 }

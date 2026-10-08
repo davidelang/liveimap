@@ -2670,24 +2670,52 @@ private fun MessageIndexLoaded(
                                 )
                             } else {
                                 savedItems.forEach { item ->
-                                    DropdownMenuItem(
-                                        text = { Text(item.name) },
-                                        onClick = {
-                                            savedOpen = false
-                                            query = item.query
-                                            held.searchField = item.field
-                                            narrowArmed = false
-                                            prompt = null
-                                            scope.launch {
-                                                gate.withLock {
-                                                    noteVisibleTop()
-                                                    model.applySearch(item.query, item.field)
-                                                    pull()
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(item.name) },
+                                            onClick = {
+                                                savedOpen = false
+                                                query = item.query
+                                                held.searchField = item.field
+                                                narrowArmed = false
+                                                prompt = null
+                                                scope.launch {
+                                                    gate.withLock {
+                                                        noteVisibleTop()
+                                                        model.applySearch(item.query, item.field)
+                                                        pull()
+                                                    }
+                                                    if (model.rows.isNotEmpty()) scrollToStart()
                                                 }
-                                                if (model.rows.isNotEmpty()) scrollToStart()
+                                            },
+                                        )
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                val stored = try {
+                                                    store.load()
+                                                } catch (error: CancellationException) {
+                                                    throw error
+                                                } catch (_: Exception) {
+                                                    return@launch
+                                                }
+                                                val next = deleteSavedSearch(stored.savedSearches, item.name)
+                                                if (next != stored.savedSearches) {
+                                                    try {
+                                                        store.save(stored.copy(savedSearches = next))
+                                                    } catch (error: CancellationException) {
+                                                        throw error
+                                                    } catch (_: Exception) {
+                                                        return@launch
+                                                    }
+                                                    savedItems = next
+                                                }
                                             }
-                                        },
-                                    )
+                                        }) {
+                                            Text(stringResource(R.string.index_search_remove))
+                                        }
+                                    }
                                 }
                             }
                         }

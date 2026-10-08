@@ -549,6 +549,7 @@
     <string name="index_search_advanced">Advanced</string>
     <string name="index_search_save">Save</string>
     <string name="index_search_saved">Saved</string>
+    <string name="index_search_remove">Remove</string>
     <string name="index_search_none">None</string>
     <string name="index_search_name">Name</string>
     <string name="index_search_and">And</string>

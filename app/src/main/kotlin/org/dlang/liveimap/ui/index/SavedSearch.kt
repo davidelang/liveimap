@@ -40,3 +40,13 @@ fun recallSearch(saved: List<SavedSearch>, name: String): SavedSearch? {
     }
     return null
 }
+
+fun deleteSavedSearch(saved: List<SavedSearch>, name: String): List<SavedSearch> {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return saved.toList()
+    val next = ArrayList<SavedSearch>(saved.size)
+    for (item in saved) {
+        if (item.name != trimmed) next.add(item)
+    }
+    return next
+}
