@@ -3,6 +3,8 @@ package org.dlang.liveimap.settings
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
+import org.dlang.liveimap.ui.index.SavedSearch
+import org.dlang.liveimap.ui.index.SimpleSearchField
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
@@ -893,6 +895,35 @@ class AccountSettingsTest {
         assertEquals(emptyList<String>(), decodeAccountSettings(storedZero).watchedFolders)
         val storedNegative = defaults.trimEnd() + "\nextraIdleBudget=-3\n"
         assertEquals(-3, decodeAccountSettings(storedNegative).extraIdleBudget)
+    }
+
+    @Test
+    fun savedSearchesRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("savedSearches="))
+        val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
+        assertEquals("altAddresses", keys.last())
+        assertEquals(emptyList<SavedSearch>(), decodeAccountSettings(defaults).savedSearches)
+
+        val saved = listOf(
+            SavedSearch("News", "ada", SimpleSearchField.From),
+            SavedSearch("Sent Mail", "a|b", SimpleSearchField.Subject),
+        )
+        val settings = AccountSettings(savedSearches = saved)
+        val text = settings.encode()
+        assertTrue(text.contains("savedSearches=News|ada|From,Sent%20Mail|a%7Cb|Subject"))
+        assertEquals(saved, decodeAccountSettings(text).savedSearches)
+        assertEquals(settings, decodeAccountSettings(text))
+        assertEquals(text, decodeAccountSettings(text).encode())
+
+        val repeated = listOf(
+            SavedSearch("News", "ada", SimpleSearchField.From),
+            SavedSearch("News", "ada", SimpleSearchField.From),
+        )
+        val dirty = defaults.trimEnd() +
+            "\nsavedSearches=News|ada|From,News|ada|Nope,only|two,|ada|From,News||From,News|ada|From\n"
+        assertEquals(repeated, decodeAccountSettings(dirty).savedSearches)
+        assertEquals(emptyList<SavedSearch>(), decodeAccountSettings(defaults).savedSearches)
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

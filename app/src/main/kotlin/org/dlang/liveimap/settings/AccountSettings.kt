@@ -9,6 +9,8 @@ import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
 import org.dlang.liveimap.engine.sieve.SystemFlag
+import org.dlang.liveimap.ui.index.SavedSearch
+import org.dlang.liveimap.ui.index.SimpleSearchField
 import org.dlang.liveimap.ui.toolbar.ComposeBarLayout
 import org.dlang.liveimap.ui.toolbar.FolderBarLayout
 import org.dlang.liveimap.ui.toolbar.IndexBarLayout
@@ -375,6 +377,7 @@ data class AccountSettings(
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
+    val savedSearches: List<SavedSearch> = emptyList(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -469,6 +472,7 @@ private val fieldNames = listOf(
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
+    "savedSearches",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -521,7 +525,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, and extraIdleBudget when 2.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Wide, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, and savedSearches when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -576,6 +580,9 @@ fun AccountSettings.encode(): String = buildString {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
     }
     if (extraIdleBudget != 2) appendLine("extraIdleBudget=$extraIdleBudget")
+    if (savedSearches.isNotEmpty()) {
+        appendLine("savedSearches=${encodeSavedSearches(savedSearches)}")
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -662,7 +669,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "allowPlaintextAuth" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
-            key == "extraIdleBudget"
+            key == "extraIdleBudget" ||
+            key == "savedSearches"
         ) {
             continue
         }
@@ -754,6 +762,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
+        savedSearches = values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList(),
     )
 }
 
@@ -802,6 +811,35 @@ private fun encodeWatchedFolders(values: List<String>): String =
 private fun decodeWatchedFolders(value: String): List<String> {
     if (value.isEmpty()) return emptyList()
     return value.split(',').map { percentDecode(it) }
+}
+
+private fun encodeSavedSearches(values: List<SavedSearch>): String =
+    values.joinToString(",") { search ->
+        "${percentEncode(search.name)}|${percentEncode(search.query)}|${search.field.name}"
+    }
+
+private fun decodeSavedSearches(value: String): List<SavedSearch> {
+    if (value.isEmpty()) return emptyList()
+    val out = ArrayList<SavedSearch>()
+    for (record in value.split(',')) {
+        val parts = record.split('|')
+        if (parts.size != 3) continue
+        val name = percentDecode(parts[0])
+        val query = percentDecode(parts[1])
+        if (name.isEmpty() || query.isEmpty()) continue
+        val field = decodeSavedSearchField(parts[2]) ?: continue
+        out.add(SavedSearch(name, query, field))
+    }
+    return out
+}
+
+private fun decodeSavedSearchField(name: String): SimpleSearchField? = when (name) {
+    "Subject" -> SimpleSearchField.Subject
+    "From" -> SimpleSearchField.From
+    "To" -> SimpleSearchField.To
+    "Cc" -> SimpleSearchField.Cc
+    "Participant" -> SimpleSearchField.Participant
+    else -> null
 }
 
 private fun encodeAltAddresses(values: List<String>): String =
