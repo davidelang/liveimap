@@ -195,6 +195,38 @@ fun ComposeScreen(
     onCustomize: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    ComposeLoaded(
+        accountId = id,
+        store = store,
+        seed = seed,
+        onDone = onDone,
+        unsentId = unsentId,
+        retryOnOpen = retryOnOpen,
+        onOpenUnsent = onOpenUnsent,
+        onCustomize = onCustomize,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ComposeLoaded(
+    accountId: String,
+    store: DataStoreSettingsStore,
+    seed: ComposeSeed,
+    onDone: () -> Unit,
+    unsentId: String? = null,
+    retryOnOpen: Boolean = false,
+    onOpenUnsent: () -> Unit = {},
+    onCustomize: () -> Unit = {},
+) {
+    val appContext = LocalContext.current.applicationContext
     val acceptedNotice = stringResource(R.string.compose_accepted)
     val notSentNotice = stringResource(R.string.unsent_not_sent)
     val sentMailboxMissing = stringResource(R.string.compose_sent_mailbox)
@@ -205,8 +237,7 @@ fun ComposeScreen(
     val unsentGone = stringResource(R.string.compose_unsent_gone)
     val notConnected = stringResource(R.string.reader_not_connected)
     val fetchFailed = stringResource(R.string.compose_fetch_failed)
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
     var account by remember { mutableStateOf(AccountSettings()) }

@@ -588,6 +588,7 @@ internal class IndexScreenHeld : ViewModel() {
     var searchField by mutableStateOf(SimpleSearchField.Subject)
     var model: IndexModel? = null
     var boundMailbox: String? = null
+    var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<IndexRow>>(emptyList())
     val selectedState = mutableStateOf<List<Long>>(emptyList())
     val allMailboxState = mutableStateOf(false)
@@ -602,9 +603,10 @@ internal class IndexScreenHeld : ViewModel() {
 
     fun bind(session: MailSession, store: SettingsStore, mailbox: String): IndexModel {
         val current = model
-        if (current != null && boundMailbox == mailbox) return current
+        if (current != null && boundMailbox == mailbox && boundSession === session) return current
         val created = IndexModel(session, store, mailbox)
         model = created
+        boundSession = session
         boundMailbox = mailbox
         rowsState.value = emptyList()
         selectedState.value = emptyList()
@@ -622,6 +624,7 @@ internal class IndexScreenHeld : ViewModel() {
 
     fun dropLoaded() {
         model = null
+        boundSession = null
         boundMailbox = null
         rowsState.value = emptyList()
         selectedState.value = emptyList()
@@ -674,6 +677,50 @@ fun MessageIndexScreen(
     onOpenFolder: (String) -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    MessageIndexLoaded(
+        accountId = id,
+        store = store,
+        mailbox = mailbox,
+        onOpen = onOpen,
+        onCompose = onCompose,
+        onBack = onBack,
+        onCustomize = onCustomize,
+        onCustomizeSelection = onCustomizeSelection,
+        watchMailbox = watchMailbox,
+        onAdvanced = onAdvanced,
+        advancedQuery = advancedQuery,
+        advancedScope = advancedScope,
+        onAdvancedConsumed = onAdvancedConsumed,
+        onOpenFolder = onOpenFolder,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageIndexLoaded(
+    accountId: String,
+    store: SettingsStore,
+    mailbox: String,
+    onOpen: (Long, Int, String) -> Unit,
+    onCompose: (ComposeSeed) -> Unit,
+    onBack: () -> Unit,
+    onCustomize: () -> Unit = {},
+    onCustomizeSelection: () -> Unit = {},
+    watchMailbox: Boolean = true,
+    onAdvanced: () -> Unit = {},
+    advancedQuery: String? = null,
+    advancedScope: SearchScope = SearchScope.Current,
+    onAdvancedConsumed: () -> Unit = {},
+    onOpenFolder: (String) -> Unit = {},
+) {
+    val appContext = LocalContext.current.applicationContext
     val emptyIndexSentence = stringResource(R.string.index_empty)
     val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
     val retryLabel = stringResource(R.string.index_retry)
@@ -686,8 +733,7 @@ fun MessageIndexScreen(
     val indexAgo = stringResource(R.string.index_ago)
     val indexAhead = stringResource(R.string.index_ahead)
     val indexBadPattern = stringResource(R.string.index_bad_pattern)
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val folderList = remember { FolderListModel(session, store) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()

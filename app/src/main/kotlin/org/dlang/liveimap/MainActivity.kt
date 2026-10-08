@@ -26,7 +26,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
-import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.session.suspendMailSessions
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     ComposeBackgroundSave.hook?.invoke()
                 } finally {
-                    mailSession().suspendConnections()
+                    suspendMailSessions()
                 }
             }
         }

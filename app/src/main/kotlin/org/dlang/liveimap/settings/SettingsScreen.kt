@@ -100,6 +100,7 @@ import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.engine.sieve.SieveCapabilities
 import org.dlang.liveimap.engine.sieve.SieveFailure
 import org.dlang.liveimap.engine.sieve.greetSieve
+import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
@@ -495,41 +496,51 @@ private fun AccountGroup(editor: SettingsEditor) {
                     ) {
                         names.add(built.next.addressBookMailbox)
                     }
-                    val shown = try {
-                        val checked = if (names.isEmpty()) {
-                            built
-                        } else {
-                            val missing = linkedSetOf<String>()
-                            for (name in names) {
-                                if (!pinercMailboxListed(mailSession(), name)) missing.add(name)
-                            }
-                            withoutMissingMailboxes(built, current, missing, pinercPhrases)
-                        }
-                        val fresh = newLeafMailboxes(checked.next.favorites, current.favorites)
-                        if (fresh.isEmpty()) {
-                            checked
-                        } else {
-                            try {
-                                val delimiter = favoriteDelimiter(mailSession().namespaces())
-                                val missingFavorites = linkedSetOf<String>()
-                                for (name in fresh) {
-                                    if (!pinercMailboxListed(mailSession(), name)) missingFavorites.add(name)
-                                }
-                                withFavoriteDelimiter(
-                                    withoutMissingFavorites(checked, current, missingFavorites, pinercPhrases),
-                                    current,
-                                    delimiter,
-                                )
-                            } catch (_: MailFailure) {
-                                withoutCheckedFavorites(checked, current, pinercPhrases)
-                            }
-                        }
-                    } catch (_: MailFailure) {
+                    val id = editor.store.chosenAccountId()
+                    val shown = if (id == null) {
                         withoutCheckedFavorites(
                             withoutCheckedMailboxes(built, current, pinercPhrases),
                             current,
                             pinercPhrases,
                         )
+                    } else {
+                        val session = mailSession(id)
+                        try {
+                            val checked = if (names.isEmpty()) {
+                                built
+                            } else {
+                                val missing = linkedSetOf<String>()
+                                for (name in names) {
+                                    if (!pinercMailboxListed(session, name)) missing.add(name)
+                                }
+                                withoutMissingMailboxes(built, current, missing, pinercPhrases)
+                            }
+                            val fresh = newLeafMailboxes(checked.next.favorites, current.favorites)
+                            if (fresh.isEmpty()) {
+                                checked
+                            } else {
+                                try {
+                                    val delimiter = favoriteDelimiter(session.namespaces())
+                                    val missingFavorites = linkedSetOf<String>()
+                                    for (name in fresh) {
+                                        if (!pinercMailboxListed(session, name)) missingFavorites.add(name)
+                                    }
+                                    withFavoriteDelimiter(
+                                        withoutMissingFavorites(checked, current, missingFavorites, pinercPhrases),
+                                        current,
+                                        delimiter,
+                                    )
+                                } catch (_: MailFailure) {
+                                    withoutCheckedFavorites(checked, current, pinercPhrases)
+                                }
+                            }
+                        } catch (_: MailFailure) {
+                            withoutCheckedFavorites(
+                                withoutCheckedMailboxes(built, current, pinercPhrases),
+                                current,
+                                pinercPhrases,
+                            )
+                        }
                     }
                     if (importGeneration == generation) importPreview = shown
                 }
@@ -756,11 +767,16 @@ private fun AccountGroup(editor: SettingsEditor) {
                         val account = editor.settings
                         probing = true
                         editor.ui.launch {
-                            val session = mailSession()
-                            try {
-                                serverReport = probeServer(session, account)
-                            } finally {
+                            val id = editor.store.chosenAccountId()
+                            if (id == null) {
                                 probing = false
+                            } else {
+                                val session = mailSession(id)
+                                try {
+                                    serverReport = probeServer(session, account)
+                                } finally {
+                                    probing = false
+                                }
                             }
                         }
                     }
@@ -1045,7 +1061,12 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ) {
                 editor.persist(editor.settings.copy(autoExpunge = it))
             }
-            val caps = mailSession().featureCaps
+            val id = editor.accounts.firstOrNull { it.chosen }?.id
+            val caps = if (id.isNullOrEmpty()) {
+                Capabilities.parse("")
+            } else {
+                mailSession(id).featureCaps
+            }
             val trashSet = settings.trashMailbox.isNotEmpty()
             ReasonChoice(
                 stringResource(R.string.settings_delete_button),

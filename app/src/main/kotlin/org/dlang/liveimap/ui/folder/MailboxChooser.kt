@@ -48,19 +48,24 @@ import org.dlang.liveimap.ui.UiDims
 
 internal class MailboxChooserHeld : ViewModel() {
     var model: FolderListModel? = null
+    var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
     var levelReady: Boolean = false
 
     fun bind(session: MailSession, store: SettingsStore): FolderListModel {
         val current = model
-        if (current != null) return current
+        if (current != null && boundSession === session) return current
+        rowsState.value = emptyList()
+        levelReady = false
         val created = FolderListModel(session, store)
         model = created
+        boundSession = session
         return created
     }
 
     fun dropLoaded() {
         model = null
+        boundSession = null
         rowsState.value = emptyList()
         levelReady = false
     }
@@ -85,8 +90,33 @@ internal fun MailboxChooser(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    MailboxChooserLoaded(
+        accountId = id,
+        store = store,
+        saveMutex = saveMutex,
+        onStored = onStored,
+        onPick = onPick,
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
+private fun MailboxChooserLoaded(
+    accountId: String,
+    store: SettingsStore,
+    saveMutex: Mutex,
+    onStored: (AccountSettings) -> Unit,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val notConnected = stringResource(R.string.reader_not_connected)
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val held = viewModel<MailboxChooserHeld>()
     val model = held.bind(session, store)
     val host = LocalContext.current.hostActivity()

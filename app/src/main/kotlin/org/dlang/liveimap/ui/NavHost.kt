@@ -86,6 +86,8 @@ import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.session.setMailCertConfirmer
+import org.dlang.liveimap.session.setMailPlaintextConfirmer
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.ExpandedFoldersScreen
@@ -131,7 +133,7 @@ fun LiveImapNavHost() {
     val store = remember { DataStoreSettingsStore(appContext) }
     val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
     DisposableEffect(Unit) {
-        mailSession().setCertConfirmer { prompt ->
+        setMailCertConfirmer { prompt ->
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     certPrompt.value = PendingCert(prompt) { accepted ->
@@ -146,12 +148,12 @@ fun LiveImapNavHost() {
             val pending = certPrompt.value
             certPrompt.value = null
             pending?.resume(false)
-            mailSession().setCertConfirmer(null)
+            setMailCertConfirmer(null)
         }
     }
     val plaintextPrompt = remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
     DisposableEffect(Unit) {
-        mailSession().setPlaintextConfirmer {
+        setMailPlaintextConfirmer {
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     plaintextPrompt.value = { accepted ->
@@ -166,7 +168,7 @@ fun LiveImapNavHost() {
             val pending = plaintextPrompt.value
             plaintextPrompt.value = null
             pending?.invoke(false)
-            mailSession().setPlaintextConfirmer(null)
+            setMailPlaintextConfirmer(null)
         }
     }
     val navController = rememberNavController()
@@ -708,11 +710,14 @@ fun LiveImapNavHost() {
         scope.launch {
             drawerState.close()
             if (favorite.node) {
-                try {
-                    FolderListModel(mailSession(), store).showCollapsed(favorite.mailbox)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
+                val id = store.chosenAccountId()
+                if (id != null) {
+                    try {
+                        FolderListModel(mailSession(id), store).showCollapsed(favorite.mailbox)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                    }
                 }
                 focusMailbox.value = favorite.mailbox
                 focusToken.value = focusToken.value + 1

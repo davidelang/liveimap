@@ -28,11 +28,32 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 @Composable
 fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit) {
-    val notConnected = stringResource(R.string.reader_not_connected)
-    val missingMailbox = stringResource(R.string.picker_missing)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    AddressBookPickerLoaded(
+        accountId = id,
+        store = store,
+        onPicked = onPicked,
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
+private fun AddressBookPickerLoaded(
+    accountId: String,
+    store: DataStoreSettingsStore,
+    onPicked: (SelectedAddress) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val notConnected = stringResource(R.string.reader_not_connected)
+    val missingMailbox = stringResource(R.string.picker_missing)
+    val session = remember(accountId) { mailSession(accountId) }
     var notice by remember { mutableStateOf<String?>(null) }
     var entries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
 

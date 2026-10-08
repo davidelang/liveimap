@@ -19,6 +19,7 @@ interface SettingsStore {
     suspend fun smtpPassword(): String = ""
     suspend fun setSmtpPassword(value: String) {}
     suspend fun listAccounts(): List<AccountChoice> = emptyList()
+    suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
     suspend fun addAccount() {}
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
@@ -40,6 +41,12 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
     override suspend fun setSmtpPassword(value: String) = store.setSmtpPassword(value)
 
     override suspend fun listAccounts(): List<AccountChoice> = store.listAccounts()
+
+    override suspend fun chosenAccountId(): String? {
+        val id = store.listAccounts().firstOrNull { it.chosen }?.id
+        if (id.isNullOrEmpty()) return null
+        return id
+    }
 
     override suspend fun selectAccount(accountId: String) = store.selectAccount(accountId)
 

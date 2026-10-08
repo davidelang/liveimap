@@ -295,6 +295,44 @@ fun MessageReaderScreen(
     onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ) {
+    val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    MessageReaderLoaded(
+        accountId = id,
+        store = store,
+        mailbox = mailbox,
+        uid = uid,
+        sequence = sequence,
+        onCompose = onCompose,
+        onAdvance = onAdvance,
+        onBack = onBack,
+        onFolderViewSaved = onFolderViewSaved,
+        onCustomize = onCustomize,
+        onFilterLike = onFilterLike,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun MessageReaderLoaded(
+    accountId: String,
+    store: DataStoreSettingsStore,
+    mailbox: String,
+    uid: Long,
+    sequence: Int,
+    onCompose: (ComposeSeed) -> Unit,
+    onAdvance: (Long, Int) -> Unit,
+    onBack: () -> Unit,
+    onFolderViewSaved: () -> Unit = {},
+    onCustomize: () -> Unit = {},
+    onFilterLike: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val noAppFound = stringResource(R.string.reader_no_app)
@@ -318,8 +356,7 @@ fun MessageReaderScreen(
     val indexAgo = stringResource(R.string.index_ago)
     val indexAhead = stringResource(R.string.index_ahead)
     val indexBadPattern = stringResource(R.string.index_bad_pattern)
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<ReaderHeld>(key = "reader:$mailbox:$uid")

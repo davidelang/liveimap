@@ -56,10 +56,22 @@ private data class AndroidWrite(
 
 @Composable
 fun ContactCopyScreen() {
+    val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    ContactCopyLoaded(accountId = id, store = store)
+}
+
+@Composable
+private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) {
     val context = LocalContext.current
     val appContext = context.applicationContext
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
     var account by remember { mutableStateOf(AccountSettings()) }
     var sources by remember { mutableStateOf<List<CopySource>>(emptyList()) }

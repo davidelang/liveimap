@@ -122,19 +122,24 @@ import org.dlang.liveimap.ui.toolbar.toolbarExpandedHeight
 
 internal class FolderScreenHeld : ViewModel() {
     var model: FolderListModel? = null
+    var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
     var levelReady: Boolean = false
 
     fun bind(session: MailSession, store: SettingsStore): FolderListModel {
         val current = model
-        if (current != null) return current
+        if (current != null && boundSession === session) return current
+        rowsState.value = emptyList()
+        levelReady = false
         val created = FolderListModel(session, store)
         model = created
+        boundSession = session
         return created
     }
 
     fun dropLoaded() {
         model = null
+        boundSession = null
         rowsState.value = emptyList()
         levelReady = false
     }
@@ -172,7 +177,42 @@ fun FolderListScreen(
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
-    val session = remember { mailSession() }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    FolderListLoaded(
+        accountId = id,
+        store = store,
+        onOpenMailbox = onOpenMailbox,
+        onCompose = onCompose,
+        onOpenUnsent = onOpenUnsent,
+        onOpenHelp = onOpenHelp,
+        onCustomize = onCustomize,
+        focusMailbox = focusMailbox,
+        focusToken = focusToken,
+        onOpenDrawer = onOpenDrawer,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolderListLoaded(
+    accountId: String,
+    store: SettingsStore,
+    onOpenMailbox: (String) -> Unit,
+    onCompose: (ComposeSeed) -> Unit,
+    onOpenUnsent: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onCustomize: () -> Unit = {},
+    focusMailbox: String? = null,
+    focusToken: Int = 0,
+    onOpenDrawer: (() -> Unit)? = null,
+) {
+    val appContext = LocalContext.current.applicationContext
+    val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<FolderScreenHeld>()

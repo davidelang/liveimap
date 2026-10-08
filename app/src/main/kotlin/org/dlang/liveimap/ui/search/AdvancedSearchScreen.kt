@@ -25,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,7 @@ import kotlinx.coroutines.launch
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.UpTopAppBar
 import org.dlang.liveimap.ui.index.AdvancedCombiner
 import org.dlang.liveimap.ui.index.AdvancedStep
@@ -121,6 +123,30 @@ fun AdvancedSearchScreen(
     onSearch: (String, SearchScope) -> Unit,
     onBack: () -> Unit,
 ) {
+    val appContext = LocalContext.current.applicationContext
+    val store = remember { DataStoreSettingsStore(appContext) }
+    var accountId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        accountId = store.chosenAccountId()
+    }
+    val id = accountId
+    if (id.isNullOrEmpty()) return
+    AdvancedSearchLoaded(
+        accountId = id,
+        mailbox = mailbox,
+        onSearch = onSearch,
+        onBack = onBack,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AdvancedSearchLoaded(
+    accountId: String,
+    mailbox: String,
+    onSearch: (String, SearchScope) -> Unit,
+    onBack: () -> Unit,
+) {
     var combiner by remember { mutableStateOf(AdvancedCombiner.And) }
     var rows by remember { mutableStateOf(listOf(AdvancedDraft("Subject", "", false))) }
     var openRow by remember { mutableIntStateOf(-1) }
@@ -132,7 +158,7 @@ fun AdvancedSearchScreen(
     var countError by remember { mutableStateOf<String?>(null) }
     val cancelCount = remember { mutableStateOf(false) }
     val scopeRunner = rememberCoroutineScope()
-    val session = remember { mailSession() }
+    val session = remember(accountId) { mailSession(accountId) }
     val context = LocalContext.current
     fun encodedQuery(): String? {
         val kept = ArrayList<AdvancedStep>()
