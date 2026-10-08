@@ -2161,3 +2161,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The setting is omitted when empty, round-trips "post master", and does not change IMAP identity. No install. No send.
 
 ## 2026-10-07 - SMTP can sign in with a different password.
+
+## 2026-10-07 - Pinerc import applies TLS flags and a distinct SMTP user.

@@ -407,7 +407,11 @@ private fun AccountGroup(editor: SettingsEditor) {
     val contextState = rememberUpdatedState(LocalContext.current)
     val pinercPhrases = PinercPhrases(
         tls = stringResource(R.string.pinerc_tls),
-        smtpUser = stringResource(R.string.pinerc_smtp_user),
+        tlsMode = stringResource(R.string.settings_tls),
+        tlsNone = stringResource(R.string.settings_tls_none),
+        tlsStart = stringResource(R.string.settings_tls_starttls),
+        tlsImplicit = stringResource(R.string.settings_tls_implicit),
+        smtpUsername = stringResource(R.string.settings_smtp_username),
         local = stringResource(R.string.pinerc_local),
         history = stringResource(R.string.pinerc_history),
         sort = stringResource(R.string.pinerc_sort),

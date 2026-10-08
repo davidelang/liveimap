@@ -15,7 +15,11 @@ data class PinercPreview(
 
 data class PinercPhrases(
     val tls: String,
-    val smtpUser: String,
+    val tlsMode: String,
+    val tlsNone: String,
+    val tlsStart: String,
+    val tlsImplicit: String,
+    val smtpUsername: String,
     val local: String,
     val history: String,
     val sort: String,
@@ -60,6 +64,8 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     val addedFavorites = mutableListOf<FolderFavorite>()
     var omitted = 0
     var inboxUserApplied = false
+    var inboxVote: TlsMode? = null
+    var smtpVote: TlsMode? = null
 
     val inbox = entries["inbox-path"]?.decoded
     if (inbox != null) {
@@ -68,15 +74,13 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         } else {
             val spec = parseRemoteSpec(inbox)
             if (spec != null) {
-                if (spec.tls) {
-                    skipped.add(phrases.tls.format(spec.host))
-                } else {
-                    next = next.copy(imapHost = spec.host, imapPort = spec.port ?: 143)
-                    if (spec.user != null) {
-                        next = next.copy(username = spec.user)
-                        inboxUserApplied = true
-                    }
+                val port = spec.port ?: if (spec.mode == TlsMode.Implicit) 993 else 143
+                next = next.copy(imapHost = spec.host, imapPort = port)
+                if (spec.user != null) {
+                    next = next.copy(username = spec.user)
+                    inboxUserApplied = true
                 }
+                inboxVote = spec.mode
             }
         }
     }
@@ -89,18 +93,25 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         if (first != null) {
             val spec = parseRemoteSpec(first)
             if (spec != null) {
-                if (spec.tls) {
-                    skipped.add(phrases.tls.format(spec.host))
-                } else {
-                    val port = spec.port ?: if (spec.submit) 587 else 25
-                    next = next.copy(smtpHost = spec.host, smtpPort = port)
+                val port = spec.port ?: when {
+                    spec.mode == TlsMode.Implicit -> 465
+                    spec.submit -> 587
+                    else -> 25
                 }
+                next = next.copy(smtpHost = spec.host, smtpPort = port)
+                smtpVote = spec.mode ?: if (spec.submit) TlsMode.StartTls else null
                 val imapUser = if (inboxUserApplied) next.username else current.username
                 if (spec.user != null && spec.user != imapUser) {
-                    skipped.add(phrases.smtpUser)
+                    next = next.copy(smtpUsername = spec.user)
                 }
             }
         }
+    }
+    val votes = listOfNotNull(inboxVote, smtpVote)
+    if (votes.size == 2 && votes[0] != votes[1]) {
+        skipped.add(phrases.tls)
+    } else if (votes.isNotEmpty()) {
+        next = next.copy(tlsMode = votes[0])
     }
 
     val userId = entries["user-id"]?.decoded
@@ -469,7 +480,7 @@ private data class RemoteSpec(
     val host: String,
     val port: Int?,
     val user: String?,
-    val tls: Boolean,
+    val mode: TlsMode?,
     val submit: Boolean,
 )
 
@@ -740,20 +751,23 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
         }
     }
     if (host.isEmpty()) return null
-    var tls = false
+    var mode: TlsMode? = null
     var submit = false
     var user: String? = null
     for (flag in flags) {
         if (flag.isEmpty()) continue
         when {
-            flag.equals("ssl", ignoreCase = true) ||
-                flag.equals("tls", ignoreCase = true) ||
-                flag.equals("secure", ignoreCase = true) -> tls = true
             flag.equals("submit", ignoreCase = true) -> submit = true
             flag.startsWith("user=", ignoreCase = true) -> user = flag.substring(5)
+            mode != null -> Unit
+            flag.equals("notls", ignoreCase = true) ||
+                flag.equals("nostarttls", ignoreCase = true) -> mode = TlsMode.None
+            flag.equals("ssl", ignoreCase = true) -> mode = TlsMode.Implicit
+            flag.equals("tls", ignoreCase = true) ||
+                flag.equals("starttls", ignoreCase = true) -> mode = TlsMode.StartTls
         }
     }
-    return RemoteSpec(host, port, user, tls, submit)
+    return RemoteSpec(host, port, user, mode, submit)
 }
 
 private fun classifyFolder(
@@ -843,11 +857,18 @@ private fun diffRows(
     fun add(label: String, old: Any?, new: Any?) {
         if (old != new) rows.add(phrases.change.format(label, old, new))
     }
+    fun tlsLabel(mode: TlsMode): String = when (mode) {
+        TlsMode.None -> phrases.tlsNone
+        TlsMode.StartTls -> phrases.tlsStart
+        TlsMode.Implicit -> phrases.tlsImplicit
+    }
     add(phrases.imapHost, current.imapHost, next.imapHost)
     add(phrases.imapPort, current.imapPort, next.imapPort)
     add(phrases.smtpHost, current.smtpHost, next.smtpHost)
     add(phrases.smtpPort, current.smtpPort, next.smtpPort)
+    add(phrases.tlsMode, tlsLabel(current.tlsMode), tlsLabel(next.tlsMode))
     add(phrases.username, current.username, next.username)
+    add(phrases.smtpUsername, current.smtpUsername, next.smtpUsername)
     add(phrases.displayName, current.displayName, next.displayName)
     add(
         phrases.altAddresses,

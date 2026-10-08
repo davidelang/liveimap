@@ -102,10 +102,11 @@ class PinercImportTest {
             "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
             AccountSettings(),
         )
-        assertEquals("", tls.next.imapHost)
-        assertEquals("", tls.next.username)
-        assertEquals(AccountSettings(), tls.next)
-        assertTrue(tls.skipped.contains("imap.example.com: TLS is not supported"))
+        assertEquals("imap.example.com", tls.next.imapHost)
+        assertEquals("ada", tls.next.username)
+        assertEquals(993, tls.next.imapPort)
+        assertEquals(TlsMode.Implicit, tls.next.tlsMode)
+        assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
         val sort = previewPinerc("sort-key=Score\n", AccountSettings())
         assertEquals(AccountSettings(), sort.next)
@@ -136,27 +137,46 @@ class PinercImportTest {
         val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
+        assertEquals(TlsMode.StartTls, submit.next.tlsMode)
+        assertTrue(submit.rows.contains("TLS: None → STARTTLS"))
 
         val explicit = previewPinerc("smtp-server=smtp.example.com:2525/submit\n", AccountSettings())
         assertEquals(2525, explicit.next.smtpPort)
+        assertEquals(TlsMode.StartTls, explicit.next.tlsMode)
 
         val plain = previewPinerc("smtp-server=smtp.example.com\n", AccountSettings())
         assertEquals(25, plain.next.smtpPort)
+        assertEquals(TlsMode.None, plain.next.tlsMode)
 
         val tls = previewPinerc(
             "smtp-server={smtp.example.com/tls}\n",
             AccountSettings(smtpHost = "old"),
         )
-        assertEquals("old", tls.next.smtpHost)
+        assertEquals("smtp.example.com", tls.next.smtpHost)
         assertEquals(25, tls.next.smtpPort)
-        assertTrue(tls.skipped.contains("smtp.example.com: TLS is not supported"))
+        assertEquals(TlsMode.StartTls, tls.next.tlsMode)
+        assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
+
+        val implicit = previewPinerc("smtp-server={smtp.example.com/ssl}\n", AccountSettings())
+        assertEquals(465, implicit.next.smtpPort)
+        assertEquals(TlsMode.Implicit, implicit.next.tlsMode)
 
         val secure = previewPinerc(
             "inbox-path={imap.example.com/Secure/user=ada}INBOX\n",
             AccountSettings(),
         )
-        assertEquals("", secure.next.imapHost)
-        assertTrue(secure.skipped.contains("imap.example.com: TLS is not supported"))
+        assertEquals("imap.example.com", secure.next.imapHost)
+        assertEquals("ada", secure.next.username)
+        assertEquals(143, secure.next.imapPort)
+        assertEquals(TlsMode.None, secure.next.tlsMode)
+        assertTrue(secure.skipped.none { it == "IMAP and SMTP ask for different TLS" })
+
+        val notls = previewPinerc(
+            "inbox-path={imap.example.com/notls/user=ada}INBOX\n",
+            AccountSettings(),
+        )
+        assertEquals(143, notls.next.imapPort)
+        assertEquals(TlsMode.None, notls.next.tlsMode)
 
         val inbox = previewPinerc("inbox-path={imap.example.com/user=ada}INBOX\n", AccountSettings())
         assertEquals("imap.example.com", inbox.next.imapHost)
@@ -170,13 +190,33 @@ class PinercImportTest {
         assertEquals("ada", differ.next.username)
         assertEquals("smtp.example.com", differ.next.smtpHost)
         assertEquals(25, differ.next.smtpPort)
-        assertTrue(differ.skipped.contains("SMTP username is not a separate setting"))
+        assertEquals("bob", differ.next.smtpUsername)
+        assertTrue(differ.skipped.isEmpty())
 
         val same = previewPinerc(
             "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=ada}\n",
             AccountSettings(),
         )
-        assertTrue(same.skipped.none { it == "SMTP username is not a separate setting" })
+        assertEquals("", same.next.smtpUsername)
+        assertTrue(same.skipped.isEmpty())
+
+        val conflict = previewPinerc(
+            "inbox-path={imap.example.com/ssl/user=ada}INBOX\nsmtp-server=smtp.example.com/submit\n",
+            AccountSettings(),
+        )
+        assertEquals(993, conflict.next.imapPort)
+        assertEquals(587, conflict.next.smtpPort)
+        assertEquals(TlsMode.None, conflict.next.tlsMode)
+        assertTrue(conflict.skipped.contains("IMAP and SMTP ask for different TLS"))
+
+        val agree = previewPinerc(
+            "inbox-path={imap.example.com/tls/user=ada}INBOX\nsmtp-server=smtp.example.com/submit\n",
+            AccountSettings(),
+        )
+        assertEquals(TlsMode.StartTls, agree.next.tlsMode)
+        assertEquals(143, agree.next.imapPort)
+        assertEquals(587, agree.next.smtpPort)
+        assertTrue(agree.skipped.none { it == "IMAP and SMTP ask for different TLS" })
     }
 
     @Test
@@ -477,10 +517,11 @@ class PinercImportTest {
             "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
             AccountSettings(),
         )
-        assertEquals("", tls.next.imapHost)
-        assertEquals("", tls.next.username)
-        assertEquals(AccountSettings(), tls.next)
-        assertTrue(tls.skipped.contains("imap.example.com: TLS is not supported"))
+        assertEquals("imap.example.com", tls.next.imapHost)
+        assertEquals("ada", tls.next.username)
+        assertEquals(993, tls.next.imapPort)
+        assertEquals(TlsMode.Implicit, tls.next.tlsMode)
+        assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
         assertTrue(tls.skipped.none { it == "inbox-path needs a server in braces" })
 
         val host = AccountSettings(imapHost = "imap.example.com")
@@ -853,8 +894,12 @@ class PinercImportTest {
 }
 
 internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
-    tls = "%1\$s: TLS is not supported",
-    smtpUser = "SMTP username is not a separate setting",
+    tls = "IMAP and SMTP ask for different TLS",
+    tlsMode = "TLS",
+    tlsNone = "None",
+    tlsStart = "STARTTLS",
+    tlsImplicit = "Implicit TLS",
+    smtpUsername = "SMTP username",
     local = "Local path is not a mailbox",
     history = "Address book history is not a number.",
     sort = "Sort key is not supported",
