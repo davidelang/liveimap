@@ -93,9 +93,11 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
 +set -eu
  
  build_version=3
- # 1.1.1w is the final 1.1.1 release (same API). The old 1.1.1i tarball was
+-# 1.1.1w is the final 1.1.1 release (same API). The old 1.1.1i tarball was
++# 3.5.9 is the OpenSSL 3.5 LTS line. Fetch it from www.openssl.org.
 @@ -6,13 +7,21 @@
- version=1.1.1w
+-version=1.1.1w
++version=3.5.9
  package_name=openssl-android
  export MIN_SDK_VERSION=23
 -export HOST_TAG=darwin-x86_64
@@ -266,7 +268,7 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
 +  export ANDROID_ARCH=$android_arch
 +
 +  # NDK r28 clang rejects the implicit declarations in OpenSSL 1.1.1w.
-+  ./Configure "$configure_target" no-shared \
++  ./Configure "$configure_target" no-shared no-engine \
 +    -D__ANDROID_API__=$MIN_SDK_VERSION \
 +    -Wno-error=implicit-function-declaration \
 +    -Wno-error=int-conversion \

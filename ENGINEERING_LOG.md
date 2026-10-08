@@ -2261,3 +2261,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 63fd331
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Link OpenSSL 3.5.9
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/openssl-3-5-9-20261008-0728-plan.md
+- Work: OpenSSL build script and patch use version 3.5.9 and no-shared no-engine; rebuild libetpan archives; notice Apache-2.0 (4.1)

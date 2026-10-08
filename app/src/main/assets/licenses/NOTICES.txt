@@ -31,8 +31,8 @@ libfastjson
   License: MIT (4.6)
 
 OpenSSL
-  Version: 1.1.1w, https://www.openssl.org/
-  License: OpenSSL License and original SSLeay License, both apply (4.7)
+  Version: 3.5.9, https://www.openssl.org/
+  License: Apache License, Version 2.0 (4.1)
 
 Cyrus SASL
   Version: 2.1.28, https://github.com/cyrusimap/cyrus-sasl
