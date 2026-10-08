@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,12 +44,16 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.ui.UpTopAppBar
 import org.dlang.liveimap.ui.index.AdvancedCombiner
 import org.dlang.liveimap.ui.index.AdvancedStep
+import org.dlang.liveimap.ui.index.SavedAdvanced
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.index.countHits
+import org.dlang.liveimap.ui.index.deleteAdvanced
 import org.dlang.liveimap.ui.index.encodeAdvancedQuery
+import org.dlang.liveimap.ui.index.saveAdvanced
 import org.dlang.liveimap.ui.mailScreenInsets
 
 private data class AdvancedField(
@@ -134,6 +139,7 @@ fun AdvancedSearchScreen(
     AdvancedSearchLoaded(
         accountId = id,
         mailbox = mailbox,
+        store = store,
         onSearch = onSearch,
         onBack = onBack,
     )
@@ -144,6 +150,7 @@ fun AdvancedSearchScreen(
 private fun AdvancedSearchLoaded(
     accountId: String,
     mailbox: String,
+    store: SettingsStore,
     onSearch: (String, SearchScope) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -158,6 +165,11 @@ private fun AdvancedSearchLoaded(
     var countError by remember { mutableStateOf<String?>(null) }
     val cancelCount = remember { mutableStateOf(false) }
     val scopeRunner = rememberCoroutineScope()
+    val settingsScope = rememberCoroutineScope()
+    var saveNameOpen by remember { mutableStateOf(false) }
+    var saveName by remember { mutableStateOf("") }
+    var savedOpen by remember { mutableStateOf(false) }
+    var savedItems by remember { mutableStateOf<List<SavedAdvanced>>(emptyList()) }
     val session = remember(accountId) { mailSession(accountId) }
     val context = LocalContext.current
     fun encodedQuery(): String? {
@@ -341,6 +353,80 @@ private fun AdvancedSearchLoaded(
                     },
                 ) { Text(stringResource(R.string.index_search_count)) }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        if (encodedQuery() == null) return@TextButton
+                        saveName = ""
+                        saveNameOpen = true
+                    },
+                ) { Text(stringResource(R.string.index_search_save)) }
+                Box {
+                    TextButton(
+                        onClick = {
+                            settingsScope.launch {
+                                val stored = try {
+                                    store.load()
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    return@launch
+                                }
+                                savedItems = stored.savedAdvanced
+                                savedOpen = true
+                            }
+                        },
+                    ) { Text(stringResource(R.string.index_search_saved)) }
+                    DropdownMenu(
+                        expanded = savedOpen,
+                        onDismissRequest = { savedOpen = false },
+                    ) {
+                        if (savedItems.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.index_search_none)) },
+                                onClick = {},
+                                enabled = false,
+                            )
+                        } else {
+                            savedItems.forEach { item ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    DropdownMenuItem(
+                                        text = { Text(item.name) },
+                                        onClick = {
+                                            savedOpen = false
+                                            onSearch(item.text, item.scope)
+                                        },
+                                    )
+                                    TextButton(
+                                        onClick = {
+                                            settingsScope.launch {
+                                                val stored = try {
+                                                    store.load()
+                                                } catch (error: CancellationException) {
+                                                    throw error
+                                                } catch (_: Exception) {
+                                                    return@launch
+                                                }
+                                                val next = deleteAdvanced(stored.savedAdvanced, item.name)
+                                                if (next != stored.savedAdvanced) {
+                                                    try {
+                                                        store.save(stored.copy(savedAdvanced = next))
+                                                    } catch (error: CancellationException) {
+                                                        throw error
+                                                    } catch (_: Exception) {
+                                                        return@launch
+                                                    }
+                                                    savedItems = next
+                                                }
+                                            }
+                                        },
+                                    ) { Text(stringResource(R.string.index_search_remove)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             val progress = countProgress
             if (progress != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -362,5 +448,53 @@ private fun AdvancedSearchLoaded(
                 Text(text = line)
             }
         }
+    }
+    if (saveNameOpen) {
+        AlertDialog(
+            onDismissRequest = { saveNameOpen = false },
+            text = {
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text(stringResource(R.string.index_search_name)) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = saveName
+                        val text = encodedQuery()
+                        val chosen = scope
+                        saveNameOpen = false
+                        if (text == null) return@TextButton
+                        settingsScope.launch {
+                            val stored = try {
+                                store.load()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                return@launch
+                            }
+                            val next = saveAdvanced(stored.savedAdvanced, name, text, chosen)
+                            if (next != stored.savedAdvanced) {
+                                try {
+                                    store.save(stored.copy(savedAdvanced = next))
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    return@launch
+                                }
+                            }
+                        }
+                    },
+                ) { Text(stringResource(R.string.index_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveNameOpen = false }) {
+                    Text(stringResource(R.string.index_search_cancel))
+                }
+            },
+        )
     }
 }
