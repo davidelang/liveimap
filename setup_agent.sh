@@ -82,6 +82,13 @@ _setup_req shared_group "$SHARED_GROUP"
 # Enforce correct creation umask for setgid inheritance
 umask 007
 
+# A removed worktree can leave a prunable registration. The slot loop treats a
+# missing directory as free, and git worktree add then refuses that path.
+if ! git worktree prune -v; then
+    echo "Error: git worktree prune failed." >&2
+    exit 1
+fi
+
 # 0. Safety Check: Don't name a branch agent-N (reserved for auto-generated dirs)
 if [[ "$BRANCH_NAME" =~ ^agent-[0-9]+$ ]]; then
     echo "Error: Branch name cannot be '$BRANCH_NAME' (reserved for directory names)."
@@ -204,8 +211,14 @@ WORKTREE_ERR=0
 if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
     git worktree add --no-checkout "$AGENT_ID" "$BRANCH_NAME" || WORKTREE_ERR=$?
 else
-    # Create from current master
-    git worktree add --no-checkout "$AGENT_ID" -b "$BRANCH_NAME" master || WORKTREE_ERR=$?
+    # Full ref. This checkout has a master/ directory and
+    # refs/remotes/{origin,local,push}/master beside refs/heads/master.
+    if ! git rev-parse --verify --quiet --end-of-options 'refs/heads/master^{commit}' >/dev/null; then
+        echo "Error: refs/heads/master does not resolve to a commit." >&2
+        git rev-parse --verify --end-of-options 'refs/heads/master^{commit}' >&2 || true
+        exit 1
+    fi
+    git worktree add --no-checkout "$AGENT_ID" -b "$BRANCH_NAME" refs/heads/master || WORKTREE_ERR=$?
     if [ "$WORKTREE_ERR" -eq 0 ]; then
       # Create (or force-update) a lightweight tag for git describe to anchor on.
       echo "Creating/updating lightweight tag ${BRANCH_NAME}-start for versioning..."
