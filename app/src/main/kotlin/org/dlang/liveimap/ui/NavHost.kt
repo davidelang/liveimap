@@ -92,6 +92,7 @@ import org.dlang.liveimap.settings.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.FolderStartsScreen
 import org.dlang.liveimap.settings.FolderViewsScreen
+import org.dlang.liveimap.settings.LayoutChoice
 import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.SettingsGroup
 import org.dlang.liveimap.settings.SettingsGroupList
@@ -600,6 +601,7 @@ fun LiveImapNavHost() {
                             onOpenViews = { navController.navigate("settings/folders/views") },
                             onOpenStarts = { navController.navigate("settings/folders/starts") },
                             onCopyContacts = { navController.navigate("contacts") },
+                            onOpenPanel = { name -> navController.navigate("toolbar/$name") },
                         )
                     }
                 }
@@ -1233,6 +1235,10 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 }
 
 internal fun useMultiPane(mode: MultiPane): Boolean = mode == MultiPane.Wide
+
+internal fun useFolderPane(choice: LayoutChoice): Boolean = choice == LayoutChoice.On
+
+internal fun useFoldPosture(choice: LayoutChoice): Boolean = choice == LayoutChoice.On
 
 internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean): Int {
     if (!readerOpen) return minOf(360, availableDp)

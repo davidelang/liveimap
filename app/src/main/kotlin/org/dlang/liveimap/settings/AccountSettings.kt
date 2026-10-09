@@ -268,6 +268,11 @@ enum class MultiPane {
     Wide,
 }
 
+enum class LayoutChoice {
+    Off,
+    On,
+}
+
 enum class DeletePolicy {
     MarkDeleted,
     MoveToTrash,
@@ -370,6 +375,8 @@ data class AccountSettings(
     val composerWrapColumn: Int = 74,
     val quellFlowed: Boolean = false,
     val multiPane: MultiPane = MultiPane.Off,
+    val folderPane: LayoutChoice = LayoutChoice.Off,
+    val foldPosture: LayoutChoice = LayoutChoice.Off,
     val fullScreen: Boolean = false,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
@@ -467,6 +474,8 @@ private val fieldNames = listOf(
     "composerWrapColumn",
     "quellFlowed",
     "multiPane",
+    "folderPane",
+    "foldPosture",
     "fullScreen",
     "sieveHost",
     "sievePort",
@@ -531,7 +540,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, and emailSubmission when false.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, and emailSubmission when false.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -575,6 +584,8 @@ fun AccountSettings.encode(): String = buildString {
     if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
     if (quellFlowed) appendLine("quellFlowed=true")
     if (multiPane != MultiPane.Off) appendLine("multiPane=${multiPane.name}")
+    if (folderPane != LayoutChoice.Off) appendLine("folderPane=${folderPane.name}")
+    if (foldPosture != LayoutChoice.Off) appendLine("foldPosture=${foldPosture.name}")
     if (fullScreen) appendLine("fullScreen=true")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
@@ -671,6 +682,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "composerWrapColumn" ||
             key == "quellFlowed" ||
             key == "multiPane" ||
+            key == "folderPane" ||
+            key == "foldPosture" ||
             key == "fullScreen" ||
             key == "sieveHost" ||
             key == "sievePort" ||
@@ -765,6 +778,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
         quellFlowed = values["quellFlowed"]?.let { parseBoolean(it) } ?: false,
         multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off,
+        folderPane = values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
+        foldPosture = values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,

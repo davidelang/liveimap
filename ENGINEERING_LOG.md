@@ -2632,3 +2632,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - started local GreenMail and Stalwart containers on random high ports.
 
 ## 2026-10-09 - Upload sends the liveimap Sieve script after CHECKSCRIPT and does not SETACTIVE.
+
+## 2026-10-09 - Add a Settings Layout section
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/layout-settings-20261009-0134-plan.md
+- Work: Settings gains a Layout group for the pane choices and the five toolbar editors. Folder-list pane and fold posture default Off. This slice stores and shows those choices. It does not change which panes the app draws.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. The tests were not executed.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 433c463
+- Host: /home/dlang/git/liveimap/master

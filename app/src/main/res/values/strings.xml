@@ -363,6 +363,16 @@
     <string name="settings_multi_pane">Multi-pane</string>
     <string name="settings_multi_pane_off">Off</string>
     <string name="settings_multi_pane_wide">On</string>
+    <string name="settings_layout">Layout</string>
+    <string name="settings_panes">Panes</string>
+    <string name="settings_folder_pane">Folder list pane</string>
+    <string name="settings_fold_posture">Fold posture</string>
+    <string name="settings_panels">Panels</string>
+    <string name="settings_panel_index">Index toolbar</string>
+    <string name="settings_panel_selection">Selection toolbar</string>
+    <string name="settings_panel_folders">Folder toolbar</string>
+    <string name="settings_panel_reader">Reader toolbar</string>
+    <string name="settings_panel_compose">Compose toolbar</string>
     <string name="pane_resize">Resize pane</string>
     <string name="settings_density">Density</string>
     <string name="settings_date_format">Date format</string>

@@ -126,6 +126,7 @@ enum class SettingsGroup(val route: String, private val titleRes: Int) {
     Reading("reading", R.string.settings_reading),
     Compose("compose", R.string.compose_new),
     Appearance("appearance", R.string.settings_appearance),
+    Layout("layout", R.string.settings_layout),
     Slower("slower", R.string.settings_slower),
     Debug("debug", R.string.settings_debug),
     ;
@@ -275,6 +276,7 @@ fun SettingsGroupScreen(
     onOpenViews: () -> Unit,
     onOpenStarts: () -> Unit,
     onCopyContacts: () -> Unit,
+    onOpenPanel: (String) -> Unit = {},
 ) {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
@@ -285,6 +287,7 @@ fun SettingsGroupScreen(
         SettingsGroup.Reading -> ReadingGroup(editor)
         SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts)
         SettingsGroup.Appearance -> AppearanceGroup(editor)
+        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
         SettingsGroup.Slower -> SlowerGroup(editor)
         SettingsGroup.Debug -> DebugGroup(editor)
     }
@@ -1517,6 +1520,21 @@ private fun AppearanceGroup(editor: SettingsEditor) {
                     editor.persist(editor.settings.copy(datePattern = it))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
+    val sections = rememberSectionOpen("panes")
+    val settings = editor.settings
+    SettingsPage {
+        SettingsSection(
+            title = stringResource(R.string.settings_panes),
+            summary = layoutOffOn(settings),
+            expanded = "panes" in sections.open,
+            onToggle = { sections.toggle("panes") },
+        ) {
             ChoiceField(
                 stringResource(R.string.settings_multi_pane),
                 MultiPane.entries,
@@ -1525,9 +1543,37 @@ private fun AppearanceGroup(editor: SettingsEditor) {
             ) {
                 editor.persist(editor.settings.copy(multiPane = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_folder_pane),
+                LayoutChoice.entries,
+                settings.folderPane,
+                { layoutChoiceName(it) },
+            ) {
+                editor.persist(editor.settings.copy(folderPane = it))
+            }
+            ChoiceField(
+                stringResource(R.string.settings_fold_posture),
+                LayoutChoice.entries,
+                settings.foldPosture,
+                { layoutChoiceName(it) },
+            ) {
+                editor.persist(editor.settings.copy(foldPosture = it))
+            }
             BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
                 editor.persist(editor.settings.copy(fullScreen = it))
             }
+        }
+        SettingsSection(
+            title = stringResource(R.string.settings_panels),
+            summary = stringResource(R.string.settings_panels),
+            expanded = "panels" in sections.open,
+            onToggle = { sections.toggle("panels") },
+        ) {
+            OpenRow(stringResource(R.string.settings_panel_index)) { onOpenPanel("index") }
+            OpenRow(stringResource(R.string.settings_panel_selection)) { onOpenPanel("selection") }
+            OpenRow(stringResource(R.string.settings_panel_folders)) { onOpenPanel("folders") }
+            OpenRow(stringResource(R.string.settings_panel_reader)) { onOpenPanel("reader") }
+            OpenRow(stringResource(R.string.settings_panel_compose)) { onOpenPanel("compose") }
         }
     }
 }
@@ -1760,6 +1806,7 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
     SettingsGroup.Appearance -> themeName(settings.theme)
+    SettingsGroup.Layout -> layoutOffOn(settings)
     SettingsGroup.Slower -> stringResource(
         if (
             settings.clientSort ||
@@ -2144,6 +2191,28 @@ private fun multiPaneName(mode: MultiPane): String = stringResource(
     when (mode) {
         MultiPane.Off -> R.string.settings_multi_pane_off
         MultiPane.Wide -> R.string.settings_multi_pane_wide
+    },
+)
+
+@Composable
+private fun layoutChoiceName(choice: LayoutChoice): String = stringResource(
+    when (choice) {
+        LayoutChoice.Off -> R.string.settings_multi_pane_off
+        LayoutChoice.On -> R.string.settings_multi_pane_wide
+    },
+)
+
+@Composable
+private fun layoutOffOn(settings: AccountSettings): String = stringResource(
+    if (
+        settings.multiPane == MultiPane.Off &&
+        settings.folderPane == LayoutChoice.Off &&
+        settings.foldPosture == LayoutChoice.Off &&
+        !settings.fullScreen
+    ) {
+        R.string.settings_multi_pane_off
+    } else {
+        R.string.settings_multi_pane_wide
     },
 )
 

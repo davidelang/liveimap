@@ -133,6 +133,23 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun layoutChoiceOffRoundTrip() {
+        val text = AccountSettings().encode()
+        assertFalse(text.contains("folderPane="))
+        assertFalse(text.contains("foldPosture="))
+        val offText = text.trimEnd() + "\nfolderPane=Off\nfoldPosture=Off\n"
+        val off = decodeAccountSettings(offText)
+        assertEquals(LayoutChoice.Off, off.folderPane)
+        assertEquals(LayoutChoice.Off, off.foldPosture)
+        val on = AccountSettings(folderPane = LayoutChoice.On, foldPosture = LayoutChoice.On).encode()
+        assertTrue(on.contains("folderPane=On"))
+        assertTrue(on.contains("foldPosture=On"))
+        val decoded = decodeAccountSettings(on)
+        assertEquals(LayoutChoice.On, decoded.folderPane)
+        assertEquals(LayoutChoice.On, decoded.foldPosture)
+    }
+
+    @Test
     fun sieveEndpointRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("sieveHost="))
