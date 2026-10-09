@@ -2628,3 +2628,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Record JMAP capability combinations
 
 - jmapCapabilityChoice reports mail, submission, folders, and send from capability ids. JmapCapabilityChoiceTest lists the rows and is compiled, not run.
+
+## 2026-10-09 - started local GreenMail and Stalwart containers on random high ports.
