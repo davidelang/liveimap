@@ -2598,3 +2598,12 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 5a26a2f
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Refuse a lab login that is not allowlisted
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/login-guard-20261008-1926-plan.md
+- Work: a lab login proceeds only when the host:port pair is on the allowlist. The guard does not resolve a name or open a socket.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker. caps and seed were not run.
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 41ce425
+- Host: /home/dlang/git/liveimap/master
