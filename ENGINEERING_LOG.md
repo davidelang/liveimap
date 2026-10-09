@@ -2642,3 +2642,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 433c463
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-09 - Draw the folder pane and the fold hinge
+
+- Folder list pane stays beside an open index or message when that choice is on. Fold posture stacks those panes only for a horizontal hinge. Width does not turn either one on. PaneSplitTest is compiled and not executed.

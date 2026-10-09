@@ -32,4 +32,21 @@ class PaneSplitTest {
         assertTrue(useFoldPosture(LayoutChoice.On))
         assertFalse(useFoldPosture(LayoutChoice.Off))
     }
+
+    @Test
+    fun folderListStaysForIndexAndReaderOnly() {
+        assertFalse(showFolderPane(LayoutChoice.Off, "index/{mailbox}"))
+        assertFalse(showFolderPane(LayoutChoice.On, "folders"))
+        assertTrue(showFolderPane(LayoutChoice.On, "index/{mailbox}"))
+        assertTrue(showFolderPane(LayoutChoice.On, "reader/{mailbox}/{uid}/{sequence}"))
+        assertFalse(showFolderPane(LayoutChoice.On, "settings"))
+    }
+
+    @Test
+    fun horizontalHingeStacksOnlyWhenFoldIsOn() {
+        assertEquals(PaneAxis.SideBySide, paneAxis(false, false, true))
+        assertEquals(PaneAxis.SideBySide, paneAxis(true, true, false))
+        assertEquals(PaneAxis.SideBySide, paneAxis(true, true, true))
+        assertEquals(PaneAxis.TopBottom, paneAxis(true, false, true))
+    }
 }

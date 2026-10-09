@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -35,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -123,8 +126,17 @@ private class PendingCert(
 @Composable
 fun LiveImapNavHost() {
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
+    var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
+    var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
     val split = useMultiPane(multiPane)
     val splitNow = rememberUpdatedState(split)
+    val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
+    val axis = paneAxis(
+        foldOn = useFoldPosture(foldPosture),
+        hingeVertical = hinges.firstOrNull()?.isVertical == true,
+        hingePresent = hinges.isNotEmpty(),
+    )
+    val axisNow = rememberUpdatedState(axis)
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
@@ -198,6 +210,7 @@ fun LiveImapNavHost() {
     var userSized by rememberSaveable { mutableStateOf(false) }
     var drawerWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
+    var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
         if (!split) {
             { scope.launch { drawerState.open() } }
@@ -219,6 +232,8 @@ fun LiveImapNavHost() {
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
         multiPane = account.multiPane
+        folderPane = account.folderPane
+        foldPosture = account.foldPosture
         accounts = store.listAccounts()
         drawerAccounts = store.listDrawerAccounts()
     }
@@ -285,6 +300,7 @@ fun LiveImapNavHost() {
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
                 val mailbox = Uri.decode(encoded)
                 val useSplit = splitNow.value
+                val useAxis = axisNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
                 var paneSequence by rememberSaveable { mutableIntStateOf(0) }
                 var contentSpan by remember { mutableFloatStateOf(0f) }
@@ -395,7 +411,8 @@ fun LiveImapNavHost() {
                 } else if (paneUid < 0L) {
                     IndexBody(shownViewToken, watch = true)
                 } else {
-                    DragSplit(
+                    AxisSplit(
+                        axis = useAxis,
                         leadingDp = indexWidthDp,
                         fallback = { span -> ((span - 8f) / 2f).coerceAtLeast(0f) },
                         onSpan = { contentSpan = it },
@@ -878,9 +895,11 @@ fun LiveImapNavHost() {
         )
     }
 
-    LiveImapScaffold {
+    @Composable
+    fun DrawerScaffold() {
         if (split) {
-            DragSplit(
+            AxisSplit(
+                axis = axis,
                 leadingDp = drawerWidthDp,
                 fallback = { span ->
                     initialDrawerDp(span.roundToInt(), readerOpen).toFloat()
@@ -955,6 +974,45 @@ fun LiveImapNavHost() {
                     builder = navGraph,
                 )
             }
+        }
+    }
+    LiveImapScaffold {
+        if (showFolderPane(folderPane, route)) {
+            AxisSplit(
+                axis = axis,
+                leadingDp = folderWidthDp,
+                fallback = { span -> minOf(360f, span) },
+                onSpan = { _ -> },
+                onDrag = { delta, span ->
+                    val max = (span - 8f).coerceAtLeast(0f)
+                    val base = if (folderWidthDp < 0f) minOf(360f, span) else folderWidthDp
+                    folderWidthDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
+                },
+                leading = {
+                    FolderListScreen(
+                        onOpenMailbox = { mailbox ->
+                            navController.navigate("index/${Uri.encode(mailbox)}")
+                        },
+                        onCompose = { seed ->
+                            composeKindName.value = seed.kind.name
+                            composeMailbox.value = seed.mailbox.orEmpty()
+                            composeUids.value = seed.uids.joinToString(",")
+                            composeUnsentId.value = ""
+                            composeRetryOnOpen.value = false
+                            navController.navigate("compose")
+                        },
+                        onOpenUnsent = { navController.navigate("unsent") },
+                        onOpenHelp = { navController.navigate("help") },
+                        onCustomize = { navController.navigate("toolbar/folders") },
+                        focusMailbox = focusMailbox.value,
+                        focusToken = focusToken.value,
+                        onOpenDrawer = openDrawerState.value,
+                    )
+                },
+                trailing = { DrawerScaffold() },
+            )
+        } else {
+            DrawerScaffold()
         }
         val editing = editingFavorite
         if (editing != null) {
@@ -1240,6 +1298,21 @@ internal fun useFolderPane(choice: LayoutChoice): Boolean = choice == LayoutChoi
 
 internal fun useFoldPosture(choice: LayoutChoice): Boolean = choice == LayoutChoice.On
 
+internal enum class PaneAxis {
+    SideBySide,
+    TopBottom,
+}
+
+internal fun showFolderPane(choice: LayoutChoice, route: String?): Boolean {
+    return choice == LayoutChoice.On &&
+        (route == "index/{mailbox}" || route == "reader/{mailbox}/{uid}/{sequence}")
+}
+
+internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boolean): PaneAxis {
+    if (foldOn && hingePresent && !hingeVertical) return PaneAxis.TopBottom
+    return PaneAxis.SideBySide
+}
+
 internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean): Int {
     if (!readerOpen) return minOf(360, availableDp)
     return if (availableDp < 1000) 0 else 360
@@ -1307,6 +1380,86 @@ private fun DragSplit(
                     .semantics { contentDescription = label },
             )
         }
+    }
+}
+
+@Composable
+private fun StackSplit(
+    leadingDp: Float,
+    fallback: (Float) -> Float,
+    onSpan: (Float) -> Unit,
+    onDrag: (Float, Float) -> Unit,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val span = maxHeight.value
+        SideEffect { onSpan(span) }
+        val maxLeading = (span - 8f).coerceAtLeast(0f)
+        val raw = if (leadingDp < 0f) fallback(span) else leadingDp
+        val height = raw.coerceIn(0f, maxLeading).dp
+        val drag = rememberUpdatedState(onDrag)
+        val spanNow = rememberUpdatedState(span)
+        val density = LocalDensity.current
+        val densityNow = rememberUpdatedState(density)
+        val label = stringResource(R.string.pane_resize)
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                if (height > 0.dp) {
+                    Box(
+                        Modifier
+                            .height(height)
+                            .fillMaxWidth(),
+                    ) {
+                        leading()
+                    }
+                }
+                Box(
+                    Modifier
+                        .height(8.dp)
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                ) {
+                    trailing()
+                }
+            }
+            Box(
+                Modifier
+                    .offset(y = height + 4.dp - 24.dp)
+                    .height(48.dp)
+                    .fillMaxWidth()
+                    .zIndex(1f)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragPx ->
+                            drag.value(dragPx / densityNow.value.density, spanNow.value)
+                        }
+                    }
+                    .focusable()
+                    .semantics { contentDescription = label },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AxisSplit(
+    axis: PaneAxis,
+    leadingDp: Float,
+    fallback: (Float) -> Float,
+    onSpan: (Float) -> Unit,
+    onDrag: (Float, Float) -> Unit,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
+) {
+    if (axis == PaneAxis.SideBySide) {
+        DragSplit(leadingDp, fallback, onSpan, onDrag, leading, trailing)
+    } else {
+        StackSplit(leadingDp, fallback, onSpan, onDrag, leading, trailing)
     }
 }
 

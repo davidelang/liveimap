@@ -32,6 +32,8 @@ The compose More menu ends with Customize toolbar…. That screen moves Postpone
 
 Settings, Layout holds Multi-pane, the folder list pane, fold posture, and full screen. Each stays off until you turn it on. Window width does not turn a pane on. Layout opens the five toolbar editors.
 
+When Folder list pane is on, the folder list stays beside an open index or message. When Fold posture is on and the device reports a horizontal hinge, those panes stack. No hinge leaves them side by side. Width does not turn either one on.
+
 In Customize toolbar…, drag a row to change its order. Move up, Move down, and Move to stay on the row.
 
 Toolbar rows sets how many rows the bar may use. Actions that do not fit stay on the bar, and the last row scrolls.
