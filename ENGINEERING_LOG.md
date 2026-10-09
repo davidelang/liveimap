@@ -2588,3 +2588,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 5b7b282
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Add the lab corpus generator
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/corpus-generator-20261008-1918-plan.md
+- Work: write the base lab corpus generator, seed tables, and corpus-v1 sums. Scale messages are not written.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5a26a2f
+- Host: /home/dlang/git/liveimap/master
