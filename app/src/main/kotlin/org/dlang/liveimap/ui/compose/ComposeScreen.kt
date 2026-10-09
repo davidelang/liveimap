@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -1135,7 +1136,7 @@ private fun ComposeLoaded(
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("smoke-compose"),
         topBar = {
             TopAppBar(
                 title = {
@@ -1579,7 +1580,10 @@ private fun ComposeLoaded(
             onDismissRequest = { discardOpen = false },
             title = { Text(stringResource(R.string.compose_discard_title)) },
             confirmButton = {
-                TextButton(onClick = { onDone() }) { Text(stringResource(R.string.unsent_discard)) }
+                TextButton(
+                    onClick = { onDone() },
+                    modifier = Modifier.testTag("smoke-compose-discard"),
+                ) { Text(stringResource(R.string.unsent_discard)) }
             },
             dismissButton = {
                 Row {

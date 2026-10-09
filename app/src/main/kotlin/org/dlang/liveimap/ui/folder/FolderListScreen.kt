@@ -73,6 +73,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -118,6 +119,7 @@ import org.dlang.liveimap.session.folderMessageCount
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
+import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
@@ -192,8 +194,29 @@ fun FolderListScreen(
     LaunchedEffect(Unit) {
         accountId = store.chosenAccountId()
     }
+    val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val id = accountId
-    if (id.isNullOrEmpty()) return
+    if (id.isNullOrEmpty()) {
+        if (smoke) {
+            Box(Modifier.fillMaxSize().testTag("smoke-folders"))
+        }
+        return
+    }
+    if (smoke) {
+        FolderListLoaded(
+            accountId = id,
+            store = store,
+            onOpenMailbox = onOpenMailbox,
+            onCompose = onCompose,
+            onOpenUnsent = onOpenUnsent,
+            onOpenHelp = onOpenHelp,
+            onCustomize = onCustomize,
+            focusMailbox = focusMailbox,
+            focusToken = focusToken,
+            onOpenDrawer = onOpenDrawer,
+        )
+        return
+    }
     var routeReady by remember(id) { mutableStateOf(false) }
     var jmapModel by remember(id) { mutableStateOf<JmapFolderScreenModel?>(null) }
     var gaveUp by remember(id) { mutableStateOf(false) }
@@ -260,6 +283,7 @@ private fun FolderListLoaded(
     onOpenDrawer: (() -> Unit)? = null,
 ) {
     val appContext = LocalContext.current.applicationContext
+    val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
@@ -358,6 +382,7 @@ private fun FolderListLoaded(
     }
 
     LaunchedEffect(session, loadToken) {
+        if (smoke) return@LaunchedEffect
         val reuse = held.levelReady && !refreshListed && loadToken == 0
         unsentCount = readCopies(appContext, accountId).size
         if (!reuse) {
@@ -766,12 +791,12 @@ private fun FolderListLoaded(
         },
         contentWindowInsets = mailScreenInsets(),
     ) { padding ->
-    Box(Modifier.fillMaxSize().padding(padding)) {
+    Box(Modifier.fillMaxSize().padding(padding).testTag("smoke-folders")) {
     Column(modifier = Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState) {
             scope.launch {
                 try {
-                    session.resume()
+                    if (!smoke) session.resume()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {

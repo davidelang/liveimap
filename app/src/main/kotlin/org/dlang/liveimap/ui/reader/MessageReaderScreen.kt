@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -1350,7 +1351,7 @@ private fun MessageReaderLoaded(
         trashKnown,
     )
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("smoke-reader"),
         topBar = {
             TopAppBar(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },

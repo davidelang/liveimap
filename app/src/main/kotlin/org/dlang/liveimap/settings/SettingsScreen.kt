@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
@@ -252,7 +253,8 @@ fun SettingsGroupList(onOpen: (SettingsGroup) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            .testTag("smoke-settings"),
     ) {
         SettingsGroup.entries.forEach { group ->
             ListItem(

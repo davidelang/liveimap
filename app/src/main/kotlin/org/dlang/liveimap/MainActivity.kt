@@ -31,6 +31,7 @@ import org.dlang.liveimap.session.applyExtraIdle
 import org.dlang.liveimap.session.stopExtraIdle
 import org.dlang.liveimap.session.suspendMailSessions
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
 import org.dlang.liveimap.ui.compose.ComposeBackgroundSave
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (smokeLaunch(intent)) return
         lifecycleScope.launch {
             try {
                 applyExtraIdle(store.load())

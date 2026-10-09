@@ -20,6 +20,7 @@ android {
             )
         }.standardOutput.asText.orNull?.trim() ?: "dev"
         versionName = rawVersion
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -83,4 +84,9 @@ dependencies {
     implementation("sh.calvin.reorderable:reorderable:3.1.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

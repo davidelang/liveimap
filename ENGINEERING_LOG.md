@@ -2616,3 +2616,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 2bf6da6
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Add the instrumented smoke launch
+
+- A smoke launch returns before extra idle and does not open the folder session. SmokeTest compiles and is not executed.
