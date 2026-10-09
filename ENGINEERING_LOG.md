@@ -2607,3 +2607,12 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 41ce425
 - Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Record IMAP capability combinations
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/synthetic-capabilities-20261008-1930-plan.md
+- Work: capabilityChoice reports the existing kind values for a capability line. FakeImapServer can advertise that line. CapabilityChoiceTest lists the synthetic rows and is compiled, not run.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker. The test class was not executed.
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2bf6da6
+- Host: /home/dlang/git/liveimap/master

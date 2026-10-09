@@ -29,7 +29,10 @@ enum class FakeImapStep {
     ExpungeDuringFetch,
 }
 
-class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
+class FakeImapServer(
+    profile: FakeImapProfile,
+    private val capabilityLine: String = profile.capability,
+) : Closeable {
     private val listen = ServerSocket()
     private val running = AtomicBoolean(true)
     private val steps = ConcurrentLinkedQueue<FakeImapStep>()
@@ -141,7 +144,7 @@ class FakeImapServer(private val profile: FakeImapProfile) : Closeable {
     ) {
         when (command) {
             "CAPABILITY" -> {
-                send("* CAPABILITY ${profile.capability}")
+                send("* CAPABILITY $capabilityLine")
                 send("$tag OK")
             }
             "LOGIN" -> {
