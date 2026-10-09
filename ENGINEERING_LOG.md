@@ -2620,3 +2620,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Add the instrumented smoke launch
 
 - A smoke launch returns before extra idle and does not open the folder session. SmokeTest compiles and is not executed.
+
+## 2026-10-08 - Add the acceptance filter and report writer
+
+- selectCases, allowHost, allowUser, allowEntry, caseOutcome, and writeReport decide the suite window and the two report files. AcceptanceFilterTest compiles and is not executed.
