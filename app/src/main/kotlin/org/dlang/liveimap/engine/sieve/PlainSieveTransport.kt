@@ -256,6 +256,45 @@ suspend fun openImplicitSieve(host: String, port: Int, pin: String): PlainSieveT
     }
 }
 
+/** Opens, authenticates, and uploads liveimap. Does not SETACTIVE. A blank host or secret writes nothing. */
+suspend fun openAndDeliverLiveimap(
+    host: String,
+    port: Int,
+    mode: TlsMode,
+    pin: String,
+    username: String,
+    password: String,
+    script: String,
+    allowPlaintextAuth: Boolean,
+): String {
+    if (host.isBlank() || username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
+    val plaintextOk = mode != TlsMode.None || allowPlaintextAuth
+    val transport = when (mode) {
+        TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
+        TlsMode.Implicit -> openImplicitSieve(host, port, pin)
+    }
+    try {
+        val caps = when (mode) {
+            TlsMode.None -> readGreeting(transport)
+            TlsMode.StartTls -> {
+                requireAdvertisedStartTls(readGreeting(transport))
+                completeStartTls(transport, host, pin)
+            }
+            TlsMode.Implicit -> readGreeting(transport)
+        }
+        return authenticateAndUpload(
+            transport,
+            caps,
+            script,
+            username,
+            password,
+            plaintextOk,
+        )
+    } finally {
+        transport.close()
+    }
+}
+
 /** Greeting for the account TLS mode. Does not authenticate and does not upload a script. */
 suspend fun greetSieve(host: String, port: Int, mode: TlsMode, pin: String): SieveCapabilities {
     when (mode) {

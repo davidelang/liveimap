@@ -39,10 +39,13 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
+import org.dlang.liveimap.engine.sieve.SieveFailure
 import org.dlang.liveimap.engine.sieve.SystemFlag
 import org.dlang.liveimap.engine.sieve.emitSieve
+import org.dlang.liveimap.engine.sieve.openAndDeliverLiveimap
 import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.sieveEndpoint
 
 @Composable
 fun FilterListScreen(onOpen: (Int) -> Unit) {
@@ -50,6 +53,8 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
     val store = remember { DataStoreSettingsStore(appContext) }
     val scope = rememberCoroutineScope()
     var rules by remember { mutableStateOf<List<InboundRule>?>(null) }
+    var uploading by remember { mutableStateOf(false) }
+    var uploadReport by remember { mutableStateOf("") }
     LifecycleStartEffect(store) {
         val job = scope.launch {
             val loaded = try {
@@ -65,6 +70,7 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
     }
     val loaded = rules ?: return
     val script = emitSieve(loaded)
+    val uploaded = stringResource(R.string.filter_uploaded)
     Column(
         Modifier
             .fillMaxSize()
@@ -93,6 +99,46 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                 text = script,
                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
                 fontFamily = FontFamily.Monospace,
+            )
+        }
+        TextButton(
+            onClick = {
+                if (uploading) return@TextButton
+                uploading = true
+                uploadReport = ""
+                scope.launch {
+                    try {
+                        val account = store.load()
+                        val password = store.password()
+                        val (host, port) = sieveEndpoint(account)
+                        val warning = openAndDeliverLiveimap(
+                            host,
+                            port,
+                            account.tlsMode,
+                            account.certPin,
+                            account.username,
+                            password,
+                            emitSieve(account.inboundRules),
+                            account.allowPlaintextAuth,
+                        )
+                        uploadReport = if (warning.isEmpty()) uploaded else warning
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (failure: SieveFailure) {
+                        uploadReport = failure.text
+                    } finally {
+                        uploading = false
+                    }
+                }
+            },
+            enabled = !uploading,
+        ) {
+            Text(stringResource(R.string.filter_upload))
+        }
+        if (uploadReport.isNotEmpty()) {
+            Text(
+                text = uploadReport,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             )
         }
     }

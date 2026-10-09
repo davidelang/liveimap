@@ -553,6 +553,154 @@ class ManageSieveTest {
         assertEquals(2, later.written.size)
         assertTrue(later.written.none { it.contains("secret") })
     }
+
+    @Test
+    fun uploadAuthenticatesWithCramThenPutsLiveimap() = runBlocking {
+        val script = "keep;\n"
+        val transport = ListTransport(
+            listOf(
+                "\"PDEyMzRAZXhhbXBsZS5jb20+\"",
+                "OK",
+                "OK",
+                "OK (WARNINGS) \"note\"",
+                "OK",
+            ),
+        )
+        val warning = authenticateAndUpload(
+            transport,
+            SieveCapabilities(sasl = listOf("CRAM-MD5", "PLAIN")),
+            script,
+            "ada",
+            "secret",
+            plaintextOk = false,
+        )
+        assertEquals("note", warning)
+        assertEquals(
+            listOf(
+                "AUTHENTICATE \"CRAM-MD5\"",
+                "\"YWRhIDJiNjhkODE1ZDI3MTM4ZTQ0ODk1Nzc5ZmI3MThiZDM3\"",
+                "CHECKSCRIPT {6+}",
+                "PUTSCRIPT \"liveimap\" {6+}",
+                "LOGOUT",
+            ),
+            transport.written,
+        )
+        assertTrue(transport.written.none { it.startsWith("SETACTIVE") })
+    }
+
+    @Test
+    fun uploadAuthenticatesWithPlainWhenPlaintextIsAllowed() = runBlocking {
+        val script = "keep;\n"
+        val transport = ListTransport(listOf("OK", "OK", "OK", "OK"))
+        assertEquals(
+            "",
+            authenticateAndUpload(
+                transport,
+                SieveCapabilities(sasl = listOf("PLAIN")),
+                script,
+                "ada",
+                "secret",
+                plaintextOk = true,
+            ),
+        )
+        assertEquals(
+            listOf(
+                "AUTHENTICATE \"PLAIN\" \"AGFkYQBzZWNyZXQ=\"",
+                "CHECKSCRIPT {6+}",
+                "PUTSCRIPT \"liveimap\" {6+}",
+                "LOGOUT",
+            ),
+            transport.written,
+        )
+        assertTrue(transport.written.none { it.startsWith("SETACTIVE") })
+    }
+
+    @Test
+    fun uploadRefusesPlainWhenPlaintextIsOff() = runBlocking {
+        val transport = ListTransport(emptyList())
+        try {
+            authenticateAndUpload(
+                transport,
+                SieveCapabilities(sasl = listOf("PLAIN")),
+                "keep;\n",
+                "ada",
+                "secret",
+                plaintextOk = false,
+            )
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), transport.written)
+        assertTrue(transport.writtenBytes.isEmpty())
+    }
+
+    @Test
+    fun uploadRefusesAnUnchosenMechanism() = runBlocking {
+        val transport = ListTransport(emptyList())
+        try {
+            authenticateAndUpload(
+                transport,
+                SieveCapabilities(sasl = listOf("OAUTHBEARER")),
+                "keep;\n",
+                "ada",
+                "secret",
+                plaintextOk = true,
+            )
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), transport.written)
+        assertTrue(transport.writtenBytes.isEmpty())
+    }
+
+    @Test
+    fun uploadRefusesAnEmptyUsername() = runBlocking {
+        val transport = ListTransport(emptyList())
+        try {
+            authenticateAndUpload(
+                transport,
+                SieveCapabilities(sasl = listOf("PLAIN")),
+                "keep;\n",
+                "",
+                "secret",
+                plaintextOk = true,
+            )
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("sasl", failure.text)
+        }
+        assertEquals(emptyList<String>(), transport.written)
+        assertTrue(transport.writtenBytes.isEmpty())
+    }
+
+    @Test
+    fun uploadStopsWhenCheckScriptFails() = runBlocking {
+        val transport = ListTransport(listOf("OK", "NO \"bad\""))
+        try {
+            authenticateAndUpload(
+                transport,
+                SieveCapabilities(sasl = listOf("PLAIN")),
+                "keep;\n",
+                "ada",
+                "secret",
+                plaintextOk = true,
+            )
+            fail("expected SieveFailure")
+        } catch (failure: SieveFailure) {
+            assertEquals("bad", failure.text)
+        }
+        assertEquals(
+            listOf(
+                "AUTHENTICATE \"PLAIN\" \"AGFkYQBzZWNyZXQ=\"",
+                "CHECKSCRIPT {6+}",
+            ),
+            transport.written,
+        )
+        assertTrue(transport.written.none { it.startsWith("PUTSCRIPT") })
+        assertTrue(transport.written.none { it.startsWith("SETACTIVE") })
+    }
 }
 
 private class ListTransport(

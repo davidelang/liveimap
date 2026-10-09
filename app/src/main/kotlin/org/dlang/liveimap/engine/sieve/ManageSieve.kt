@@ -275,6 +275,26 @@ suspend fun authenticateCramMd5(
     return commandResult(transport, transport.readLine())
 }
 
+/** Authenticates, checks, uploads liveimap, then logs out. Does not SETACTIVE. */
+suspend fun authenticateAndUpload(
+    transport: SieveLineTransport,
+    capabilities: SieveCapabilities,
+    script: String,
+    username: String,
+    password: String,
+    plaintextOk: Boolean,
+): String {
+    if (username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
+    when (chooseSieveSasl(capabilities.sasl, plaintextOk)) {
+        "CRAM-MD5" -> authenticateCramMd5(transport, username, password)
+        "PLAIN" -> authenticatePlain(transport, username, password)
+        else -> throw SieveFailure("sasl")
+    }
+    val warning = uploadLiveimap(transport, script)
+    logout(transport)
+    return warning
+}
+
 private fun hexLower(bytes: ByteArray): String {
     val digits = "0123456789abcdef"
     val out = StringBuilder(bytes.size * 2)
