@@ -2624,3 +2624,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-08 - Add the acceptance filter and report writer
 
 - selectCases, allowHost, allowUser, allowEntry, caseOutcome, and writeReport decide the suite window and the two report files. AcceptanceFilterTest compiles and is not executed.
+
+## 2026-10-08 - Record JMAP capability combinations
+
+- jmapCapabilityChoice reports mail, submission, folders, and send from capability ids. JmapCapabilityChoiceTest lists the rows and is compiled, not run.
