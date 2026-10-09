@@ -2650,3 +2650,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Publish the manual and explain the icons
 
 - A long press on a named icon explains that control and opens the online manual. The six pages and four images are in docs/manual. ManualLinkTest is compiled and not executed.
+
+## 2026-10-09 - Start the latest lab servers and create the base accounts.
