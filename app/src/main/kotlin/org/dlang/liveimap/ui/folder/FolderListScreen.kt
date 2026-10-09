@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -101,6 +100,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpExtendedFab
+import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.jmap.JmapFolderScreenModel
 import org.dlang.liveimap.jmap.JmapOffer
 import org.dlang.liveimap.jmap.folderOfferOrImap
@@ -648,7 +649,12 @@ private fun FolderListLoaded(
                     title = { Text(stringResource(R.string.folders_title)) },
                     navigationIcon = {
                         if (onOpenDrawer != null) {
-                            IconButton(onClick = onOpenDrawer) {
+                            HelpIconButton(
+                                label = stringResource(R.string.folders_menu),
+                                help = stringResource(R.string.help_folders_menu),
+                                page = "folders.html#menu",
+                                onClick = onOpenDrawer,
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.Menu,
                                     contentDescription = stringResource(R.string.folders_menu),
@@ -668,7 +674,12 @@ private fun FolderListLoaded(
                         for (action in folderBar.toolbar) {
                             when (action) {
                                 FolderBarAction.Refresh -> folderIcons.add {
-                                    IconButton(onClick = refreshFolderList) {
+                                    HelpIconButton(
+                                        label = stringResource(R.string.folders_refresh),
+                                        help = stringResource(R.string.help_folders_refresh),
+                                        page = "folders.html#refresh",
+                                        onClick = refreshFolderList,
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
                                             contentDescription = stringResource(R.string.folders_refresh),
@@ -707,7 +718,12 @@ private fun FolderListLoaded(
                             icons = folderIcons,
                         )
                         Box {
-                            IconButton(onClick = { moreMenu = true }) {
+                            HelpIconButton(
+                                label = stringResource(R.string.folders_more),
+                                help = stringResource(R.string.help_folders_more),
+                                page = "folders.html#more",
+                                onClick = { moreMenu = true },
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
                                     contentDescription = stringResource(R.string.folders_more),
@@ -947,14 +963,16 @@ private fun FolderListLoaded(
             }
         }
     }
-        ExtendedFloatingActionButton(
-            text = { Text(stringResource(R.string.folders_compose)) },
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.folders_compose)) },
+        HelpExtendedFab(
+            label = stringResource(R.string.folders_compose),
+            help = stringResource(R.string.help_folders_compose),
+            page = "folders.html#compose",
             onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
             expanded = !listState.isScrollInProgress,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.folders_compose)) },
         )
         SnackbarHost(
             hostState = snackbarHostState,

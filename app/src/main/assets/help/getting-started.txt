@@ -69,3 +69,5 @@ On a connection that is not encrypted, LiveIMAP asks before sending the password
 SMTP signs in with the same username and password. A clear-text SMTP password uses the same acceptance as IMAP.
 
 Settings, Sending, SMTP username overrides the IMAP username for SMTP. Blank uses the IMAP username. SMTP password overrides the IMAP password for SMTP. Blank uses the IMAP password.
+
+Help opens the online manual. A long press on an icon explains that control and opens the same manual.

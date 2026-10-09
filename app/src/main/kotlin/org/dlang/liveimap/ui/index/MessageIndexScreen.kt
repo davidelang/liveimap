@@ -49,7 +49,6 @@ import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -139,6 +138,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import org.dlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpExtendedFab
+import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
@@ -1871,7 +1872,12 @@ private fun MessageIndexLoaded(
                             )
                         }
                     } else {
-                        IconButton(onClick = { leaveIndex() }) {
+                        HelpIconButton(
+                            label = stringResource(R.string.index_back),
+                            help = stringResource(R.string.help_index_back),
+                            page = "messages.html#back",
+                            onClick = { leaveIndex() },
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.index_back),
@@ -1984,7 +1990,12 @@ private fun MessageIndexLoaded(
                             icons = selectionIcons,
                         )
                         Box {
-                            IconButton(onClick = { selectionMore = true }) {
+                            HelpIconButton(
+                                label = stringResource(R.string.index_more),
+                                help = stringResource(R.string.help_index_more),
+                                page = "messages.html#more",
+                                onClick = { selectionMore = true },
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
                                     contentDescription = stringResource(R.string.index_more),
@@ -2100,7 +2111,12 @@ private fun MessageIndexLoaded(
                         val barLayout = account.indexBar
                         if (!connected) {
                             if (IndexBarAction.Refresh in barLayout.toolbar) {
-                                IconButton(onClick = { refreshIndex() }) {
+                                HelpIconButton(
+                                    label = stringResource(R.string.index_refresh),
+                                    help = stringResource(R.string.help_index_refresh),
+                                    page = "messages.html#refresh",
+                                    onClick = { refreshIndex() },
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
                                         contentDescription = stringResource(R.string.index_refresh),
@@ -2114,7 +2130,12 @@ private fun MessageIndexLoaded(
                         for (action in barLayout.toolbar) {
                             when (action) {
                                 IndexBarAction.Refresh -> indexIcons.add {
-                                    IconButton(onClick = { refreshIndex() }) {
+                                    HelpIconButton(
+                                        label = stringResource(R.string.index_refresh),
+                                        help = stringResource(R.string.help_index_refresh),
+                                        page = "messages.html#refresh",
+                                        onClick = { refreshIndex() },
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
                                             contentDescription = stringResource(R.string.index_refresh),
@@ -2122,10 +2143,15 @@ private fun MessageIndexLoaded(
                                     }
                                 }
                                 IndexBarAction.Search -> indexIcons.add {
-                                    IconButton(onClick = {
-                                        searchFieldOpen = false
-                                        searchVisible = true
-                                    }) {
+                                    HelpIconButton(
+                                        label = stringResource(R.string.index_search),
+                                        help = stringResource(R.string.help_index_search),
+                                        page = "messages.html#search",
+                                        onClick = {
+                                            searchFieldOpen = false
+                                            searchVisible = true
+                                        },
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Filled.Search,
                                             contentDescription = stringResource(R.string.index_search),
@@ -2134,7 +2160,12 @@ private fun MessageIndexLoaded(
                                 }
                                 IndexBarAction.Filter -> indexIcons.add {
                                     Box {
-                                        IconButton(onClick = { filterOpen = true }) {
+                                        HelpIconButton(
+                                            label = stringResource(R.string.index_filter),
+                                            help = stringResource(R.string.help_index_filter),
+                                            page = "messages.html#filter",
+                                            onClick = { filterOpen = true },
+                                        ) {
                                             Icon(
                                                 imageVector = filterImage,
                                                 contentDescription = stringResource(R.string.index_filter),
@@ -2165,7 +2196,12 @@ private fun MessageIndexLoaded(
                         )
                 Box {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { menuOpen = true }) {
+                        HelpIconButton(
+                            label = stringResource(R.string.index_sort),
+                            help = stringResource(R.string.help_index_sort),
+                            page = "messages.html#sort",
+                            onClick = { menuOpen = true },
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.Sort,
                                 contentDescription = stringResource(R.string.index_sort),
@@ -2941,14 +2977,16 @@ private fun MessageIndexLoaded(
         }
         }
     }
-        ExtendedFloatingActionButton(
-            text = { Text(stringResource(R.string.index_compose)) },
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.index_compose)) },
+        HelpExtendedFab(
+            label = stringResource(R.string.index_compose),
+            help = stringResource(R.string.help_index_compose),
+            page = "messages.html#compose",
             onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
             expanded = !listState.isScrollInProgress,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
+            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.index_compose)) },
         )
         SnackbarHost(
             hostState = snackbarHostState,

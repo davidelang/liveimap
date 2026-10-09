@@ -2646,3 +2646,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Draw the folder pane and the fold hinge
 
 - Folder list pane stays beside an open index or message when that choice is on. Fold posture stacks those panes only for a horizontal hinge. Width does not turn either one on. PaneSplitTest is compiled and not executed.
+
+## 2026-10-09 - Publish the manual and explain the icons
+
+- A long press on a named icon explains that control and opens the online manual. The six pages and four images are in docs/manual. ManualLinkTest is compiled and not executed.

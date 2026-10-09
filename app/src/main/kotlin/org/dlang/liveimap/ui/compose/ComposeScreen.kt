@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import java.util.UUID
 import org.dlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpIconButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -1151,7 +1152,12 @@ private fun ComposeLoaded(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { requestClose() }) {
+                    HelpIconButton(
+                        label = stringResource(R.string.reader_back),
+                        help = stringResource(R.string.help_compose_back),
+                        page = "writing.html#back",
+                        onClick = { requestClose() },
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.reader_back),
@@ -1165,7 +1171,10 @@ private fun ComposeLoaded(
                             for (action in account.composeBar.toolbar) {
                                 when (action) {
                                     ComposeBarAction.Postpone -> composeIcons.add {
-                                        IconButton(
+                                        HelpIconButton(
+                                            label = stringResource(R.string.compose_postpone),
+                                            help = stringResource(R.string.help_compose_postpone),
+                                            page = "writing.html#postpone",
                                             onClick = { postponeDraft() },
                                             enabled = account.postponedMailbox.isNotEmpty(),
                                         ) {
@@ -1185,21 +1194,39 @@ private fun ComposeLoaded(
                         } else {
                             SideEffect { iconRows = 1 }
                         }
-                        IconButton(onClick = { sendMessage() }) {
-                            Icon(
-                                imageVector = Icons.Filled.Send,
-                                contentDescription = stringResource(
-                                    if (held?.appendOnly == true) {
-                                        R.string.reader_retry
-                                    } else {
-                                        R.string.compose_send
-                                    },
-                                ),
-                            )
+                        val sendDescription = if (held?.appendOnly == true) {
+                            R.string.reader_retry
+                        } else {
+                            R.string.compose_send
+                        }
+                        if (sendDescription == R.string.compose_send) {
+                            HelpIconButton(
+                                label = stringResource(R.string.compose_send),
+                                help = stringResource(R.string.help_compose_send),
+                                page = "writing.html#send",
+                                onClick = { sendMessage() },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Send,
+                                    contentDescription = stringResource(sendDescription),
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { sendMessage() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Send,
+                                    contentDescription = stringResource(sendDescription),
+                                )
+                            }
                         }
                         if (!deliveryDone) {
                             Box {
-                                IconButton(onClick = { overflow = true }) {
+                                HelpIconButton(
+                                    label = stringResource(R.string.reader_more),
+                                    help = stringResource(R.string.help_compose_more),
+                                    page = "writing.html#more",
+                                    onClick = { overflow = true },
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
                                         contentDescription = stringResource(R.string.reader_more),

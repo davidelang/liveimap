@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -95,9 +96,14 @@ fun HelpScreen() {
             }
         }
         if (missing || (started != null && bugReport != null)) {
-            TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_ISSUES_URL)))
-            }) { Text(reportBug) }
+            Row {
+                TextButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MANUAL_URL)))
+                }) { Text(stringResource(R.string.help_open_manual)) }
+                TextButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_ISSUES_URL)))
+                }) { Text(reportBug) }
+            }
             TextButton(onClick = {
                 scope.launch {
                     val settings = store.load()

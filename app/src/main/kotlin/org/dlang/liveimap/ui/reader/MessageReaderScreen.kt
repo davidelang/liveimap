@@ -115,6 +115,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.ui.compose.armForwardOnce
 import org.dlang.liveimap.session.ComposeSeed
@@ -1356,7 +1357,12 @@ private fun MessageReaderLoaded(
             TopAppBar(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    HelpIconButton(
+                        label = stringResource(R.string.reader_back),
+                        help = stringResource(R.string.help_reader_back),
+                        page = "reading.html#back",
+                        onClick = onBack,
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.reader_back),
@@ -1364,7 +1370,18 @@ private fun MessageReaderLoaded(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { headerExpanded = !headerExpanded }) {
+                    HelpIconButton(
+                        label = stringResource(
+                            if (headerExpanded) R.string.reader_collapse_header
+                            else R.string.reader_expand_header,
+                        ),
+                        help = stringResource(
+                            if (headerExpanded) R.string.help_reader_collapse_header
+                            else R.string.help_reader_expand_header,
+                        ),
+                        page = "reading.html#header",
+                        onClick = { headerExpanded = !headerExpanded },
+                    ) {
                         Icon(
                             imageVector = if (headerExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                             contentDescription = stringResource(
@@ -1375,7 +1392,18 @@ private fun MessageReaderLoaded(
                     }
                     DebugStatusIcon(debugStatus)
                     if (renderedHtml) {
-                        IconButton(onClick = { allowImages = !allowImages }) {
+                        HelpIconButton(
+                            label = stringResource(
+                                if (allowImages) R.string.reader_hide_images
+                                else R.string.reader_show_images,
+                            ),
+                            help = stringResource(
+                                if (allowImages) R.string.help_reader_hide_images
+                                else R.string.help_reader_show_images,
+                            ),
+                            page = "reading.html#images",
+                            onClick = { allowImages = !allowImages },
+                        ) {
                             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.Image,
@@ -1420,15 +1448,45 @@ private fun MessageReaderLoaded(
                             val reader = action.readerAction()
                             if (reader != null) {
                                 readerIcons.add {
-                                    IconButton(onClick = { runReaderAction(reader) }) {
-                                        Icon(
-                                            imageVector = readerActionImage(reader),
-                                            contentDescription = if (reader == ReaderAction.Delete) {
-                                                deletePolicyLabel(effectivePolicy)
-                                            } else {
-                                                readerActionName(reader)
-                                            },
-                                        )
+                                    val label = if (reader == ReaderAction.Delete) {
+                                        deletePolicyLabel(effectivePolicy)
+                                    } else {
+                                        readerActionName(reader)
+                                    }
+                                    val helpRes = when (reader) {
+                                        ReaderAction.Reply -> R.string.help_reader_reply
+                                        ReaderAction.ReplyAll -> R.string.help_reader_reply_all
+                                        ReaderAction.Forward -> R.string.help_reader_forward
+                                        ReaderAction.Delete -> R.string.help_reader_delete
+                                        else -> null
+                                    }
+                                    val helpPage = when (reader) {
+                                        ReaderAction.Reply,
+                                        ReaderAction.ReplyAll,
+                                        ReaderAction.Forward,
+                                        -> "reading.html#reply"
+                                        ReaderAction.Delete -> "reading.html#delete"
+                                        else -> null
+                                    }
+                                    if (helpRes != null && helpPage != null) {
+                                        HelpIconButton(
+                                            label = label,
+                                            help = stringResource(helpRes),
+                                            page = helpPage,
+                                            onClick = { runReaderAction(reader) },
+                                        ) {
+                                            Icon(
+                                                imageVector = readerActionImage(reader),
+                                                contentDescription = label,
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(onClick = { runReaderAction(reader) }) {
+                                            Icon(
+                                                imageVector = readerActionImage(reader),
+                                                contentDescription = label,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1440,7 +1498,12 @@ private fun MessageReaderLoaded(
                         icons = readerIcons,
                     )
                     Box {
-                IconButton(onClick = { moreMenu = true }) {
+                HelpIconButton(
+                    label = stringResource(R.string.reader_more),
+                    help = stringResource(R.string.help_reader_more),
+                    page = "reading.html#more",
+                    onClick = { moreMenu = true },
+                ) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = stringResource(R.string.reader_more),
