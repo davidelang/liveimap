@@ -30,12 +30,15 @@ class LabSuiteTest {
     private val args = InstrumentationRegistry.getArguments()
     private fun arg(k: String, d: String = "") = args.getString(k) ?: d
 
+    // Read at run time from the installed app: a constant would be inlined into the test APK at its build time.
+    private fun appCommit(): String = BuildConfig::class.java.getField("GIT_COMMIT").get(null) as String
+
     @Test
     fun imapSuite() = runBlocking {
         val host = arg("labHost")
         assumeTrue("no labHost argument", host.isNotEmpty())
         val expect = arg("labCommit")
-        if (expect.isNotEmpty()) assertEquals("installed build is not master HEAD", expect, BuildConfig.GIT_COMMIT)
+        if (expect.isNotEmpty()) assertEquals("installed build is not master HEAD", expect, appCommit())
         val port = arg("labPort").toInt()
         val tls = TlsMode.valueOf(arg("labTls", "None"))
         val server = arg("labServer", "lab")
@@ -45,7 +48,7 @@ class LabSuiteTest {
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
         TrafficRecorder.start(
             File(dir, "$run.jsonl"),
-            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, BuildConfig.GIT_COMMIT, "app", server, host, port, tls.name, "imap", "imapSuite"),
+            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, appCommit(), "app", server, host, port, tls.name, "imap", "imapSuite"),
         )
         val steps = StringBuilder("step\tresult\tdetail\n")
         LabTestHooks.set(host, arg("labPass"))

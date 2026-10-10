@@ -99,6 +99,10 @@ def head():
 
 def install(commit):
     # Approved emulator route: ./deploy emulator (never the Pixels), then the test APK on the emulator only.
+    # The test APK must be built at HEAD too; the build check runs from it.
+    r = sh(["./build_app", "--", "assembleDebugAndroidTest"], cwd=REPO)
+    if r.returncode:
+        sys.exit("test apk build failed:\n" + (r.stdout + r.stderr)[-800:])
     r = sh(["./deploy", "emulator"], cwd=REPO)
     if r.returncode:
         sys.exit("deploy emulator failed:\n" + r.stderr[-800:])
