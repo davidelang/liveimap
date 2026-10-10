@@ -140,21 +140,6 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * d
 const char * sniName(const char * host);
 extern thread_local std::string gTlsAlert;
 std::string tlsFailureReason();
-bool certificateVerdict(const std::string & text);
-thread_local std::string gTlsState;
-
-// The reason a TLS handshake failed: the OpenSSL error (e.g. "dh key too small"), else the alert, else the last state.
-std::string tlsFailureReason() {
-    std::string reason;
-    for (unsigned long e = ERR_get_error(); e != 0; e = ERR_get_error()) {
-        char buf[256];
-        ERR_error_string_n(e, buf, sizeof buf);
-        reason = buf;  // keep the last (most specific) entry
-    }
-    if (reason.empty()) reason = gTlsAlert;
-    if (reason.empty()) reason = gTlsState;
-    return reason;
-}
 
 namespace {
 
@@ -4522,6 +4507,20 @@ const char * sniName(const char * host) {
 
 // Last TLS alert or handshake state on this thread, for the error text when a handshake fails.
 thread_local std::string gTlsAlert;
+thread_local std::string gTlsState;
+
+// The reason a TLS handshake failed: the OpenSSL error (e.g. "dh key too small"), else the alert, else the last state.
+std::string tlsFailureReason() {
+    std::string reason;
+    for (unsigned long e = ERR_get_error(); e != 0; e = ERR_get_error()) {
+        char buf[256];
+        ERR_error_string_n(e, buf, sizeof buf);
+        reason = buf;  // keep the last (most specific) entry
+    }
+    if (reason.empty()) reason = gTlsAlert;
+    if (reason.empty()) reason = gTlsState;
+    return reason;
+}
 
 void recordTlsInfo(const ssl_st * s, int where, int ret) {
     constexpr int kAlert = 0x4000, kRead = 0x04, kExit = 0x02;
