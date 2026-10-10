@@ -2611,7 +2611,9 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
             *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
                 + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup)
-                + "; probe: " + saslStartProbe(mechanism, host) + ")";
+                + "; probe: " + mechanism + " " + saslStartProbe(mechanism, host)
+                + ", ANONYMOUS " + saslStartProbe("ANONYMOUS", host)
+                + ", CRAM-MD5 " + saslStartProbe("CRAM-MD5", host) + ")";
         }
         return false;
     }
