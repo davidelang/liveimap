@@ -89,6 +89,9 @@ struct stack_st;
 extern "C" {
 long SSL_CTX_ctrl(ssl_ctx_st * ctx, int cmd, long larg, void * parg);
 unsigned long ERR_get_error(void);
+void SSL_CTX_set_info_callback(ssl_ctx_st * ctx, void (* cb)(const ssl_st *, int, int));
+const char * SSL_alert_desc_string_long(int value);
+const char * SSL_state_string_long(const ssl_st * s);
 void ERR_error_string_n(unsigned long e, char * buf, size_t len);
 void SSL_CTX_set_verify(ssl_ctx_st * ctx, int mode, int (* callback)(int, x509_store_ctx_st *));
 int X509_STORE_CTX_get_error_depth(x509_store_ctx_st * ctx);
@@ -133,6 +136,7 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
 std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
+extern thread_local std::string gTlsAlert;
 
 namespace {
 
@@ -2686,6 +2690,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             ERR_error_string_n(e, buf, sizeof buf);
             reason = buf;  // keep the last (most specific) entry
         }
+        if (reason.empty()) reason = gTlsAlert;
         if (error->empty()) *error = "TLS handshake failed";
         if (capture.ders.empty()) *error += reason.empty() ? " (TLS handshake failed)" : " (TLS handshake failed: " + reason + ")";
         rejectImap(imap);
@@ -4486,12 +4491,26 @@ const char * sniName(const char * host) {
     return host;
 }
 
+// Last TLS alert or handshake state on this thread, for the error text when a handshake fails.
+thread_local std::string gTlsAlert;
+
+void recordTlsInfo(const ssl_st * s, int where, int ret) {
+    constexpr int kAlert = 0x4000, kRead = 0x04, kExit = 0x02;
+    if (where & kAlert) {
+        gTlsAlert = std::string((where & kRead) ? "server alert: " : "client alert: ") + SSL_alert_desc_string_long(ret);
+    } else if ((where & kExit) && ret <= 0 && gTlsAlert.empty()) {
+        gTlsAlert = std::string("stopped in ") + SSL_state_string_long(s);
+    }
+}
+
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) {
     if (ssl_context == nullptr) return;
+    gTlsAlert.clear();
     auto * ctx = static_cast<ssl_ctx_st *>(mailstream_ssl_get_openssl_ssl_ctx(ssl_context));
     if (ctx == nullptr) return;
     SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls12Version, nullptr);
     SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
+    SSL_CTX_set_info_callback(ctx, recordTlsInfo);
 }
 
 std::string utf8FromJava(JNIEnv * env, jstring value) {
