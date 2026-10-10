@@ -14,7 +14,7 @@ Back returns to the folder list.
 
 ## Search
 
-Search searches this folder. Subject is the usual field. Full text is a separate, slower search.
+Search searches this folder. Subject is the usual field. Full text is a separate, slower search. Advanced search can ask the server for a fuzzy match when the server advertises `SEARCH=FUZZY`, and the switch stays off when it does not.
 
 ## Sort
 

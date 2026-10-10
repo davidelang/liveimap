@@ -155,6 +155,7 @@ private fun AdvancedSearchLoaded(
     onBack: () -> Unit,
 ) {
     var combiner by remember { mutableStateOf(AdvancedCombiner.And) }
+    var fuzzyOn by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(listOf(AdvancedDraft("Subject", "", false))) }
     var openRow by remember { mutableIntStateOf(-1) }
     var scope by remember { mutableStateOf(SearchScope.Current) }
@@ -171,6 +172,7 @@ private fun AdvancedSearchLoaded(
     var savedOpen by remember { mutableStateOf(false) }
     var savedItems by remember { mutableStateOf<List<SavedAdvanced>>(emptyList()) }
     val session = remember(accountId) { mailSession(accountId) }
+    val fuzzyAdvertised = session.featureCaps.searchFuzzy
     val context = LocalContext.current
     fun encodedQuery(): String? {
         val kept = ArrayList<AdvancedStep>()
@@ -183,7 +185,7 @@ private fun AdvancedSearchLoaded(
             }
         }
         if (kept.isEmpty()) return null
-        return encodeAdvancedQuery(combiner, kept)
+        return encodeAdvancedQuery(combiner, kept, fuzzyAdvertised && fuzzyOn)
     }
     Scaffold(topBar = { UpTopAppBar(stringResource(R.string.index_search_advanced), onBack) }) { innerPadding ->
         Column(
@@ -208,6 +210,22 @@ private fun AdvancedSearchLoaded(
                     onClick = { combiner = AdvancedCombiner.Or },
                     label = { Text(stringResource(R.string.index_search_or)) },
                 )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.index_search_fuzzy))
+                Switch(
+                    checked = fuzzyAdvertised && fuzzyOn,
+                    onCheckedChange = { checked ->
+                        if (fuzzyAdvertised) fuzzyOn = checked
+                    },
+                    enabled = fuzzyAdvertised,
+                )
+            }
+            if (!fuzzyAdvertised) {
+                Text(stringResource(R.string.index_search_fuzzy_absent))
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(

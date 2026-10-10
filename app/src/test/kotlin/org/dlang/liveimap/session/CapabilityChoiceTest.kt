@@ -103,6 +103,17 @@ class CapabilityChoiceTest {
     }
 
     @Test
+    fun searchFuzzy() {
+        val line = "IMAP4rev1 SEARCH=FUZZY"
+        assertTrue(Capabilities.parse(line).searchFuzzy)
+        assertTrue(capabilityChoice(line).searchFuzzy)
+        assertFalse(capabilityChoice("IMAP4rev1 ESEARCH").searchFuzzy)
+        val dropped = Capabilities.parse(line).without(listOf("SEARCH=FUZZY"))
+        assertFalse(dropped.searchFuzzy)
+        assertFalse(capabilityChoice(dropped.names.joinToString(" ")).searchFuzzy)
+    }
+
+    @Test
     fun withoutSortAndEsearch() {
         val full = "IMAP4rev1 NAMESPACE UIDPLUS IDLE UNSELECT SORT THREAD=REFERENCES MOVE ESEARCH " +
             "LIST-EXTENDED LIST-STATUS ESORT SORT=DISPLAY PREVIEW BINARY QRESYNC CONDSTORE"

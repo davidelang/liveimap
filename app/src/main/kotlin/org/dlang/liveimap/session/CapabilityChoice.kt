@@ -18,6 +18,7 @@ data class CapabilityChoice(
     val idle: Boolean,
     val threadReferences: Boolean,
     val threadOrderedSubject: Boolean,
+    val searchFuzzy: Boolean,
 )
 
 fun capabilityChoice(line: String): CapabilityChoice {
@@ -40,5 +41,6 @@ fun capabilityChoice(line: String): CapabilityChoice {
         idle = caps.idle,
         threadReferences = caps.threadReferences,
         threadOrderedSubject = caps.threadOrderedSubject,
+        searchFuzzy = caps.searchFuzzy,
     )
 }

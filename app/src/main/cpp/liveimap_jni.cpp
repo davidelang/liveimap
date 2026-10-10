@@ -3530,7 +3530,7 @@ clist * takeEsearch(mailimap * imap) {
 
 bool scopeSource(const char * scopeName, const char ** source, bool * subtree);
 int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, const char * ret, bool withCharset,
-    struct mailimap_search_key * key, struct mailimap_response ** response);
+    bool fuzzy, struct mailimap_search_key * key, struct mailimap_response ** response);
 
 void freeScopeHits(clist * hits) {
     if (hits == nullptr) return;
@@ -3630,7 +3630,7 @@ bool scopeSendable(const char * scope, const char * home) {
 }
 
 jobjectArray runScopeSearch(JNIEnv * env, LiveSession * session, const char * scope, const char * home,
-    struct mailimap_search_key * key, jboolean withCharset) {
+    struct mailimap_search_key * key, jboolean withCharset, jboolean fuzzy) {
     if (key == nullptr || !scopeSendable(scope, home) || gJni.mailboxUids == nullptr || gJni.mailboxUidsInit == nullptr) {
         if (key != nullptr) mailimap_search_key_free(key);
         throwFailure(env, "search failed");
@@ -3638,7 +3638,7 @@ jobjectArray runScopeSearch(JNIEnv * env, LiveSession * session, const char * sc
         return nullptr;
     }
     struct mailimap_response * response = nullptr;
-    int r = sendEsearchIn(session->imap, scope, home, "ALL", withCharset == JNI_TRUE, key, &response);
+    int r = sendEsearchIn(session->imap, scope, home, "ALL", withCharset == JNI_TRUE, fuzzy == JNI_TRUE, key, &response);
     mailimap_search_key_free(key);
     if (r != MAILIMAP_NO_ERROR) {
         throwImap(env, session, r, "search failed");
@@ -3666,7 +3666,7 @@ jobjectArray runScopeSearch(JNIEnv * env, LiveSession * session, const char * sc
 }
 
 jlong runScopeCount(JNIEnv * env, LiveSession * session, const char * scope, const char * home,
-    struct mailimap_search_key * key, jboolean withCharset) {
+    struct mailimap_search_key * key, jboolean withCharset, jboolean fuzzy) {
     if (key == nullptr || !scopeSendable(scope, home)) {
         if (key != nullptr) mailimap_search_key_free(key);
         throwFailure(env, "search failed");
@@ -3674,7 +3674,7 @@ jlong runScopeCount(JNIEnv * env, LiveSession * session, const char * scope, con
         return -1;
     }
     struct mailimap_response * response = nullptr;
-    int r = sendEsearchIn(session->imap, scope, home, "COUNT", withCharset == JNI_TRUE, key, &response);
+    int r = sendEsearchIn(session->imap, scope, home, "COUNT", withCharset == JNI_TRUE, fuzzy == JNI_TRUE, key, &response);
     mailimap_search_key_free(key);
     if (r != MAILIMAP_NO_ERROR) {
         throwImap(env, session, r, "search failed");
@@ -3729,7 +3729,7 @@ int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     return r;
 }
 
-int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset,
+int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset, bool fuzzy,
     struct mailimap_search_key * key, struct mailimap_response ** response) {
     if (ret == nullptr) return MAILIMAP_ERROR_INVAL;
     if (strcasecmp(ret, "ALL") != 0 && strcasecmp(ret, "MIN") != 0 && strcasecmp(ret, "MAX") != 0
@@ -3763,6 +3763,35 @@ int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset,
         r = mailimap_astring_send(imap->imap_stream, "UTF-8");
         if (r != MAILIMAP_NO_ERROR) return r;
     }
+    if (fuzzy) {
+        r = sendWord(imap->imap_stream, "FUZZY", true);
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    r = mailimap_space_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_search_key_send(imap->imap_stream, key);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    return finishParsed(imap, response);
+}
+
+int sendUidSearch(mailimap * imap, bool withCharset, struct mailimap_search_key * key,
+    struct mailimap_response ** response) {
+    int r = mailimap_send_current_tag(imap);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "UID", false);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = sendWord(imap->imap_stream, "SEARCH", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (withCharset) {
+        r = sendWord(imap->imap_stream, "CHARSET", true);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_astring_send(imap->imap_stream, "UTF-8");
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    r = sendWord(imap->imap_stream, "FUZZY", true);
+    if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_search_key_send(imap->imap_stream, key);
@@ -3791,7 +3820,7 @@ bool scopeSource(const char * scopeName, const char ** source, bool * subtree) {
 }
 
 int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, const char * ret, bool withCharset,
-    struct mailimap_search_key * key, struct mailimap_response ** response) {
+    bool fuzzy, struct mailimap_search_key * key, struct mailimap_response ** response) {
     if (ret == nullptr || (strcmp(ret, "ALL") != 0 && strcmp(ret, "COUNT") != 0)) return MAILIMAP_ERROR_INVAL;
     const char * source = nullptr;
     bool subtree = false;
@@ -3829,6 +3858,10 @@ int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, co
         r = mailimap_space_send(imap->imap_stream);
         if (r != MAILIMAP_NO_ERROR) return r;
         r = mailimap_astring_send(imap->imap_stream, "UTF-8");
+        if (r != MAILIMAP_NO_ERROR) return r;
+    }
+    if (fuzzy) {
+        r = sendWord(imap->imap_stream, "FUZZY", true);
         if (r != MAILIMAP_NO_ERROR) return r;
     }
     r = mailimap_space_send(imap->imap_stream);
@@ -4159,10 +4192,10 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
 }
 
 jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key,
-    jboolean useEsearch, jboolean withCharset) {
+    jboolean useEsearch, jboolean withCharset, jboolean fuzzy) {
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendEsearch(session->imap, true, "ALL", withCharset == JNI_TRUE, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", withCharset == JNI_TRUE, fuzzy == JNI_TRUE, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -4170,6 +4203,33 @@ jlongArray completeSearch(JNIEnv * env, LiveSession * session, struct mailimap_s
             return nullptr;
         }
         clist * result = takeEsearch(session->imap);
+        bool ok = taggedOk(response);
+        mailimap_response_free(response);
+        if (!ok) {
+            if (result != nullptr) mailimap_search_result_free(result);
+            throwImap(env, session, r, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        jlongArray arr = uidArray(env, result);
+        if (result != nullptr) mailimap_search_result_free(result);
+        unlockSession(session);
+        return arr;
+    }
+    if (fuzzy == JNI_TRUE) {
+        struct mailimap_response * response = nullptr;
+        int r = sendUidSearch(session->imap, withCharset == JNI_TRUE, key, &response);
+        mailimap_search_key_free(key);
+        if (r != MAILIMAP_NO_ERROR) {
+            throwImap(env, session, r, "search failed");
+            unlockSession(session);
+            return nullptr;
+        }
+        clist * result = nullptr;
+        if (session->imap != nullptr && session->imap->imap_response_info != nullptr) {
+            result = session->imap->imap_response_info->rsp_search_result;
+            session->imap->imap_response_info->rsp_search_result = nullptr;
+        }
         bool ok = taggedOk(response);
         mailimap_response_free(response);
         if (!ok) {
@@ -4217,7 +4277,7 @@ jlongArray runEdgeSearch(JNIEnv * env, LiveSession * session, struct mailimap_se
     }
     if (useEsearch) {
         struct mailimap_response * response = nullptr;
-        int r = sendEsearch(session->imap, byUid, ret, false, key, &response);
+        int r = sendEsearch(session->imap, byUid, ret, false, false, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -4308,11 +4368,12 @@ int listSubscribed(mailimap * imap, clist ** result) {
     return ok ? MAILIMAP_NO_ERROR : MAILIMAP_ERROR_LIST;
 }
 
-jlong completeCount(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean withCharset) {
+jlong completeCount(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean withCharset,
+    jboolean fuzzy) {
     session->esearchCount = -1;
     tlsLive = session;
     struct mailimap_response * response = nullptr;
-    int r = sendEsearch(session->imap, true, "COUNT", withCharset == JNI_TRUE, key, &response);
+    int r = sendEsearch(session->imap, true, "COUNT", withCharset == JNI_TRUE, fuzzy == JNI_TRUE, key, &response);
     tlsLive = nullptr;
     mailimap_search_key_free(key);
     if (r != MAILIMAP_NO_ERROR) {
@@ -5951,7 +6012,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     struct mailimap_search_key * key = mailimap_search_key_new_text(strdup(q.c()));
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendEsearch(session->imap, true, "ALL", true, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", true, false, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -6002,7 +6063,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv 
         unlockSession(session);
         return nullptr;
     }
-    return completeSearch(env, session, key, useEsearch, withCharset);
+    return completeSearch(env, session, key, useEsearch, withCharset, JNI_FALSE);
 }
 
 struct mailimap_search_key * advancedKey(JNIEnv * env, const char * combiner, jbooleanArray negated,
@@ -6076,7 +6137,7 @@ struct mailimap_search_key * advancedKey(JNIEnv * env, const char * combiner, jb
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv * env, jobject, jlong handle,
     jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
-    jboolean useEsearch, jboolean withCharset) {
+    jboolean useEsearch, jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -6088,7 +6149,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv *
         unlockSession(session);
         return nullptr;
     }
-    return completeSearch(env, session, key, useEsearch, withCharset);
+    return completeSearch(env, session, key, useEsearch, withCharset, fuzzy);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -6106,12 +6167,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionCount(JN
         unlockSession(session);
         return -1;
     }
-    return completeCount(env, session, key, withCharset);
+    return completeCount(env, session, key, withCharset, JNI_FALSE);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvancedCount(JNIEnv * env, jobject, jlong handle,
-    jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments, jboolean withCharset) {
+    jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments, jboolean withCharset,
+    jboolean fuzzy) {
     if (!ensureJni(env)) return -1;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return -1;
@@ -6123,13 +6185,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvancedCount(JNI
         unlockSession(session);
         return -1;
     }
-    return completeCount(env, session, key, withCharset);
+    return completeCount(env, session, key, withCharset, fuzzy);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScope(JNIEnv * env, jobject, jlong handle,
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
-    jboolean withCharset) {
+    jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -6143,13 +6205,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScope(JNIEnv * en
         unlockSession(session);
         return nullptr;
     }
-    return runScopeSearch(env, session, scopeChars.c(), homeChars.c(), key, withCharset);
+    return runScopeSearch(env, session, scopeChars.c(), homeChars.c(), key, withCharset, fuzzy);
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv * env, jobject, jlong handle,
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
-    jboolean withCharset) {
+    jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return -1;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return -1;
@@ -6163,7 +6225,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv
         unlockSession(session);
         return -1;
     }
-    return runScopeCount(env, session, scopeChars.c(), homeChars.c(), key, withCharset);
+    return runScopeCount(env, session, scopeChars.c(), homeChars.c(), key, withCharset, fuzzy);
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

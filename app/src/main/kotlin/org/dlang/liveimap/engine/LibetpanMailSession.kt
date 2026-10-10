@@ -580,6 +580,7 @@ class LibetpanMailSession : MailSession {
                     Array(parsed.steps.size) { parsed.steps[it].argument },
                     featureCaps.searchKind() == "Esearch",
                     withCharset,
+                    parsed.fuzzy,
                 )
             } else {
                 nativeSearchCriterion(
@@ -611,6 +612,7 @@ class LibetpanMailSession : MailSession {
                     Array(parsed.steps.size) { parsed.steps[it].kind },
                     Array(parsed.steps.size) { parsed.steps[it].argument },
                     withCharset,
+                    parsed.fuzzy,
                 )
             } else {
                 nativeSearchCriterionCount(h, kind, argument, withCharset)
@@ -641,6 +643,7 @@ class LibetpanMailSession : MailSession {
             Array(parsed.steps.size) { parsed.steps[it].kind },
             Array(parsed.steps.size) { parsed.steps[it].argument },
             withCharset,
+            parsed.fuzzy,
         ) ?: throw MailFailure("search failed")
         rows.toList()
     }
@@ -666,6 +669,7 @@ class LibetpanMailSession : MailSession {
             Array(parsed.steps.size) { parsed.steps[it].kind },
             Array(parsed.steps.size) { parsed.steps[it].argument },
             withCharset,
+            parsed.fuzzy,
         )
         if (count < 0L || count > Int.MAX_VALUE) throw MailFailure("search failed")
         count.toInt()
@@ -1101,6 +1105,7 @@ class LibetpanMailSession : MailSession {
         arguments: Array<String>,
         useEsearch: Boolean,
         withCharset: Boolean,
+        fuzzy: Boolean,
     ): LongArray?
 
     private external fun nativeSearchCriterionCount(
@@ -1117,6 +1122,7 @@ class LibetpanMailSession : MailSession {
         kinds: Array<String>,
         arguments: Array<String>,
         withCharset: Boolean,
+        fuzzy: Boolean,
     ): Long
 
     private external fun nativeSearchScope(
@@ -1128,6 +1134,7 @@ class LibetpanMailSession : MailSession {
         kinds: Array<String>,
         arguments: Array<String>,
         withCharset: Boolean,
+        fuzzy: Boolean,
     ): Array<MailboxUids>?
 
     private external fun nativeSearchScopeCount(
@@ -1139,6 +1146,7 @@ class LibetpanMailSession : MailSession {
         kinds: Array<String>,
         arguments: Array<String>,
         withCharset: Boolean,
+        fuzzy: Boolean,
     ): Long
 
     private external fun nativeSearchStart(

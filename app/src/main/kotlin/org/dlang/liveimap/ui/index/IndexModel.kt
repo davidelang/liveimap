@@ -59,11 +59,21 @@ data class AdvancedStep(
 data class AdvancedQuery(
     val combiner: AdvancedCombiner,
     val steps: List<AdvancedStep>,
+    val fuzzy: Boolean = false,
 )
 
-fun encodeAdvancedQuery(combiner: AdvancedCombiner, steps: List<AdvancedStep>): String? {
+fun encodeAdvancedQuery(
+    combiner: AdvancedCombiner,
+    steps: List<AdvancedStep>,
+    fuzzy: Boolean = false,
+): String? {
     val lines = ArrayList<String>(steps.size + 1)
-    lines.add(combiner.name)
+    val head = when {
+        fuzzy && combiner == AdvancedCombiner.And -> "And Fuzzy"
+        fuzzy && combiner == AdvancedCombiner.Or -> "Or Fuzzy"
+        else -> combiner.name
+    }
+    lines.add(head)
     for (step in steps) {
         if (step.kind.contains('\t') || step.kind.contains('\n')) return null
         if (step.argument.contains('\t') || step.argument.contains('\n')) return null
@@ -76,9 +86,25 @@ fun encodeAdvancedQuery(combiner: AdvancedCombiner, steps: List<AdvancedStep>): 
 fun parseAdvancedQuery(text: String): AdvancedQuery? {
     val lines = text.split('\n')
     if (lines.isEmpty()) return null
-    val combiner = when (lines[0]) {
-        AdvancedCombiner.And.name -> AdvancedCombiner.And
-        AdvancedCombiner.Or.name -> AdvancedCombiner.Or
+    val combiner: AdvancedCombiner
+    val fuzzy: Boolean
+    when (lines[0]) {
+        "And" -> {
+            combiner = AdvancedCombiner.And
+            fuzzy = false
+        }
+        "Or" -> {
+            combiner = AdvancedCombiner.Or
+            fuzzy = false
+        }
+        "And Fuzzy" -> {
+            combiner = AdvancedCombiner.And
+            fuzzy = true
+        }
+        "Or Fuzzy" -> {
+            combiner = AdvancedCombiner.Or
+            fuzzy = true
+        }
         else -> return null
     }
     val steps = ArrayList<AdvancedStep>(lines.size - 1)
@@ -96,7 +122,7 @@ fun parseAdvancedQuery(text: String): AdvancedQuery? {
         }
         steps.add(AdvancedStep(negated, parts[1], parts[2]))
     }
-    return AdvancedQuery(combiner, steps)
+    return AdvancedQuery(combiner, steps, fuzzy)
 }
 
 enum class SearchScope {

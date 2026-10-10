@@ -2660,3 +2660,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Stop lab containers at the end of a test run.
 
 ## 2026-10-09 - Pin libetpan to the BODY literal space fix.
+
+## 2026-10-09 - Send FUZZY from Advanced search.

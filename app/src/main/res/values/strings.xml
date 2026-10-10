@@ -595,6 +595,8 @@
     <string name="index_search_name">Name</string>
     <string name="index_search_and">And</string>
     <string name="index_search_or">Or</string>
+    <string name="index_search_fuzzy">Fuzzy</string>
+    <string name="index_search_fuzzy_absent">SEARCH=FUZZY is not advertised.</string>
     <string name="index_search_not">Not</string>
     <string name="index_search_add_term">Add term</string>
     <string name="index_search_remove_term">Remove</string>
