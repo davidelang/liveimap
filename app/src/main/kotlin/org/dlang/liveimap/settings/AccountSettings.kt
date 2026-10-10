@@ -301,9 +301,10 @@ enum class TlsMode {
     Implicit,
 }
 
-const val DefaultAskLimit = 5000
+const val DefaultAskLimit = -1
 
-fun overAskThreshold(exists: Int, threshold: Int): Boolean = exists > threshold
+fun overAskThreshold(exists: Int, threshold: Int): Boolean =
+    threshold >= 0 && exists > threshold
 
 data class AccountSettings(
     val imapHost: String = "",
@@ -560,7 +561,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when 5000, and ask skip sets when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -841,7 +842,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
     )
 }
 
-private fun parseAskLimit(value: String): Int = parseIntField(value).coerceIn(0, Int.MAX_VALUE)
+private fun parseAskLimit(value: String): Int {
+    val number = parseIntField(value)
+    if (number < 0) return -1
+    return number
+}
 
 fun sieveEndpoint(settings: AccountSettings): Pair<String, Int> {
     val host = if (settings.sieveHost.isBlank()) settings.imapHost else settings.sieveHost

@@ -2030,9 +2030,10 @@ private fun AskLimitField(
 }
 
 private fun askLimitDraft(draft: String): Boolean {
-    if (draft.isEmpty()) return true
-    if (draft.any { !it.isDigit() }) return false
-    if (draft.length > 10) return false
+    if (draft.isEmpty() || draft == "-") return true
+    val digits = if (draft.startsWith("-")) draft.drop(1) else draft
+    if (digits.isEmpty() || digits.any { !it.isDigit() }) return false
+    if (digits.length > 10) return false
     val number = draft.toLongOrNull() ?: return false
     return number <= Int.MAX_VALUE.toLong()
 }
@@ -2040,6 +2041,7 @@ private fun askLimitDraft(draft: String): Boolean {
 private fun askLimitCommit(draft: String): String? {
     if (draft.isEmpty() || !askLimitDraft(draft)) return null
     val number = draft.toLongOrNull() ?: return null
+    if (number < 0) return "-1"
     if (number > Int.MAX_VALUE.toLong()) return null
     return number.toInt().toString()
 }

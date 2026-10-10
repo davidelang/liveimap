@@ -350,7 +350,7 @@
     <string name="settings_ask_thread">Thread</string>
     <string name="settings_ask_search">Body or full-text search</string>
     <string name="settings_ask_fallback">Client-side fallback</string>
-    <string name="settings_ask_note">0 always asks. A very large number never asks.</string>
+    <string name="settings_ask_note">0 always asks. -1 never asks.</string>
     <string name="settings_default_view">Default view</string>
     <string name="settings_folder_view_sort">Folder view sort</string>
     <string name="settings_folder_view_newest">Folder view newest first</string>

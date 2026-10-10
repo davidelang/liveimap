@@ -2666,3 +2666,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Make the ask-before limits settings
 
 - Make the ask-before limits settings.
+
+## 2026-10-09 - Default the ask limits to never.
+
+- Default the ask limits to never.
