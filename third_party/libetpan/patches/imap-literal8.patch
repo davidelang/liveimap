@@ -1,0 +1,115 @@
+diff --git a/src/low-level/imap/mailimap_parser.c b/src/low-level/imap/mailimap_parser.c
+index 39ef9c1..edb8359 100644
+--- a/src/low-level/imap/mailimap_parser.c
++++ b/src/low-level/imap/mailimap_parser.c
+@@ -6365,6 +6365,10 @@ static int mailimap_literal_parse_progress(mailstream * fd, MMAPString * buffer,
+   use_msg_body_handler = (parser_ctx->msg_body_handler != NULL
+                           && parser_ctx->msg_body_parse_in_progress);
+   
++  /* RFC 3516 literal8: "~{" number "}" CRLF, sent in BINARY[...] fetch responses. */
++  if (cur_token + 1 < buffer->len && buffer->str[cur_token] == '~' && buffer->str[cur_token + 1] == '{')
++    cur_token ++;
++  
+   r = mailimap_oaccolade_parse(fd, buffer, parser_ctx, &cur_token);
+   if (r != MAILIMAP_NO_ERROR) {
+     res = r;
+diff --git a/unittest/Makefile b/unittest/Makefile
+index 9425271..e58de11 100644
+--- a/unittest/Makefile
++++ b/unittest/Makefile
+@@ -118,6 +118,7 @@ IMAP_TEST_SRCS = \
+ 	imap/body_literal_space_test.c \
+ 	imap/multiappend_test.c \
+ 	imap/binary_test.c \
++	imap/literal8_test.c \
+ 	imap/esearch_test.c \
+ 	imap/specialuse_test.c \
+ 	imap/list_status_test.c \
+diff --git a/unittest/imap/imap_tests.h b/unittest/imap/imap_tests.h
+index 43da025..bf96fd1 100644
+--- a/unittest/imap/imap_tests.h
++++ b/unittest/imap/imap_tests.h
+@@ -2,6 +2,7 @@
+ #define IMAP_TESTS_H
+ 
+ #include "binary_test.h"
++#include "literal8_test.h"
+ #include "body_literal_space_test.h"
+ #include "command_parameter_sender_test.h"
+ #include "command_sender_test.h"
+diff --git a/b/unittest/imap/literal8_test.c b/unittest/imap/literal8_test.c
+new file mode 100644
+index 0000000..cba9cd4
+--- /dev/null
++++ b/unittest/imap/literal8_test.c
+@@ -0,0 +1,46 @@
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++
++#include "literal8_test.h"
++#include "imap_test_utils.h"
++#include "mailimap.h"
++#include "mailimap_parser.h"
++
++/* RFC 3516 literal8, as Stalwart sends it in a BINARY fetch response (recorded 2026-10-10):
++   "* 1 FETCH (UID 1 BINARY[1]<0> ~{22}" CRLF, then 22 octets. */
++int imap_literal8_test_run(void)
++{
++  static const char body[] = "Lab message 1 body.\r\n\0";
++  const size_t body_len = 22;
++  MMAPString * buffer = mmap_string_new("~{22}\r\n");
++  mmap_string_append_len(buffer, body, body_len);
++  mmap_string_append(buffer, ")\r\n");
++  mailstream * stream = imap_test_stream_from_string("");
++  mailimap * session = mailimap_new(0, NULL);
++  struct mailimap_parser_context * ctx = mailimap_parser_context_new(session);
++  size_t cur = 0;
++  char * text = NULL;
++  size_t len = 0;
++  int r = mailimap_nstring_parse(stream, buffer, ctx, &cur, &text, &len, 0, NULL);
++  assert(r == MAILIMAP_NO_ERROR);
++  assert(len == body_len);
++  assert(memcmp(text, body, body_len) == 0);
++  assert(buffer->str[cur] == ')');
++  mailimap_nstring_free(text);
++
++  /* An ordinary literal still parses. */
++  MMAPString * plain = mmap_string_new("{3}\r\nabc)");
++  cur = 0;
++  r = mailimap_nstring_parse(stream, plain, ctx, &cur, &text, &len, 0, NULL);
++  assert(r == MAILIMAP_NO_ERROR && len == 3 && memcmp(text, "abc", 3) == 0);
++  mailimap_nstring_free(text);
++
++  mmap_string_free(plain);
++  mmap_string_free(buffer);
++  mailimap_parser_context_free(ctx);
++  mailimap_free(session);
++  mailstream_close(stream);
++  puts("literal8_test: ok");
++  return 0;
++}
+diff --git a/b/unittest/imap/literal8_test.h b/unittest/imap/literal8_test.h
+new file mode 100644
+index 0000000..a9469a5
+--- /dev/null
++++ b/unittest/imap/literal8_test.h
+@@ -0,0 +1,6 @@
++#ifndef LITERAL8_TEST_H
++#define LITERAL8_TEST_H
++
++int imap_literal8_test_run(void);
++
++#endif
+diff --git a/unittest/imap/main.c b/unittest/imap/main.c
+index a468a55..97fc0bf 100644
+--- a/unittest/imap/main.c
++++ b/unittest/imap/main.c
+@@ -13,6 +13,7 @@ int main(void)
+   imap_body_literal_space_test_run();
+   imap_multiappend_test_run();
+   imap_binary_test_run();
++  imap_literal8_test_run();
+   imap_esearch_test_run();
+   imap_specialuse_test_run();
+   imap_list_status_test_run();
