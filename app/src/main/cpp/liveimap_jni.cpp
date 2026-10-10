@@ -2540,9 +2540,25 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (!cmdOk(r)) {
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed");
+        if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
+            *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs() + ")";
+        }
         return false;
     }
     return true;
+}
+
+extern "C" const char ** sasl_global_listmech(void);
+
+// Client mechanisms the linked SASL library registered, for a local SASL failure.
+std::string saslClientMechs() {
+    const char ** list = sasl_global_listmech();
+    std::string out;
+    for (int i = 0; list != nullptr && list[i] != nullptr; i++) {
+        if (!out.empty()) out += ' ';
+        out += list[i];
+    }
+    return out.empty() ? "none" : out;
 }
 
 mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * user, const char * password,

@@ -16,7 +16,34 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 GEN = os.path.join(HERE, "generated")
 REC = os.path.join(HERE, "recordings")
 SERIAL = "emulator-5554"
-EMU_HOST = "10.0.2.2"  # the emulator's alias for the host loopback, where the lab ports publish
+
+
+def host_env():
+    env = {}
+    path = os.path.join(HERE, "host.env")
+    if os.path.exists(path):
+        for line in open(path):
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.strip().split("=", 1)
+                env[k] = v.strip().strip('"')
+    return env
+
+
+HOSTENV = host_env()
+LAB_HOST = HOSTENV.get("LAB_BIND", "")  # the host's LAN address; servers publish there, devices connect there
+if not LAB_HOST:
+    sys.exit("tools/test-servers/host.env needs LAB_BIND=<LAN IPv4> (see host.env.example)")
+EMU_HOST = LAB_HOST
+
+
+def up_commands():
+    cmds = {}
+    for line in open(os.path.join(HERE, "up.tsv")):
+        if line.startswith("#") or "\t" not in line:
+            continue
+        name, cmd = line.rstrip("\n").split("\t", 1)
+        cmds[name] = cmd
+    return cmds
 PKG = "org.dlang.liveimap"
 RUNNER = f"{PKG}.test/androidx.test.runner.AndroidJUnitRunner"
 USER, PASS = "liveimap", "liveimap-test"
@@ -51,7 +78,7 @@ def greeting(port, tls, timeout=180):
     end = time.time() + timeout
     while time.time() < end:
         try:
-            c = socket.create_connection(("127.0.0.1", port), 3)
+            c = socket.create_connection((LAB_HOST, port), 3)
             if tls:
                 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
                 c = ctx.wrap_socket(c)
@@ -85,6 +112,7 @@ def instrument(s, port, tls, run, commit):
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
          "-e", "labServer", s["name"], "-e", "labRun", run, "-e", "labCommit", commit,
+         "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
@@ -118,19 +146,25 @@ def run_one(s, commit, stamp, out):
     os.makedirs(dest, exist_ok=True)
     t0 = time.time()
     sh(["docker", "start", cont])
+    up = up_commands().get(cont)
+    if up:
+        sh(["docker", "exec", cont, "sh", "-c", up])
     try:
         if not greeting(s["imap"], False, 900 if cont in ALONE else 240):
             out.write(f"{name}\timap\t-\tfail\tno greeting\t{int(time.time()-t0)}\t{dest}\n")
+            out.flush()
             return
         modes = [("None", s["imap"])]
         if "imaps" in s and greeting(s["imaps"], True, 60):
             modes.append(("Implicit", s["imaps"]))
         lab = os.path.join(HERE, "lab_imap.py")
-        seed = sh([sys.executable, lab, "seed", "127.0.0.1", str(s["imap"]), user_for(s), PASS,
-                   "--allow", f"127.0.0.1:{s['imap']}", "--count", "60"])
+        seed = sh([sys.executable, lab, "seed", LAB_HOST, str(s["imap"]), user_for(s), PASS,
+                   "--allow", f"{LAB_HOST}:{s['imap']}", "--count", "60"])
         open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
-        caps = sh([sys.executable, lab, "caps", "127.0.0.1", str(s["imap"]), user_for(s), PASS,
-                   "--allow", f"127.0.0.1:{s['imap']}", "--record", os.path.join(dest, "caps.jsonl"),
+        folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
+        s["folder"] = folder
+        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(s["imap"]), user_for(s), PASS,
+                   "--allow", f"{LAB_HOST}:{s['imap']}", "--record", os.path.join(dest, "caps.jsonl"),
                    "--server-name", name, "--commit", commit, "--suite", "caps"])
         open(os.path.join(dest, "caps.txt"), "w").write(caps.stdout + caps.stderr[-500:])
         if "STARTTLS" in caps.stdout:

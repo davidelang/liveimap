@@ -48,7 +48,7 @@ class LabSuiteTest {
             TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, BuildConfig.GIT_COMMIT, "app", server, host, port, tls.name, "imap", "imapSuite"),
         )
         val steps = StringBuilder("step\tresult\tdetail\n")
-        LabTestHooks.password = arg("labPass")
+        LabTestHooks.set(host, arg("labPass"))
         val session = LibetpanMailSession()
         session.setCertConfirmer { true }
         session.setPlaintextConfirmer { true }
@@ -102,7 +102,7 @@ class LabSuiteTest {
         } finally {
             session.close()
             TrafficRecorder.stop()
-            LabTestHooks.password = null
+            LabTestHooks.clear()
             File(dir, "$run.steps.tsv").writeText(steps.toString())
         }
         assertEquals("failed steps:\n$steps", 0, failed)

@@ -1,0 +1,10 @@
+# container	command run with docker exec after docker start (the recipe's own launch step)
+liveimap-cyrus-22	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-cyrus-24	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-cyrus-25	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-cyrus-36	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-dovecot-10	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null >/tmp/dovecot.out 2>&1
+liveimap-dovecot-12	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null >/tmp/dovecot.out 2>&1
+liveimap-dovecot-22	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null >/tmp/dovecot.out 2>&1
+liveimap-courier-50	setsid /etc/init.d/courier-authdaemon start </dev/null >/tmp/courier-auth.out 2>&1; setsid /etc/init.d/courier-imap start </dev/null >/tmp/courier-imap.out 2>&1
+liveimap-uwimap	if [ -x /etc/init.d/openbsd-inetd ]; then setsid /etc/init.d/openbsd-inetd start </dev/null >/tmp/inetd.out 2>&1; else setsid /usr/sbin/inetd </dev/null >/tmp/inetd.out 2>&1; fi

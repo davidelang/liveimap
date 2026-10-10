@@ -120,7 +120,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun open(account: AccountSettings): OpenResult {
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
-        val password = LabTestHooks.password ?: try {
+        val password = LabTestHooks.passwordFor(account.imapHost) ?: try {
             DataStoreSettingsStore(context).password()
         } catch (error: Exception) {
             return OpenResult.Failed(error.message ?: "keystore unavailable")
