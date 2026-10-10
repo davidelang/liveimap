@@ -891,6 +891,110 @@ class PinercImportTest {
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
     }
+
+    @Test
+    fun exportRoundTrip() {
+        val leaf = FolderFavorite(node = false, mailbox = "Friends", delimiter = '.', label = "Work")
+        val account = AccountSettings(
+            imapHost = "imap.example.com",
+            imapPort = 993,
+            smtpHost = "smtp.example.com",
+            smtpPort = 465,
+            smtpUsername = "ada-smtp",
+            username = "ada",
+            displayName = "Ada Lovelace",
+            email = "ada@example.com",
+            sentMailbox = "Sent Mail",
+            postponedMailbox = "Later Mail",
+            addressBookMailbox = "Address Book",
+            addressBookHistory = 4,
+            altAddresses = listOf("ada@lang.hm"),
+            favorites = listOf(
+                leaf,
+                FolderFavorite(node = false, mailbox = "INBOX", delimiter = '.', label = "In"),
+                FolderFavorite(node = true, mailbox = "Archive", delimiter = '/', label = "Arc"),
+            ),
+            defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true),
+            inboxStart = StartRule.FirstUnseen,
+            savedMailbox = "Saved Mail",
+            saveNameRule = SaveNameRule.ByFrom,
+            threadIndexStyle = ThreadIndexStyle.Collapsed,
+            composerWrapColumn = 72,
+            askBeforeExpunge = false,
+            quellFlowed = true,
+            forwardAsAttachment = true,
+            bodyView = BodyView.PlainOrHtml,
+            dateFormat = DateFormat.Local,
+            autoExpunge = true,
+            tlsMode = TlsMode.Implicit,
+        )
+        val text = encodePinerc(account)
+        assertEquals(account, previewPinerc(text, account).next)
+        val blank = previewPinerc(text, AccountSettings())
+        assertEquals("ada", blank.next.username)
+        assertEquals("ada@example.com", blank.next.email)
+        assertEquals("Ada Lovelace", blank.next.displayName)
+        assertEquals(listOf("ada@lang.hm"), blank.next.altAddresses)
+        assertEquals("imap.example.com", blank.next.imapHost)
+        assertEquals(993, blank.next.imapPort)
+        assertEquals("smtp.example.com", blank.next.smtpHost)
+        assertEquals(465, blank.next.smtpPort)
+        assertEquals("ada-smtp", blank.next.smtpUsername)
+        assertEquals(TlsMode.Implicit, blank.next.tlsMode)
+        assertEquals("Sent Mail", blank.next.sentMailbox)
+        assertEquals("Later Mail", blank.next.postponedMailbox)
+        assertEquals("Address Book", blank.next.addressBookMailbox)
+        assertEquals(listOf(leaf), blank.next.favorites)
+        assertEquals(4, blank.next.addressBookHistory)
+        assertEquals(FolderView(SortKey.ThreadReferences, newestFirst = true), blank.next.defaultView)
+        assertEquals(StartRule.FirstUnseen, blank.next.inboxStart)
+        assertFalse(blank.next.askBeforeExpunge)
+        assertTrue(text.contains("default-saved-msg-folder"))
+        assertTrue(text.contains("saved-msg-name-rule=by-from"))
+        assertTrue(text.contains("threading-index-style=coll"))
+        assertTrue(text.contains("composer-wrap-column=72"))
+        val features = text.lines().first { it.startsWith("feature-list=") }
+        assertTrue(features.contains("quell-flowed-text"))
+        assertTrue(features.contains("forward-as-attachment"))
+        assertTrue(features.contains("render-html-internally"))
+        assertTrue(features.contains("convert-dates-to-localtime"))
+        assertTrue(text.contains("# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, threading-index-style, composer-wrap-column, or feature-list tokens other than the expunge confirm tokens."))
+        assertTrue(text.contains("# auto-expunge"))
+        for (line in text.lines()) {
+            if (line.isEmpty() || line.startsWith("#")) continue
+            assertFalse(line.substringBefore("=").contains("pass"))
+        }
+
+        val other = encodePinerc(
+            AccountSettings(
+                inboxStart = StartRule.Newest,
+                addressBookNeverTrim = true,
+                addressBookHistory = 9,
+                bodyView = BodyView.Headers,
+                dateFormat = DateFormat.Short,
+            ),
+        )
+        assertFalse(other.lines().any { it.startsWith("incoming-startup-rule=") })
+        assertFalse(other.lines().any { it.startsWith("remote-abook-history=") })
+        assertTrue(other.contains("# Newest"))
+        assertTrue(other.contains("# Never trim"))
+        assertTrue(other.contains("# body view: Headers"))
+        assertTrue(other.contains("# date format: Short"))
+
+        val submitText = encodePinerc(
+            AccountSettings(
+                imapHost = "imap.example.com",
+                smtpHost = "smtp.example.com",
+                smtpPort = 587,
+                username = "ada",
+                smtpUsername = "ada",
+                tlsMode = TlsMode.StartTls,
+            ),
+        )
+        val smtp = submitText.lines().first { it.startsWith("smtp-server=") }
+        assertTrue(smtp.contains("/tls/submit"))
+        assertFalse(smtp.contains("/user="))
+    }
 }
 
 internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(

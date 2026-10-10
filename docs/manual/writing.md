@@ -10,7 +10,7 @@ Compose starts a new message. Reply, Reply all, and Forward start from the open 
 
 ## Send
 
-Send sends the message. Settings, Sending, sets the wrap column and flowed text.
+Send sends the message. Settings, Sending, sets the wrap column and flowed text. Settings, Import, Export .pinerc writes a .pinerc from this account's settings and leaves passwords out.
 
 ## Postpone
 

@@ -4,6 +4,10 @@ import java.util.Locale
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
+import org.dlang.liveimap.ui.toolbar.defaultComposeBar
+import org.dlang.liveimap.ui.toolbar.defaultFolderBar
+import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 
 data class PinercPreview(
     val next: AccountSettings,
@@ -309,6 +313,86 @@ fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): AccountSe
     } else {
         preview.next
     }
+
+fun encodePinerc(settings: AccountSettings): String {
+    val lines = ArrayList<String>()
+    if (settings.inboxStart == StartRule.Newest) lines.add("# Newest")
+    if (settings.autoExpunge) lines.add("# auto-expunge")
+    if (settings.addressBookNeverTrim) lines.add("# Never trim")
+    if (settings.bodyView != BodyView.PlainOrError && settings.bodyView != BodyView.PlainOrHtml) {
+        lines.add("# body view: ${bodyViewLabel(settings.bodyView)}")
+    }
+    if (settings.dateFormat != DateFormat.Local) {
+        lines.add("# date format: ${dateFormatLabel(settings.dateFormat)}")
+    }
+    if (settings.readerBar != defaultReaderBar ||
+        settings.indexBar != defaultIndexBar() ||
+        settings.selectionBar != defaultSelectionBar() ||
+        settings.folderBar != defaultFolderBar() ||
+        settings.readerToolbar != null ||
+        settings.composeBar != defaultComposeBar() ||
+        settings.toolbarRows != 2
+    ) {
+        lines.add("# toolbar")
+    }
+    if (settings.folderPane != LayoutChoice.Off ||
+        settings.foldPosture != LayoutChoice.Off ||
+        settings.fullScreen
+    ) {
+        lines.add("# layout")
+    }
+    if (settings.multiPane != MultiPane.Off) lines.add("# multi-pane")
+    if (settings.emailSubmission) lines.add("# JMAP")
+    if (settings.sieveHost.isNotEmpty() ||
+        settings.sievePort != 4190 ||
+        settings.inboundRules.isNotEmpty()
+    ) {
+        lines.add("# Sieve")
+    }
+    if (settings.watchedFolders.isNotEmpty() || settings.extraIdleBudget != 2) {
+        lines.add("# watched folders")
+    }
+    if (settings.savedSearches.isNotEmpty() || settings.savedAdvanced.isNotEmpty()) {
+        lines.add("# saved searches")
+    }
+    lines.add(
+        "# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, " +
+            "threading-index-style, composer-wrap-column, or feature-list tokens other than " +
+            "the expunge confirm tokens.",
+    )
+
+    fun add(name: String, value: String) {
+        if (value.isEmpty()) return
+        lines.add("$name=$value")
+    }
+
+    val userId = if ('@' in settings.email) settings.email.substringBefore('@') else settings.username
+    val domain = if ('@' in settings.email) settings.email.substringAfter('@') else ""
+    add("user-id", pinercQuoted(userId))
+    add("user-domain", pinercQuoted(domain))
+    add("personal-name", pinercQuoted(settings.displayName))
+    add("inbox-path", pinercQuoted(pinercInbox(settings)))
+    add("smtp-server", pinercQuoted(pinercSmtp(settings)))
+    add("alt-addresses", settings.altAddresses.joinToString(", ") { pinercQuoted(it) })
+    add("default-fcc", pinercQuoted(settings.sentMailbox))
+    add("postponed-folder", pinercQuoted(settings.postponedMailbox))
+    if (settings.addressBookMailbox.isNotEmpty()) {
+        add("address-book", pinercQuoted("{${settings.imapHost}}${settings.addressBookMailbox}"))
+    }
+    add("incoming-folders", pinercIncoming(settings))
+    if (!settings.addressBookNeverTrim) {
+        add("remote-abook-history", settings.addressBookHistory.toString())
+    }
+    lines.add("sort-key=${pinercSort(settings.defaultView)}")
+    val startup = pinercStartup(settings.inboxStart)
+    if (startup != null) lines.add("incoming-startup-rule=$startup")
+    add("default-saved-msg-folder", pinercQuoted(settings.savedMailbox))
+    lines.add("saved-msg-name-rule=${pinercSaveRule(settings.saveNameRule)}")
+    lines.add("threading-index-style=${pinercThreadStyle(settings.threadIndexStyle)}")
+    lines.add("composer-wrap-column=${settings.composerWrapColumn}")
+    lines.add("feature-list=${pinercFeatures(settings)}")
+    return lines.joinToString("\n") + "\n"
+}
 
 suspend fun pinercMailboxListed(session: MailSession, name: String): Boolean {
     if (name.isEmpty() || '%' in name || '*' in name) return false
@@ -816,6 +900,101 @@ private fun applyCollectionPrefix(
     val prefix = if (bracket < 0) "" else rest.substring(0, bracket)
     val name = if (prefix.isNotEmpty() && !plainName.startsWith(prefix)) prefix + plainName else plainName
     return FolderKind.Mailbox(name)
+}
+
+private fun pinercQuoted(value: String): String {
+    val needs = value.startsWith(" ") ||
+        value.endsWith(" ") ||
+        ' ' in value ||
+        '"' in value ||
+        '\\' in value
+    if (!needs) return value
+    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
+private fun pinercTls(mode: TlsMode): String = when (mode) {
+    TlsMode.Implicit -> "ssl"
+    TlsMode.StartTls -> "tls"
+    TlsMode.None -> "notls"
+}
+
+private fun pinercInbox(settings: AccountSettings): String {
+    if (settings.imapHost.isEmpty()) return ""
+    val user = if (settings.username.isEmpty()) "" else "/user=${settings.username}"
+    return "{${settings.imapHost}:${settings.imapPort}/${pinercTls(settings.tlsMode)}$user}INBOX"
+}
+
+private fun pinercSmtp(settings: AccountSettings): String {
+    if (settings.smtpHost.isEmpty()) return ""
+    val submit = if (settings.smtpPort == 587 && settings.tlsMode == TlsMode.StartTls) "/submit" else ""
+    val user = if (settings.smtpUsername.isNotEmpty() && settings.smtpUsername != settings.username) {
+        "/user=${settings.smtpUsername}"
+    } else {
+        ""
+    }
+    return "{${settings.smtpHost}:${settings.smtpPort}/${pinercTls(settings.tlsMode)}$submit$user}"
+}
+
+private fun pinercIncoming(settings: AccountSettings): String {
+    val pieces = ArrayList<String>()
+    for (favorite in settings.favorites) {
+        if (favorite.node) continue
+        if (favorite.mailbox.equals("INBOX", ignoreCase = true)) continue
+        val mailbox = pinercQuoted(favorite.mailbox)
+        val piece = if (favorite.label.isEmpty()) mailbox else pinercQuoted(favorite.label) + " " + mailbox
+        if (piece.isNotEmpty()) pieces.add(piece)
+    }
+    return pieces.joinToString(", ")
+}
+
+private fun pinercSort(view: FolderView): String {
+    val key = when (view.key) {
+        SortKey.Arrival -> "arrival"
+        SortKey.Date -> "date"
+        SortKey.From -> "from"
+        SortKey.Subject -> "subject"
+        SortKey.To -> "to"
+        SortKey.Cc -> "cc"
+        SortKey.Size -> "size"
+        SortKey.ThreadReferences -> "thread"
+        SortKey.ThreadOrderedSubject -> "orderedsubj"
+    }
+    return if (view.newestFirst) "$key/reverse" else key
+}
+
+private fun pinercStartup(rule: StartRule): String? = when (rule) {
+    StartRule.FirstUnseen -> "first-unseen"
+    StartRule.FirstRecent -> "first-recent"
+    StartRule.FirstImportant -> "first-important"
+    StartRule.FirstImportantOrUnseen -> "first-important-or-unseen"
+    StartRule.FirstImportantOrRecent -> "first-important-or-recent"
+    StartRule.First -> "first"
+    StartRule.Last -> "last"
+    StartRule.Newest -> null
+}
+
+private fun pinercSaveRule(rule: SaveNameRule): String = when (rule) {
+    SaveNameRule.DefaultFolder -> "default-folder"
+    SaveNameRule.ByFrom -> "by-from"
+    SaveNameRule.BySender -> "by-sender"
+    SaveNameRule.ByRecipient -> "by-recipient"
+    SaveNameRule.LastFolderUsed -> "last-folder-used"
+}
+
+private fun pinercThreadStyle(style: ThreadIndexStyle): String = when (style) {
+    ThreadIndexStyle.Expanded -> "exp"
+    ThreadIndexStyle.Collapsed -> "coll"
+}
+
+private fun pinercFeatures(settings: AccountSettings): String {
+    val tokens = ArrayList<String>(6)
+    tokens.add(if (settings.askBeforeExpunge) "no-expunge-without-confirm" else "expunge-without-confirm")
+    if (settings.quellFlowed) tokens.add("quell-flowed-text")
+    if (settings.forwardAsAttachment) tokens.add("forward-as-attachment")
+    if (settings.bodyView == BodyView.PlainOrError) tokens.add("prefer-plain-text")
+    if (settings.bodyView == BodyView.PlainOrHtml) tokens.add("render-html-internally")
+    if (settings.dateFormat == DateFormat.Local) tokens.add("convert-dates-to-localtime")
+    return tokens.joinToString(",")
 }
 
 private fun parseStartupRule(value: String): StartRule? = when (value.lowercase(Locale.ROOT)) {

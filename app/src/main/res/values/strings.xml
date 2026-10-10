@@ -329,6 +329,7 @@
     <string name="settings_email_submission_note">Off uses SMTP.</string>
     <string name="settings_import">Import</string>
     <string name="settings_import_pinerc">Import from .pinerc…</string>
+    <string name="settings_export_pinerc">Export .pinerc…</string>
     <string name="settings_advanced">Advanced</string>
     <string name="settings_test_server">Test server</string>
     <string name="settings_testing">Testing…</string>

@@ -2676,3 +2676,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Fetch one GreenMail body literal.
 
 ## 2026-10-09 - Record the Zimbra 8.8.3 lab run.
+
+## 2026-10-09 - Export the open account as a .pinerc file.

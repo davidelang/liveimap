@@ -1,6 +1,7 @@
 package org.dlang.liveimap.settings
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ContentResolver
 import android.content.Context
 import android.content.ContextWrapper
@@ -436,6 +437,20 @@ private fun sieveCheckText(caps: SieveCapabilities): String {
     return parts.joinToString(" ")
 }
 
+private fun sharePinerc(context: Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND)
+    send.type = "text/plain"
+    send.putExtra(Intent.EXTRA_TEXT, text)
+    send.putExtra(Intent.EXTRA_SUBJECT, "liveimap.pinerc")
+    val chooser = Intent.createChooser(send, "liveimap.pinerc")
+    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(chooser)
+    } catch (_: ActivityNotFoundException) {
+        Unit
+    }
+}
+
 @Composable
 private fun AccountGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen("server")
@@ -825,6 +840,11 @@ private fun AccountGroup(editor: SettingsEditor) {
         ) {
             TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
                 Text(stringResource(R.string.settings_import_pinerc))
+            }
+            TextButton(onClick = {
+                sharePinerc(contextState.value, encodePinerc(editor.settings))
+            }) {
+                Text(stringResource(R.string.settings_export_pinerc))
             }
         }
         SettingsSection(
