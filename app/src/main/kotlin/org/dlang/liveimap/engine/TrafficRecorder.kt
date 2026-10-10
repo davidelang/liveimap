@@ -134,8 +134,8 @@ class TrafficRecorder(
             val kept = tokens.subList(0, 2).joinToString(" ")
             return kept to (text.length - kept.length)
         }
-        if (cmd == "AUTH") { // SMTP AUTH
-            val kept = tokens.subList(0, minOf(2, tokens.size)).joinToString(" ")
+        if (tokens.size >= 3 && tokens[0].equals("AUTH", ignoreCase = true)) { // SMTP AUTH
+            val kept = tokens.subList(0, 2).joinToString(" ")
             return kept to (text.length - kept.length)
         }
         return null
