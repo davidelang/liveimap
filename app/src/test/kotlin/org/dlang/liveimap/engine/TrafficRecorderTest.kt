@@ -67,4 +67,18 @@ class TrafficRecorderTest {
         assertTrue(ls.any { it.contains("\"dir\":\"E\",\"event\":\"connect\"") })
         assertTrue(ls.last().contains("\"conn\":\"watch\",\"dir\":\"S\",\"line\":\"* OK partial\""))
     }
+
+    @Test
+    fun privateAuthenticateKeepsMechanismOnly() {
+        val r = recorder()
+        r.accept("main", TrafficLog.LOG_PRIVATE, "4 AUTHENTICATE LOGIN\r\n".toByteArray())
+        r.accept("main", TrafficLog.LOG_PRIVATE, "4 AUTHENTICATE PLAIN AGxpdmVpbWFwAHB3\r\n".toByteArray())
+        r.accept("main", TrafficLog.LOG_PRIVATE, "bGl2ZWltYXA=\r\n".toByteArray())
+        r.flush()
+        val text = r.file.readText()
+        assertTrue(text.contains("\"line\":\"4 AUTHENTICATE LOGIN\""))
+        assertTrue(text.contains("\"line\":\"4 AUTHENTICATE PLAIN\""))
+        assertFalse(text.contains("AGxpdmVpbWFwAHB3"))
+        assertFalse(text.contains("bGl2ZWltYXA="))
+    }
 }

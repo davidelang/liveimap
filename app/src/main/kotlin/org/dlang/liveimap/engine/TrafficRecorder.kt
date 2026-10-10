@@ -45,7 +45,7 @@ class TrafficRecorder(
     fun accept(conn: String, logType: Int, data: ByteArray) {
         if (data.isEmpty()) return
         when (logType) {
-            TrafficLog.LOG_PRIVATE -> line(conn, "C", null, data.size)
+            TrafficLog.LOG_PRIVATE -> privateLine(conn, data)
             TrafficLog.LOG_SENT -> take(conn, "C", data)
             TrafficLog.LOG_RECEIVED -> take(conn, "S", data)
         }
@@ -64,6 +64,17 @@ class TrafficRecorder(
                 val (conn, dir) = key.split('\u0000')
                 endLine(conn, dir, half)
             }
+        }
+    }
+
+    // libetpan sends "tag AUTHENTICATE MECH" as private data: keep the command and mechanism, redact the rest.
+    private fun privateLine(conn: String, data: ByteArray) {
+        val text = String(data, Charsets.ISO_8859_1)
+        val m = authenticateHead.find(text)
+        if (m == null) {
+            line(conn, "C", null, data.size)
+        } else {
+            line(conn, "C", m.value, data.size - m.value.length)
         }
     }
 
@@ -210,3 +221,5 @@ internal fun jq(s: String): String {
     out.append('"')
     return out.toString()
 }
+
+private val authenticateHead = Regex("^[A-Za-z0-9.]+ AUTHENTICATE [A-Za-z0-9_-]+", RegexOption.IGNORE_CASE)
