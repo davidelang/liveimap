@@ -140,8 +140,24 @@ def pull(run, dest):
     return got
 
 
+def running_lab():
+    r = sh(["docker", "ps", "--format", "{{.Names}}"])
+    return [n for n in r.stdout.split() if n.startswith("liveimap-")]
+
+
+def only_one(cont):
+    """Strictly one lab server at a time (RAM), Zimbra included: stop any other first."""
+    for other in running_lab():
+        if other != cont:
+            sh(["docker", "stop", "-t", "20", other])
+    left = [n for n in running_lab() if n != cont]
+    if left:
+        sys.exit("lab containers still running: " + " ".join(left))
+
+
 def run_one(s, commit, stamp, out):
     name, cont = s["name"], s["container"]
+    only_one(cont)
     dest = os.path.join(REC, name, stamp)
     os.makedirs(dest, exist_ok=True)
     t0 = time.time()
@@ -210,7 +226,7 @@ def main():
     summ = os.path.join(REC, f"{stamp}-summary.tsv")
     with open(summ, "w") as out:
         out.write("server\tprotocol\ttls\tresult\tdetail\tseconds\tdir\n")
-        # One server at a time keeps memory well inside the budget; Zimbra is therefore alone.
+        # Strictly one server at a time (only_one stops anything else first); Zimbra too.
         for s in ss:
             run_one(s, commit, stamp, out)
     print(summ)

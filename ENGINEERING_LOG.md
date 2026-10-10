@@ -2694,3 +2694,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Register the static SASL client plugins at load (IMAP SASL failed locally on every server).
 
 ## 2026-10-10 - Lab finding: the Android libetpan archive is built without USE_SASL; IMAP AUTHENTICATE is a stub.
+
+## 2026-10-10 - Build libetpan with USE_SASL through third_party/libetpan/patches; lab runner strictly one server at a time.
