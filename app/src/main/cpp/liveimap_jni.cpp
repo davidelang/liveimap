@@ -2467,38 +2467,6 @@ extern "C" int scram_client_plug_init(void *, int, int *, void **, int *);
 extern "C" int digestmd5_client_plug_init(void *, int, int *, void **, int *);
 
 std::string gSaslSetup;
-extern "C" int sasl_client_new(const char *, const char *, const char *, const char *,
-    const void *, unsigned, void **);
-extern "C" int sasl_client_start(void *, const char *, void **, const char **, unsigned *, const char **);
-extern "C" const char * sasl_errdetail(void *);
-extern "C" void sasl_dispose(void **);
-
-// Re-run the local SASL start for one mechanism without callbacks; reports the library's own reason.
-std::string saslStartProbe(const std::string & mechanism, const char * host) {
-    void * conn = nullptr;
-    struct ProbeCallback { unsigned long id; int (*proc)(void); void * context; };
-    static ProbeCallback callbacks[] = {
-        {0x4008, reinterpret_cast<int (*)(void)>(+[](void *, int, const char **, const char ** r) { *r = ""; return 0; }), nullptr},
-        {0x4001, reinterpret_cast<int (*)(void)>(+[](void *, int, const char ** r, unsigned * l) { *r = "probe"; if (l) *l = 5; return 0; }), nullptr},
-        {0x4002, reinterpret_cast<int (*)(void)>(+[](void *, int, const char ** r, unsigned * l) { *r = "probe"; if (l) *l = 5; return 0; }), nullptr},
-        {0x4004, reinterpret_cast<int (*)(void)>(+[](void *, void *, int, void ** r) {
-            static struct { unsigned long len; unsigned char data[8]; } secret = {5, "probe"};
-            *r = &secret; return 0; }), nullptr},
-        {0, nullptr, nullptr},
-    };
-    int r = sasl_client_new("imap", host, nullptr, nullptr, callbacks, 0, &conn);
-    if (r != 0) return "client_new=" + std::to_string(r);
-    void * prompts = nullptr;
-    const char * out = nullptr;
-    unsigned outLen = 0;
-    const char * used = nullptr;
-    r = sasl_client_start(conn, mechanism.c_str(), &prompts, &out, &outLen, &used);
-    std::string text = "client_start=" + std::to_string(r);
-    const char * detail = sasl_errdetail(conn);
-    if (r < 0 && detail != nullptr) text += " " + std::string(detail);
-    sasl_dispose(&conn);
-    return text;
-}
 
 // The SASL library is linked statically and finds no plugin directory on Android.
 // Initialise it once and register the client mechanisms the app may choose.
@@ -2620,10 +2588,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
             + ": login failed: " + imapText(imap, "login failed");
         if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
             *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
-                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup)
-                + "; probe: " + mechanism + " " + saslStartProbe(mechanism, host)
-                + ", ANONYMOUS " + saslStartProbe("ANONYMOUS", host)
-                + ", CRAM-MD5 " + saslStartProbe("CRAM-MD5", host) + ")";
+                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
         }
         return false;
     }

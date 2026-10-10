@@ -2692,3 +2692,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Lab on the LAN address, SASL failure detail, gated lab password hook.
 
 ## 2026-10-10 - Register the static SASL client plugins at load (IMAP SASL failed locally on every server).
+
+## 2026-10-10 - Lab finding: the Android libetpan archive is built without USE_SASL; IMAP AUTHENTICATE is a stub.
