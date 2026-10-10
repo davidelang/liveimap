@@ -2670,3 +2670,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Default the ask limits to never.
 
 - Default the ask limits to never.
+
+## 2026-10-09 - Retest the GreenMail lab servers.
