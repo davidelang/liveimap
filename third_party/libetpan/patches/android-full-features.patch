@@ -88,13 +88,14 @@ diff --git a/build-android/dependencies/iconv/build.sh b/build-android/dependenc
 diff --git a/build-android/dependencies/openssl/build.sh b/build-android/dependencies/openssl/build.sh
 --- a/build-android/dependencies/openssl/build.sh	2026-09-30 18:59:34.174544697 -0700
 +++ b/build-android/dependencies/openssl/build.sh	2026-09-30 18:59:23.540861231 -0700
-@@ -1,4 +1,5 @@
+@@ -1,5 +1,6 @@
  #!/bin/sh
 +set -eu
  
  build_version=3
 -# 1.1.1w is the final 1.1.1 release (same API). The old 1.1.1i tarball was
 +# 3.5.9 is the OpenSSL 3.5 LTS line. Fetch it from www.openssl.org.
+ # removed from ftp.openssl.org, so fetch from www.openssl.org instead.
 @@ -6,13 +7,21 @@
 -version=1.1.1w
 +version=3.5.9
