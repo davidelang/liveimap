@@ -1008,6 +1008,44 @@ class AccountSettingsTest {
         assertTrue(decodeAccountSettings(text.trimEnd() + "\nemailSubmission=true\n").emailSubmission)
     }
 
+    @Test
+    fun askThresholdsRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("askSort="))
+        assertFalse(defaults.contains("askThread="))
+        assertFalse(defaults.contains("askSearch="))
+        assertFalse(defaults.contains("askFallback="))
+        assertFalse(defaults.contains("sortAskSkip="))
+        assertFalse(defaults.contains("threadAskSkip="))
+        assertFalse(defaults.contains("searchAskSkip="))
+        assertFalse(defaults.contains("fallbackAskSkip="))
+        val decoded = decodeAccountSettings(defaults)
+        assertEquals(5000, decoded.askSort)
+        assertEquals(5000, decoded.askThread)
+        assertEquals(5000, decoded.askSearch)
+        assertEquals(5000, decoded.askFallback)
+        assertEquals(emptySet<String>(), decoded.sortAskSkip)
+        assertEquals(emptySet<String>(), decoded.threadAskSkip)
+        assertEquals(emptySet<String>(), decoded.searchAskSkip)
+        assertEquals(emptySet<String>(), decoded.fallbackAskSkip)
+        val saved = AccountSettings(askSort = 20, threadAskSkip = setOf("Sent Mail"))
+        val text = saved.encode()
+        assertTrue(text.contains("askSort=20"))
+        assertFalse(text.contains("askThread="))
+        assertFalse(text.contains("askSearch="))
+        assertFalse(text.contains("askFallback="))
+        assertTrue(text.contains("threadAskSkip=Sent%20Mail"))
+        assertFalse(text.contains("sortAskSkip="))
+        assertFalse(text.contains("searchAskSkip="))
+        assertFalse(text.contains("fallbackAskSkip="))
+        assertEquals(saved, decodeAccountSettings(text))
+        assertEquals(0, decodeAccountSettings(defaults.trimEnd() + "\naskFallback=-7\n").askFallback)
+        assertFalse(overAskThreshold(5000, 5000))
+        assertTrue(overAskThreshold(5001, 5000))
+        assertTrue(overAskThreshold(1, 0))
+        assertFalse(overAskThreshold(Int.MAX_VALUE, Int.MAX_VALUE))
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

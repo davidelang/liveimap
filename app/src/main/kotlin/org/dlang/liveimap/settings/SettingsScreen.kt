@@ -1096,6 +1096,26 @@ private fun FoldersGroup(
             }
             OpenRow(stringResource(R.string.settings_start_per_folder), onOpenStarts)
         }
+        SettingsSection(
+            title = stringResource(R.string.settings_large_folders),
+            summary = stringResource(R.string.settings_ask_note),
+            expanded = "large" in sections.open,
+            onToggle = { sections.toggle("large") },
+        ) {
+            Text(stringResource(R.string.settings_ask_note))
+            AskLimitField(stringResource(R.string.settings_ask_sort), settings.askSort, editor.ready) { limit ->
+                editor.persist(editor.settings.copy(askSort = limit))
+            }
+            AskLimitField(stringResource(R.string.settings_ask_thread), settings.askThread, editor.ready) { limit ->
+                editor.persist(editor.settings.copy(askThread = limit))
+            }
+            AskLimitField(stringResource(R.string.settings_ask_search), settings.askSearch, editor.ready) { limit ->
+                editor.persist(editor.settings.copy(askSearch = limit))
+            }
+            AskLimitField(stringResource(R.string.settings_ask_fallback), settings.askFallback, editor.ready) { limit ->
+                editor.persist(editor.settings.copy(askFallback = limit))
+            }
+        }
     }
 }
 
@@ -1930,6 +1950,7 @@ private fun LineField(
     singleLine: Boolean = true,
     ready: Boolean = true,
     commitOnLeave: Boolean = true,
+    accept: (String) -> Boolean = { true },
     onDraft: ((String) -> Unit)? = null,
     interpret: (String, String) -> String? = { draft, stored -> commitText(draft, stored) },
     onCommit: (String) -> Unit,
@@ -1963,6 +1984,7 @@ private fun LineField(
     OutlinedTextField(
         value = draftState.value,
         onValueChange = { next ->
+            if (!accept(next)) return@OutlinedTextField
             draftState.value = next
             onDraft?.invoke(next)
         },
@@ -1984,6 +2006,42 @@ private fun LineField(
                 hadFocus = state.isFocused
             },
     )
+}
+
+@Composable
+private fun AskLimitField(
+    label: String,
+    value: Int,
+    ready: Boolean,
+    onValue: (Int) -> Unit,
+) {
+    LineField(
+        label = label,
+        value = value.toString(),
+        keyboardType = KeyboardType.Number,
+        ready = ready,
+        accept = { draft -> askLimitDraft(draft) },
+        interpret = { draft, _ -> askLimitCommit(draft) },
+        onCommit = { text ->
+            val number = text.toIntOrNull() ?: return@LineField
+            onValue(number)
+        },
+    )
+}
+
+private fun askLimitDraft(draft: String): Boolean {
+    if (draft.isEmpty()) return true
+    if (draft.any { !it.isDigit() }) return false
+    if (draft.length > 10) return false
+    val number = draft.toLongOrNull() ?: return false
+    return number <= Int.MAX_VALUE.toLong()
+}
+
+private fun askLimitCommit(draft: String): String? {
+    if (draft.isEmpty() || !askLimitDraft(draft)) return null
+    val number = draft.toLongOrNull() ?: return null
+    if (number > Int.MAX_VALUE.toLong()) return null
+    return number.toInt().toString()
 }
 
 @Composable

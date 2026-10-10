@@ -153,6 +153,10 @@
     <string name="index_default">Default</string>
     <string name="index_thread_title">Thread this folder?</string>
     <string name="index_continue">Continue</string>
+    <string name="index_just_once">Just this once</string>
+    <string name="index_always_folder">Always for this folder</string>
+    <string name="index_sort_ask_title">Sort this folder?</string>
+    <string name="index_search_ask_title">Search message text?</string>
     <string name="index_retry">Retry</string>
     <string name="index_empty">No messages</string>
     <string name="index_empty_query">No messages match “%1$s” in %2$s</string>
@@ -204,6 +208,14 @@
     <plurals name="index_thread_body">
         <item quantity="one">This folder has %d message. Threading reads the whole folder.</item>
         <item quantity="other">This folder has %d messages. Threading reads the whole folder.</item>
+    </plurals>
+    <plurals name="index_sort_ask_body">
+        <item quantity="one">This folder has %d message. Sorting reads the whole folder.</item>
+        <item quantity="other">This folder has %d messages. Sorting reads the whole folder.</item>
+    </plurals>
+    <plurals name="index_search_ask_body">
+        <item quantity="one">This folder has %d message. A body or full-text search reads every message.</item>
+        <item quantity="other">This folder has %d messages. A body or full-text search reads every message.</item>
     </plurals>
     <string name="reader_back">Back</string>
     <string name="reader_refresh">Refresh</string>
@@ -333,6 +345,12 @@
     <string name="settings_folder_list">Folder list</string>
     <string name="settings_expanded_folders">Expanded folders</string>
     <string name="settings_folder_views">Folder views</string>
+    <string name="settings_large_folders">Large folders</string>
+    <string name="settings_ask_sort">Sort</string>
+    <string name="settings_ask_thread">Thread</string>
+    <string name="settings_ask_search">Body or full-text search</string>
+    <string name="settings_ask_fallback">Client-side fallback</string>
+    <string name="settings_ask_note">0 always asks. A very large number never asks.</string>
     <string name="settings_default_view">Default view</string>
     <string name="settings_folder_view_sort">Folder view sort</string>
     <string name="settings_folder_view_newest">Folder view newest first</string>

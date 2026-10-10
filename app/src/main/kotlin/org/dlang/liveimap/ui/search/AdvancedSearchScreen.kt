@@ -36,20 +36,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
+import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.ui.UpTopAppBar
 import org.dlang.liveimap.ui.index.AdvancedCombiner
 import org.dlang.liveimap.ui.index.AdvancedStep
 import org.dlang.liveimap.ui.index.SavedAdvanced
 import org.dlang.liveimap.ui.index.SearchScope
+import org.dlang.liveimap.ui.index.advancedHasBody
 import org.dlang.liveimap.ui.index.countHits
 import org.dlang.liveimap.ui.index.deleteAdvanced
 import org.dlang.liveimap.ui.index.encodeAdvancedQuery
@@ -164,6 +168,10 @@ private fun AdvancedSearchLoaded(
     var countNumber by remember { mutableStateOf<Int?>(null) }
     var skippedLines by remember { mutableStateOf<List<String>>(emptyList()) }
     var countError by remember { mutableStateOf<String?>(null) }
+    var countAsk by remember { mutableStateOf(false) }
+    var countExists by remember { mutableIntStateOf(0) }
+    var countBodyAllowed by remember { mutableStateOf(false) }
+    val countChoice = remember { Channel<BodyAsk>(Channel.CONFLATED) }
     val cancelCount = remember { mutableStateOf(false) }
     val scopeRunner = rememberCoroutineScope()
     val settingsScope = rememberCoroutineScope()
@@ -342,6 +350,46 @@ private fun AdvancedSearchLoaded(
                         countError = null
                         scopeRunner.launch {
                             try {
+                                if (advancedHasBody(text) && !countBodyAllowed) {
+                                    val settings = try {
+                                        store.load()
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: Exception) {
+                                        countError = error.message ?: "not connected"
+                                        return@launch
+                                    }
+                                    if (mailbox !in settings.searchAskSkip) {
+                                        val exists = try {
+                                            session.selectedExists()
+                                        } catch (error: CancellationException) {
+                                            throw error
+                                        } catch (error: MailFailure) {
+                                            countError = error.text
+                                            return@launch
+                                        }
+                                        if (overAskThreshold(exists, settings.askSearch)) {
+                                            countExists = exists
+                                            countAsk = true
+                                            val answer = countChoice.receive()
+                                            if (answer == BodyAsk.Cancel) return@launch
+                                            if (answer == BodyAsk.Always) {
+                                                try {
+                                                    val fresh = store.load()
+                                                    store.save(
+                                                        fresh.copy(searchAskSkip = fresh.searchAskSkip + mailbox),
+                                                    )
+                                                } catch (error: CancellationException) {
+                                                    throw error
+                                                } catch (error: Exception) {
+                                                    countError = error.message ?: "not connected"
+                                                    return@launch
+                                                }
+                                            }
+                                            countBodyAllowed = true
+                                        }
+                                    }
+                                }
                                 val result = countHits(
                                     session,
                                     mailbox,
@@ -515,4 +563,40 @@ private fun AdvancedSearchLoaded(
             },
         )
     }
+    if (countAsk) {
+        AlertDialog(
+            onDismissRequest = {
+                countAsk = false
+                countChoice.trySend(BodyAsk.Cancel)
+            },
+            title = { Text(stringResource(R.string.index_search_ask_title)) },
+            text = {
+                Text(pluralStringResource(R.plurals.index_search_ask_body, countExists, countExists))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    countAsk = false
+                    countChoice.trySend(BodyAsk.Once)
+                }) { Text(stringResource(R.string.index_just_once)) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        countAsk = false
+                        countChoice.trySend(BodyAsk.Always)
+                    }) { Text(stringResource(R.string.index_always_folder)) }
+                    TextButton(onClick = {
+                        countAsk = false
+                        countChoice.trySend(BodyAsk.Cancel)
+                    }) { Text(stringResource(R.string.index_cancel)) }
+                }
+            },
+        )
+    }
+}
+
+private enum class BodyAsk {
+    Once,
+    Always,
+    Cancel,
 }

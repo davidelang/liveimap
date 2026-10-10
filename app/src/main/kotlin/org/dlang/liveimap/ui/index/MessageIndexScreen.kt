@@ -158,6 +158,7 @@ import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
+import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.pollIntervalSeconds
 import org.dlang.liveimap.settings.slowerClientSort
 import org.dlang.liveimap.settings.slowerClientThread
@@ -810,10 +811,20 @@ private fun MessageIndexLoaded(
     var fallbackAsk by remember { mutableStateOf<FolderView?>(null) }
     var fallbackAskFromConnect by remember { mutableStateOf(false) }
     var fallbackExists by remember { mutableIntStateOf(0) }
+    var sortAsk by remember { mutableStateOf<FolderView?>(null) }
+    var sortAskFromConnect by remember { mutableStateOf(false) }
+    var sortExists by remember { mutableIntStateOf(0) }
+    var sortConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
+    var searchAsk by remember { mutableStateOf<String?>(null) }
+    var searchExists by remember { mutableIntStateOf(0) }
+    var searchConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
+    var savingSkip by remember { mutableStateOf(false) }
     var expandedThreads by held.expandedThreadsState
     model.noteExpanded(expandedThreads)
-    val threadChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
-    val fallbackChoice = remember(mailbox) { Channel<Boolean>(Channel.CONFLATED) }
+    val threadChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
+    val fallbackChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
+    val sortChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
+    val searchChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
     val sequenceMeasurer = rememberTextMeasurer()
     var multiSelect by remember {
         mutableStateOf(reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value))
@@ -1205,24 +1216,53 @@ private fun MessageIndexLoaded(
         }
     }
 
-    fun resolveThreadAsk(continueThread: Boolean) {
-        val pending = threadAsk ?: return
-        val fromConnect = threadAskFromConnect
+    suspend fun saveAskSkip(edit: (AccountSettings) -> AccountSettings): Boolean {
+        val loaded = try {
+            store.load()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            postSnack(error.message ?: "not connected")
+            return false
+        }
+        try {
+            store.save(edit(loaded))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            postSnack(error.message ?: "not connected")
+            return false
+        }
+        val fresh = try {
+            store.load()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            postSnack(error.message ?: "not connected")
+            return false
+        }
+        model.adoptAccount(fresh)
+        account = fresh
+        return true
+    }
+
+    fun finishThreadAsk(pending: FolderView, fromConnect: Boolean, answer: AskAnswer) {
         threadAsk = null
         threadAskFromConnect = false
+        val continueThread = answer != AskAnswer.Cancel
         if (continueThread) threadConfirmed = true
         if (fromConnect) {
-            threadChoice.trySend(continueThread)
+            threadChoice.trySend(answer)
             return
         }
-        if (!continueThread) return
         query = ""
         narrowArmed = false
         prompt = null
         scope.launch {
             gate.withLock {
                 noteVisibleTop()
-                model.applyView(pending)
+                val next = if (continueThread) pending else FolderView(SortKey.Arrival, newestFirst = true)
+                model.applyView(next)
                 seedExpandedFromStyle()
                 pull()
             }
@@ -1230,14 +1270,32 @@ private fun MessageIndexLoaded(
         }
     }
 
-    fun resolveFallbackAsk(continueFallback: Boolean) {
-        val pending = fallbackAsk ?: return
-        val fromConnect = fallbackAskFromConnect
+    fun resolveThreadAsk(answer: AskAnswer) {
+        val pending = threadAsk ?: return
+        val fromConnect = threadAskFromConnect
+        if (savingSkip) return
+        if (answer == AskAnswer.Always) {
+            savingSkip = true
+            scope.launch {
+                val saved = saveAskSkip { current ->
+                    current.copy(threadAskSkip = current.threadAskSkip + mailbox)
+                }
+                savingSkip = false
+                if (!saved) return@launch
+                finishThreadAsk(pending, fromConnect, AskAnswer.Always)
+            }
+            return
+        }
+        finishThreadAsk(pending, fromConnect, answer)
+    }
+
+    fun finishFallbackAsk(pending: FolderView, fromConnect: Boolean, answer: AskAnswer) {
         fallbackAsk = null
         fallbackAskFromConnect = false
+        val continueFallback = answer != AskAnswer.Cancel
         if (fromConnect) {
             model.allowLargeClientFallback = continueFallback
-            fallbackChoice.trySend(continueFallback)
+            fallbackChoice.trySend(answer)
             return
         }
         query = ""
@@ -1256,8 +1314,100 @@ private fun MessageIndexLoaded(
         }
     }
 
+    fun resolveFallbackAsk(answer: AskAnswer) {
+        val pending = fallbackAsk ?: return
+        val fromConnect = fallbackAskFromConnect
+        if (savingSkip) return
+        if (answer == AskAnswer.Always) {
+            savingSkip = true
+            scope.launch {
+                val saved = saveAskSkip { current ->
+                    current.copy(fallbackAskSkip = current.fallbackAskSkip + mailbox)
+                }
+                savingSkip = false
+                if (!saved) return@launch
+                finishFallbackAsk(pending, fromConnect, AskAnswer.Always)
+            }
+            return
+        }
+        finishFallbackAsk(pending, fromConnect, answer)
+    }
+
+    fun finishSortAsk(pending: FolderView, fromConnect: Boolean, answer: AskAnswer) {
+        sortAsk = null
+        sortAskFromConnect = false
+        val continueSort = answer != AskAnswer.Cancel
+        if (continueSort) sortConfirmed = true
+        if (fromConnect) {
+            sortChoice.trySend(answer)
+            return
+        }
+        query = ""
+        narrowArmed = false
+        prompt = null
+        scope.launch {
+            gate.withLock {
+                noteVisibleTop()
+                val next = if (continueSort) pending else FolderView(SortKey.Arrival, newestFirst = true)
+                model.applyView(next)
+                seedExpandedFromStyle()
+                pull()
+            }
+            if (model.rows.isNotEmpty()) scrollToStart()
+        }
+    }
+
+    fun resolveSortAsk(answer: AskAnswer) {
+        val pending = sortAsk ?: return
+        val fromConnect = sortAskFromConnect
+        if (savingSkip) return
+        if (answer == AskAnswer.Always) {
+            savingSkip = true
+            scope.launch {
+                val saved = saveAskSkip { current ->
+                    current.copy(sortAskSkip = current.sortAskSkip + mailbox)
+                }
+                savingSkip = false
+                if (!saved) return@launch
+                finishSortAsk(pending, fromConnect, AskAnswer.Always)
+            }
+            return
+        }
+        finishSortAsk(pending, fromConnect, answer)
+    }
+
+    fun resolveSearchAsk(answer: AskAnswer) {
+        if (searchAsk == null || savingSkip) return
+        if (answer == AskAnswer.Always) {
+            savingSkip = true
+            scope.launch {
+                val saved = saveAskSkip { current ->
+                    current.copy(searchAskSkip = current.searchAskSkip + mailbox)
+                }
+                savingSkip = false
+                if (!saved) return@launch
+                searchAsk = null
+                searchChoice.trySend(AskAnswer.Always)
+            }
+            return
+        }
+        searchAsk = null
+        searchChoice.trySend(answer)
+    }
+
+    suspend fun folderExistsNow(): Int? {
+        return try {
+            gate.withLock { session.select(mailbox).exists }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            postSnack(error.text)
+            null
+        }
+    }
+
     suspend fun needsLargeClientAsk(next: FolderView): Boolean {
-        if (model.allowLargeClientFallback) return false
+        if (model.allowLargeClientFallback || mailbox in account.fallbackAskSkip) return false
         if (!usesClientFallback(
                 session.featureCaps,
                 next.key,
@@ -1267,19 +1417,59 @@ private fun MessageIndexLoaded(
         ) {
             return false
         }
-        val exists = try {
-            gate.withLock { session.select(mailbox).exists }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: MailFailure) {
-            postSnack(error.text)
-            return true
-        }
+        val exists = folderExistsNow() ?: return true
         folderExists = exists
-        if (exists > ClientFallbackWarn) {
+        if (overAskThreshold(exists, account.askFallback)) {
             fallbackExists = exists
             fallbackAskFromConnect = false
             fallbackAsk = next
+            return true
+        }
+        return false
+    }
+
+    suspend fun needsServerThreadAsk(next: FolderView): Boolean {
+        val threading = next.key == SortKey.ThreadReferences || next.key == SortKey.ThreadOrderedSubject
+        if (!threading || threadConfirmed || mailbox in account.threadAskSkip) return false
+        if (usesClientFallback(
+                session.featureCaps,
+                next.key,
+                slowerClientSort(account),
+                slowerClientThread(account),
+            )
+        ) {
+            return false
+        }
+        val exists = folderExistsNow() ?: return true
+        folderExists = exists
+        if (overAskThreshold(exists, account.askThread)) {
+            threadExists = exists
+            threadAskFromConnect = false
+            threadAsk = next
+            return true
+        }
+        return false
+    }
+
+    suspend fun needsServerSortAsk(next: FolderView): Boolean {
+        if (sortConfirmed || next.key == SortKey.Arrival) return false
+        if (next.key == SortKey.ThreadReferences || next.key == SortKey.ThreadOrderedSubject) return false
+        if (mailbox in account.sortAskSkip) return false
+        if (usesClientFallback(
+                session.featureCaps,
+                next.key,
+                slowerClientSort(account),
+                slowerClientThread(account),
+            )
+        ) {
+            return false
+        }
+        val exists = folderExistsNow() ?: return true
+        folderExists = exists
+        if (overAskThreshold(exists, account.askSort)) {
+            sortExists = exists
+            sortAskFromConnect = false
+            sortAsk = next
             return true
         }
         return false
@@ -1322,6 +1512,7 @@ private fun MessageIndexLoaded(
         val reuse = held.windowReady && held.boundMailbox == mailbox && loadToken == 0
         var pendingThread: FolderView? = null
         var pendingFallback: FolderView? = null
+        var pendingSort: FolderView? = null
         var pendingExists = 0
         val watchNow = if (reuse) {
             held.recordAnchor = false
@@ -1414,7 +1605,11 @@ private fun MessageIndexLoaded(
                     return@withLock false
                 }
                 pendingExists = selected.exists
-                if (selected.exists > ClientFallbackWarn && !model.allowLargeClientFallback) {
+                if (
+                    mailbox !in settings.fallbackAskSkip &&
+                    !model.allowLargeClientFallback &&
+                    overAskThreshold(selected.exists, settings.askFallback)
+                ) {
                     pendingFallback = savedView
                     return@withLock false
                 }
@@ -1431,8 +1626,33 @@ private fun MessageIndexLoaded(
                     return@withLock false
                 }
                 pendingExists = selected.exists
-                if (selected.exists > ThreadConfirmExists && !threadConfirmed) {
+                if (
+                    mailbox !in settings.threadAskSkip &&
+                    !threadConfirmed &&
+                    overAskThreshold(selected.exists, settings.askThread)
+                ) {
                     pendingThread = savedView
+                    return@withLock false
+                }
+            }
+            val serverSort = savedAdvertised && !clientFallback && !threading &&
+                savedView.key != SortKey.Arrival
+            if (serverSort) {
+                val selected = try {
+                    session.select(mailbox)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    banner = error.text
+                    return@withLock false
+                }
+                pendingExists = selected.exists
+                if (
+                    mailbox !in settings.sortAskSkip &&
+                    !sortConfirmed &&
+                    overAskThreshold(selected.exists, settings.askSort)
+                ) {
+                    pendingSort = savedView
                     return@withLock false
                 }
             }
@@ -1458,9 +1678,9 @@ private fun MessageIndexLoaded(
             fallbackExists = pendingExists
             fallbackAskFromConnect = true
             fallbackAsk = fallback
-            val continueFallback = fallbackChoice.receive()
+            val fallbackAnswer = fallbackChoice.receive()
             gate.withLock {
-                if (continueFallback) {
+                if (fallbackAnswer != AskAnswer.Cancel) {
                     model.allowLargeClientFallback = true
                     model.applyView(fallback)
                 } else {
@@ -1480,9 +1700,9 @@ private fun MessageIndexLoaded(
                 threadExists = pendingExists
                 threadAskFromConnect = true
                 threadAsk = chosen
-                val continueThread = threadChoice.receive()
+                val threadAnswer = threadChoice.receive()
                 gate.withLock {
-                    if (continueThread) {
+                    if (threadAnswer != AskAnswer.Cancel) {
                         model.applyView(chosen)
                     } else {
                         model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
@@ -1494,39 +1714,91 @@ private fun MessageIndexLoaded(
                 held.windowReady = true
                 loading = false
                 if (model.rows.isNotEmpty()) scrollToStart()
-            } else if (!watchNow) {
-                loading = false
-                return@LaunchedEffect
             } else {
-                loading = false
-                if (!reuse && model.rows.isNotEmpty()) scrollToStart()
+                val sortPending = pendingSort
+                if (sortPending != null) {
+                    sortExists = pendingExists
+                    sortAskFromConnect = true
+                    sortAsk = sortPending
+                    val sortAnswer = sortChoice.receive()
+                    gate.withLock {
+                        if (sortAnswer != AskAnswer.Cancel) {
+                            sortConfirmed = true
+                            model.applyView(sortPending)
+                        } else {
+                            model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
+                        }
+                        seedExpandedFromStyle()
+                        connected = true
+                        pull()
+                    }
+                    held.windowReady = true
+                    loading = false
+                    if (model.rows.isNotEmpty()) scrollToStart()
+                } else if (!watchNow) {
+                    loading = false
+                    return@LaunchedEffect
+                } else {
+                    loading = false
+                    if (!reuse && model.rows.isNotEmpty()) scrollToStart()
+                }
             }
         }
         val pendingAdvanced = advancedQuery
         val pendingScope = advancedScope
         if (!pendingAdvanced.isNullOrEmpty() && held.windowReady) {
-            cancelSearch.value = false
-            try {
-                gate.withLock {
-                    noteVisibleTop()
-                    model.applyAdvanced(
-                        pendingAdvanced,
-                        pendingScope,
-                        cancelled = { cancelSearch.value },
-                    ) { current, total ->
-                        searchProgress = appContext.getString(
-                            R.string.index_search_folder_progress,
-                            current,
-                            total,
-                        )
-                    }
-                    pull()
+            var runAdvanced = true
+            if (
+                advancedHasBody(pendingAdvanced) &&
+                !searchConfirmed &&
+                mailbox !in model.account.searchAskSkip
+            ) {
+                val exists = try {
+                    gate.withLock { session.selectedExists() }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                    onAdvancedConsumed()
+                    runAdvanced = false
+                    0
                 }
-            } finally {
-                searchProgress = null
+                if (runAdvanced && overAskThreshold(exists, model.account.askSearch)) {
+                    searchExists = exists
+                    searchAsk = pendingAdvanced
+                    val searchAnswer = searchChoice.receive()
+                    if (searchAnswer == AskAnswer.Cancel) {
+                        onAdvancedConsumed()
+                        runAdvanced = false
+                    } else {
+                        searchConfirmed = true
+                    }
+                }
             }
-            onAdvancedConsumed()
-            if (model.rows.isNotEmpty()) scrollToStart()
+            if (runAdvanced) {
+                cancelSearch.value = false
+                try {
+                    gate.withLock {
+                        noteVisibleTop()
+                        model.applyAdvanced(
+                            pendingAdvanced,
+                            pendingScope,
+                            cancelled = { cancelSearch.value },
+                        ) { current, total ->
+                            searchProgress = appContext.getString(
+                                R.string.index_search_folder_progress,
+                                current,
+                                total,
+                            )
+                        }
+                        pull()
+                    }
+                } finally {
+                    searchProgress = null
+                }
+                onAdvancedConsumed()
+                if (model.rows.isNotEmpty()) scrollToStart()
+            }
         }
         fun deliverMailboxChange(change: MailboxChange) {
             when (change) {
@@ -2227,37 +2499,14 @@ private fun MessageIndexLoaded(
                             scope.launch {
                                 val next = FolderView(key, view.newestFirst)
                                 if (needsLargeClientAsk(next)) return@launch
-                                val threading = key == SortKey.ThreadReferences ||
-                                    key == SortKey.ThreadOrderedSubject
-                                val client = usesClientFallback(
-                                    session.featureCaps,
-                                    key,
-                                    slowerClientSort(account),
-                                    slowerClientThread(account),
-                                )
-                                if (threading && !client) {
-                                    val exists = try {
-                                        gate.withLock { session.select(mailbox).exists }
-                                    } catch (error: CancellationException) {
-                                        throw error
-                                    } catch (error: MailFailure) {
-                                        postSnack(error.text)
-                                        return@launch
-                                    }
-                                    folderExists = exists
-                                    if (exists > ThreadConfirmExists && !threadConfirmed) {
-                                        threadExists = exists
-                                        threadAskFromConnect = false
-                                        threadAsk = FolderView(key, view.newestFirst)
-                                        return@launch
-                                    }
-                                }
+                                if (needsServerThreadAsk(next)) return@launch
+                                if (needsServerSortAsk(next)) return@launch
                                 query = ""
                                 narrowArmed = false
                                 prompt = null
                                 gate.withLock {
                                     noteVisibleTop()
-                                    model.applyView(FolderView(key, view.newestFirst))
+                                    model.applyView(next)
                                     seedExpandedFromStyle()
                                     pull()
                                 }
@@ -2267,11 +2516,12 @@ private fun MessageIndexLoaded(
                         val chooseDirection: (Boolean) -> Unit = { newestFirst ->
                             menuOpen = false
                             val next = view.copy(newestFirst = newestFirst)
-                            query = ""
-                            narrowArmed = false
-                            prompt = null
                             scope.launch {
                                 if (needsLargeClientAsk(next)) return@launch
+                                if (needsServerSortAsk(next)) return@launch
+                                query = ""
+                                narrowArmed = false
+                                prompt = null
                                 gate.withLock {
                                     noteVisibleTop()
                                     model.applyView(next)
@@ -2827,7 +3077,9 @@ private fun MessageIndexLoaded(
                 onRefresh = { refreshIndex() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-            if (!loading && banner == null && rows.isEmpty() && threadAsk == null && fallbackAsk == null) {
+            if (!loading && banner == null && rows.isEmpty() && threadAsk == null && fallbackAsk == null &&
+                sortAsk == null && searchAsk == null
+            ) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -3253,36 +3505,73 @@ private fun MessageIndexLoaded(
     }
     val asking = threadAsk
     if (asking != null) {
-        AlertDialog(
-            onDismissRequest = { resolveThreadAsk(false) },
-            title = { Text(stringResource(R.string.index_thread_title)) },
-            text = {
-                Text(pluralStringResource(R.plurals.index_thread_body, threadExists, threadExists))
-            },
-            confirmButton = {
-                TextButton(onClick = { resolveThreadAsk(true) }) { Text(stringResource(R.string.index_continue)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { resolveThreadAsk(false) }) { Text(stringResource(R.string.index_cancel)) }
-            },
+        LargeFolderAskDialog(
+            title = stringResource(R.string.index_thread_title),
+            body = pluralStringResource(R.plurals.index_thread_body, threadExists, threadExists),
+            onOnce = { resolveThreadAsk(AskAnswer.Once) },
+            onAlways = { resolveThreadAsk(AskAnswer.Always) },
+            onCancel = { resolveThreadAsk(AskAnswer.Cancel) },
         )
     }
     val askingFallback = fallbackAsk
     if (askingFallback != null) {
-        AlertDialog(
-            onDismissRequest = { resolveFallbackAsk(false) },
-            title = { Text(stringResource(R.string.index_fallback_title)) },
-            text = {
-                Text(pluralStringResource(R.plurals.index_fallback_body, fallbackExists, fallbackExists))
-            },
-            confirmButton = {
-                TextButton(onClick = { resolveFallbackAsk(true) }) { Text(stringResource(R.string.index_continue)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { resolveFallbackAsk(false) }) { Text(stringResource(R.string.index_cancel)) }
-            },
+        LargeFolderAskDialog(
+            title = stringResource(R.string.index_fallback_title),
+            body = pluralStringResource(R.plurals.index_fallback_body, fallbackExists, fallbackExists),
+            onOnce = { resolveFallbackAsk(AskAnswer.Once) },
+            onAlways = { resolveFallbackAsk(AskAnswer.Always) },
+            onCancel = { resolveFallbackAsk(AskAnswer.Cancel) },
         )
     }
+    val askingSort = sortAsk
+    if (askingSort != null) {
+        LargeFolderAskDialog(
+            title = stringResource(R.string.index_sort_ask_title),
+            body = pluralStringResource(R.plurals.index_sort_ask_body, sortExists, sortExists),
+            onOnce = { resolveSortAsk(AskAnswer.Once) },
+            onAlways = { resolveSortAsk(AskAnswer.Always) },
+            onCancel = { resolveSortAsk(AskAnswer.Cancel) },
+        )
+    }
+    if (searchAsk != null) {
+        LargeFolderAskDialog(
+            title = stringResource(R.string.index_search_ask_title),
+            body = pluralStringResource(R.plurals.index_search_ask_body, searchExists, searchExists),
+            onOnce = { resolveSearchAsk(AskAnswer.Once) },
+            onAlways = { resolveSearchAsk(AskAnswer.Always) },
+            onCancel = { resolveSearchAsk(AskAnswer.Cancel) },
+        )
+    }
+}
+
+@Composable
+private fun LargeFolderAskDialog(
+    title: String,
+    body: String,
+    onOnce: () -> Unit,
+    onAlways: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onOnce) { Text(stringResource(R.string.index_just_once)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onAlways) { Text(stringResource(R.string.index_always_folder)) }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.index_cancel)) }
+            }
+        },
+    )
+}
+
+private enum class AskAnswer {
+    Once,
+    Always,
+    Cancel,
 }
 
 private fun indexPartyName(mailbox: String, sentMailbox: String, recipients: String, from: String): String {

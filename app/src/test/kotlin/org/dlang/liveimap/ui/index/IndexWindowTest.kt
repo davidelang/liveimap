@@ -1362,6 +1362,9 @@ class IndexWindowTest {
         assertNull(encodeAdvancedQuery(AdvancedCombiner.And, listOf(AdvancedStep(false, "Subject", "bud\tget"))))
         assertNull(encodeAdvancedQuery(AdvancedCombiner.And, listOf(AdvancedStep(false, "Sub\nject", "budget"))))
         assertNull(parseAdvancedQuery("Both\nYes\tSubject\tbudget"))
+        assertFalse(advancedHasBody("And\nYes\tSubject\tbudget"))
+        assertTrue(advancedHasBody("And\nYes\tBody\tbudget"))
+        assertTrue(advancedHasBody("Or\nNot\tText\tbudget"))
 
         val session = FakeMailSession()
         session.arrivalRows = listOf(row(1), row(2), row(3))

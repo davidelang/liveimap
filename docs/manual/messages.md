@@ -18,7 +18,7 @@ Search searches this folder. Subject is the usual field. Full text is a separate
 
 ## Sort
 
-Sort changes the order of this folder. The choice lasts until you leave the app. The usual sort for the folder is under Settings, Folders. The Sort menu also holds Expunge, Select all, Folder info, Jump to number, Next unread, Mark all read, and Customize toolbar.
+Sort changes the order of this folder. The choice lasts until you leave the app. The usual sort for the folder is under Settings, Folders. The Sort menu also holds Expunge, Select all, Folder info, Jump to number, Next unread, Mark all read, and Customize toolbar. Settings, Folders, Large folders sets how many messages make the app ask before a sort, a thread, a body or full-text search, or a client-side fallback.
 
 ## Filter
 

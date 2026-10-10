@@ -301,6 +301,10 @@ enum class TlsMode {
     Implicit,
 }
 
+const val DefaultAskLimit = 5000
+
+fun overAskThreshold(exists: Int, threshold: Int): Boolean = exists > threshold
+
 data class AccountSettings(
     val imapHost: String = "",
     val imapPort: Int = 143,
@@ -389,6 +393,14 @@ data class AccountSettings(
     val savedSearches: List<SavedSearch> = emptyList(),
     val savedAdvanced: List<SavedAdvanced> = emptyList(),
     val emailSubmission: Boolean = false,
+    val askSort: Int = DefaultAskLimit,
+    val askThread: Int = DefaultAskLimit,
+    val askSearch: Int = DefaultAskLimit,
+    val askFallback: Int = DefaultAskLimit,
+    val sortAskSkip: Set<String> = emptySet(),
+    val threadAskSkip: Set<String> = emptySet(),
+    val searchAskSkip: Set<String> = emptySet(),
+    val fallbackAskSkip: Set<String> = emptySet(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -488,6 +500,14 @@ private val fieldNames = listOf(
     "savedSearches",
     "savedAdvanced",
     "emailSubmission",
+    "askSort",
+    "askThread",
+    "askSearch",
+    "askFallback",
+    "sortAskSkip",
+    "threadAskSkip",
+    "searchAskSkip",
+    "fallbackAskSkip",
 )
 
 private const val HEX = "0123456789ABCDEF"
@@ -540,7 +560,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, and emailSubmission when false.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when 5000, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -604,6 +624,16 @@ fun AccountSettings.encode(): String = buildString {
         appendLine("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
     }
     if (emailSubmission) appendLine("emailSubmission=true")
+    if (askSort != DefaultAskLimit) appendLine("askSort=$askSort")
+    if (askThread != DefaultAskLimit) appendLine("askThread=$askThread")
+    if (askSearch != DefaultAskLimit) appendLine("askSearch=$askSearch")
+    if (askFallback != DefaultAskLimit) appendLine("askFallback=$askFallback")
+    if (sortAskSkip.isNotEmpty()) appendLine("sortAskSkip=${encodeWatchedFolders(sortAskSkip.sorted())}")
+    if (threadAskSkip.isNotEmpty()) appendLine("threadAskSkip=${encodeWatchedFolders(threadAskSkip.sorted())}")
+    if (searchAskSkip.isNotEmpty()) appendLine("searchAskSkip=${encodeWatchedFolders(searchAskSkip.sorted())}")
+    if (fallbackAskSkip.isNotEmpty()) {
+        appendLine("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
@@ -695,7 +725,15 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "extraIdleBudget" ||
             key == "savedSearches" ||
             key == "savedAdvanced" ||
-            key == "emailSubmission"
+            key == "emailSubmission" ||
+            key == "askSort" ||
+            key == "askThread" ||
+            key == "askSearch" ||
+            key == "askFallback" ||
+            key == "sortAskSkip" ||
+            key == "threadAskSkip" ||
+            key == "searchAskSkip" ||
+            key == "fallbackAskSkip"
         ) {
             continue
         }
@@ -792,8 +830,18 @@ fun decodeAccountSettings(text: String): AccountSettings {
         savedSearches = values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList(),
         savedAdvanced = values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList(),
         emailSubmission = values["emailSubmission"]?.let { parseBoolean(it) } ?: false,
+        askSort = values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
+        askThread = values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
+        askSearch = values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
+        askFallback = values["askFallback"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
+        sortAskSkip = values["sortAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
+        threadAskSkip = values["threadAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
+        searchAskSkip = values["searchAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
+        fallbackAskSkip = values["fallbackAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
     )
 }
+
+private fun parseAskLimit(value: String): Int = parseIntField(value).coerceIn(0, Int.MAX_VALUE)
 
 fun sieveEndpoint(settings: AccountSettings): Pair<String, Int> {
     val host = if (settings.sieveHost.isBlank()) settings.imapHost else settings.sieveHost

@@ -15,6 +15,7 @@ import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
+import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.Density
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
@@ -34,8 +35,6 @@ import kotlin.math.abs
 
 const val IndexPageSize = 60
 const val SwipeWidthPercent = 40
-const val ThreadConfirmExists = 5000
-const val ClientFallbackWarn = 5000
 
 enum class SimpleSearchField {
     Subject,
@@ -123,6 +122,11 @@ fun parseAdvancedQuery(text: String): AdvancedQuery? {
         steps.add(AdvancedStep(negated, parts[1], parts[2]))
     }
     return AdvancedQuery(combiner, steps, fuzzy)
+}
+
+fun advancedHasBody(text: String): Boolean {
+    val parsed = parseAdvancedQuery(text) ?: return false
+    return parsed.steps.any { step -> step.kind == "Body" || step.kind == "Text" }
 }
 
 enum class SearchScope {
@@ -677,6 +681,10 @@ class IndexModel(
 
     var account: AccountSettings = AccountSettings()
         private set
+
+    fun adoptAccount(next: AccountSettings) {
+        account = next
+    }
 
     var allowLargeClientFallback: Boolean = false
 
@@ -1843,7 +1851,8 @@ class IndexModel(
     }
 
     private suspend fun requireClientFallbackRoom() {
-        if (session.selectedExists() > ClientFallbackWarn && !allowLargeClientFallback) {
+        if (allowLargeClientFallback || mailbox in account.fallbackAskSkip) return
+        if (overAskThreshold(session.selectedExists(), account.askFallback)) {
             throw MailFailure("folder is large")
         }
     }
