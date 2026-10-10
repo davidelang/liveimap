@@ -1,0 +1,4 @@
+generated/
+recordings/
+host.env
+__pycache__/

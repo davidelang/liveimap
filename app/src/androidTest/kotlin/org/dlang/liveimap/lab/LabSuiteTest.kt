@@ -40,7 +40,7 @@ class LabSuiteTest {
         val tls = TlsMode.valueOf(arg("labTls", "None"))
         val server = arg("labServer", "lab")
         val run = arg("labRun", "run")
-        val box = arg("labFolder", "INBOX")
+        val box = arg("labFolder", "LiveIMAP-Test")
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
         TrafficRecorder.start(
@@ -92,7 +92,7 @@ class LabSuiteTest {
                     step("flagOff") { session.storeFlags(listOf(first), emptySet(), setOf("\\Flagged")); "" }
                 }
                 step("searchText") { session.searchText("LiveIMAP").size.toString() }
-                step("searchUnseen") { session.searchCriterion("UNSEEN", "").size.toString() }
+                step("searchAdvanced") { session.searchCriterion("Advanced", "Or\nYes\tSubject\tLiveIMAP").size.toString() }
                 if ("SORT" in session.capabilities) step("sortDate") { session.sort(SortKey.Date, true).size.toString() }
                 if (session.capabilities.any { it.startsWith("THREAD=") }) step("thread") { session.thread(SortKey.Date).toString().take(40) }
                 step("noop") { session.noop(); "" }

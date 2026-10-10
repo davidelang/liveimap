@@ -1,0 +1,6 @@
+user	password	profile
+liveimap	liveimap-test	base
+liveimap2	liveimap2-test	base
+liveimap-empty	liveimap-empty-test	base
+liveimap-utf8	pässwörd-test	base
+liveimap-scale	liveimap-scale-test	scale

@@ -2686,3 +2686,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Record protocol traffic as JSON lines (test-recording plan, Phase A).
 
 ## 2026-10-10 - Lab suite on the emulator: build commit, password hook, recorded IMAP steps (Phase B).
+
+## 2026-10-10 - Lab tooling in tools/test-servers: shared recorder, lab runner (Phase B).
