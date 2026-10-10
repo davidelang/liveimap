@@ -104,6 +104,7 @@ import org.dlang.liveimap.engine.sieve.SieveFailure
 import org.dlang.liveimap.engine.sieve.greetSieve
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.session.dropMailSession
 import org.dlang.liveimap.session.extraIdleBudgetFromText
 import org.dlang.liveimap.session.mailSession
@@ -671,6 +672,14 @@ private fun AccountGroup(editor: SettingsEditor) {
             PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
                 editor.persist(editor.settings.copy(sievePort = it))
             }
+            if (settings.sieveCertPin.isBlank()) {
+                Text(stringResource(R.string.settings_sieve_cert_pin_none))
+            } else {
+                Text(settings.sieveCertPin)
+                TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
+                    Text(stringResource(R.string.settings_sieve_cert_pin_clear))
+                }
+            }
             val noSieveHost = stringResource(R.string.settings_sieve_no_host)
             TextButton(
                 onClick = {
@@ -681,12 +690,16 @@ private fun AccountGroup(editor: SettingsEditor) {
                         return@TextButton
                     }
                     val mode = editor.settings.tlsMode
-                    val pin = editor.settings.certPin
+                    val pin = editor.settings.sieveCertPin
                     checkingSieve = true
                     sieveReport = ""
                     editor.ui.launch {
                         try {
-                            sieveReport = sieveCheckText(greetSieve(host, port, mode, pin))
+                            sieveReport = sieveCheckText(
+                                greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
+                                    editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
+                                },
+                            )
                         } catch (failure: SieveFailure) {
                             sieveReport = failure.text
                         } finally {

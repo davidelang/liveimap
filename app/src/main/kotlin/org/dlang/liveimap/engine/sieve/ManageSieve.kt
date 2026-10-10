@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import org.dlang.liveimap.session.CertPrompt
 
 /** One ManageSieve line. The transport does not include a trailing CR or LF. */
 interface SieveLineTransport {
@@ -29,6 +30,46 @@ data class SieveCapabilities(
 )
 
 class SieveFailure(val text: String) : Exception(text)
+
+class SievePinOffer(
+    val host: String,
+    val port: Int,
+    val reason: String,
+    val subject: String,
+    val issuer: String,
+    val notBefore: String,
+    val notAfter: String,
+    val fingerprint: String,
+) : Exception(reason)
+
+internal suspend fun <T> withSieveCertificate(
+    pin: String,
+    confirm: suspend (CertPrompt) -> Boolean,
+    save: suspend (String) -> Unit,
+    block: suspend (String) -> T,
+): T {
+    try {
+        return block(pin)
+    } catch (offer: SievePinOffer) {
+        val prompt = CertPrompt(
+            offer.reason,
+            offer.subject,
+            offer.issuer,
+            offer.notBefore,
+            offer.notAfter,
+            offer.fingerprint,
+            offer.host,
+            offer.port,
+        )
+        if (!confirm(prompt)) throw SieveFailure(offer.reason)
+        save(offer.fingerprint)
+        try {
+            return block(offer.fingerprint)
+        } catch (again: SievePinOffer) {
+            throw SieveFailure(again.reason)
+        }
+    }
+}
 
 data class ListedScript(
     val name: String,

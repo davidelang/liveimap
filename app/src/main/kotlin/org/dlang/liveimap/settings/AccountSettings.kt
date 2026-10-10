@@ -387,6 +387,7 @@ data class AccountSettings(
     val sievePort: Int = 4190,
     val tlsMode: TlsMode = TlsMode.None,
     val certPin: String = "",
+    val sieveCertPin: String = "",
     val allowPlaintextAuth: Boolean = false,
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
@@ -494,6 +495,7 @@ private val fieldNames = listOf(
     "sievePort",
     "tlsMode",
     "certPin",
+    "sieveCertPin",
     "allowPlaintextAuth",
     "inboundRules",
     "watchedFolders",
@@ -612,6 +614,7 @@ fun AccountSettings.encode(): String = buildString {
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
     if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
+    if (sieveCertPin.isNotBlank()) appendLine("sieveCertPin=${percentEncode(sieveCertPin)}")
     if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
@@ -720,6 +723,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "sievePort" ||
             key == "tlsMode" ||
             key == "certPin" ||
+            key == "sieveCertPin" ||
             key == "allowPlaintextAuth" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
@@ -824,6 +828,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
         tlsMode = values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None,
         certPin = values["certPin"]?.let { percentDecode(it) } ?: "",
+        sieveCertPin = values["sieveCertPin"]?.let { percentDecode(it) } ?: "",
         allowPlaintextAuth = values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false,
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),

@@ -8,6 +8,7 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLContext
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.settings.TlsMode
 
 private const val CONNECT_TIMEOUT_MS = 30_000
@@ -84,28 +86,21 @@ class PlainSieveTransport internal constructor(
     /** Wraps the connected socket. Does not open TCP and does not write AUTHENTICATE. */
     suspend fun upgradeToTls(host: String, pin: String) {
         withContext(Dispatchers.IO) {
-            val tls = layeredSocket(host)
+            val trust = SieveServerTrust(host, pin)
+            val tls = layeredSocket(host, trust)
             val protocols = sieveTlsProtocols(tls.supportedProtocols)
             if (protocols.isEmpty()) {
-                try {
-                    tls.close()
-                } catch (e: IOException) {
-                }
+                closeQuiet(tls)
                 throw SieveFailure("TLS 1.2 required")
             }
             tls.enabledProtocols = protocols.toTypedArray()
-            tls.startHandshake()
-            val failure = PeerTrust.check(host, peerCertificateEncodings(tls), pin)
-            if (failure.isNotEmpty()) {
-                try {
-                    socket.close()
-                } catch (e: IOException) {
-                }
-                try {
-                    tls.close()
-                } catch (e: IOException) {
-                }
-                throw SieveFailure(failure)
+            try {
+                tls.startHandshake()
+            } catch (e: Exception) {
+                val remotePort = socket.port
+                closeQuiet(socket)
+                closeQuiet(tls)
+                throw sieveHandshakeFailure(trust, host, remotePort)
             }
             input = tls.inputStream
             output = tls.outputStream
@@ -130,16 +125,13 @@ class PlainSieveTransport internal constructor(
         }
     }
 
-    private fun layeredSocket(host: String): SSLSocket {
+    private fun layeredSocket(host: String, trust: SieveServerTrust): SSLSocket {
         val context = SSLContext.getInstance("TLS")
-        // The handshake must finish so PeerTrust can see the chain.
-        context.init(null, arrayOf<TrustManager>(HandshakeTrust()), null)
+        context.init(null, arrayOf<TrustManager>(trust), null)
         val created = context.socketFactory.createSocket(socket, host, socket.port, false)
         val tls = created as SSLSocket
         tls.useClientMode = true
-        val params = tls.sslParameters
-        params.endpointIdentificationAlgorithm = null
-        tls.sslParameters = params
+        enableSieveHostnameCheck(tls)
         tls.soTimeout = socket.soTimeout
         return tls
     }
@@ -194,12 +186,63 @@ suspend fun openPlainSieve(host: String, port: Int): PlainSieveTransport {
     }
 }
 
-private class HandshakeTrust : X509TrustManager {
-    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+internal class SieveServerTrust(
+    private val host: String,
+    private val pin: String,
+) : X509TrustManager {
+    internal var ders: List<ByteArray> = emptyList()
+        private set
+    internal var failure: String = ""
+        private set
 
-    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {
+        throw CertificateException("client certificate")
+    }
+
+    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {
+        if (chain == null || chain.isEmpty()) {
+            failure = "empty certificate chain"
+            throw CertificateException(failure)
+        }
+        ders = chain.map { it.encoded }
+        failure = PeerTrust.check(host, ders, pin)
+        if (failure.isNotEmpty()) throw CertificateException(failure)
+    }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+}
+
+internal fun enableSieveHostnameCheck(tls: SSLSocket) {
+    val params = tls.sslParameters
+    params.endpointIdentificationAlgorithm = "HTTPS"
+    tls.sslParameters = params
+}
+
+internal fun sieveCertificateOffer(
+    failure: String,
+    ders: List<ByteArray>,
+    host: String,
+    port: Int,
+): SievePinOffer? {
+    if (failure != "certificate untrusted" && failure != "certificate changed") return null
+    val offer = PeerTrust.offer(ders)
+    if (offer == null || offer.size != 5) return null
+    return SievePinOffer(host, port, failure, offer[0], offer[1], offer[2], offer[3], offer[4])
+}
+
+private fun sieveHandshakeFailure(trust: SieveServerTrust, host: String, port: Int): Exception {
+    val failure = trust.failure
+    if (failure.isEmpty()) return SieveFailure("certificate rejected")
+    val offer = sieveCertificateOffer(failure, trust.ders, host, port)
+    if (offer != null) return offer
+    return SieveFailure(failure)
+}
+
+private fun closeQuiet(socket: Socket) {
+    try {
+        socket.close()
+    } catch (e: IOException) {
+    }
 }
 
 suspend fun greetPlain(host: String, port: Int): SieveCapabilities {
@@ -225,8 +268,9 @@ internal fun sieveTlsProtocols(supported: Array<String>): List<String> {
 /** Implicit TLS from the first byte. Does not call upgradeToTls and does not write AUTHENTICATE. */
 suspend fun openImplicitSieve(host: String, port: Int, pin: String): PlainSieveTransport {
     return withContext(Dispatchers.IO) {
+        val trust = SieveServerTrust(host, pin)
         val tls = try {
-            connectImplicitSieve(host, port)
+            connectImplicitSieve(host, port, trust)
         } catch (e: IOException) {
             throw SieveFailure("connect")
         }
@@ -235,23 +279,23 @@ suspend fun openImplicitSieve(host: String, port: Int, pin: String): PlainSieveT
             val protocols = sieveTlsProtocols(tls.supportedProtocols)
             if (protocols.isEmpty()) throw SieveFailure("TLS 1.2 required")
             tls.enabledProtocols = protocols.toTypedArray()
-            tls.startHandshake()
-            val failure = PeerTrust.check(host, peerCertificateEncodings(tls), pin)
-            if (failure.isNotEmpty()) throw SieveFailure(failure)
+            try {
+                tls.startHandshake()
+            } catch (e: Exception) {
+                closeQuiet(tls)
+                throw sieveHandshakeFailure(trust, host, port)
+            }
             val transport = PlainSieveTransport(tls)
             handedOff = true
             transport
         } catch (e: SieveFailure) {
             throw e
+        } catch (e: SievePinOffer) {
+            throw e
         } catch (e: IOException) {
             throw SieveFailure("connect")
         } finally {
-            if (!handedOff) {
-                try {
-                    tls.close()
-                } catch (e: IOException) {
-                }
-            }
+            if (!handedOff) closeQuiet(tls)
         }
     }
 }
@@ -262,6 +306,8 @@ suspend fun openAndDeliverLiveimap(
     port: Int,
     mode: TlsMode,
     pin: String,
+    confirm: suspend (CertPrompt) -> Boolean,
+    save: suspend (String) -> Unit,
     username: String,
     password: String,
     script: String,
@@ -269,86 +315,87 @@ suspend fun openAndDeliverLiveimap(
 ): String {
     if (host.isBlank() || username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
     val plaintextOk = mode != TlsMode.None || allowPlaintextAuth
-    val transport = when (mode) {
-        TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
-        TlsMode.Implicit -> openImplicitSieve(host, port, pin)
-    }
-    try {
-        val caps = when (mode) {
-            TlsMode.None -> readGreeting(transport)
-            TlsMode.StartTls -> {
-                requireAdvertisedStartTls(readGreeting(transport))
-                completeStartTls(transport, host, pin)
-            }
-            TlsMode.Implicit -> readGreeting(transport)
+    suspend fun deliver(activePin: String): String {
+        val transport = when (mode) {
+            TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
+            TlsMode.Implicit -> openImplicitSieve(host, port, activePin)
         }
-        return authenticateAndUpload(
-            transport,
-            caps,
-            script,
-            username,
-            password,
-            plaintextOk,
-        )
-    } finally {
-        transport.close()
+        try {
+            val caps = when (mode) {
+                TlsMode.None -> readGreeting(transport)
+                TlsMode.StartTls -> {
+                    requireAdvertisedStartTls(readGreeting(transport))
+                    completeStartTls(transport, host, activePin)
+                }
+                TlsMode.Implicit -> readGreeting(transport)
+            }
+            return authenticateAndUpload(
+                transport,
+                caps,
+                script,
+                username,
+                password,
+                plaintextOk,
+            )
+        } finally {
+            transport.close()
+        }
     }
+    if (mode == TlsMode.None) return deliver(pin)
+    return withSieveCertificate(pin, confirm, save) { activePin -> deliver(activePin) }
 }
 
 /** Greeting for the account TLS mode. Does not authenticate and does not upload a script. */
-suspend fun greetSieve(host: String, port: Int, mode: TlsMode, pin: String): SieveCapabilities {
-    when (mode) {
-        TlsMode.None -> return greetPlain(host, port)
-        TlsMode.StartTls -> {
-            val transport = openPlainSieve(host, port)
-            try {
-                requireAdvertisedStartTls(readGreeting(transport))
-                val caps = completeStartTls(transport, host, pin)
-                logout(transport)
-                return caps
-            } finally {
-                transport.close()
+suspend fun greetSieve(
+    host: String,
+    port: Int,
+    mode: TlsMode,
+    pin: String,
+    confirm: suspend (CertPrompt) -> Boolean,
+    save: suspend (String) -> Unit,
+): SieveCapabilities {
+    if (mode == TlsMode.None) return greetPlain(host, port)
+    return withSieveCertificate(pin, confirm, save) { activePin ->
+        when (mode) {
+            TlsMode.None -> greetPlain(host, port)
+            TlsMode.StartTls -> {
+                val transport = openPlainSieve(host, port)
+                try {
+                    requireAdvertisedStartTls(readGreeting(transport))
+                    val caps = completeStartTls(transport, host, activePin)
+                    logout(transport)
+                    caps
+                } finally {
+                    transport.close()
+                }
             }
-        }
-        TlsMode.Implicit -> {
-            val transport = openImplicitSieve(host, port, pin)
-            try {
-                val caps = readGreeting(transport)
-                logout(transport)
-                return caps
-            } finally {
-                transport.close()
+            TlsMode.Implicit -> {
+                val transport = openImplicitSieve(host, port, activePin)
+                try {
+                    val caps = readGreeting(transport)
+                    logout(transport)
+                    caps
+                } finally {
+                    transport.close()
+                }
             }
         }
     }
 }
 
-private fun connectImplicitSieve(host: String, port: Int): SSLSocket {
+private fun connectImplicitSieve(host: String, port: Int, trust: SieveServerTrust): SSLSocket {
     val context = SSLContext.getInstance("TLS")
-    context.init(null, arrayOf<TrustManager>(HandshakeTrust()), null)
+    context.init(null, arrayOf<TrustManager>(trust), null)
     val tls = context.socketFactory.createSocket() as SSLSocket
     tls.useClientMode = true
-    val params = tls.sslParameters
-    params.endpointIdentificationAlgorithm = null
-    tls.sslParameters = params
+    enableSieveHostnameCheck(tls)
     tls.tcpNoDelay = true
     try {
         tls.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         tls.soTimeout = READ_TIMEOUT_MS
     } catch (e: IOException) {
-        try {
-            tls.close()
-        } catch (closeError: IOException) {
-        }
+        closeQuiet(tls)
         throw e
     }
     return tls
-}
-
-private fun peerCertificateEncodings(tls: SSLSocket): List<ByteArray> {
-    return try {
-        tls.session.peerCertificates.map { it.encoded }
-    } catch (e: Exception) {
-        emptyList()
-    }
 }

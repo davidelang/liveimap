@@ -44,6 +44,7 @@ import org.dlang.liveimap.engine.sieve.SystemFlag
 import org.dlang.liveimap.engine.sieve.emitSieve
 import org.dlang.liveimap.engine.sieve.openAndDeliverLiveimap
 import org.dlang.liveimap.engine.sieve.seedCriteria
+import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.sieveEndpoint
 
@@ -115,7 +116,11 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                             host,
                             port,
                             account.tlsMode,
-                            account.certPin,
+                            account.sieveCertPin,
+                            ::confirmMailCertificate,
+                            { fingerprint ->
+                                store.save(account.copy(sieveCertPin = fingerprint))
+                            },
                             account.username,
                             password,
                             emitSieve(account.inboundRules),

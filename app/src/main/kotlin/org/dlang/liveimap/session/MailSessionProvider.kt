@@ -22,6 +22,10 @@ fun setMailCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
     accountSessions.setCertConfirmer(confirm)
 }
 
+suspend fun confirmMailCertificate(prompt: CertPrompt): Boolean {
+    return accountSessions.confirmCertificate(prompt)
+}
+
 fun setMailPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
     accountSessions.setPlaintextConfirmer(confirm)
 }

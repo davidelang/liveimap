@@ -208,6 +208,21 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun sieveCertPinRoundTrip() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("sieveCertPin="))
+        assertEquals("", decodeAccountSettings(defaults).sieveCertPin)
+        val pin = "ab cd:ef"
+        val text = AccountSettings(sieveCertPin = pin).encode()
+        assertTrue(text.contains("sieveCertPin=ab%20cd%3Aef"))
+        assertEquals(pin, decodeAccountSettings(text).sieveCertPin)
+        val imap = AccountSettings(certPin = "imap-pin").encode()
+        val decoded = decodeAccountSettings(imap)
+        assertEquals("imap-pin", decoded.certPin)
+        assertEquals("", decoded.sieveCertPin)
+    }
+
+    @Test
     fun smtpUsernameRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("smtpUsername="))
