@@ -2457,6 +2457,7 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
 
 extern "C" const char ** sasl_global_listmech(void);
 extern "C" void mailsasl_ref(void);
+extern "C" int sasl_client_init(const void *);
 typedef int (*SaslPlugInit)(void *, int, int *, void **, int *);
 extern "C" int sasl_client_add_plugin(const char *, SaslPlugInit);
 extern "C" int plain_client_plug_init(void *, int, int *, void **, int *);
@@ -2470,6 +2471,11 @@ std::string gSaslSetup;
 // The SASL library is linked statically and finds no plugin directory on Android.
 // Initialise it once and register the client mechanisms the app may choose.
 void setupSaslClient() {
+    int init = sasl_client_init(nullptr);
+    if (init != 0) {
+        gSaslSetup = "sasl_client_init=" + std::to_string(init);
+        return;
+    }
     mailsasl_ref();
     struct { const char * name; SaslPlugInit init; } plugins[] = {
         {"scram", scram_client_plug_init},
