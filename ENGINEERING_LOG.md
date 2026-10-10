@@ -2674,3 +2674,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Retest the GreenMail lab servers.
 
 ## 2026-10-09 - Fetch one GreenMail body literal.
+
+## 2026-10-09 - Record the Zimbra 8.8.3 lab run.
