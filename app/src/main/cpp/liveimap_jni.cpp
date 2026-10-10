@@ -132,6 +132,7 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
 
 std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
+const char * sniName(const char * host);
 
 namespace {
 
@@ -2642,7 +2643,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             tlsCapture = nullptr;
             return nullptr;
         }
-        r = mailimap_socket_starttls_with_server_name_callback(imap, host, prepareTls, nullptr);
+        r = mailimap_socket_starttls_with_server_name_callback(imap, sniName(host), prepareTls, nullptr);
         tlsOk = cmdOk(r);
         if (!tlsOk) {
             *error = serviceLabel("IMAP", host, port) + " (" + address + "): STARTTLS failed: "
@@ -4475,6 +4476,14 @@ extern "C" int recordPeerCerts(int, x509_store_ctx_st * store) {
         if (encodeDer(X509_STORE_CTX_get_current_cert(store), &der)) tlsCapture->ders.push_back(std::move(der));
     }
     return 1;
+}
+
+// RFC 6066 3: SNI carries host names only, never IP literals. GnuTLS servers (Courier) abort the handshake on an IP.
+const char * sniName(const char * host) {
+    if (host == nullptr || *host == 0) return nullptr;
+    unsigned char buf[16];
+    if (inet_pton(AF_INET, host, buf) == 1 || inet_pton(AF_INET6, host, buf) == 1) return nullptr;
+    return host;
 }
 
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) {
@@ -7103,7 +7112,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                 return;
             }
             tlsCapture = &capture;
-            r = mailsmtp_socket_starttls_with_server_name_callback(smtp, host, prepareTls, nullptr);
+            r = mailsmtp_socket_starttls_with_server_name_callback(smtp, sniName(host), prepareTls, nullptr);
             tlsCapture = nullptr;
             if (r == MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED) {
                 mailsmtp_free(smtp);

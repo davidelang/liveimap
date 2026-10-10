@@ -2704,3 +2704,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Extended LIST only with LIST-EXTENDED and SPECIAL-USE (lab: Cyrus 2.4, Dovecot 1.2 rejected RETURN (SPECIAL-USE)).
 
 ## 2026-10-10 - TLS failures before a certificate report the OpenSSL reason; lab seeds over TLS when plaintext login is refused; old-TLS servers recorded as expected.
+
+## 2026-10-10 - STARTTLS sends no SNI for IP-literal hosts (RFC 6066); the lab Courier (GnuTLS) aborted on it. Lab: courier-606 syslog and a stale-pid-safe start.

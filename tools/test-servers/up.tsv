@@ -8,3 +8,4 @@ liveimap-dovecot-12	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null
 liveimap-dovecot-22	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null >/tmp/dovecot.out 2>&1
 liveimap-courier-50	setsid /etc/init.d/courier-authdaemon start </dev/null >/tmp/courier-auth.out 2>&1; setsid /etc/init.d/courier-imap start </dev/null >/tmp/courier-imap.out 2>&1
 liveimap-uwimap	if [ -x /etc/init.d/openbsd-inetd ]; then setsid /etc/init.d/openbsd-inetd start </dev/null >/tmp/inetd.out 2>&1; else setsid /usr/sbin/inetd </dev/null >/tmp/inetd.out 2>&1; fi
+liveimap-courier-606	[ -S /dev/log ] && [ -f /var/run/rsyslogd.pid ] && [ -d /proc/$(cat /var/run/rsyslogd.pid) ] || { rm -f /var/run/rsyslogd.pid; rsyslogd 2>/dev/null; }; p=/run/imapd.pid; if ! { [ -f $p ] && [ -d /proc/$(cat $p) ]; }; then rm -f $p; /usr/lib/courier-imap/libexec/imapd.rc start; fi; true
