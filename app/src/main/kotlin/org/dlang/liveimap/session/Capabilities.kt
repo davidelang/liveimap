@@ -16,6 +16,8 @@ class Capabilities private constructor(
     val multisearch: Boolean,
     val listExtended: Boolean,
     val listStatus: Boolean,
+    /** RFC 6154: LIST ... RETURN (SPECIAL-USE) is only valid when SPECIAL-USE is advertised. */
+    val specialUse: Boolean = false,
     val esort: Boolean,
     val sortDisplay: Boolean,
     val preview: Boolean,
@@ -28,7 +30,8 @@ class Capabilities private constructor(
     fun moveKind(): String = if (move) "Move" else "CopyThenDelete"
 
     fun listKind(unreadCounts: Boolean): String = when {
-        !listExtended -> "Plain"
+        // The extended LIST asks RETURN (CHILDREN SPECIAL-USE); Cyrus 2.4 and Dovecot 1.2 reject it without SPECIAL-USE.
+        !listExtended || !specialUse -> "Plain"
         !listStatus -> "Extended"
         unreadCounts -> "ExtendedWithStatus"
         else -> "ExtendedWithMessages"
@@ -94,6 +97,7 @@ class Capabilities private constructor(
                 multisearch = has("MULTISEARCH"),
                 listExtended = has("LIST-EXTENDED"),
                 listStatus = has("LIST-STATUS"),
+                specialUse = has("SPECIAL-USE"),
                 esort = has("ESORT"),
                 sortDisplay = has("SORT=DISPLAY"),
                 preview = has("PREVIEW"),

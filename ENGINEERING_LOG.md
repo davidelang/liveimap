@@ -2700,3 +2700,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Lab CA trusted only in the debug lab path; lab-ca.sh; thread steps by algorithm.
 
 ## 2026-10-10 - Lab TLS: lab CA certificates installed per family (tls-install.sh, tls-all.py); Zimbra rebound to the LAN address (rebind.py).
+
+## 2026-10-10 - Extended LIST only with LIST-EXTENDED and SPECIAL-USE (lab: Cyrus 2.4, Dovecot 1.2 rejected RETURN (SPECIAL-USE)).
