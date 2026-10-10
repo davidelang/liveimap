@@ -89,7 +89,7 @@ suspend fun logout(transport: SieveLineTransport) {
 
 /** Throws when STARTTLS was not advertised. Writes nothing. */
 fun requireAdvertisedStartTls(caps: SieveCapabilities) {
-    if (!caps.startTls) throw SieveFailure("STARTTLS is not advertised")
+    if (!caps.startTls) throw SieveFailure("server does not offer STARTTLS")
 }
 
 /** Writes STARTTLS and reads one line. Does not open a socket. */

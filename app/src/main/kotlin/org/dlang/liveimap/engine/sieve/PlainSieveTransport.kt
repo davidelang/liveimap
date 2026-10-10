@@ -15,10 +15,13 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.settings.TlsMode
 
@@ -85,10 +88,11 @@ class PlainSieveTransport internal constructor(
 
     /** Wraps the connected socket. Does not open TCP and does not write AUTHENTICATE. */
     suspend fun upgradeToTls(host: String, pin: String) {
+        val policy = coroutineContext[TlsPolicy] ?: TlsPolicy()
         withContext(Dispatchers.IO) {
-            val trust = SieveServerTrust(host, pin)
-            val tls = layeredSocket(host, trust)
-            val protocols = sieveTlsProtocols(tls.supportedProtocols)
+            val trust = SieveServerTrust(host, pin, policy)
+            val tls = layeredSocket(host, trust, policy)
+            val protocols = sieveTlsProtocols(tls.supportedProtocols, policy.allowOldTls)
             if (protocols.isEmpty()) {
                 closeQuiet(tls)
                 throw SieveFailure("TLS 1.2 required")
@@ -125,13 +129,13 @@ class PlainSieveTransport internal constructor(
         }
     }
 
-    private fun layeredSocket(host: String, trust: SieveServerTrust): SSLSocket {
+    private fun layeredSocket(host: String, trust: SieveServerTrust, policy: TlsPolicy): SSLSocket {
         val context = SSLContext.getInstance("TLS")
         context.init(null, arrayOf<TrustManager>(trust), null)
         val created = context.socketFactory.createSocket(socket, host, socket.port, false)
         val tls = created as SSLSocket
         tls.useClientMode = true
-        enableSieveHostnameCheck(tls)
+        if (!policy.acceptInvalidCert) enableSieveHostnameCheck(tls)
         tls.soTimeout = socket.soTimeout
         return tls
     }
@@ -189,6 +193,7 @@ suspend fun openPlainSieve(host: String, port: Int): PlainSieveTransport {
 internal class SieveServerTrust(
     private val host: String,
     private val pin: String,
+    private val policy: TlsPolicy = TlsPolicy(),
 ) : X509TrustManager {
     internal var ders: List<ByteArray> = emptyList()
         private set
@@ -205,7 +210,7 @@ internal class SieveServerTrust(
             throw CertificateException(failure)
         }
         ders = chain.map { it.encoded }
-        failure = PeerTrust.check(host, ders, pin)
+        failure = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
         if (failure.isNotEmpty()) throw CertificateException(failure)
     }
 
@@ -256,27 +261,29 @@ suspend fun greetPlain(host: String, port: Int): SieveCapabilities {
     }
 }
 
-/** TLS 1.2 and TLS 1.3 only, in input order. */
-internal fun sieveTlsProtocols(supported: Array<String>): List<String> {
+/** TLS 1.2 and TLS 1.3 only, in input order; with allowOldTls, TLS 1.0 and 1.1 too. */
+internal fun sieveTlsProtocols(supported: Array<String>, allowOldTls: Boolean = false): List<String> {
     val kept = ArrayList<String>(supported.size)
     for (name in supported) {
         if (name == "TLSv1.2" || name == "TLSv1.3") kept.add(name)
+        else if (allowOldTls && (name == "TLSv1" || name == "TLSv1.1")) kept.add(name)
     }
     return kept
 }
 
 /** Implicit TLS from the first byte. Does not call upgradeToTls and does not write AUTHENTICATE. */
 suspend fun openImplicitSieve(host: String, port: Int, pin: String): PlainSieveTransport {
+    val policy = coroutineContext[TlsPolicy] ?: TlsPolicy()
     return withContext(Dispatchers.IO) {
-        val trust = SieveServerTrust(host, pin)
+        val trust = SieveServerTrust(host, pin, policy)
         val tls = try {
-            connectImplicitSieve(host, port, trust)
+            connectImplicitSieve(host, port, trust, policy)
         } catch (e: IOException) {
             throw SieveFailure("connect")
         }
         var handedOff = false
         try {
-            val protocols = sieveTlsProtocols(tls.supportedProtocols)
+            val protocols = sieveTlsProtocols(tls.supportedProtocols, policy.allowOldTls)
             if (protocols.isEmpty()) throw SieveFailure("TLS 1.2 required")
             tls.enabledProtocols = protocols.toTypedArray()
             try {
@@ -383,12 +390,12 @@ suspend fun greetSieve(
     }
 }
 
-private fun connectImplicitSieve(host: String, port: Int, trust: SieveServerTrust): SSLSocket {
+private fun connectImplicitSieve(host: String, port: Int, trust: SieveServerTrust, policy: TlsPolicy): SSLSocket {
     val context = SSLContext.getInstance("TLS")
     context.init(null, arrayOf<TrustManager>(trust), null)
     val tls = context.socketFactory.createSocket() as SSLSocket
     tls.useClientMode = true
-    enableSieveHostnameCheck(tls)
+    if (!policy.acceptInvalidCert) enableSieveHostnameCheck(tls)
     tls.tcpNoDelay = true
     try {
         tls.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)

@@ -409,6 +409,10 @@ data class AccountSettings(
     val certPin: String = "",
     val sieveCertPin: String = "",
     val allowPlaintextAuth: Boolean = false,
+    /** Advanced, off by default: accept a certificate that fails validation (like pine /novalidate-cert). */
+    val acceptInvalidCert: Boolean = false,
+    /** Advanced, off by default: allow TLS 1.0/1.1, small DH keys and legacy ciphers for this account only. */
+    val allowOldTls: Boolean = false,
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
@@ -517,6 +521,8 @@ private val fieldNames = listOf(
     "certPin",
     "sieveCertPin",
     "allowPlaintextAuth",
+    "acceptInvalidCert",
+    "allowOldTls",
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
@@ -636,6 +642,8 @@ fun AccountSettings.encode(): String = buildString {
     if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
     if (sieveCertPin.isNotBlank()) appendLine("sieveCertPin=${percentEncode(sieveCertPin)}")
     if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
+    if (acceptInvalidCert) appendLine("acceptInvalidCert=true")
+    if (allowOldTls) appendLine("allowOldTls=true")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
@@ -745,6 +753,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "certPin" ||
             key == "sieveCertPin" ||
             key == "allowPlaintextAuth" ||
+            key == "acceptInvalidCert" ||
+            key == "allowOldTls" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
@@ -850,6 +860,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         certPin = values["certPin"]?.let { percentDecode(it) } ?: "",
         sieveCertPin = values["sieveCertPin"]?.let { percentDecode(it) } ?: "",
         allowPlaintextAuth = values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false,
+        acceptInvalidCert = values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false,
+        allowOldTls = values["allowOldTls"]?.let { parseBoolean(it) } ?: false,
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
@@ -1321,3 +1333,23 @@ private fun percentDecode(value: String): String {
         throw IllegalArgumentException("bad encoding")
     }
 }
+
+/** This account's TLS relaxations, for the native session and ManageSieve. */
+fun AccountSettings.tlsPolicy(): org.dlang.liveimap.engine.TlsPolicy =
+    org.dlang.liveimap.engine.TlsPolicy(acceptInvalidCert = acceptInvalidCert, allowOldTls = allowOldTls)
+
+/** True when the fields the server check probes are unchanged. */
+fun sameServerSettings(a: AccountSettings, b: AccountSettings): Boolean =
+    a.imapHost == b.imapHost && a.imapPort == b.imapPort && a.tlsMode == b.tlsMode &&
+        a.acceptInvalidCert == b.acceptInvalidCert && a.allowOldTls == b.allowOldTls &&
+        a.allowPlaintextAuth == b.allowPlaintextAuth
+
+/** This account with the probed server fields taken from base (Revert in the server check). */
+fun AccountSettings.withServerOf(base: AccountSettings): AccountSettings = copy(
+    imapHost = base.imapHost,
+    imapPort = base.imapPort,
+    tlsMode = base.tlsMode,
+    acceptInvalidCert = base.acceptInvalidCert,
+    allowOldTls = base.allowOldTls,
+    allowPlaintextAuth = base.allowPlaintextAuth,
+)

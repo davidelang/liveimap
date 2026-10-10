@@ -404,6 +404,24 @@ Avoid:
   is fatal unless the user pins that exact certificate (subject, issuer,
   validity, SHA-256 fingerprint shown; stored per account and host:port). A
   changed pinned certificate asks again. There is no global "accept all".
+* Two Advanced per-account TLS settings, both off by default and each shown
+  with a warning, apply to IMAP, SMTP and ManageSieve of that account only:
+  "Accept invalid certificate" (like pine `/novalidate-cert`: a name
+  mismatch, expired, untrusted or changed certificate is accepted; connection
+  and handshake failures are not) and "Allow old TLS and weak keys" (TLS 1.0
+  and 1.1, small DH keys and legacy ciphers: OpenSSL minimum TLS 1.0 and
+  security level 0 for that connection only).
+* STARTTLS is sent only when the pre-TLS CAPABILITY (IMAP), EHLO (SMTP) or
+  greeting (ManageSieve) lists it; otherwise the connection fails with
+  "server does not offer STARTTLS". A failed handshake reports the OpenSSL
+  reason (for example "dh key too small"), else the alert, else the state.
+* When the IMAP server fields change in Settings, a capability check probes
+  the server without logging in (CAPABILITY before and after TLS, certificate
+  verdict, a retry with old TLS when the handshake fails) and lists conflicts:
+  STARTTLS not offered, TLS failure or old TLS needed, certificate failing
+  validation, plaintext login disabled or needing the plaintext setting, no
+  supported login mechanism. The dialog offers Save anyway (also when the
+  server is unreachable) or Revert.
 * Test servers use certificates from a lab test CA. The app trusts that CA
   only for acceptance-test connections to marked test servers (a test-only
   trust anchor), never for normal account connections.

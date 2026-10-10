@@ -89,6 +89,8 @@ struct stack_st;
 extern "C" {
 long SSL_CTX_ctrl(ssl_ctx_st * ctx, int cmd, long larg, void * parg);
 unsigned long ERR_get_error(void);
+void SSL_CTX_set_security_level(ssl_ctx_st * ctx, int level);
+int SSL_CTX_set_cipher_list(ssl_ctx_st * ctx, const char * list);
 void SSL_CTX_set_info_callback(ssl_ctx_st * ctx, void (* cb)(const ssl_st *, int, int));
 const char * SSL_alert_desc_string_long(int value);
 const char * SSL_state_string_long(const ssl_st * s);
@@ -137,6 +139,22 @@ std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
 extern thread_local std::string gTlsAlert;
+std::string tlsFailureReason();
+bool certificateVerdict(const std::string & text);
+thread_local std::string gTlsState;
+
+// The reason a TLS handshake failed: the OpenSSL error (e.g. "dh key too small"), else the alert, else the last state.
+std::string tlsFailureReason() {
+    std::string reason;
+    for (unsigned long e = ERR_get_error(); e != 0; e = ERR_get_error()) {
+        char buf[256];
+        ERR_error_string_n(e, buf, sizeof buf);
+        reason = buf;  // keep the last (most specific) entry
+    }
+    if (reason.empty()) reason = gTlsAlert;
+    if (reason.empty()) reason = gTlsState;
+    return reason;
+}
 
 namespace {
 
@@ -182,6 +200,10 @@ struct LiveSession {
     std::string tlsMode = "None";
     std::string certPin;
     bool allowPlaintextAuth = false;
+    // Advanced, per account, both off by default: accept a certificate that fails validation (like
+    // pine /novalidate-cert), and allow TLS 1.0/1.1, small DH and legacy ciphers (security level 0).
+    bool acceptInvalidCert = false;
+    bool allowOldTls = false;
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
@@ -2260,12 +2282,20 @@ void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
 
 struct TlsCapture {
     std::vector<std::vector<unsigned char>> ders;
+    bool allowOldTls = false;
 };
+
+// Certificate verdicts that the accept-invalid-certificate setting overrides; connection failures are never overridden.
+bool certificateVerdict(const std::string & text) {
+    return text == "name mismatch" || text == "certificate expired" || text == "certificate untrusted"
+        || text == "certificate changed" || text == "certificate rejected";
+}
 
 thread_local TlsCapture * tlsCapture = nullptr;
 
 const int kSslCtrlSetMinProtoVersion = 123;
 const long kTls12Version = 0x0303;
+const long kTls10Version = 0x0301;
 const int kSslVerifyPeer = 1;
 
 bool encodeDer(x509_st * cert, std::vector<unsigned char> * out) {
@@ -2620,6 +2650,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     const char * password, LiveSession * live, std::string * error, std::string * connectedAddress,
     const char * pin, bool publishOffer) {
     TlsCapture capture;
+    capture.allowOldTls = live != nullptr && live->allowOldTls;
     tlsCapture = &capture;
     std::string address;
     mailimap * imap = nullptr;
@@ -2642,7 +2673,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             return nullptr;
         }
         if (!advertised) {
-            *error = serviceLabel("IMAP", host, port) + " (" + address + "): STARTTLS is not advertised";
+            *error = serviceLabel("IMAP", host, port) + " (" + address + "): server does not offer STARTTLS";
             rejectImap(imap);
             tlsCapture = nullptr;
             return nullptr;
@@ -2684,15 +2715,9 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     }
     // A handshake that failed before any certificate arrived reports the TLS failure, not a certificate verdict.
     if (!tlsOk) {
-        std::string reason;
-        for (unsigned long e = ERR_get_error(); e != 0; e = ERR_get_error()) {
-            char buf[256];
-            ERR_error_string_n(e, buf, sizeof buf);
-            reason = buf;  // keep the last (most specific) entry
-        }
-        if (reason.empty()) reason = gTlsAlert;
+        std::string reason = tlsFailureReason();
         if (error->empty()) *error = "TLS handshake failed";
-        if (capture.ders.empty()) *error += reason.empty() ? " (TLS handshake failed)" : " (TLS handshake failed: " + reason + ")";
+        *error += reason.empty() ? " (TLS handshake failed)" : " (TLS handshake failed: " + reason + ")";
         rejectImap(imap);
         tlsCapture = nullptr;
         return nullptr;
@@ -2705,6 +2730,10 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     }
     std::string trust = peerTrustCheck(env, host, capture.ders, pin, publishOffer);
     tlsCapture = nullptr;
+    if (!trust.empty() && live != nullptr && live->acceptInvalidCert && certificateVerdict(trust)) {
+        clearCertOffer();
+        trust.clear();
+    }
     if (!trust.empty()) {
         *error = trust;
         rejectImap(imap);
@@ -4498,18 +4527,26 @@ void recordTlsInfo(const ssl_st * s, int where, int ret) {
     constexpr int kAlert = 0x4000, kRead = 0x04, kExit = 0x02;
     if (where & kAlert) {
         gTlsAlert = std::string((where & kRead) ? "server alert: " : "client alert: ") + SSL_alert_desc_string_long(ret);
-    } else if ((where & kExit) && ret == 0 && gTlsAlert.empty()) {
-        // ret < 0 is only "want read/write" on a non-blocking socket; ret == 0 is a real handshake failure.
-        gTlsAlert = std::string("stopped in ") + SSL_state_string_long(s);
+    } else if ((where & kExit) && ret <= 0) {
+        // Kept as the last handshake state; used only when the handshake really failed and nothing better is known.
+        gTlsState = std::string("stopped in ") + SSL_state_string_long(s);
     }
 }
 
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) {
     if (ssl_context == nullptr) return;
     gTlsAlert.clear();
+    gTlsState.clear();
     auto * ctx = static_cast<ssl_ctx_st *>(mailstream_ssl_get_openssl_ssl_ctx(ssl_context));
     if (ctx == nullptr) return;
-    SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls12Version, nullptr);
+    if (tlsCapture != nullptr && tlsCapture->allowOldTls) {
+        // Allow old TLS and weak keys for this connection only: TLS 1.0+, security level 0 (small DH, legacy ciphers).
+        SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls10Version, nullptr);
+        SSL_CTX_set_security_level(ctx, 0);
+        SSL_CTX_set_cipher_list(ctx, "DEFAULT:@SECLEVEL=0");
+    } else {
+        SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls12Version, nullptr);
+    }
     SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
     SSL_CTX_set_info_callback(ctx, recordTlsInfo);
 }
@@ -4838,7 +4875,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
-    jboolean allowPlaintext) {
+    jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -4864,6 +4901,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->tlsMode = mode.c();
     session->certPin = pin.c();
     session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
+    session->acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
+    session->allowOldTls = allowOldTls == JNI_TRUE;
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;
@@ -7054,6 +7093,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     std::string address;
     std::string where;
     TlsCapture capture;
+    capture.allowOldTls = session->allowOldTls;
     bool secured = false;
     if (mode == "Implicit") {
         address = session->smtpHost;
@@ -7113,7 +7153,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             if (r == MAILSMTP_NO_ERROR) {
                 if ((smtp->esmtp & MAILSMTP_ESMTP_STARTTLS) == 0) {
                     mailsmtp_free(smtp);
-                    throwFailure(env, "STARTTLS is not advertised");
+                    throwFailure(env, "server does not offer STARTTLS");
                     unlockSession(session);
                     return;
                 }
@@ -7121,7 +7161,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                 r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
                 r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
                 mailsmtp_free(smtp);
-                throwFailure(env, "STARTTLS is not advertised");
+                throwFailure(env, "server does not offer STARTTLS");
                 unlockSession(session);
                 return;
             } else {
@@ -7136,7 +7176,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             tlsCapture = nullptr;
             if (r == MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED) {
                 mailsmtp_free(smtp);
-                throwFailure(env, "STARTTLS is not advertised");
+                throwFailure(env, "server does not offer STARTTLS");
                 unlockSession(session);
                 return;
             }
@@ -7165,6 +7205,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             pin = session->certPin.c_str();
         }
         std::string trust = peerTrustCheck(env, host, capture.ders, pin, false);
+        if (!trust.empty() && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();
         if (!trust.empty()) {
             mailsmtp_free(smtp);
             throwFailure(env, trust);
@@ -7312,4 +7353,114 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     mailsmtp_quit(smtp);
     mailsmtp_free(smtp);
     unlockSession(session);
+}
+
+
+// Capability probe for the settings check: connect in the chosen TLS mode, read CAPABILITY before and after
+// TLS, and judge the certificate. Never logs in, never selects. Returns key=value lines:
+// error=, pre=, post=, starttls=absent, tls=<failure>, trust=<verdict>, accepted=<verdict>.
+namespace {
+std::string probeCaps(mailimap * imap) {
+    struct mailimap_capability_data * caps = nullptr;
+    int r = mailimap_capability(imap, &caps);
+    std::string line = cmdOk(r) && caps != nullptr ? joinCapabilities(caps) : std::string();
+    if (caps != nullptr) mailimap_capability_data_free(caps);
+    return line;
+}
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jclass,
+    jstring host, jint port, jstring tlsMode, jstring certPin, jboolean acceptInvalidCert, jboolean allowOldTls) {
+    registerExtensions();
+    if (!ensureJni(env)) return nullptr;
+    JChars h(env, host);
+    JChars mode(env, tlsMode);
+    JChars pin(env, certPin);
+    LiveSession probe;
+    probe.acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
+    probe.allowOldTls = allowOldTls == JNI_TRUE;
+    std::vector<std::string> lines;
+    std::string error;
+    std::string address;
+    TlsCapture capture;
+    capture.allowOldTls = probe.allowOldTls;
+    mailimap * imap = nullptr;
+    bool tried = false;
+    bool tlsOk = false;
+    if (strcmp(mode.c(), "Implicit") == 0) {
+        imap = mailimap_new(0, nullptr);
+        if (imap != nullptr) {
+            mailimap_set_timeout(imap, kReadTimeoutSec);
+            tlsCapture = &capture;
+            int r = mailimap_ssl_connect_with_callback(imap, h.c(), static_cast<uint16_t>(port), prepareTls, nullptr);
+            tlsCapture = nullptr;
+            tried = true;
+            tlsOk = connectOk(r);
+            if (!tlsOk) {
+                std::string reason = tlsFailureReason();
+                lines.push_back("tls=" + (reason.empty() ? std::string("TLS handshake failed") : reason));
+                if (capture.ders.empty() && reason.empty()) lines.push_back("error=connection failed");
+            }
+        } else {
+            lines.push_back("error=imap error");
+        }
+    } else {
+        imap = openTcp(h.c(), port, &probe, &error, &address);
+        if (imap == nullptr) {
+            lines.push_back("error=" + error);
+        } else {
+            std::string pre = probeCaps(imap);
+            lines.push_back("pre=" + pre);
+            if (strcmp(mode.c(), "StartTls") == 0) {
+                bool offered = (" " + pre + " ").find(" STARTTLS ") != std::string::npos;
+                if (!offered) {
+                    // Never send STARTTLS unless CAPABILITY lists it.
+                    lines.push_back("starttls=absent");
+                } else {
+                    tlsCapture = &capture;
+                    int r = mailimap_socket_starttls_with_server_name_callback(imap, sniName(h.c()), prepareTls, nullptr);
+                    tlsCapture = nullptr;
+                    tried = true;
+                    tlsOk = cmdOk(r);
+                    if (!tlsOk) {
+                        std::string reason = tlsFailureReason();
+                        lines.push_back("tls=" + (reason.empty() ? std::string("TLS handshake failed") : reason));
+                    }
+                }
+            }
+        }
+    }
+    if (tried && tlsOk) {
+        std::string trust = capture.ders.empty() ? std::string("certificate rejected")
+            : peerTrustCheck(env, h.c(), capture.ders, pin.c(), false);
+        if (!trust.empty()) {
+            if (probe.acceptInvalidCert && certificateVerdict(trust)) lines.push_back("accepted=" + trust);
+            else lines.push_back("trust=" + trust);
+        }
+        lines.push_back("post=" + probeCaps(imap));
+    }
+    if (imap != nullptr) rejectImap(imap);
+    jclass stringCls = env->FindClass("java/lang/String");
+    if (stringCls == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(lines.size()), stringCls, nullptr);
+    env->DeleteLocalRef(stringCls);
+    if (arr == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    for (size_t i = 0; i < lines.size(); ++i) {
+        jstring js = newString(env, lines[i].c_str());
+        if (js == nullptr || env->ExceptionCheck()) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(arr);
+            return nullptr;
+        }
+        env->SetObjectArrayElement(arr, static_cast<jsize>(i), js);
+        env->DeleteLocalRef(js);
+    }
+    return arr;
 }

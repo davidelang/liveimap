@@ -92,11 +92,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
+import org.dlang.liveimap.engine.LibetpanMailSession
+import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.engine.sieve.SieveCapabilities
@@ -460,6 +464,63 @@ private fun AccountGroup(editor: SettingsEditor) {
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
     var checkingSieve by remember { mutableStateOf(false) }
     var sieveReport by remember { mutableStateOf("") }
+    // Capability sanity check when the server is saved: baseline is the last accepted server settings.
+    var serverBaseline by remember { mutableStateOf<AccountSettings?>(null) }
+    var serverCheck by remember { mutableStateOf<ServerCheck?>(null) }
+    val serverKey = listOf(
+        settings.imapHost,
+        settings.imapPort,
+        settings.tlsMode,
+        settings.acceptInvalidCert,
+        settings.allowOldTls,
+        settings.allowPlaintextAuth,
+    )
+    LaunchedEffect(editor.ready, serverKey) {
+        if (!editor.ready) return@LaunchedEffect
+        val base = serverBaseline
+        val current = editor.settings
+        if (base == null || current.imapHost.isBlank()) {
+            serverBaseline = current
+            return@LaunchedEffect
+        }
+        if (sameServerSettings(base, current)) return@LaunchedEffect
+        delay(1500)
+        val result = withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(current) }
+        if (result.reachable && result.conflicts.isEmpty()) {
+            serverBaseline = current
+            serverCheck = if (result.notes.isEmpty()) null else result
+        } else {
+            serverCheck = result
+        }
+    }
+    serverCheck?.let { check ->
+        AlertDialog(
+            onDismissRequest = { serverCheck = null },
+            title = {
+                Text(
+                    stringResource(
+                        if (check.reachable) R.string.settings_check_conflicts else R.string.settings_check_unreachable,
+                    ),
+                )
+            },
+            text = { Text((check.conflicts + check.notes).joinToString("\n")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    serverBaseline = editor.settings
+                    serverCheck = null
+                }) { Text(stringResource(R.string.settings_check_save_anyway)) }
+            },
+            dismissButton = {
+                val base = serverBaseline
+                if (base != null && check.conflicts.isNotEmpty()) {
+                    TextButton(onClick = {
+                        serverCheck = null
+                        editor.persist(editor.settings.withServerOf(base))
+                    }) { Text(stringResource(R.string.settings_check_revert)) }
+                }
+            },
+        )
+    }
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importGeneration by remember { mutableStateOf(0) }
     var importError by remember { mutableStateOf<Int?>(null) }
@@ -658,6 +719,20 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { enabled ->
                 editor.persist(editor.settings.copy(allowPlaintextAuth = enabled))
             }
+            BoolField(
+                stringResource(R.string.settings_accept_invalid_cert),
+                settings.acceptInvalidCert,
+                note = stringResource(R.string.settings_accept_invalid_cert_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(acceptInvalidCert = enabled))
+            }
+            BoolField(
+                stringResource(R.string.settings_allow_old_tls),
+                settings.allowOldTls,
+                note = stringResource(R.string.settings_allow_old_tls_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(allowOldTls = enabled))
+            }
             if (settings.certPin.isBlank()) {
                 Text(stringResource(R.string.settings_cert_pin_none))
             } else {
@@ -696,8 +771,10 @@ private fun AccountGroup(editor: SettingsEditor) {
                     editor.ui.launch {
                         try {
                             sieveReport = sieveCheckText(
-                                greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
-                                    editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
+                                withContext(editor.settings.tlsPolicy()) {
+                                    greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
+                                        editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
+                                    }
                                 },
                             )
                         } catch (failure: SieveFailure) {

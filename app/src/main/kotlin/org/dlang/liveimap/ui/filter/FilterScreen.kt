@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
@@ -47,6 +48,7 @@ import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.sieveEndpoint
+import org.dlang.liveimap.settings.tlsPolicy
 
 @Composable
 fun FilterListScreen(onOpen: (Int) -> Unit) {
@@ -112,20 +114,22 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                         val account = store.load()
                         val password = store.password()
                         val (host, port) = sieveEndpoint(account)
-                        val warning = openAndDeliverLiveimap(
-                            host,
-                            port,
-                            account.tlsMode,
-                            account.sieveCertPin,
-                            ::confirmMailCertificate,
-                            { fingerprint ->
-                                store.save(account.copy(sieveCertPin = fingerprint))
-                            },
-                            account.username,
-                            password,
-                            emitSieve(account.inboundRules),
-                            account.allowPlaintextAuth,
-                        )
+                        val warning = withContext(account.tlsPolicy()) {
+                            openAndDeliverLiveimap(
+                                host,
+                                port,
+                                account.tlsMode,
+                                account.sieveCertPin,
+                                ::confirmMailCertificate,
+                                { fingerprint ->
+                                    store.save(account.copy(sieveCertPin = fingerprint))
+                                },
+                                account.username,
+                                password,
+                                emitSieve(account.inboundRules),
+                                account.allowPlaintextAuth,
+                            )
+                        }
                         uploadReport = if (warning.isEmpty()) uploaded else warning
                     } catch (error: CancellationException) {
                         throw error

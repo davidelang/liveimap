@@ -65,6 +65,7 @@ class LabSuiteTest {
         val account = AccountSettings(
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = tls,
             logImapTraffic = true, allowPlaintextAuth = true,
+            allowOldTls = arg("labOldTls") == "true",
         )
         var opened = false
         try {

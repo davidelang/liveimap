@@ -256,6 +256,8 @@ class LibetpanMailSession : MailSession {
             account.tlsMode.name,
             account.certPin,
             account.allowPlaintextAuth,
+            account.acceptInvalidCert,
+            account.allowOldTls,
         )
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -1034,6 +1036,8 @@ class LibetpanMailSession : MailSession {
         tlsMode: String,
         certPin: String,
         allowPlaintextAuth: Boolean,
+        acceptInvalidCert: Boolean,
+        allowOldTls: Boolean,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
@@ -1185,6 +1189,37 @@ class LibetpanMailSession : MailSession {
 
         @JvmStatic
         private external fun nativeTakeCertOffer(): Array<String>?
+
+        @JvmStatic
+        private external fun nativeProbe(
+            host: String,
+            port: Int,
+            tlsMode: String,
+            certPin: String,
+            acceptInvalidCert: Boolean,
+            allowOldTls: Boolean,
+        ): Array<String>?
+
+        /**
+         * The settings check: connects in the account's TLS mode, reads CAPABILITY before and after TLS, judges
+         * the certificate, and never logs in. A TLS failure with old TLS off is retried once with it on, to tell
+         * the user the server needs that setting. Blocking; call off the main thread.
+         */
+        fun checkServerSettings(account: AccountSettings): ServerCheck {
+            fun run(oldTls: Boolean) = ServerProbe.parse(
+                nativeProbe(
+                    account.imapHost,
+                    account.imapPort,
+                    account.tlsMode.name,
+                    account.certPin,
+                    account.acceptInvalidCert,
+                    oldTls,
+                ),
+            )
+            val probe = run(account.allowOldTls)
+            val oldTlsWorks = if (probe.tls.isNotEmpty() && !account.allowOldTls) run(true).tls.isEmpty() else null
+            return checkServer(account, probe, oldTlsWorks)
+        }
     }
 }
 

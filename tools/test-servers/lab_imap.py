@@ -73,6 +73,8 @@ def connect(host, port, user, password, allow):
         m = RecIMAP4(host, port)
         if TLS_MODE == "StartTls":
             import ssl
+            if "STARTTLS" not in m.capabilities:
+                raise SystemExit("server does not offer STARTTLS")
             m.starttls(ssl._create_unverified_context())
     pre = m.capabilities
     m.login(user, password)

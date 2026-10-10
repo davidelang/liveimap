@@ -100,7 +100,7 @@ class ManageSieveTest {
             requireAdvertisedStartTls(SieveCapabilities(startTls = false))
             fail("expected SieveFailure")
         } catch (failure: SieveFailure) {
-            assertEquals("STARTTLS is not advertised", failure.text)
+            assertEquals("server does not offer STARTTLS", failure.text)
         }
         assertEquals(emptyList<String>(), transport.written)
         assertTrue(transport.writtenBytes.isEmpty())

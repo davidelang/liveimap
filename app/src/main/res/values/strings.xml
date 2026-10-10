@@ -718,4 +718,12 @@
     <string name="about_implicit_tls">This connection uses implicit TLS. The password is sent after the certificate check.</string>
     <string name="settings_sieve_check">Check ManageSieve</string>
     <string name="settings_sieve_no_host">Set an IMAP host or a Sieve host first.</string>
+    <string name="settings_accept_invalid_cert">Accept invalid certificate</string>
+    <string name="settings_accept_invalid_cert_note">Warning: connects even when the server certificate fails validation (wrong name, expired, untrusted or changed), like pine /novalidate-cert. Anyone on the network path can then read your mail and password. Off by default.</string>
+    <string name="settings_allow_old_tls">Allow old TLS and weak keys</string>
+    <string name="settings_allow_old_tls_note">Warning: allows TLS 1.0 and 1.1, small Diffie-Hellman keys and legacy ciphers for this account only. These can be broken; use only for an old server you cannot upgrade. Off by default.</string>
+    <string name="settings_check_conflicts">Server settings conflict</string>
+    <string name="settings_check_unreachable">Server not reachable</string>
+    <string name="settings_check_save_anyway">Save anyway</string>
+    <string name="settings_check_revert">Revert</string>
 </resources>
