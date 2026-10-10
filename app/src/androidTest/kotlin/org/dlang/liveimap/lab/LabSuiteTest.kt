@@ -57,7 +57,13 @@ class LabSuiteTest {
         val session = LibetpanMailSession()
         // Only the lab CA is trusted; an untrusted or changed certificate fails the run.
         session.setCertConfirmer { false }
-        session.setPlaintextConfirmer { true }
+        // Clear-text login goes through the real confirmation path: the account starts without
+        // allowPlaintextAuth and the suite accepts the prompt, counting how often it was asked.
+        var plaintextConfirms = 0
+        session.setPlaintextConfirmer {
+            plaintextConfirms++
+            true
+        }
         var failed = 0
         suspend fun step(name: String, body: suspend () -> String) {
             TrafficRecorder.event("main", "step", name)
@@ -67,7 +73,7 @@ class LabSuiteTest {
         }
         val account = AccountSettings(
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = tls,
-            logImapTraffic = true, allowPlaintextAuth = true,
+            logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
         )
@@ -85,7 +91,7 @@ class LabSuiteTest {
                         },
                     )
                 }
-                session.capabilities.sorted().joinToString(" ")
+                "plaintextConfirms=$plaintextConfirms " + session.capabilities.sorted().joinToString(" ")
             }
             if (opened) {
                 step("namespaces") { session.namespaces().size.toString() }
