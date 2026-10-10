@@ -107,6 +107,22 @@ size_t SSL_get_peer_finished(const ssl_st * ssl, void * buf, size_t count);
 int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
     const char * label, size_t llen, const unsigned char * context,
     size_t contextlen, int use_context);
+const void * SSL_get_current_cipher(const ssl_st * ssl);
+const char * SSL_CIPHER_get_name(const void * cipher);
+const char * SSL_get_version(const ssl_st * ssl);
+}
+
+// Negotiated TLS of the last IMAP login on this thread, for the recording's tls event.
+thread_local std::string gLastTls;
+
+static void noteTls(mailstream * stream, const char * bindingName) {
+    gLastTls.clear();
+    if (stream == nullptr) return;
+    ssl_st * ssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(stream));
+    if (ssl == nullptr) return;
+    const void * cipher = SSL_get_current_cipher(ssl);
+    gLastTls = std::string(SSL_get_version(ssl)) + " " + (cipher ? SSL_CIPHER_get_name(cipher) : "?") +
+        " binding=" + (bindingName ? bindingName : "none");
 }
 
 static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
@@ -2544,6 +2560,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     const char * bindingName = nullptr;
     if (tls) {
         fillTlsChannelBinding(imap->imap_stream, binding, &bindingLen, &bindingName);
+        noteTls(imap->imap_stream, bindingName);
     }
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
@@ -7513,4 +7530,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LabTestHooks_nativeSetMaxTls12(JNIEnv *, jobject, jboolean on) {
     gLabMaxTls12.store(on == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeTls(JNIEnv * env, jclass) {
+    std::string text = gLastTls;
+    gLastTls.clear();
+    return env->NewStringUTF(text.c_str());
 }

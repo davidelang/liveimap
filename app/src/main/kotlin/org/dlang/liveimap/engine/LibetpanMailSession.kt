@@ -274,6 +274,7 @@ class LibetpanMailSession : MailSession {
             account.allowOldTls,
             account.authMechanism,
         )
+        nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
             val text = nativeTakeError()
             if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
@@ -1202,6 +1203,10 @@ class LibetpanMailSession : MailSession {
 
         @JvmStatic
         private external fun nativeTakeError(): String
+
+        /** "TLSv1.3 <cipher> binding=<type>" of the last login on this thread, or "" for plaintext. */
+        @JvmStatic
+        private external fun nativeTakeTls(): String
 
         @JvmStatic
         private external fun nativeTakeCertOffer(): Array<String>?
