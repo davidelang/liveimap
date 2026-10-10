@@ -2706,3 +2706,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - TLS failures before a certificate report the OpenSSL reason; lab seeds over TLS when plaintext login is refused; old-TLS servers recorded as expected.
 
 ## 2026-10-10 - STARTTLS sends no SNI for IP-literal hosts (RFC 6066); the lab Courier (GnuTLS) aborted on it. Lab: courier-606 syslog and a stale-pid-safe start.
+
+## 2026-10-10 - TLS info callback reports only alerts and real failures; lab courier.pem owned by the courier user (couriertls: Permission denied).

@@ -4498,7 +4498,8 @@ void recordTlsInfo(const ssl_st * s, int where, int ret) {
     constexpr int kAlert = 0x4000, kRead = 0x04, kExit = 0x02;
     if (where & kAlert) {
         gTlsAlert = std::string((where & kRead) ? "server alert: " : "client alert: ") + SSL_alert_desc_string_long(ret);
-    } else if ((where & kExit) && ret <= 0 && gTlsAlert.empty()) {
+    } else if ((where & kExit) && ret == 0 && gTlsAlert.empty()) {
+        // ret < 0 is only "want read/write" on a non-blocking socket; ret == 0 is a real handshake failure.
         gTlsAlert = std::string("stopped in ") + SSL_state_string_long(s);
     }
 }
