@@ -43,7 +43,9 @@ case "$c" in
     setkv /etc/imapd.conf tls_key_file ' /etc/lab/server.key' ':' ;;
   liveimap-cyrus-36|liveimap-cyrus-3124|liveimap-cyrus-3137)
     setkv /etc/imapd.conf tls_server_cert ' /etc/lab/chain.crt' ':'
-    setkv /etc/imapd.conf tls_server_key ' /etc/lab/server.key' ':' ;;
+    setkv /etc/imapd.conf tls_server_key ' /etc/lab/server.key' ':'
+    # Cyrus 3.12+ defaults allowstarttls to no (cyr_info conf-all); without it STARTTLS is "BAD Unrecognized command".
+    setkv /etc/imapd.conf allowstarttls ' yes' ':' ;;
   liveimap-courier-50|liveimap-courier-606)
     docker exec "$c" sh -c 'for f in $(find / -xdev -name imapd-ssl -path "*etc*" 2>/dev/null); do sed -i "s|^TLS_CERTFILE=.*|TLS_CERTFILE=/etc/lab/courier.pem|; /^IMAP_STARTTLS=/d" $f; grep -q "^TLS_CERTFILE=" $f || echo "TLS_CERTFILE=/etc/lab/courier.pem" >> $f; echo "IMAP_STARTTLS=YES" >> $f; done; cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/lab/courier.pem; chmod 600 /etc/lab/courier.pem; id daemon >/dev/null 2>&1 && chown daemon /etc/lab/courier.pem || true' ;;
   liveimap-uwimap)
