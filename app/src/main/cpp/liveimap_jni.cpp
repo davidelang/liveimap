@@ -2476,7 +2476,17 @@ extern "C" void sasl_dispose(void **);
 // Re-run the local SASL start for one mechanism without callbacks; reports the library's own reason.
 std::string saslStartProbe(const std::string & mechanism, const char * host) {
     void * conn = nullptr;
-    int r = sasl_client_new("imap", host, nullptr, nullptr, nullptr, 0, &conn);
+    struct ProbeCallback { unsigned long id; int (*proc)(void); void * context; };
+    static ProbeCallback callbacks[] = {
+        {0x4008, reinterpret_cast<int (*)(void)>(+[](void *, int, const char **, const char ** r) { *r = ""; return 0; }), nullptr},
+        {0x4001, reinterpret_cast<int (*)(void)>(+[](void *, int, const char ** r, unsigned * l) { *r = "probe"; if (l) *l = 5; return 0; }), nullptr},
+        {0x4002, reinterpret_cast<int (*)(void)>(+[](void *, int, const char ** r, unsigned * l) { *r = "probe"; if (l) *l = 5; return 0; }), nullptr},
+        {0x4004, reinterpret_cast<int (*)(void)>(+[](void *, void *, int, void ** r) {
+            static struct { unsigned long len; unsigned char data[8]; } secret = {5, "probe"};
+            *r = &secret; return 0; }), nullptr},
+        {0, nullptr, nullptr},
+    };
+    int r = sasl_client_new("imap", host, nullptr, nullptr, callbacks, 0, &conn);
     if (r != 0) return "client_new=" + std::to_string(r);
     void * prompts = nullptr;
     const char * out = nullptr;
