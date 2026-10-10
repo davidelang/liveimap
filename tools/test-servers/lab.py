@@ -107,12 +107,21 @@ def install(commit):
         sys.exit("test apk install failed: " + r.stdout[-400:] + r.stderr[-400:])
 
 
+def lab_ca():
+    path = os.path.join(GEN, "ca", "ca.der")
+    if not os.path.exists(path):
+        return ""
+    import base64
+    return base64.b64encode(open(path, "rb").read()).decode()
+
+
 def instrument(s, port, tls, run, commit):
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
          "-e", "labServer", s["name"], "-e", "labRun", run, "-e", "labCommit", commit,
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
+         "-e", "labCa", lab_ca(),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout

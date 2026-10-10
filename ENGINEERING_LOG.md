@@ -2696,3 +2696,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Lab finding: the Android libetpan archive is built without USE_SASL; IMAP AUTHENTICATE is a stub.
 
 ## 2026-10-10 - Build libetpan with USE_SASL through third_party/libetpan/patches; lab runner strictly one server at a time.
+
+## 2026-10-10 - Lab CA trusted only in the debug lab path; lab-ca.sh; thread steps by algorithm.

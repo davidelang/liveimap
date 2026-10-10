@@ -49,8 +49,11 @@ class LabSuiteTest {
         )
         val steps = StringBuilder("step\tresult\tdetail\n")
         LabTestHooks.set(host, arg("labPass"))
+        val ca = arg("labCa")
+        if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val session = LibetpanMailSession()
-        session.setCertConfirmer { true }
+        // Only the lab CA is trusted; an untrusted or changed certificate fails the run.
+        session.setCertConfirmer { false }
         session.setPlaintextConfirmer { true }
         var failed = 0
         suspend fun step(name: String, body: suspend () -> String) {
@@ -94,7 +97,8 @@ class LabSuiteTest {
                 step("searchText") { session.searchText("LiveIMAP").size.toString() }
                 step("searchAdvanced") { session.searchCriterion("Advanced", "Or\nYes\tSubject\tLiveIMAP").size.toString() }
                 if ("SORT" in session.capabilities) step("sortDate") { session.sort(SortKey.Date, true).size.toString() }
-                if (session.capabilities.any { it.startsWith("THREAD=") }) step("thread") { session.thread(SortKey.Date).toString().take(40) }
+                if ("THREAD=REFERENCES" in session.capabilities) step("threadReferences") { session.thread(SortKey.ThreadReferences).toString().take(40) }
+                if ("THREAD=ORDEREDSUBJECT" in session.capabilities) step("threadOrderedSubject") { session.thread(SortKey.ThreadOrderedSubject).toString().take(40) }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
                 assertTrue("exists $exists", exists >= 0)
