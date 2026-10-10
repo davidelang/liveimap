@@ -138,9 +138,15 @@ KINDS = ["plain", "plain", "latin1", "html", "attach", "sjis", "plain"]
 def seed(a, allow):
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
     d = delimiter(m)
-    boxes = {TEST_ROOT: a.count, f"{TEST_ROOT}{d}Sub": max(5, a.count // 10), f"{TEST_ROOT}{d}Trash": 0}
+    root = TEST_ROOT
+    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
+    if typ == "OK" and ns and ns[0]:
+        hit = re.match(rb'\(\("([^"]*)"', ns[0])
+        if hit and hit.group(1):
+            root = hit.group(1).decode() + TEST_ROOT  # e.g. INBOX. on Cyrus 2.x and Courier
+    boxes = {root: a.count, f"{root}{d}Sub": max(5, a.count // 10), f"{root}{d}Trash": 0}
     if a.big:
-        boxes[f"{TEST_ROOT}{d}Big"] = a.big
+        boxes[f"{root}{d}Big"] = a.big
     for box, target in boxes.items():
         ensure(m, box)
         have = count(m, box)
