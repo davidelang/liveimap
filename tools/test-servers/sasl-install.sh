@@ -11,6 +11,14 @@ case "$c" in
     printf 'auth_mechanisms = plain login cram-md5 scram-sha-1 scram-sha-1-plus scram-sha-256 scram-sha-256-plus digest-md5\n' > "$t"
     docker cp "$t" "$c:/etc/dovecot/conf.d/lab-sasl.conf"
     rm -f "$t" ;;
+  liveimap-dovecot-10|liveimap-dovecot-12)
+    # Dovecot 1.x: mechanisms line inside "auth default"; no SCRAM before 2.1.
+    docker exec "$c" sed -i 's/^\( *\)mechanisms = .*/\1mechanisms = plain login cram-md5 digest-md5/' /etc/dovecot/dovecot.conf ;;
+  liveimap-dovecot-22)
+    # Dovecot 2.2.13: SCRAM-SHA-1 only (no -PLUS, no SHA-256); conf.d/lab-sasl.conf sorts after 10-auth.conf.
+    docker exec "$c" sh -c "echo 'auth_mechanisms = plain login cram-md5 digest-md5 scram-sha-1' > /etc/dovecot/conf.d/lab-sasl.conf" ;;
+  liveimap-dovecot-dev)
+    docker exec "$c" sh -c "echo 'auth_mechanisms = plain login cram-md5 scram-sha-1 scram-sha-1-plus scram-sha-256 scram-sha-256-plus digest-md5' > /etc/dovecot/conf.d/lab-sasl.conf" ;;
   liveimap-cyrus-*)
     # Advertise every mechanism whose plugin is installed (sasldb holds plain passwords, so all can verify).
     docker exec "$c" sh -c '

@@ -7,7 +7,7 @@
 For each server: docker start, wait for the greeting, record CAPABILITY before and
 after login (lab_imap.py), run LabSuiteTest on emulator-5554 for each TLS mode the
 server offers, pull the recordings, and always docker stop.
-Output: recordings/<server>/<YYYYMMDD-HHMM>/ and recordings/<date>-summary.tsv.
+Output: recordings/<server>/<YYYYMMDD-HHMMSS>/ and recordings/<date>-summary.tsv.
 """
 import argparse, collections, os, re, socket, ssl, subprocess, sys, time
 
@@ -308,7 +308,7 @@ def main():
     if not a.skip_install:
         install(commit)
     os.makedirs(REC, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M")
+    stamp = time.strftime("%Y%m%d-%H%M%S")  # seconds: back-to-back runs must not overwrite
     summ = os.path.join(REC, f"{stamp}-summary.tsv")
     with open(summ, "w") as out:
         out.write("server\tprotocol\ttls\tresult\tdetail\tseconds\tdir\n")
