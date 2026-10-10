@@ -138,7 +138,8 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
 std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
-extern thread_local std::string gTlsAlert;
+extern std::atomic<bool> gLabMaxTls12{false};
+thread_local std::string gTlsAlert;
 std::string tlsFailureReason();
 
 namespace {
@@ -4582,6 +4583,8 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
     } else {
         SSL_CTX_ctrl(ctx, kSslCtrlSetMinProtoVersion, kTls12Version, nullptr);
     }
+    // Lab-test hook (debug builds only, set from LabTestHooks): cap at TLS 1.2 to test tls-unique servers.
+    if (gLabMaxTls12.load()) SSL_CTX_ctrl(ctx, 124 /* SSL_CTRL_SET_MAX_PROTO_VERSION */, kTls12Version, nullptr);
     SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
     SSL_CTX_set_info_callback(ctx, recordTlsInfo);
 }
@@ -7504,4 +7507,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
         env->DeleteLocalRef(js);
     }
     return arr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LabTestHooks_nativeSetMaxTls12(JNIEnv *, jobject, jboolean on) {
+    gLabMaxTls12.store(on == JNI_TRUE);
 }

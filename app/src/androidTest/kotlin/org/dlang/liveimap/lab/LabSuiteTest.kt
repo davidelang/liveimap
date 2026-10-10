@@ -52,6 +52,7 @@ class LabSuiteTest {
         )
         val steps = StringBuilder("step\tresult\tdetail\n")
         LabTestHooks.set(host, arg("labPass"))
+        LabTestHooks.setMaxTls12(arg("labMaxTls12") == "true")
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val session = LibetpanMailSession()

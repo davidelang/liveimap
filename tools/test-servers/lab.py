@@ -175,6 +175,7 @@ def instrument(s, port, tls, run, commit, mech=""):
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
          "-e", "labCa", lab_ca(),
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
+         "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
          "-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech,
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)

@@ -220,7 +220,20 @@ class LibetpanMailSession : MailSession {
         plaintextConfirmer = confirm
     }
 
+    /**
+     * One login, plus one fresh attempt without channel binding when automatic selection picked a SCRAM -PLUS
+     * mechanism that failed (servers whose SASL lacks the binding type, e.g. tls-unique-only on TLS 1.3). The
+     * retry keeps the TLS mode, so it never falls back to clear text, and it is not saved.
+     */
     private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
+        val first = loginOnce(account, knownPassword)
+        if (first !is OpenResult.Failed) return first
+        val retry = plusFallback(account, first.text) ?: return first
+        TrafficRecorder.event("main", "fallback", retry.authMechanism)
+        return loginOnce(retry, knownPassword)
+    }
+
+    private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
         namespaceList = null
         val password = if (knownPassword != null) {
             knownPassword

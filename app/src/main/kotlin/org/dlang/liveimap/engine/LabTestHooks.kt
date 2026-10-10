@@ -30,7 +30,17 @@ internal object LabTestHooks {
         labCa = CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(der)) as X509Certificate
     }
 
+    /** Lab only: cap native TLS at 1.2 (for servers whose SASL only has tls-unique). Ignored in release builds. */
+    fun setMaxTls12(on: Boolean) {
+        if (!BuildConfig.DEBUG) return
+        System.loadLibrary("liveimap")
+        nativeSetMaxTls12(on)
+    }
+
+    private external fun nativeSetMaxTls12(on: Boolean)
+
     fun clear() {
+        if (BuildConfig.DEBUG) runCatching { nativeSetMaxTls12(false) }
         host = null
         password = null
         labCa = null
