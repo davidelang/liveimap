@@ -104,6 +104,7 @@ void * OPENSSL_sk_value(const stack_st * sk, int i);
 int i2d_X509(x509_st * cert, unsigned char ** out);
 int SSL_version(const ssl_st * ssl);
 size_t SSL_get_peer_finished(const ssl_st * ssl, void * buf, size_t count);
+size_t SSL_get_finished(const ssl_st * ssl, void * buf, size_t count);
 int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
     const char * label, size_t llen, const unsigned char * context,
     size_t contextlen, int use_context);
@@ -143,7 +144,9 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
             *bindingLen = 32;
         }
     } else if (version == 0x0303) {
-        size_t n = SSL_get_peer_finished(ssl, binding, 64);
+        // RFC 5929: tls-unique is the first Finished message of the handshake. In a full handshake that is
+        // the client's own Finished (SSL_get_finished), not the server's; Cyrus rejected the peer one.
+        size_t n = SSL_get_finished(ssl, binding, 64);
         if (n > 0 && n <= 64) {
             *bindingName = "tls-unique";
             *bindingLen = n;
