@@ -24,5 +24,7 @@ cat server.crt server.key > server.pem
 cat server.crt ca.crt > chain.crt
 openssl pkcs12 -export -in server.crt -inkey server.key -certfile ca.crt -name lab -passout pass:labpass -out server.p12 2>/dev/null
 openssl x509 -in ca.crt -outform der -out ca.der
+# GreenMail reads /home/greenmail/greenmail.p12 with the image default password; -legacy keeps Java 8 able to read it.
+openssl pkcs12 -export -legacy -in server.crt -inkey server.key -certfile ca.crt -name greenmail -passout pass:changeit -out greenmail.p12 2>/dev/null
 chmod 644 ./*
 echo "$OUT"
