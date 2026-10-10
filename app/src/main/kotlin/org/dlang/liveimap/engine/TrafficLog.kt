@@ -338,16 +338,19 @@ class TrafficLog(
         @JvmStatic
         fun acceptNative(connectionId: String, logType: Int, data: ByteArray) {
             active?.accept(connectionId, logType, data)
+            TrafficRecorder.active?.accept(connectionId, logType, data)
         }
 
         @JvmStatic
         fun flushNative() {
             active?.flush()
+            TrafficRecorder.active?.flush()
         }
 
         @JvmStatic
         fun noteNative(connectionId: String, text: String) {
             active?.note(connectionId, text)
+            TrafficRecorder.active?.event(connectionId, "note", text)
         }
 
         private fun deleteRotated(file: File) {

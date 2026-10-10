@@ -2682,3 +2682,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-09 - Pin the ManageSieve certificate separately from IMAP.
 
 ## 2026-10-09 - Show libraries, the privacy policy, and a tip placeholder.
+
+## 2026-10-10 - Record protocol traffic as JSON lines (test-recording plan, Phase A).

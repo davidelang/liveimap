@@ -241,6 +241,7 @@ class LibetpanMailSession : MailSession {
             TrafficLog.noteStatus("Connecting")
             TrafficLog.noteStatus("Authenticating")
         }
+        TrafficRecorder.event("main", "connect", "${account.imapHost}:${account.imapPort} ${account.tlsMode.name}")
         val opened = nativeOpen(
             account.imapHost,
             account.imapPort,
@@ -259,6 +260,7 @@ class LibetpanMailSession : MailSession {
         if (opened == 0L) {
             val text = nativeTakeError()
             if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
+            TrafficRecorder.event("main", "error", text)
             finishTraffic(account)
             return OpenResult.Failed(text)
         }
@@ -866,6 +868,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override fun close() {
+        if (handle != 0L) TrafficRecorder.event("main", "close")
         closeLiveSession()
         capabilityLine = ""
         account = null
