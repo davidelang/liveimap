@@ -138,8 +138,8 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
 std::string utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
-extern std::atomic<bool> gLabMaxTls12{false};
-thread_local std::string gTlsAlert;
+extern thread_local std::string gTlsAlert;
+extern std::atomic<bool> gLabMaxTls12;
 std::string tlsFailureReason();
 
 namespace {
@@ -4543,6 +4543,7 @@ const char * sniName(const char * host) {
 }
 
 // Last TLS alert or handshake state on this thread, for the error text when a handshake fails.
+std::atomic<bool> gLabMaxTls12{false};
 thread_local std::string gTlsAlert;
 thread_local std::string gTlsState;
 
