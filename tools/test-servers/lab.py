@@ -167,6 +167,20 @@ def mechanisms(caps):
     return mechs
 
 
+def smtp_args(s):
+    """Lab SMTP from smtp.tsv (server, container port, recipient domain): the mapped host port and a lab-account
+    recipient, so test mail only ever goes to the lab server's own local account."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smtp.tsv")
+    for line in open(path):
+        f = line.rstrip("\n").split("\t")
+        if len(f) == 3 and f[0] == s["name"]:
+            out = subprocess.run(["docker", "port", "liveimap-" + f[0], f[1]], capture_output=True, text=True).stdout
+            hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
+            if hp:
+                return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{user_for(s).split('@')[0]}@{f[2]}"]
+    return []
+
+
 def instrument(s, port, tls, run, commit, mech=""):
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
@@ -177,6 +191,7 @@ def instrument(s, port, tls, run, commit, mech=""):
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
          "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
          *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
+         *smtp_args(s),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout

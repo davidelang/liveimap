@@ -77,6 +77,8 @@ class LabSuiteTest {
             logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
+            smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
+            smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25,
         )
         var opened = false
         try {
@@ -119,6 +121,15 @@ class LabSuiteTest {
                 if ("SORT" in session.capabilities) step("sortDate") { session.sort(SortKey.Date, true).size.toString() }
                 if ("THREAD=REFERENCES" in session.capabilities) step("threadReferences") { session.thread(SortKey.ThreadReferences).toString().take(40) }
                 if ("THREAD=ORDEREDSUBJECT" in session.capabilities) step("threadOrderedSubject") { session.thread(SortKey.ThreadOrderedSubject).toString().take(40) }
+                // Lab-only send: the SMTP host is the lab host (no relay), the recipient a lab test account.
+                val rcpt = arg("labRcpt")
+                if (account.smtpHost.isNotEmpty() && account.smtpHost == host && rcpt.isNotEmpty()) {
+                    step("smtpSend") {
+                        val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: LiveIMAP lab send $run\r\n" +
+                            "Message-ID: <$run@liveimap.lab>\r\n\r\nLab SMTP recording test.\r\n").toByteArray()
+                        session.smtpSend(msg, listOf(rcpt)); ""
+                    }
+                }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
                 assertTrue("exists $exists", exists >= 0)

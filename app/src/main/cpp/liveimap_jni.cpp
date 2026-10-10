@@ -2265,6 +2265,12 @@ void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_
     logImapBuffer(live, log_type, str, size, trafficConnectionId(live, session, nullptr));
 }
 
+void smtpTrafficLogger(mailsmtp *, int log_type, const char * str, size_t size, void * context) {
+    auto * live = static_cast<LiveSession *>(context);
+    if (live == nullptr || !live->logImapTraffic) return;
+    logImapBuffer(live, log_type, str, size, "smtp");
+}
+
 void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
@@ -7154,6 +7160,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
+    // Same traffic log and recording as IMAP, connection id "smtp"; AUTH goes out as private data.
+    if (session->logImapTraffic) mailsmtp_set_logger(smtp, smtpTrafficLogger, session);
     mailsmtp_set_timeout(smtp, kReadTimeoutSec);
     const char * host = session->smtpHost.c_str();
     int port = session->smtpPort;
