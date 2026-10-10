@@ -9,7 +9,7 @@ after login (lab_imap.py), run LabSuiteTest on emulator-5554 for each TLS mode t
 server offers, pull the recordings, and always docker stop.
 Output: recordings/<server>/<YYYYMMDD-HHMM>/ and recordings/<date>-summary.tsv.
 """
-import argparse, collections, os, socket, ssl, subprocess, sys, time
+import argparse, collections, os, re, socket, ssl, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -252,7 +252,12 @@ def main():
         out.write("server\tprotocol\ttls\tresult\tdetail\tseconds\tdir\n")
         # Strictly one server at a time (only_one stops anything else first); Zimbra too.
         for s in ss:
-            run_one(s, commit, stamp, out)
+            try:
+                run_one(s, commit, stamp, out)
+            except Exception as e:  # one broken server must not end the run
+                out.write(f"{s['name']}\timap\t-\tfail\trunner error: {type(e).__name__}: {str(e)[:120]}\t0\t-\n")
+                out.flush()
+                sh(["docker", "stop", "-t", "20", s["container"]])
     print(summ)
 
 
