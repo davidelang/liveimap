@@ -2658,7 +2658,8 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (mechanism.empty() || name[0] == '\0') {
         r = mailimap_login(imap, user, password);
     } else {
-        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr, user, user,
+        // Empty authorization id (login): sending a=<user> breaks Dovecot 2.2 SCRAM; the auth name is the user.
+        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr, "", user,
             password, nullptr);
     }
     if (!cmdOk(r)) {
@@ -7338,7 +7339,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return;
         }
         r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
-            nullptr, authUser.c_str(), authUser.c_str(), authPass.c_str(),
+            nullptr, "", authUser.c_str(), authPass.c_str(),  // empty authzid, as for IMAP
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = asciiSafe(smtp->response, "smtp error");
