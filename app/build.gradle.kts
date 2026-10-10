@@ -20,6 +20,12 @@ android {
             )
         }.standardOutput.asText.orNull?.trim() ?: "dev"
         versionName = rawVersion
+        val gitCommit = providers.exec {
+            workingDir = project.rootDir
+            commandLine("git", "rev-parse", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.orNull?.trim().orEmpty()
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
