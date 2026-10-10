@@ -2467,6 +2467,28 @@ extern "C" int scram_client_plug_init(void *, int, int *, void **, int *);
 extern "C" int digestmd5_client_plug_init(void *, int, int *, void **, int *);
 
 std::string gSaslSetup;
+extern "C" int sasl_client_new(const char *, const char *, const char *, const char *,
+    const void *, unsigned, void **);
+extern "C" int sasl_client_start(void *, const char *, void **, const char **, unsigned *, const char **);
+extern "C" const char * sasl_errdetail(void *);
+extern "C" void sasl_dispose(void **);
+
+// Re-run the local SASL start for one mechanism without callbacks; reports the library's own reason.
+std::string saslStartProbe(const std::string & mechanism, const char * host) {
+    void * conn = nullptr;
+    int r = sasl_client_new("imap", host, nullptr, nullptr, nullptr, 0, &conn);
+    if (r != 0) return "client_new=" + std::to_string(r);
+    void * prompts = nullptr;
+    const char * out = nullptr;
+    unsigned outLen = 0;
+    const char * used = nullptr;
+    r = sasl_client_start(conn, mechanism.c_str(), &prompts, &out, &outLen, &used);
+    std::string text = "client_start=" + std::to_string(r);
+    const char * detail = sasl_errdetail(conn);
+    if (r < 0 && detail != nullptr) text += " " + std::string(detail);
+    sasl_dispose(&conn);
+    return text;
+}
 
 // The SASL library is linked statically and finds no plugin directory on Android.
 // Initialise it once and register the client mechanisms the app may choose.
@@ -2588,7 +2610,8 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
             + ": login failed: " + imapText(imap, "login failed");
         if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
             *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
-                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
+                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup)
+                + "; probe: " + saslStartProbe(mechanism, host) + ")";
         }
         return false;
     }
