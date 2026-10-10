@@ -50,4 +50,11 @@ class TlsPolicyTest {
         assertTrue(back.allowOldTls)
         assertEquals(TlsPolicy(acceptInvalidCert = true, allowOldTls = true), back.tlsPolicy())
     }
+
+    @Test
+    fun authMechanismRoundTrip() {
+        assertFalse(AccountSettings().encode().contains("authMechanism="))
+        val back = decodeAccountSettings(AccountSettings(authMechanism = "SCRAM-SHA-256").encode())
+        assertEquals("SCRAM-SHA-256", back.authMechanism)
+    }
 }

@@ -63,19 +63,28 @@ class LabSuiteTest {
             TrafficRecorder.event("main", "step", name)
             val (ok, detail) = try { "ok" to body() } catch (e: Throwable) { "fail" to (e.message ?: e.javaClass.simpleName) }
             if (ok == "fail") failed++
-            steps.append(name).append('\t').append(ok).append('\t').append(detail.replace('\t', ' ').replace('\n', ' ').take(200)).append('\n')
+            steps.append(name).append('\t').append(ok).append('\t').append(detail.replace('\t', ' ').replace('\n', ' ').take(400)).append('\n')
         }
         val account = AccountSettings(
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = tls,
             logImapTraffic = true, allowPlaintextAuth = true,
             allowOldTls = arg("labOldTls") == "true",
+            authMechanism = arg("labMech"),
         )
         var opened = false
         try {
             step("open") {
                 val r = session.open(account)
                 opened = r is OpenResult.Connected
-                if (!opened) throw IllegalStateException(r.toString())
+                if (!opened) {
+                    throw IllegalStateException(
+                        when (r) {
+                            is OpenResult.Failed -> r.text
+                            is OpenResult.Rejected -> "rejected: ${r.capabilities}"
+                            else -> r.toString()
+                        },
+                    )
+                }
                 session.capabilities.sorted().joinToString(" ")
             }
             if (opened) {

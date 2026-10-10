@@ -131,7 +131,43 @@ def plain_caps(port):
         return ""
 
 
-def instrument(s, port, tls, run, commit):
+MECHS = False
+
+
+def mode_caps(tls, port):
+    """CAPABILITY before login in one TLS mode (lab only, certificate not verified)."""
+    import imaplib, ssl
+    ctx = ssl._create_unverified_context()
+    try:
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+    except Exception:
+        pass
+    try:
+        if tls == "Implicit":
+            m = imaplib.IMAP4_SSL(LAB_HOST, port, ssl_context=ctx, timeout=20)
+        else:
+            m = imaplib.IMAP4(LAB_HOST, port, timeout=20)
+            if tls == "StartTls":
+                m.starttls(ctx)
+        typ, data = m.capability()
+        caps = data[0].decode() if data and data[0] else " ".join(m.capabilities)
+        m.shutdown()
+        return caps
+    except Exception:
+        return ""
+
+
+def mechanisms(caps):
+    """Every advertised SASL mechanism plus the IMAP LOGIN command (unless LOGINDISABLED)."""
+    words = caps.upper().split()
+    mechs = sorted({w[5:] for w in words if w.startswith("AUTH=")})
+    if "LOGINDISABLED" not in words:
+        mechs.append("LOGIN-CMD")
+    return mechs
+
+
+def instrument(s, port, tls, run, commit, mech=""):
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
@@ -139,6 +175,7 @@ def instrument(s, port, tls, run, commit):
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
          "-e", "labCa", lab_ca(),
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
+         "-e", "labMech", "LOGIN" if mech == "LOGIN-CMD" else mech,
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
@@ -222,11 +259,18 @@ def run_one(s, commit, stamp, out):
         # Never STARTTLS unless the pre-TLS CAPABILITY lists it.
         if offers_starttls:
             modes.append(("StartTls", s["imap"]))
+        plan = []
         for tls, port in modes:
-            run = f"{name}-{tls}"
+            if MECHS:
+                for mech in mechanisms(mode_caps(tls, port)):
+                    plan.append((tls, port, mech))
+            else:
+                plan.append((tls, port, ""))
+        for tls, port, mech in plan:
+            run = f"{name}-{tls}" + (f"-{mech}" if mech else "")
             t1 = time.time()
             try:
-                res, msg = instrument(s, port, tls, run, commit)
+                res, msg = instrument(s, port, tls, run, commit, mech)
             except subprocess.TimeoutExpired:
                 res, msg = "fail", "timeout"
             files = pull(run, dest)
@@ -237,7 +281,7 @@ def run_one(s, commit, stamp, out):
                 bad = [r[0] for r in rows if len(r) > 1 and r[1] != "ok"]
                 steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
             # Servers in old-tls.txt run with the app's Allow old TLS and weak keys setting on (labOldTls).
-            out.write(f"{name}\timap\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
+            out.write(f"{name}\timap{('/' + mech) if mech else ''}\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
             out.flush()
     finally:
         sh(["docker", "stop", "-t", "20", cont])
@@ -248,6 +292,7 @@ def main():
     p.add_argument("action", choices=["list", "run"])
     p.add_argument("--server", action="append", default=[])
     p.add_argument("--skip-install", action="store_true")
+    p.add_argument("--mechs", action="store_true", help="one app run per advertised mechanism plus LOGIN")
     a = p.parse_args()
     ss = servers()
     if a.action == "list":
@@ -257,6 +302,8 @@ def main():
     if a.server:
         ss = [s for s in ss if s["name"] in a.server]
     commit = head()
+    global MECHS
+    MECHS = a.mechs
     if not a.skip_install:
         install(commit)
     os.makedirs(REC, exist_ok=True)

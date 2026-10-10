@@ -189,6 +189,8 @@ struct LiveSession {
     // pine /novalidate-cert), and allow TLS 1.0/1.1, small DH and legacy ciphers (security level 0).
     bool acceptInvalidCert = false;
     bool allowOldTls = false;
+    // Advanced: force one IMAP login method. "" = automatic, "LOGIN" = the IMAP LOGIN command, else a SASL name.
+    std::string authMechanism;
     std::string smtpHost;
     int smtpPort = 25;
     std::string from;
@@ -2524,7 +2526,8 @@ std::string saslClientMechs() {
 }
 
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
-    const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk) {
+    const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk,
+    const std::string & forced) {
     struct mailimap_capability_data * caps = nullptr;
     int r = mailimap_capability(imap, &caps);
     if (!cmdOk(r) || caps == nullptr) {
@@ -2584,6 +2587,35 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         env->DeleteLocalRef(result);
     }
     const char * name = user != nullptr ? user : "";
+    if (!forced.empty()) {
+        // A forced method is used as is, but only when the server advertises it; clear-text methods on a
+        // plaintext connection still need the plaintext confirmation.
+        std::string words = " " + line + " ";
+        for (auto & ch : words) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+        bool clearText = forced == "LOGIN" || forced == "PLAIN";
+        if (!tls && !plaintextOk && clearText) {
+            *error = "plaintext login needs confirmation";
+            return false;
+        }
+        if (forced == "LOGIN") {
+            if (words.find(" LOGINDISABLED ") != std::string::npos) {
+                *error = serviceLabel("IMAP", host, port) + " (" + address + "): server disables the LOGIN command";
+                return false;
+            }
+            mechanism.clear();
+        } else {
+            if (words.find(" AUTH=" + forced + " ") == std::string::npos) {
+                *error = serviceLabel("IMAP", host, port) + " (" + address + "): server does not advertise AUTH="
+                    + forced;
+                return false;
+            }
+            mechanism = forced;
+        }
+        if (!tls && !plaintextOk && mechanism.empty()) {
+            *error = "plaintext login needs confirmation";
+            return false;
+        }
+    }
     if (!tls && !plaintextOk && mechanism.empty() && name[0] != '\0') {
         *error = "plaintext login needs confirmation";
         return false;
@@ -2623,7 +2655,7 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
     mailimap * imap = openTcp(host, port, live, error, &address);
     if (imap == nullptr) return nullptr;
     if (!loginImap(env, imap, host, port, user, password, address, error, false,
-            live != nullptr && live->allowPlaintextAuth)) {
+            live != nullptr && live->allowPlaintextAuth, live != nullptr ? live->authMechanism : std::string())) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -2724,7 +2756,8 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         rejectImap(imap);
         return nullptr;
     }
-    if (!loginImap(env, imap, host, port, user, password, address, error, true, true)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, true, true,
+            live != nullptr ? live->authMechanism : std::string())) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -4874,7 +4907,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
-    jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls) {
+    jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
     JChars h(env, host);
@@ -4902,6 +4935,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
     session->acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
     session->allowOldTls = allowOldTls == JNI_TRUE;
+    {
+        JChars mech(env, authMechanism);
+        session->authMechanism = mech.c();
+        for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    }
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;

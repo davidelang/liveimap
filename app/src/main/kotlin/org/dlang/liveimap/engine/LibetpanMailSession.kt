@@ -258,6 +258,7 @@ class LibetpanMailSession : MailSession {
             account.allowPlaintextAuth,
             account.acceptInvalidCert,
             account.allowOldTls,
+            account.authMechanism,
         )
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -1038,6 +1039,7 @@ class LibetpanMailSession : MailSession {
         allowPlaintextAuth: Boolean,
         acceptInvalidCert: Boolean,
         allowOldTls: Boolean,
+        authMechanism: String,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)

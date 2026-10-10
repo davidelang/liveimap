@@ -15,6 +15,7 @@ fun sameImapIdentity(
         current.allowPlaintextAuth == next.allowPlaintextAuth &&
         current.acceptInvalidCert == next.acceptInvalidCert &&
         current.allowOldTls == next.allowOldTls &&
+        current.authMechanism == next.authMechanism &&
         current.username == next.username &&
         currentPassword == nextPassword &&
         current.smtpHost == next.smtpHost &&

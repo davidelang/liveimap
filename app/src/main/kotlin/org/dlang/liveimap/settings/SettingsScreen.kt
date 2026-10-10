@@ -733,6 +733,9 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { enabled ->
                 editor.persist(editor.settings.copy(allowOldTls = enabled))
             }
+            LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
+                editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
+            }
             if (settings.certPin.isBlank()) {
                 Text(stringResource(R.string.settings_cert_pin_none))
             } else {

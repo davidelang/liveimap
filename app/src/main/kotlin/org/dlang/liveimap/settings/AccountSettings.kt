@@ -413,6 +413,8 @@ data class AccountSettings(
     val acceptInvalidCert: Boolean = false,
     /** Advanced, off by default: allow TLS 1.0/1.1, small DH keys and legacy ciphers for this account only. */
     val allowOldTls: Boolean = false,
+    /** Advanced: force the IMAP login method. "" = automatic, "LOGIN" = the LOGIN command, else a SASL name. */
+    val authMechanism: String = "",
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
@@ -523,6 +525,7 @@ private val fieldNames = listOf(
     "allowPlaintextAuth",
     "acceptInvalidCert",
     "allowOldTls",
+    "authMechanism",
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
@@ -644,6 +647,7 @@ fun AccountSettings.encode(): String = buildString {
     if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
     if (acceptInvalidCert) appendLine("acceptInvalidCert=true")
     if (allowOldTls) appendLine("allowOldTls=true")
+    if (authMechanism.isNotBlank()) appendLine("authMechanism=${percentEncode(authMechanism)}")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
@@ -755,6 +759,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "allowPlaintextAuth" ||
             key == "acceptInvalidCert" ||
             key == "allowOldTls" ||
+            key == "authMechanism" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
@@ -862,6 +867,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         allowPlaintextAuth = values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false,
         acceptInvalidCert = values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false,
         allowOldTls = values["allowOldTls"]?.let { parseBoolean(it) } ?: false,
+        authMechanism = values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "",
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
