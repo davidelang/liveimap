@@ -72,3 +72,4 @@
 - A long press on an icon or menu action shows a short explanation of that control. Do this later with the expanded manual, once the UI is stable, so the text does not go stale.
 
 - Move OpenSSL from 1.1.1w to 3.x before a public release. IMAP TLS may ship on 1.1.1w (roadmap M4.3; recommendations section 12).
+- DIGEST-MD5 realm (low priority; design says skip): when the server offers no realm, libetpan passes realm=NULL and Cyrus SASL's DIGEST client falls back to the server name (here the IP), so Dovecot 2.4 sees user=liveimap@10.2.3.133 and fails. Fix would need a GETREALM choice (offered realm, else none); not trivial with Cyrus's fallback. Lab: dovecot-245, dovecot-dev.
