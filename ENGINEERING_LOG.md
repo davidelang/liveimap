@@ -2690,3 +2690,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - Lab tooling in tools/test-servers: shared recorder, lab runner (Phase B).
 
 ## 2026-10-10 - Lab on the LAN address, SASL failure detail, gated lab password hook.
+
+## 2026-10-10 - Register the static SASL client plugins at load (IMAP SASL failed locally on every server).

@@ -2456,6 +2456,33 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
 }
 
 extern "C" const char ** sasl_global_listmech(void);
+extern "C" void mailsasl_ref(void);
+typedef int (*SaslPlugInit)(void *, int, int *, void **, int *);
+extern "C" int sasl_client_add_plugin(const char *, SaslPlugInit);
+extern "C" int plain_client_plug_init(void *, int, int *, void **, int *);
+extern "C" int login_client_plug_init(void *, int, int *, void **, int *);
+extern "C" int crammd5_client_plug_init(void *, int, int *, void **, int *);
+extern "C" int scram_client_plug_init(void *, int, int *, void **, int *);
+extern "C" int digestmd5_client_plug_init(void *, int, int *, void **, int *);
+
+std::string gSaslSetup;
+
+// The SASL library is linked statically and finds no plugin directory on Android.
+// Initialise it once and register the client mechanisms the app may choose.
+void setupSaslClient() {
+    mailsasl_ref();
+    struct { const char * name; SaslPlugInit init; } plugins[] = {
+        {"scram", scram_client_plug_init},
+        {"crammd5", crammd5_client_plug_init},
+        {"digestmd5", digestmd5_client_plug_init},
+        {"plain", plain_client_plug_init},
+        {"login", login_client_plug_init},
+    };
+    for (auto & p : plugins) {
+        int r = sasl_client_add_plugin(p.name, p.init);
+        if (r != 0) gSaslSetup += std::string(gSaslSetup.empty() ? "" : " ") + p.name + "=" + std::to_string(r);
+    }
+}
 
 // Client mechanisms the linked SASL library registered, for a local SASL failure.
 std::string saslClientMechs() {
@@ -2554,7 +2581,8 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed");
         if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
-            *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs() + ")";
+            *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
+                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
         }
         return false;
     }
@@ -4713,6 +4741,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
         if (env->ExceptionCheck()) env->ExceptionClear();
         installMailCharconv(env);
     }
+    setupSaslClient();
     gKeepUnselect = mailimap_unselect;
     registerExtensions();
     setPreviewDecoder(decodePreviewBytes);
