@@ -2658,9 +2658,10 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (mechanism.empty() || name[0] == '\0') {
         r = mailimap_login(imap, user, password);
     } else {
-        // Empty authorization id (login): sending a=<user> breaks Dovecot 2.2 SCRAM; the auth name is the user.
-        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr, "", user,
-            password, nullptr);
+        // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
+        // client omits an authzid equal to the user but sends an empty one (authzid=""), which Dovecot rejects.
+        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr,
+            mechanism == "DIGEST-MD5" ? user : "", user, password, nullptr);
     }
     if (!cmdOk(r)) {
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
@@ -7339,7 +7340,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return;
         }
         r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
-            nullptr, "", authUser.c_str(), authPass.c_str(),  // empty authzid, as for IMAP
+            nullptr, mechanism == "DIGEST-MD5" ? authUser.c_str() : "",  // authzid, as for IMAP
+            authUser.c_str(), authPass.c_str(),
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = asciiSafe(smtp->response, "smtp error");
