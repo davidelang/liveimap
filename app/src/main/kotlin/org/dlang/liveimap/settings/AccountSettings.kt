@@ -413,7 +413,7 @@ data class AccountSettings(
     val acceptInvalidCert: Boolean = false,
     /** Advanced, off by default: allow TLS 1.0/1.1, small DH keys and legacy ciphers for this account only. */
     val allowOldTls: Boolean = false,
-    /** Advanced: force the IMAP login method. "" = automatic, "LOGIN" = the LOGIN command, else a SASL name. */
+    /** Advanced: force the IMAP login method. "" = automatic, "IMAP-LOGIN" = the LOGIN command, else a SASL name. */
     val authMechanism: String = "",
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),

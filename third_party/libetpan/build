@@ -62,8 +62,8 @@ for abi in arm64-v8a x86_64; do
     "openssl-android-3/libs/$abi/libcrypto.a" \
     "$out/libcrypto.a"
   copy_from_zip \
-    "$SRC/build-android/dependencies/cyrus-sasl/cyrus-sasl-android-4.zip" \
-    "cyrus-sasl-android-4/libs/$abi/libsasl2.a" \
+    "$SRC/build-android/dependencies/cyrus-sasl/cyrus-sasl-android-5.zip" \
+    "cyrus-sasl-android-5/libs/$abi/libsasl2.a" \
     "$out/libsasl2.a"
   copy_from_zip \
     "$SRC/build-android/dependencies/iconv/iconv-android-1.zip" \

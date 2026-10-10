@@ -189,7 +189,7 @@ struct LiveSession {
     // pine /novalidate-cert), and allow TLS 1.0/1.1, small DH and legacy ciphers (security level 0).
     bool acceptInvalidCert = false;
     bool allowOldTls = false;
-    // Advanced: force one IMAP login method. "" = automatic, "LOGIN" = the IMAP LOGIN command, else a SASL name.
+    // Advanced: force one IMAP login method. "" = automatic, "IMAP-LOGIN" = the IMAP LOGIN command, else a SASL name.
     std::string authMechanism;
     std::string smtpHost;
     int smtpPort = 25;
@@ -2552,7 +2552,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         return false;
     }
     jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
-        "(Ljava/lang/String;ZZZ)Ljava/lang/String;");
+        "(Ljava/lang/String;ZZZLjava/lang/String;)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         env->DeleteLocalRef(cls);
@@ -2567,13 +2567,16 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "auth choice failed";
         return false;
     }
-    jvalue args[4];
+    jstring jclient = newString(env, saslClientMechs().c_str());
+    jvalue args[5];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
     args[3].z = bindingLen > 0 ? JNI_TRUE : JNI_FALSE;
+    args[4].l = jclient;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
+    if (jclient != nullptr) env->DeleteLocalRef(jclient);
     env->DeleteLocalRef(cls);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -2592,12 +2595,12 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         // plaintext connection still need the plaintext confirmation.
         std::string words = " " + line + " ";
         for (auto & ch : words) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-        bool clearText = forced == "LOGIN" || forced == "PLAIN";
+        bool clearText = forced == "IMAP-LOGIN" || forced == "LOGIN" || forced == "PLAIN";
         if (!tls && !plaintextOk && clearText) {
             *error = "plaintext login needs confirmation";
             return false;
         }
-        if (forced == "LOGIN") {
+        if (forced == "IMAP-LOGIN") {
             if (words.find(" LOGINDISABLED ") != std::string::npos) {
                 *error = serviceLabel("IMAP", host, port) + " (" + address + "): server disables the LOGIN command";
                 return false;
@@ -7056,7 +7059,7 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
         return false;
     }
     jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
-        "(Ljava/lang/String;ZZZ)Ljava/lang/String;");
+        "(Ljava/lang/String;ZZZLjava/lang/String;)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         env->DeleteLocalRef(cls);
@@ -7069,7 +7072,8 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
         env->DeleteLocalRef(cls);
         return false;
     }
-    jvalue args[4];
+    jstring jclient = newString(env, saslClientMechs().c_str());
+    jvalue args[5];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;

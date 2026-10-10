@@ -116,4 +116,15 @@ class ImapAuthTest {
             ),
         )
     }
+
+    @Test
+    fun ranksOnlyMechanismsTheClientHas() {
+        val line = "IMAP4rev1 AUTH=SCRAM-SHA-256 AUTH=SCRAM-SHA-256-PLUS AUTH=SCRAM-SHA-1 AUTH=SCRAM-SHA-1-PLUS AUTH=PLAIN AUTH=LOGIN"
+        val client = "ANONYMOUS PLAIN CRAM-MD5 OTP EXTERNAL DIGEST-MD5 SCRAM-SHA-1"
+        assertEquals("SCRAM-SHA-1-PLUS", chooseImapAuth(line, tls = true, plaintextOk = false, channelBinding = true, clientMechanisms = client))
+        assertEquals("SCRAM-SHA-1", chooseImapAuth(line, tls = true, plaintextOk = false, channelBinding = false, clientMechanisms = client))
+        assertEquals("PLAIN", chooseImapAuth("AUTH=SCRAM-SHA-256 AUTH=PLAIN AUTH=LOGIN", tls = true, plaintextOk = false, channelBinding = false, clientMechanisms = client))
+        assertNull(chooseImapAuth("AUTH=SCRAM-SHA-256 AUTH=LOGIN", tls = true, plaintextOk = false, channelBinding = false, clientMechanisms = client))
+        assertEquals("SCRAM-SHA-256-PLUS", chooseImapAuth(line, tls = true, plaintextOk = false, channelBinding = true, clientMechanisms = client + " SCRAM-SHA-256"))
+    }
 }

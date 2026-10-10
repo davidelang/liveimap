@@ -726,5 +726,5 @@
     <string name="settings_check_unreachable">Server not reachable</string>
     <string name="settings_check_save_anyway">Save anyway</string>
     <string name="settings_check_revert">Revert</string>
-    <string name="settings_auth_mechanism">Login method (blank = automatic; LOGIN, PLAIN, CRAM-MD5, SCRAM-SHA-256…)</string>
+    <string name="settings_auth_mechanism">Login method (blank = automatic; IMAP-LOGIN for the LOGIN command; PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-256…)</string>
 </resources>

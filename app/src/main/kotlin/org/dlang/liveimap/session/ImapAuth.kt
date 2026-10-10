@@ -15,7 +15,11 @@ fun chooseImapAuth(
     tls: Boolean,
     plaintextOk: Boolean,
     channelBinding: Boolean,
+    clientMechanisms: String = "",
 ): String? {
+    // Only mechanisms the local SASL library has; blank means unknown (no filter). X-PLUS comes with X.
+    val client = clientMechanisms.uppercase().split(Regex("\\s+")).filter { it.isNotEmpty() }.toSet()
+    fun clientHas(name: String) = client.isEmpty() || name in client || name.removeSuffix("-PLUS") in client
     val allowPlus = tls && channelBinding
     val offered = HashSet<String>()
     for (token in capabilities.split(Regex("\\s+"))) {
@@ -26,6 +30,7 @@ fun chooseImapAuth(
         if (name.endsWith("-PLUS")) {
             if (!allowPlus || name !in plusImapAuth) continue
         }
+        if (!clientHas(name)) continue
         offered.add(name)
     }
     if (allowPlus) {
