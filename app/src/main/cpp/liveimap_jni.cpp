@@ -2455,6 +2455,19 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
     return imap;
 }
 
+extern "C" const char ** sasl_global_listmech(void);
+
+// Client mechanisms the linked SASL library registered, for a local SASL failure.
+std::string saslClientMechs() {
+    const char ** list = sasl_global_listmech();
+    std::string out;
+    for (int i = 0; list != nullptr && list[i] != nullptr; i++) {
+        if (!out.empty()) out += ' ';
+        out += list[i];
+    }
+    return out.empty() ? "none" : out;
+}
+
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
     const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk) {
     struct mailimap_capability_data * caps = nullptr;
@@ -2546,19 +2559,6 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         return false;
     }
     return true;
-}
-
-extern "C" const char ** sasl_global_listmech(void);
-
-// Client mechanisms the linked SASL library registered, for a local SASL failure.
-std::string saslClientMechs() {
-    const char ** list = sasl_global_listmech();
-    std::string out;
-    for (int i = 0; list != nullptr && list[i] != nullptr; i++) {
-        if (!out.empty()) out += ' ';
-        out += list[i];
-    }
-    return out.empty() ? "none" : out;
 }
 
 mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * user, const char * password,
