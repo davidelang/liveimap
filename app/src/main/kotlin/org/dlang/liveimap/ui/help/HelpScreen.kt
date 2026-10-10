@@ -105,6 +105,9 @@ fun HelpScreen() {
                 }) { Text(reportBug) }
             }
             TextButton(onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)))
+            }) { Text(stringResource(R.string.about_privacy)) }
+            TextButton(onClick = {
                 scope.launch {
                     val settings = store.load()
                     val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
@@ -120,6 +123,15 @@ fun HelpScreen() {
                     ).lines()
                 }
             }) { Text(copyReport) }
+            Text(
+                text = stringResource(R.string.support_developer),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(stringResource(R.string.support_tip_pending))
+            TextButton(onClick = {}, enabled = false) {
+                Text(stringResource(R.string.support_tip))
+            }
         }
     }
     val shownReport = reportLines

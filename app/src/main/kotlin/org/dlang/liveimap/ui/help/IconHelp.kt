@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import org.dlang.liveimap.R
 
 const val MANUAL_URL = "https://davidelang.github.io/liveimap/manual/"
+const val PRIVACY_URL = "https://liveimap.lang.hm/privacy/"
 
 fun manualPage(page: String): String = MANUAL_URL + page
 

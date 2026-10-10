@@ -6,10 +6,15 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,13 +26,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.TlsMode
+import org.dlang.liveimap.ui.help.PRIVACY_URL
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
+
+internal fun aboutLibraryLines(): List<String> = listOf(
+    "libEtPan!, BSD 3-Clause",
+    "libfastjson, MIT",
+    "OpenSSL, Apache License 2.0",
+    "Cyrus SASL, Carnegie Mellon University license",
+)
 
 internal fun aboutConnectionNotice(host: String, mode: TlsMode): Int? {
     if (host.isBlank()) return null
@@ -53,10 +68,19 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
     val versionLine = stringResource(R.string.about_version, BuildConfig.VERSION_NAME)
     val notice = aboutConnectionNotice(imapHost, tlsMode)?.let { stringResource(it) }
     val support = stringResource(R.string.about_support)
+    val libraries = stringResource(R.string.about_libraries)
+    val privacy = stringResource(R.string.about_privacy)
+    val supportDeveloper = stringResource(R.string.support_developer)
+    val tip = stringResource(R.string.support_tip)
+    val tipPending = stringResource(R.string.support_tip_pending)
     val licenses = stringResource(R.string.about_licenses)
     val licenseNotice = stringResource(R.string.about_license_notice)
     val noEmail = stringResource(R.string.about_no_email)
-    Column {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
         Text(appName)
         Text(versionLine)
         if (notice != null) {
@@ -67,14 +91,36 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
                 )
             }
         }
-        TextButton(onClick = { sendSupport(context, appName, versionLine, support, noEmail) }) {
-            Text(support)
+        Text(
+            text = libraries,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        aboutLibraryLines().forEach { line ->
+            Text(line)
         }
         ListItem(
             headlineContent = { Text(licenses) },
             supportingContent = { Text(licenseNotice) },
             modifier = Modifier.clickable(onClick = onOpenLicenses),
         )
+        TextButton(onClick = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)))
+        }) { Text(privacy) }
+        Text(
+            text = supportDeveloper,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(tipPending)
+        Row {
+            TextButton(onClick = { sendSupport(context, appName, versionLine, support, noEmail) }) {
+                Text(support)
+            }
+            TextButton(onClick = {}, enabled = false) {
+                Text(tip)
+            }
+        }
     }
 }
 
