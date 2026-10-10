@@ -119,7 +119,7 @@ def run_one(s, commit, stamp, out):
     t0 = time.time()
     sh(["docker", "start", cont])
     try:
-        if not greeting(s["imap"], False):
+        if not greeting(s["imap"], False, 900 if cont in ALONE else 240):
             out.write(f"{name}\timap\t-\tfail\tno greeting\t{int(time.time()-t0)}\t{dest}\n")
             return
         modes = [("None", s["imap"])]
