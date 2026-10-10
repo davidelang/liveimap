@@ -32,14 +32,14 @@ class CapabilityChoiceTest {
 
     @Test
     fun listExtended() {
-        val choice = capabilityChoice("IMAP4rev1 LIST-EXTENDED")
+        val choice = capabilityChoice("IMAP4rev1 LIST-EXTENDED SPECIAL-USE")
         assertEquals("Extended", choice.listUnread)
         assertEquals("Extended", choice.listRead)
     }
 
     @Test
     fun listExtendedWithStatus() {
-        val choice = capabilityChoice("IMAP4rev1 LIST-EXTENDED LIST-STATUS")
+        val choice = capabilityChoice("IMAP4rev1 LIST-EXTENDED SPECIAL-USE LIST-STATUS")
         assertEquals("ExtendedWithStatus", choice.listUnread)
         assertEquals("ExtendedWithMessages", choice.listRead)
     }
@@ -81,7 +81,7 @@ class CapabilityChoiceTest {
     @Test
     fun fullLine() {
         val line = "IMAP4rev1 NAMESPACE UIDPLUS IDLE UNSELECT SORT THREAD=REFERENCES MOVE ESEARCH " +
-            "LIST-EXTENDED LIST-STATUS ESORT SORT=DISPLAY PREVIEW BINARY QRESYNC CONDSTORE"
+            "LIST-EXTENDED SPECIAL-USE LIST-STATUS ESORT SORT=DISPLAY PREVIEW BINARY QRESYNC CONDSTORE"
         val choice = capabilityChoice(line)
         assertEquals("Move", choice.move)
         assertEquals("ExtendedWithStatus", choice.listUnread)
@@ -116,7 +116,7 @@ class CapabilityChoiceTest {
     @Test
     fun withoutSortAndEsearch() {
         val full = "IMAP4rev1 NAMESPACE UIDPLUS IDLE UNSELECT SORT THREAD=REFERENCES MOVE ESEARCH " +
-            "LIST-EXTENDED LIST-STATUS ESORT SORT=DISPLAY PREVIEW BINARY QRESYNC CONDSTORE"
+            "LIST-EXTENDED SPECIAL-USE LIST-STATUS ESORT SORT=DISPLAY PREVIEW BINARY QRESYNC CONDSTORE"
         val line = Capabilities.parse(full).without(listOf("sort", "esearch")).names.joinToString(" ")
         val choice = capabilityChoice(line)
         assertFalse(choice.serverSort)
