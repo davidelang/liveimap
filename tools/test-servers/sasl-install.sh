@@ -18,7 +18,9 @@ case "$c" in
     # Dovecot 2.2.13: SCRAM-SHA-1 only (no -PLUS, no SHA-256); conf.d/lab-sasl.conf sorts after 10-auth.conf.
     docker exec "$c" sh -c "echo 'auth_mechanisms = plain login cram-md5 digest-md5 scram-sha-1' > /etc/dovecot/conf.d/lab-sasl.conf" ;;
   liveimap-dovecot-dev)
-    docker exec "$c" sh -c "echo 'auth_mechanisms = plain login cram-md5 scram-sha-1 scram-sha-1-plus scram-sha-256 scram-sha-256-plus digest-md5' > /etc/dovecot/conf.d/lab-sasl.conf" ;;
+    docker exec "$c" sh -c "echo 'auth_mechanisms = plain login cram-md5 scram-sha-1 scram-sha-1-plus scram-sha-256 scram-sha-256-plus digest-md5' > /etc/dovecot/conf.d/lab-sasl.conf"
+    # The dev image's /usr/local/etc/dovecot/dovecot.conf includes only conf.d/auth.conf by name.
+    docker exec "$c" sh -c "grep -q lab-sasl.conf /usr/local/etc/dovecot/dovecot.conf || echo '!include_try /etc/dovecot/conf.d/lab-sasl.conf' >> /usr/local/etc/dovecot/dovecot.conf" ;;
   liveimap-cyrus-*)
     # Advertise every mechanism whose plugin is installed (sasldb holds plain passwords, so all can verify).
     docker exec "$c" sh -c '
