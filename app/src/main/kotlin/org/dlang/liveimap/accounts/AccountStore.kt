@@ -29,6 +29,7 @@ import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.ui.compose.deleteUnsentAccount
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DrawerAccount
+import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.accountDrawerFolders
 import org.dlang.liveimap.settings.decodeAccountSettings
@@ -181,7 +182,7 @@ class AccountStore private constructor(private val context: Context) {
                 if (accounts.size == 1) {
                     copyLegacySmtpPassword(accounts[0])
                 }
-                val settings = loadLocked()
+                val settings = newAccountSettings()
                 val accountId = java.util.UUID.randomUUID().toString()
                 writeAccount(
                     accountVisibleName(settings),
@@ -284,11 +285,11 @@ class AccountStore private constructor(private val context: Context) {
         val accounts = readAccounts()
         val account = chooseAccount(accounts, selectedId())
         if (account != null && (useNewStoreLocked(account) || accounts.size > 1)) {
-            val accountId = account.userData[userAccountId] ?: return AccountSettings()
-            val text = storedPreference(accountId) ?: return AccountSettings()
+            val accountId = account.userData[userAccountId] ?: return newAccountSettings()
+            val text = storedPreference(accountId) ?: return newAccountSettings()
             return overlayAccountFields(decodeAccountSettings(text), account.userData)
         }
-        val text = legacyEncoded() ?: return AccountSettings()
+        val text = legacyEncoded() ?: return newAccountSettings()
         return decodeAccountSettings(text)
     }
 

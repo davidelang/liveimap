@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
+import org.dlang.liveimap.settings.newAccountSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -219,6 +220,18 @@ class AccountMigrationTest {
         val removeSelected = accountRemoval(listOf(c, migrated, a), "a", "a")
         assertTrue(removeSelected.remove)
         assertEquals("b", removeSelected.selectedId)
+    }
+
+    @Test
+    fun addedAccountStartsFromNewDefaults() {
+        val fresh = newAccountSettings()
+        val userData = accountUserData("new", fresh, null)
+        val loaded = overlayAccountFields(decodeAccountSettings(fresh.encode()), userData)
+        assertEquals(fresh, loaded)
+        assertEquals("", loaded.imapHost)
+        assertEquals("", loaded.username)
+        assertEquals("", loaded.email)
+        assertEquals("@", accountVisibleName(loaded))
     }
 
     private fun sampleSettings(): AccountSettings = AccountSettings(

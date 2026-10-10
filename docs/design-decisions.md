@@ -387,8 +387,8 @@ Avoid:
 * TLS mode and authentication are per-account settings, for IMAP, SMTP and
   ManageSieve. TLS modes: Implicit TLS (993 / 465), STARTTLS required,
   STARTTLS if offered (labelled as open to downgrade), or None (plaintext, with
-  a warning). New accounts default to Implicit TLS for IMAP and STARTTLS on 587
-  for SMTP. An account saved without a TLS mode loads as None and keeps
+  a warning). New accounts default to Implicit TLS, IMAP port 993 and SMTP port
+  465. An account saved without a TLS mode loads as None and keeps
   working until the user picks another mode.
 * After STARTTLS or AUTH, capabilities are read again. No STARTTLS after
   PREAUTH.

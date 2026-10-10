@@ -253,6 +253,39 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun newAccountUsesImplicitTls() {
+        val fresh = newAccountSettings()
+        assertEquals(TlsMode.Implicit, fresh.tlsMode)
+        assertEquals(993, fresh.imapPort)
+        assertEquals(465, fresh.smtpPort)
+        assertEquals(fresh, decodeAccountSettings(fresh.encode()))
+    }
+
+    @Test
+    fun missingTlsModeStaysPlaintext() {
+        val stored = AccountSettings(imapPort = 1143, smtpPort = 2525).encode()
+        assertFalse(stored.contains("tlsMode="))
+        val loaded = decodeAccountSettings(stored)
+        assertEquals(TlsMode.None, loaded.tlsMode)
+        assertEquals(1143, loaded.imapPort)
+        assertEquals(2525, loaded.smtpPort)
+    }
+
+    @Test
+    fun tlsModeMovesOnlyDefaultPorts() {
+        val implicit = AccountSettings().withTlsMode(TlsMode.Implicit)
+        assertEquals(993, implicit.imapPort)
+        assertEquals(465, implicit.smtpPort)
+        val start = implicit.withTlsMode(TlsMode.StartTls)
+        assertEquals(143, start.imapPort)
+        assertEquals(587, start.smtpPort)
+        val custom = AccountSettings(imapPort = 1143, smtpPort = 2525).withTlsMode(TlsMode.Implicit)
+        assertEquals(1143, custom.imapPort)
+        assertEquals(2525, custom.smtpPort)
+        assertEquals(TlsMode.Implicit, custom.tlsMode)
+    }
+
+    @Test
     fun fullScreenRoundTrip() {
         val defaults = AccountSettings().encode()
         assertFalse(defaults.contains("fullScreen="))

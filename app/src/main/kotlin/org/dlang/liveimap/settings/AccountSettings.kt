@@ -301,6 +301,26 @@ enum class TlsMode {
     Implicit,
 }
 
+fun defaultImapPort(mode: TlsMode): Int = if (mode == TlsMode.Implicit) 993 else 143
+
+fun defaultSmtpPort(mode: TlsMode): Int = when (mode) {
+    TlsMode.None -> 25
+    TlsMode.StartTls -> 587
+    TlsMode.Implicit -> 465
+}
+
+fun newAccountSettings(): AccountSettings = AccountSettings(
+    imapPort = defaultImapPort(TlsMode.Implicit),
+    smtpPort = defaultSmtpPort(TlsMode.Implicit),
+    tlsMode = TlsMode.Implicit,
+)
+
+fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
+    tlsMode = mode,
+    imapPort = if (imapPort == defaultImapPort(tlsMode)) defaultImapPort(mode) else imapPort,
+    smtpPort = if (smtpPort == defaultSmtpPort(tlsMode)) defaultSmtpPort(mode) else smtpPort,
+)
+
 const val DefaultAskLimit = -1
 
 fun overAskThreshold(exists: Int, threshold: Int): Boolean =

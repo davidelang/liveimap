@@ -649,7 +649,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                 settings.tlsMode,
                 { tlsName(it) },
             ) { mode ->
-                editor.persist(editor.settings.copy(tlsMode = mode))
+                editor.persist(editor.settings.withTlsMode(mode))
             }
             BoolField(
                 stringResource(R.string.settings_allow_plaintext),
