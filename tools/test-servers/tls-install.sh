@@ -47,9 +47,12 @@ case "$c" in
   liveimap-courier-50|liveimap-courier-606)
     docker exec "$c" sh -c 'for f in $(find / -xdev -name imapd-ssl -path "*etc*" 2>/dev/null); do sed -i "s|^TLS_CERTFILE=.*|TLS_CERTFILE=/etc/lab/courier.pem|; /^IMAP_STARTTLS=/d" $f; grep -q "^TLS_CERTFILE=" $f || echo "TLS_CERTFILE=/etc/lab/courier.pem" >> $f; echo "IMAP_STARTTLS=YES" >> $f; done; cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/lab/courier.pem; chmod 600 /etc/lab/courier.pem; id daemon >/dev/null 2>&1 && chown daemon /etc/lab/courier.pem || true' ;;
   liveimap-uwimap)
-    docker exec "$c" sh -c 'cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/ssl/certs/imapd.pem; mkdir -p /etc/ssl/private; cp /etc/ssl/certs/imapd.pem /etc/ssl/private/imapd.pem' ;;
+    docker exec "$c" sh -c 'cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/ssl/certs/imapd.pem; mkdir -p /etc/ssl/private; cp /etc/ssl/certs/imapd.pem /etc/ssl/private/imapd.pem; printf "I accept the risk\\nset disable-plaintext nil\\n" > /etc/c-client.cf' ;;
   liveimap-greenmail|liveimap-greenmail-214|liveimap-greenmail-dev|liveimap-greenmail-16)
     docker cp "$CA/greenmail.p12" "$c:/home/greenmail/greenmail.p12" >/dev/null ;;
+  liveimap-stalwart-0155)
+    # 0.15 reads local TOML keys; the lab certificate is the default (the app connects by IP, no SNI).
+    docker exec "$c" sh -c 'for f in /opt/stalwart/etc/config.toml /etc/stalwart/config.toml; do [ -f $f ] || continue; sed -i "/^# lab-tls/,/^# end lab-tls/d" $f; printf "# lab-tls\n[certificate.lab]\ncert = \"%%{file:/etc/lab/chain.crt}%%\"\nprivate-key = \"%%{file:/etc/lab/server.key}%%\"\ndefault = true\n# end lab-tls\n" >> $f; done' ;;
   *) echo "no TLS recipe for $c" >&2; exit 2 ;;
 esac
 # Restart: stop the daemon the up.tsv command starts, then start it again.
@@ -57,6 +60,7 @@ docker exec "$c" sh -c 'pkill -x dovecot 2>/dev/null; pkill -x cyrmaster 2>/dev/
 case "$c" in
   liveimap-dovecot-245) docker restart "$c" >/dev/null ;;
   liveimap-greenmail|liveimap-greenmail-214|liveimap-greenmail-dev|liveimap-greenmail-16) docker restart "$c" >/dev/null ;;
+  liveimap-stalwart-0155) docker restart "$c" >/dev/null ;;
   liveimap-dovecot-dev|liveimap-cyrus-3124|liveimap-cyrus-3137|liveimap-courier-606) docker restart "$c" >/dev/null ;;
   *) [ -n "$up" ] && docker exec "$c" sh -c "$up" ;;
 esac

@@ -149,6 +149,9 @@ def pull(run, dest):
     return got
 
 
+OLD_TLS = set(open(os.path.join(HERE, "old-tls.txt")).read().split()) if os.path.exists(os.path.join(HERE, "old-tls.txt")) else set()
+
+
 def running_lab():
     r = sh(["docker", "ps", "--format", "{{.Names}}"])
     return [n for n in r.stdout.split() if n.startswith("liveimap-")]
@@ -185,14 +188,20 @@ def run_one(s, commit, stamp, out):
         lab = os.path.join(HERE, "lab_imap.py")
         seed = sh([sys.executable, lab, "seed", LAB_HOST, str(s["imap"]), user_for(s), PASS,
                    "--allow", f"{LAB_HOST}:{s['imap']}", "--count", "60"])
+        # Servers that refuse a plaintext login are seeded over TLS (implicit if offered, else STARTTLS).
+        seed_port, seed_tls = s["imap"], ""
+        if seed.returncode != 0 and re.search(r"disabled|disallowed|PRIVACYREQUIRED|cleartext|clear-text", seed.stdout + seed.stderr, re.I):
+            seed_port, seed_tls = (s["imaps"], "Implicit") if "imaps" in s else (s["imap"], "StartTls")
+            seed = sh([sys.executable, lab, "seed", LAB_HOST, str(seed_port), user_for(s), PASS, "--tls", seed_tls,
+                       "--allow", f"{LAB_HOST}:{seed_port}", "--count", "60"])
         open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
         folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
         s["folder"] = folder
-        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(s["imap"]), user_for(s), PASS,
-                   "--allow", f"{LAB_HOST}:{s['imap']}", "--record", os.path.join(dest, "caps.jsonl"),
+        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(seed_port), user_for(s), PASS,
+                   *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}", "--record", os.path.join(dest, "caps.jsonl"),
                    "--server-name", name, "--commit", commit, "--suite", "caps"])
         open(os.path.join(dest, "caps.txt"), "w").write(caps.stdout + caps.stderr[-500:])
-        if "STARTTLS" in caps.stdout:
+        if "STARTTLS" in caps.stdout or seed_tls == "StartTls":
             modes.append(("StartTls", s["imap"]))
         for tls, port in modes:
             run = f"{name}-{tls}"
@@ -208,6 +217,12 @@ def run_one(s, commit, stamp, out):
                 rows = [l.split("\t") for l in open(st[0]).read().splitlines()[1:]]
                 bad = [r[0] for r in rows if len(r) > 1 and r[1] != "ok"]
                 steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
+            # The app requires TLS 1.2+ and has no "allow older TLS" setting yet: a TLS failure on a server
+            # that offers only older TLS or weak keys (old-tls.txt, from tls-all.py) is expected, not a failure.
+            if res == "fail" and tls != "None" and name in OLD_TLS and st:
+                detail = open(st[0]).read()
+                if re.search(r"TLS handshake failed|certificate rejected|STARTTLS failed|unsupported protocol|dh key too small", detail):
+                    res = "old-tls-expected"
             out.write(f"{name}\timap\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
             out.flush()
     finally:

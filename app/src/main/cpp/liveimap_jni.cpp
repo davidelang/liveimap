@@ -88,6 +88,8 @@ struct x509_store_ctx_st;
 struct stack_st;
 extern "C" {
 long SSL_CTX_ctrl(ssl_ctx_st * ctx, int cmd, long larg, void * parg);
+unsigned long ERR_get_error(void);
+void ERR_error_string_n(unsigned long e, char * buf, size_t len);
 void SSL_CTX_set_verify(ssl_ctx_st * ctx, int mode, int (* callback)(int, x509_store_ctx_st *));
 int X509_STORE_CTX_get_error_depth(x509_store_ctx_st * ctx);
 x509_st * X509_STORE_CTX_get_current_cert(x509_store_ctx_st * ctx);
@@ -2675,13 +2677,22 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         tlsCapture = nullptr;
         return nullptr;
     }
-    if (capture.ders.empty()) {
-        *error = "certificate rejected";
+    // A handshake that failed before any certificate arrived reports the TLS failure, not a certificate verdict.
+    if (!tlsOk) {
+        std::string reason;
+        for (unsigned long e = ERR_get_error(); e != 0; e = ERR_get_error()) {
+            char buf[256];
+            ERR_error_string_n(e, buf, sizeof buf);
+            reason = buf;  // keep the last (most specific) entry
+        }
+        if (error->empty()) *error = "TLS handshake failed";
+        if (capture.ders.empty()) *error += reason.empty() ? " (TLS handshake failed)" : " (TLS handshake failed: " + reason + ")";
         rejectImap(imap);
         tlsCapture = nullptr;
         return nullptr;
     }
-    if (!tlsOk) {
+    if (capture.ders.empty()) {
+        *error = "certificate rejected";
         rejectImap(imap);
         tlsCapture = nullptr;
         return nullptr;

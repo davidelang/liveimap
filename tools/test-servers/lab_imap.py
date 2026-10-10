@@ -27,6 +27,7 @@ def require_allowed(host, port, allow):
 
 
 RECORDER = None
+TLS_MODE = ""  # "", "Implicit" or "StartTls" (from --tls); lab servers only, certificate not verified
 
 
 class _Rec:
@@ -62,10 +63,17 @@ class RecIMAP4_SSL(_Rec, imaplib.IMAP4_SSL):
 
 def connect(host, port, user, password, allow):
     require_allowed(host, port, allow)
-    tls = port in (993,) or str(port).endswith("993")
+    tls = TLS_MODE == "Implicit" or (not TLS_MODE and str(port).endswith("993"))
     if RECORDER:
-        RECORDER.event("connect", f"{host}:{port} {'Implicit' if tls else 'None'}")
-    m = RecIMAP4_SSL(host, port) if tls else RecIMAP4(host, port)
+        RECORDER.event("connect", f"{host}:{port} {'Implicit' if tls else TLS_MODE or 'None'}")
+    if tls:
+        import ssl
+        m = RecIMAP4_SSL(host, port, ssl_context=ssl._create_unverified_context())
+    else:
+        m = RecIMAP4(host, port)
+        if TLS_MODE == "StartTls":
+            import ssl
+            m.starttls(ssl._create_unverified_context())
     pre = m.capabilities
     m.login(user, password)
     typ, data = m.capability()
@@ -200,7 +208,9 @@ def main():
     p.add_argument("--commit", default="")
     p.add_argument("--suite", default="")
     p.add_argument("--tls", default="")
+    global TLS_MODE
     a = p.parse_args()
+    TLS_MODE = a.tls if a.tls in ("Implicit", "StartTls") else ""
     if a.action == "check":
         if a.host is not None or a.port is not None or a.user is not None or a.password is not None:
             p.error("check takes no host, port, user, or password")
