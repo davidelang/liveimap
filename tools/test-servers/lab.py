@@ -138,7 +138,7 @@ def instrument(s, port, tls, run, commit):
          "-e", "labServer", s["name"], "-e", "labRun", run, "-e", "labCommit", commit,
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
          "-e", "labCa", lab_ca(),
-         "-e", "labOldTls", "true" if s["name"] in OLD_TLS else "false",
+         "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
