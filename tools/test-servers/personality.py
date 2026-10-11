@@ -35,7 +35,7 @@ def pick(server):
 
 
 def build(path):
-    rows = [json.loads(l) for l in open(path)]
+    rows = [json.loads(l) for l in open(path) if l.strip().startswith("{")]
     head = rows[0]
     rows = [r for r in rows[1:] if r.get("conn") == "main"]
     # After STARTTLS the exchange restarts; keep from the last tls/starttls point is not needed: the fake simply

@@ -30,6 +30,8 @@ def capgap(server):
     adv, used = set(), []
     for f in glob.glob(os.path.join(lab.REC, server, "2*", "*.jsonl")):
         for l in open(f):
+            if not l.strip().startswith("{"):
+                continue
             j = json.loads(l)
             if j.get("dir") == "S" and "CAPABILITY" in j.get("line", "").upper():
                 adv |= {w.strip("[]").upper() for w in j["line"].split() if re.match(r"^\[?[A-Z0-9=+\-.]+\]?$", w.strip("[]"), re.I)}
