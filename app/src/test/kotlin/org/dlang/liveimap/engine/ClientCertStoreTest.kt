@@ -6,9 +6,47 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Before
 import org.junit.Test
 
 class ClientCertStoreTest {
+    /** Stand-in for the AndroidKeyStore sealer: reversible, and visibly not the plaintext. */
+    private object FakeSealer : Sealer {
+        override fun seal(plain: ByteArray) = byteArrayOf(1) + plain.map { (it.toInt() xor 0x5a).toByte() }
+        override fun open(sealed: ByteArray): ByteArray {
+            require(sealed[0] == 1.toByte())
+            return sealed.drop(1).map { (it.toInt() xor 0x5a).toByte() }.toByteArray()
+        }
+    }
+
+    @Before
+    fun fakeSealer() {
+        ClientCertStore.sealer = FakeSealer
+    }
+
+    @Test
+    fun passwordIsSealedNotPlain() {
+        val dir = Files.createTempDirectory("cc").toFile()
+        val path = ClientCertStore.import(dir, res("client-cert-test.p12"), "test-pass")
+        val names = dir.listFiles()!!.map { it.name }.sorted()
+        assertEquals(2, names.size)
+        assertTrue(names.any { it.endsWith(".pw.sealed") })
+        assertFalse(names.any { it.endsWith(".pw") })
+        val sealed = File(path.removeSuffix(".p12") + ".pw.sealed").readBytes()
+        assertFalse(String(sealed, Charsets.ISO_8859_1).contains("test-pass"))
+    }
+
+    @Test
+    fun legacyPlainPasswordIsMigrated() {
+        val dir = Files.createTempDirectory("cc").toFile()
+        val p12 = File(dir, "old.p12").apply { writeBytes(res("client-cert-test.p12")) }
+        File(dir, "old.pw").writeText("test-pass")
+        assertEquals("test-pass", ClientCertStore.load(p12.path)!!.password)
+        assertFalse(File(dir, "old.pw").exists())
+        assertTrue(File(dir, "old.pw.sealed").exists())
+        assertEquals("test-pass", ClientCertStore.load(p12.path)!!.password)
+    }
     private fun res(name: String) = javaClass.classLoader!!.getResourceAsStream(name)!!.readBytes()
 
     @Test

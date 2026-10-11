@@ -201,8 +201,12 @@ def client_cert_args(tls):
     if os.environ.get("LAB_CLIENT_CERT", "0") != "1" or tls == "None":
         return []
     import base64
-    p12 = open(os.path.join(HERE, "generated", "ca", "client.p12"), "rb").read()
-    return ["-e", "labClientCertB64", base64.b64encode(p12).decode(), "-e", "labClientCertPass", "liveimap"]
+    # LAB_CLIENT_CERT_KEY=ec uses client-ec.p12 (client-cert.sh ec); LAB_CLIENT_CERT_KIND=keystore puts the key
+    # in the emulator app's AndroidKeyStore (the KeyChain signing path) instead of the .p12 import.
+    name = "client-ec.p12" if os.environ.get("LAB_CLIENT_CERT_KEY") == "ec" else "client.p12"
+    p12 = open(os.path.join(HERE, "generated", "ca", name), "rb").read()
+    return ["-e", "labClientCertB64", base64.b64encode(p12).decode(), "-e", "labClientCertPass", "liveimap",
+            "-e", "labClientCertKind", os.environ.get("LAB_CLIENT_CERT_KIND", "p12")]
 
 
 def instrument(s, port, tls, run, commit, mech="", side=None):

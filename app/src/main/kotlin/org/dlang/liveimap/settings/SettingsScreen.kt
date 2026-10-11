@@ -2070,8 +2070,15 @@ private fun ClientCertField(editor: SettingsEditor) {
         message = null
     }
     val current = editor.settings.clientCert
+    val alias = editor.settings.clientCertAlias
     Text(stringResource(R.string.settings_client_cert))
-    if (current.isBlank()) {
+    if (current.isBlank() && alias.isNotBlank()) {
+        // Per-account choice 2: an Android KeyChain certificate (key stays in the system keystore).
+        Text(stringResource(R.string.settings_client_cert_keychain_current, alias))
+        TextButton(onClick = { editor.persist(editor.settings.copy(clientCertAlias = "")) }) {
+            Text(stringResource(R.string.settings_client_cert_remove))
+        }
+    } else if (current.isBlank()) {
         Text(stringResource(R.string.settings_client_cert_none))
     } else {
         Text(ClientCertStore.load(current)?.let { runCatching { ClientCertStore.check(it.p12, it.password) }.getOrNull() }
@@ -2084,6 +2091,28 @@ private fun ClientCertField(editor: SettingsEditor) {
     TextButton(onClick = { pick.launch(arrayOf("application/x-pkcs12", "application/octet-stream", "*/*")) }) {
         Text(stringResource(R.string.settings_client_cert_import))
     }
+    TextButton(onClick = {
+        var c = context
+        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
+        val activity = c as? android.app.Activity ?: return@TextButton
+        android.security.KeyChain.choosePrivateKeyAlias(
+            activity,
+            { chosen ->
+                if (chosen != null) {
+                    scope.launch {
+                        val old = editor.settings.clientCert
+                        editor.persist(editor.settings.copy(clientCert = "", clientCertAlias = chosen))
+                        if (old.isNotBlank()) withContext(Dispatchers.IO) { ClientCertStore.remove(old) }
+                    }
+                }
+            },
+            arrayOf("RSA", "EC"),
+            null,
+            editor.settings.imapHost.ifBlank { null },
+            editor.settings.imapPort,
+            alias.ifBlank { null },
+        )
+    }) { Text(stringResource(R.string.settings_client_cert_keychain)) }
     val uri = pending
     if (uri != null) {
         OutlinedTextField(
@@ -2104,7 +2133,7 @@ private fun ClientCertField(editor: SettingsEditor) {
                 }
                 result.onSuccess { path ->
                     val old = editor.settings.clientCert
-                    editor.persist(editor.settings.copy(clientCert = path))
+                    editor.persist(editor.settings.copy(clientCert = path, clientCertAlias = ""))
                     if (old.isNotBlank() && old != path) ClientCertStore.remove(old)
                     pending = null
                     password = ""

@@ -78,7 +78,15 @@ class LabSuiteTest {
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
             // Lab client certificate (lab.py LAB_CLIENT_CERT=1): PKCS#12 passed base64, imported like the UI does.
-            clientCert = arg("labClientCertB64").takeIf { it.isNotEmpty() }?.let {
+            // labClientCertKind=keystore: the same p12 goes into this app's AndroidKeyStore (non-exportable),
+            // so OpenSSL signs through the JNI KeyChain path instead of holding the key.
+            clientCertAlias = arg("labClientCertB64").takeIf { it.isNotEmpty() && arg("labClientCertKind") == "keystore" }?.let {
+                org.dlang.liveimap.engine.KeyChainCerts.appContext = ctx.applicationContext
+                org.dlang.liveimap.engine.KeyChainCerts.importLab(
+                    "lab-client", android.util.Base64.decode(it, android.util.Base64.DEFAULT), arg("labClientCertPass"),
+                )
+            } ?: "",
+            clientCert = arg("labClientCertB64").takeIf { it.isNotEmpty() && arg("labClientCertKind") != "keystore" }?.let {
                 org.dlang.liveimap.engine.ClientCertStore.import(
                     java.io.File(ctx.filesDir, "client-certs"),
                     android.util.Base64.decode(it, android.util.Base64.DEFAULT),

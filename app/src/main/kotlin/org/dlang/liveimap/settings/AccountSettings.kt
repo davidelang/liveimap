@@ -420,6 +420,12 @@ data class AccountSettings(
      * storage (see ClientCertStore; its password sits beside it, not in these settings). "" = none.
      */
     val clientCert: String = "",
+    /**
+     * Advanced: TLS client certificate from Android KeyChain (KeyChain.choosePrivateKeyAlias), the alias. The
+     * key never leaves the system keystore; OpenSSL signs through it (JNI callback). Per account, exclusive
+     * with [clientCert]: the UI sets one and clears the other. "" = none.
+     */
+    val clientCertAlias: String = "",
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
@@ -532,6 +538,7 @@ private val fieldNames = listOf(
     "allowOldTls",
     "authMechanism",
     "clientCert",
+    "clientCertAlias",
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
@@ -655,6 +662,7 @@ fun AccountSettings.encode(): String = buildString {
     if (allowOldTls) appendLine("allowOldTls=true")
     if (authMechanism.isNotBlank()) appendLine("authMechanism=${percentEncode(authMechanism)}")
     if (clientCert.isNotBlank()) appendLine("clientCert=${percentEncode(clientCert)}")
+    if (clientCertAlias.isNotBlank()) appendLine("clientCertAlias=${percentEncode(clientCertAlias)}")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
@@ -768,6 +776,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "allowOldTls" ||
             key == "authMechanism" ||
             key == "clientCert" ||
+            key == "clientCertAlias" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
@@ -877,6 +886,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         allowOldTls = values["allowOldTls"]?.let { parseBoolean(it) } ?: false,
         authMechanism = values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "",
         clientCert = values["clientCert"]?.let { percentDecode(it) } ?: "",
+        clientCertAlias = values["clientCertAlias"]?.let { percentDecode(it) } ?: "",
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,

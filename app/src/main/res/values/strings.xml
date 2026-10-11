@@ -733,5 +733,7 @@
     <string name="settings_client_cert_password">Certificate password</string>
     <string name="settings_client_cert_save">Use this certificate</string>
     <string name="settings_client_cert_remove">Remove certificate</string>
+    <string name="settings_client_cert_keychain">Choose Android certificate…</string>
+    <string name="settings_client_cert_keychain_current">Android certificate: %1$s</string>
     <string name="settings_auth_mechanism">Login method (blank = automatic; IMAP-LOGIN for the LOGIN command; PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-256…)</string>
 </resources>

@@ -32,6 +32,15 @@ import org.junit.Test
 
 class AccountSettingsTest {
     @Test
+    fun clientCertChoicesRoundTrip() {
+        val p12 = AccountSettings(clientCert = "/data/x/client-certs/a b.p12")
+        assertEquals(p12, decodeAccountSettings(p12.encode()))
+        val chain = AccountSettings(clientCertAlias = "LiveIMAP lab client")
+        assertEquals(chain, decodeAccountSettings(chain.encode()))
+        assertEquals("", decodeAccountSettings(chain.encode()).clientCert)
+    }
+
+    @Test
     fun defaultsRoundTrip() {
         val text = AccountSettings().encode()
         val keys = text.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }

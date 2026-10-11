@@ -260,6 +260,8 @@ class LibetpanMailSession : MailSession {
         if (account.clientCert.isNotBlank() && clientCert == null) {
             throw MailFailure("client certificate missing; import it again in account settings")
         }
+        // The other per-account choice: an Android KeyChain certificate, signed through the keystore.
+        val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
         val opened = nativeOpen(
             account.imapHost,
             account.imapPort,
@@ -279,6 +281,8 @@ class LibetpanMailSession : MailSession {
             account.authMechanism,
             clientCert?.p12,
             clientCert?.password ?: "",
+            keyChain?.chain,
+            keyChain?.key,
         )
         nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
@@ -1084,6 +1088,8 @@ class LibetpanMailSession : MailSession {
         authMechanism: String,
         clientP12: ByteArray?,
         clientP12Password: String,
+        keyChainChain: Array<ByteArray>?,
+        keyChainKey: Any?,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)

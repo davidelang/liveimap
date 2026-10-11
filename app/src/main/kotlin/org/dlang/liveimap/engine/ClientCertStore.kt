@@ -9,14 +9,59 @@ import java.util.UUID
 /** A per-account TLS client certificate: the PKCS#12 bytes and their password, handed to OpenSSL as is. */
 class ClientCert(val p12: ByteArray, val password: String)
 
+/** Seals small secrets; on the device an AES-GCM key held in the Android keystore ([KeystoreSealer]). */
+interface Sealer {
+    fun seal(plain: ByteArray): ByteArray
+    fun open(sealed: ByteArray): ByteArray
+}
+
+/** AES-256-GCM with a non-exportable key in AndroidKeyStore; output is IV (12 bytes) + ciphertext. */
+object KeystoreSealer : Sealer {
+    private const val ALIAS = "liveimap-client-cert-passwords"
+
+    private fun key(): javax.crypto.SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey(ALIAS, null) as? javax.crypto.SecretKey)?.let { return it }
+        val gen = javax.crypto.KeyGenerator.getInstance(android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        gen.init(
+            android.security.keystore.KeyGenParameterSpec.Builder(
+                ALIAS,
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build(),
+        )
+        return gen.generateKey()
+    }
+
+    override fun seal(plain: ByteArray): ByteArray {
+        val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, key())
+        return c.iv + c.doFinal(plain)
+    }
+
+    override fun open(sealed: ByteArray): ByteArray {
+        val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(javax.crypto.Cipher.DECRYPT_MODE, key(), javax.crypto.spec.GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
+        return c.doFinal(sealed, 12, sealed.size - 12)
+    }
+}
+
 /**
  * Imported PKCS#12 client certificates in app-private storage (filesDir/client-certs). Each import is
- * `<id>.p12` with its password in `<id>.pw` beside it (mode 0600, never in AccountSettings, so settings
- * exports carry no secret). AccountSettings.clientCert holds the .p12 path.
+ * `<id>.p12` with its password sealed by the Android keystore in `<id>.pw.sealed` beside it (design docs:
+ * secrets live in the Android keystore; never in AccountSettings, so settings exports carry no secret).
+ * AccountSettings.clientCert holds the .p12 path. A plaintext `<id>.pw` from before sealing is migrated on load.
  *
- * TODO(later): Android KeyChain-backed keys (non-exportable) need a JNI signing callback (incl. RSA-PSS).
+ * The other per-account choice, an Android KeyChain certificate, is [KeyChainCerts].
  */
 object ClientCertStore {
+    /** Replaced in JVM unit tests (no AndroidKeyStore there). */
+    @Volatile
+    var sealer: Sealer = KeystoreSealer
+
     /** Checks that [p12] opens with [password] and holds a private key with a certificate; returns its subject. */
     fun check(p12: ByteArray, password: String): String {
         val store = KeyStore.getInstance("PKCS12")
@@ -38,9 +83,8 @@ object ClientCertStore {
         check(p12, password)
         dir.mkdirs()
         val id = UUID.randomUUID().toString()
-        val pw = File(dir, "$id.pw")
         val file = File(dir, "$id.p12")
-        writePrivate(pw, password.toByteArray(Charsets.UTF_8))
+        writePrivate(sealedFile(file), sealer.seal(password.toByteArray(Charsets.UTF_8)))
         writePrivate(file, p12)
         return file.absolutePath
     }
@@ -49,17 +93,31 @@ object ClientCertStore {
     fun load(path: String): ClientCert? {
         if (path.isBlank()) return null
         val file = File(path)
-        val pw = passwordFile(file)
-        if (!file.isFile || !pw.isFile) return null
-        return ClientCert(file.readBytes(), pw.readText(Charsets.UTF_8))
+        if (!file.isFile) return null
+        val sealed = sealedFile(file)
+        val legacy = passwordFile(file)
+        if (!sealed.isFile && legacy.isFile) {
+            writePrivate(sealed, sealer.seal(legacy.readBytes()))
+            legacy.delete()
+        }
+        if (!sealed.isFile) return null
+        val password = try {
+            sealer.open(sealed.readBytes()).toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            return null  // keystore key gone (e.g. restored to another device): import again
+        }
+        return ClientCert(file.readBytes(), password)
     }
 
     fun remove(path: String) {
         if (path.isBlank()) return
         val file = File(path)
         passwordFile(file).delete()
+        sealedFile(file).delete()
         file.delete()
     }
+
+    private fun sealedFile(p12: File) = File(p12.parentFile, p12.name.removeSuffix(".p12") + ".pw.sealed")
 
     private fun passwordFile(p12: File) = File(p12.parentFile, p12.name.removeSuffix(".p12") + ".pw")
 
