@@ -18,6 +18,9 @@ FAMILY = [(r"^RIGHTS=", "RIGHTS"), (r"^QUOTA(=|SET$)", "QUOTA"), (r"^X-QUOTA", "
           (r"^APPENDLIMIT", "APPENDLIMIT"), (r"^MESSAGELIMIT", "MESSAGELIMIT"), (r"^SAVELIMIT", "SAVELIMIT"),
           (r"^THREAD=", "THREAD"), (r"^PREVIEW", "PREVIEW"), (r"^OBJECTID", "OBJECTID"), (r"^URLAUTH", "URLAUTH"),
           (r"^X-REPLICATION", "X-REPLICATION")]
+# Information the server volunteers; no client command uses it.
+PASSIVE = {"CHILDREN", "LOGIN-REFERRALS", "MAILBOX-REFERRALS", "NO_ATOMIC_RENAME", "APPENDLIMIT", "MESSAGELIMIT",
+           "SAVELIMIT", "RIGHTS"}
 SKIP = {"CAPABILITY", "OK", "*", "IMAP4REV1", "IMAP4", "STARTTLS", "LOGINDISABLED", "COMPLETED", "PRE-LOGIN",
         "LOGGED", "IN"}
 
@@ -59,11 +62,13 @@ def main():
                             variants.setdefault(fam, set()).add(w)
     rows = []
     for cap in sorted(adv, key=lambda c: (-len(adv[c]), c)):
-        exercised = any(re.search(USES.get(cap, r"(?!)"), u, re.I) for u in used_lines)
+        exercised = "passive" if cap in PASSIVE else any(re.search(USES.get(cap, r"(?!)"), u, re.I) for u in used_lines)
         spec, what, rec = notes.get(cap, ("?", "no note yet", "no note yet"))
-        names = ", ".join(s for s in servers if s in adv[cap])
+        missing = [s for s in servers if s not in adv[cap]]
+        names = ("all" if not missing else "all except " + ", ".join(missing)) if len(missing) < len(servers) / 2 \
+            else ", ".join(s for s in servers if s in adv[cap])
         var = f" ({', '.join(sorted(variants[cap]))})" if cap in variants else ""
-        rows.append(f"| {cap}{var} | {spec} | {len(adv[cap])}/{len(servers)} | {names} | {'yes' if exercised else 'no'} | {what} | {rec} |")
+        rows.append(f"| {cap}{var} | {spec} | {len(adv[cap])}/{len(servers)} | {names} | {exercised if exercised == 'passive' else ('yes' if exercised else 'no')} | {what} | {rec} |")
     head = ["| Capability | Spec | Servers | Advertised by | App exercised it in lab | What it does | Recommendation |",
             "|---|---|---|---|---|---|---|"]
     text = "\n".join(head + rows) + "\n"

@@ -26,7 +26,7 @@ LIST-EXTENDED	RFC 5258	LIST selection/return options.	Keep using (already used, 
 LIST-METADATA	draft	METADATA in LIST.	No.
 LIST-MYRIGHTS	RFC 8440	MYRIGHTS in LIST.	Later, with ACL (one LIST instead of per-folder MYRIGHTS).
 LIST-STATUS	RFC 5819	STATUS returned in LIST.	Yes: folder unread counts in one round trip per level (fetch-only-what-is-needed). The app sends RETURN (STATUS) on some servers; make it the rule where offered.
-LITERAL+	RFC 7888	Non-synchronizing literals.	Yes, small: saves a round trip per literal (APPEND, login with odd passwords, search strings). libetpan support needed.
+LITERAL+	RFC 7888	Non-synchronizing literals.	Keep using (already used for APPEND/search literals): saves a round trip per literal.
 LOGIN-REFERRALS	RFC 2221	Server may refer the login elsewhere.	Report the referral text; no auto-follow (security).
 MAILBOX-REFERRALS	RFC 2193	Referrals for mailboxes on other servers.	No.
 MESSAGELIMIT	RFC 9738	Max messages per command.	Yes when offered: cap UID sets in bursts accordingly (large folders).
@@ -44,7 +44,7 @@ QRESYNC	RFC 7162	Resync via VANISHED.	Partly: the app ENABLEs it; useful only fo
 QUOTA	RFC 9208	Storage/message quotas.	Yes, read-only: show "mailbox 95% full" (alpine shows quota). QUOTA=RES-*/QUOTASET are its sub-options.
 REPLACE	RFC 8508	Replace a message atomically (APPEND+expunge old).	Later for drafts: avoids the mark-deleted old draft. Must expunge only the replaced UID, which REPLACE guarantees.
 RIGHTS	RFC 4314	Which rights letters the server supports.	With ACL only.
-SASL-IR	RFC 4959	Initial response in AUTHENTICATE.	Yes: saves a round trip; the app now sends AUTHENTICATE EXTERNAL = with it.
+SASL-IR	RFC 4959	Initial response in AUTHENTICATE.	Yes: saves a round trip. The direct EXTERNAL path sends `=` inline; the Cyrus SASL path still waits for `+` (recordings redact the exchange, so the lab cannot show it).
 SAVEDATE	RFC 8514	The date a message was saved to the mailbox.	Later: "sort by arrival in this folder" accuracy. Low priority.
 SAVELIMIT	RFC 9738	Max saved search results.	With SEARCHRES only.
 SCAN	Cyrus	Search across mailbox names.	No.
