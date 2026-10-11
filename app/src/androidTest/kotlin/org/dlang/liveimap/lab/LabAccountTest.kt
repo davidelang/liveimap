@@ -30,4 +30,16 @@ class LabAccountTest {
         )
         store.setPassword(arg("labPass"))
     }
+
+    /** Selects the existing account whose IMAP host contains labAccountMatch (changes only which one is open). */
+    @Test
+    fun selectLabAccount() = runBlocking {
+        val match = InstrumentationRegistry.getArguments().getString("labAccountMatch").orEmpty()
+        val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
+        for (a in store.listAccounts()) {
+            store.selectAccount(a.id)
+            if (store.load().imapHost.contains(match)) return@runBlocking
+        }
+        error("no account matching " + match)
+    }
 }
