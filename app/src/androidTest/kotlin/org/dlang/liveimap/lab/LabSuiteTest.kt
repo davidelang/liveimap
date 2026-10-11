@@ -148,8 +148,8 @@ class LabSuiteTest {
                     "${w.total} ${w.uids.size}"
                 }
                 if ("PARTIAL" in session.capabilities && "ESEARCH" in session.capabilities) step("searchWindow") {
-                    val full = session.searchCriterion("Subject", "LiveIMAP")
-                    val w = session.searchWindow("Subject", "LiveIMAP", -3, -1) ?: error("no window despite PARTIAL")
+                    val full = session.searchCriterion("NotDeleted", "")
+                    val w = session.searchWindow("NotDeleted", "", -3, -1) ?: error("no window despite PARTIAL")
                     check(w.total == full.size) { "COUNT ${w.total} != full ${full.size}" }
                     check(w.uids.sorted() == full.sorted().takeLast(3)) { "window ${w.uids} != tail ${full.sorted().takeLast(3)}" }
                     "${w.total} ${w.uids.size}"
