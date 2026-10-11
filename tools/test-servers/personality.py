@@ -37,6 +37,7 @@ def pick(server):
 def build(path):
     rows = [json.loads(l) for l in open(path) if l.strip().startswith("{")]
     head = rows[0]
+    watch = [r for r in rows[1:] if r.get("conn") == "watch"]
     rows = [r for r in rows[1:] if r.get("conn") == "main"]
     # After STARTTLS the exchange restarts; keep from the last tls/starttls point is not needed: the fake simply
     # never sees STARTTLS (scrubbed from caps), so drop the STARTTLS command itself.
@@ -85,6 +86,19 @@ def build(path):
             if hit[0] == "LOGIN" and " OK" in line.upper():
                 authed = True
         pending.remove(hit)
+    # IDLE on the watch connection: keep what the server pushed between "+ idling" and the tagged reply, so
+    # the fake can push the same untagged lines when another connection APPENDs (the lab "idle" step).
+    idle_tag, pushed = None, []
+    for r in watch:
+        line = r.get("line", "")
+        if r.get("dir") == "C" and line.upper().endswith(" IDLE"):
+            idle_tag, pushed = line.split(" ", 1)[0], []
+        elif r.get("dir") == "S" and idle_tag and line.startswith("* "):
+            pushed.append({"line": line})
+        elif r.get("dir") == "S" and idle_tag and line.startswith(idle_tag + " "):
+            if pushed:
+                table["IDLE"] = [{"auth": True, "cmd": "IDLE", "items": pushed + [{"line": "{TAG}" + line[len(idle_tag):]}]}]
+            idle_tag = None
     return {"server": head["server"]["name"], "source": os.path.relpath(path, HERE), "commit": head.get("commit"),
             "greeting": greeting, "table": table, "order": order}
 

@@ -205,7 +205,8 @@ def client_cert_args(tls):
     return ["-e", "labClientCertB64", base64.b64encode(p12).decode(), "-e", "labClientCertPass", "liveimap"]
 
 
-def instrument(s, port, tls, run, commit, mech=""):
+def instrument(s, port, tls, run, commit, mech="", side=None):
+    """side: replacement SMTP/ManageSieve extras (fake runs); None uses smtp.tsv / sieve.tsv."""
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
@@ -215,7 +216,7 @@ def instrument(s, port, tls, run, commit, mech=""):
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
          "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
          *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
-         *smtp_args(s, tls), *(sieve_args(s) if tls != "None" else []),
+         *(side if side is not None else [*smtp_args(s, tls), *(sieve_args(s) if tls != "None" else [])]),
          *client_cert_args(tls),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)

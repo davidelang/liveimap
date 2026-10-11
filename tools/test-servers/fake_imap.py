@@ -26,6 +26,19 @@ if __import__("os").environ.get("FAKE_MODEL"):
     MODEL = Model(json.loads(__import__("os").environ["FAKE_MODEL"]), _caps)
 
 
+APPENDS = threading.Condition()  # IDLE: an APPEND to INBOX on one connection wakes idling ones
+APPEND_COUNT = [0]
+
+
+def idle_untagged():
+    """The untagged lines a real server sent during IDLE (recorded on the watch connection), else EXISTS."""
+    for v in p["table"].get("IDLE", []):
+        got = [it["line"] for it in v["items"] if it.get("line", "").startswith("* ")]
+        if got:
+            return got
+    return ["* 2 EXISTS"]
+
+
 def note(**kw):
     with lock:
         log.write(json.dumps(kw) + "\n"); log.flush()
@@ -58,7 +71,25 @@ def serve(conn, cid):
         sh = "LOGIN" if cmd in ("LOGIN", "AUTHENTICATE") else shape(rest)
         never = bool(NEVER.match(rest))
         if cmd == "IDLE":
-            send(b"+ idling\r\n"); f.readline(); send(f"{tag} OK IDLE done\r\n".encode()); note(c=cid, cmd=rest[:120], shape=sh, ok=True); continue
+            with APPENDS:
+                start = APPEND_COUNT[0]
+            send(b"+ idling\r\n")
+            done = threading.Event()
+            threading.Thread(target=lambda: (f.readline(), done.set()), daemon=True).start()
+            pushed = False
+            while not done.is_set():
+                with APPENDS:
+                    APPENDS.wait(0.2)
+                    fresh = APPEND_COUNT[0] != start
+                if fresh and not pushed:
+                    send("".join(l + "\r\n" for l in idle_untagged()).encode("latin-1")); pushed = True
+            send(f"{tag} OK IDLE done\r\n".encode()); note(c=cid, cmd=rest[:120], shape=sh, ok=True, pushed=pushed); continue
+        if cmd == "APPEND" and re.match(r'APPEND "?INBOX"? ', rest, re.I):
+            st["appended"] = True
+            with APPENDS:
+                APPEND_COUNT[0] += 1; APPENDS.notify_all()
+        if never and st.get("appended") and rest.upper().startswith("UID EXPUNGE"):
+            never = False  # the IDLE step removing exactly the message it appended (lab cleanup)
         if MODEL and authed:
             with lock:
                 before = len(MODEL.expunged)

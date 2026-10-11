@@ -45,6 +45,38 @@ def capgap(server):
     return sorted(adv), gap
 
 
+def side_source(server, proto):
+    """Newest recording of [server] with a [proto] connection (StartTls preferred), or None."""
+    files = sorted(glob.glob(os.path.join(lab.REC, server, "2*", "*.jsonl")), reverse=True)
+    files.sort(key=lambda f: "StartTls" not in f)
+    for f in files:
+        if f'"conn":"{proto}","dir":"C"' in open(f).read():
+            return f
+    return None
+
+
+def start_side(name, dest):
+    """Start fake SMTP / ManageSieve servers from recordings; returns (instrument extras, procs, compare map)."""
+    side, procs, cmp = [], [], {}
+    for proto, stepname in (("smtp", "smtpSend"), ("sieve", "sieveDeliver")):
+        src = side_source(name, proto)
+        if not src:
+            continue
+        pj = os.path.join(dest, f"fake-{proto}.json")
+        subprocess.run([sys.executable, os.path.join(HERE, "fake_line.py"), "build", proto, src, pj], check=True)
+        sock = socket.socket(); sock.bind((lab.LAB_HOST, 0)); port = sock.getsockname()[1]; sock.close()
+        procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fake_line.py"), "serve", pj, lab.LAB_HOST, str(port),
+                                       os.path.join(dest, f"fake-{proto}-log.jsonl")], stderr=open(os.path.join(dest, f"fake-{proto}.err"), "w")))
+        cmp[stepname] = src
+        if proto == "smtp":
+            rcpt = next((re.search(r"<([^>]*)>", json.loads(l)["line"]).group(1) for l in open(src)
+                         if '"conn":"smtp","dir":"C","line":"RCPT TO:' in l), "liveimap@lab.test")
+            side += ["-e", "labSmtpPort", str(port), "-e", "labRcpt", rcpt]
+        else:
+            side += ["-e", "labSievePort", str(port), "-e", "labSieveTls", "None", "-e", "labSievePlain", "true"]
+    return side, procs, cmp
+
+
 def main():
     args = [a for a in sys.argv[1:] if a != "--skip-install"]
     names = [s["name"] for s in lab.servers()] if args == ["--all"] else args
@@ -81,21 +113,33 @@ def main():
             folder = open(seed).read().split(":", 1)[0].strip()
         s["folder"] = folder
         run = f"{name}-fake"
+        side, procs, cmp = start_side(name, dest)
+        time.sleep(0.5)
         try:
-            res, msg = lab.instrument(s, port, "None", run, commit, "LOGIN-CMD")
+            res, msg = lab.instrument(s, port, "None", run, commit, "LOGIN-CMD", side=side)
         except subprocess.TimeoutExpired:
             res, msg = "fail", "timeout"
         finally:
             fk.terminate()
+            for pr in procs:
+                pr.terminate()
         files = lab.pull(run, dest)
         st = [f for f in files if f.endswith(".steps.tsv")]
         real = steps(src[:-6] + ".steps.tsv")
         fake = steps(st[0]) if st else {}
-        # The fake is IMAP only: SMTP and ManageSieve steps are not part of the comparison.
-        skip = {"smtpSend", "sieveDeliver"}
-        diff = sorted(k for k in (set(real) | set(fake)) - skip if real.get(k) != fake.get(k))
         ev = [json.loads(l) for l in open(flog)] if os.path.exists(flog) else []
         unexp = [e["cmd"] for e in ev if e.get("unexpected")]
+        # SMTP and ManageSieve steps compare against the recording each line fake was built from.
+        skip = {"smtpSend", "sieveDeliver"}
+        diff = sorted(k for k in (set(real) | set(fake)) - skip if real.get(k) != fake.get(k))
+        for stepname, ssrc in cmp.items():
+            want = steps(ssrc[:-6] + ".steps.tsv").get(stepname)
+            if want != fake.get(stepname):
+                diff.append(f"{stepname}(real={want},fake={fake.get(stepname)})")
+        for proto in ("smtp", "sieve"):
+            lp = os.path.join(dest, f"fake-{proto}-log.jsonl")
+            if os.path.exists(lp):
+                unexp += [f"{proto}:{json.loads(l)['cmd']}" for l in open(lp) if '"unexpected": true' in l]
         never = [e["cmd"] for e in ev if e.get("never")]
         r_ok = sum(v == "ok" for v in real.values()); f_ok = sum(v == "ok" for v in fake.values())
         summ.write(f"{name}\t{os.path.basename(src)}\t{r_ok}/{len(real)}\t{f_ok}/{len(fake)}\t{'yes' if not diff else 'no'}\t"

@@ -146,7 +146,8 @@ class LabSuiteTest {
                         org.dlang.liveimap.engine.sieve.openAndDeliverLiveimap(
                             host, sievePort, TlsMode.valueOf(arg("labSieveTls")), "", { true }, { },
                             arg("labUser"), arg("labPass"), "# LiveIMAP lab test\r\nkeep;\r\n",
-                            allowPlaintextAuth = false,
+                            // Only the plaintext strict fake (fake_run.py, labSievePlain) may see plaintext auth.
+                            allowPlaintextAuth = arg("labSievePlain") == "true",
                         )
                     }
                 }
