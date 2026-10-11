@@ -745,5 +745,4 @@
     <string name="reader_link_blocked">Links of this type are blocked: they can reach files, other apps\' data or run code.</string>
     <string name="reader_type_mismatch_share">Share as %1$s</string>
     <string name="index_search_progress">%1$d of %2$d</string>
-    <string name="index_search_cancel">Cancel search</string>
 </resources>
