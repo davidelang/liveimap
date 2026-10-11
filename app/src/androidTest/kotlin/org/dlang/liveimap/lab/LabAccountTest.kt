@@ -42,4 +42,25 @@ class LabAccountTest {
         }
         error("no account matching " + match)
     }
+
+    /**
+     * Removes lab accounts whose username is exactly labUser AND IMAP port is exactly labPort (both required, so a
+     * real account can't match by accident). Fails if none or more than one match.
+     */
+    @Test
+    fun removeLabAccount() = runBlocking {
+        val args = InstrumentationRegistry.getArguments()
+        val user = args.getString("labUser").orEmpty()
+        val port = args.getString("labPort")?.toIntOrNull() ?: error("labPort required")
+        check(user.isNotEmpty()) { "labUser required" }
+        val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
+        val hits = ArrayList<String>()
+        for (a in store.listAccounts()) {
+            store.selectAccount(a.id)
+            val s = store.load()
+            if (s.username == user && s.imapPort == port) hits.add(a.id)
+        }
+        check(hits.size == 1) { "expected one match, got ${hits.size}" }
+        check(store.removeAccount(hits.single())) { "remove refused" }
+    }
 }
