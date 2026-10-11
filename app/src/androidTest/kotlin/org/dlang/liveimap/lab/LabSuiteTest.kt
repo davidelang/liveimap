@@ -361,6 +361,27 @@ class LabSuiteTest {
                     out.joinToString("; ")
                 }
                 // Filter chain: one server search with every criterion (UID set, NotDeleted, a nested Or group).
+                // Filter criteria with ESORT PARTIAL windows: two windows of a filtered sort must be disjoint parts of
+                // exactly the filtered set, with COUNT equal to its size. Covered by esort_partial_run.py on the fake.
+                step("sortWindowCriteria") {
+                    val all = session.searchCriterion("NotDeleted", "").sorted()
+                    if (all.size < 7) throw IllegalStateException("need 7 messages, have ${all.size}")
+                    val pick = all.drop(1).take(6)
+                    val group = org.dlang.liveimap.ui.index.filterChainGroup(
+                        listOf(
+                            org.dlang.liveimap.ui.index.AppliedFilter("t", org.dlang.liveimap.ui.index.uidSetText(pick), "Uid"),
+                            org.dlang.liveimap.ui.index.AppliedFilter("n", "", "NotDeleted"),
+                        ),
+                    )!!
+                    val key = org.dlang.liveimap.settings.SortKey.Date
+                    val w1 = session.sortWindowMatching(key, false, 1, 3, group) ?: return@step "no windows"
+                    val w2 = session.sortWindowMatching(key, false, 4, 6, group) ?: throw IllegalStateException("2nd window")
+                    val got = w1.uids + w2.uids
+                    if (w1.total != pick.size || got.size != pick.size || got.toSet() != pick.toSet()) {
+                        throw IllegalStateException("total ${w1.total} windows ${w1.uids} ${w2.uids} want $pick")
+                    }
+                    "windows ${w1.uids} ${w2.uids} of ${w1.total}"
+                }
                 step("filterChain") {
                     val all = session.fetchIndex(IndexRequest(box, IndexMode.ArrivalNewest, limit = 5)).map { it.uid }.sorted()
                     if (all.size < 3) throw IllegalStateException("need 3 messages, have ${all.size}")

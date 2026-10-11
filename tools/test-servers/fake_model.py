@@ -8,6 +8,10 @@ Config keys:
              needs a dropped or never-advertised capability (MOVE, UID EXPUNGE, UNSELECT) gets BAD and is
              logged as unexpected.
   folder:    test mailbox (default LiveIMAP-Test) holding UIDs 1..count (default 10).
+  add_caps:  capability names appended to every CAPABILITY list (e.g. ["ESORT", "PARTIAL"]).
+  esort_partial: answer UID SORT itself (date key = UID order), honoring RETURN (PARTIAL a:b COUNT) the way
+             RFC 9394 says; criteria UID <set> and (UN)DELETED are applied. For the ESORT PARTIAL path no lab
+             server exercises (Cyrus ignores PARTIAL on ESORT; the Dovecots don't offer PARTIAL).
   script:    outside changes, e.g. {"at_noop": 1, "expunge_uid": 5} or {"at_noop": 2, "append": 1}:
              applied as if by another client, reported as untagged EXPUNGE / EXISTS on that NOOP.
 """
@@ -49,7 +53,9 @@ class Model:
     def __init__(self, cfg, caps):
         self.cfg = cfg
         self.drop = {c.upper() for c in cfg.get("drop_caps", [])}
-        self.caps = {c.upper() for c in caps} - self.drop
+        self.add = [c for c in cfg.get("add_caps", []) if c.upper() not in {x.upper() for x in caps}]
+        self.caps = ({c.upper() for c in caps} | {c.upper() for c in self.add}) - self.drop
+        self.sorts = []  # (criteria, partial) of each UID SORT answered, for the runner to judge
         self.folder = cfg.get("folder", "LiveIMAP-Test")
         n = cfg.get("count", 10)
         self.boxes = {self.folder: {"uids": list(range(1, n + 1)), "flags": {u: set() for u in range(1, n + 1)},
@@ -63,9 +69,14 @@ class Model:
         return cap.upper() in self.caps
 
     def strip_caps(self, line):
-        if not self.drop or "CAPABILITY" not in line.upper():
+        if (not self.drop and not self.add) or "CAPABILITY" not in line.upper():
             return line
-        return " ".join(w for w in line.split(" ") if w.upper().strip("[]") not in self.drop)
+        out = " ".join(w for w in line.split(" ") if w.upper().strip("[]") not in self.drop)
+        if self.add:
+            m = re.search(r"(CAPABILITY [^\]]*)", out, re.I)
+            if m:
+                out = out[:m.end()] + "".join(" " + c for c in self.add) + out[m.end():]
+        return out
 
     def box(self, name):
         key = "INBOX" if name.upper() == "INBOX" else name
@@ -135,6 +146,37 @@ class Model:
                 return ([f'* ESEARCH (TAG "{tag}"){" UID" if uid else ""} ' + " ".join(parts), f"{tag} OK SEARCH done"],
                         True, None)
             return ([("* SEARCH " + " ".join(map(str, nums))).rstrip(), f"{tag} OK SEARCH done"], True, None)
+        if cmd == "SORT" and uid and self.cfg.get("esort_partial"):
+            m = re.match(r"(?:RETURN \(([^)]*)\) )?\(([^)]*)\) (\S+) ?(.*)$", arg, re.I)
+            if not m:
+                return ([f"{tag} BAD sort syntax"], False, "bad SORT syntax")
+            opts, keys, crit = (m.group(1) or "").upper(), m.group(2).upper().split(), m.group(4).upper()
+            hits = list(b["uids"])
+            if "UNDELETED" in crit:
+                hits = [u for u in hits if "\\Deleted" not in b["flags"][u]]
+            elif re.search(r"\bDELETED\b", crit):
+                hits = [u for u in hits if "\\Deleted" in b["flags"][u]]
+            cm = re.search(r"\bUID ([0-9:*,]+)", crit)
+            if cm:
+                hits = sorted(parse_set(cm.group(1), hits))
+            if "REVERSE" in keys:
+                hits = hits[::-1]
+            pm = re.search(r"PARTIAL (-?\d+):(-?\d+)", opts)
+            self.sorts.append((crit, pm.group(0) if pm else ""))
+            if m.group(1) is None:
+                return ([("* SORT " + " ".join(map(str, hits))).rstrip(), f"{tag} OK SORT done"], True, None)
+            parts = []
+            if pm:
+                a, z = sorted((int(pm.group(1)), int(pm.group(2))), key=abs)
+                n = len(hits)
+                # Positive a:b counts from the first result; negative -a:-b from the last (-1 is the last one).
+                sl = hits[a - 1:z] if a > 0 else hits[max(0, n - abs(z)):n - abs(a) + 1]
+                parts.append(f"PARTIAL ({pm.group(1)}:{pm.group(2)} {','.join(map(str, sl)) or 'NIL'})")
+            if "COUNT" in opts:
+                parts.append(f"COUNT {len(hits)}")
+            if "ALL" in opts and hits:
+                parts.append("ALL " + ",".join(map(str, hits)))
+            return ([f'* ESEARCH (TAG "{tag}") UID ' + " ".join(parts), f"{tag} OK SORT done"], True, None)
         if cmd == "FETCH":
             items = arg.split(" ", 1)[1].upper() if " " in arg else ""
             if not re.fullmatch(r"\(?(UID|FLAGS|\s)+\)?", items.strip()):
