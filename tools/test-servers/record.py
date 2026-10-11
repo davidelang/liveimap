@@ -2,6 +2,7 @@
 """Read format-1 recordings.
   record.py check FILE...      validate; one TSV row per file
   record.py commands FILE...   command-name counts (client lines), TSV
+  record.py shapes FILE...     response shapes per command per server, TSV of commands whose shapes differ
 """
 import base64, collections, json, sys
 
@@ -53,6 +54,44 @@ def main():
                     c[cmd_of(e["line"])] += 1
         for k, v in sorted(c.items()):
             print(f"{k}\t{v}")
+    if act == "shapes":
+        # Shape of a reply = the set of untagged kinds (EXISTS, FETCH(FLAGS UID ...), STATUS, ...) plus the tagged
+        # status and response code. Numbers, strings and literals are dropped so only structure is compared.
+        import re
+        def shape(l):
+            l = re.sub(r'"(?:[^"\\]|\\.)*"', 'S', l)
+            l = re.sub(r"\{\d+\+?\}", "L", l)
+            l = re.sub(r"\b\d+(:\d+|,\d+)*\b", "N", l)
+            w = l.split()
+            if not w: return ""
+            if w[0] == "*":
+                if len(w) > 2 and w[1] == "N": return f"* N {w[2]}" + (" " + " ".join(t.strip("()") for t in w[3:] if t.strip("()").isupper()) if w[2] == "FETCH" else "")
+                return "* " + w[1] + (" " + w[2] if len(w) > 2 and w[2].startswith("[") else "")
+            if w[0] == "+": return "+"
+            if len(w) < 2: return "TEXT"   # literal continuation or bare line
+            return "TAG " + w[1] + (" " + w[2].split("]")[0] + "]" if len(w) > 2 and w[2].startswith("[") else "")
+        table = collections.defaultdict(dict)   # cmd -> server -> set(shapes)
+        for p in files:
+            h, ev = load(p)
+            srv = h["server"].get("name") or p
+            pend = {}
+            for e in ev:
+                if e.get("conn", "main") != "main" or "line" not in e: continue
+                if e["dir"] == "C":
+                    t = e["line"].split(" ", 1)
+                    if len(t) == 2: pend[t[0]] = cmd_of(e["line"]); cur = t[0]
+                elif e["dir"] == "S" and pend:
+                    tag = e["line"].split(" ", 1)[0]
+                    c = pend.get(tag) or pend[list(pend)[-1]]
+                    table[c].setdefault(srv, set()).add(shape(e["line"]))
+                    if tag in pend: del pend[tag]
+        print("command\tservers\tdistinct_shapes\tshape\tservers_with_shape")
+        for c in sorted(table):
+            by = collections.defaultdict(list)
+            for srv, sh in table[c].items(): by[" | ".join(sorted(sh))].append(srv)
+            if len(by) < 2: continue
+            for k, v in sorted(by.items(), key=lambda kv: -len(kv[1])):
+                print(f"{c}\t{len(table[c])}\t{len(by)}\t{k[:300]}\t{','.join(sorted(v))}")
 
 
 if __name__ == "__main__":
