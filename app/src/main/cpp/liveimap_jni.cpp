@@ -1682,7 +1682,7 @@ LiveThread * detachThread(mailimap * imap) {
 }
 
 // AUTHENTICATE EXTERNAL = (RFC 4959 SASL-IR, empty authorization identity) over a TLS connection that
-// presented a client certificate. Returns MAILIMAP_NO_ERROR_AUTHENTICATED on a tagged OK.
+// presented a client certificate. Returns MAILIMAP_NO_ERROR on a tagged OK (what cmdOk expects).
 int authenticateExternal(mailimap * imap) {
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -1699,7 +1699,7 @@ int authenticateExternal(mailimap * imap) {
     mailimap_response_free(response);
     if (!ok) return MAILIMAP_ERROR_LOGIN;
     imap->imap_state = MAILIMAP_STATE_AUTHENTICATED;
-    return MAILIMAP_NO_ERROR_AUTHENTICATED;
+    return MAILIMAP_NO_ERROR;
 }
 
 int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_response ** response) {
