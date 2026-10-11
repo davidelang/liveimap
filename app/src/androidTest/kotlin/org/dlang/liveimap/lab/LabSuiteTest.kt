@@ -7,6 +7,7 @@ import org.dlang.liveimap.session.TooDeepSubtype
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.engine.LabTestHooks
@@ -154,6 +155,27 @@ class LabSuiteTest {
                     check(w.total == full.size) { "COUNT ${w.total} != full ${full.size}" }
                     check(w.uids.sorted() == full.sorted().takeLast(3)) { "window ${w.uids} != tail ${full.sorted().takeLast(3)}" }
                     "${w.total} ${w.uids.size}"
+                }
+                step("longSearch") {
+                    // Body search on a side connection: same hits as the main session, which stays usable.
+                    val main = session.searchCriterion("Body", "LiveIMAP").sorted()
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX")
+                    val r = org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "LiveIMAP") {}
+                    check(r == org.dlang.liveimap.session.LongSearchResult.Hits(main) ||
+                        (r is org.dlang.liveimap.session.LongSearchResult.Hits && r.uids.sorted() == main)) { "side $r != main $main" }
+                    "${main.size}"
+                }
+                step("longSearchCancel") {
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX")
+                    val search = org.dlang.liveimap.session.LongSearch(link, 50)
+                    val r = kotlinx.coroutines.coroutineScope {
+                        val job = async { search.run("Text", "LiveIMAP") {} }
+                        search.cancel()
+                        job.await()
+                    }
+                    check(r == org.dlang.liveimap.session.LongSearchResult.Cancelled) { "expected Cancelled, got $r" }
+                    val after = session.searchCriterion("Subject", "LiveIMAP").size
+                    "cancelled; main session ok ($after)"
                 }
                 if ("PARTIAL" in session.capabilities && "ESEARCH" in session.capabilities) step("windowedOrder") {
                     // The index model's window loader, with 7-message windows, newest first, against the full search.
