@@ -44,6 +44,10 @@ def serve(conn, cid):
         if cmd == "IDLE":
             send(b"+ idling\r\n"); f.readline(); send(f"{tag} OK IDLE done\r\n".encode()); note(c=cid, cmd=rest[:120], shape=sh, ok=True); continue
         allv = p["table"].get(sh) or []
+        approx = False
+        if not allv and "(QRESYNC" in sh.upper():  # cached-state QRESYNC open: answer as the plain open
+            allv = p["table"].get(re.sub(r" \(QRESYNC .*$", "", sh, flags=re.I)) or []
+            approx = bool(allv)
         variants = [v["items"] for v in allv if v["auth"] == authed] or [v["items"] for v in allv] or None
         if variants is None and cmd == "LOGOUT":
             variants = [[{"line": "* BYE fake"}, {"line": "{TAG} OK LOGOUT"}]]
@@ -53,9 +57,11 @@ def serve(conn, cid):
             note(c=cid, cmd=rest[:200], shape=sh, ok=False, unexpected=True, never=never)
             send(f"{tag} BAD unexpected command in strict fake\r\n".encode())
             continue
+        # Prefer the variant recorded for this exact command (same UIDs), else the next one in recorded order.
+        exact = [v["items"] for v in allv if v.get("cmd") == rest and v["auth"] == authed]
         key = (sh, authed)
         i = used.get(key, 0); used[key] = i + 1
-        items = variants[min(i, len(variants) - 1)]
+        items = exact[0] if exact else variants[min(i, len(variants) - 1)]
         out = bytearray()
         for it in items:
             if "literal_b64" in it:
@@ -67,7 +73,7 @@ def serve(conn, cid):
                 out += b"" if re.search(r"\{\d+\}$", it["line"]) else b"\r\n"
         # A literal line "{n}" is followed directly by its bytes, then the rest of the line.
         send(fix_literal_lines(items, tag))
-        note(c=cid, cmd=rest[:200], shape=sh, ok=True, never=never)
+        note(c=cid, cmd=rest[:200], shape=sh, ok=True, never=never, approx=approx)
         if sh == "LOGIN" and b" OK" in fix_literal_lines(items, tag).split(b"\r\n")[-2 if fix_literal_lines(items, tag).endswith(b"\r\n") else -1].upper():
             authed = True
         if cmd == "LOGOUT":

@@ -36,7 +36,7 @@ def capgap(server):
             if j.get("dir") == "S" and "CAPABILITY" in j.get("line", "").upper():
                 m = re.search(r"CAPABILITY ([^\]]*)", j["line"], re.I)
                 if m:
-                    adv |= {w.upper() for w in m.group(1).split()}
+                    adv |= {w.upper() for w in m.group(1).split() if re.match(r"^[A-Z0-9][A-Z0-9=+\-._]*$", w, re.I) and not w.endswith(".")}
             elif j.get("dir") == "C" and "line" in j:
                 used.append(j["line"])
     adv -= {"CAPABILITY", "OK", "*", "IMAP4REV1", "IMAP4", "STARTTLS", "LOGINDISABLED", "COMPLETED", "PRE-LOGIN", "LOGGED", "IN"}
@@ -91,7 +91,9 @@ def main():
         st = [f for f in files if f.endswith(".steps.tsv")]
         real = steps(src[:-6] + ".steps.tsv")
         fake = steps(st[0]) if st else {}
-        diff = sorted(k for k in set(real) | set(fake) if real.get(k) != fake.get(k))
+        # The fake is IMAP only: SMTP and ManageSieve steps are not part of the comparison.
+        skip = {"smtpSend", "sieveDeliver"}
+        diff = sorted(k for k in (set(real) | set(fake)) - skip if real.get(k) != fake.get(k))
         ev = [json.loads(l) for l in open(flog)] if os.path.exists(flog) else []
         unexp = [e["cmd"] for e in ev if e.get("unexpected")]
         never = [e["cmd"] for e in ev if e.get("never")]

@@ -55,11 +55,13 @@ def build(path):
         if d == "C" and "line" in r:
             tag, _, rest = r["line"].partition(" ")
             if re.match(r"^[A-Za-z0-9.]+$", tag) and rest:
-                pending.append(["__skip__" if rest.upper().startswith("STARTTLS") else shape(rest), tag, [], authed])
+                verb = rest.split(" ", 1)[0].upper()
+                sh = "__skip__" if verb == "STARTTLS" else "LOGIN" if verb in ("LOGIN", "AUTHENTICATE") else shape(rest)
+                pending.append([sh, tag, [], authed, rest])
             continue
         if d == "C" and "redacted" in r and "line" not in r:
             if not pending or pending[-1][0] != "LOGIN":
-                pending.append(["LOGIN", None, [], authed])
+                pending.append(["LOGIN", None, [], authed, "LOGIN"])
             continue
         if d != "S" or not pending:
             continue
@@ -77,7 +79,8 @@ def build(path):
         hit[2].append({"line": scrub_caps("{TAG}" + line[len(first):])})
         if hit[0] != "__skip__":
             # Variants are kept per login state, so a post-login CAPABILITY never replays the pre-login one.
-            table.setdefault(hit[0], []).append({"auth": hit[3], "items": hit[2]})
+            items = [i for i in hit[2] if not i.get("line", "").startswith("+")] if hit[0] == "LOGIN" else hit[2]
+            table.setdefault(hit[0], []).append({"auth": hit[3], "cmd": hit[4], "items": items})
             order.append(hit[0])
             if hit[0] == "LOGIN" and " OK" in line.upper():
                 authed = True
