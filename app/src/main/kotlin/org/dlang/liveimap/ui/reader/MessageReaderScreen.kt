@@ -782,31 +782,18 @@ private fun MessageReaderLoaded(
                         session.select(mailbox)
                         selectedMailbox = mailbox
                     }
-                    val out = ByteArrayOutputStream()
-                    var offset = 0
-                    if (current.size <= 0) {
-                        val chunk = session.peekPart(uid, current.section, 0, 65536)
-                        out.write(chunk)
-                        offset = chunk.size
-                        markAttachment(current.section, offset, done = false, busy = true)
-                    } else {
-                        while (offset < current.size) {
-                            val length = nextWireCount(offset, current.size, 65536, true)
-                            if (length <= 0) break
-                            val chunk = session.peekPart(uid, current.section, offset, length)
-                            if (chunk.isEmpty()) break
-                            out.write(chunk)
-                            offset += chunk.size
-                            markAttachment(current.section, offset, done = false, busy = true)
-                        }
-                    }
-                    try {
-                        File(appContext.cacheDir, attachmentCacheName(uid, current.section))
-                            .writeBytes(out.toByteArray())
+                    val offset = try {
+                        streamAttachment(
+                            File(appContext.cacheDir, attachmentCacheName(uid, current.section)),
+                            current.size,
+                            65536,
+                            fetch = { at, length -> session.peekPart(uid, current.section, at, length) },
+                            progress = { bytes -> markAttachment(current.section, bytes, done = false, busy = true) },
+                        )
                     } catch (error: CancellationException) {
                         throw error
-                    } catch (error: Exception) {
-                        markAttachment(current.section, offset, done = false, busy = false)
+                    } catch (error: java.io.IOException) {
+                        markAttachment(current.section, current.fetched, done = false, busy = false)
                         postSnack(error.message ?: notConnected)
                         return@withLock
                     }
