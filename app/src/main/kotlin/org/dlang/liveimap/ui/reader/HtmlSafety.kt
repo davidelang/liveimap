@@ -15,3 +15,28 @@ fun stripMetaRefresh(html: String): String = metaRefresh.replace(html, "")
 /** Whether a WebView navigation may raise the link prompt: a user tap, in the main frame, not a redirect. */
 fun navigationMayPrompt(hasGesture: Boolean, isRedirect: Boolean, isForMainFrame: Boolean): Boolean =
     hasGesture && !isRedirect && isForMainFrame
+
+enum class LinkSafety { Safe, Warn, Blocked }
+
+private val blockedSchemes = setOf(
+    "javascript", "vbscript", "data", "file", "content", "intent", "android-app", "about", "blob", "chrome",
+    "chrome-extension", "jar", "view-source", "filesystem",
+)
+
+/**
+ * Links in mail are sender-controlled. http, https and mailto open after the usual prompt; schemes that reach
+ * local files, other apps' content, intents or script are blocked; anything else (tel:, sms:, geo:, app
+ * schemes) gets an extra warning in the prompt.
+ */
+fun linkSafety(url: String): LinkSafety {
+    val trimmed = url.trim()
+    val colon = trimmed.indexOf(':')
+    if (colon <= 0) return LinkSafety.Blocked
+    val scheme = trimmed.substring(0, colon).lowercase()
+    if (!Regex("[a-z][a-z0-9+.-]*").matches(scheme)) return LinkSafety.Blocked
+    return when (scheme) {
+        "http", "https", "mailto" -> LinkSafety.Safe
+        in blockedSchemes -> LinkSafety.Blocked
+        else -> LinkSafety.Warn
+    }
+}

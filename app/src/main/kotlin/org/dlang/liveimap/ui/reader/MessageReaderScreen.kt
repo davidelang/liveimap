@@ -1209,7 +1209,10 @@ private fun MessageReaderLoaded(
     }
 
     fun openConfirmedLink(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (linkSafety(url) == LinkSafety.Blocked) return
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
         } catch (error: ActivityNotFoundException) {
@@ -1954,14 +1957,30 @@ private fun MessageReaderLoaded(
     }
     val confirmedLink = pendingLink
     if (confirmedLink != null) {
+        val safety = linkSafety(confirmedLink)
         AlertDialog(
             onDismissRequest = { pendingLink = null },
-            text = { Text(confirmedLink) },
+            text = {
+                Text(
+                    confirmedLink + when (safety) {
+                        LinkSafety.Safe -> ""
+                        LinkSafety.Warn -> "\n\n" + stringResource(R.string.reader_link_warn)
+                        LinkSafety.Blocked -> "\n\n" + stringResource(R.string.reader_link_blocked)
+                    },
+                )
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    pendingLink = null
-                    openConfirmedLink(confirmedLink)
-                }) { Text(stringResource(R.string.reader_open)) }
+                if (safety != LinkSafety.Blocked) {
+                    TextButton(onClick = {
+                        pendingLink = null
+                        openConfirmedLink(confirmedLink)
+                    }) {
+                        Text(
+                            stringResource(R.string.reader_open),
+                            color = if (safety == LinkSafety.Warn) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
+                        )
+                    }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.reader_cancel)) }
