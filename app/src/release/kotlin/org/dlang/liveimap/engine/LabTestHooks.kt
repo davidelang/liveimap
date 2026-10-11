@@ -13,4 +13,6 @@ internal object LabTestHooks {
 
     @Suppress("UNUSED_PARAMETER")
     fun passwordFor(imapHost: String): String? = null
+
+    fun moveChunk(): Int? = null
 }

@@ -31,4 +31,16 @@ class MoveChunksTest {
         val r = moveInChunks(listOf(1L, 2L), MoveChunk, { true }, { _, _ -> }) { it }
         assertEquals(listOf(1L, 2L), r.moved)
     }
+
+    @Test
+    fun failurePartwayKeepsWhatMoved() = runBlocking {
+        var calls = 0
+        val r = moveInChunks(uids, MoveChunk, { false }, { _, _ -> }) { c ->
+            calls++
+            if (calls == 2) throw org.dlang.liveimap.session.MailFailure("NO over quota")
+            c
+        }
+        assertEquals((1L..1000L).toList(), r.moved)
+        assertEquals("NO over quota", r.failure?.text)
+    }
 }

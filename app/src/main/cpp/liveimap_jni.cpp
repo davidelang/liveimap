@@ -4465,6 +4465,7 @@ bool emptyText(JNIEnv * env, const char * argument) {
 }
 
 struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument) {
+    if (sameKind(kind, "All")) return mailimap_search_key_new_all();
     if (sameKind(kind, "New")) return searchKeyType(MAILIMAP_SEARCH_KEY_NEW);
     if (sameKind(kind, "NotNew")) return notKey(searchKeyType(MAILIMAP_SEARCH_KEY_NEW));
     if (sameKind(kind, "Deleted")) return searchKeyType(MAILIMAP_SEARCH_KEY_DELETED);

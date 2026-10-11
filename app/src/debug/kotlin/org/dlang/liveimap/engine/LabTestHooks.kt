@@ -12,6 +12,12 @@ import org.dlang.liveimap.BuildConfig
  * exactly the lab host the suite named. A release build or any other host reads the stored password.
  */
 internal object LabTestHooks {
+    /** Lab only: UIDs per batch for big moves (small, so a lab mailbox spans several batches). */
+    @Volatile
+    var labMoveChunk: Int? = null
+
+    fun moveChunk(): Int? = labMoveChunk
+
     @Volatile
     private var host: String? = null
 

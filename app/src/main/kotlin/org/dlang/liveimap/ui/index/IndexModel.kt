@@ -7,6 +7,7 @@ import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
+import org.dlang.liveimap.engine.LabTestHooks
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.LongSearch
 import org.dlang.liveimap.session.LongSearchLink
@@ -1253,43 +1254,43 @@ class IndexModel(
         val settings = store.load()
         account = settings
         moveStop = false
-        var stoppedNote: String? = null
         try {
-            var moved = uids
-            val dest: List<Long>
-            if (allMailbox) {
-                session.copyAllThenDelete(moveMailbox)
-                dest = session.takeCopiedUids()
-            } else {
-                // Big moves go in chunks: progress between chunks, and Stop takes effect before the next one.
-                // Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
-                val outcome = moveInChunks(uids, MoveChunk, { moveStop }, { done, total ->
-                    if (uids.size > MoveChunk) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
-                }) { chunk ->
-                    session.copyThenDelete(chunk, moveMailbox)
-                    session.takeCopiedUids()
-                }
-                if (uids.size > MoveChunk) onSearchProgress?.invoke(null)
-                moved = outcome.moved
-                dest = outcome.dest
-                if (moved.size < uids.size) stoppedNote = "Moved ${moved.size} of ${uids.size}; stopped"
+            // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
+            // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
+            val all = if (allMailbox) allUidsInWindows(session) else uids
+            val chunk = LabTestHooks.moveChunk() ?: MoveChunk
+            val big = all.size > chunk
+            val outcome = moveInChunks(all, chunk, { moveStop }, { done, total ->
+                if (big) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
+            }) { part ->
+                session.copyThenDelete(part, moveMailbox)
+                session.takeCopiedUids()
             }
+            if (big) onSearchProgress?.invoke(null)
+            val moved = outcome.moved
             val usedMove = moveCommandKind(settings.moveMethod, session.featureCaps.move) == "Move"
-            if (allMailbox) {
+            // Whatever moved is reflected, also when a later batch failed or Stop was pressed.
+            if (allMailbox && moved.size == all.size && outcome.failure == null) {
                 order = emptyList()
                 heldRows = emptyList()
-            } else {
+            } else if (moved.isNotEmpty()) {
                 val gone = moved.toSet()
                 order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone }
             }
-            notice = stoppedNote
-            mailUndo = MailUndo(
+            notice = when {
+                outcome.failure != null && moved.isNotEmpty() ->
+                    "Moved ${moved.size} of ${all.size}, then: ${outcome.failure.text}"
+                outcome.failure != null -> outcome.failure.text
+                moved.size < all.size -> "Moved ${moved.size} of ${all.size}; stopped"
+                else -> null
+            }
+            mailUndo = if (moved.isEmpty()) null else MailUndo(
                 delete = false,
                 uids = moved,
-                allMailbox = allMailbox,
+                allMailbox = false,
                 targetMailbox = moveMailbox,
-                destUids = dest,
+                destUids = outcome.dest,
                 usedMove = usedMove,
             )
             OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
@@ -2304,11 +2305,11 @@ class IndexModel(
 /** UIDs per MOVE/COPY command for big moves (review 3.7: 10,000 in one command took 40 s with no feedback). */
 const val MoveChunk = 1000
 
-data class ChunkedMove(val moved: List<Long>, val dest: List<Long>)
+data class ChunkedMove(val moved: List<Long>, val dest: List<Long>, val failure: MailFailure? = null)
 
 /**
  * Runs [moveChunk] over [uids] in chunks of [size], reporting progress after each and checking [stop] before
- * every chunk but the first. Returns what was moved; a failure propagates after the chunks already done.
+ * every chunk but the first. A failing chunk ends the run; the result still lists what moved before it.
  */
 suspend fun moveInChunks(
     uids: List<Long>,
@@ -2317,13 +2318,36 @@ suspend fun moveInChunks(
     progress: (done: Int, total: Int) -> Unit,
     moveChunk: suspend (List<Long>) -> List<Long>,
 ): ChunkedMove {
-    val moved = ArrayList<Long>(uids.size)
+    val moved = LongArray(uids.size)
+    var n = 0
     val dest = ArrayList<Long>()
     for ((index, chunk) in uids.chunked(size).withIndex()) {
         if (index > 0 && stop()) break
-        dest += moveChunk(chunk)
-        moved += chunk
-        progress(moved.size, uids.size)
+        try {
+            dest += moveChunk(chunk)
+        } catch (failure: MailFailure) {
+            return ChunkedMove(moved.copyOf(n).asList(), dest, failure)
+        }
+        for (u in chunk) moved[n++] = u
+        progress(n, uids.size)
     }
-    return ChunkedMove(moved, dest)
+    return ChunkedMove(moved.copyOf(n).asList(), dest)
+}
+
+/** Every UID in the selected folder, ascending: PARTIAL windows of [window] when offered, else one search. */
+suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000): List<Long> {
+    val probe = session.searchWindow("All", "", 1, window) ?: return sortedUids(session.searchCriterion("All", ""), false)
+    val out = LongArray(probe.total)
+    var n = 0
+    fun take(uids: List<Long>) {
+        for (u in uids.sorted()) if (n < out.size) out[n++] = u
+    }
+    take(probe.uids)
+    var lo = window + 1
+    while (lo <= probe.total) {
+        val hi = minOf(probe.total, lo + window - 1)
+        take(session.searchWindow("All", "", lo, hi)?.uids ?: throw MailFailure("search failed"))
+        lo = hi + 1
+    }
+    return out.copyOf(n).asList()
 }
