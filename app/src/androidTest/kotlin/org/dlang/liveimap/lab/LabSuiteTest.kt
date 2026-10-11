@@ -202,6 +202,37 @@ class LabSuiteTest {
                     val after = session.searchCriterion("Subject", "LiveIMAP").size
                     "cancelled; main session ok ($after)"
                 }
+                step("batchedMove") {
+                    // "Move entire folder" path with 2-UID batches: Sub -> Trash, copy-then-mark, no EXPUNGE.
+                    val sep = listOf("/", ".").firstOrNull { runCatching { session.mailboxListed(box + it + "Sub") }.getOrDefault(false) }
+                        ?: error("no Sub folder")
+                    val sub = box + sep + "Sub"
+                    val trash = box + sep + "Trash"
+                    org.dlang.liveimap.engine.LabTestHooks.labMoveChunk = 2
+                    try {
+                        session.select(trash)
+                        val trashBefore = session.selectedExists()
+                        session.select(sub)
+                        val before = session.selectedExists()
+                        val all = org.dlang.liveimap.ui.index.allUidsInWindows(session, 3)
+                        check(all.size == before) { "UID SEARCH ALL ${all.size} != EXISTS $before" }
+                        var batches = 0
+                        val out = org.dlang.liveimap.ui.index.moveInChunks(
+                            all, org.dlang.liveimap.engine.LabTestHooks.moveChunk()!!, { false }, { _, _ -> batches++ },
+                        ) { part -> session.copyThenDelete(part, trash); session.takeCopiedUids() }
+                        check(out.failure == null) { "batch failed: ${out.failure?.text}" }
+                        check(out.moved == all) { "moved ${out.moved.size} of ${all.size}" }
+                        session.select(sub)
+                        check(session.selectedExists() == before) { "source shrank: something expunged" }
+                        check(session.searchCriterion("NotDeleted", "").isEmpty()) { "source not all \\Deleted" }
+                        session.select(trash)
+                        check(session.selectedExists() == trashBefore + before) { "Trash got ${session.selectedExists() - trashBefore}" }
+                        session.select(box)
+                        "${all.size} in $batches batches, ${out.dest.size} COPYUIDs, no expunge"
+                    } finally {
+                        org.dlang.liveimap.engine.LabTestHooks.labMoveChunk = null
+                    }
+                }
                 if ("PARTIAL" in session.capabilities && "ESEARCH" in session.capabilities) step("windowedOrder") {
                     // The index model's window loader, with 7-message windows, newest first, against the full search.
                     val full = session.searchCriterion("NotDeleted", "").sortedDescending()
