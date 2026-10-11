@@ -763,9 +763,9 @@ private fun MessageIndexLoaded(
     val listState = rememberLazyListState()
     var rows by held.rowsState
     var loading by remember { mutableStateOf(!reuseWindow) }
-    var searchProgress by remember { mutableStateOf<org.dlang.liveimap.session.SearchProgress?>(null) }
+    var longProgress by remember { mutableStateOf<org.dlang.liveimap.session.SearchProgress?>(null) }
     DisposableEffect(model) {
-        model.onSearchProgress = { searchProgress = it }
+        model.onSearchProgress = { longProgress = it }
         onDispose { model.onSearchProgress = null }
     }
     var banner by remember { mutableStateOf<String?>(null) }
@@ -2750,7 +2750,7 @@ private fun MessageIndexLoaded(
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
-        val progress = searchProgress
+        val progress = longProgress
         if (progress != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val fraction = progress.fraction
