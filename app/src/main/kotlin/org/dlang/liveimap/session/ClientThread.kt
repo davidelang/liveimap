@@ -70,11 +70,24 @@ private fun referenceThreads(rows: List<ThreadHeader>): ThreadNode {
             childrenOf.getOrPut(parent) { ArrayList() }.add(row.uid)
         }
     }
-    fun node(uid: Long): ThreadNode {
-        val children = childrenOf[uid].orEmpty().sorted().map { node(it) }
+    // A References chain nests one level per reply; past MaxThreadDepth the rest of the subtree is attached flat,
+    // in preorder, under the node at the cap (iteratively), so a long chain cannot overflow the stack.
+    fun flatBelow(uid: Long): List<ThreadNode> {
+        val out = ArrayList<ThreadNode>()
+        val stack = ArrayDeque(childrenOf[uid].orEmpty().sortedDescending())
+        while (stack.isNotEmpty()) {
+            val next = stack.removeLast()
+            out.add(ThreadNode(next, emptyList()))
+            childrenOf[next].orEmpty().sortedDescending().forEach { stack.addLast(it) }
+        }
+        return out
+    }
+    fun node(uid: Long, depth: Int): ThreadNode {
+        if (depth + 1 >= MaxThreadDepth) return ThreadNode(uid, flatBelow(uid))
+        val children = childrenOf[uid].orEmpty().sorted().map { node(it, depth + 1) }
         return ThreadNode(uid, children)
     }
-    return ThreadNode(null, roots.sorted().map { node(it) })
+    return ThreadNode(null, roots.sorted().map { node(it, 0) })
 }
 
 private fun createsCycle(uid: Long, parent: Long, parentOf: Map<Long, Long>): Boolean {

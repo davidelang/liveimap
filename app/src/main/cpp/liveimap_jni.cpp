@@ -1036,9 +1036,33 @@ std::string partEncoding(struct mailimap_body_fields * fields) {
     }
 }
 
-jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section);
+// A sender controls the MIME tree, and the server's BODYSTRUCTURE mirrors it. Parts nested deeper than this are
+// collapsed into one opaque part instead of recursing (a few thousand levels would overflow the stack).
+const int kMaxMimeDepth = 64;
 
-jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const std::string & section) {
+jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section, int depth = 0);
+
+jobject tooDeepPart(JNIEnv * env, const std::string & section) {
+    jobject children = newList(env);
+    jstring jSection = newString(env, section.c_str());
+    jstring jType = newString(env, "application");
+    jstring jSubtype = newString(env, "x-liveimap-too-deep");
+    jstring jDisp = newString(env, "attachment");
+    jstring jFile = newString(env, "too deeply nested");
+    jstring jEmpty = newString(env, "");
+    jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
+        jEmpty, jEmpty);
+    env->DeleteLocalRef(jSection);
+    env->DeleteLocalRef(jType);
+    env->DeleteLocalRef(jSubtype);
+    env->DeleteLocalRef(jDisp);
+    env->DeleteLocalRef(jFile);
+    env->DeleteLocalRef(jEmpty);
+    env->DeleteLocalRef(children);
+    return obj;
+}
+
+jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const std::string & section, int depth) {
     std::string type;
     std::string subtype;
     describe1(part, &type, &subtype);
@@ -1052,7 +1076,7 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
     if (part != nullptr && part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr
         && part->bd_data.bd_type_msg->bd_body != nullptr) {
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
-        jobject child = mimeFromBody(env, inner, section + ".1");
+        jobject child = mimeFromBody(env, inner, section + ".1", depth + 1);
         if (child != nullptr) {
             listAdd(env, children, child);
             env->DeleteLocalRef(child);
@@ -1078,9 +1102,12 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
     return obj;
 }
 
-jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section) {
+jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section, int depth) {
     if (body == nullptr) {
         return nullptr;
+    }
+    if (depth >= kMaxMimeDepth) {
+        return tooDeepPart(env, section.empty() ? "1" : section);
     }
     if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
         struct mailimap_body_type_mpart * mpart = body->bd_data.bd_body_mpart;
@@ -1091,7 +1118,8 @@ jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::strin
         if (mpart->bd_list != nullptr) {
             for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
                 std::string childSection = section.empty() ? std::to_string(index) : section + "." + std::to_string(index);
-                jobject child = mimeFromBody(env, static_cast<struct mailimap_body *>(clist_content(cur)), childSection);
+                jobject child = mimeFromBody(env, static_cast<struct mailimap_body *>(clist_content(cur)), childSection,
+                    depth + 1);
                 if (child != nullptr) {
                     listAdd(env, children, child);
                     env->DeleteLocalRef(child);
@@ -1118,7 +1146,7 @@ jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::strin
         return obj;
     }
     std::string sec = section.empty() ? "1" : section;
-    return mimeFrom1(env, body->bd_data.bd_body_1part, sec);
+    return mimeFrom1(env, body->bd_data.bd_body_1part, sec, depth);
 }
 
 struct Row {
@@ -1512,11 +1540,52 @@ char peekChar(MMAPString * buffer, size_t indx) {
     return buffer->str[indx];
 }
 
-int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx,
-    size_t * indx, LiveThread ** out);
+// THREAD nesting comes from References chains (sender-controlled) and from the server. A plain chain "(1 2 3 ...)"
+// nests one level per message, so a long mailing-list thread used to recurse once per message here, in
+// live_thread_free and in threadObject. The tree is now capped at kMaxThreadDepth levels: deeper messages are
+// attached flat under the node at the cap, in order, so every message stays visible.
+const int kMaxThreadDepth = 64;
 
+int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx,
+    size_t * indx, LiveThread ** out, int depth);
+
+// Consumes one balanced "( ... )" thread list without recursion; every message number goes under `into`.
+int parseThreadFlat(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx,
+    size_t * indx, LiveThread * into) {
+    int r = mailimap_oparenth_parse(fd, buffer, ctx, indx);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    size_t open = 1;
+    while (open > 0) {
+        char c = peekChar(buffer, *indx);
+        if (c == '(') {
+            r = mailimap_oparenth_parse(fd, buffer, ctx, indx);
+            if (r != MAILIMAP_NO_ERROR) return r;
+            ++open;
+        } else if (c == ')') {
+            r = mailimap_cparenth_parse(fd, buffer, ctx, indx);
+            if (r != MAILIMAP_NO_ERROR) return r;
+            --open;
+        } else if (c == ' ') {
+            r = mailimap_space_parse(fd, buffer, indx);
+            if (r != MAILIMAP_NO_ERROR) return r;
+        } else if (c >= '1' && c <= '9') {
+            uint32_t number = 0;
+            r = mailimap_nz_number_parse(fd, buffer, ctx, indx, &number);
+            if (r != MAILIMAP_NO_ERROR) return r;
+            LiveThread * leaf = newThread(1, number);
+            if (leaf == nullptr) return MAILIMAP_ERROR_MEMORY;
+            clist_append(into->children, leaf);
+        } else {
+            return MAILIMAP_ERROR_PARSE;
+        }
+    }
+    return MAILIMAP_NO_ERROR;
+}
+
+// "n m k (..)(..)": a chain of members, each the child of the previous one, then optional sub-lists under the last.
+// Iterative over the chain; recursion only for sub-lists, and only while below the depth cap.
 int parseThreadMembers(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx,
-    size_t * indx, LiveThread ** out) {
+    size_t * indx, LiveThread ** out, int depth) {
     uint32_t number = 0;
     int r = mailimap_nz_number_parse(fd, buffer, ctx, indx, &number);
     if (r != MAILIMAP_NO_ERROR) {
@@ -1526,6 +1595,8 @@ int parseThreadMembers(mailstream * fd, MMAPString * buffer, struct mailimap_par
     if (node == nullptr) {
         return MAILIMAP_ERROR_MEMORY;
     }
+    LiveThread * tail = node;
+    int tailDepth = depth;
     for (;;) {
         size_t save = *indx;
         r = mailimap_space_parse(fd, buffer, indx);
@@ -1536,24 +1607,40 @@ int parseThreadMembers(mailstream * fd, MMAPString * buffer, struct mailimap_par
         char c = peekChar(buffer, *indx);
         if (c == '(') {
             while (peekChar(buffer, *indx) == '(') {
+                if (tailDepth + 1 >= kMaxThreadDepth) {
+                    r = parseThreadFlat(fd, buffer, ctx, indx, tail);
+                    if (r != MAILIMAP_NO_ERROR) {
+                        live_thread_free(node);
+                        return r;
+                    }
+                    continue;
+                }
                 LiveThread * child = nullptr;
-                r = parseThreadList(fd, buffer, ctx, indx, &child);
+                r = parseThreadList(fd, buffer, ctx, indx, &child, tailDepth + 1);
                 if (r != MAILIMAP_NO_ERROR) {
                     live_thread_free(node);
                     return r;
                 }
-                clist_append(node->children, child);
+                clist_append(tail->children, child);
             }
             break;
         }
         if (c >= '1' && c <= '9') {
-            LiveThread * child = nullptr;
-            r = parseThreadMembers(fd, buffer, ctx, indx, &child);
+            r = mailimap_nz_number_parse(fd, buffer, ctx, indx, &number);
             if (r != MAILIMAP_NO_ERROR) {
                 live_thread_free(node);
                 return r;
             }
-            clist_append(node->children, child);
+            LiveThread * child = newThread(1, number);
+            if (child == nullptr) {
+                live_thread_free(node);
+                return MAILIMAP_ERROR_MEMORY;
+            }
+            clist_append(tail->children, child);
+            if (tailDepth + 1 < kMaxThreadDepth) {
+                tail = child;
+                ++tailDepth;
+            }
             continue;
         }
         *indx = save;
@@ -1564,7 +1651,18 @@ int parseThreadMembers(mailstream * fd, MMAPString * buffer, struct mailimap_par
 }
 
 int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx,
-    size_t * indx, LiveThread ** out) {
+    size_t * indx, LiveThread ** out, int depth) {
+    if (depth >= kMaxThreadDepth) {
+        LiveThread * flat = newThread(0, 0);
+        if (flat == nullptr) return MAILIMAP_ERROR_MEMORY;
+        int r = parseThreadFlat(fd, buffer, ctx, indx, flat);
+        if (r != MAILIMAP_NO_ERROR) {
+            live_thread_free(flat);
+            return r;
+        }
+        *out = flat;
+        return MAILIMAP_NO_ERROR;
+    }
     int r = mailimap_oparenth_parse(fd, buffer, ctx, indx);
     if (r != MAILIMAP_NO_ERROR) {
         return r;
@@ -1577,7 +1675,7 @@ int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser
         }
         while (peekChar(buffer, *indx) == '(') {
             LiveThread * child = nullptr;
-            r = parseThreadList(fd, buffer, ctx, indx, &child);
+            r = parseThreadList(fd, buffer, ctx, indx, &child, depth + 1);
             if (r != MAILIMAP_NO_ERROR) {
                 live_thread_free(node);
                 return r;
@@ -1585,7 +1683,7 @@ int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser
             clist_append(node->children, child);
         }
     } else {
-        r = parseThreadMembers(fd, buffer, ctx, indx, &node);
+        r = parseThreadMembers(fd, buffer, ctx, indx, &node, depth);
         if (r != MAILIMAP_NO_ERROR) {
             return r;
         }
@@ -1620,7 +1718,7 @@ int thread_ext_parse(int calling_parser, mailstream * fd, MMAPString * buffer,
     if (r == MAILIMAP_NO_ERROR) {
         while (peekChar(buffer, cur) == '(') {
             LiveThread * child = nullptr;
-            r = parseThreadList(fd, buffer, parser_ctx, &cur, &child);
+            r = parseThreadList(fd, buffer, parser_ctx, &cur, &child, 0);
             if (r != MAILIMAP_NO_ERROR) {
                 live_thread_free(root);
                 return r;

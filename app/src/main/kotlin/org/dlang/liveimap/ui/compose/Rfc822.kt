@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.session.MaxMimeDepth
 import org.dlang.liveimap.session.MimePart
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
@@ -67,12 +68,13 @@ class EditorLoad(
 fun missingPartText(html: Boolean): String =
     if (html) "No text/html part" else "No text/plain part"
 
-fun textPart(root: MimePart, subtype: String): MimePart? {
+fun textPart(root: MimePart, subtype: String, depth: Int = 0): MimePart? {
+    if (depth >= MaxMimeDepth) return null
     if (root.type.equals("multipart", ignoreCase = true) ||
         (root.type.equals("message", ignoreCase = true) && root.children.isNotEmpty())
     ) {
         for (child in root.children) {
-            val found = textPart(child, subtype)
+            val found = textPart(child, subtype, depth + 1)
             if (found != null) return found
         }
         return null
@@ -81,7 +83,7 @@ fun textPart(root: MimePart, subtype: String): MimePart? {
         return root
     }
     for (child in root.children) {
-        val found = textPart(child, subtype)
+        val found = textPart(child, subtype, depth + 1)
         if (found != null) return found
     }
     return null
@@ -89,13 +91,17 @@ fun textPart(root: MimePart, subtype: String): MimePart? {
 
 fun attachmentParts(root: MimePart): List<MimePart> {
     val out = ArrayList<MimePart>()
-    fun walk(part: MimePart) {
+    fun walk(part: MimePart, depth: Int) {
+        if (depth >= MaxMimeDepth) {
+            out.add(part)
+            return
+        }
         if (part.type.equals("multipart", ignoreCase = true)) {
-            part.children.forEach { walk(it) }
+            part.children.forEach { walk(it, depth + 1) }
             return
         }
         if (part.type.equals("message", ignoreCase = true) && part.children.isNotEmpty()) {
-            part.children.forEach { walk(it) }
+            part.children.forEach { walk(it, depth + 1) }
             return
         }
         val attachment = part.disposition.equals("attachment", ignoreCase = true)
@@ -104,7 +110,7 @@ fun attachmentParts(root: MimePart): List<MimePart> {
             !attachment
         if (!textBody) out.add(part)
     }
-    walk(root)
+    walk(root, 0)
     return out
 }
 

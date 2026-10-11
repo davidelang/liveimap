@@ -93,6 +93,13 @@ data class IndexRow(
     val mailbox: String = "",
 )
 
+/** Nesting caps for sender- and server-controlled trees (the native layer applies the same limits). */
+const val MaxMimeDepth = 64
+const val MaxThreadDepth = 64
+
+/** Stand-in the native layer returns for parts nested deeper than [MaxMimeDepth]. */
+const val TooDeepSubtype = "x-liveimap-too-deep"
+
 data class MimePart(
     val section: String,
     val type: String,
