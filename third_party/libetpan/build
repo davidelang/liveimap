@@ -26,9 +26,9 @@ for abi in arm64-v8a x86_64; do
   fi
 done
 
-# Build options (flags, not patches): see build-options.env.
-# shellcheck source=/dev/null
-. "$HERE/build-options.env"
+# Compile flags (not patches): scripts/build-flags.sh, documented in SOURCE.md.
+# shellcheck source=scripts/build-flags.sh
+. "$HERE/scripts/build-flags.sh"
 # ndk-build ignores APP_CFLAGS from the environment; a variable definition in MAKEFLAGS acts like one on the
 # make command line (spaces escaped), so it reaches every ndk-build that build.sh runs.
 export MAKEFLAGS="${MAKEFLAGS:+$MAKEFLAGS }APP_CFLAGS=${LIBETPAN_APP_CFLAGS// /\\ }"
