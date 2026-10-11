@@ -132,6 +132,7 @@ def plain_caps(port):
 
 
 MECHS = False
+IDLE_NO_EXAMINE_PUSH = {"uwimap"}
 POLICY_REFUSED = re.compile(r"disabled on the clear-text port|PRIVACYREQUIRED|cleartext logins? (are )?disabled|"
                             r"plaintext authentication disallowed", re.I)
 
@@ -331,6 +332,10 @@ def run_one(s, commit, stamp, out):
                 if tls == "None" and bad == ["open"] and any(
                         r[0] == "open" and len(r) > 2 and POLICY_REFUSED.search(r[2]) for r in rows):
                     res, msg = "expected", "server policy: plaintext login refused"
+                # UW-IMAP (mbox) checks for new mail every 60 s during IDLE but reports it only to SELECTed
+                # sessions; the app's watch uses EXAMINE on purpose (David, 2026-10-11), so no EXISTS ever arrives.
+                elif name in IDLE_NO_EXAMINE_PUSH and bad == ["idle"]:
+                    res, msg = "expected", "expected-by-server-behaviour: no IDLE push to EXAMINE sessions"
             # Servers in old-tls.txt run with the app's Allow old TLS and weak keys setting on (labOldTls).
             out.write(f"{name}\timap{('/' + mech) if mech else ''}\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
             out.flush()
