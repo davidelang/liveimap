@@ -35,6 +35,11 @@ class SessionTable(
         return confirm(prompt)
     }
 
+    suspend fun confirmPlaintext(): Boolean {
+        val confirm = synchronized(lock) { plaintextConfirmer } ?: return false
+        return confirm()
+    }
+
     fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
         synchronized(lock) {
             plaintextConfirmer = confirm

@@ -158,15 +158,15 @@ class LabSuiteTest {
                 }
                 step("longSearch") {
                     // Body search on a side connection: same hits as the main session, which stays usable.
-                    val main = session.searchCriterion("Body", "LiveIMAP").sorted()
-                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX")
-                    val r = org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "LiveIMAP") {}
+                    val main = session.searchCriterion("Body", "message").sorted()
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX", { false }, { true })
+                    val r = org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "message") {}
                     check(r == org.dlang.liveimap.session.LongSearchResult.Hits(main) ||
                         (r is org.dlang.liveimap.session.LongSearchResult.Hits && r.uids.sorted() == main)) { "side $r != main $main" }
                     "${main.size}"
                 }
                 step("longSearchCancel") {
-                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX")
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, "INBOX", { false }, { true })
                     val search = org.dlang.liveimap.session.LongSearch(link, 50)
                     val r = kotlinx.coroutines.coroutineScope {
                         val job = async { search.run("Text", "LiveIMAP") {} }
