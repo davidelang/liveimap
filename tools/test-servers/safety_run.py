@@ -20,6 +20,8 @@ CASES = [
     ("delete-mark", "delete", {"policy": "MarkDeleted"}, []),
     ("delete-mark-autoexp", "delete", {"policy": "MarkDeleted", "auto": True}, []),
     ("delete-perm", "delete", {"policy": "DeletePermanently"}, []),
+    ("delete-trash", "delete", {"policy": "MoveToTrash"}, []),
+    ("delete-trash-imapmove", "delete", {"policy": "MoveToTrash", "move": "ImapMove"}, []),
     ("delete-perm-noUIDPLUS", "delete", {"policy": "DeletePermanently"}, ["UIDPLUS"]),
     ("move-copy", "move", {"move": "CopyThenMarkDeleted"}, []),
     ("move-imap", "move", {"move": "ImapMove"}, []),
@@ -37,7 +39,8 @@ def intended(scenario, cfg, caps, uids):
     auto = cfg.get("auto", False)
     if scenario == "delete":
         perm = cfg.get("policy") == "DeletePermanently" and "UIDPLUS" in caps
-        return {uids[1]} if perm or auto else set()
+        trash_move = cfg.get("policy") == "MoveToTrash" and cfg.get("move") == "ImapMove" and "MOVE" in caps
+        return {uids[1]} if perm or trash_move or auto else set()
     if scenario == "move":
         imap_move = cfg.get("move") == "ImapMove" and "MOVE" in caps
         return {uids[2]} if imap_move or auto else set()

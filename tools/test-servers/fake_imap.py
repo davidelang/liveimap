@@ -80,6 +80,12 @@ def serve(conn, cid):
             variants = [[{"line": "* BYE fake"}, {"line": "{TAG} OK LOGOUT"}]]
         if variants is None and cmd == "NOOP":
             variants = [[{"line": "{TAG} OK NOOP"}]]
+        if variants is None and MODEL and authed:
+            got = MODEL.list_fallback(tag, rest)
+            if got is not None:
+                send("".join(l + "\r\n" for l in got).encode("latin-1"))
+                note(c=cid, cmd=rest[:200], shape=sh, ok=True, model=True)
+                continue
         if variants is None:
             note(c=cid, cmd=rest[:200], shape=sh, ok=False, unexpected=True, never=never)
             send(f"{tag} BAD unexpected command in strict fake\r\n".encode())

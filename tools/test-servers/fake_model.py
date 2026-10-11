@@ -181,6 +181,21 @@ class Model:
             return (out + [f"{tag} OK EXPUNGE done"], True, None)
         return None
 
+    def list_fallback(self, tag, rest):
+        """LIST shapes the personality never recorded (e.g. knownTrash's LIST-EXTENDED query): the model's
+        mailboxes, with a \\Trash mailbox when SPECIAL-USE is offered, and STATUS when RETURN asks for it."""
+        if not rest.upper().startswith("LIST "):
+            return None
+        names = sorted(set(self.boxes) | {"LiveIMAP-Target"} | ({"Trash"} if self.has("SPECIAL-USE") else set()))
+        want_status = "STATUS" in rest.upper()
+        out = []
+        for n in names:
+            attrs = "\\HasNoChildren" + (" \\Trash" if n == "Trash" else "")
+            out.append(f'* LIST ({attrs}) "/" "{n}"')
+            if want_status:
+                out.append(f'* STATUS "{n}" (MESSAGES {len(self.box(n)["uids"])})')
+        return out + [f"{tag} OK LIST done"]
+
     def targets(self, b, spec, uid):
         if uid:
             return parse_set(spec, b["uids"])

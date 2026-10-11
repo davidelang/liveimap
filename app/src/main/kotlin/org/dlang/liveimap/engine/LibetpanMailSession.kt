@@ -510,6 +510,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
         keeper.write("store") {
+            forgetSelected()
             ensureReadWrite()
             nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
         }
@@ -517,6 +518,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
         keeper.write("store") {
+            forgetSelected()
             ensureReadWrite()
             nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
         }
@@ -524,6 +526,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun uidExpungeDeleted() {
         keeper.write("expunge") {
+            forgetSelected()
             ensureReadWrite()
             nativeUidExpungeDeleted(requireHandle())
         }
@@ -532,6 +535,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun uidExpunge(uids: List<Long>) {
         if (uids.isEmpty()) return
         keeper.write("expunge") {
+            forgetSelected()
             ensureReadWrite()
             nativeUidExpunge(requireHandle(), uids.toLongArray())
         }
@@ -540,6 +544,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
         if (uids.isEmpty()) return
         keeper.write("copy") {
+            forgetSelected()
             ensureReadWrite()
             nativeCopyThenDelete(
                 requireHandle(),
@@ -553,6 +558,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
         if (uids.isEmpty()) return
         keeper.write("copy") {
+            forgetSelected()
             ensureReadWrite()
             nativeCopyThenDelete(
                 requireHandle(),
@@ -565,6 +571,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
         keeper.write("copy") {
+            forgetSelected()
             ensureReadWrite()
             nativeCopyAllThenDelete(
                 requireHandle(),
@@ -828,7 +835,12 @@ class LibetpanMailSession : MailSession {
     override suspend fun noop() {
         keeper.read("noop") {
             val exists = nativeNoop(requireHandle())
+            // A NOOP can carry EXPUNGE and EXISTS from another client. An expunge plus an arrival leaves EXISTS
+            // and the cached UIDNEXT unchanged, so remembered searches must go (the safety suite caught a
+            // search answering with a UID another client had expunged).
+            forgetSelected()
             if (exists >= 0 && selectedMailbox != null) {
+                if (exists != selected.exists) sequencesStale = true
                 selected = selected.copy(exists = exists)
             }
         }
@@ -868,12 +880,14 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
+            forgetSelected()
             nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
         }
     }
 
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         keeper.write("append") {
+            forgetSelected()
             nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
         }
 
@@ -881,6 +895,7 @@ class LibetpanMailSession : MailSession {
         val context = currentApplication()
         val smtpPassword = if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
         keeper.write("send") {
+            forgetSelected()
             nativeSmtp(
                 requireHandle(),
                 rfc822,
@@ -997,7 +1012,13 @@ class LibetpanMailSession : MailSession {
         return h
     }
 
-    private fun <T : Any> remember(command: String, load: () -> T): T {
+    /** Drops remembered results for the selected mailbox: after any change the app makes, and after NOOP. */
+    private fun forgetSelected() {
+        val mailbox = selectedMailbox ?: return
+        cache.keys.retainAll { it.mailbox != mailbox }
+    }
+
+        private fun <T : Any> remember(command: String, load: () -> T): T {
         val key = CacheKey(
             selectedMailbox ?: "",
             selected.uidValidity,
