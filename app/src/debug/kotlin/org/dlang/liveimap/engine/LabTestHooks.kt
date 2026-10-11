@@ -6,7 +6,8 @@ import java.security.cert.X509Certificate
 import org.dlang.liveimap.BuildConfig
 
 /**
- * Lab-runner hooks. Only the instrumented lab suite (androidTest) sets these; app code never does.
+ * Lab-runner hooks (debug source set only; release has a stub that never overrides or trusts anything).
+ * Only the instrumented lab suite (androidTest) sets these; app code never does.
  * Gate: the override applies only in a debug build, and only when the account's IMAP host is
  * exactly the lab host the suite named. A release build or any other host reads the stored password.
  */
