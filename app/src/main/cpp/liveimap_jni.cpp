@@ -3780,6 +3780,9 @@ static void live_ext_free(struct mailimap_extension_data * ext_data) {
     free(ext_data);
 }
 
+// COUNT from an ESEARCH that libetpan's own esearch extension parsed (it claims some responses before ours).
+thread_local int64_t tlsEsearchExtCount = -1;
+
 clist * takeEsearch(mailimap * imap) {
     clist * uids = nullptr;
     struct mailimap_esearch_result * esearch = nullptr;
@@ -3796,6 +3799,7 @@ clist * takeEsearch(mailimap * imap) {
             }
         }
     }
+    if (esearch != nullptr && esearch->has_count) tlsEsearchExtCount = esearch->count;
     if (uids == nullptr && esearch != nullptr) {
         uids = esearch->msg_list;
         esearch->msg_list = nullptr;
@@ -4019,7 +4023,6 @@ bool validPartialReturn(const char * ret) {
     int n = 0;
     if (sscanf(ret, "PARTIAL %ld:%ld%n", &lo, &hi, &n) != 2) return false;
     if (lo == 0 || hi == 0 || (lo > 0) != (hi > 0)) return false;
-    if (lo > 0 ? lo > hi : lo < hi) return false;
     const char * rest = ret + n;
     if (*rest == 0) return true;
     return sscanf(rest, " %7s", tail) == 1 && strcmp(tail, "COUNT") == 0 && strcmp(rest, " COUNT") == 0;
@@ -7225,6 +7228,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
         return nullptr;
     }
     session->esearchCount = -1;
+    tlsEsearchExtCount = -1;
     tlsLive = session;
     struct mailimap_response * response = nullptr;
     int r = sendUidSortChoice(session->imap, name.c(), newestFirst == JNI_TRUE, true, &response, ret.c_str());
@@ -7243,7 +7247,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
         unlockSession(session);
         return nullptr;
     }
-    jlongArray arr = windowArray(env, session->esearchCount, result);
+    jlongArray arr = windowArray(env, session->esearchCount >= 0 ? session->esearchCount : tlsEsearchExtCount, result);
     if (result != nullptr) mailimap_search_result_free(result);
     unlockSession(session);
     return arr;
@@ -7267,6 +7271,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(J
         return nullptr;
     }
     session->esearchCount = -1;
+    tlsEsearchExtCount = -1;
     tlsLive = session;
     struct mailimap_response * response = nullptr;
     int r = sendEsearch(session->imap, true, ret.c_str(), withCharset == JNI_TRUE, false, key, &response);
@@ -7286,7 +7291,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(J
         unlockSession(session);
         return nullptr;
     }
-    jlongArray arr = windowArray(env, session->esearchCount, result);
+    jlongArray arr = windowArray(env, session->esearchCount >= 0 ? session->esearchCount : tlsEsearchExtCount, result);
     if (result != nullptr) mailimap_search_result_free(result);
     unlockSession(session);
     return arr;

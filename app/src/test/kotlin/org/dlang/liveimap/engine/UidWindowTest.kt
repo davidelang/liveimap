@@ -31,4 +31,11 @@ class UidWindowTest {
         assertFalse(Capabilities.parse(base).partialWindows)
         assertFalse(Capabilities.parse("IMAP4rev1 PARTIAL").partialWindows)
     }
+
+    @Test
+    fun countWithoutWindowMeansPartialIgnored() {
+        assertTrue(partialWindowIgnored(UidWindow(60, emptyList()), 1))
+        assertFalse(partialWindowIgnored(UidWindow(60, listOf(1L)), 1))
+        assertFalse(partialWindowIgnored(UidWindow(3, emptyList()), 5))
+    }
 }

@@ -773,10 +773,20 @@ class LibetpanMailSession : MailSession {
         require(first in 1..last) { "window $first..$last" }
         return keeper.read("sort") {
             val token = featureCaps.imapSortKey(sortToken(key))
-            val raw = nativeSortWindow(requireHandle(), token, newestFirst, first, last) ?: throw MailFailure("sort failed")
-            uidWindowOf(raw)
+            val h = requireHandle()
+            if (!sortPartialIgnored) {
+                val raw = nativeSortWindow(h, token, newestFirst, first, last) ?: throw MailFailure("sort failed")
+                val window = uidWindowOf(raw)
+                if (!partialWindowIgnored(window, first)) return@read window
+                // Cyrus 3.13 answers UID SORT RETURN (PARTIAL ..) with COUNT only; slice the full sort instead.
+                sortPartialIgnored = true
+            }
+            val ids = nativeSort(h, token, newestFirst, true) ?: throw MailFailure("sort failed")
+            UidWindow(ids.size, ids.drop(first - 1).take(last - first + 1).toList())
         }
     }
+
+    @Volatile private var sortPartialIgnored = false
 
     override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? {
         if (kind == "Advanced" || !featureCaps.partialWindows) return null
@@ -1352,6 +1362,10 @@ private fun currentApplication(): Context? {
 }
 
 /** Native window results are [count, uid...]; a server that sent no COUNT gives -1 (total unknown: window size). */
+/** A server that advertised PARTIAL but returned COUNT without the window it covers (seen on Cyrus ESORT). */
+internal fun partialWindowIgnored(window: UidWindow, first: Int): Boolean =
+    window.uids.isEmpty() && window.total >= first
+
 internal fun uidWindowOf(raw: LongArray): UidWindow {
     if (raw.isEmpty()) return UidWindow(0, emptyList())
     val uids = raw.drop(1)
