@@ -94,10 +94,10 @@ def fix_literal_lines(items, tag):
         if "literal_b64" in it:
             out += base64.b64decode(it["literal_b64"])
             continue
-        out += it["line"].replace("{TAG}", tag, 1).encode("latin-1")
-        nxt = items[k + 1] if k + 1 < len(items) else None
-        if not (nxt and "literal_b64" in nxt and re.search(r"\{\d+\}$", it["line"])):
-            out += b"\r\n"
+        # Every recorded line lost its CRLF, including a "{n}" literal header: RFC 3501 puts CRLF between
+        # "{n}" and the literal bytes. Leaving it out shifted each literal by 2 bytes, which libetpan
+        # tolerated until a burst of pipelined literals (indexNewest) broke the parse mid-body.
+        out += it["line"].replace("{TAG}", tag, 1).encode("latin-1") + b"\r\n"
     return bytes(out)
 
 

@@ -1,0 +1,158 @@
+* 1 FETCH (UID 1 BODY[1]<0>{20}
+Plain lab message 0.)
+1 OK FETCH completed.
+* 2 FETCH (UID 2 BODY[1]<0>{273}
+Plain lab message 1.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+2 OK FETCH completed.
+* 3 FETCH (UID 3 BODY[1]<0>{33}
+Grüße aus dem Labor, Nachricht 2.)
+3 OK FETCH completed.
+* 4 FETCH (UID 4 BODY[1]<0>{173}
+<html><body><p>HTML only <b>message</b> 3.</p><ul><li>one</li><li>two</li></u=
+l><blockquote>quoted</blockquote><a href=3D"https://example.test/3">link</a><=
+/body></html>)
+4 OK FETCH completed.
+* 5 FETCH (UID 5 BODY[1]<0>{29}
+Message 4 with an attachment.)
+5 OK FETCH completed.
+* 6 FETCH (UID 6 BODY[1]<0>{12}
+‚±‚ñ‚É‚¿‚Í 5)
+6 OK FETCH completed.
+* 7 FETCH (UID 7 BODY[1]<0>{20}
+Plain lab message 6.)
+7 OK FETCH completed.
+* 8 FETCH (UID 8 BODY[1]<0>{273}
+Plain lab message 7.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+8 OK FETCH completed.
+* 9 FETCH (UID 9 BODY[1]<0>{526}
+Plain lab message 8.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+9 OK FETCH completed.
+* 10 FETCH (UID 10 BODY[1]<0>{33}
+Grüße aus dem Labor, Nachricht 9.)
+10 OK FETCH completed.
+* 11 FETCH (UID 11 BODY[1]<0>{175}
+<html><body><p>HTML only <b>message</b> 10.</p><ul><li>one</li><li>two</li></=
+ul><blockquote>quoted</blockquote><a href=3D"https://example.test/10">link</a=
+></body></html>)
+11 OK FETCH completed.
+* 12 FETCH (UID 12 BODY[1]<0>{30}
+Message 11 with an attachment.)
+12 OK FETCH completed.
+* 13 FETCH (UID 13 BODY[1]<0>{13}
+‚±‚ñ‚É‚¿‚Í 12)
+13 OK FETCH completed.
+* 14 FETCH (UID 14 BODY[1]<0>{274}
+Plain lab message 13.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+14 OK FETCH completed.
+* 15 FETCH (UID 15 BODY[1]<0>{527}
+Plain lab message 14.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+15 OK FETCH completed.
+* 16 FETCH (UID 16 BODY[1]<0>{21}
+Plain lab message 15.)
+16 OK FETCH completed.
+* 17 FETCH (UID 17 BODY[1]<0>{34}
+Grüße aus dem Labor, Nachricht 16.)
+17 OK FETCH completed.
+* 18 FETCH (UID 18 BODY[1]<0>{175}
+<html><body><p>HTML only <b>message</b> 17.</p><ul><li>one</li><li>two</li></=
+ul><blockquote>quoted</blockquote><a href=3D"https://example.test/17">link</a=
+></body></html>)
+18 OK FETCH completed.
+* 19 FETCH (UID 19 BODY[1]<0>{30}
+Message 18 with an attachment.)
+19 OK FETCH completed.
+* 20 FETCH (UID 20 BODY[1]<0>{13}
+‚±‚ñ‚É‚¿‚Í 19)
+20 OK FETCH completed.
+* 21 FETCH (UID 21 BODY[1]<0>{527}
+Plain lab message 20.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+21 OK FETCH completed.
+* 22 FETCH (UID 22 BODY[1]<0>{21}
+Plain lab message 21.)
+22 OK FETCH completed.
+* 23 FETCH (UID 23 BODY[1]<0>{274}
+Plain lab message 22.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+23 OK FETCH completed.
+* 24 FETCH (UID 24 BODY[1]<0>{34}
+Grüße aus dem Labor, Nachricht 23.)
+24 OK FETCH completed.
+* 25 FETCH (UID 25 BODY[1]<0>{175}
+<html><body><p>HTML only <b>message</b> 24.</p><ul><li>one</li><li>two</li></=
+ul><blockquote>quoted</blockquote><a href=3D"https://example.test/24">link</a=
+></body></html>)
+25 OK FETCH completed.
+* 26 FETCH (UID 26 BODY[1]<0>{30}
+Message 25 with an attachment.)
+26 OK FETCH completed.
+* 27 FETCH (UID 27 BODY[1]<0>{13}
+‚±‚ñ‚É‚¿‚Í 26)
+27 OK FETCH completed.
+* 28 FETCH (UID 28 BODY[1]<0>{21}
+Plain lab message 27.)
+28 OK FETCH completed.
+* 29 FETCH (UID 29 BODY[1]<0>{274}
+Plain lab message 28.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+29 OK FETCH completed.
+* 30 FETCH (UID 30 BODY[1]<0>{527}
+Plain lab message 29.
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20
+A long line A long line A long line A long line A long line A long line A lon=
+g line A long line A long line A long line A long line A long line A long lin=
+e A long line A long line A long line A long line A long line A long line A l=
+ong line=20)
+30 OK FETCH completed.
+* 31 FETCH (UID 31 BODY[1]<0>{34}
+Grüße aus dem Labor, Nachricht 30.)
+31 OK FETCH completed.
+* 32 FETCH (UID 32 BODY[1]<0>{175}
+<html><body><p>HTML only <b>message</b> 31.</p><ul><li>one</li><li>two</li></=
+ul><blockquote>quoted</blockquote><a href=3D"https://example.test/31">link</a=
+></body></html>)
+32 OK FETCH completed.
