@@ -385,53 +385,57 @@ fun mailUndoText(undo: MailUndo): String {
     return "Moved to ${mailboxLeaf(undo.targetMailbox)}"
 }
 
-fun orderedThreadUids(node: ThreadNode, newestFirst: Boolean): List<Long> {
-    fun subtreeMaxUid(current: ThreadNode): Long? {
-        var maxUid = current.uid
-        for (child in current.children) {
-            val childMax = subtreeMaxUid(child) ?: continue
-            if (maxUid == null || childMax > maxUid) maxUid = childMax
-        }
-        return maxUid
-    }
-    val children = if (node.children.isEmpty()) {
-        node.children
-    } else {
-        node.children.sortedWith { left, right ->
-            val leftKey = subtreeMaxUid(left)
-            val rightKey = subtreeMaxUid(right)
-            when {
-                leftKey == null && rightKey == null -> 0
-                leftKey == null -> 1
-                rightKey == null -> -1
-                newestFirst -> rightKey.compareTo(leftKey)
-                else -> leftKey.compareTo(rightKey)
+// Thread trees can be thousands of levels deep (one level per reply), so every walk here uses an explicit stack.
+
+/** Largest uid in each subtree, computed once, post-order, without recursion. */
+private fun subtreeMaxUids(root: ThreadNode): java.util.IdentityHashMap<ThreadNode, Long?> {
+    val out = java.util.IdentityHashMap<ThreadNode, Long?>()
+    val stack = ArrayDeque<Pair<ThreadNode, Boolean>>()
+    stack.addLast(root to false)
+    while (stack.isNotEmpty()) {
+        val (n, done) = stack.removeLast()
+        if (!done) {
+            stack.addLast(n to true)
+            for (c in n.children) stack.addLast(c to false)
+        } else {
+            var best = n.uid
+            for (c in n.children) {
+                val m = out[c] ?: continue
+                if (best == null || m > best) best = m
             }
+            out[n] = best
         }
     }
-    val out = ArrayList<Long>()
-    fun walk(current: ThreadNode) {
-        val uid = current.uid
-        if (uid != null) out.add(uid)
-        for (child in current.children) walk(child)
-    }
-    walk(node.copy(children = children))
     return out
 }
 
-private fun subtreeMaxUid(current: ThreadNode): Long? {
-    var maxUid = current.uid
-    for (child in current.children) {
-        val childMax = subtreeMaxUid(child) ?: continue
-        if (maxUid == null || childMax > maxUid) maxUid = childMax
+private fun byNewest(maxOf: Map<ThreadNode, Long?>, newestFirst: Boolean) = Comparator<ThreadNode> { left, right ->
+    val leftKey = maxOf[left]
+    val rightKey = maxOf[right]
+    when {
+        leftKey == null && rightKey == null -> 0
+        leftKey == null -> 1
+        rightKey == null -> -1
+        newestFirst -> rightKey.compareTo(leftKey)
+        else -> leftKey.compareTo(rightKey)
     }
-    return maxUid
+}
+
+fun orderedThreadUids(node: ThreadNode, newestFirst: Boolean): List<Long> {
+    val maxOf = subtreeMaxUids(node)
+    val children = if (node.children.isEmpty()) node.children else node.children.sortedWith(byNewest(maxOf, newestFirst))
+    val out = ArrayList<Long>()
+    node.copy(children = children).forEachPreorder { n -> n.uid?.let { out.add(it) } }
+    return out
 }
 
 private fun threadDepths(root: ThreadNode): Map<Long, Int> {
     val out = LinkedHashMap<Long, Int>()
     var seenRoot = false
-    fun walk(current: ThreadNode, depth: Int) {
+    val stack = ArrayDeque<Pair<ThreadNode, Int>>()
+    stack.addLast(root to 0)
+    while (stack.isNotEmpty()) {
+        val (current, depth) = stack.removeLast()
         val uid = current.uid
         val next = if (uid != null) {
             if (seenRoot) out[uid] = depth else seenRoot = true
@@ -439,35 +443,22 @@ private fun threadDepths(root: ThreadNode): Map<Long, Int> {
         } else {
             depth
         }
-        for (child in current.children) walk(child, next)
+        for (i in current.children.indices.reversed()) stack.addLast(current.children[i] to next)
     }
-    walk(root, 0)
     return out
 }
 
 private fun preorderUids(current: ThreadNode): List<Long> {
     val out = ArrayList<Long>()
-    fun walk(node: ThreadNode) {
-        val uid = node.uid
-        if (uid != null) out.add(uid)
-        for (child in node.children) walk(child)
-    }
-    walk(current)
+    current.forEachPreorder { n -> n.uid?.let { out.add(it) } }
     return out
 }
 
 fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThread> {
-    val children = flattenNullParents(node.children).sortedWith { left, right ->
-        val leftKey = subtreeMaxUid(left)
-        val rightKey = subtreeMaxUid(right)
-        when {
-            leftKey == null && rightKey == null -> 0
-            leftKey == null -> 1
-            rightKey == null -> -1
-            newestFirst -> rightKey.compareTo(leftKey)
-            else -> leftKey.compareTo(rightKey)
-        }
-    }
+    val flat = flattenNullParents(node.children)
+    val maxOf = java.util.IdentityHashMap<ThreadNode, Long?>()
+    for (c in flat) maxOf.putAll(subtreeMaxUids(c))
+    val children = flat.sortedWith(byNewest(maxOf, newestFirst))
     val out = ArrayList<CollapsedThread>()
     for (child in children) {
         val uids = preorderUids(child)
@@ -477,16 +468,27 @@ fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThre
     return out
 }
 
+/** Replaces every placeholder (null-uid) node by its children, at every level, iteratively (post-order rebuild). */
 private fun flattenNullParents(nodes: List<ThreadNode>): List<ThreadNode> {
-    val out = ArrayList<ThreadNode>()
-    for (item in nodes) {
-        if (item.uid == null) {
-            out.addAll(flattenNullParents(item.children))
-        } else {
-            out.add(item.copy(children = flattenNullParents(item.children)))
+    val holder = ThreadNode(null, nodes)
+    val built = java.util.IdentityHashMap<ThreadNode, List<ThreadNode>>()  // node -> its flattened children
+    val stack = ArrayDeque<Pair<ThreadNode, Boolean>>()
+    stack.addLast(holder to false)
+    while (stack.isNotEmpty()) {
+        val (n, done) = stack.removeLast()
+        if (!done) {
+            stack.addLast(n to true)
+            for (c in n.children) stack.addLast(c to false)
+            continue
         }
+        val kids = ArrayList<ThreadNode>()
+        for (c in n.children) {
+            val flatKids = built.remove(c)!!
+            if (c.uid == null) kids.addAll(flatKids) else kids.add(ThreadNode(c.uid, flatKids))
+        }
+        built[n] = kids
     }
-    return out
+    return built.remove(holder)!!
 }
 
 fun threadCountMark(messageCount: Int, unread: Int): String = "$messageCount · $unread unread"

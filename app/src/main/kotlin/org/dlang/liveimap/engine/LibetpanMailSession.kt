@@ -501,6 +501,10 @@ class LibetpanMailSession : MailSession {
         nativeFetchStructure(requireHandle(), uid) ?: throw MailFailure("fetch failed")
     }
 
+    override suspend fun fetchStructureAt(uid: Long, section: String): MimePart = keeper.read("fetch") {
+        nativeFetchStructureAt(requireHandle(), uid, section) ?: throw MailFailure("fetch failed")
+    }
+
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
         keeper.read("fetch") {
             val binary = featureCaps.fetchKind() == "BinaryPeek"
@@ -1130,6 +1134,7 @@ class LibetpanMailSession : MailSession {
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?
+    private external fun nativeFetchStructureAt(handle: Long, uid: Long, section: String): MimePart?
     private external fun nativePeekPart(
         handle: Long,
         uid: Long,

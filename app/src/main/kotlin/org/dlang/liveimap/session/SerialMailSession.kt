@@ -71,6 +71,9 @@ class SerialMailSession(
     override suspend fun fetchStructure(uid: Long): MimePart =
         onLane { inner.fetchStructure(uid) }
 
+    override suspend fun fetchStructureAt(uid: Long, section: String): MimePart =
+        onLane { inner.fetchStructureAt(uid, section) }
+
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
         onLane { inner.peekPart(uid, section, offset, length) }
 

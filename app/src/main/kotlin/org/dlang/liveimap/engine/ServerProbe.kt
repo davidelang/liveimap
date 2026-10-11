@@ -118,14 +118,7 @@ private suspend fun threadLine(session: MailSession, label: String, key: SortKey
     }
 }
 
-private fun countMessages(node: ThreadNode): Int {
-    val here = if (node.uid != null) 1 else 0
-    var total = here
-    for (child in node.children) {
-        total += countMessages(child)
-    }
-    return total
-}
+private fun countMessages(node: ThreadNode): Int = node.messageCount()
 
 private suspend fun addSearch(session: MailSession, lines: MutableList<String>) {
     val label = if (advertised(session, "ESEARCH")) "ESEARCH" else "UID SEARCH"

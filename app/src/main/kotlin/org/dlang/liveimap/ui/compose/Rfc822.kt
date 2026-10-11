@@ -89,6 +89,24 @@ fun textPart(root: MimePart, subtype: String, depth: Int = 0): MimePart? {
     return null
 }
 
+/** Every leaf of an opened "nested part" subtree, text parts included, in order (iterative). */
+fun nestedLeafParts(root: MimePart): List<MimePart> {
+    val out = ArrayList<MimePart>()
+    val stack = ArrayDeque<Pair<MimePart, Int>>()
+    stack.addLast(root to 0)
+    while (stack.isNotEmpty()) {
+        val (part, depth) = stack.removeLast()
+        val container = part.type.equals("multipart", ignoreCase = true) ||
+            (part.type.equals("message", ignoreCase = true) && part.children.isNotEmpty())
+        if (!container || depth >= MaxMimeDepth) {
+            out.add(part)
+            continue
+        }
+        for (i in part.children.indices.reversed()) stack.addLast(part.children[i] to depth + 1)
+    }
+    return out
+}
+
 fun attachmentParts(root: MimePart): List<MimePart> {
     val out = ArrayList<MimePart>()
     fun walk(part: MimePart, depth: Int) {

@@ -55,9 +55,14 @@ private fun referenceThreads(rows: List<ThreadHeader>): ThreadNode {
         if (id !in idToUid) idToUid[id] = row.uid
     }
     val parentOf = HashMap<Long, Long>()
+    // While every link points to a smaller uid, following parents only decreases, so no cycle is possible and the
+    // O(depth) walk is skipped (a long reply chain would otherwise cost O(n^2)).
+    var allDescending = true
     for (row in present) {
         val parent = parentUid(row, idToUid) ?: continue
-        if (parent == row.uid || createsCycle(row.uid, parent, parentOf)) continue
+        if (parent == row.uid) continue
+        if (!(allDescending && parent < row.uid) && createsCycle(row.uid, parent, parentOf)) continue
+        if (parent > row.uid) allDescending = false
         parentOf[row.uid] = parent
     }
     val childrenOf = HashMap<Long, MutableList<Long>>()
@@ -70,24 +75,22 @@ private fun referenceThreads(rows: List<ThreadHeader>): ThreadNode {
             childrenOf.getOrPut(parent) { ArrayList() }.add(row.uid)
         }
     }
-    // A References chain nests one level per reply; past MaxThreadDepth the rest of the subtree is attached flat,
-    // in preorder, under the node at the cap (iteratively), so a long chain cannot overflow the stack.
-    fun flatBelow(uid: Long): List<ThreadNode> {
-        val out = ArrayList<ThreadNode>()
-        val stack = ArrayDeque(childrenOf[uid].orEmpty().sortedDescending())
-        while (stack.isNotEmpty()) {
-            val next = stack.removeLast()
-            out.add(ThreadNode(next, emptyList()))
-            childrenOf[next].orEmpty().sortedDescending().forEach { stack.addLast(it) }
+    // A References chain nests one level per reply, so the tree is built bottom-up with an explicit stack (no
+    // recursion, no depth limit): a node is made once all of its children are made.
+    val built = HashMap<Long, ThreadNode>()
+    val stack = ArrayDeque<Pair<Long, Boolean>>()
+    for (root in roots.sortedDescending()) stack.addLast(root to false)
+    while (stack.isNotEmpty()) {
+        val (uid, expanded) = stack.removeLast()
+        val kids = childrenOf[uid].orEmpty().sorted()
+        if (!expanded) {
+            stack.addLast(uid to true)
+            for (k in kids.asReversed()) stack.addLast(k to false)
+        } else {
+            built[uid] = ThreadNode(uid, kids.map { built.remove(it)!! })
         }
-        return out
     }
-    fun node(uid: Long, depth: Int): ThreadNode {
-        if (depth + 1 >= MaxThreadDepth) return ThreadNode(uid, flatBelow(uid))
-        val children = childrenOf[uid].orEmpty().sorted().map { node(it, depth + 1) }
-        return ThreadNode(uid, children)
-    }
-    return ThreadNode(null, roots.sorted().map { node(it, 0) })
+    return ThreadNode(null, roots.sorted().map { built.remove(it)!! })
 }
 
 private fun createsCycle(uid: Long, parent: Long, parentOf: Map<Long, Long>): Boolean {

@@ -1,5 +1,7 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.ui.compose.nestedLeafParts
+import org.dlang.liveimap.session.TooDeepSubtype
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -769,7 +771,36 @@ private fun MessageReaderLoaded(
         }
     }
 
+    /** A "nested part" entry (past MaxMimeDepth): fetch the structure below it and list its parts in its place. */
+    fun openNestedPart(row: AttachmentRow) {
+        if (row.busy) return
+        scope.launch {
+            gate.withLock {
+                if (!connected) return@withLock
+                markAttachment(row.section, 0, done = false, busy = true)
+                try {
+                    if (selectedMailbox != mailbox) {
+                        session.select(mailbox)
+                        selectedMailbox = mailbox
+                    }
+                    val subtree = session.fetchStructureAt(uid, row.section)
+                    val rows = nestedLeafParts(subtree).map { part -> attachmentRowOf(part) }
+                    attachments = attachments.flatMap { if (it.section == row.section) rows else listOf(it) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    markAttachment(row.section, 0, done = false, busy = false)
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+
     fun fetchAttachment(row: AttachmentRow) {
+        if (isNestedPart(row)) {
+            openNestedPart(row)
+            return
+        }
         if (row.done || row.busy) return
         scope.launch {
             gate.withLock {
@@ -920,18 +951,7 @@ private fun MessageReaderLoaded(
                 selectedMailbox = mailbox
                 val tree = session.fetchStructure(uid)
                 structure = tree
-                attachments = attachmentParts(tree).map { part ->
-                    AttachmentRow(
-                        section = part.section,
-                        label = part.filename?.takeIf { it.isNotEmpty() }
-                            ?: "${part.type}/${part.subtype}",
-                        size = part.size,
-                        fetched = 0,
-                        done = false,
-                        type = part.type,
-                        subtype = part.subtype,
-                    )
-                }
+                attachments = attachmentParts(tree).map { part -> attachmentRowOf(part) }
                 val row = try {
                     session.fetchIndex(
                         IndexRequest(
@@ -2318,6 +2338,21 @@ private fun attachmentSizeText(size: Int): String? = when {
     size < 1024 -> "$size B"
     else -> "${size / 1024} KB"
 }
+
+internal fun attachmentRowOf(part: MimePart): AttachmentRow = AttachmentRow(
+    section = part.section,
+    label = part.filename?.takeIf { it.isNotEmpty() } ?: "${part.type}/${part.subtype}",
+    size = part.size,
+    fetched = 0,
+    done = false,
+    type = part.type,
+    subtype = part.subtype,
+)
+
+/** Rows that stand for a deeper subtree rather than content: tapping opens the next level. */
+internal fun isNestedPart(row: AttachmentRow): Boolean =
+    row.subtype.equals(TooDeepSubtype, ignoreCase = true) || row.type.equals("multipart", ignoreCase = true) ||
+        (row.type.equals("message", ignoreCase = true) && row.size == 0)
 
 private fun attachmentMime(row: AttachmentRow): String {
     val type = row.type.trim().ifEmpty { "application" }.lowercase()

@@ -38,6 +38,8 @@ interface MailSession {
     suspend fun unselect()
     suspend fun fetchIndex(request: IndexRequest): List<IndexRow>
     suspend fun fetchStructure(uid: Long): MimePart
+    /** The structure below one part (for a "nested part" entry past [MaxMimeDepth]); sections stay absolute. */
+    suspend fun fetchStructureAt(uid: Long, section: String): MimePart = throw MailFailure("nested parts not supported")
     suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray
     suspend fun fetchRfc822(uid: Long): ByteArray
     suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>)

@@ -93,9 +93,8 @@ data class IndexRow(
     val mailbox: String = "",
 )
 
-/** Nesting caps for sender- and server-controlled trees (the native layer applies the same limits). */
+/** MIME parts nested deeper than this are listed as one openable "nested part" entry instead of being walked. */
 const val MaxMimeDepth = 64
-const val MaxThreadDepth = 64
 
 /** Stand-in the native layer returns for parts nested deeper than [MaxMimeDepth]. */
 const val TooDeepSubtype = "x-liveimap-too-deep"
@@ -127,10 +126,60 @@ data class SelectResult(
     val exists: Int,
 )
 
+/**
+ * One node of a thread tree. Threads can be thousands of levels deep (one level per reply), so equality, hashing
+ * and toString are iterative instead of the recursive data-class defaults.
+ */
 data class ThreadNode(
     val uid: Long?,
     val children: List<ThreadNode>,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is ThreadNode) return false
+        val stack = ArrayDeque<Pair<ThreadNode, ThreadNode>>()
+        stack.addLast(this to other)
+        while (stack.isNotEmpty()) {
+            val (a, b) = stack.removeLast()
+            if (a === b) continue
+            if (a.uid != b.uid || a.children.size != b.children.size) return false
+            for (i in a.children.indices) stack.addLast(a.children[i] to b.children[i])
+        }
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var h = 1
+        val stack = ArrayDeque<ThreadNode>()
+        stack.addLast(this)
+        while (stack.isNotEmpty()) {
+            val n = stack.removeLast()
+            h = 31 * h + (n.uid?.hashCode() ?: 0)
+            h = 31 * h + n.children.size
+            for (i in n.children.indices.reversed()) stack.addLast(n.children[i])
+        }
+        return h
+    }
+
+    override fun toString(): String = "ThreadNode(uid=$uid, children=${children.size}, messages=${messageCount()})"
+
+    /** Number of real messages (non-null uid) in this subtree, iteratively. */
+    fun messageCount(): Int {
+        var n = 0
+        forEachPreorder { if (it.uid != null) n++ }
+        return n
+    }
+
+    /** Preorder visit (node before its children, children in order) with an explicit stack. */
+    inline fun forEachPreorder(visit: (ThreadNode) -> Unit) {
+        val stack = ArrayDeque<ThreadNode>()
+        stack.addLast(this)
+        while (stack.isNotEmpty()) {
+            val n = stack.removeLast()
+            visit(n)
+            for (i in n.children.indices.reversed()) stack.addLast(n.children[i])
+        }
+    }
+}
 
 data class SortField(
     val uid: Long,

@@ -2,6 +2,7 @@ package org.dlang.liveimap.session
 
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.ui.compose.attachmentParts
+import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.ui.compose.textPart
 import org.dlang.liveimap.ui.index.collapsedThreads
 import org.dlang.liveimap.ui.index.orderedThreadUids
@@ -24,16 +25,22 @@ class DeepNestingTest {
     }
 
     @Test(timeout = 30_000)
-    fun longReferencesChainIsCappedAndKeepsEveryMessage() {
-        val n = 5000
+    fun longReferencesChainKeepsItsFullDepthAndEveryMessage() {
+        val n = 20_000
         val rows = (1..n).map { i ->
             ThreadHeader(i.toLong(), "<m$i@x>", if (i > 1) "<m${i - 1}@x>" else "", "", "chain")
         }
         val root = clientThreads(rows, SortKey.ThreadReferences)
-        assertTrue("depth ${depthOf(root)}", depthOf(root) <= MaxThreadDepth + 1)
+        assertEquals(n, depthOf(root))   // placeholder root + one level per reply: no depth limit
+        assertEquals(n, root.messageCount())
+        assertEquals(root, clientThreads(rows, SortKey.ThreadReferences))   // iterative equals on a deep tree
+        root.hashCode()
+        root.toString()
         val uids = orderedThreadUids(root, newestFirst = false)
         assertEquals((1L..n.toLong()).toList(), uids)
-        assertEquals(1, collapsedThreads(root, newestFirst = false).size)
+        val collapsed = collapsedThreads(root, newestFirst = false)
+        assertEquals(1, collapsed.size)
+        assertEquals(n - 1, collapsed[0].depthByUid.values.max())
     }
 
     private fun nested(levels: Int): MimePart {
@@ -49,6 +56,16 @@ class DeepNestingTest {
         val parts = attachmentParts(deep)
         assertEquals(1, parts.size)
         assertEquals("multipart", parts[0].type)
+    }
+
+    @Test(timeout = 30_000)
+    fun nestedLeafPartsListsEveryLeafOfAnOpenedSubtree() {
+        val text = MimePart("1.1", "text", "plain", "", null, 1, emptyList())
+        val pdf = MimePart("1.2", "application", "pdf", "attachment", "a.pdf", 9, emptyList())
+        val more = MimePart("1.3", "application", TooDeepSubtype, "attachment", "nested part", 0, emptyList())
+        val leaves = nestedLeafParts(MimePart("1", "multipart", "mixed", "", null, 0, listOf(text, pdf, more)))
+        assertEquals(listOf("1.1", "1.2", "1.3"), leaves.map { it.section })
+        assertEquals(1, nestedLeafParts(nested(20_000)).size)
     }
 
     @Test fun shallowMimeTreeStillFindsText() {
