@@ -71,7 +71,10 @@ class LabSuiteTest {
             true
         }
         var failed = 0
+        // labSteps (lab.py --steps): run only these, plus open/select which the others need.
+        val onlySteps = arg("labSteps").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         suspend fun step(name: String, body: suspend () -> String) {
+            if (onlySteps.isNotEmpty() && name !in onlySteps && name != "open" && name != "select") return
             TrafficRecorder.event("main", "step", name)
             val (ok, detail) = try { "ok" to body() } catch (e: Throwable) { "fail" to (e.message ?: e.javaClass.simpleName) }
             if (ok == "fail") failed++
@@ -214,6 +217,8 @@ class LabSuiteTest {
                     try {
                         session.select(sub)
                         val before = session.selectedExists()
+                        // Start clean: an earlier run may have left Sub all \Deleted (nothing is ever expunged).
+                        session.storeFlags(session.searchCriterion("All", ""), emptySet(), setOf("\\Deleted"))
                         val first = session.searchCriterion("NotDeleted", "").min()
                         session.storeFlags(listOf(first), setOf("\\Deleted"), emptySet())
                         val report = StringBuilder()

@@ -223,6 +223,7 @@ def instrument(s, port, tls, run, commit, mech="", side=None):
          *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
          *(side if side is not None else [*smtp_args(s, tls), *(sieve_args(s) if tls != "None" else [])]),
          *client_cert_args(tls),
+         *(["-e", "labSteps", os.environ["LAB_STEPS"]] if os.environ.get("LAB_STEPS") else []),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
@@ -358,8 +359,11 @@ def main():
     p.add_argument("action", choices=["list", "run"])
     p.add_argument("--server", action="append", default=[])
     p.add_argument("--skip-install", action="store_true")
+    p.add_argument("--steps", default="", help="comma list: run only these LabSuiteTest steps (open/select always run)")
     p.add_argument("--mechs", action="store_true", help="one app run per advertised mechanism plus LOGIN")
     a = p.parse_args()
+    if a.steps:
+        os.environ["LAB_STEPS"] = a.steps
     ss = servers()
     if a.action == "list":
         for s in ss:
