@@ -2757,6 +2757,35 @@ private fun MessageIndexLoaded(
                                 confirmMarkAllRead = true
                             },
                         )
+                        // Quick filters: each narrows the current list, combined with any active filters into one
+                        // server search (IndexModel.setFilters).
+                        val labelNew = stringResource(R.string.index_show_new)
+                        val labelUndeleted = stringResource(R.string.index_show_not_deleted)
+                        val labelThread = stringResource(R.string.index_show_thread)
+                        for ((label, run) in listOf<Pair<String, suspend () -> Unit>>(
+                            labelNew to { model.showNew(labelNew) },
+                            labelUndeleted to { model.showNotDeleted(labelUndeleted) },
+                            labelThread to {
+                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(model.startIndex)?.uid
+                                if (uid != null) model.showThreadOf(uid, labelThread)
+                            },
+                        )) {
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                modifier = Modifier.testTag("index-quick-" + label),
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch {
+                                        gate.withLock {
+                                            noteVisibleTop()
+                                            run()
+                                            pull()
+                                        }
+                                        model.notice?.let { postSnack(it) }
+                                    }
+                                },
+                            )
+                        }
                         for (entry in indexMenuTail(barLayout)) {
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()

@@ -267,6 +267,13 @@ Avoid:
 
 ## Searching and filters
 
+* **Filters combine on the server, in one search.** Narrowing sends one
+  `UID SEARCH` carrying every active criterion (ANDed; an Or advanced filter is
+  a nested group), and widening or dropping a chip re-runs it from the
+  remaining ones; the client never intersects two search results. Quick
+  filters (Show new, Show not deleted, Show this thread as a UID set of the
+  message and its replies) join the same chain. A sorted or threaded view
+  still keeps its SORT/THREAD order and shows only that search's UIDs.
 * **No always-open search bar.** A search icon opens a simple bar with a text
   field, a visible field selector (Subject by default; From, To, Cc,
   Participating) and an Advanced button. Phone screens are narrow, so the bar

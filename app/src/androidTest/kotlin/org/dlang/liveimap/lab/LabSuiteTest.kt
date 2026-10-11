@@ -360,6 +360,32 @@ class LabSuiteTest {
                     if (wrong.isNotEmpty()) throw IllegalStateException("wrong verdict for $wrong: $out")
                     out.joinToString("; ")
                 }
+                // Filter chain: one server search with every criterion (UID set, NotDeleted, a nested Or group).
+                step("filterChain") {
+                    val all = session.fetchIndex(IndexRequest(box, IndexMode.ArrivalNewest, limit = 5)).map { it.uid }.sorted()
+                    if (all.size < 3) throw IllegalStateException("need 3 messages, have ${all.size}")
+                    val pick = all.take(3)
+                    val chain = listOf(
+                        org.dlang.liveimap.ui.index.AppliedFilter("t", org.dlang.liveimap.ui.index.uidSetText(pick), "Uid"),
+                        org.dlang.liveimap.ui.index.AppliedFilter("n", "", "NotDeleted"),
+                        org.dlang.liveimap.ui.index.AppliedFilter(
+                            "g",
+                            org.dlang.liveimap.ui.index.encodeAdvancedQuery(
+                                org.dlang.liveimap.ui.index.AdvancedCombiner.Or,
+                                listOf(
+                                    org.dlang.liveimap.ui.index.AdvancedStep(false, "Uid", pick[0].toString()),
+                                    org.dlang.liveimap.ui.index.AdvancedStep(false, "Uid", pick[2].toString()),
+                                ),
+                            )!!,
+                            "Advanced",
+                        ),
+                    )
+                    val (kind, arg) = org.dlang.liveimap.ui.index.combinedFilterSearch(chain)!!
+                    val got = session.searchCriterion(kind, arg).sorted()
+                    val want = listOf(pick[0], pick[2])
+                    if (got != want) throw IllegalStateException("got $got want $want")
+                    "uids $got"
+                }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
                 assertTrue("exists $exists", exists >= 0)

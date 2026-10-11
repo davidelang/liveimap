@@ -760,4 +760,7 @@
     <string name="reader_short_headers">Short header</string>
     <string name="reader_decode_headers">Decode encoded words (RFC 2047)</string>
     <string name="reader_raw_truncated">Showing the first %1$d KB only.</string>
+    <string name="index_show_new">Show new</string>
+    <string name="index_show_not_deleted">Show not deleted</string>
+    <string name="index_show_thread">Show this thread</string>
 </resources>

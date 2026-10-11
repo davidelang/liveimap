@@ -742,13 +742,25 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         runImmediate { model.applyCriterion("From", "ada", narrow = false, label = "From") }
+        session.searchCalls.clear()
+        session.searchKinds.clear()
+        // The server's answer for the combined search is used as is: no client-side intersection with {1, 2}.
+        session.searchUids = listOf(2L, 7L)
         runImmediate { model.applyCriterion("Subject", "x", narrow = true, label = "Subject") }
         assertEquals(
-            listOf(AppliedFilter("From", "ada"), AppliedFilter("Subject", "x")),
+            listOf(AppliedFilter("From", "ada", "From"), AppliedFilter("Subject", "x", "Subject")),
             model.filters,
         )
+        assertEquals(listOf("Advanced"), session.searchKinds)
+        assertEquals(listOf("And\nYes\tFrom\tada\nYes\tSubject\tx"), session.searchCalls)
+        assertEquals(setOf(2L, 7L), model.order.toSet())
+        // Widening re-runs the search from the remaining criteria.
+        session.searchCalls.clear()
+        session.searchKinds.clear()
         runImmediate { model.dropFiltersFrom(model.filters.lastIndex) }
-        assertEquals(listOf(AppliedFilter("From", "ada")), model.filters)
+        assertEquals(listOf(AppliedFilter("From", "ada", "From")), model.filters)
+        assertEquals(listOf("From"), session.searchKinds)
+        assertEquals(listOf("ada"), session.searchCalls)
         runImmediate { model.dropFiltersFrom(0) }
         assertEquals(emptyList<AppliedFilter>(), model.filters)
     }

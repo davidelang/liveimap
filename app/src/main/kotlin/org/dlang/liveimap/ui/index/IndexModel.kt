@@ -262,7 +262,67 @@ suspend fun countHits(
 data class AppliedFilter(
     val label: String,
     val argument: String,
+    /** Search kind (criterionKey in liveimap_jni.cpp, or "Advanced" for an encoded AdvancedQuery). */
+    val kind: String = "",
 )
+
+/**
+ * The whole filter chain as one search: (kind, argument) for MailSession.searchCriterion, ANDing every filter.
+ * An And advanced filter contributes its steps; an Or one goes in as a nested "Group". Null for an empty chain.
+ */
+fun combinedFilterSearch(filters: List<AppliedFilter>): Pair<String, String>? {
+    if (filters.isEmpty()) return null
+    if (filters.size == 1) return filters[0].kind to filters[0].argument
+    val steps = ArrayList<AdvancedStep>()
+    var fuzzy = false
+    for (f in filters) {
+        if (f.kind != "Advanced") {
+            steps.add(AdvancedStep(false, f.kind, f.argument))
+            continue
+        }
+        val q = parseAdvancedQuery(f.argument) ?: continue
+        fuzzy = fuzzy || q.fuzzy
+        if (q.combiner == AdvancedCombiner.And) steps.addAll(q.steps)
+        else steps.add(AdvancedStep(false, "Group", groupArgument(q)))
+    }
+    return "Advanced" to (encodeAdvancedQuery(AdvancedCombiner.And, steps, fuzzy) ?: return null)
+}
+
+/** A nested query as one step argument: lines split by RS (0x1e), fields by US (0x1f); parsed by groupKey (JNI). */
+fun groupArgument(q: AdvancedQuery): String =
+    (listOf(q.combiner.name) + q.steps.map { (if (it.negated) "Not" else "Yes") + "\u001f" + it.kind + "\u001f" + it.argument })
+        .joinToString("\u001e")
+
+/** UIDs as an IMAP set, runs collapsed: 1,3:5,9. */
+fun uidSetText(uids: Collection<Long>): String {
+    val sorted = uids.toSortedSet().toList()
+    val out = StringBuilder()
+    var i = 0
+    while (i < sorted.size) {
+        var j = i
+        while (j + 1 < sorted.size && sorted[j + 1] == sorted[j] + 1) j++
+        if (out.isNotEmpty()) out.append(',')
+        out.append(sorted[i])
+        if (j > i) out.append(':').append(sorted[j])
+        i = j + 1
+    }
+    return out.toString()
+}
+
+/** [uid] and the messages below it in its thread (preorder entries deeper than it, up to the next sibling). */
+fun threadSubtree(plan: List<CollapsedThread>, uid: Long): List<Long> {
+    val thread = plan.firstOrNull { it.rootUid == uid || uid in it.hiddenUids } ?: return listOf(uid)
+    val all = listOf(thread.rootUid) + thread.hiddenUids
+    val depth = { u: Long -> if (u == thread.rootUid) 0 else thread.depthByUid[u] ?: 1 }
+    val at = all.indexOf(uid)
+    val base = depth(uid)
+    val out = arrayListOf(uid)
+    for (k in at + 1 until all.size) {
+        if (depth(all[k]) <= base) break
+        out.add(all[k])
+    }
+    return out
+}
 
 data class CollapsedThread(
     val rootUid: Long,
@@ -605,7 +665,6 @@ class IndexModel(
     private var scopeProgress: (Int, Int) -> Unit = { _, _ -> }
     private var activeSearchField: SimpleSearchField = SimpleSearchField.Subject
     private var filterUids: Set<Long>? = null
-    private val filterStack = ArrayDeque<Set<Long>>()
     private val appliedFilters = ArrayList<AppliedFilter>()
     private var lastVisibleIndex: Int = 0
     private var startInHeld: Int = 0
@@ -652,7 +711,7 @@ class IndexModel(
         get() = activeSearch != null
 
     val canWiden: Boolean
-        get() = filterStack.isNotEmpty()
+        get() = appliedFilters.size > 1
 
     val filters: List<AppliedFilter>
         get() = appliedFilters.toList()
@@ -917,7 +976,6 @@ class IndexModel(
         val advanced = activeAdvanced
         if (advanced == null) activeSearch = null
         filterUids = null
-        filterStack.clear()
         appliedFilters.clear()
         includePreview = loaded.density != Density.Compact
         view = next
@@ -935,7 +993,6 @@ class IndexModel(
     ): List<IndexRow> {
         val hadFilter = filterUids != null
         filterUids = null
-        filterStack.clear()
         appliedFilters.clear()
         activeAdvanced = null
         clearSearchScope()
@@ -961,7 +1018,6 @@ class IndexModel(
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): List<IndexRow> {
         filterUids = null
-        filterStack.clear()
         appliedFilters.clear()
         account = store.load()
         includePreview = account.density != Density.Compact
@@ -974,45 +1030,43 @@ class IndexModel(
         return replaceWindow { fetchSearch(text) }
     }
 
-    suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean, label: String): List<IndexRow> {
-        val found = try {
-            session.searchCriterion(kind, argument)
+    /**
+     * Runs the filter chain as ONE server search carrying every criterion (never intersects result sets on the
+     * client). Null with [notice] set when the search failed.
+     */
+    private suspend fun searchFilters(filters: List<AppliedFilter>): Set<Long>? {
+        val (kind, argument) = combinedFilterSearch(filters) ?: return emptySet()
+        return try {
+            session.searchCriterion(kind, argument).toSet()
         } catch (failure: MailFailure) {
             notice = failure.text
-            return heldRows
+            null
         }
-        val loaded = store.load()
+    }
+
+    /** Replaces the filter chain with [filters] (empty = show all), re-running the one combined search. */
+    private suspend fun setFilters(filters: List<AppliedFilter>): List<IndexRow> {
+        val found = if (filters.isEmpty()) null else (searchFilters(filters) ?: return heldRows)
         val savedUids = filterUids
-        val savedStack = filterStack.toList()
         val savedSearch = activeSearch
         val savedAdvanced = activeAdvanced
         val savedScope = activeScope
         val savedMailboxes = orderMailboxes
         val savedSearchField = activeSearchField
         val savedFilters = appliedFilters.toList()
+        val loaded = store.load()
         account = loaded
         includePreview = loaded.density != Density.Compact
         activeSearch = null
         activeAdvanced = null
         clearSearchScope()
-        val foundSet = found.toSet()
-        val chip = AppliedFilter(label, argument)
-        if (narrow && savedUids != null) {
-            filterStack.addLast(savedUids)
-            filterUids = savedUids.intersect(foundSet)
-            appliedFilters.add(chip)
-        } else {
-            filterStack.clear()
-            filterUids = foundSet
-            appliedFilters.clear()
-            appliedFilters.add(chip)
-        }
+        filterUids = found
+        appliedFilters.clear()
+        appliedFilters.addAll(filters)
         armKeep()
         val rows = replaceWindow { fetchCurrent() }
         if (windowFailed) {
             filterUids = savedUids
-            filterStack.clear()
-            filterStack.addAll(savedStack)
             activeSearch = savedSearch
             activeAdvanced = savedAdvanced
             activeScope = savedScope
@@ -1022,106 +1076,55 @@ class IndexModel(
             appliedFilters.addAll(savedFilters)
         }
         return rows
+    }
+
+    /** Narrowing adds the criterion to the chain and searches again with all of them; otherwise it starts a chain. */
+    suspend fun applyCriterion(kind: String, argument: String, narrow: Boolean, label: String): List<IndexRow> {
+        val chip = AppliedFilter(label, argument, kind)
+        val chain = if (narrow && filterUids != null) appliedFilters + chip else listOf(chip)
+        return setFilters(chain)
+    }
+
+    /** Quick filter "show new": narrows the current list to \Recent-and-unseen messages (IMAP NEW). */
+    suspend fun showNew(label: String): List<IndexRow> = applyCriterion("New", "", narrow = true, label = label)
+
+    /** Quick filter "show not deleted": narrows the current list to UNDELETED. */
+    suspend fun showNotDeleted(label: String): List<IndexRow> =
+        applyCriterion("NotDeleted", "", narrow = true, label = label)
+
+    /**
+     * "Show this thread": narrows the current list to [uid] and its replies below it in the thread (its subtree),
+     * as a UID criterion in the same combined search. Uses the current thread view, or one THREAD REFERENCES.
+     */
+    suspend fun showThreadOf(uid: Long, label: String): List<IndexRow> {
+        val plan = if (threading && threadPlan.isNotEmpty()) {
+            threadPlan
+        } else {
+            try {
+                collapsedThreads(session.thread(SortKey.ThreadReferences), newestFirst = false)
+            } catch (failure: MailFailure) {
+                notice = failure.text
+                return heldRows
+            }
+        }
+        val uids = threadSubtree(plan, uid)
+        return applyCriterion("Uid", uidSetText(uids), narrow = true, label = label)
     }
 
     suspend fun showAll(): List<IndexRow> {
-        val savedUids = filterUids
-        val savedStack = filterStack.toList()
-        val savedSearch = activeSearch
-        val savedAdvanced = activeAdvanced
-        val savedScope = activeScope
-        val savedMailboxes = orderMailboxes
-        val savedSearchField = activeSearchField
-        val savedFilters = appliedFilters.toList()
-        if (savedUids == null && savedStack.isEmpty() && savedSearch == null && savedFilters.isEmpty()) return heldRows
-        filterUids = null
-        filterStack.clear()
-        activeSearch = null
-        activeAdvanced = null
-        clearSearchScope()
-        appliedFilters.clear()
-        armKeep()
-        val rows = replaceWindow { fetchCurrent() }
-        if (windowFailed) {
-            filterUids = savedUids
-            filterStack.clear()
-            filterStack.addAll(savedStack)
-            activeSearch = savedSearch
-            activeAdvanced = savedAdvanced
-            activeScope = savedScope
-            orderMailboxes = savedMailboxes
-            activeSearchField = savedSearchField
-            appliedFilters.clear()
-            appliedFilters.addAll(savedFilters)
-        }
-        return rows
+        if (filterUids == null && activeSearch == null && appliedFilters.isEmpty()) return heldRows
+        return setFilters(emptyList())
     }
 
+    /** Widening drops the last criterion and rebuilds the one search from the rest. */
     suspend fun widenFilter(): List<IndexRow> {
-        if (filterStack.isEmpty()) return heldRows
-        val savedUids = filterUids
-        val savedStack = filterStack.toList()
-        val savedSearch = activeSearch
-        val savedAdvanced = activeAdvanced
-        val savedScope = activeScope
-        val savedMailboxes = orderMailboxes
-        val savedSearchField = activeSearchField
-        val savedFilters = appliedFilters.toList()
-        filterUids = filterStack.removeLast()
-        if (appliedFilters.isNotEmpty()) appliedFilters.removeAt(appliedFilters.lastIndex)
-        activeSearch = null
-        activeAdvanced = null
-        clearSearchScope()
-        armKeep()
-        val rows = replaceWindow { fetchCurrent() }
-        if (windowFailed) {
-            filterUids = savedUids
-            filterStack.clear()
-            filterStack.addAll(savedStack)
-            activeSearch = savedSearch
-            activeAdvanced = savedAdvanced
-            activeScope = savedScope
-            orderMailboxes = savedMailboxes
-            activeSearchField = savedSearchField
-            appliedFilters.clear()
-            appliedFilters.addAll(savedFilters)
-        }
-        return rows
+        if (appliedFilters.size < 2) return heldRows
+        return setFilters(appliedFilters.dropLast(1))
     }
 
     suspend fun dropFiltersFrom(index: Int): List<IndexRow> {
         if (index < 0 || index >= appliedFilters.size) return heldRows
-        if (index == 0) return showAll()
-        val savedUids = filterUids
-        val savedStack = filterStack.toList()
-        val savedSearch = activeSearch
-        val savedAdvanced = activeAdvanced
-        val savedScope = activeScope
-        val savedMailboxes = orderMailboxes
-        val savedSearchField = activeSearchField
-        val savedFilters = appliedFilters.toList()
-        repeat(appliedFilters.size - index) {
-            if (filterStack.isNotEmpty()) filterUids = filterStack.removeLast()
-        }
-        appliedFilters.subList(index, appliedFilters.size).clear()
-        activeSearch = null
-        activeAdvanced = null
-        clearSearchScope()
-        armKeep()
-        val rows = replaceWindow { fetchCurrent() }
-        if (windowFailed) {
-            filterUids = savedUids
-            filterStack.clear()
-            filterStack.addAll(savedStack)
-            activeSearch = savedSearch
-            activeAdvanced = savedAdvanced
-            activeScope = savedScope
-            orderMailboxes = savedMailboxes
-            activeSearchField = savedSearchField
-            appliedFilters.clear()
-            appliedFilters.addAll(savedFilters)
-        }
-        return rows
+        return setFilters(appliedFilters.take(index))
     }
 
     suspend fun onFirstVisible(index: Int): List<IndexRow> {

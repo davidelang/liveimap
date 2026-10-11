@@ -4467,7 +4467,83 @@ bool emptyText(JNIEnv * env, const char * argument) {
     return true;
 }
 
+struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument);
+
+// "Uid" argument: an IMAP UID set such as 1,3:5,9 (digits, commas, colons only). Null when malformed.
+static struct mailimap_search_key * uidSetKey(const char * text) {
+    if (text == nullptr || *text == 0) return nullptr;
+    struct mailimap_set * set = mailimap_set_new_empty();
+    if (set == nullptr) return nullptr;
+    const char * p = text;
+    while (*p != 0) {
+        uint64_t first = 0, last = 0;
+        int digits = 0;
+        while (*p >= '0' && *p <= '9' && digits < 10) { first = first * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
+        if (digits == 0 || first == 0 || first > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+        last = first;
+        if (*p == ':') {
+            ++p;
+            last = 0;
+            digits = 0;
+            while (*p >= '0' && *p <= '9' && digits < 10) { last = last * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
+            if (digits == 0 || last == 0 || last > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+        }
+        if (mailimap_set_add_interval(set, (uint32_t) first, (uint32_t) last) != MAILIMAP_NO_ERROR) {
+            mailimap_set_free(set);
+            return nullptr;
+        }
+        if (*p == ',') { ++p; if (*p == 0) { mailimap_set_free(set); return nullptr; } }
+        else if (*p != 0) { mailimap_set_free(set); return nullptr; }
+    }
+    struct mailimap_search_key * key = mailimap_search_key_new_uid(set);
+    if (key == nullptr) mailimap_set_free(set);
+    return key;
+}
+
+// "Group" argument: a nested query (IndexModel.groupArgument): "And"/"Or", then steps "Yes|Not US kind US argument",
+// separated by RS. Groups may nest only to a small depth. Throws "bad search" when malformed.
+static struct mailimap_search_key * groupKey(JNIEnv * env, const char * text, int depth) {
+    if (text == nullptr || depth > 8) { throwFailure(env, "bad search"); return nullptr; }
+    std::vector<std::string> lines;
+    std::string cur;
+    for (const char * p = text; ; ++p) {
+        if (*p == 0x1e || *p == 0) { lines.push_back(cur); cur.clear(); if (*p == 0) break; }
+        else cur.push_back(*p);
+    }
+    if (lines.size() < 2 || (lines[0] != "And" && lines[0] != "Or")) { throwFailure(env, "bad search"); return nullptr; }
+    const bool isAnd = lines[0] == "And";
+    struct mailimap_search_key * folded = nullptr;
+    for (size_t i = 1; i < lines.size(); ++i) {
+        size_t a = lines[i].find('\x1f');
+        size_t b = a == std::string::npos ? a : lines[i].find('\x1f', a + 1);
+        if (b == std::string::npos) {
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
+        std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
+        struct mailimap_search_key * step = kind == "Group" ? groupKey(env, arg.c_str(), depth + 1)
+                                                            : criterionKey(env, kind.c_str(), arg.c_str());
+        if (env->ExceptionCheck() || step == nullptr) {
+            if (step != nullptr) mailimap_search_key_free(step);
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            if (!env->ExceptionCheck()) throwFailure(env, "bad search");
+            return nullptr;
+        }
+        if (mark == "Not") step = notKey(step);
+        folded = folded == nullptr ? step : (isAnd ? andKey(folded, step) : keyOr(folded, step));
+        if (folded == nullptr) { throwFailure(env, "search failed"); return nullptr; }
+    }
+    return folded;
+}
+
 struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument) {
+    if (sameKind(kind, "Uid")) {
+        struct mailimap_search_key * key = uidSetKey(argument);
+        if (key == nullptr) throwFailure(env, "bad search");
+        return key;
+    }
+    if (sameKind(kind, "Group")) return groupKey(env, argument, 0);
     if (sameKind(kind, "All")) return mailimap_search_key_new_all();
     if (sameKind(kind, "New")) return searchKeyType(MAILIMAP_SEARCH_KEY_NEW);
     if (sameKind(kind, "NotNew")) return notKey(searchKeyType(MAILIMAP_SEARCH_KEY_NEW));
