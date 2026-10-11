@@ -7110,8 +7110,10 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
     args[3].z = channelBinding ? JNI_TRUE : JNI_FALSE;
+    args[4].l = jclient;  // was missing: an uninitialized jobject aborted the VM on the first SMTP AUTH
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
+    if (jclient != nullptr) env->DeleteLocalRef(jclient);
     env->DeleteLocalRef(cls);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();

@@ -1,4 +1,5 @@
-greenmail-214	3025	lab.test
-greenmail-16	3025	lab.test
-greenmail-dev	3025	lab.test
-stalwart-dev	587	localhost.local
+greenmail-214	None	3025	lab.test
+greenmail-16	None	3025	lab.test
+greenmail-dev	None	3025	lab.test
+stalwart-dev	None	587	localhost.local
+stalwart-dev	StartTls	587	localhost.local
