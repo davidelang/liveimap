@@ -28,7 +28,7 @@ class LabAccountCopyTest {
             for (a in accounts) {
                 store.selectAccount(a.id)
                 val s = store.load()
-                if (s.imapHost.contains(arg("labAccountMatch"), ignoreCase = true)) {
+                if (s.imapHost.contains(arg("labAccountMatch"), ignoreCase = true) || a.name.contains(arg("labAccountMatch"), ignoreCase = true)) {
                     out = s.encode() to store.password()
                     break
                 }
@@ -36,7 +36,7 @@ class LabAccountCopyTest {
         } finally {
             if (original != null) store.selectAccount(original)
         }
-        val (settings, pw) = out ?: error("no matching account")
+        val (settings, pw) = out ?: error("no matching account among " + accounts.size)
         val b = android.os.Bundle()
         b.putString("labAcct", Base64.encodeToString(settings.toByteArray(), Base64.NO_WRAP) + ":" +
             Base64.encodeToString(pw.toByteArray(), Base64.NO_WRAP))
