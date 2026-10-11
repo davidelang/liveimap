@@ -1921,7 +1921,7 @@ private fun MessageIndexLoaded(
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (_: Exception) {
-                                    pollIntervalSeconds(loaded)
+                                    fixedSeconds ?: pollIntervalSeconds(loaded ?: AccountSettings())
                                 }
                                 delay(seconds * 1000L)
                                 try {
