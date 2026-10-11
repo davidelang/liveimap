@@ -156,6 +156,17 @@ class LabSuiteTest {
                     check(w.uids.sorted() == full.sorted().takeLast(3)) { "window ${w.uids} != tail ${full.sorted().takeLast(3)}" }
                     "${w.total} ${w.uids.size}"
                 }
+                step("clientSortSize") {
+                    // Chunked client sort (sequence-range FETCH) against the server's SORT, by size.
+                    var reports = 0
+                    val client = session.clientOrder(SortKey.Size, false, { _, _ -> reports++ })
+                    if ("SORT" in session.capabilities) {
+                        val server = session.sort(SortKey.Size, false)
+                        check(client.size == server.size) { "client ${client.size} != server ${server.size}" }
+                    }
+                    check(reports >= 1) { "no progress" }
+                    "${client.size} in $reports chunk(s)"
+                }
                 step("longSearch") {
                     // Body search on a side connection: same hits as the main session, which stays usable.
                     val main = session.searchCriterion("Body", "message").sorted()
