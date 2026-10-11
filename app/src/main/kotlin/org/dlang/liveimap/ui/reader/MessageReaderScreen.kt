@@ -1762,17 +1762,21 @@ private fun MessageReaderLoaded(
                                             if (!url.isNullOrEmpty()) linkBridge.onLink(url)
                                         }
 
+                                        // minSdk 26: only the request overload is called. Never prompt from it.
                                         @Deprecated("Deprecated in API 24")
-                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                                            confirm(url)
-                                            return true
-                                        }
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
 
                                         override fun shouldOverrideUrlLoading(
                                             view: WebView?,
                                             request: WebResourceRequest?,
                                         ): Boolean {
-                                            confirm(request?.url?.toString())
+                                            // Every navigation is cancelled; only a real tap on a main-frame link
+                                            // (not a meta refresh or other redirect) may prompt.
+                                            if (request != null &&
+                                                navigationMayPrompt(request.hasGesture(), request.isRedirect, request.isForMainFrame)
+                                            ) {
+                                                confirm(request.url?.toString())
+                                            }
                                             return true
                                         }
                                     }
@@ -2290,7 +2294,7 @@ private fun themedHtml(page: String, dark: Boolean, background: Int, foreground:
             css + page
         }
     }
-    return "<meta charset=\"utf-8\">$styled"
+    return "<meta charset=\"utf-8\">" + stripMetaRefresh(styled)
 }
 
 private fun cssColor(argb: Int): String = "#%06X".format(argb and 0xFFFFFF)
