@@ -6860,6 +6860,31 @@ struct mailimap_fetch_type * uidPlusExtra(struct mailimap_fetch_att * extra) {
     return fetch;
 }
 
+// FETCH by message sequence numbers [first, last]; the fetch type should include UID.
+clist * seqFetchRange(JNIEnv * env, LiveSession * session, struct mailimap_fetch_type * fetch, uint32_t first,
+    uint32_t last) {
+    if (fetch == nullptr) {
+        throwFailure(env, "fetch failed");
+        return nullptr;
+    }
+    struct mailimap_set * set = mailimap_set_new_interval(first, last);
+    if (set == nullptr) {
+        mailimap_fetch_type_free(fetch);
+        throwFailure(env, "fetch failed");
+        return nullptr;
+    }
+    clist * list = nullptr;
+    int r = mailimap_fetch(session->imap, set, fetch, &list);
+    mailimap_set_free(set);
+    mailimap_fetch_type_free(fetch);
+    if (!cmdOk(r)) {
+        if (list != nullptr) mailimap_fetch_list_free(list);
+        throwImap(env, session, r, "fetch failed");
+        return nullptr;
+    }
+    return list;
+}
+
 clist * uidFetchAll(JNIEnv * env, LiveSession * session, struct mailimap_fetch_type * fetch) {
     if (fetch == nullptr) {
         throwFailure(env, "fetch failed");
@@ -7017,8 +7042,8 @@ jstring jStringOrEmpty(JNIEnv * env, const std::string & text) {
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFields(JNIEnv * env, jobject, jlong handle,
-    jstring fieldName) {
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JNIEnv * env, jobject, jlong handle,
+    jstring fieldName, jint first, jint last) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -7043,7 +7068,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFields(JNIEnv 
         const char * names[] = { name };
         extra = peekHeaderFields(names, 1);
     }
-    clist * list = uidFetchAll(env, session, uidPlusExtra(extra));
+    if (first < 1 || last < first) {
+        if (extra != nullptr) mailimap_fetch_att_free(extra);
+        throwFailure(env, "bad range");
+        unlockSession(session);
+        return nullptr;
+    }
+    clist * list = seqFetchRange(env, session, uidPlusExtra(extra), static_cast<uint32_t>(first),
+        static_cast<uint32_t>(last));
     if (env->ExceptionCheck()) {
         unlockSession(session);
         return nullptr;

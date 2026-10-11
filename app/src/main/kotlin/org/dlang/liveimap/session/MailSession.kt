@@ -83,7 +83,12 @@ interface MailSession {
      */
     suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? = null
     suspend fun thread(key: SortKey): ThreadNode
-    suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> =
+    suspend fun clientOrder(
+        key: SortKey,
+        newestFirst: Boolean,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        cancelled: () -> Boolean = { false },
+    ): List<Long> =
         throw MailFailure("SORT was not advertised")
 
     suspend fun clientThread(key: SortKey): ThreadNode =

@@ -147,8 +147,12 @@ class SerialMailSession(
     override suspend fun thread(key: SortKey): ThreadNode =
         onLane { inner.thread(key) }
 
-    override suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> =
-        onLane { inner.clientOrder(key, newestFirst) }
+    override suspend fun clientOrder(
+        key: SortKey,
+        newestFirst: Boolean,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+    ): List<Long> = onLane { inner.clientOrder(key, newestFirst, onProgress, cancelled) }
 
     override suspend fun clientThread(key: SortKey): ThreadNode =
         onLane { inner.clientThread(key) }

@@ -869,7 +869,12 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    override suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> {
+    override suspend fun clientOrder(
+        key: SortKey,
+        newestFirst: Boolean,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+    ): List<Long> {
         val field = when (key) {
             SortKey.Date -> "DATE"
             SortKey.From -> "FROM"
@@ -879,12 +884,22 @@ class LibetpanMailSession : MailSession {
             SortKey.Size -> "SIZE"
             else -> throw MailFailure("use an arrival IndexMode")
         }
-        return keeper.read("client-sort") {
-            val h = requireHandle()
-            remember("CLIENT SORT $field $newestFirst") {
-                val rows = nativeFetchSortFields(h, field) ?: throw MailFailure("sort failed")
-                orderedClientUids(rows, key, newestFirst)
+        val exists = selectedExists()
+        return remember("CLIENT SORT $field $newestFirst") {
+            // Chunks of ClientSortChunk messages: progress and Cancel between chunks, and only (uid, key) kept.
+            val keys = ClientSortKeys(exists, numeric = key == SortKey.Date || key == SortKey.Size)
+            var first = 1
+            while (first <= exists) {
+                if (cancelled()) throw MailFailure("sort cancelled")
+                val last = minOf(exists, first + ClientSortChunk - 1)
+                val rows = keeper.read("client-sort") {
+                    nativeFetchSortFieldsRange(requireHandle(), field, first, last) ?: throw MailFailure("sort failed")
+                }
+                for (row in rows) keys.add(row)
+                onProgress(last, exists)
+                first = last + 1
             }
+            keys.order(newestFirst).toList()
         }
     }
 
@@ -1123,25 +1138,6 @@ class LibetpanMailSession : MailSession {
         return value
     }
 
-    private fun orderedClientUids(rows: Array<SortField>, key: SortKey, newestFirst: Boolean): List<Long> {
-        val filled = ArrayList<SortField>()
-        val blanks = ArrayList<SortField>()
-        for (row in rows) {
-            if (row.uid <= 0L) continue
-            if (row.empty) blanks.add(row) else filled.add(row)
-        }
-        val numeric = key == SortKey.Date || key == SortKey.Size
-        val byValue = if (numeric) {
-            compareBy<SortField> { it.number }.thenBy { it.uid }
-        } else {
-            compareBy<SortField> { it.text.lowercase() }.thenBy { it.uid }
-        }
-        filled.sortWith(byValue)
-        if (newestFirst) filled.reverse()
-        blanks.sortBy { it.uid }
-        return (filled.asSequence() + blanks.asSequence()).map { it.uid }.toList()
-    }
-
     private fun sortToken(key: SortKey): String = when (key) {
         SortKey.Date -> "DATE"
         SortKey.From -> "FROM"
@@ -1314,7 +1310,7 @@ class LibetpanMailSession : MailSession {
         first: Int,
         last: Int,
     ): LongArray?
-    private external fun nativeFetchSortFields(handle: Long, field: String): Array<SortField>?
+    private external fun nativeFetchSortFieldsRange(handle: Long, field: String, first: Int, last: Int): Array<SortField>?
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)
@@ -1430,4 +1426,51 @@ internal fun uidWindowOf(raw: LongArray): UidWindow {
     val uids = raw.drop(1)
     val total = raw[0].takeIf { it >= 0 }?.toInt() ?: uids.size
     return UidWindow(total, uids)
+}
+
+internal const val ClientSortChunk = 5000
+
+/**
+ * Client-side sort keys in primitive arrays: uid and numeric key as longs, text keys lowercased once. Blank keys
+ * sort after the rest by uid, as before.
+ */
+internal class ClientSortKeys(capacity: Int, private val numeric: Boolean) {
+    private var uids = LongArray(capacity.coerceAtLeast(16))
+    private var numbers = if (numeric) LongArray(uids.size) else LongArray(0)
+    private var texts: Array<String?> = if (numeric) emptyArray() else arrayOfNulls(uids.size)
+    private var blank = BooleanArray(uids.size)
+    var size = 0
+        private set
+
+    fun add(row: SortField) {
+        if (row.uid <= 0L) return
+        if (size == uids.size) grow()
+        uids[size] = row.uid
+        if (numeric) numbers[size] = row.number else texts[size] = row.text.lowercase()
+        blank[size] = row.empty
+        size += 1
+    }
+
+    private fun grow() {
+        val n = uids.size * 2
+        uids = uids.copyOf(n)
+        blank = blank.copyOf(n)
+        if (numeric) numbers = numbers.copyOf(n) else texts = texts.copyOf(n)
+    }
+
+    fun order(newestFirst: Boolean): LongArray {
+        val filled = (0 until size).filter { !blank[it] }
+        val byValue: Comparator<Int> = if (numeric) {
+            compareBy<Int> { numbers[it] }.thenBy { uids[it] }
+        } else {
+            compareBy<Int> { texts[it] }.thenBy { uids[it] }
+        }
+        val sorted = filled.sortedWith(byValue).let { if (newestFirst) it.asReversed() else it }
+        val blanks = (0 until size).filter { blank[it] }.sortedBy { uids[it] }
+        val out = LongArray(size)
+        var k = 0
+        for (i in sorted) out[k++] = uids[i]
+        for (i in blanks) out[k++] = uids[i]
+        return out
+    }
 }
