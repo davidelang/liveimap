@@ -8,7 +8,7 @@ the fake's command log:
     offered, UID EXPUNGE only for DeletePermanently with UIDPLUS, and only of the deleted UID;
   - the messages that disappeared are exactly the ones the scenario and settings intend.
 Writes recordings/safety-<stamp>.tsv (one row per case) and prints it."""
-import json, os, socket, subprocess, sys, time
+import json, os, re, socket, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import lab, personality
@@ -39,7 +39,10 @@ def intended(scenario, cfg, caps, uids):
     auto = cfg.get("auto", False)
     if scenario == "delete":
         perm = cfg.get("policy") == "DeletePermanently" and "UIDPLUS" in caps
-        trash_move = cfg.get("policy") == "MoveToTrash" and cfg.get("move") == "ImapMove" and "MOVE" in caps
+        # The model offers a \\Trash mailbox only with SPECIAL-USE; without a known Trash the policy falls back
+        # to MarkDeleted (effectiveDeletePolicy).
+        trash_move = (cfg.get("policy") == "MoveToTrash" and cfg.get("move") == "ImapMove" and "MOVE" in caps
+                      and "SPECIAL-USE" in caps and "LIST-EXTENDED" in caps)
         return {uids[1]} if perm or trash_move or auto else set()
     if scenario == "move":
         imap_move = cfg.get("move") == "ImapMove" and "MOVE" in caps
@@ -92,6 +95,13 @@ def main():
         pj = os.path.join(lab.GEN, "personalities", f"{name}.json")
         if not os.path.exists(pj):
             json.dump(personality.build(src), open(pj, "w"), indent=1)
+        pcaps = set()
+        for vs in json.load(open(pj))["table"].values():
+            for v in vs:
+                for it in v["items"]:
+                    m = re.search(r"CAPABILITY ([^\]]*)", it.get("line", ""), re.I)
+                    if m:
+                        pcaps |= set(m.group(1).split())
         folder = "LiveIMAP-Test"
         seed = os.path.join(os.path.dirname(src), "seed.txt")
         if os.path.exists(seed) and ": " in open(seed).read():
@@ -125,7 +135,9 @@ def main():
             st = [f for f in files if f.endswith(".steps.tsv")]
             rows = [l.split("\t") for l in open(st[0]).read().splitlines()[1:]] if st else []
             info = {r[0]: r for r in rows}
-            caps = set(info.get("open", ["", "", ""])[2].upper().split()) if "open" in info else set()
+            # Offered capabilities: the personality's (as the fake serves them) minus the dropped ones. The app's
+            # own "open" step detail is truncated, so it is not used here.
+            caps = {c.upper() for c in pcaps} - {d.upper() for d in drop}
             uids = [int(x) for x in info.get("list", ["", "", ""])[2].split(",") if x.strip().isdigit()] if "list" in info else []
             ev = [json.loads(l) for l in open(flog)] if os.path.exists(flog) else []
             problems = []

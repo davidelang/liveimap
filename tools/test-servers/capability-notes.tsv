@@ -1,0 +1,76 @@
+# capability	spec	what it does	recommendation
+ACL	RFC 4314	Per-mailbox access rights (GETACL/SETACL/MYRIGHTS).	Later, read-only: MYRIGHTS to grey out delete/expunge on shared folders. Alpine has no ACL editor, so skip SETACL.
+ACL2=UNION	draft (Cyrus)	ACL rights-union semantics.	No: server-side ACL detail, no user-visible gain.
+ANNOTATE-EXPERIMENT-1	RFC 5257	Per-message annotations.	No: experimental and unused by alpine.
+ANNOTATEMORE	draft (pre-METADATA)	Old mailbox annotations.	No: METADATA superseded it.
+APPENDLIMIT	RFC 7889	Largest APPEND the server accepts.	Yes, cheap: check before saving to Sent/Drafts and say "too large" instead of a failed APPEND.
+BINARY	RFC 3516	Server-side decoding of base64/QP parts (FETCH BINARY).	Keep using (already used): fetches decoded slices, fewer bytes.
+CATENATE	RFC 4469	Build an APPEND from parts of existing messages.	Later: forward-as-attachment without download. Low priority.
+CHILDREN	RFC 3348	\HasChildren/\HasNoChildren on LIST.	Keep using (already used): one-level folder tree.
+COMPRESS=DEFLATE	RFC 4978	Deflate the connection.	Yes, as a setting (default on for mobile data): pure bandwidth win, no state. Needs zlib in the libetpan build.
+CONDSTORE	RFC 7162	MODSEQ per message; CHANGEDSINCE/UNCHANGEDSINCE.	Partly: UNCHANGEDSINCE on STORE guards against overwriting outside flag changes. No local store, so no resync use.
+CONTEXT=SEARCH	RFC 5267	Live-updating search results.	No: heavy server cost; re-run the search on EXISTS/EXPUNGE as the design says.
+CREATE-SPECIAL-USE	RFC 6154	CREATE a mailbox with a special-use attribute.	Yes, small: when the user picks "create Trash/Sent", tag it so other clients agree.
+DIGEST=SHA1	draft (Cyrus)	Message digests on FETCH.	No.
+ENABLE	RFC 5161	Turn on extensions (QRESYNC, UTF8=ACCEPT, IMAP4rev2).	Keep (used for QRESYNC). Recorded use not matched by the old regex.
+ESEARCH	RFC 4731	SEARCH RETURN (MIN MAX COUNT ALL).	Keep using (already used): counts and edges without full UID lists (large folders).
+ESORT	RFC 5267	SORT RETURN with partial results.	Keep using (already used).
+FILTER=SIEVE	RFC 5466	Server-side search filters written in Sieve.	No: ManageSieve covers rules.
+I18NLEVEL=1	RFC 5255	Server-side i18n collation/comparators.	Later: better SORT by subject for non-ASCII. Low priority.
+ID	RFC 2971	Client/server identification.	Optional: send a minimal ID (name, version) only if a server needs it; privacy setting. Not needed by alpine.
+IDLE	RFC 2177	Push of EXISTS/EXPUNGE/FETCH on the selected mailbox.	Yes (designed, watch connection). Recordings do not show it because the lab suite does not watch; add an IDLE step.
+IMAP4REV2	RFC 9051	IMAP4rev2 base protocol.	Not yet: libetpan and the app speak rev1; ENABLE IMAP4rev2 changes responses (ESEARCH for SEARCH, no RECENT). Revisit when rev1 goes away.
+INPROGRESS	RFC 9585	Progress notifications for long commands.	Later: show progress for big searches/copies. Low priority.
+JMAPACCESS	RFC 9698	Advertises the server's JMAP URL.	Yes, for discovery: offer the JMAP session for the same account when configured.
+LIST-EXTENDED	RFC 5258	LIST selection/return options.	Keep using (already used, knownTrash).
+LIST-METADATA	draft	METADATA in LIST.	No.
+LIST-MYRIGHTS	RFC 8440	MYRIGHTS in LIST.	Later, with ACL (one LIST instead of per-folder MYRIGHTS).
+LIST-STATUS	RFC 5819	STATUS returned in LIST.	Yes: folder unread counts in one round trip per level (fetch-only-what-is-needed). The app sends RETURN (STATUS) on some servers; make it the rule where offered.
+LITERAL+	RFC 7888	Non-synchronizing literals.	Yes, small: saves a round trip per literal (APPEND, login with odd passwords, search strings). libetpan support needed.
+LOGIN-REFERRALS	RFC 2221	Server may refer the login elsewhere.	Report the referral text; no auto-follow (security).
+MAILBOX-REFERRALS	RFC 2193	Referrals for mailboxes on other servers.	No.
+MESSAGELIMIT	RFC 9738	Max messages per command.	Yes when offered: cap UID sets in bursts accordingly (large folders).
+METADATA	RFC 5464	Server/mailbox annotations.	No: nothing in alpine needs it.
+MOVE	RFC 6851	UID MOVE (atomic copy+expunge of only those UIDs).	Yes (implemented, MoveMethod=ImapMove, off by default for alpine parity). Exercised by the safety suite.
+MULTIAPPEND	RFC 3502	Several messages in one APPEND.	Later: saving several messages to a folder. Low priority.
+MULTISEARCH	RFC 7377	Search several mailboxes in one command.	Yes when offered: search scopes (Current/All/Subscribed) in one command instead of a loop.
+NAMESPACE	RFC 2342	Personal/other/shared roots.	Keep using (already used).
+NOTIFY	RFC 5465	Push for many mailboxes on one connection.	Yes, later (designed for more watched folders).
+NO_ATOMIC_RENAME	Dovecot	Rename is not atomic.	No action: informational.
+OBJECTID	RFC 8474	Stable EMAILID/THREADID/MAILBOXID.	Partly: MAILBOXID detects a folder renamed by another client. No local store, so no long-term ID use.
+PARTIAL	RFC 9394	Paged SEARCH/FETCH results.	Yes when offered: index windows over 200k-message folders without full UID lists.
+PREVIEW	RFC 8970	Server-made message previews.	Keep using (already used for index previews).
+QRESYNC	RFC 7162	Resync via VANISHED.	Partly: the app ENABLEs it; useful only for VANISHED during a session. No resync from a stored state (no local store).
+QUOTA	RFC 9208	Storage/message quotas.	Yes, read-only: show "mailbox 95% full" (alpine shows quota). QUOTA=RES-*/QUOTASET are its sub-options.
+REPLACE	RFC 8508	Replace a message atomically (APPEND+expunge old).	Later for drafts: avoids the mark-deleted old draft. Must expunge only the replaced UID, which REPLACE guarantees.
+RIGHTS	RFC 4314	Which rights letters the server supports.	With ACL only.
+SASL-IR	RFC 4959	Initial response in AUTHENTICATE.	Yes: saves a round trip; the app now sends AUTHENTICATE EXTERNAL = with it.
+SAVEDATE	RFC 8514	The date a message was saved to the mailbox.	Later: "sort by arrival in this folder" accuracy. Low priority.
+SAVELIMIT	RFC 9738	Max saved search results.	With SEARCHRES only.
+SCAN	Cyrus	Search across mailbox names.	No.
+SEARCH=FUZZY	RFC 6203	Fuzzy search and relevancy.	Optional setting for text search; not alpine behaviour.
+SEARCHRES	RFC 5182	$ result variable for chained commands.	Yes, small: SEARCH then UID STORE/COPY $ avoids sending large UID sets back (bulk select-all actions).
+SNIPPET=FUZZY	draft (Dovecot)	Old name of PREVIEW=FUZZY.	No: PREVIEW covers it.
+SORT	RFC 5256	Server-side sort.	Keep using (already used).
+SORT=DISPLAY	RFC 5957	Sort by display name.	Yes: alpine's "From" sort matches display names more closely.
+SORT=MODSEQ	draft	Sort by MODSEQ.	No.
+SORT=UID	draft	Sort by UID.	No: arrival order is already UID order.
+SPECIAL-USE	RFC 6154	\Trash, \Sent, \Drafts ... attributes.	Keep using (already used, knownTrash).
+STATUS=SIZE	RFC 8438	Mailbox size in STATUS.	Yes, small: folder size in the folder list, alpine-style.
+THREAD	RFC 5256	Server-side threading.	Keep using REFERENCES and ORDEREDSUBJECT (already used). THREAD=REFS (draft): offer as a third algorithm only if asked.
+UIDBATCHES	draft	Server-chosen UID batches.	Later, with PARTIAL, for big folders.
+UIDONLY	RFC 9586	UID-only mode, no sequence numbers.	Later: removes sequence-number races in large busy folders. Needs libetpan work.
+UIDPLUS	RFC 4315	UID EXPUNGE, COPYUID, APPENDUID.	Yes (implemented): the only safe "Delete permanently". Exercised by the safety suite.
+UNAUTHENTICATE	RFC 8437	Return to non-authenticated state.	No: a new connection is simpler.
+UNSELECT	RFC 3691	Leave a mailbox without expunge.	Keep using (already used): the safe leave when Auto-expunge is off.
+URLAUTH	RFC 4467	Authorized IMAP URLs (BURL submission).	Later: send forwards/attachments from IMAP without download (with SMTP BURL). Low priority.
+URL-PARTIAL	RFC 5550	Partial URLs.	With URLAUTH only.
+UTF8=ACCEPT	RFC 6855	UTF-8 mailbox names and headers.	Yes: ENABLE it when offered; fixes non-ASCII folder names. Needs libetpan care.
+WITHIN	RFC 5032	OLDER/YOUNGER search keys.	Yes, small: alpine's age filters as one search key.
+X-CREATEDMODSEQ	Cyrus	Creation MODSEQ.	No.
+X-QUOTA	Cyrus	Extra quota resources.	No: QUOTA covers what is shown.
+X-REPLICATION	Cyrus	Replication internals.	No.
+X-SIEVE-MAILBOX	Cyrus	Sieve scripts stored in a mailbox.	No: ManageSieve.
+XCONVERSATIONS	Cyrus	Conversation IDs.	No: THREAD covers it.
+XLIST	Gmail (old)	Special folders before SPECIAL-USE.	Only as a fallback when SPECIAL-USE is absent (Zimbra/Courier); low priority.
+XMOVE	Cyrus (old)	Old MOVE.	No: use MOVE.
