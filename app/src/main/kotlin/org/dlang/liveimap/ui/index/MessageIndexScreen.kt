@@ -157,6 +157,8 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.session.idleDroppedByServer
+import org.dlang.liveimap.session.idleFallbackSeconds
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.pollIntervalSeconds
@@ -1912,10 +1914,10 @@ private fun MessageIndexLoaded(
                         val poll = loaded != null &&
                             !session.featureCaps.idle &&
                             (loaded.forceSlowerFallbacks || loaded.pollForNewMail)
-                        if (poll) {
+                        suspend fun pollLoop(fixedSeconds: Int?) {
                             while (true) {
                                 val seconds = try {
-                                    pollIntervalSeconds(store.load())
+                                    fixedSeconds ?: pollIntervalSeconds(store.load())
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (_: Exception) {
@@ -1931,9 +1933,20 @@ private fun MessageIndexLoaded(
                                     postSnack(error.text)
                                 }
                             }
-                        }
-                        model.watch { change ->
-                            deliverMailboxChange(change)
+                                                }
+                        if (poll) pollLoop(null)
+                        try {
+                            model.watch { change ->
+                                deliverMailboxChange(change)
+                            }
+                        } catch (error: MailFailure) {
+                            if (!idleDroppedByServer(error.text)) throw error
+                            // The server closed the connection on IDLE (a server bug): say so, then poll instead.
+                            val seconds = idleFallbackSeconds(
+                                loaded?.pollForNewMail == true, pollIntervalSeconds(loaded ?: AccountSettings()),
+                            )
+                            postSnack(appContext.getString(R.string.index_idle_dropped, seconds))
+                            pollLoop(seconds)
                         }
                         awaitCancellation()
                     } catch (error: CancellationException) {

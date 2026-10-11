@@ -744,6 +744,7 @@
     <string name="reader_link_warn">This is not a web or mail link. It opens another app, which may call, send a message or act for you. Open it only if you trust the sender.</string>
     <string name="reader_link_blocked">Links of this type are blocked: they can reach files, other apps\' data or run code.</string>
     <string name="reader_type_mismatch_share">Share as %1$s</string>
+    <string name="index_idle_dropped">The server closed the connection when asked to push new mail (IDLE), which is a server problem. Checking for new mail every %1$d s instead.</string>
     <string name="index_search_progress">%1$d of %2$d</string>
     <string name="index_long_search_done">Search finished: %1$d messages</string>
     <string name="index_long_search_show">Show</string>

@@ -1994,7 +1994,10 @@ void watchMain(LiveSession * session) {
         std::lock_guard<std::mutex> lock(session->startMu);
         if (r != MAILIMAP_NO_ERROR) {
             session->startState = -1;
-            session->startError = imapText(session->watch, "idle failed");
+            // A server that drops the connection on IDLE (no tagged reply, e.g. a crashing imapd) gets a fixed
+            // marker text so the app can fall back to polling (IdleFallback.kt).
+            session->startError = r == MAILIMAP_ERROR_STREAM ? std::string("IDLE dropped by server")
+                                                            : imapText(session->watch, "idle failed");
         } else {
             session->startState = 1;
         }
