@@ -736,4 +736,9 @@
     <string name="settings_client_cert_keychain">Choose Android certificate…</string>
     <string name="settings_client_cert_keychain_current">Android certificate: %1$s</string>
     <string name="settings_auth_mechanism">Login method (blank = automatic; IMAP-LOGIN for the LOGIN command; PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-256…)</string>
+    <string name="reader_type_mismatch_title">Attachment type does not match</string>
+    <string name="reader_type_mismatch_body">%1$s\n\nClaimed type: %2$s\nFile extension type: %3$s\nContent looks like: %4$s</string>
+    <string name="reader_type_mismatch_danger">This kind of file can run code or install an app. Open it only if you trust the sender.</string>
+    <string name="reader_type_mismatch_open">Open as %1$s</string>
+    <string name="reader_type_mismatch_save">Save</string>
 </resources>

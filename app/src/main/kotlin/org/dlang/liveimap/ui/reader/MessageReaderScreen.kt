@@ -190,6 +190,8 @@ private class SaveTarget {
     var uid: Long = 0
 }
 
+internal data class TypeWarning(val row: AttachmentRow, val mismatch: TypeMismatch, val save: Boolean)
+
 internal data class AttachmentRow(
     val section: String,
     val label: String,
@@ -199,6 +201,7 @@ internal data class AttachmentRow(
     val type: String,
     val subtype: String,
     val busy: Boolean = false,
+    val filename: String? = null,
 )
 
 internal class ReaderHeld : ViewModel() {
@@ -419,6 +422,7 @@ private fun MessageReaderLoaded(
     var rowFlags by held.rowFlagsState
     var showHtmlButton by held.showHtmlButtonState
     var pendingLink by remember { mutableStateOf<String?>(null) }
+    var typeWarning by remember { mutableStateOf<TypeWarning?>(null) }
     var allowImages by held.allowImagesState
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
@@ -840,10 +844,43 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun openAttachment(row: AttachmentRow) {
+    // Before open or save: sniff the first 4 KB (the cached file, else a BODY.PEEK partial fetch, which neither
+    // downloads the part nor sets \Seen) and compare it with the claimed type and the extension.
+    fun checkTypeThen(row: AttachmentRow, save: Boolean, proceed: () -> Unit) {
+        scope.launch {
+            val cached = File(appContext.cacheDir, attachmentCacheName(uid, row.section))
+            val head = try {
+                if (cached.isFile && cached.length() > 0) {
+                    cached.inputStream().use { input ->
+                        val buf = ByteArray(SniffBytes)
+                        val n = input.read(buf)
+                        if (n > 0) buf.copyOf(n) else ByteArray(0)
+                    }
+                } else {
+                    gate.withLock {
+                        if (selectedMailbox != mailbox) {
+                            session.select(mailbox)
+                            selectedMailbox = mailbox
+                        }
+                        session.peekPart(uid, row.section, 0, SniffBytes)
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                ByteArray(0)
+            }
+            val mismatch = typeMismatch("${row.type}/${row.subtype}", row.filename, head)
+            if (mismatch == null) proceed() else typeWarning = TypeWarning(row, mismatch, save)
+        }
+    }
+
+    fun openAttachment(row: AttachmentRow) = checkTypeThen(row, save = false) { openAttachmentAs(row, attachmentMime(row)) }
+
+    fun openAttachmentAs(row: AttachmentRow, mime: String) {
         val uri = attachmentUri(attachmentCacheName(uid, row.section))
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, attachmentMime(row))
+            setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = ClipData.newRawUri(row.label, uri)
         }
@@ -870,7 +907,9 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun saveAttachment(row: AttachmentRow) {
+    fun saveAttachment(row: AttachmentRow) = checkTypeThen(row, save = true) { saveAttachmentNow(row) }
+
+    fun saveAttachmentNow(row: AttachmentRow) {
         saveTarget.row = row
         saveTarget.uid = uid
         saveDocument.launch(row.label)
@@ -1861,6 +1900,46 @@ private fun MessageReaderLoaded(
         }
     }
     }
+    val warning = typeWarning
+    if (warning != null) {
+        val m = warning.mismatch
+        val openAs = safeAttachmentMime(m.detected.mime.substringBefore('/'), m.detected.mime.substringAfter('/'))
+        AlertDialog(
+            onDismissRequest = { typeWarning = null },
+            title = { Text(stringResource(R.string.reader_type_mismatch_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.reader_type_mismatch_body,
+                        warning.row.filename ?: warning.row.label,
+                        m.claimed,
+                        m.extension ?: "-",
+                        "${m.detected.label} (${m.detected.mime})",
+                    ) + if (m.detected.dangerous) "\n\n" + stringResource(R.string.reader_type_mismatch_danger) else "",
+                )
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        typeWarning = null
+                        saveAttachmentNow(warning.row)
+                    }) { Text(stringResource(R.string.reader_type_mismatch_save)) }
+                    TextButton(onClick = {
+                        typeWarning = null
+                        val row = warning.row
+                        if (row.done) {
+                            openAttachmentAs(row, openAs)
+                        } else {
+                            postSnack(notConnected)
+                        }
+                    }) { Text(stringResource(R.string.reader_type_mismatch_open, openAs)) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { typeWarning = null }) { Text(stringResource(R.string.reader_cancel)) }
+            },
+        )
+    }
     val confirmedLink = pendingLink
     if (confirmedLink != null) {
         AlertDialog(
@@ -2356,6 +2435,7 @@ internal fun attachmentRowOf(part: MimePart): AttachmentRow = AttachmentRow(
     done = false,
     type = part.type,
     subtype = part.subtype,
+    filename = part.filename?.takeIf { it.isNotEmpty() },
 )
 
 /** Rows that stand for a deeper subtree rather than content: tapping opens the next level. */
