@@ -1,0 +1,76 @@
+package org.dlang.liveimap.ui.index
+
+/**
+ * A sorted message order known only window by window (ESORT PARTIAL). [size] is the server's COUNT; positions
+ * not loaded yet read as [Unknown] (0, never a real UID). [ensure] loads the windows covering a range on demand.
+ * Bulk operations do not need the full list: select all already targets the entire mailbox.
+ */
+class WindowedOrder(
+    private val total: Int,
+    private val windowSize: Int,
+    private val loader: suspend (first: Int, last: Int) -> List<Long>,
+) : AbstractList<Long>() {
+    private val windows = HashMap<Int, List<Long>>()
+
+    override val size: Int get() = total
+
+    override fun get(index: Int): Long {
+        if (index < 0 || index >= total) throw IndexOutOfBoundsException("$index of $total")
+        val w = windows[index / windowSize] ?: return Unknown
+        return w.getOrElse(index % windowSize) { Unknown }
+    }
+
+    fun loadedWindows(): Int = windows.size
+
+    /** Stores a window already fetched (the first one comes with the COUNT). */
+    fun seed(window: Int, uids: List<Long>) {
+        windows[window] = uids
+    }
+
+    /** Loads every window overlapping positions [start] until [start]+[count] (0-based). */
+    suspend fun ensure(start: Int, count: Int) {
+        if (count <= 0 || total == 0) return
+        val from = start.coerceIn(0, total - 1) / windowSize
+        val to = (start + count - 1).coerceIn(0, total - 1) / windowSize
+        for (w in from..to) {
+            if (w in windows) continue
+            val first = w * windowSize + 1
+            val last = minOf(total, first + windowSize - 1)
+            windows[w] = loader(first, last)
+        }
+    }
+
+    /** Known UIDs, in order, skipping unloaded positions. */
+    fun known(): List<Long> = filter { it != Unknown }
+
+    /** After removing [gone], positions shift: keep the total right and reload windows lazily. */
+    fun without(gone: Set<Long>): WindowedOrder {
+        val removed = known().count { it in gone }.coerceAtLeast(if (gone.isEmpty()) 0 else gone.size)
+        return WindowedOrder((total - removed).coerceAtLeast(0), windowSize, loader)
+    }
+
+    /** New messages arrived: the server order changed, so start over with a larger total. */
+    fun grown(by: Int): WindowedOrder = WindowedOrder(total + by, windowSize, loader)
+
+    companion object {
+        const val Unknown = 0L
+    }
+}
+
+/** Removes [gone] from an order, sparse or not. */
+fun orderWithout(order: List<Long>, gone: Set<Long>): List<Long> =
+    if (order is WindowedOrder) order.without(gone) else order.filter { it !in gone }
+
+/** Adds newly arrived UIDs at the front or back of an order; a sparse order reloads its windows instead. */
+fun orderWith(order: List<Long>, placed: List<Long>, front: Boolean): List<Long> = when {
+    order is WindowedOrder -> order.grown(placed.size)
+    front -> placed + order
+    else -> order + placed
+}
+
+/** What the reader may step through: only real UIDs. */
+fun publishableOrder(order: List<Long>): List<Long> = if (order is WindowedOrder) order.known() else order
+
+/** Display positions [lo]..[hi] (1-based) as ascending-UID positions for ESEARCH PARTIAL. */
+fun searchWindowRange(lo: Int, hi: Int, total: Int, newestFirst: Boolean): Pair<Int, Int> =
+    if (newestFirst) (total - hi + 1) to (total - lo + 1) else lo to hi

@@ -1249,7 +1249,7 @@ class IndexModel(
                 heldRows = emptyList()
             } else {
                 val gone = uids.toSet()
-                order = order.filter { it !in gone }
+                order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone }
             }
             notice = null
@@ -1261,7 +1261,7 @@ class IndexModel(
                 destUids = dest,
                 usedMove = usedMove,
             )
-            OpenMessageOrder.publish(mailbox, order, heldRows)
+            OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1282,12 +1282,12 @@ class IndexModel(
                 session.storeFlags(uids, setOf("\\Deleted"), emptySet())
                 session.uidExpunge(uids)
                 val gone = uids.toSet()
-                order = order.filter { it !in gone }
+                order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone }
             }
             notice = null
             mailUndo = null
-            OpenMessageOrder.publish(mailbox, order, heldRows)
+            OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1807,6 +1807,16 @@ class IndexModel(
 
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
+        if (filterUids == null) {
+            val windowed = windowedSort(key, newestFirst)
+            if (windowed != null) {
+                order = windowed
+                arrivalTotal = 0
+                pendingNew = 0
+                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, 0)
+                return pagesOf(windowed)
+            }
+        }
         val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
             session.select(mailbox)
             requireClientFallbackRoom()
@@ -1871,6 +1881,16 @@ class IndexModel(
             return fetchScopedAdvanced(advanced, preserveAnchor)
         }
         orderMailboxes = emptyList()
+        if (advanced == null) {
+            val windowed = windowedSearch(activeSearchField.name, query, view.newestFirst)
+            if (windowed != null) {
+                order = windowed
+                arrivalTotal = 0
+                pendingNew = 0
+                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, 0)
+                return pagesOf(windowed)
+            }
+        }
         val found = if (advanced != null) {
             session.searchCriterion("Advanced", advanced)
         } else {
@@ -1887,10 +1907,45 @@ class IndexModel(
         return loaded
     }
 
+    /**
+     * The sorted order as windows (ESORT PARTIAL): one round trip for the first window plus COUNT, instead of the
+     * whole UID list. Null when the server cannot do it, or answers COUNT without the window (Cyrus 3.12/3.13).
+     */
+    private suspend fun windowedSort(key: SortKey, newestFirst: Boolean): WindowedOrder? {
+        val size = IndexPageSize * 2
+        val first = session.sortWindow(key, newestFirst, 1, size) ?: return null
+        if (first.total <= size) return null
+        val order = WindowedOrder(first.total, size) { lo, hi ->
+            session.sortWindow(key, newestFirst, lo, hi)?.uids ?: throw MailFailure("sort failed")
+        }
+        order.seed(0, first.uids)
+        return order
+    }
+
+    /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
+    private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
+        val size = IndexPageSize * 2
+        val probe = session.searchWindow(kind, query, 1, 1) ?: return null
+        val total = probe.total
+        if (total <= size) return null
+        val order = WindowedOrder(total, size) { lo, hi ->
+            val (a, b) = searchWindowRange(lo, hi, total, newestFirst)
+            val hits = session.searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
+            if (newestFirst) hits.reversed() else hits
+        }
+        order.ensure(0, size)
+        return order
+    }
+
     private suspend fun pagesOf(uids: List<Long>): List<IndexRow> {
-        val visible = uids.drop(pageAnchor * IndexPageSize).take(IndexPageSize)
-        val prefetch = uids.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize)
+        if (uids is WindowedOrder) uids.ensure(pageAnchor * IndexPageSize, IndexPageSize * 2)
+        val visible = uids.drop(pageAnchor * IndexPageSize).take(IndexPageSize).toMutableList()
+        val prefetch = uids.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize).toMutableList()
         val loaded = ArrayList<IndexRow>(visible.size + prefetch.size)
+        if (uids is WindowedOrder) {
+            visible.removeAll { it == WindowedOrder.Unknown }
+            prefetch.removeAll { it == WindowedOrder.Unknown }
+        }
         if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible))
         if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch))
         return loaded
@@ -2055,10 +2110,10 @@ class IndexModel(
             fresh.sortedBy { it.sequence }
         }
         if (view.newestFirst) {
-            order = placed.map { it.uid } + order
+            order = orderWith(order, placed.map { it.uid }, front = true)
             heldRows = placed + heldRows
         } else {
-            order = order + placed.map { it.uid }
+            order = orderWith(order, placed.map { it.uid }, front = false)
             heldRows = heldRows + placed
         }
     }

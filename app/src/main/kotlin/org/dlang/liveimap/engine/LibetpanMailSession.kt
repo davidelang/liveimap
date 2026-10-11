@@ -773,16 +773,17 @@ class LibetpanMailSession : MailSession {
         require(first in 1..last) { "window $first..$last" }
         return keeper.read("sort") {
             val token = featureCaps.imapSortKey(sortToken(key))
+            if (sortPartialIgnored) return@read null
             val h = requireHandle()
-            if (!sortPartialIgnored) {
+            run {
                 val raw = nativeSortWindow(h, token, newestFirst, first, last) ?: throw MailFailure("sort failed")
                 val window = uidWindowOf(raw)
                 if (!partialWindowIgnored(window, first)) return@read window
-                // Cyrus 3.13 answers UID SORT RETURN (PARTIAL ..) with COUNT only; slice the full sort instead.
+                // Cyrus 3.12/3.13 answer UID SORT RETURN (PARTIAL ..) with COUNT only: report "no windows" so the
+                // caller does one full sort instead of a full sort per window.
                 sortPartialIgnored = true
             }
-            val ids = nativeSort(h, token, newestFirst, true) ?: throw MailFailure("sort failed")
-            UidWindow(ids.size, ids.drop(first - 1).take(last - first + 1).toList())
+            null
         }
     }
 
