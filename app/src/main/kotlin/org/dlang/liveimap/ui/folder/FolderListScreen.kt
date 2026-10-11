@@ -189,6 +189,8 @@ fun FolderListScreen(
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
     onAddAccount: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
+    onOpenSettings: () -> Unit = onAddAccount,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -206,7 +208,9 @@ fun FolderListScreen(
             return
         }
         // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
-        if (accountId != null || accountChecked) NoAccountYet(onAddAccount)
+        if (accountId != null || accountChecked) {
+            NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, onCustomize, onOpenHelp, onOpenAbout, onOpenSettings)
+        }
         return
     }
     if (smoke) {
@@ -1268,20 +1272,70 @@ private fun FolderListRow(
     }
 }
 
+/**
+ * Fresh install: the normal folder top bar (drawer button, and a More menu with everything that works without an
+ * account: Settings, Unsent, Customize, Help, About), with "No mail account yet" and Add account as the body.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @androidx.compose.runtime.Composable
-private fun NoAccountYet(onAddAccount: () -> Unit) {
-    androidx.compose.foundation.layout.Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-    ) {
-        androidx.compose.material3.Text(
-            androidx.compose.ui.res.stringResource(org.dlang.liveimap.R.string.folders_no_account),
-            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
-        )
-        androidx.compose.material3.Button(onClick = onAddAccount, modifier = Modifier.padding(top = 16.dp)) {
-            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(org.dlang.liveimap.R.string.settings_add_account))
+private fun NoAccountYet(
+    onAddAccount: () -> Unit,
+    onOpenDrawer: (() -> Unit)?,
+    onOpenUnsent: () -> Unit,
+    onCustomize: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    var more by remember { mutableStateOf(false) }
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.folders_title)) },
+                navigationIcon = {
+                    if (onOpenDrawer != null) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.folders_menu))
+                        }
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { more = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.folders_more))
+                        }
+                        DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                            val items = listOf(
+                                R.string.drawer_settings to onOpenSettings,
+                                R.string.folders_unsent to onOpenUnsent,
+                                R.string.toolbar_customize to onCustomize,
+                                R.string.help_title to onOpenHelp,
+                                R.string.about_title to onOpenAbout,
+                            )
+                            for ((label, action) in items) {
+                                DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { more = false; action() })
+                            }
+                        }
+                    }
+                },
+                windowInsets = mailBarInsets(),
+            )
+        },
+    ) { padding ->
+        androidx.compose.foundation.layout.Column(
+            Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        ) {
+            Text(
+                stringResource(R.string.folders_no_account),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            androidx.compose.material3.Button(onClick = onAddAccount, modifier = Modifier.padding(top = 16.dp)) {
+                Text(stringResource(R.string.settings_add_account))
+            }
         }
     }
 }

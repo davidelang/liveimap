@@ -290,6 +290,7 @@ fun LiveImapNavHost() {
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
                     onAddAccount = { navController.navigate("settings") },
+                    onOpenAbout = { navController.navigate("about") },
                 )
             }
             composable(
