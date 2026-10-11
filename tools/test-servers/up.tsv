@@ -1,6 +1,6 @@
 # container	command run with docker exec after docker start (the recipe's own launch step)
-liveimap-cyrus-22	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
-liveimap-cyrus-24	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-cyrus-22	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; sed -i 's/^\t#idled\t\tcmd="idled"/\tidled\t\tcmd="idled"/' /etc/cyrus.conf; sed -i 's/^idlemethod: poll/idlemethod: idled/' /etc/imapd.conf; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
+liveimap-cyrus-24	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; sed -i 's/^\t#idled\t\tcmd="idled"/\tidled\t\tcmd="idled"/' /etc/cyrus.conf; sed -i 's/^idlemethod: poll/idlemethod: idled/' /etc/imapd.conf; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
 liveimap-cyrus-25	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
 liveimap-cyrus-36	export PATH=/usr/sbin:/usr/bin:/sbin:$PATH; rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1
 liveimap-dovecot-10	rm -f /var/run/dovecot/master.pid; setsid dovecot </dev/null >/tmp/dovecot.out 2>&1
