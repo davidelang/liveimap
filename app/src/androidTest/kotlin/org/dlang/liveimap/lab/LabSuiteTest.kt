@@ -165,6 +165,20 @@ class LabSuiteTest {
                         (r is org.dlang.liveimap.session.LongSearchResult.Hits && r.uids.sorted() == main)) { "side $r != main $main" }
                     "${main.size}"
                 }
+                step("longSearchParallel") {
+                    // Side search and main-session work at the same time: neither waits for the other.
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box, { false }, { true })
+                    val side = async(kotlinx.coroutines.Dispatchers.IO) {
+                        org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "message") {}
+                    }
+                    var mainOps = 0
+                    while (!side.isCompleted && mainOps < 50) {
+                        session.searchCriterion("Subject", "LiveIMAP"); mainOps++
+                    }
+                    val r = side.await()
+                    check(r is org.dlang.liveimap.session.LongSearchResult.Hits) { "side $r" }
+                    "side ${r.uids.size} hits; main ops meanwhile $mainOps"
+                }
                 step("longSearchCancel") {
                     val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box, { false }, { true })
                     val search = org.dlang.liveimap.session.LongSearch(link, 50)
