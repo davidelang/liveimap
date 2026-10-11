@@ -2359,11 +2359,7 @@ internal fun isNestedPart(row: AttachmentRow): Boolean =
     row.subtype.equals(TooDeepSubtype, ignoreCase = true) || row.type.equals("multipart", ignoreCase = true) ||
         (row.type.equals("message", ignoreCase = true) && row.size == 0)
 
-private fun attachmentMime(row: AttachmentRow): String {
-    val type = row.type.trim().ifEmpty { "application" }.lowercase()
-    val subtype = row.subtype.trim().ifEmpty { "octet-stream" }.lowercase()
-    return "$type/$subtype"
-}
+private fun attachmentMime(row: AttachmentRow): String = safeAttachmentMime(row.type, row.subtype)
 
 private fun attachmentCacheName(uid: Long, section: String): String {
     val safe = section.replace(Regex("[^A-Za-z0-9._-]"), "_")
