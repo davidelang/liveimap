@@ -4512,20 +4512,20 @@ static struct mailimap_search_key * uidSetKey(const char * text) {
 
 // "Group" argument: a nested query (IndexModel.groupArgument): "And"/"Or", then steps "Yes|Not US kind US argument",
 // separated by RS. Groups may nest only to a small depth. Throws "bad search" when malformed.
-static struct mailimap_search_key * groupKey(JNIEnv * env, const char * text, int depth) {
+static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep) {
     if (text == nullptr || depth > 8) { throwFailure(env, "bad search"); return nullptr; }
     std::vector<std::string> lines;
     std::string cur;
     for (const char * p = text; ; ++p) {
-        if (*p == 0x1e || *p == 0) { lines.push_back(cur); cur.clear(); if (*p == 0) break; }
+        if (*p == lineSep || *p == 0) { lines.push_back(cur); cur.clear(); if (*p == 0) break; }
         else cur.push_back(*p);
     }
     if (lines.size() < 2 || (lines[0] != "And" && lines[0] != "Or")) { throwFailure(env, "bad search"); return nullptr; }
     const bool isAnd = lines[0] == "And";
     struct mailimap_search_key * folded = nullptr;
     for (size_t i = 1; i < lines.size(); ++i) {
-        size_t a = lines[i].find('\x1f');
-        size_t b = a == std::string::npos ? a : lines[i].find('\x1f', a + 1);
+        size_t a = lines[i].find(fieldSep);
+        size_t b = a == std::string::npos ? a : lines[i].find(fieldSep, a + 1);
         if (b == std::string::npos) {
             if (folded != nullptr) mailimap_search_key_free(folded);
             throwFailure(env, "bad search");
@@ -4545,6 +4545,10 @@ static struct mailimap_search_key * groupKey(JNIEnv * env, const char * text, in
         if (folded == nullptr) { throwFailure(env, "search failed"); return nullptr; }
     }
     return folded;
+}
+
+static struct mailimap_search_key * groupKey(JNIEnv * env, const char * text, int depth) {
+    return groupKeySep(env, text, depth, 0x1e, 0x1f);
 }
 
 struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument) {
@@ -7295,7 +7299,8 @@ struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf
     for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text.c()); p != nullptr && *p != 0; ++p) {
         if (*p >= 0x80) { *utf8 = true; break; }
     }
-    struct mailimap_search_key * key = groupKey(env, text.c(), 0);
+    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t; nested groups inside.
+    struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t');
     if (key == nullptr || env->ExceptionCheck()) {
         if (key != nullptr) mailimap_search_key_free(key);
         *bad = true;

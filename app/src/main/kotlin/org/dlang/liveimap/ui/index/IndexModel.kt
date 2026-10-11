@@ -289,7 +289,7 @@ fun combinedFilterSearch(filters: List<AppliedFilter>): Pair<String, String>? {
     return "Advanced" to (encodeAdvancedQuery(AdvancedCombiner.And, steps, fuzzy) ?: return null)
 }
 
-/** The filter chain as one AND group for SORT/THREAD criteria (groupArgument format). Null for an empty chain. */
+/** The filter chain as one And query for SORT/THREAD criteria (encodeAdvancedQuery text). Null for an empty chain. */
 fun filterChainGroup(filters: List<AppliedFilter>): String? {
     if (filters.isEmpty()) return null
     val steps = ArrayList<AdvancedStep>()
@@ -302,7 +302,7 @@ fun filterChainGroup(filters: List<AppliedFilter>): String? {
         if (q.combiner == AdvancedCombiner.And) steps.addAll(q.steps)
         else steps.add(AdvancedStep(false, "Group", groupArgument(q)))
     }
-    return groupArgument(AdvancedQuery(AdvancedCombiner.And, steps))
+    return encodeAdvancedQuery(AdvancedCombiner.And, steps)
 }
 
 /** A nested query as one step argument: lines split by RS (0x1e), fields by US (0x1f); parsed by groupKey (JNI). */

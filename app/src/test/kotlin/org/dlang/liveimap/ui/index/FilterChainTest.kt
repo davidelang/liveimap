@@ -61,7 +61,7 @@ class FilterChainTest {
         assertEquals("Show this thread: x", filterChipText(AppliedFilter("Show this thread: x", "4,7:9", "Uid")))
         assertEquals("From ada", filterChipText(AppliedFilter("From", "ada", "From")))
         assertEquals(
-            "And\u001eYes\u001fFrom\u001fada\u001eYes\u001fUid\u001f4",
+            "And\nYes\tFrom\tada\nYes\tUid\t4",
             filterChainGroup(listOf(AppliedFilter("From", "ada", "From"), AppliedFilter("t", "4", "Uid"))),
         )
     }

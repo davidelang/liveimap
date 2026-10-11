@@ -199,7 +199,7 @@ class IndexWindowTest {
         session.searchUids = listOf(2L, 4L, 6L)
         session.matchingSortUids = listOf(6L, 2L, 4L)
         runImmediate { model.applyCriterion("NotDeleted", "", narrow = false, label = "Not deleted") }
-        assertEquals(listOf("SORT Subject And\u001eYes\u001fNotDeleted\u001f"), session.matchingCalls)
+        assertEquals(listOf("SORT Subject And\nYes\tNotDeleted\t"), session.matchingCalls)
         assertEquals(listOf(6L, 2L, 4L), model.order)
         // A session that cannot send criteria with SORT falls back to the full order restricted to the search result.
         session.matchingSortUids = null
@@ -220,7 +220,7 @@ class IndexWindowTest {
         threadSession.searchUids = listOf(3L, 7L)
         threadSession.matchingThread = ThreadNode(null, listOf(ThreadNode(3L, listOf(ThreadNode(7L, emptyList())))))
         runImmediate { threadModel.applyCriterion("Uid", "3,7", narrow = false, label = "Thread: x") }
-        assertEquals(listOf("THREAD ThreadReferences And\u001eYes\u001fUid\u001f3,7"), threadSession.matchingCalls)
+        assertEquals(listOf("THREAD ThreadReferences And\nYes\tUid\t3,7"), threadSession.matchingCalls)
         assertEquals(listOf(3L), threadModel.order)
     }
 
