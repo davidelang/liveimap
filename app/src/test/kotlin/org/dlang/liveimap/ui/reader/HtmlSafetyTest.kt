@@ -38,4 +38,16 @@ class HtmlSafetyTest {
             "data:text/html,<script>", "android-app://com.x", "about:blank", "relative/path", ":nothing", "1abc:x",
         )) assertEquals(u, LinkSafety.Blocked, linkSafety(u))
     }
+
+    @Test fun showImagesLetsOnlyImagesThrough() {
+        val img = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        assertTrue(remoteRequestAllowed("https", img, isForMainFrame = false))
+        assertTrue(remoteRequestAllowed("HTTP", img, isForMainFrame = false))
+        assertFalse(remoteRequestAllowed("https", "text/css,*/*;q=0.1", isForMainFrame = false))
+        assertFalse(remoteRequestAllowed("https", "*/*", isForMainFrame = false))       // fonts, scripts, xhr
+        assertFalse(remoteRequestAllowed("https", null, isForMainFrame = false))
+        assertFalse(remoteRequestAllowed("ftp", img, isForMainFrame = false))
+        assertFalse(remoteRequestAllowed("file", img, isForMainFrame = false))
+        assertTrue(remoteRequestAllowed(null, null, isForMainFrame = true))             // the message page itself
+    }
 }

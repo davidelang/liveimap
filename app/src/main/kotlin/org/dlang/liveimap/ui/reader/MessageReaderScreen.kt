@@ -1808,6 +1808,22 @@ private fun MessageReaderLoaded(
                                             if (!url.isNullOrEmpty()) linkBridge.onLink(url)
                                         }
 
+                                        // Network loads are only on while "show images" is; even then, only images.
+                                        override fun shouldInterceptRequest(
+                                            view: WebView?,
+                                            request: WebResourceRequest?,
+                                        ): android.webkit.WebResourceResponse? {
+                                            if (request == null) return null
+                                            val accept = request.requestHeaders?.entries
+                                                ?.firstOrNull { it.key.equals("Accept", ignoreCase = true) }?.value
+                                            if (remoteRequestAllowed(request.url?.scheme, accept, request.isForMainFrame)) return null
+                                            return android.webkit.WebResourceResponse(
+                                                "text/plain",
+                                                "utf-8",
+                                                java.io.ByteArrayInputStream(ByteArray(0)),
+                                            )
+                                        }
+
                                         // minSdk 26: only the request overload is called. Never prompt from it.
                                         @Deprecated("Deprecated in API 24")
                                         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true

@@ -40,3 +40,16 @@ fun linkSafety(url: String): LinkSafety {
         else -> LinkSafety.Warn
     }
 }
+
+/**
+ * With "show images" on, the WebView may reach the network, but only for images: stylesheets (and their
+ * @import), fonts, frames, media, prefetches and other subresources stay blocked, so remote content is
+ * limited to what the user asked for. Chromium marks image fetches (<img>, CSS backgrounds) with an
+ * Accept header starting with image/.
+ */
+fun remoteRequestAllowed(scheme: String?, accept: String?, isForMainFrame: Boolean): Boolean {
+    if (isForMainFrame) return true
+    val s = scheme?.lowercase() ?: return false
+    if (s != "http" && s != "https") return false
+    return accept?.trim()?.lowercase()?.startsWith("image/") == true
+}
