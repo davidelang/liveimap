@@ -59,4 +59,12 @@ class WindowedOrderTest {
         assertEquals(1 to 100, searchWindowRange(901, 1000, 1000, true))
         assertEquals(1 to 100, searchWindowRange(1, 100, 1000, false))
     }
+
+    @Test
+    fun sortedUidsArePrimitiveBackedAndOrdered() {
+        assertEquals(listOf(9L, 5L, 1L), sortedUids(listOf(5L, 1L, 9L), true))
+        assertEquals(listOf(1L, 5L, 9L), sortedUids(listOf(5L, 1L, 9L), false))
+        // LongArray.asList() is the array-backed view, not a boxed ArrayList.
+        assertEquals(false, sortedUids(listOf(1L), false) is java.util.ArrayList<*>)
+    }
 }

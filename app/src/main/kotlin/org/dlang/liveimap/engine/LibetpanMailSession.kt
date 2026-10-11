@@ -596,7 +596,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun takeCopiedUids(): List<Long> {
         val h = handle
         if (h == 0L) return emptyList()
-        return nativeTakeCopiedUids(h)?.toList().orEmpty()
+        return nativeTakeCopiedUids(h)?.asList().orEmpty()
     }
 
     override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
@@ -604,7 +604,7 @@ class LibetpanMailSession : MailSession {
         remember("SEARCH $query") {
             val ids = nativeSearchText(h, query, featureCaps.searchKind() == "Esearch")
                 ?: throw MailFailure("search failed")
-            ids.toList()
+            ids.asList()
         }
     }
 
@@ -634,7 +634,7 @@ class LibetpanMailSession : MailSession {
                     withCharset,
                 )
             }) ?: throw MailFailure("search failed")
-            ids.toList()
+            ids.asList()
         }
     }
 
@@ -734,7 +734,7 @@ class LibetpanMailSession : MailSession {
                 edge.name,
                 featureCaps.searchKind() == "Esearch",
             ) ?: throw MailFailure("search failed")
-            ids.toList()
+            ids.asList()
         }
     }
 
@@ -744,7 +744,7 @@ class LibetpanMailSession : MailSession {
             uid,
             featureCaps.searchKind() == "Esearch",
         ) ?: throw MailFailure("search failed")
-        ids.toList()
+        ids.asList()
     }
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
@@ -763,7 +763,7 @@ class LibetpanMailSession : MailSession {
             val token = featureCaps.imapSortKey(sortToken(key))
             remember("SORT $token $newestFirst") {
                 val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
-                ids.toList()
+                ids.asList()
             }
         }
     }
@@ -830,7 +830,7 @@ class LibetpanMailSession : MailSession {
         } else {
             nativeSearchCriterion(h, kind, argument, featureCaps.searchKind() == "Esearch", withCharset)
         } ?: throw MailFailure("search failed")
-        return ids.toList()
+        return ids.asList()
     }
 
     fun searchProgress(): SearchProgress {
@@ -899,7 +899,7 @@ class LibetpanMailSession : MailSession {
                 onProgress(last, exists)
                 first = last + 1
             }
-            keys.order(newestFirst).toList()
+            keys.order(newestFirst).asList()
         }
     }
 
@@ -1423,7 +1423,7 @@ internal fun positiveRange(first: Int, last: Int, total: Int): Pair<Int, Int>? {
 
 internal fun uidWindowOf(raw: LongArray): UidWindow {
     if (raw.isEmpty()) return UidWindow(0, emptyList())
-    val uids = raw.drop(1)
+    val uids = raw.copyOfRange(1, raw.size).asList()
     val total = raw[0].takeIf { it >= 0 }?.toInt() ?: uids.size
     return UidWindow(total, uids)
 }

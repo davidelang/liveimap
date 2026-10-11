@@ -74,3 +74,14 @@ fun publishableOrder(order: List<Long>): List<Long> = if (order is WindowedOrder
 /** Display positions [lo]..[hi] (1-based) as ascending-UID positions for ESEARCH PARTIAL. */
 fun searchWindowRange(lo: Int, hi: Int, total: Int, newestFirst: Boolean): Pair<Int, Int> =
     if (newestFirst) (total - hi + 1) to (total - lo + 1) else lo to hi
+
+/**
+ * UIDs ascending or descending, stored as a LongArray behind a List view: 8 bytes per UID instead of a boxed
+ * Long (about 24 bytes) per entry, which matters at 200k messages.
+ */
+fun sortedUids(uids: List<Long>, descending: Boolean): List<Long> {
+    val a = uids.toLongArray()
+    a.sort()
+    if (descending) a.reverse()
+    return a.asList()
+}

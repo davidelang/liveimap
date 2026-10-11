@@ -1909,7 +1909,7 @@ class IndexModel(
         } else {
             session.searchCriterion(activeSearchField.name, query)
         }
-        val uids = if (view.newestFirst) found.sortedDescending() else found.sorted()
+        val uids = sortedUids(found, view.newestFirst)
         order = uids
         arrivalTotal = 0
         pendingNew = 0
