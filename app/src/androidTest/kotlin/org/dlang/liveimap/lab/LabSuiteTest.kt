@@ -77,6 +77,7 @@ class LabSuiteTest {
             logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
+            email = arg("labRcpt"),
             smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25,
         )
