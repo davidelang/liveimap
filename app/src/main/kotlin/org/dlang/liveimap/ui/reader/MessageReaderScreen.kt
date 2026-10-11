@@ -875,8 +875,6 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun openAttachment(row: AttachmentRow) = checkTypeThen(row, save = false) { openAttachmentAs(row, attachmentMime(row)) }
-
     fun openAttachmentAs(row: AttachmentRow, mime: String) {
         val uri = attachmentUri(attachmentCacheName(uid, row.section))
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -907,13 +905,15 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun saveAttachment(row: AttachmentRow) = checkTypeThen(row, save = true) { saveAttachmentNow(row) }
-
     fun saveAttachmentNow(row: AttachmentRow) {
         saveTarget.row = row
         saveTarget.uid = uid
         saveDocument.launch(row.label)
     }
+
+    fun openAttachment(row: AttachmentRow) = checkTypeThen(row, save = false) { openAttachmentAs(row, attachmentMime(row)) }
+
+    fun saveAttachment(row: AttachmentRow) = checkTypeThen(row, save = true) { saveAttachmentNow(row) }
 
     laterRetry.block = { requestView(selectedView) }
 
