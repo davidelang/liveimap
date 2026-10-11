@@ -190,6 +190,7 @@ Avoid:
   `UID MOVE`, which removes only the moved UIDs. A move never expunges any
   other message: no plain `EXPUNGE` or `CLOSE` follows a copy, with or without
   UIDPLUS. Swipe actions call the same commands.
+* **Move entire folder** collects UIDs with `UID SEARCH UNDELETED` by default, so messages already marked `\Deleted` stay behind; the per-account setting "Move entire folder includes deleted messages" (next to Move method) switches it to `UID SEARCH ALL`, and either way the move goes in batches of 1000 and never expunges.
 * **Delete policy.** One setting chooses what Delete does:
   * **Mark as deleted:** sets `\Deleted`; the message stays (visible unless hidden)
     until an expunge, and Undelete reverses it. IMAP only: JMAP has no

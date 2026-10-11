@@ -752,4 +752,6 @@
     <string name="settings_compression_off">Off</string>
     <string name="settings_compression_auto">Auto (on over mobile data)</string>
     <string name="settings_reason_compress">The server does not offer COMPRESS=DEFLATE.</string>
+    <string name="settings_move_all_deleted">Move entire folder includes deleted messages</string>
+    <string name="settings_move_all_deleted_note">Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).</string>
 </resources>

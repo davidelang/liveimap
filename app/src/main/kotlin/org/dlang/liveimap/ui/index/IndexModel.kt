@@ -1257,7 +1257,7 @@ class IndexModel(
         try {
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
-            val all = if (allMailbox) allUidsInWindows(session) else uids
+            val all = if (allMailbox) allUidsInWindows(session, kind = moveAllKind(settings)) else uids
             val chunk = LabTestHooks.moveChunk() ?: MoveChunk
             val big = all.size > chunk
             val outcome = moveInChunks(all, chunk, { moveStop }, { done, total ->
@@ -2305,6 +2305,9 @@ class IndexModel(
 /** UIDs per MOVE/COPY command for big moves (review 3.7: 10,000 in one command took 40 s with no feedback). */
 const val MoveChunk = 1000
 
+/** Search kind for "Move entire folder": UNDELETED by default, ALL when the account includes \Deleted. */
+fun moveAllKind(settings: AccountSettings): String = if (settings.moveAllIncludesDeleted) "All" else "NotDeleted"
+
 data class ChunkedMove(val moved: List<Long>, val dest: List<Long>, val failure: MailFailure? = null)
 
 /**
@@ -2335,8 +2338,8 @@ suspend fun moveInChunks(
 }
 
 /** Every UID in the selected folder, ascending: PARTIAL windows of [window] when offered, else one search. */
-suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000): List<Long> {
-    val probe = session.searchWindow("All", "", 1, window) ?: return sortedUids(session.searchCriterion("All", ""), false)
+suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000, kind: String = "All"): List<Long> {
+    val probe = session.searchWindow(kind, "", 1, window) ?: return sortedUids(session.searchCriterion(kind, ""), false)
     val out = LongArray(probe.total)
     var n = 0
     fun take(uids: List<Long>) {
@@ -2346,7 +2349,7 @@ suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000): List<L
     var lo = window + 1
     while (lo <= probe.total) {
         val hi = minOf(probe.total, lo + window - 1)
-        take(session.searchWindow("All", "", lo, hi)?.uids ?: throw MailFailure("search failed"))
+        take(session.searchWindow(kind, "", lo, hi)?.uids ?: throw MailFailure("search failed"))
         lo = hi + 1
     }
     return out.copyOf(n).asList()

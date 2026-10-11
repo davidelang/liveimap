@@ -401,6 +401,8 @@ data class AccountSettings(
     val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
     val compression: Compression = Compression.On,
+    /** "Move entire folder" also moves messages already marked \Deleted (default: skip them, UID SEARCH UNDELETED). */
+    val moveAllIncludesDeleted: Boolean = false,
     val trashMailbox: String = "",
     val savedMailbox: String = "",
     val saveNameRule: SaveNameRule = SaveNameRule.DefaultFolder,
@@ -527,6 +529,7 @@ private val fieldNames = listOf(
     "deletePolicy",
     "moveMethod",
     "compression",
+    "moveAllIncludesDeleted",
     "trashMailbox",
     "savedMailbox",
     "saveNameRule",
@@ -640,6 +643,7 @@ fun AccountSettings.encode(): String = buildString {
     if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
     if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
     if (compression != Compression.On) appendLine("compression=${compression.name}")
+    if (moveAllIncludesDeleted) appendLine("moveAllIncludesDeleted=true")
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
     if (savedMailbox.isNotEmpty()) appendLine("savedMailbox=${percentEncode(savedMailbox)}")
     if (saveNameRule != SaveNameRule.DefaultFolder) appendLine("saveNameRule=${saveNameRule.name}")
@@ -767,6 +771,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "deletePolicy" ||
             key == "moveMethod" ||
             key == "compression" ||
+            key == "moveAllIncludesDeleted" ||
             key == "trashMailbox" ||
             key == "savedMailbox" ||
             key == "saveNameRule" ||
@@ -878,6 +883,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
         compression = values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
             ?: Compression.On,
+        moveAllIncludesDeleted = values["moveAllIncludesDeleted"]?.let { parseBoolean(it) } ?: false,
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
         savedMailbox = values["savedMailbox"]?.let { percentDecode(it) } ?: "",
         saveNameRule = values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder,

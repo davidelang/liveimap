@@ -203,32 +203,44 @@ class LabSuiteTest {
                     "cancelled; main session ok ($after)"
                 }
                 step("batchedMove") {
-                    // "Move entire folder" path with 2-UID batches: Sub -> Trash, copy-then-mark, no EXPUNGE.
+                    // "Move entire folder" with 2-UID batches, Sub -> Trash, both settings, copy-then-mark, no EXPUNGE.
+                    // Pass 1 skips \Deleted (default): one Sub message is pre-marked and must stay. Pass 2 includes
+                    // \Deleted: everything in Sub (now all marked) is moved again.
                     val sep = listOf("/", ".").firstOrNull { runCatching { session.mailboxListed(box + it + "Sub") }.getOrDefault(false) }
                         ?: error("no Sub folder")
                     val sub = box + sep + "Sub"
                     val trash = box + sep + "Trash"
                     org.dlang.liveimap.engine.LabTestHooks.labMoveChunk = 2
                     try {
-                        session.select(trash)
-                        val trashBefore = session.selectedExists()
                         session.select(sub)
                         val before = session.selectedExists()
-                        val all = org.dlang.liveimap.ui.index.allUidsInWindows(session, 3)
-                        check(all.size == before) { "UID SEARCH ALL ${all.size} != EXISTS $before" }
-                        var batches = 0
-                        val out = org.dlang.liveimap.ui.index.moveInChunks(
-                            all, org.dlang.liveimap.engine.LabTestHooks.moveChunk()!!, { false }, { _, _ -> batches++ },
-                        ) { part -> session.copyThenDelete(part, trash); session.takeCopiedUids() }
-                        check(out.failure == null) { "batch failed: ${out.failure?.text}" }
-                        check(out.moved == all) { "moved ${out.moved.size} of ${all.size}" }
-                        session.select(sub)
-                        check(session.selectedExists() == before) { "source shrank: something expunged" }
-                        check(session.searchCriterion("NotDeleted", "").isEmpty()) { "source not all \\Deleted" }
-                        session.select(trash)
-                        check(session.selectedExists() == trashBefore + before) { "Trash got ${session.selectedExists() - trashBefore}" }
+                        val first = session.searchCriterion("NotDeleted", "").min()
+                        session.storeFlags(listOf(first), setOf("\\Deleted"), emptySet())
+                        val report = StringBuilder()
+                        for (includeDeleted in listOf(false, true)) {
+                            val kind = org.dlang.liveimap.ui.index.moveAllKind(account.copy(moveAllIncludesDeleted = includeDeleted))
+                            session.select(trash)
+                            val trashBefore = session.selectedExists()
+                            session.select(sub)
+                            val all = org.dlang.liveimap.ui.index.allUidsInWindows(session, 3, kind)
+                            val expected = if (includeDeleted) before else before - 1
+                            check(all.size == expected) { "$kind found ${all.size}, expected $expected" }
+                            check(includeDeleted || first !in all) { "UNDELETED returned the deleted message" }
+                            var batches = 0
+                            val out = org.dlang.liveimap.ui.index.moveInChunks(
+                                all, org.dlang.liveimap.engine.LabTestHooks.moveChunk()!!, { false }, { _, _ -> batches++ },
+                            ) { part -> session.copyThenDelete(part, trash); session.takeCopiedUids() }
+                            check(out.failure == null) { "batch failed: ${out.failure?.text}" }
+                            check(out.moved == all) { "moved ${out.moved.size} of ${all.size}" }
+                            session.select(sub)
+                            check(session.selectedExists() == before) { "source shrank: something expunged" }
+                            check(session.searchCriterion("NotDeleted", "").isEmpty()) { "source not all \\Deleted" }
+                            session.select(trash)
+                            check(session.selectedExists() == trashBefore + all.size) { "Trash got ${session.selectedExists() - trashBefore}" }
+                            report.append("$kind ${all.size} in $batches; ")
+                        }
                         session.select(box)
-                        "${all.size} in $batches batches, ${out.dest.size} COPYUIDs, no expunge"
+                        report.append("no expunge").toString()
                     } finally {
                         org.dlang.liveimap.engine.LabTestHooks.labMoveChunk = null
                     }

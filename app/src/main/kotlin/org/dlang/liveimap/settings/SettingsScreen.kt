@@ -1333,6 +1333,13 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ) { method ->
                 editor.persist(editor.settings.copy(moveMethod = method))
             }
+            BoolField(
+                stringResource(R.string.settings_move_all_deleted),
+                settings.moveAllIncludesDeleted,
+                note = stringResource(R.string.settings_move_all_deleted_note),
+            ) {
+                editor.persist(editor.settings.copy(moveAllIncludesDeleted = it))
+            }
             ReasonChoice(
                 stringResource(R.string.settings_compression),
                 listOf(

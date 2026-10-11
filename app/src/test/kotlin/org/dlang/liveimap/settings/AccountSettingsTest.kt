@@ -54,6 +54,15 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun moveAllIncludesDeletedDefaultsOffAndRoundTrips() {
+        assertEquals(false, AccountSettings().moveAllIncludesDeleted)
+        val on = AccountSettings(moveAllIncludesDeleted = true)
+        assertEquals(on, decodeAccountSettings(on.encode()))
+        assertEquals("NotDeleted", org.dlang.liveimap.ui.index.moveAllKind(AccountSettings()))
+        assertEquals("All", org.dlang.liveimap.ui.index.moveAllKind(on))
+    }
+
+    @Test
     fun defaultsRoundTrip() {
         val text = AccountSettings().encode()
         val keys = text.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
