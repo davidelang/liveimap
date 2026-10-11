@@ -279,6 +279,20 @@ enum class DeletePolicy {
     DeletePermanently,
 }
 
+/** COMPRESS=DEFLATE use: On (default), Off, or Auto = on over mobile data, off on Wi-Fi/Ethernet. */
+enum class Compression {
+    On,
+    Off,
+    Auto,
+}
+
+/** Whether to send COMPRESS DEFLATE for [mode] when the active network is cellular ([cellular]). */
+fun compressionWanted(mode: Compression, cellular: Boolean): Boolean = when (mode) {
+    Compression.On -> true
+    Compression.Off -> false
+    Compression.Auto -> cellular
+}
+
 enum class MoveMethod {
     CopyThenMarkDeleted,
     ImapMove,
@@ -386,6 +400,7 @@ data class AccountSettings(
     val autoExpunge: Boolean = false,
     val deletePolicy: DeletePolicy = DeletePolicy.MarkDeleted,
     val moveMethod: MoveMethod = MoveMethod.CopyThenMarkDeleted,
+    val compression: Compression = Compression.On,
     val trashMailbox: String = "",
     val savedMailbox: String = "",
     val saveNameRule: SaveNameRule = SaveNameRule.DefaultFolder,
@@ -511,6 +526,7 @@ private val fieldNames = listOf(
     "autoExpunge",
     "deletePolicy",
     "moveMethod",
+    "compression",
     "trashMailbox",
     "savedMailbox",
     "saveNameRule",
@@ -623,6 +639,7 @@ fun AccountSettings.encode(): String = buildString {
     if (autoExpunge) appendLine("autoExpunge=true")
     if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
     if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
+    if (compression != Compression.On) appendLine("compression=${compression.name}")
     if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
     if (savedMailbox.isNotEmpty()) appendLine("savedMailbox=${percentEncode(savedMailbox)}")
     if (saveNameRule != SaveNameRule.DefaultFolder) appendLine("saveNameRule=${saveNameRule.name}")
@@ -749,6 +766,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "autoExpunge" ||
             key == "deletePolicy" ||
             key == "moveMethod" ||
+            key == "compression" ||
             key == "trashMailbox" ||
             key == "savedMailbox" ||
             key == "saveNameRule" ||
@@ -858,6 +876,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         autoExpunge = values["autoExpunge"]?.let { parseBoolean(it) } ?: false,
         deletePolicy = values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted,
         moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
+        compression = values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
+            ?: Compression.On,
         trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
         savedMailbox = values["savedMailbox"]?.let { percentDecode(it) } ?: "",
         saveNameRule = values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder,

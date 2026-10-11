@@ -31,6 +31,7 @@ import org.dlang.liveimap.session.mailboxMarkedTrash
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.compressionWanted
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.SortKey
@@ -312,7 +313,9 @@ class LibetpanMailSession : MailSession {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
-        if (featureCaps.compressDeflate && !account.logImapTraffic) {
+        if (featureCaps.compressDeflate && !account.logImapTraffic &&
+            compressionWanted(account.compression, onCellular())
+        ) {
             nativeCompress(opened)
             compressed = true
         }
@@ -1429,6 +1432,14 @@ internal fun uidWindowOf(raw: LongArray): UidWindow {
 }
 
 internal const val ClientSortChunk = 5000
+
+/** True when the active network is cellular (Auto compression); false if unknown. */
+internal fun onCellular(): Boolean {
+    val context = currentApplication() ?: return false
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+    return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+}
 
 /**
  * Client-side sort keys in primitive arrays: uid and numeric key as longs, text keys lowercased once. Blank keys

@@ -41,6 +41,19 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun compressionDefaultsOnAndRoundTrips() {
+        assertEquals(Compression.On, AccountSettings().compression)
+        for (mode in Compression.entries) {
+            val a = AccountSettings(compression = mode)
+            assertEquals(a, decodeAccountSettings(a.encode()))
+        }
+        assertEquals(true, compressionWanted(Compression.On, false))
+        assertEquals(false, compressionWanted(Compression.Off, true))
+        assertEquals(true, compressionWanted(Compression.Auto, true))
+        assertEquals(false, compressionWanted(Compression.Auto, false))
+    }
+
+    @Test
     fun defaultsRoundTrip() {
         val text = AccountSettings().encode()
         val keys = text.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }

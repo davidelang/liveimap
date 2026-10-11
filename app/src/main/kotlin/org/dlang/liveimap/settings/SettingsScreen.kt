@@ -1333,6 +1333,18 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ) { method ->
                 editor.persist(editor.settings.copy(moveMethod = method))
             }
+            ReasonChoice(
+                stringResource(R.string.settings_compression),
+                listOf(
+                    ReasonOption(Compression.On, caps.compressDeflate, if (caps.compressDeflate) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.Auto, caps.compressDeflate, if (caps.compressDeflate) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.Off, true, null),
+                ),
+                settings.compression,
+                { compressionName(it) },
+            ) { mode ->
+                editor.persist(editor.settings.copy(compression = mode))
+            }
         }
         SettingsSection(
             title = stringResource(R.string.settings_counts),
@@ -2519,6 +2531,15 @@ private fun deletePolicyName(policy: DeletePolicy): String = stringResource(
         DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
         DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
         DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+    },
+)
+
+@Composable
+private fun compressionName(mode: Compression): String = stringResource(
+    when (mode) {
+        Compression.On -> R.string.settings_compression_on
+        Compression.Off -> R.string.settings_compression_off
+        Compression.Auto -> R.string.settings_compression_auto
     },
 )
 
