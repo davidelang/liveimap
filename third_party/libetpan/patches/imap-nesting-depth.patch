@@ -1,0 +1,395 @@
+Make the BODYSTRUCTURE parser safe against deep nesting.
+
+A sender controls the MIME tree and the server mirrors it in BODYSTRUCTURE; mailimap_body_parse recursed once
+per level, so a few thousand levels overflowed the stack. Parts deeper than MAILIMAP_BODY_MAX_DEPTH (128)
+are now skipped iteratively (quoted strings and literals honoured) and returned as one
+application/x-libetpan-too-deep part, so the rest of the response parses and section numbers stay right.
+body-extension lists deeper than MAILIMAP_BODY_EXTENSION_MAX_DEPTH (32) are a parse error.
+
+diff -ruN a/src/low-level/imap/mailimap_parser.c b/src/low-level/imap/mailimap_parser.c
+--- a/src/low-level/imap/mailimap_parser.c
++++ b/src/low-level/imap/mailimap_parser.c
+@@ -1973,6 +1973,96 @@
+    body            = "(" (body-type-1part / body-type-mpart) ")"
+ */
+ 
++/*
++  Skips the rest of a parenthesized body whose "(" was already consumed, up to (not including) the matching
++  ")", without recursion. Quoted strings and literals are parsed so their contents cannot unbalance it.
++*/
++static int mailimap_body_too_deep_skip(mailstream * fd, MMAPString * buffer,
++    struct mailimap_parser_context * parser_ctx, size_t * indx,
++    size_t progr_rate, progress_function * progr_fun)
++{
++  size_t cur_token;
++  size_t nest;
++  int r;
++
++  cur_token = * indx;
++  nest = 1;
++  while (1) {
++    char c;
++
++    if (cur_token >= buffer->len)
++      return MAILIMAP_ERROR_PARSE;
++    c = buffer->str[cur_token];
++    if (c == '"' || c == '{' || (c == '~' && cur_token + 1 < buffer->len && buffer->str[cur_token + 1] == '{')) {
++      char * value;
++
++      value = NULL;
++      r = mailimap_nstring_parse(fd, buffer, parser_ctx, &cur_token, &value, NULL, progr_rate, progr_fun);
++      if (r != MAILIMAP_NO_ERROR)
++        return r;
++      if (value != NULL)
++        mailimap_nstring_free(value);
++      continue;
++    }
++    if (c == '\r' || c == '\n')
++      return MAILIMAP_ERROR_PARSE;
++    if (c == '(') {
++      nest ++;
++    }
++    else if (c == ')') {
++      nest --;
++      if (nest == 0)
++        break;
++    }
++    cur_token ++;
++  }
++  * indx = cur_token;
++  return MAILIMAP_NO_ERROR;
++}
++
++static int mailimap_body_too_deep_part(struct mailimap_body_type_1part ** result)
++{
++  struct mailimap_media_basic * media;
++  struct mailimap_body_fld_enc * encoding;
++  struct mailimap_body_fields * fields;
++  struct mailimap_body_type_basic * basic;
++  struct mailimap_body_type_1part * part;
++  char * subtype;
++
++  subtype = strdup(MAILIMAP_BODY_TOO_DEEP_SUBTYPE);
++  if (subtype == NULL)
++    return MAILIMAP_ERROR_MEMORY;
++  media = mailimap_media_basic_new(MAILIMAP_MEDIA_BASIC_APPLICATION, NULL, subtype);
++  if (media == NULL) {
++    free(subtype);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  encoding = mailimap_body_fld_enc_new(MAILIMAP_BODY_FLD_ENC_7BIT, NULL);
++  if (encoding == NULL) {
++    mailimap_media_basic_free(media);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  fields = mailimap_body_fields_new(NULL, NULL, NULL, encoding, 0);
++  if (fields == NULL) {
++    mailimap_body_fld_enc_free(encoding);
++    mailimap_media_basic_free(media);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  basic = mailimap_body_type_basic_new(media, fields);
++  if (basic == NULL) {
++    mailimap_body_fields_free(fields);
++    mailimap_media_basic_free(media);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  part = mailimap_body_type_1part_new(MAILIMAP_BODY_TYPE_1PART_BASIC, basic, NULL, NULL, NULL);
++  if (part == NULL) {
++    mailimap_body_type_basic_free(basic);
++    return MAILIMAP_ERROR_MEMORY;
++  }
++  * result = part;
++  return MAILIMAP_NO_ERROR;
++}
++
+ static int mailimap_body_parse(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * parser_ctx,
+ 			       size_t * indx,
+ 			       struct mailimap_body ** result,
+@@ -2000,18 +2090,33 @@
+ 
+   type = MAILIMAP_BODY_ERROR; /* XXX - removes a gcc warning */
+ 
+-  r = mailimap_body_type_1part_parse(fd, buffer, parser_ctx, &cur_token, &body_type_1part,
+-				     progr_rate, progr_fun);
+-  if (r == MAILIMAP_NO_ERROR)
+-    type = MAILIMAP_BODY_1PART;
++  if (parser_ctx != NULL && parser_ctx->body_depth >= MAILIMAP_BODY_MAX_DEPTH) {
++    r = mailimap_body_too_deep_skip(fd, buffer, parser_ctx, &cur_token, progr_rate, progr_fun);
++    if (r == MAILIMAP_NO_ERROR)
++      r = mailimap_body_too_deep_part(&body_type_1part);
++    if (r == MAILIMAP_NO_ERROR)
++      type = MAILIMAP_BODY_1PART;
++  }
++  else {
++    if (parser_ctx != NULL)
++      parser_ctx->body_depth ++;
+ 
+-  if (r == MAILIMAP_ERROR_PARSE) {
+-   r = mailimap_body_type_mpart_parse(fd, buffer, parser_ctx, &cur_token,
+-				      &body_type_mpart,
+-				      progr_rate, progr_fun);
+-   
+-   if (r == MAILIMAP_NO_ERROR)
+-     type = MAILIMAP_BODY_MPART;
++    r = mailimap_body_type_1part_parse(fd, buffer, parser_ctx, &cur_token, &body_type_1part,
++				       progr_rate, progr_fun);
++    if (r == MAILIMAP_NO_ERROR)
++      type = MAILIMAP_BODY_1PART;
++
++    if (r == MAILIMAP_ERROR_PARSE) {
++      r = mailimap_body_type_mpart_parse(fd, buffer, parser_ctx, &cur_token,
++					 &body_type_mpart,
++					 progr_rate, progr_fun);
++
++      if (r == MAILIMAP_NO_ERROR)
++        type = MAILIMAP_BODY_MPART;
++    }
++
++    if (parser_ctx != NULL)
++      parser_ctx->body_depth --;
+   }
+ 
+   if (r != MAILIMAP_NO_ERROR) {
+@@ -2157,9 +2262,17 @@
+   }
+ 
+   if (r == MAILIMAP_ERROR_PARSE) {
++    if (parser_ctx != NULL && parser_ctx->body_extension_depth >= MAILIMAP_BODY_EXTENSION_MAX_DEPTH) {
++      res = MAILIMAP_ERROR_PARSE;
++      goto err;
++    }
++    if (parser_ctx != NULL)
++      parser_ctx->body_extension_depth ++;
+     r = mailimap_body_ext_list_parse(fd, buffer, parser_ctx, &cur_token,
+ 				     &body_extension_list,
+ 				     progr_rate, progr_fun);
++    if (parser_ctx != NULL)
++      parser_ctx->body_extension_depth --;
+ 
+     if (r == MAILIMAP_NO_ERROR)
+       type = MAILIMAP_BODY_EXTENSION_LIST;
+diff -ruN a/src/low-level/imap/mailimap_types.c b/src/low-level/imap/mailimap_types.c
+--- a/src/low-level/imap/mailimap_types.c
++++ b/src/low-level/imap/mailimap_types.c
+@@ -3308,6 +3308,8 @@
+   ctx->msg_body_parse_in_progress = false;
+   ctx->msg_body_section = NULL;
+   ctx->msg_body_att_type = 0;
++  ctx->body_depth = 0;
++  ctx->body_extension_depth = 0;
+ 
+   return ctx;
+ 
+diff -ruN a/src/low-level/imap/mailimap_types.h b/src/low-level/imap/mailimap_types.h
+--- a/src/low-level/imap/mailimap_types.h
++++ b/src/low-level/imap/mailimap_types.h
+@@ -3614,8 +3614,23 @@
+   struct mailimap_msg_att_body_section * msg_body_section;
+   int msg_body_att_type;
+   bool msg_body_parse_in_progress;
++
++  /* Current nesting while parsing BODYSTRUCTURE (body) and body-extension lists. */
++  int body_depth;
++  int body_extension_depth;
+ };
+ 
++/*
++  A BODYSTRUCTURE nests one level per MIME level, and the sender controls the MIME tree. Parts deeper than
++  MAILIMAP_BODY_MAX_DEPTH are not parsed recursively: the whole subtree is skipped (iteratively, honouring
++  quoted strings and literals) and returned as one single part of type
++  application/x-libetpan-too-deep, so the rest of the response still parses and the part keeps its section
++  number. body-extension lists (server data) deeper than MAILIMAP_BODY_EXTENSION_MAX_DEPTH are a parse error.
++*/
++#define MAILIMAP_BODY_MAX_DEPTH 128
++#define MAILIMAP_BODY_EXTENSION_MAX_DEPTH 32
++#define MAILIMAP_BODY_TOO_DEEP_SUBTYPE "x-libetpan-too-deep"
++
+ LIBETPAN_EXPORT
+ struct mailimap_parser_context *
+ mailimap_parser_context_new(mailimap * session);
+diff -ruN a/unittest/imap/body_depth_test.c b/unittest/imap/body_depth_test.c
+--- a/unittest/imap/body_depth_test.c
++++ b/unittest/imap/body_depth_test.c
+@@ -0,0 +1,139 @@
++#include <assert.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "body_depth_test.h"
++
++#include "mailimap.h"
++#include "mailimap_parser.h"
++#include "mmapstring.h"
++
++/* A sender controls the MIME tree; a BODYSTRUCTURE thousands of levels deep must not exhaust the stack. */
++
++static int parse_response(MMAPString * buffer, struct mailimap_response ** response)
++{
++  mailimap * session;
++  struct mailimap_parser_context * parser_ctx;
++  size_t indx;
++  int r;
++
++  * response = NULL;
++  session = mailimap_new(0, NULL);
++  assert(session != NULL);
++  parser_ctx = mailimap_parser_context_new(session);
++  assert(parser_ctx != NULL);
++  indx = 0;
++  r = mailimap_response_parse(NULL, buffer, parser_ctx, &indx, response, 0, NULL);
++  if (r != MAILIMAP_NO_ERROR && * response != NULL) {
++    mailimap_response_free(* response);
++    * response = NULL;
++  }
++  mailimap_parser_context_free(parser_ctx);
++  mailimap_free(session);
++  return r;
++}
++
++/* "* 1 FETCH (BODYSTRUCTURE <levels nested multiparts around one text part> UID 7)" */
++static MMAPString * deep_fetch(int levels, const char * leaf)
++{
++  MMAPString * s;
++  int i;
++
++  s = mmap_string_new("* 1 FETCH (BODYSTRUCTURE ");
++  for (i = 0; i < levels; i ++)
++    mmap_string_append_c(s, '(');
++  mmap_string_append(s, leaf);
++  for (i = 0; i < levels; i ++)
++    mmap_string_append(s, " \"mixed\")");
++  mmap_string_append(s, " UID 7)\r\nA1 OK done\r\n");
++  return s;
++}
++
++static struct mailimap_msg_att * fetch_att(struct mailimap_response * response)
++{
++  clistiter * cur;
++
++  for (cur = clist_begin(response->rsp_cont_req_or_resp_data_list); cur != NULL; cur = clist_next(cur)) {
++    struct mailimap_cont_req_or_resp_data * cont = clist_content(cur);
++    if (cont->rsp_type == MAILIMAP_RESP_RESP_DATA &&
++        cont->rsp_data.rsp_resp_data->rsp_type == MAILIMAP_RESP_DATA_TYPE_MESSAGE_DATA)
++      return cont->rsp_data.rsp_resp_data->rsp_data.rsp_message_data->mdt_msg_att;
++  }
++  return NULL;
++}
++
++/* Walks first children down to the single part; returns its depth (number of multiparts above it). */
++static int leaf_depth(struct mailimap_msg_att * att, struct mailimap_body_type_1part ** leaf, uint32_t * uid)
++{
++  clistiter * cur;
++  struct mailimap_body * body = NULL;
++  int depth = 0;
++
++  for (cur = clist_begin(att->att_list); cur != NULL; cur = clist_next(cur)) {
++    struct mailimap_msg_att_item * item = clist_content(cur);
++    if (item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC)
++      continue;
++    if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_BODYSTRUCTURE)
++      body = item->att_data.att_static->att_data.att_bodystructure;
++    if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_UID)
++      * uid = item->att_data.att_static->att_data.att_uid;
++  }
++  assert(body != NULL);
++  while (body->bd_type == MAILIMAP_BODY_MPART) {
++    body = clist_content(clist_begin(body->bd_data.bd_body_mpart->bd_list));
++    depth ++;
++  }
++  * leaf = body->bd_data.bd_body_1part;
++  return depth;
++}
++
++static void expect(int levels, const char * leaf_text, int want_depth, const char * want_subtype)
++{
++  MMAPString * buffer = deep_fetch(levels, leaf_text);
++  struct mailimap_response * response;
++  struct mailimap_body_type_1part * leaf = NULL;
++  uint32_t uid = 0;
++  int r = parse_response(buffer, &response);
++  assert(r == MAILIMAP_NO_ERROR);
++  assert(leaf_depth(fetch_att(response), &leaf, &uid) == want_depth);
++  assert(uid == 7);  /* the rest of the response still parses */
++  assert(leaf->bd_type == MAILIMAP_BODY_TYPE_1PART_BASIC || leaf->bd_type == MAILIMAP_BODY_TYPE_1PART_TEXT);
++  if (leaf->bd_type == MAILIMAP_BODY_TYPE_1PART_BASIC)
++    assert(strcmp(leaf->bd_data.bd_type_basic->bd_media_basic->med_subtype, want_subtype) == 0);
++  else
++    assert(strcmp(leaf->bd_data.bd_type_text->bd_media_text, want_subtype) == 0);
++  mailimap_response_free(response);
++  mmap_string_free(buffer);
++}
++
++int imap_body_depth_test_run(void)
++{
++  static const char text[] = "(\"text\" \"plain\" NIL NIL NIL \"7bit\" 1 1)";
++  /* Parentheses inside a quoted string and a literal in the skipped region must not unbalance the skip. */
++  static const char tricky[] = "(\"text\" \"plain\" (\"name\" \"a)b((\") NIL {3}\r\n)((\"7bit\" 1 1)";
++
++  expect(10, text, 10, "plain");
++  expect(MAILIMAP_BODY_MAX_DEPTH - 1, text, MAILIMAP_BODY_MAX_DEPTH - 1, "plain");
++  expect(MAILIMAP_BODY_MAX_DEPTH, text, MAILIMAP_BODY_MAX_DEPTH, MAILIMAP_BODY_TOO_DEEP_SUBTYPE);
++  expect(5000, text, MAILIMAP_BODY_MAX_DEPTH, MAILIMAP_BODY_TOO_DEEP_SUBTYPE);
++  expect(200000, tricky, MAILIMAP_BODY_MAX_DEPTH, MAILIMAP_BODY_TOO_DEEP_SUBTYPE);
++
++  /* Deeply nested body-extension lists (server data) are a parse error, not a crash. */
++  {
++    MMAPString * buffer = mmap_string_new("* 1 FETCH (BODYSTRUCTURE ((\"text\" \"plain\" NIL NIL NIL \"7bit\" 1 1) \"mixed\" NIL NIL NIL NIL ");
++    struct mailimap_response * response;
++    int i;
++    for (i = 0; i < 100000; i ++)
++      mmap_string_append_c(buffer, '(');
++    mmap_string_append(buffer, "1");
++    for (i = 0; i < 100000; i ++)
++      mmap_string_append_c(buffer, ')');
++    mmap_string_append(buffer, ") UID 7)\r\nA1 OK done\r\n");
++    assert(parse_response(buffer, &response) != MAILIMAP_NO_ERROR);
++    mmap_string_free(buffer);
++  }
++
++  puts("body_depth_test: ok");
++  return 0;
++}
+diff -ruN a/unittest/imap/body_depth_test.h b/unittest/imap/body_depth_test.h
+--- a/unittest/imap/body_depth_test.h
++++ b/unittest/imap/body_depth_test.h
+@@ -0,0 +1,6 @@
++#ifndef BODY_DEPTH_TEST_H
++#define BODY_DEPTH_TEST_H
++
++int imap_body_depth_test_run(void);
++
++#endif
+diff -ruN a/unittest/imap/imap_tests.h b/unittest/imap/imap_tests.h
+--- a/unittest/imap/imap_tests.h
++++ b/unittest/imap/imap_tests.h
+@@ -19,5 +19,6 @@
+ #include "response_data_test.h"
+ #include "response_done_test.h"
+ #include "unsupported_response_test.h"
++#include "body_depth_test.h"
+ 
+ #endif
+diff -ruN a/unittest/imap/main.c b/unittest/imap/main.c
+--- a/unittest/imap/main.c
++++ b/unittest/imap/main.c
+@@ -22,6 +22,7 @@
+   imap_metadata_test_run();
+   imap_pipeline_test_run();
+   imap_utf8_test_run();
++  imap_body_depth_test_run();
+ 
+   puts("imap_test: ok");
+   return 0;
+diff -ruN a/unittest/Makefile b/unittest/Makefile
+--- a/unittest/Makefile
++++ b/unittest/Makefile
+@@ -127,6 +127,7 @@
+ 	imap/metadata_test.c \
+ 	imap/pipeline_test.c \
+ 	imap/utf8_test.c \
++	imap/body_depth_test.c \
+ 	imap/imap_test_utils.c
+ IMAP_TEST_DEPS = $(IMAP_TEST_SRCS) imap/*.h
+ IMF_TEST_SRCS = \
