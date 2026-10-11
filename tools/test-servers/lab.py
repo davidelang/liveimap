@@ -301,6 +301,11 @@ def run_one(s, commit, stamp, out):
             deep = sh([sys.executable, lab, "seed-deep", LAB_HOST, str(seed_port), user_for(s), PASS,
                        *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
             seed.stdout += "\n" + deep.stdout + deep.stderr[-500:]
+        if os.environ.get("LAB_SPOOF") == "1":
+            # Attachments whose declared type/filename lie about the content, for the typeSniff step.
+            spoof = sh([sys.executable, lab, "seed-spoof", LAB_HOST, str(seed_port), user_for(s), PASS,
+                        *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
+            seed.stdout += "\n" + spoof.stdout + spoof.stderr[-500:]
         open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
         folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
         s["folder"] = folder

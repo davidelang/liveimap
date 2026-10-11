@@ -1,5 +1,8 @@
 package org.dlang.liveimap.lab
 
+import org.dlang.liveimap.ui.compose.attachmentParts
+import org.dlang.liveimap.ui.reader.typeMismatch
+import org.dlang.liveimap.ui.reader.SniffBytes
 import org.dlang.liveimap.session.TooDeepSubtype
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -209,6 +212,30 @@ class LabSuiteTest {
                     }
                     session.select(box)
                     if (out.isEmpty()) throw IllegalStateException("no messages in $deepBox")
+                    out.joinToString("; ")
+                }
+                // LAB_SPOOF=1 seeds <box>/Spoof: one honest PDF and attachments whose type and filename lie about
+                // the content. Sniff each attachment exactly as the reader does before open/save/share
+                // (BODY.PEEK partial of the first 4 KB) and check that only the spoofed ones are flagged.
+                val spoofBox = listOf("/", ".").map { "$box${it}Spoof" }
+                    .firstOrNull { runCatching { session.mailboxListed(it) }.getOrDefault(false) }
+                if (spoofBox != null) step("typeSniff") {
+                    session.select(spoofBox)
+                    val spoofUids = session.fetchIndex(IndexRequest(spoofBox, IndexMode.ArrivalNewest, limit = 10)).map { it.uid }
+                    val out = ArrayList<String>()
+                    val wrong = ArrayList<String>()
+                    for (uid in spoofUids.sorted()) {
+                        for (part in attachmentParts(session.fetchStructure(uid))) {
+                            val head = session.peekPart(uid, part.section, 0, SniffBytes)
+                            val mismatch = typeMismatch("${part.type}/${part.subtype}", part.filename, head)
+                            val spoofed = part.filename != "report.pdf"
+                            if ((mismatch != null) != spoofed) wrong.add(part.filename ?: part.section)
+                            out.add("${part.filename}: " + (mismatch?.let { "warn ${it.claimed} vs ${it.detected.mime}" } ?: "ok"))
+                        }
+                    }
+                    session.select(box)
+                    if (out.isEmpty()) throw IllegalStateException("no attachments in $spoofBox")
+                    if (wrong.isNotEmpty()) throw IllegalStateException("wrong verdict for $wrong: $out")
                     out.joinToString("; ")
                 }
                 step("noop") { session.noop(); "" }

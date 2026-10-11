@@ -159,6 +159,54 @@ def deep_message(levels):
 DEEP_LEVELS = [100, 5000]
 
 
+def fake_apk():
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("AndroidManifest.xml", b"\x03\x00\x08\x00lab fake manifest")
+        z.writestr("classes.dex", b"dex\n035\x00lab")
+    return buf.getvalue()
+
+
+# (subject, filename, declared maintype/subtype, content, should the app warn)
+SPOOFS = [
+    ("Spoof honest pdf", "report.pdf", ("application", "pdf"), b"%PDF-1.4\n% lab honest\n", False),
+    ("Spoof apk as pdf", "invoice.pdf", ("application", "pdf"), None, True),
+    ("Spoof html as jpeg", "cat.jpg", ("image", "jpeg"), b"<!DOCTYPE html><html><body>lab</body></html>", True),
+    ("Spoof svg as png", "logo.png", ("image", "png"), b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>', True),
+]
+
+
+def spoof_message(subject, filename, mime, content):
+    msg = EmailMessage()
+    msg["From"] = "Lab Sender <sender0@example.test>"
+    msg["To"] = "liveimap@example.test"
+    msg["Subject"] = subject
+    msg["Message-ID"] = make_msgid(domain="lab.liveimap.test")
+    msg["Date"] = format_datetime(datetime.now(timezone.utc))
+    msg.set_content(f"{subject}: the attachment {filename} claims {mime[0]}/{mime[1]}.\n")
+    msg.add_attachment(content if content is not None else fake_apk(), maintype=mime[0], subtype=mime[1], filename=filename)
+    return msg.as_bytes()
+
+
+def seed_spoof(a, allow):
+    m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
+    d = delimiter(m)
+    box = f"{TEST_ROOT}{d}Spoof"
+    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
+    if typ == "OK" and ns and ns[0]:
+        hit = re.match(rb'\(\("([^"]*)"', ns[0])
+        if hit and hit.group(1):
+            box = hit.group(1).decode() + box
+    ensure(m, box)
+    for i in range(count(m, box), len(SPOOFS)):
+        subject, filename, mime, content, _ = SPOOFS[i]
+        typ, _ = m.append(f'"{box}"', "(\\Seen)", None, spoof_message(subject, filename, mime, content))
+        print(f"append {subject}: {typ}")
+    print(f"{box}: {count(m, box)} messages (target {len(SPOOFS)})")
+    m.logout()
+
+
 def seed_deep(a, allow):
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
     d = delimiter(m)
@@ -231,7 +279,7 @@ def check():
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("action", choices=["caps", "seed", "seed-deep", "check"])
+    p.add_argument("action", choices=["caps", "seed", "seed-deep", "seed-spoof", "check"])
     p.add_argument("host", nargs="?")
     p.add_argument("port", nargs="?", type=int)
     p.add_argument("user", nargs="?")
@@ -263,7 +311,14 @@ def main():
             "server": {"name": a.server_name, "host": a.host, "port": a.port, "tls": tls},
             "protocol": "imap", "suite": a.suite or a.action})
     try:
-        caps(a, allow) if a.action == "caps" else seed_deep(a, allow) if a.action == "seed-deep" else seed(a, allow)
+        if a.action == "caps":
+            caps(a, allow)
+        elif a.action == "seed-deep":
+            seed_deep(a, allow)
+        elif a.action == "seed-spoof":
+            seed_spoof(a, allow)
+        else:
+            seed(a, allow)
     finally:
         if RECORDER:
             RECORDER.close()

@@ -190,7 +190,9 @@ private class SaveTarget {
     var uid: Long = 0
 }
 
-internal data class TypeWarning(val row: AttachmentRow, val mismatch: TypeMismatch, val save: Boolean)
+internal enum class AttachmentAction { Open, Save, Share }
+
+internal data class TypeWarning(val row: AttachmentRow, val mismatch: TypeMismatch, val action: AttachmentAction)
 
 internal data class AttachmentRow(
     val section: String,
@@ -846,7 +848,7 @@ private fun MessageReaderLoaded(
 
     // Before open or save: sniff the first 4 KB (the cached file, else a BODY.PEEK partial fetch, which neither
     // downloads the part nor sets \Seen) and compare it with the claimed type and the extension.
-    fun checkTypeThen(row: AttachmentRow, save: Boolean, proceed: () -> Unit) {
+    fun checkTypeThen(row: AttachmentRow, action: AttachmentAction, proceed: () -> Unit) {
         scope.launch {
             val cached = File(appContext.cacheDir, attachmentCacheName(uid, row.section))
             val head = try {
@@ -871,7 +873,7 @@ private fun MessageReaderLoaded(
                 ByteArray(0)
             }
             val mismatch = typeMismatch("${row.type}/${row.subtype}", row.filename, head)
-            if (mismatch == null) proceed() else typeWarning = TypeWarning(row, mismatch, save)
+            if (mismatch == null) proceed() else typeWarning = TypeWarning(row, mismatch, action)
         }
     }
 
@@ -889,10 +891,10 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun shareAttachment(row: AttachmentRow) {
+    fun shareAttachmentAs(row: AttachmentRow, mime: String) {
         val uri = attachmentUri(attachmentCacheName(uid, row.section))
         val send = Intent(Intent.ACTION_SEND).apply {
-            type = attachmentMime(row)
+            type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = ClipData.newRawUri(row.label, uri)
@@ -911,9 +913,11 @@ private fun MessageReaderLoaded(
         saveDocument.launch(row.label)
     }
 
-    fun openAttachment(row: AttachmentRow) = checkTypeThen(row, save = false) { openAttachmentAs(row, attachmentMime(row)) }
+    fun openAttachment(row: AttachmentRow) = checkTypeThen(row, AttachmentAction.Open) { openAttachmentAs(row, attachmentMime(row)) }
 
-    fun saveAttachment(row: AttachmentRow) = checkTypeThen(row, save = true) { saveAttachmentNow(row) }
+    fun saveAttachment(row: AttachmentRow) = checkTypeThen(row, AttachmentAction.Save) { saveAttachmentNow(row) }
+
+    fun shareAttachment(row: AttachmentRow) = checkTypeThen(row, AttachmentAction.Share) { shareAttachmentAs(row, attachmentMime(row)) }
 
     laterRetry.block = { requestView(selectedView) }
 
@@ -1927,12 +1931,20 @@ private fun MessageReaderLoaded(
                     TextButton(onClick = {
                         typeWarning = null
                         val row = warning.row
-                        if (row.done) {
-                            openAttachmentAs(row, openAs)
-                        } else {
-                            postSnack(notConnected)
+                        when {
+                            !row.done -> postSnack(notConnected)
+                            warning.action == AttachmentAction.Share -> shareAttachmentAs(row, openAs)
+                            else -> openAttachmentAs(row, openAs)
                         }
-                    }) { Text(stringResource(R.string.reader_type_mismatch_open, openAs)) }
+                    }) {
+                        Text(
+                            stringResource(
+                                if (warning.action == AttachmentAction.Share) R.string.reader_type_mismatch_share
+                                else R.string.reader_type_mismatch_open,
+                                openAs,
+                            ),
+                        )
+                    }
                 }
             },
             dismissButton = {
