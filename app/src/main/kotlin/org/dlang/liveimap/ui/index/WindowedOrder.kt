@@ -59,13 +59,31 @@ class WindowedOrder(
 
 /** Removes [gone] from an order, sparse or not. */
 fun orderWithout(order: List<Long>, gone: Set<Long>): List<Long> =
-    if (order is WindowedOrder) order.without(gone) else order.filter { it !in gone }
+    if (order is WindowedOrder) order.without(gone) else compactUids(order) { it !in gone }
 
 /** Adds newly arrived UIDs at the front or back of an order; a sparse order reloads its windows instead. */
 fun orderWith(order: List<Long>, placed: List<Long>, front: Boolean): List<Long> = when {
     order is WindowedOrder -> order.grown(placed.size)
-    front -> placed + order
-    else -> order + placed
+    front -> joinUids(placed, order)
+    else -> joinUids(order, placed)
+}
+
+/** [uids] (optionally filtered by [keep]) as a LongArray-backed list: 8 bytes per UID, no boxed copies. */
+inline fun compactUids(uids: List<Long>, keep: (Long) -> Boolean = { true }): List<Long> {
+    val out = LongArray(uids.size)
+    var n = 0
+    for (i in uids.indices) {
+        val u = uids[i]
+        if (keep(u)) out[n++] = u
+    }
+    return (if (n == out.size) out else out.copyOf(n)).asList()
+}
+
+fun joinUids(a: List<Long>, b: List<Long>): List<Long> {
+    val out = LongArray(a.size + b.size)
+    for (i in a.indices) out[i] = a[i]
+    for (i in b.indices) out[a.size + i] = b[i]
+    return out.asList()
 }
 
 /** What the reader may step through: only real UIDs. */

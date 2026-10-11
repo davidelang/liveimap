@@ -67,4 +67,12 @@ class WindowedOrderTest {
         // LongArray.asList() is the array-backed view, not a boxed ArrayList.
         assertEquals(false, sortedUids(listOf(1L), false) is java.util.ArrayList<*>)
     }
+
+    @Test
+    fun compactHelpersKeepOrder() {
+        assertEquals(listOf(1L, 3L), compactUids(listOf(1L, 2L, 3L)) { it != 2L })
+        assertEquals(listOf(9L, 1L, 2L), joinUids(listOf(9L), listOf(1L, 2L)))
+        assertEquals(listOf(1L, 3L), orderWithout(listOf(1L, 2L, 3L), setOf(2L)))
+        assertEquals(false, orderWithout(listOf(1L, 2L), setOf(2L)) is java.util.ArrayList<*>)
+    }
 }

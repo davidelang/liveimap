@@ -1893,7 +1893,7 @@ class IndexModel(
         threading = true
         threadPlan = kept
         threadMembers = emptyMap()
-        order = kept.map { it.rootUid }
+        order = compactUids(kept.map { it.rootUid })
         arrivalTotal = 0
         pendingNew = 0
         val target = resolveTarget(order.size, preserveAnchor)
@@ -1912,7 +1912,7 @@ class IndexModel(
 
     private fun restrict(uids: List<Long>): List<Long> {
         val keep = filterUids ?: return uids
-        return uids.filter { it in keep }
+        return compactUids(uids) { it in keep }
     }
 
     private suspend fun fetchSearch(query: String, preserveAnchor: Int? = null): List<IndexRow> {
