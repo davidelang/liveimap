@@ -22,7 +22,7 @@ class LabLongSearchTest {
     private fun arg(name: String) = InstrumentationRegistry.getArguments().getString(name).orEmpty()
 
     @Test
-    fun longSearch() = runBlocking {
+    fun longSearch(): Unit = runBlocking {
         val match = arg("labAccountMatch")
         assumeTrue("labAccountMatch not given", match.isNotEmpty())
         check(!match.contains("asgard", ignoreCase = true) && match != "10.0.0.100") { "never on asgard" }
