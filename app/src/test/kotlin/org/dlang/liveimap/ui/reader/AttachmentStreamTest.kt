@@ -60,4 +60,14 @@ class AttachmentStreamTest {
         assertEquals(10, streamAttachment(target, 0, 65536, fetch = { _, _ -> ByteArray(10) { 1 } }))
         assertEquals(10L, target.length())
     }
+
+    @Test fun unknownSizeReadsUntilAShortChunk() = runBlocking {
+        val target = File(tmp.root, "liveimap-7-5")
+        val total = 2 * 4096 + 7
+        val got = streamAttachment(target, 0, 4096, fetch = { offset, length ->
+            ByteArray(minOf(length, total - offset).coerceAtLeast(0)) { 2 }
+        })
+        assertEquals(total, got)
+        assertEquals(total.toLong(), target.length())
+    }
 }

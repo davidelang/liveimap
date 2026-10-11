@@ -1,5 +1,6 @@
 package org.dlang.liveimap.lab
 
+import org.dlang.liveimap.session.TooDeepSubtype
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -178,6 +179,37 @@ class LabSuiteTest {
                         session.select(box)
                     }
                     got ?: throw IllegalStateException("no EXISTS from the watch connection within 75 s")
+                }
+                // LAB_DEEP=1 seeds <box>/Deep with 100- and 5000-level MIME messages. Walk each one the way the
+                // reader does: follow the first child; a "nested part" entry is opened with fetchStructureAt (the
+                // reader's tap), until a real leaf or libetpan's x-libetpan-too-deep placeholder.
+                val deepBox = listOf("/", ".").map { "$box${it}Deep" }
+                    .firstOrNull { runCatching { session.mailboxListed(it) }.getOrDefault(false) }
+                if (deepBox != null) step("deepNesting") {
+                    session.select(deepBox)
+                    val deepUids = session.fetchIndex(IndexRequest(deepBox, IndexMode.ArrivalNewest, limit = 10)).map { it.uid }
+                    val out = ArrayList<String>()
+                    for (uid in deepUids.sorted()) {
+                        var tree = session.fetchStructure(uid)
+                        var taps = 0
+                        var levels = 0
+                        while (true) {
+                            var p = tree
+                            var d = 0
+                            while (p.children.isNotEmpty()) { p = p.children.first(); d++ }
+                            levels += d
+                            if (p.subtype.equals(TooDeepSubtype, ignoreCase = true) && taps < 200) {
+                                tree = session.fetchStructureAt(uid, p.section)
+                                taps++
+                                continue
+                            }
+                            out.add("uid $uid: levels=$levels taps=$taps leaf=${p.type}/${p.subtype} section-depth=${p.section.count { it == '.' } + 1}")
+                            break
+                        }
+                    }
+                    session.select(box)
+                    if (out.isEmpty()) throw IllegalStateException("no messages in $deepBox")
+                    out.joinToString("; ")
                 }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }

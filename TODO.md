@@ -76,3 +76,8 @@
 
 - Client certificates, KeyChain: verify on a real device with a user-installed certificate via the chooser (lab runs use an AndroidKeyStore entry, same signing path, no chooser). RSA-PSS uses raw RSA (NoPadding decrypt); a KeyChain key whose authorizations exclude raw RSA fails TLS 1.3 with RSA keys.
 - SMTP AUTH EXTERNAL: Cyrus SASL client EXTERNAL fails locally (sasl_client_start), so IMAP sends AUTHENTICATE EXTERNAL = directly (SASL-IR only). SMTP presents the cert but still uses password auth; add a direct "AUTH EXTERNAL =" path and find why Cyrus EXTERNAL fails.
+
+- [ ] Design: subthread drill-down in the message index. Threads now have no depth limit (iterative everywhere);
+  the index indents up to 6 levels and shows the depth number beyond. Needed: a way to open a subthread as its own
+  view (entry point on deep rows, filter-in-place vs. new screen, back navigation, how the depth number resets).
+  Owner: David to decide the UX; then implement in MessageIndexScreen/IndexModel. (2026-10-11)

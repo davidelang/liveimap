@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.session.TooDeepSubtype
 import android.app.Activity
@@ -2341,7 +2342,11 @@ private fun attachmentSizeText(size: Int): String? = when {
 
 internal fun attachmentRowOf(part: MimePart): AttachmentRow = AttachmentRow(
     section = part.section,
-    label = part.filename?.takeIf { it.isNotEmpty() } ?: "${part.type}/${part.subtype}",
+    label = if (part.subtype.equals(LibetpanTooDeepSubtype, ignoreCase = true)) {
+        "structure too complex (raw part)"
+    } else {
+        part.filename?.takeIf { it.isNotEmpty() } ?: "${part.type}/${part.subtype}"
+    },
     size = part.size,
     fetched = 0,
     done = false,

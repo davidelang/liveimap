@@ -296,6 +296,11 @@ def run_one(s, commit, stamp, out):
             seed_port, seed_tls = (s["imaps"], "Implicit") if "imaps" in s else (s["imap"], "StartTls" if offers_starttls else "")
             seed = sh([sys.executable, lab, "seed", LAB_HOST, str(seed_port), user_for(s), PASS, "--tls", seed_tls,
                        "--allow", f"{LAB_HOST}:{seed_port}", "--count", "60"])
+        if os.environ.get("LAB_DEEP") == "1":
+            # Deeply nested MIME messages (100 and 5000 levels) in LiveIMAP-Test/Deep for the deepNesting step.
+            deep = sh([sys.executable, lab, "seed-deep", LAB_HOST, str(seed_port), user_for(s), PASS,
+                       *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
+            seed.stdout += "\n" + deep.stdout + deep.stderr[-500:]
         open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
         folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
         s["folder"] = folder

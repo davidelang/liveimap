@@ -142,6 +142,40 @@ def message(i, kind):
     return msg.as_bytes()
 
 
+def deep_message(levels):
+    """A message with `levels` nested multipart/mixed parts around one text part, built iteratively (the email
+    package recurses per level). Exercises the nesting limits: app 64-level window, libetpan 128 (LAB_DEEP=1)."""
+    out = [f"From: Lab Sender <sender0@example.test>\r\nTo: liveimap@example.test\r\n"
+           f"Subject: Deep nesting {levels}\r\nMessage-ID: <deep-{levels}@lab.liveimap.test>\r\n"
+           f"Date: {format_datetime(datetime.now(timezone.utc))}\r\nMIME-Version: 1.0\r\n"]
+    for k in range(levels):
+        out.append(f'Content-Type: multipart/mixed; boundary="deep{k}"\r\n\r\n--deep{k}\r\n')
+    out.append(f"Content-Type: text/plain; charset=us-ascii\r\n\r\nInnermost text at level {levels}.\r\n")
+    for k in reversed(range(levels)):
+        out.append(f"--deep{k}--\r\n")
+    return "".join(out).encode()
+
+
+DEEP_LEVELS = [100, 5000]
+
+
+def seed_deep(a, allow):
+    m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
+    d = delimiter(m)
+    box = f"{TEST_ROOT}{d}Deep"
+    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
+    if typ == "OK" and ns and ns[0]:
+        hit = re.match(rb'\(\("([^"]*)"', ns[0])
+        if hit and hit.group(1):
+            box = hit.group(1).decode() + box
+    ensure(m, box)
+    for i in range(count(m, box), len(DEEP_LEVELS)):
+        typ, data = m.append(f'"{box}"', "(\\Seen)", None, deep_message(DEEP_LEVELS[i]))
+        print(f"append {DEEP_LEVELS[i]} levels: {typ} {data[0][:80] if data and data[0] else ''}")
+    print(f"{box}: {count(m, box)} messages (target {len(DEEP_LEVELS)})")
+    m.logout()
+
+
 KINDS = ["plain", "plain", "latin1", "html", "attach", "sjis", "plain"]
 
 
@@ -197,7 +231,7 @@ def check():
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("action", choices=["caps", "seed", "check"])
+    p.add_argument("action", choices=["caps", "seed", "seed-deep", "check"])
     p.add_argument("host", nargs="?")
     p.add_argument("port", nargs="?", type=int)
     p.add_argument("user", nargs="?")
@@ -229,7 +263,7 @@ def main():
             "server": {"name": a.server_name, "host": a.host, "port": a.port, "tls": tls},
             "protocol": "imap", "suite": a.suite or a.action})
     try:
-        caps(a, allow) if a.action == "caps" else seed(a, allow)
+        caps(a, allow) if a.action == "caps" else seed_deep(a, allow) if a.action == "seed-deep" else seed(a, allow)
     finally:
         if RECORDER:
             RECORDER.close()

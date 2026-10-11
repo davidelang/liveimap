@@ -96,6 +96,9 @@ data class IndexRow(
 /** MIME parts nested deeper than this are listed as one openable "nested part" entry instead of being walked. */
 const val MaxMimeDepth = 64
 
+/** libetpan's placeholder for a BODYSTRUCTURE subtree past its own 128-level limit (patch imap-nesting-depth). */
+const val LibetpanTooDeepSubtype = "x-libetpan-too-deep"
+
 /** Stand-in the native layer returns for parts nested deeper than [MaxMimeDepth]. */
 const val TooDeepSubtype = "x-liveimap-too-deep"
 

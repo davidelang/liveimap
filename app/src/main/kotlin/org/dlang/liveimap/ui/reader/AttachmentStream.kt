@@ -23,10 +23,14 @@ suspend fun streamAttachment(
     try {
         FileOutputStream(part).use { out ->
             if (size <= 0) {
-                val bytes = fetch(0, chunk)
-                out.write(bytes)
-                offset = bytes.size
-                progress(offset)
+                // Unknown size (e.g. a raw "structure too complex" part): read chunks until a short one.
+                while (true) {
+                    val bytes = fetch(offset, chunk)
+                    out.write(bytes)
+                    offset += bytes.size
+                    progress(offset)
+                    if (bytes.size < chunk) break
+                }
             } else {
                 while (offset < size) {
                     val length = nextWireCount(offset, size, chunk, true)
