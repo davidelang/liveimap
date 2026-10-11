@@ -40,8 +40,44 @@ import org.junit.Test
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
+import kotlinx.coroutines.async
 
 class IndexWindowTest {
+    @Test
+    fun longSearchLeavesTheListUsableAndAppliesHitsWithoutSearchingAgain() = kotlinx.coroutines.runBlocking {
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(3, sequence = 1), row(8, sequence = 2))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.loadWindow()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        model.longSearchLinks = { _, _ ->
+            object : org.dlang.liveimap.session.LongSearchLink {
+                override suspend fun open() {}
+                override suspend fun search(kind: String, argument: String): List<Long> {
+                    kotlinx.coroutines.runBlocking { release.await() }
+                    return listOf(8L)
+                }
+                override fun progress() = org.dlang.liveimap.session.SearchProgress(-1, -1, 0)
+                override fun abort() { release.complete(Unit) }
+                override suspend fun close() {}
+            }
+        }
+        val text = "And\nYes\tBody\tinvoice"
+        assertTrue(model.isLongAdvanced(text, SearchScope.Current))
+        assertFalse(model.isLongAdvanced(text, SearchScope.All))
+        val running = async(kotlinx.coroutines.Dispatchers.Default) { model.runLongSearch(text) }
+        // The list keeps working on the main session while the side search is blocked.
+        val again = model.loadWindow()
+        assertEquals(listOf(8L, 3L), again.map { it.uid })
+        assertTrue(session.searchCalls.isEmpty())
+        release.complete(Unit)
+        val hits = running.await()
+        assertEquals(listOf(8L), hits)
+        val shown = model.applyAdvancedHits(text, hits)
+        assertEquals(listOf(8L), shown.map { it.uid })
+        assertTrue("no second search on the main session", session.searchCalls.isEmpty())
+    }
+
     @Test
     fun arrivalNewestRequestsArrivalModeAndDoesNotSort() {
         val session = FakeMailSession()
