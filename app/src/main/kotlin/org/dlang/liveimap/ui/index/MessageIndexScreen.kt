@@ -1781,6 +1781,52 @@ private fun MessageIndexLoaded(
                     }
                 }
             }
+            if (runAdvanced && model.isLongAdvanced(pendingAdvanced, pendingScope)) {
+                // Long search: runs on its own connection without the list gate, so the list stays usable.
+                val text: String = pendingAdvanced
+                val before = model.rows
+                onAdvancedConsumed()
+                // On the screen scope, not this effect: the effect restarts when the query is consumed.
+                scope.launch {
+                    val hits = try {
+                        model.runLongSearch(text)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: MailFailure) {
+                        postSnack(error.text)
+                        null
+                    }
+                    if (hits != null) {
+                        if (model.rows === before) {
+                            // Still waiting on the same list: show the results in place.
+                            gate.withLock {
+                                noteVisibleTop()
+                                model.applyAdvancedHits(text, hits)
+                                pull()
+                            }
+                            if (model.rows.isNotEmpty()) scrollToStart()
+                        } else {
+                            // The user moved on: offer the results as their own view.
+                            scope.launch {
+                                val shown = snackbarHostState.showSnackbar(
+                                    message = appContext.getString(R.string.index_long_search_done, hits.size),
+                                    actionLabel = appContext.getString(R.string.index_long_search_show),
+                                    duration = SnackbarDuration.Long,
+                                )
+                                if (shown == SnackbarResult.ActionPerformed) {
+                                    gate.withLock {
+                                        noteVisibleTop()
+                                        model.applyAdvancedHits(text, hits)
+                                        pull()
+                                    }
+                                    if (model.rows.isNotEmpty()) scrollToStart()
+                                }
+                            }
+                        }
+                    }
+                }
+                runAdvanced = false
+            }
             if (runAdvanced) {
                 cancelSearch.value = false
                 try {

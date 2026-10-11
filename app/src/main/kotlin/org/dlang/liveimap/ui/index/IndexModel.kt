@@ -1940,13 +1940,27 @@ class IndexModel(
      * drops it and a late result is discarded. No retry. Without a link factory (tests) they use the main session.
      */
     private suspend fun searchMaybeLong(kind: String, argument: String): List<Long> {
-        val links = longSearchLinks
-        if (links == null || !isLongSearch(kind, argument)) return session.searchCriterion(kind, argument)
-        val search = LongSearch(links(account, mailbox))
+        presetHits?.let { return it }
+        if (longSearchLinks == null || !isLongSearch(kind, argument)) return session.searchCriterion(kind, argument)
+        return runLongSearch(argument)
+    }
+
+    /** True when [text] in [scope] would run as a long search on a side connection. */
+    fun isLongAdvanced(text: String, scope: SearchScope): Boolean =
+        longSearchLinks != null && scope == SearchScope.Current && isLongSearch("Advanced", text)
+
+    /**
+     * Runs a long advanced search on its side connection and returns the hits without touching the list: the
+     * caller does not hold the list gate, so the list keeps working on the main session meanwhile. Apply the hits
+     * with [applyAdvancedHits]. Throws MailFailure ("search cancelled" after Cancel); never retries.
+     */
+    suspend fun runLongSearch(text: String): List<Long> {
+        val links = longSearchLinks ?: throw MailFailure("search failed")
+        val search = LongSearch(links(store.load(), mailbox))
         runningSearch = search
         onSearchProgress?.invoke(SearchProgress(-1, -1, 0))
         try {
-            return when (val result = search.run(kind, argument) { onSearchProgress?.invoke(it) }) {
+            return when (val result = search.run("Advanced", text) { onSearchProgress?.invoke(it) }) {
                 is LongSearchResult.Hits -> result.uids
                 LongSearchResult.Cancelled -> throw MailFailure("search cancelled")
                 is LongSearchResult.Failed -> throw MailFailure(result.text)
@@ -1956,6 +1970,18 @@ class IndexModel(
             onSearchProgress?.invoke(null)
         }
     }
+
+    /** Shows hits a [runLongSearch] already found, as the advanced search [text], without searching again. */
+    suspend fun applyAdvancedHits(text: String, uids: List<Long>): List<IndexRow> {
+        presetHits = uids
+        try {
+            return applyAdvanced(text)
+        } finally {
+            presetHits = null
+        }
+    }
+
+    private var presetHits: List<Long>? = null
 
     /** Cancel the running long search, if any: drops its connection. */
     fun cancelSearch() {
