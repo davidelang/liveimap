@@ -73,4 +73,20 @@ class DeepNestingTest {
         assertEquals("plain", textPart(p, "plain")?.subtype)
         assertTrue(attachmentParts(p).isEmpty())
     }
+
+    /** A server THREAD reply nests one level per message; every walk over it must be iterative. */
+    @Test(timeout = 60_000)
+    fun serverThreadTreeOfAnyDepthIsWalkedIteratively() {
+        val n = 200_000
+        var node = ThreadNode(n.toLong(), emptyList())
+        for (uid in n - 1 downTo 1) node = ThreadNode(uid.toLong(), listOf(node))
+        val root = ThreadNode(null, listOf(node))
+        assertEquals(n, orderedThreadUids(root, newestFirst = true).size)
+        val collapsed = collapsedThreads(root, newestFirst = false)
+        assertEquals(n - 1, collapsed.single().hiddenUids.size)
+        assertEquals(n - 1, collapsed.single().depthByUid.values.max())
+        assertEquals(n, root.messageCount())
+        assertEquals(root, ThreadNode(null, listOf(node)))
+        root.hashCode()
+    }
 }

@@ -43,4 +43,12 @@ class HtmlAsTextTest {
         assertEquals("a b", htmlAsText("<table><tr><td>a</td><td>b</td></tr></table>"))
         assertEquals("a  b\nc", htmlAsText("<pre>a  b\nc</pre>"))
     }
+
+    @Test(timeout = 30_000)
+    fun deeplyNestedHtmlRendersWithoutRecursion() {
+        val n = 100_000
+        val html = "<div>".repeat(n) + "deep text" + "</div>".repeat(n) + "<blockquote>q</blockquote>after"
+        val text = htmlAsText(html)
+        assertEquals("deep text\n> q\nafter", text)
+    }
 }

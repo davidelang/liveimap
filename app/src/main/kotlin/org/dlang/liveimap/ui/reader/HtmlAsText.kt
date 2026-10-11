@@ -37,42 +37,56 @@ fun htmlAsText(html: String): String {
     return finishHtmlText(state)
 }
 
-private fun renderNode(node: Node, state: HtmlRender) {
-    if (node is TextNode) {
-        appendRaw(state, node.wholeText)
-        return
+// Sender HTML can nest elements arbitrarily deep, so the walk uses an explicit stack: each element is entered
+// (opening work, children pushed) and left again (closing work) without recursion.
+private class Frame(val node: Node, val leaving: Boolean, val savedQuote: Boolean = false)
+
+private fun renderNode(root: Node, state: HtmlRender) {
+    val stack = ArrayDeque<Frame>()
+    stack.addLast(Frame(root, leaving = false))
+    while (stack.isNotEmpty()) {
+        val frame = stack.removeLast()
+        val node = frame.node
+        if (node is TextNode) {
+            appendRaw(state, node.wholeText)
+            continue
+        }
+        if (node !is Element) continue
+        val name = node.normalName()
+        if (name == "script" || name == "style") continue
+        val breaks = lineBreaks.contains(name)
+        if (frame.leaving) {
+            state.quote = frame.savedQuote
+            if (name == "tr") state.cellOpen = false
+            if (breaks) breakLine(state)
+            continue
+        }
+        if (breaks) breakLine(state)
+        when (name) {
+            "li" -> {
+                val parent = node.parent()?.normalName().orEmpty()
+                if (parent == "ol") appendRaw(state, liNumber(node).toString() + ". ")
+                else appendRaw(state, "* ")
+            }
+            "img" -> {
+                val alt = node.attr("alt")
+                appendRaw(state, if (alt.isEmpty()) "[image]" else alt)
+            }
+            "td", "th" -> {
+                if (state.cellOpen) appendRaw(state, " ")
+                state.cellOpen = true
+            }
+            "tr" -> state.cellOpen = false
+            "a" -> {
+                val href = node.attr("href")
+                if (href.isNotEmpty()) state.links.add(href)
+            }
+        }
+        stack.addLast(Frame(node, leaving = true, savedQuote = state.quote))
+        if (name == "blockquote") state.quote = true
+        val children = node.childNodes()
+        for (k in children.indices.reversed()) stack.addLast(Frame(children[k], leaving = false))
     }
-    if (node !is Element) return
-    val name = node.normalName()
-    if (name == "script" || name == "style") return
-    val breaks = lineBreaks.contains(name)
-    if (breaks) breakLine(state)
-    when (name) {
-        "li" -> {
-            val parent = node.parent()?.normalName().orEmpty()
-            if (parent == "ol") appendRaw(state, liNumber(node).toString() + ". ")
-            else appendRaw(state, "* ")
-        }
-        "img" -> {
-            val alt = node.attr("alt")
-            appendRaw(state, if (alt.isEmpty()) "[image]" else alt)
-        }
-        "td", "th" -> {
-            if (state.cellOpen) appendRaw(state, " ")
-            state.cellOpen = true
-        }
-        "tr" -> state.cellOpen = false
-        "a" -> {
-            val href = node.attr("href")
-            if (href.isNotEmpty()) state.links.add(href)
-        }
-    }
-    val savedQuote = state.quote
-    if (name == "blockquote") state.quote = true
-    for (child in node.childNodes()) renderNode(child, state)
-    state.quote = savedQuote
-    if (name == "tr") state.cellOpen = false
-    if (breaks) breakLine(state)
 }
 
 private fun liNumber(element: Element): Int {
