@@ -24,6 +24,7 @@ import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.SortField
 import org.dlang.liveimap.session.ThreadHeader
 import org.dlang.liveimap.session.ThreadNode
+import org.dlang.liveimap.session.UidWindow
 import org.dlang.liveimap.session.clientThreads
 import org.dlang.liveimap.session.mailboxMarkedTrash
 import org.dlang.liveimap.session.sameImapIdentity
@@ -766,6 +767,27 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? {
+        if (key == SortKey.Arrival || key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject) return null
+        if (!featureCaps.sort || !featureCaps.esort || !featureCaps.partialWindows) return null
+        require(first in 1..last) { "window $first..$last" }
+        return keeper.read("sort") {
+            val token = featureCaps.imapSortKey(sortToken(key))
+            val raw = nativeSortWindow(requireHandle(), token, newestFirst, first, last) ?: throw MailFailure("sort failed")
+            uidWindowOf(raw)
+        }
+    }
+
+    override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? {
+        if (kind == "Advanced" || !featureCaps.partialWindows) return null
+        require(first != 0 && last != 0 && (first > 0) == (last > 0)) { "window $first..$last" }
+        return keeper.read("search") {
+            val raw = nativeSearchCriterionWindow(requireHandle(), kind, argument, searchNeedsCharset(argument), first, last)
+                ?: throw MailFailure("search failed")
+            uidWindowOf(raw)
+        }
+    }
+
     override suspend fun thread(key: SortKey): ThreadNode {
         val algorithm = when (key) {
             SortKey.ThreadReferences -> {
@@ -1223,6 +1245,15 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeLocateUid(handle: Long, uid: Long, useEsearch: Boolean): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
+    private external fun nativeSortWindow(handle: Long, key: String, newestFirst: Boolean, first: Int, last: Int): LongArray?
+    private external fun nativeSearchCriterionWindow(
+        handle: Long,
+        kind: String,
+        argument: String,
+        withCharset: Boolean,
+        first: Int,
+        last: Int,
+    ): LongArray?
     private external fun nativeFetchSortFields(handle: Long, field: String): Array<SortField>?
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
@@ -1318,4 +1349,12 @@ private fun currentApplication(): Context? {
     } catch (_: Exception) {
         null
     }
+}
+
+/** Native window results are [count, uid...]; a server that sent no COUNT gives -1 (total unknown: window size). */
+internal fun uidWindowOf(raw: LongArray): UidWindow {
+    if (raw.isEmpty()) return UidWindow(0, emptyList())
+    val uids = raw.drop(1)
+    val total = raw[0].takeIf { it >= 0 }?.toInt() ?: uids.size
+    return UidWindow(total, uids)
 }

@@ -70,6 +70,18 @@ interface MailSession {
 
     suspend fun locateUid(uid: Long): List<Long> = throw MailFailure("locateUid")
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
+
+    /**
+     * Positions [first]..[last] (1-based) of the sorted order and the total, via ESORT PARTIAL. Null when the
+     * server cannot answer a window (no ESORT/PARTIAL); callers then fall back to [sort].
+     */
+    suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? = null
+
+    /**
+     * A window of one criterion's matches in UID order (negative positions count from the newest, -1 = newest)
+     * plus the total, via ESEARCH PARTIAL. Null when unsupported; fall back to [searchCriterion].
+     */
+    suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? = null
     suspend fun thread(key: SortKey): ThreadNode
     suspend fun clientOrder(key: SortKey, newestFirst: Boolean): List<Long> =
         throw MailFailure("SORT was not advertised")

@@ -140,6 +140,20 @@ class LabSuiteTest {
                 step("searchText") { session.searchText("LiveIMAP").size.toString() }
                 step("searchAdvanced") { session.searchCriterion("Advanced", "Or\nYes\tSubject\tLiveIMAP").size.toString() }
                 if ("SORT" in session.capabilities) step("sortDate") { session.sort(SortKey.Date, true).size.toString() }
+                if ("PARTIAL" in session.capabilities && "ESORT" in session.capabilities) step("sortWindow") {
+                    val full = session.sort(SortKey.Date, true)
+                    val w = session.sortWindow(SortKey.Date, true, 1, 5) ?: error("no window despite PARTIAL+ESORT")
+                    check(w.total == full.size) { "COUNT ${w.total} != full ${full.size}" }
+                    check(w.uids == full.take(5)) { "window ${w.uids} != head ${full.take(5)}" }
+                    "${w.total} ${w.uids.size}"
+                }
+                if ("PARTIAL" in session.capabilities && "ESEARCH" in session.capabilities) step("searchWindow") {
+                    val full = session.searchCriterion("Subject", "LiveIMAP")
+                    val w = session.searchWindow("Subject", "LiveIMAP", -3, -1) ?: error("no window despite PARTIAL")
+                    check(w.total == full.size) { "COUNT ${w.total} != full ${full.size}" }
+                    check(w.uids.sorted() == full.sorted().takeLast(3)) { "window ${w.uids} != tail ${full.sorted().takeLast(3)}" }
+                    "${w.total} ${w.uids.size}"
+                }
                 if ("THREAD=REFERENCES" in session.capabilities) step("threadReferences") { session.thread(SortKey.ThreadReferences).toString().take(40) }
                 if ("THREAD=ORDEREDSUBJECT" in session.capabilities) step("threadOrderedSubject") { session.thread(SortKey.ThreadOrderedSubject).toString().take(40) }
                 // Lab-only send: the SMTP host is the lab host (no relay), the recipient a lab test account.

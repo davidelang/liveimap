@@ -3616,6 +3616,26 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             countValue = number;
             continue;
         }
+        if (strcasecmp(name.c_str(), "PARTIAL") == 0) {
+            // RFC 9394: PARTIAL (<lo>:<hi> <uid set or NIL>), uids in result order.
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            if (peekChar(buffer, cur) != '(') return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
+            cur += 1;
+            while (cur < buffer->len && buffer->str[cur] != ' ' && buffer->str[cur] != ')') cur += 1;
+            r = mailimap_space_parse(fd, buffer, &cur);
+            if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            if (cur + 3 <= buffer->len && strncasecmp(buffer->str + cur, "NIL", 3) == 0) {
+                cur += 3;
+            } else {
+                r = parseSeqSet(fd, buffer, ctx, &cur, uids);
+                if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            }
+            if (peekChar(buffer, cur) != ')') return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
+            cur += 1;
+            hasAll = true;
+            continue;
+        }
         if (strcasecmp(name.c_str(), "MODSEQ") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
@@ -3991,14 +4011,28 @@ int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     return r;
 }
 
+// "PARTIAL <lo>:<hi>" or "PARTIAL <lo>:<hi> COUNT", lo/hi nonzero, both positive or both negative (RFC 9394).
+bool validPartialReturn(const char * ret) {
+    long lo = 0;
+    long hi = 0;
+    char tail[8] = {0};
+    int n = 0;
+    if (sscanf(ret, "PARTIAL %ld:%ld%n", &lo, &hi, &n) != 2) return false;
+    if (lo == 0 || hi == 0 || (lo > 0) != (hi > 0)) return false;
+    if (lo > 0 ? lo > hi : lo < hi) return false;
+    const char * rest = ret + n;
+    if (*rest == 0) return true;
+    return sscanf(rest, " %7s", tail) == 1 && strcmp(tail, "COUNT") == 0 && strcmp(rest, " COUNT") == 0;
+}
+
 int sendEsearch(mailimap * imap, bool byUid, const char * ret, bool withCharset, bool fuzzy,
     struct mailimap_search_key * key, struct mailimap_response ** response) {
     if (ret == nullptr) return MAILIMAP_ERROR_INVAL;
     if (strcasecmp(ret, "ALL") != 0 && strcasecmp(ret, "MIN") != 0 && strcasecmp(ret, "MAX") != 0
-        && strcasecmp(ret, "COUNT") != 0) {
+        && strcasecmp(ret, "COUNT") != 0 && !validPartialReturn(ret)) {
         return MAILIMAP_ERROR_INVAL;
     }
-    if (strcasecmp(ret, "COUNT") == 0 && tlsLive != nullptr && tlsLive->imap == imap) {
+    if (strstr(ret, "COUNT") != nullptr && tlsLive != nullptr && tlsLive->imap == imap) {
         tlsLive->esearchCount = -1;
     }
     int r = mailimap_send_current_tag(imap);
@@ -4133,7 +4167,8 @@ int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, co
     return finishParsed(imap, response);
 }
 
-int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool esort, struct mailimap_response ** response) {
+int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool esort, struct mailimap_response ** response,
+    const char * ret = "ALL") {
     const char * key = nullptr;
     if (keyName != nullptr) {
         if (strcasecmp(keyName, "DATE") == 0) key = "DATE";
@@ -4157,7 +4192,7 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, "(", true);
         if (r != MAILIMAP_NO_ERROR) return r;
-        r = sendWord(imap->imap_stream, "ALL", false);
+        r = sendWord(imap->imap_stream, ret, false);
         if (r != MAILIMAP_NO_ERROR) return r;
         r = sendWord(imap->imap_stream, ")", false);
         if (r != MAILIMAP_NO_ERROR) return r;
@@ -7150,6 +7185,109 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     }
     jlongArray arr = uidArray(env, result);
     if (result != nullptr) mailimap_sort_result_free(result);
+    unlockSession(session);
+    return arr;
+}
+
+namespace {
+// [count, uid...] for a PARTIAL window; count -1 if the server sent none.
+jlongArray windowArray(JNIEnv * env, jlong count, clist * list) {
+    std::vector<jlong> values;
+    values.push_back(count);
+    if (list != nullptr) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+            auto * v = static_cast<uint32_t *>(clist_content(cur));
+            if (v != nullptr) values.push_back(static_cast<jlong>(*v));
+        }
+    }
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(values.size()));
+    if (arr != nullptr) env->SetLongArrayRegion(arr, 0, static_cast<jsize>(values.size()), values.data());
+    return arr;
+}
+
+std::string partialReturn(jint first, jint last) {
+    return "PARTIAL " + std::to_string(first) + ":" + std::to_string(last) + " COUNT";
+}
+}  // namespace
+
+// UID SORT RETURN (PARTIAL first:last COUNT): one window of the sorted order plus the total (ESORT + PARTIAL).
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env, jobject, jlong handle,
+    jstring keyName, jboolean newestFirst, jint first, jint last) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars name(env, keyName);
+    std::string ret = partialReturn(first, last);
+    if (!validPartialReturn(ret.c_str())) {
+        throwFailure(env, "bad window");
+        unlockSession(session);
+        return nullptr;
+    }
+    session->esearchCount = -1;
+    tlsLive = session;
+    struct mailimap_response * response = nullptr;
+    int r = sendUidSortChoice(session->imap, name.c(), newestFirst == JNI_TRUE, true, &response, ret.c_str());
+    tlsLive = nullptr;
+    if (r != MAILIMAP_NO_ERROR) {
+        throwImap(env, session, r, "sort failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    clist * result = takeEsearch(session->imap);
+    bool ok = taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok) {
+        if (result != nullptr) mailimap_search_result_free(result);
+        throwImap(env, session, r, "sort failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jlongArray arr = windowArray(env, session->esearchCount, result);
+    if (result != nullptr) mailimap_search_result_free(result);
+    unlockSession(session);
+    return arr;
+}
+
+// UID SEARCH RETURN (PARTIAL first:last COUNT) for one criterion; negative positions count from the newest.
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(JNIEnv * env, jobject, jlong handle,
+    jstring kind, jstring argument, jboolean withCharset, jint first, jint last) {
+    if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    JChars kindChars(env, kind);
+    JChars argChars(env, argument);
+    std::string ret = partialReturn(first, last);
+    struct mailimap_search_key * key = criterionKey(env, kindChars.c(), argChars.c());
+    if (env->ExceptionCheck() || key == nullptr || !validPartialReturn(ret.c_str())) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        if (!env->ExceptionCheck()) throwFailure(env, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    session->esearchCount = -1;
+    tlsLive = session;
+    struct mailimap_response * response = nullptr;
+    int r = sendEsearch(session->imap, true, ret.c_str(), withCharset == JNI_TRUE, false, key, &response);
+    tlsLive = nullptr;
+    mailimap_search_key_free(key);
+    if (r != MAILIMAP_NO_ERROR) {
+        throwImap(env, session, r, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    clist * result = takeEsearch(session->imap);
+    bool ok = taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok) {
+        if (result != nullptr) mailimap_search_result_free(result);
+        throwImap(env, session, r, "search failed");
+        unlockSession(session);
+        return nullptr;
+    }
+    jlongArray arr = windowArray(env, session->esearchCount, result);
+    if (result != nullptr) mailimap_search_result_free(result);
     unlockSession(session);
     return arr;
 }

@@ -65,6 +65,9 @@ enum class IndexMode {
     ArrivalRange,
 }
 
+/** One window of a sorted or searched UID list, and the size of the whole list. */
+data class UidWindow(val total: Int, val uids: List<Long>)
+
 data class IndexRequest(
     val mailbox: String,
     val mode: IndexMode,

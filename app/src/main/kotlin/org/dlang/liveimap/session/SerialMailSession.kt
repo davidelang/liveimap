@@ -138,6 +138,12 @@ class SerialMailSession(
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> =
         onLane { inner.sort(key, newestFirst) }
 
+    override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? =
+        onLane { inner.sortWindow(key, newestFirst, first, last) }
+
+    override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? =
+        onLane { inner.searchWindow(kind, argument, first, last) }
+
     override suspend fun thread(key: SortKey): ThreadNode =
         onLane { inner.thread(key) }
 

@@ -47,6 +47,9 @@ class Capabilities private constructor(
 
     fun sortKind(): String = if (esort) "Esort" else "UidSort"
 
+    /** RFC 9394 PARTIAL with ESEARCH/ESORT: one window of a result plus its COUNT, instead of the full UID list. */
+    val partialWindows: Boolean get() = esearch && names.any { it.equals("PARTIAL", ignoreCase = true) }
+
     fun imapSortKey(token: String): String {
         if (!sortDisplay) return token
         return when (token) {
