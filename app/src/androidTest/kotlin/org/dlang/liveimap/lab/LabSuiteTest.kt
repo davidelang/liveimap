@@ -384,7 +384,28 @@ class LabSuiteTest {
                     val got = session.searchCriterion(kind, arg).sorted()
                     val want = listOf(pick[0], pick[2])
                     if (got != want) throw IllegalStateException("got $got want $want")
-                    "uids $got"
+                    // The same criteria sent with SORT, ESORT PARTIAL and THREAD must select the same messages.
+                    val group = org.dlang.liveimap.ui.index.filterChainGroup(chain)!!
+                    val key = org.dlang.liveimap.session.SortKey.Subject
+                    val notes = ArrayList<String>()
+                    if (session.featureCaps.sort) {
+                        val sorted = session.sortMatching(key, false, group)?.sorted()
+                        if (sorted != want) throw IllegalStateException("SORT got $sorted want $want")
+                        notes.add("sort")
+                        val window = session.sortWindowMatching(key, false, 1, 10, group)
+                        if (window != null) {
+                            if (window.uids.sorted() != want) throw IllegalStateException("ESORT window ${window.uids}")
+                            notes.add("esort-partial")
+                        }
+                    }
+                    if (session.featureCaps.threadReferences) {
+                        val tree = session.threadMatching(org.dlang.liveimap.session.SortKey.ThreadReferences, group)
+                        val inTree = ArrayList<Long>()
+                        tree?.forEachPreorder { n -> n.uid?.let { inTree.add(it) } }
+                        if (inTree.sorted() != want) throw IllegalStateException("THREAD got $inTree want $want")
+                        notes.add("thread")
+                    }
+                    "uids $got " + notes.joinToString(",")
                 }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
