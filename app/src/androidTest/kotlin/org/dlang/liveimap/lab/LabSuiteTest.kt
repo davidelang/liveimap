@@ -150,6 +150,26 @@ class LabSuiteTest {
                         )
                     }
                 }
+                if ("IDLE" in session.capabilities) step("idle") {
+                    // Watch connection (EXAMINE + IDLE) on INBOX; the main connection appends one message there,
+                    // and the watch must report it. The message is removed again with UID EXPUNGE of exactly its
+                    // UID where UIDPLUS allows (lab account only), else it stays marked \Deleted.
+                    val seen = kotlinx.coroutines.CompletableDeferred<String>()
+                    session.watch("INBOX") { change -> if (change is org.dlang.liveimap.session.MailboxChange.Exists) seen.complete("exists=${change.exists}") }
+                    kotlinx.coroutines.delay(1500)
+                    val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE $run\r\n" +
+                        "Message-ID: <idle-$run@liveimap.lab>\r\n\r\nIDLE lab test.\r\n").toByteArray()
+                    val uid = session.appendReturningUid("INBOX", msg, setOf("\\Seen"))
+                    val got = kotlinx.coroutines.withTimeoutOrNull(20_000) { seen.await() }
+                    session.stopWatch()
+                    if (uid > 0) {
+                        session.select("INBOX")
+                        session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                        if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
+                        session.select(box)
+                    }
+                    got ?: throw IllegalStateException("no EXISTS from the watch connection within 20 s")
+                }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
                 assertTrue("exists $exists", exists >= 0)
