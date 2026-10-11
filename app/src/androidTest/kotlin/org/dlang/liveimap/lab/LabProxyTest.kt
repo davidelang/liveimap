@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
  * Manual timing runs against a real account configured in the app (David-approved): a loopback proxy inside
  * the app process logs in with the account's stored credentials and hands the host script an already
  * authenticated connection (greeting "* PREAUTH"), through `adb forward`. The password never leaves the app
- * process and is never logged. Args: labAccountMatch (substring of the IMAP host), labProxyPort, labProxySeconds.
+ * process and is never logged. Args: labAccountMatch (substring of the IMAP host), labProxyHost (optional host override), labProxyPort, labProxySeconds.
  * The app's chosen account is restored right after reading the credentials.
  */
 @RunWith(AndroidJUnit4::class)
@@ -52,6 +52,9 @@ class LabProxyTest {
                 if (original != null) store.selectAccount(original)
             }
             found
+        }?.let { t ->
+            // labProxyHost: same account credentials against another server of the same user (e.g. asgard).
+            val host = arg("labProxyHost"); if (host.isEmpty()) t else t.copy(host = host)
         } ?: throw IllegalStateException("no account whose name or IMAP host contains \"$match\"; accounts: $seen")
         android.util.Log.i("LiveIMAP", "proxy: account ${target.user}@${target.host}:${target.port} ${target.tls}")
         val server = ServerSocket(arg("labProxyPort").toIntOrNull() ?: 18143, 8, InetAddress.getByName("127.0.0.1"))
