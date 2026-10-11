@@ -4532,7 +4532,7 @@ static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text,
             return nullptr;
         }
         std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
-        struct mailimap_search_key * step = kind == "Group" ? groupKey(env, arg.c_str(), depth + 1)
+        struct mailimap_search_key * step = kind == "Group" ? groupKeySep(env, arg.c_str(), depth + 1, 0x1e, 0x1f)
                                                             : criterionKey(env, kind.c_str(), arg.c_str());
         if (env->ExceptionCheck() || step == nullptr) {
             if (step != nullptr) mailimap_search_key_free(step);
