@@ -188,19 +188,25 @@ fun FolderListScreen(
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
+    onAddAccount: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     var accountId by remember { mutableStateOf<String?>(null) }
+    var accountChecked by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         accountId = store.chosenAccountId()
+        accountChecked = true
     }
     val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val id = accountId
     if (id.isNullOrEmpty()) {
         if (smoke) {
             Box(Modifier.fillMaxSize().testTag("smoke-folders"))
+            return
         }
+        // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
+        if (accountId != null || accountChecked) NoAccountYet(onAddAccount)
         return
     }
     if (smoke) {
@@ -1259,5 +1265,23 @@ private fun FolderListRow(
                 .padding(start = 8.dp, top = 8.dp, bottom = 8.dp)
                 .width(unreadWidth),
         )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun NoAccountYet(onAddAccount: () -> Unit) {
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+    ) {
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(org.dlang.liveimap.R.string.folders_no_account),
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
+        )
+        androidx.compose.material3.Button(onClick = onAddAccount, modifier = Modifier.padding(top = 16.dp)) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(org.dlang.liveimap.R.string.settings_add_account))
+        }
     }
 }

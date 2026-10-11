@@ -289,6 +289,7 @@ fun LiveImapNavHost() {
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
+                    onAddAccount = { navController.navigate("settings") },
                 )
             }
             composable(

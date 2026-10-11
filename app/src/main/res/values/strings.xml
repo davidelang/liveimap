@@ -754,4 +754,5 @@
     <string name="settings_reason_compress">The server does not offer COMPRESS=DEFLATE.</string>
     <string name="settings_move_all_deleted">Move entire folder includes deleted messages</string>
     <string name="settings_move_all_deleted_note">Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).</string>
+    <string name="folders_no_account">No mail account yet</string>
 </resources>
