@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Phase D/E: strict scripted fake IMAP server serving one personality (see personality.py).
+Usage: fake_imap.py PERSONALITY.json HOST PORT LOG.jsonl. Plaintext only. Each command is matched by shape;
+variants are served in recorded order (sticking at the last). Unknown shapes get BAD and are logged as
+unexpected. Mail-changing commands (EXPUNGE, CLOSE, MOVE, DELETE) are logged as never-hits."""
+import base64, json, re, socket, sys, threading, time
+sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+from personality import shape
+
+p = json.load(open(sys.argv[1]))
+host, port, logpath = sys.argv[2], int(sys.argv[3]), sys.argv[4]
+NEVER = re.compile(r"^(UID )?(EXPUNGE|CLOSE|MOVE)\b|^DELETE\b", re.I)
+lock = threading.Lock()
+log = open(logpath, "a")
+
+
+def note(**kw):
+    with lock:
+        log.write(json.dumps(kw) + "\n"); log.flush()
+
+
+def serve(conn, cid):
+    used = {}
+    f = conn.makefile("rb")
+    def send(b):
+        conn.sendall(b)
+    send((p["greeting"] + "\r\n").encode("latin-1"))
+    while True:
+        raw = f.readline()
+        if not raw:
+            break
+        line = raw.decode("latin-1").rstrip("\r\n")
+        m = re.search(r"\{(\d+)(\+?)\}$", line)
+        if m:  # client literal: accept and swallow
+            if not m.group(2):
+                send(b"+ OK\r\n")
+            f.read(int(m.group(1)))
+            line = line[:m.start()] + "{L}" + f.readline().decode("latin-1").rstrip("\r\n")
+        tag, _, rest = line.partition(" ")
+        cmd = rest.split(" ", 1)[0].upper()
+        sh = "LOGIN" if cmd in ("LOGIN", "AUTHENTICATE") else shape(rest)
+        never = bool(NEVER.match(rest))
+        if cmd == "IDLE":
+            send(b"+ idling\r\n"); f.readline(); send(f"{tag} OK IDLE done\r\n".encode()); note(c=cid, cmd=rest[:120], shape=sh, ok=True); continue
+        variants = p["table"].get(sh)
+        if variants is None and cmd == "LOGOUT":
+            variants = [[{"line": "* BYE fake"}, {"line": "{TAG} OK LOGOUT"}]]
+        if variants is None and cmd == "NOOP":
+            variants = [[{"line": "{TAG} OK NOOP"}]]
+        if variants is None:
+            note(c=cid, cmd=rest[:200], shape=sh, ok=False, unexpected=True, never=never)
+            send(f"{tag} BAD unexpected command in strict fake\r\n".encode())
+            continue
+        i = used.get(sh, 0); used[sh] = i + 1
+        items = variants[min(i, len(variants) - 1)]
+        out = bytearray()
+        for it in items:
+            if "literal_b64" in it:
+                out += base64.b64decode(it["literal_b64"])
+            else:
+                if out and not out.endswith(b"\r\n") and not re.search(rb"\{\d+\}$", bytes(out)):
+                    pass
+                out += it["line"].replace("{TAG}", tag, 1).encode("latin-1")
+                out += b"" if re.search(r"\{\d+\}$", it["line"]) else b"\r\n"
+        # A literal line "{n}" is followed directly by its bytes, then the rest of the line.
+        send(fix_literal_lines(items, tag))
+        note(c=cid, cmd=rest[:200], shape=sh, ok=True, never=never)
+        if cmd == "LOGOUT":
+            break
+    conn.close()
+
+
+def fix_literal_lines(items, tag):
+    out = bytearray()
+    for k, it in enumerate(items):
+        if "literal_b64" in it:
+            out += base64.b64decode(it["literal_b64"])
+            continue
+        out += it["line"].replace("{TAG}", tag, 1).encode("latin-1")
+        nxt = items[k + 1] if k + 1 < len(items) else None
+        if not (nxt and "literal_b64" in nxt and re.search(r"\{\d+\}$", it["line"])):
+            out += b"\r\n"
+    return bytes(out)
+
+
+srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind((host, port)); srv.listen(8)
+print(f"listening {host}:{srv.getsockname()[1]}", flush=True)
+n = 0
+while True:
+    c, _ = srv.accept(); n += 1
+    threading.Thread(target=serve, args=(c, n), daemon=True).start()
