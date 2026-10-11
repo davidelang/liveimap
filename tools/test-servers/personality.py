@@ -40,40 +40,41 @@ def build(path):
     rows = [r for r in rows[1:] if r.get("conn") == "main"]
     # After STARTTLS the exchange restarts; keep from the last tls/starttls point is not needed: the fake simply
     # never sees STARTTLS (scrubbed from caps), so drop the STARTTLS command itself.
+    # Commands may be pipelined: pair responses by tag; untagged lines go to the oldest pending command.
     greeting, table, order = None, {}, []
-    cur = None  # (shape, tag, items)
+    pending = []  # [shape, tag, items]
     for r in rows:
         d = r.get("dir")
         if d == "S" and greeting is None and "line" in r:
             greeting = scrub_caps(r["line"])
             continue
-        if d == "C" and "line" in r and cur is None:
-            line = r["line"]
-            tag, _, rest = line.partition(" ")
-            if rest.upper().startswith("STARTTLS"):
-                cur = ("__skip__", tag, [])
-            else:
-                cur = (shape(rest), tag, [])
+        if d == "C" and "line" in r:
+            tag, _, rest = r["line"].partition(" ")
+            if re.match(r"^[A-Za-z0-9.]+$", tag) and rest:
+                pending.append(["__skip__" if rest.upper().startswith("STARTTLS") else shape(rest), tag, []])
             continue
-        if d == "C" and "redacted" in r and "line" not in r and cur is None:
-            cur = ("LOGIN", None, [])
+        if d == "C" and "redacted" in r and "line" not in r:
+            if not pending or pending[-1][0] != "LOGIN":
+                pending.append(["LOGIN", None, []])
             continue
-        if d == "C" and cur is not None:
-            continue  # continuation data (e.g. AUTHENTICATE response) - not replayed
-        if d == "S" and cur is not None:
-            sh, tag, items = cur
-            if "literal_b64" in r:
-                items.append({"literal_b64": r["literal_b64"]})
-                continue
-            line = r.get("line", "")
-            first = line.split(" ", 1)[0]
-            done = (tag is not None and first == tag) or (tag is None and first not in ("*", "+") and len(line.split(" ")) > 1 and line.split(" ")[1] in ("OK", "NO", "BAD"))
-            items.append({"line": scrub_caps("{TAG}" + line[len(first):] if done else line)})
-            if done:
-                if sh != "__skip__":
-                    table.setdefault(sh, []).append(items)
-                    order.append(sh)
-                cur = None
+        if d != "S" or not pending:
+            continue
+        if "literal_b64" in r:
+            pending[0][2].append({"literal_b64": r["literal_b64"]})
+            continue
+        line = r.get("line", "")
+        first = line.split(" ", 1)[0]
+        hit = next((c for c in pending if c[1] == first), None)
+        if hit is None and first not in ("*", "+") and len(line.split(" ")) > 1 and line.split(" ")[1] in ("OK", "NO", "BAD"):
+            hit = next((c for c in pending if c[1] is None), None)
+        if hit is None:
+            pending[0][2].append({"line": scrub_caps(line)})
+            continue
+        hit[2].append({"line": scrub_caps("{TAG}" + line[len(first):])})
+        if hit[0] != "__skip__":
+            table.setdefault(hit[0], []).append(hit[2])
+            order.append(hit[0])
+        pending.remove(hit)
     return {"server": head["server"]["name"], "source": os.path.relpath(path, HERE), "commit": head.get("commit"),
             "greeting": greeting, "table": table, "order": order}
 

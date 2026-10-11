@@ -34,7 +34,9 @@ def capgap(server):
                 continue
             j = json.loads(l)
             if j.get("dir") == "S" and "CAPABILITY" in j.get("line", "").upper():
-                adv |= {w.strip("[]").upper() for w in j["line"].split() if re.match(r"^\[?[A-Z0-9=+\-.]+\]?$", w.strip("[]"), re.I)}
+                m = re.search(r"CAPABILITY ([^\]]*)", j["line"], re.I)
+                if m:
+                    adv |= {w.upper() for w in m.group(1).split()}
             elif j.get("dir") == "C" and "line" in j:
                 used.append(j["line"])
     adv -= {"CAPABILITY", "OK", "*", "IMAP4REV1", "IMAP4", "STARTTLS", "LOGINDISABLED", "COMPLETED", "PRE-LOGIN", "LOGGED", "IN"}
