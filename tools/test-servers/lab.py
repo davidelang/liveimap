@@ -132,6 +132,8 @@ def plain_caps(port):
 
 
 MECHS = False
+POLICY_REFUSED = re.compile(r"disabled on the clear-text port|PRIVACYREQUIRED|cleartext logins? (are )?disabled|"
+                            r"plaintext authentication disallowed", re.I)
 
 
 def mode_caps(tls, port):
@@ -309,6 +311,11 @@ def run_one(s, commit, stamp, out):
                 rows = [l.split("\t") for l in open(st[0]).read().splitlines()[1:]]
                 bad = [r[0] for r in rows if len(r) > 1 and r[1] != "ok"]
                 steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
+                # A server that refuses plaintext login by policy (e.g. Stalwart 0.16: "LOGIN is disabled on the
+                # clear-text port") is expected, not an app failure.
+                if tls == "None" and bad == ["open"] and any(
+                        r[0] == "open" and len(r) > 2 and POLICY_REFUSED.search(r[2]) for r in rows):
+                    res, msg = "expected", "server policy: plaintext login refused"
             # Servers in old-tls.txt run with the app's Allow old TLS and weak keys setting on (labOldTls).
             out.write(f"{name}\timap{('/' + mech) if mech else ''}\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
             out.flush()

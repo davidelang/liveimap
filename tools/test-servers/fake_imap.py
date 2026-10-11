@@ -11,6 +11,8 @@ p = json.load(open(sys.argv[1]))
 host, port, logpath = sys.argv[2], int(sys.argv[3]), sys.argv[4]
 NEVER = re.compile(r"^(UID )?(EXPUNGE|CLOSE|MOVE)\b|^DELETE\b", re.I)
 lock = threading.Lock()
+DUMP = __import__("os").environ.get("FAKE_DUMP", "")  # diagnosis: raw bytes sent per connection
+DELAY = int(__import__("os").environ.get("FAKE_DELAY_MS", "0")) / 1000.0
 log = open(logpath, "a")
 
 
@@ -23,7 +25,10 @@ def serve(conn, cid):
     used = {}
     authed = False
     f = conn.makefile("rb")
+    dump = open(f"{DUMP}.{cid}.bin", "wb") if DUMP else None
     def send(b):
+        if dump:
+            dump.write(b); dump.flush()
         conn.sendall(b)
     send((p["greeting"] + "\r\n").encode("latin-1"))
     while True:
@@ -72,6 +77,8 @@ def serve(conn, cid):
                 out += it["line"].replace("{TAG}", tag, 1).encode("latin-1")
                 out += b"" if re.search(r"\{\d+\}$", it["line"]) else b"\r\n"
         # A literal line "{n}" is followed directly by its bytes, then the rest of the line.
+        if DELAY:
+            time.sleep(DELAY)  # FAKE_DELAY_MS: pace replies like a real server (diagnosis of pipelining timing)
         send(fix_literal_lines(items, tag))
         note(c=cid, cmd=rest[:200], shape=sh, ok=True, never=never, approx=approx)
         if sh == "LOGIN" and b" OK" in fix_literal_lines(items, tag).split(b"\r\n")[-2 if fix_literal_lines(items, tag).endswith(b"\r\n") else -1].upper():
