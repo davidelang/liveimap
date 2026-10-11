@@ -34,11 +34,11 @@ def pick(server):
     return None
 
 
-def build(path):
+def build(path, conn="main"):
     rows = [json.loads(l) for l in open(path) if l.strip().startswith("{")]
     head = rows[0]
     watch = [r for r in rows[1:] if r.get("conn") == "watch"]
-    rows = [r for r in rows[1:] if r.get("conn") == "main"]
+    rows = [r for r in rows[1:] if r.get("conn") == conn]
     # After STARTTLS the exchange restarts; keep from the last tls/starttls point is not needed: the fake simply
     # never sees STARTTLS (scrubbed from caps), so drop the STARTTLS command itself.
     # Commands may be pipelined: pair responses by tag; untagged lines go to the oldest pending command.
@@ -86,6 +86,11 @@ def build(path):
             if hit[0] == "LOGIN" and " OK" in line.upper():
                 authed = True
         pending.remove(hit)
+    if conn == "main":
+        # The watch connection opens its own mailbox (EXAMINE INBOX); shapes the main connection never sent
+        # are answered from there (dovecot-10's suite never examined INBOX on main).
+        for k, v in build(path, "watch")["table"].items():
+            table.setdefault(k, v)
     # IDLE on the watch connection: keep what the server pushed between "+ idling" and the tagged reply, so
     # the fake can push the same untagged lines when another connection APPENDs (the lab "idle" step).
     idle_tag, pushed = None, []

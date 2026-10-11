@@ -104,6 +104,7 @@ int OPENSSL_sk_num(const stack_st * sk);
 void * OPENSSL_sk_value(const stack_st * sk, int i);
 int i2d_X509(x509_st * cert, unsigned char ** out);
 int SSL_version(const ssl_st * ssl);
+int SSL_pending(const ssl_st * ssl);
 size_t SSL_get_peer_finished(const ssl_st * ssl, void * buf, size_t count);
 size_t SSL_get_finished(const ssl_st * ssl, void * buf, size_t count);
 int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
@@ -1996,12 +1997,24 @@ void watchMain(LiveSession * session) {
             }
             fd = mailimap_idle_get_fd(session->watch);
         }
-        struct pollfd pfd{};
-        pfd.fd = fd;
-        pfd.events = POLLIN;
-        int pr = poll(&pfd, 1, 500);
-        if (session->watchStop.load()) break;
-        if (pr <= 0) continue;
+        // A server may send several untagged lines in one packet (Stalwart: STATUS, EXISTS, FETCH). After one
+        // line is parsed the rest sits in libetpan's read buffer or in OpenSSL, where poll() cannot see it; the
+        // EXISTS then waited for the next packet (fake equivalence run caught it). Read buffered data first.
+        mailstream * ws = session->watch->imap_stream;
+        bool buffered = ws != nullptr && ws->read_buffer_len > 0;
+        if (!buffered && ws != nullptr && mailstream_get_low(ws) != nullptr
+            && mailstream_get_low(ws)->driver == mailstream_ssl_driver) {
+            ssl_st * wssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(ws));
+            buffered = wssl != nullptr && SSL_pending(wssl) > 0;
+        }
+        if (!buffered) {
+            struct pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+            int pr = poll(&pfd, 1, 500);
+            if (session->watchStop.load()) break;
+            if (pr <= 0) continue;
+        }
         if (mailimap_read_line(session->watch) == nullptr) {
             if (!session->watchStop.load()) {
                 emitWatch(session, 4, session->watchExists, 0, nullptr);
