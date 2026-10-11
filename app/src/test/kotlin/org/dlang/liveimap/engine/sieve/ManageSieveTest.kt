@@ -177,7 +177,7 @@ class ManageSieveTest {
         } catch (failure: SieveFailure) {
             assertEquals("line 1", failure.text)
         }
-        assertEquals(listOf("CHECKSCRIPT {4+}"), transport.written)
+        assertEquals(listOf("CHECKSCRIPT {4+}", ""), transport.written)
         assertArrayEquals("bad;".toByteArray(StandardCharsets.UTF_8), transport.writtenBytes.single())
     }
 
@@ -248,7 +248,7 @@ class ManageSieveTest {
         val transport = ListTransport(listOf("OK", "OK (WARNINGS) \"note\""))
         assertEquals("note", uploadLiveimap(transport, script))
         assertEquals(
-            listOf("CHECKSCRIPT {6+}", "PUTSCRIPT \"liveimap\" {6+}"),
+            listOf("CHECKSCRIPT {6+}", "", "PUTSCRIPT \"liveimap\" {6+}", ""),
             transport.written,
         )
         val bytes = script.toByteArray(StandardCharsets.UTF_8)
@@ -266,7 +266,7 @@ class ManageSieveTest {
         } catch (failure: SieveFailure) {
             assertEquals("line 1", failure.text)
         }
-        assertEquals(listOf("CHECKSCRIPT {4+}"), transport.written)
+        assertEquals(listOf("CHECKSCRIPT {4+}", ""), transport.written)
         assertTrue(transport.written.none { it.startsWith("PUTSCRIPT") })
         assertEquals(1, transport.writtenBytes.size)
         assertEquals(4, transport.writtenBytes.single().size)
@@ -380,7 +380,7 @@ class ManageSieveTest {
         } catch (failure: SieveFailure) {
             assertEquals("line 1", failure.text)
         }
-        assertEquals(listOf("CHECKSCRIPT {4+}"), transport.written)
+        assertEquals(listOf("CHECKSCRIPT {4+}", ""), transport.written)
         assertTrue(transport.written.none { it.startsWith("PUTSCRIPT") })
     }
 

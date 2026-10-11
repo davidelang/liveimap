@@ -584,6 +584,7 @@ private suspend fun writeScriptCommand(
     val bytes = script.toByteArray(StandardCharsets.UTF_8)
     transport.writeLine("$command {${bytes.size}+}")
     transport.writeBytes(bytes)
+    transport.writeLine("") // RFC 5804: the command line ends with CRLF after the literal; servers wait for it
     return commandResult(transport, transport.readLine())
 }
 
