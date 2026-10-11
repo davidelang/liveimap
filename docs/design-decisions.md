@@ -114,6 +114,10 @@ Avoid:
   starts selection; a selected row is shown only by its background colour (and
   its TalkBack "selected" state). While selection is active, a tap on any row
   adds it or removes it, instead of opening it.
+* **Rows are numbered by position, like Pine.** The number column shows each
+  row's place in the current sort, thread or filter order (1 at the top), not
+  its IMAP sequence number, and Jump to number uses the same numbers; expanded
+  thread members are not numbered.
 * The sequence-number column is sized for the largest number the folder can
   show (from `EXISTS`), not for the rows loaded now. Paging past 999 or 9999
   then doesn't shift every row.

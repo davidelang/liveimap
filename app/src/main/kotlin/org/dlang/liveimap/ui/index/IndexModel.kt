@@ -768,6 +768,24 @@ class IndexModel(
         return replaceWindow { fetchCurrent() }
     }
 
+    /** Jump to number: the row numbered [position] (1-based, in the current sort/thread/filter order). */
+    suspend fun jumpToPosition(position: Int): Boolean {
+        val count = if (usesArrivalSequences()) arrivalTotal else order.size
+        if (position !in 1..count) return false
+        val target = position - 1
+        replaceWindow {
+            pageAnchor = clampedAnchor(count, null, target)
+            val loaded = when {
+                usesArrivalSequences() -> fetchArrivalWindow()
+                threading -> loadThreadPage()
+                else -> pagesOf(order)
+            }
+            rememberStart(target, loaded.size)
+            loaded
+        }
+        return !windowFailed
+    }
+
     suspend fun jumpToSequence(sequence: Int): Boolean {
         if (usesArrivalSequences()) {
             val total = arrivalTotal

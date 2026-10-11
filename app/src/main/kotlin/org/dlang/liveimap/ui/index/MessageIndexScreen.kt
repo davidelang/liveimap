@@ -442,6 +442,12 @@ fun indexStatusDescription(flags: Set<String>, toMe: Boolean, hasAttachment: Boo
     return parts.joinToString(", ")
 }
 
+/**
+ * A row's number, Pine style: its 1-based position in the current sort/thread/filter order, not its IMAP sequence
+ * number. The held window starts at anchorPage * IndexPageSize in that order; thread members are not numbered.
+ */
+fun rowPosition(anchorPage: Int, indexInWindow: Int): Int = anchorPage * IndexPageSize + indexInWindow + 1
+
 fun sequenceColumnChars(sequences: Iterable<Int>): Int {
     var digits = 0
     for (sequence in sequences) {
@@ -1988,6 +1994,7 @@ private fun MessageIndexLoaded(
         threadMembers,
         threadHidden,
         threadDepth,
+        anchorPage,
     )
     val indexEntryState = rememberUpdatedState(indexEntries)
     LaunchedEffect(listState) {
@@ -3213,6 +3220,7 @@ private fun MessageIndexLoaded(
                                 mailbox = mailbox,
                                 account = account,
                                 depth = entry.depth,
+                                position = entry.position,
                                 selected = allMailbox || row.uid in selected,
                                 multiSelect = multiSelect,
                                 leftToRight = leftToRight,
@@ -3427,7 +3435,7 @@ private fun MessageIndexLoaded(
                     jumpOpen = false
                     scope.launch {
                         val found = gate.withLock {
-                            val landed = model.jumpToSequence(sequence)
+                            val landed = model.jumpToPosition(sequence)
                             pull()
                             landed
                         }
@@ -3675,6 +3683,7 @@ private fun IndexMessageRow(
     mailbox: String,
     account: AccountSettings,
     depth: Int = 0,
+    position: Int = 0,
     selected: Boolean,
     multiSelect: Boolean,
     leftToRight: Boolean,
@@ -3833,9 +3842,9 @@ private fun IndexMessageRow(
                 val decoration = if (appearance.strikethrough) TextDecoration.LineThrough else TextDecoration.None
                 Row(verticalAlignment = Alignment.Top) {
                     Box(Modifier.width(sequenceWidth)) {
-                        if (row.sequence != 0) {
+                        if (position != 0) {
                             Text(
-                                text = row.sequence.toString(),
+                                text = position.toString(),
                                 modifier = Modifier.fillMaxWidth(),
                                 style = sequenceStyle,
                                 color = textColor,
@@ -4233,7 +4242,9 @@ private fun IndexSummaryRow(
 private sealed class IndexEntry {
     abstract val key: String
 
-    data class Message(val row: IndexRow, val member: Boolean = false, val depth: Int = 0) : IndexEntry() {
+    /** position: the row's 1-based number in the current sort/thread/filter order (0 = not numbered). */
+    data class Message(val row: IndexRow, val member: Boolean = false, val depth: Int = 0, val position: Int = 0) :
+        IndexEntry() {
         override val key: String = if (row.mailbox.isEmpty()) {
             "m${row.uid}"
         } else {
@@ -4252,10 +4263,11 @@ private fun buildIndexEntries(
     threadMembers: Map<Long, IndexRow>,
     threadHidden: Map<Long, List<Long>>,
     threadDepth: Map<Long, Int>,
+    anchorPage: Int = 0,
 ): List<IndexEntry> {
     val entries = ArrayList<IndexEntry>(rows.size)
-    for (row in rows) {
-        entries.add(IndexEntry.Message(row))
+    for ((index, row) in rows.withIndex()) {
+        entries.add(IndexEntry.Message(row, position = rowPosition(anchorPage, index)))
         if (row.uid !in expanded) continue
         for (uid in threadHidden[row.uid].orEmpty()) {
             val member = threadMembers[uid] ?: continue
