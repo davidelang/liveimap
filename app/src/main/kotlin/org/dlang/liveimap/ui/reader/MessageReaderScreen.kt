@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import androidx.compose.foundation.layout.heightIn
 import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.session.TooDeepSubtype
@@ -2358,12 +2359,22 @@ private fun ReaderHeaderCard(
         Column(Modifier.padding(12.dp)) {
             Text(stringResource(R.string.reader_from, from))
             if (toLine != null) {
-                Text(
-                    text = toLine,
-                    maxLines = if (recipientsOpen) Int.MAX_VALUE else 1,
-                    overflow = if (recipientsOpen) TextOverflow.Clip else TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { recipientsOpen = !recipientsOpen },
-                )
+                // The tap target is a full-width row at least 48dp high, so Compose does not grow the touch bounds of
+                // a one-line Text past its own line over the From and Date lines.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { recipientsOpen = !recipientsOpen }
+                        .testTag("reader-recipients"),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        text = toLine,
+                        maxLines = if (recipientsOpen) Int.MAX_VALUE else 1,
+                        overflow = if (recipientsOpen) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    )
+                }
             }
             Text(date)
             Text(subject, style = MaterialTheme.typography.titleMedium)
