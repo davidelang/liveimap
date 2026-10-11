@@ -38,4 +38,12 @@ class UidWindowTest {
         assertFalse(partialWindowIgnored(UidWindow(60, listOf(1L)), 1))
         assertFalse(partialWindowIgnored(UidWindow(3, emptyList()), 5))
     }
+
+    @Test
+    fun negativeRangesBecomePositive() {
+        assertEquals(58 to 60, positiveRange(-3, -1, 60))
+        assertEquals(58 to 60, positiveRange(-1, -3, 60))
+        assertEquals(1 to 2, positiveRange(-5, -1, 2))
+        assertEquals(null, positiveRange(-3, -1, 0))
+    }
 }

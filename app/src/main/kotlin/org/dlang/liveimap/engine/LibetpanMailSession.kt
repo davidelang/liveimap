@@ -792,9 +792,16 @@ class LibetpanMailSession : MailSession {
         if (kind == "Advanced" || !featureCaps.partialWindows) return null
         require(first != 0 && last != 0 && (first > 0) == (last > 0)) { "window $first..$last" }
         return keeper.read("search") {
-            val raw = nativeSearchCriterionWindow(requireHandle(), kind, argument, searchNeedsCharset(argument), first, last)
-                ?: throw MailFailure("search failed")
-            uidWindowOf(raw)
+            val h = requireHandle()
+            val charset = searchNeedsCharset(argument)
+            fun window(lo: Int, hi: Int) = uidWindowOf(
+                nativeSearchCriterionWindow(h, kind, argument, charset, lo, hi) ?: throw MailFailure("search failed"),
+            )
+            if (first > 0) return@read window(first, last)
+            // Negative ranges are sent as positive ones: Cyrus 3.13 answers PARTIAL -1:-3 with the OLDEST three.
+            val total = window(1, 1).total
+            val (lo, hi) = positiveRange(first, last, total) ?: return@read UidWindow(total, emptyList())
+            window(lo, hi).copy(total = total)
         }
     }
 
@@ -1365,6 +1372,15 @@ private fun currentApplication(): Context? {
 /** A server that advertised PARTIAL but returned COUNT without the window it covers (seen on Cyrus ESORT). */
 internal fun partialWindowIgnored(window: UidWindow, first: Int): Boolean =
     window.uids.isEmpty() && window.total >= first
+
+/** Negative positions (-1 = last) as 1-based ascending positions within [total], or null if none remain. */
+internal fun positiveRange(first: Int, last: Int, total: Int): Pair<Int, Int>? {
+    val a = (total + 1 + first).coerceAtLeast(1)
+    val b = (total + 1 + last).coerceAtLeast(1)
+    val lo = minOf(a, b)
+    val hi = minOf(maxOf(a, b), total)
+    return if (total <= 0 || lo > hi) null else lo to hi
+}
 
 internal fun uidWindowOf(raw: LongArray): UidWindow {
     if (raw.isEmpty()) return UidWindow(0, emptyList())
