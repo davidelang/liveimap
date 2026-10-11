@@ -161,7 +161,7 @@ class LabSuiteTest {
                     val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE $run\r\n" +
                         "Message-ID: <idle-$run@liveimap.lab>\r\n\r\nIDLE lab test.\r\n").toByteArray()
                     val uid = session.appendReturningUid("INBOX", msg, emptySet())
-                    val got = kotlinx.coroutines.withTimeoutOrNull(20_000) { seen.await() }
+                    val got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }  // Cyrus without idled polls every 60 s (imapidlepoll)
                     session.stopWatch()
                     if (uid > 0) {
                         session.select("INBOX")
@@ -169,7 +169,7 @@ class LabSuiteTest {
                         if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
                         session.select(box)
                     }
-                    got ?: throw IllegalStateException("no EXISTS from the watch connection within 20 s")
+                    got ?: throw IllegalStateException("no EXISTS from the watch connection within 75 s")
                 }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }

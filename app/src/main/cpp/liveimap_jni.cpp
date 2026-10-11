@@ -1789,13 +1789,29 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
     }
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
+    // Non-synchronizing literal only when the server allows it: LITERAL+, or LITERAL- / IMAP4rev2 up to
+    // 4096 bytes (RFC 7888). Courier 6 offers neither; it answered "{n+}" with NO and then ran each message
+    // line as a command (lab IDLE step).
+    bool plus = mailimap_has_extension(imap, const_cast<char *>("LITERAL+"))
+        || (size <= 4096 && (mailimap_has_extension(imap, const_cast<char *>("LITERAL-"))
+            || mailimap_has_extension(imap, const_cast<char *>("IMAP4rev2"))));
     char marker[64];
-    snprintf(marker, sizeof(marker), "{%zu+}", size);
+    snprintf(marker, sizeof(marker), plus ? "{%zu+}" : "{%zu}", size);
     r = mailimap_token_send(imap->imap_stream, marker);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
     if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    if (!plus) {
+        // Synchronizing literal: wait for "+" before the bytes; a tagged reply here ends the command.
+        if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+        const char * got = imap->imap_stream_buffer->str;
+        while (strncmp(got, "* ", 2) == 0) {  // untagged data may arrive first
+            if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+            got = imap->imap_stream_buffer->str;
+        }
+        if (got[0] != '+') return MAILIMAP_ERROR_APPEND;
+    }
     size_t off = 0;
     while (off < size) {
         ssize_t wrote = mailstream_write(imap->imap_stream, bytes + off, size - off);
