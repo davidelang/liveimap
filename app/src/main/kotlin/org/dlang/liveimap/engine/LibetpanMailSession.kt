@@ -25,6 +25,7 @@ import org.dlang.liveimap.session.SortField
 import org.dlang.liveimap.session.ThreadHeader
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.session.UidWindow
+import org.dlang.liveimap.session.SearchProgress
 import org.dlang.liveimap.session.clientThreads
 import org.dlang.liveimap.session.mailboxMarkedTrash
 import org.dlang.liveimap.session.sameImapIdentity
@@ -806,6 +807,44 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    /** Turns this session into a long-search side connection (see LongSearch). */
+    fun prepareLongSearch(timeoutSec: Int) = nativePrepareLongSearch(requireHandle(), timeoutSec)
+
+    /** One search, without the keeper's reconnect-and-retry: a dropped connection is a cancel or a failure. */
+    fun longSearch(kind: String, argument: String): List<Long> {
+        val h = requireHandle()
+        val withCharset = searchNeedsCharset(argument)
+        val ids = if (kind == "Advanced") {
+            val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
+            if (parsed.steps.isEmpty()) throw MailFailure("bad search")
+            nativeSearchAdvanced(
+                h,
+                parsed.combiner.name,
+                BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
+                Array(parsed.steps.size) { parsed.steps[it].kind },
+                Array(parsed.steps.size) { parsed.steps[it].argument },
+                featureCaps.searchKind() == "Esearch",
+                withCharset,
+                parsed.fuzzy,
+            )
+        } else {
+            nativeSearchCriterion(h, kind, argument, featureCaps.searchKind() == "Esearch", withCharset)
+        } ?: throw MailFailure("search failed")
+        return ids.toList()
+    }
+
+    fun searchProgress(): SearchProgress {
+        val h = handle
+        if (h == 0L) return SearchProgress(-1, -1, 0)
+        val v = nativeProgress(h) ?: return SearchProgress(-1, -1, 0)
+        return SearchProgress(v[0], v[1], v[2])
+    }
+
+    fun abortConnection() {
+        val h = handle
+        if (h != 0L) nativeAbort(h)
+    }
+
     override suspend fun thread(key: SortKey): ThreadNode {
         val algorithm = when (key) {
             SortKey.ThreadReferences -> {
@@ -1263,6 +1302,9 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeLocateUid(handle: Long, uid: Long, useEsearch: Boolean): LongArray?
     private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
+    private external fun nativePrepareLongSearch(handle: Long, timeoutSec: Int)
+    private external fun nativeProgress(handle: Long): LongArray?
+    private external fun nativeAbort(handle: Long)
     private external fun nativeSortWindow(handle: Long, key: String, newestFirst: Boolean, first: Int, last: Int): LongArray?
     private external fun nativeSearchCriterionWindow(
         handle: Long,

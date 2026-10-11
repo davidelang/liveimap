@@ -213,6 +213,13 @@ extern JavaVM * gVm;
 
 struct LiveSession {
     std::mutex mu;
+    // Long-search side connection: INPROGRESS (RFC 9585) progress, read without the session lock, and the socket
+    // that Cancel shuts down from another thread.
+    std::atomic<int64_t> progressDone{-1};
+    std::atomic<int64_t> progressTotal{-1};
+    std::atomic<int64_t> progressLines{0};
+    std::atomic<int> abortFd{-1};
+    bool watchProgress = false;
     mailimap * imap = nullptr;
     std::string host;
     int imapPort = 143;
@@ -2363,8 +2370,34 @@ void smtpTrafficLogger(mailsmtp *, int log_type, const char * str, size_t size, 
     logImapBuffer(live, log_type, str, size, "smtp");
 }
 
+// "* OK [INPROGRESS ("tag" done total)]": done/total may be NIL. A line split across reads is simply missed.
+void noteProgress(LiveSession * live, const char * str, size_t size) {
+    std::string chunk(str, size);
+    size_t at = 0;
+    while ((at = chunk.find("[INPROGRESS (", at)) != std::string::npos) {
+        at += 13;
+        size_t close = chunk.find(')', at);
+        if (close == std::string::npos) return;
+        std::string inner = chunk.substr(at, close - at);
+        size_t sp = inner.rfind(' ');
+        size_t sp0 = sp == std::string::npos || sp == 0 ? std::string::npos : inner.rfind(' ', sp - 1);
+        if (sp0 == std::string::npos) continue;
+        auto num = [](const std::string & t) -> int64_t {
+            if (t.empty() || t.size() > 18) return -1;
+            for (char c : t) if (c < '0' || c > '9') return -1;
+            return std::stoll(t);
+        };
+        live->progressDone.store(num(inner.substr(sp0 + 1, sp - sp0 - 1)));
+        live->progressTotal.store(num(inner.substr(sp + 1)));
+        live->progressLines.fetch_add(1);
+    }
+}
+
 void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
     auto * live = static_cast<LiveSession *>(context);
+    if (live != nullptr && live->watchProgress && log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED && str != nullptr) {
+        noteProgress(live, str, size);
+    }
     if (live == nullptr || !live->logImapTraffic) return;
     logImapBuffer(live, log_type, str, size, trafficConnectionId(live, nullptr, stream));
 }
@@ -2377,6 +2410,9 @@ void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
         if (imap->imap_stream != nullptr) {
             mailstream_set_logger(imap->imap_stream, streamTrafficLogger, live);
         }
+    } else if (live != nullptr && live->watchProgress && imap->imap_stream != nullptr) {
+        mailimap_set_logger(imap, nullptr, nullptr);
+        mailstream_set_logger(imap->imap_stream, streamTrafficLogger, live);
     } else {
         mailimap_set_logger(imap, nullptr, nullptr);
         if (imap->imap_stream != nullptr) {
@@ -7952,4 +7988,57 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeTls(JNIEnv * env, j
     std::string text = gLastTls;
     gLastTls.clear();
     return newString(env, text.c_str());
+}
+
+// Side connection for one long search: watch INPROGRESS, give reads [timeoutSec] (each line received restarts it),
+// and remember the socket so nativeAbort can drop the connection mid-command.
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePrepareLongSearch(JNIEnv * env, jobject, jlong handle,
+    jint timeoutSec) {
+    if (!ensureJni(env)) return;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return;
+    session->progressDone.store(-1);
+    session->progressTotal.store(-1);
+    session->progressLines.store(0);
+    session->watchProgress = true;
+    if (session->imap != nullptr && session->imap->imap_stream != nullptr) {
+        mailstream * stream = session->imap->imap_stream;
+        mailstream_set_logger(stream, streamTrafficLogger, session);
+        mailstream_low * low = mailstream_get_low(stream);
+        if (low != nullptr) {
+            mailstream_low_set_timeout(low, timeoutSec);
+            mailimap_set_timeout(session->imap, timeoutSec);
+            session->abortFd.store(mailstream_low_get_fd(low));
+        }
+    }
+    unlockSession(session);
+}
+
+// [done, total, progress lines seen]; -1 for unknown. No session lock: the search holds it.
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProgress(JNIEnv * env, jobject, jlong handle) {
+    jlong values[3] = {-1, -1, 0};
+    {
+        std::lock_guard<std::mutex> lock(gLiveMu);
+        auto * session = reinterpret_cast<LiveSession *>(handle);
+        if (gLive.find(session) != gLive.end()) {
+            values[0] = session->progressDone.load();
+            values[1] = session->progressTotal.load();
+            values[2] = session->progressLines.load();
+        }
+    }
+    jlongArray arr = env->NewLongArray(3);
+    if (arr != nullptr) env->SetLongArrayRegion(arr, 0, 3, values);
+    return arr;
+}
+
+// Cancel: shut the socket down so the blocked read fails now. The fd is closed later by nativeClose.
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(JNIEnv *, jobject, jlong handle) {
+    std::lock_guard<std::mutex> lock(gLiveMu);
+    auto * session = reinterpret_cast<LiveSession *>(handle);
+    if (gLive.find(session) == gLive.end()) return;
+    int fd = session->abortFd.load();
+    if (fd >= 0) shutdown(fd, SHUT_RDWR);
 }

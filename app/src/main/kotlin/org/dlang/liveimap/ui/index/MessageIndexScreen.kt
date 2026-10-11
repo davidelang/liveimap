@@ -608,6 +608,7 @@ internal class IndexScreenHeld : ViewModel() {
         val current = model
         if (current != null && boundMailbox == mailbox && boundSession === session) return current
         val created = IndexModel(session, store, mailbox)
+        created.longSearchLinks = { account, box -> org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box) }
         model = created
         boundSession = session
         boundMailbox = mailbox
@@ -762,6 +763,11 @@ private fun MessageIndexLoaded(
     val listState = rememberLazyListState()
     var rows by held.rowsState
     var loading by remember { mutableStateOf(!reuseWindow) }
+    var searchProgress by remember { mutableStateOf<org.dlang.liveimap.session.SearchProgress?>(null) }
+    DisposableEffect(model) {
+        model.onSearchProgress = { searchProgress = it }
+        onDispose { model.onSearchProgress = null }
+    }
     var banner by remember { mutableStateOf<String?>(null) }
     var fetchNotice by remember { mutableStateOf(if (reuseWindow) model.notice else null) }
     var loadToken by remember { mutableIntStateOf(0) }
@@ -2744,7 +2750,23 @@ private fun MessageIndexLoaded(
     Box(Modifier.fillMaxSize().padding(padding)) {
     Column(Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
-        if (loading && banner == null) {
+        val progress = searchProgress
+        if (progress != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val fraction = progress.fraction
+                if (fraction != null) {
+                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.weight(1f).height(4.dp))
+                    Text(
+                        stringResource(R.string.index_search_progress, progress.done, progress.total),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.weight(1f).height(4.dp))
+                }
+                TextButton(onClick = { model.cancelSearch() }) { Text(stringResource(R.string.index_search_cancel)) }
+            }
+        } else if (loading && banner == null) {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()

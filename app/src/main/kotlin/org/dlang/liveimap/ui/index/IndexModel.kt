@@ -8,6 +8,11 @@ import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.LongSearch
+import org.dlang.liveimap.session.LongSearchLink
+import org.dlang.liveimap.session.LongSearchResult
+import org.dlang.liveimap.session.SearchProgress
+import org.dlang.liveimap.session.isLongSearch
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.NamespaceKind
@@ -609,6 +614,14 @@ class IndexModel(
         private set
 
     var notice: String? = null
+
+    /** Opens a side connection for a long search; set by the screen (null in tests: main session). */
+    var longSearchLinks: ((AccountSettings, String) -> LongSearchLink)? = null
+
+    /** Progress of a long search (null when none runs); called from a background thread. */
+    var onSearchProgress: ((SearchProgress?) -> Unit)? = null
+
+    @Volatile private var runningSearch: LongSearch? = null
         private set
 
     fun reportNotice(text: String) {
@@ -1892,7 +1905,7 @@ class IndexModel(
             }
         }
         val found = if (advanced != null) {
-            session.searchCriterion("Advanced", advanced)
+            searchMaybeLong("Advanced", advanced)
         } else {
             session.searchCriterion(activeSearchField.name, query)
         }
@@ -1920,6 +1933,33 @@ class IndexModel(
         }
         order.seed(0, first.uids)
         return order
+    }
+
+    /**
+     * Body and text searches run on a separate connection ([longSearchLinks]) with INPROGRESS progress; Cancel
+     * drops it and a late result is discarded. No retry. Without a link factory (tests) they use the main session.
+     */
+    private suspend fun searchMaybeLong(kind: String, argument: String): List<Long> {
+        val links = longSearchLinks
+        if (links == null || !isLongSearch(kind, argument)) return session.searchCriterion(kind, argument)
+        val search = LongSearch(links(account, mailbox))
+        runningSearch = search
+        onSearchProgress?.invoke(SearchProgress(-1, -1, 0))
+        try {
+            return when (val result = search.run(kind, argument) { onSearchProgress?.invoke(it) }) {
+                is LongSearchResult.Hits -> result.uids
+                LongSearchResult.Cancelled -> throw MailFailure("search cancelled")
+                is LongSearchResult.Failed -> throw MailFailure(result.text)
+            }
+        } finally {
+            runningSearch = null
+            onSearchProgress?.invoke(null)
+        }
+    }
+
+    /** Cancel the running long search, if any: drops its connection. */
+    fun cancelSearch() {
+        runningSearch?.cancel()
     }
 
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
