@@ -162,7 +162,7 @@ class ManageSieveTest {
             listOf("OK (WARNINGS) \"missing semicolon\""),
         )
         val warnings = putScript(transport, "liveimap", script)
-        assertEquals(listOf("PUTSCRIPT \"liveimap\" {6+}"), transport.written)
+        assertEquals(listOf("PUTSCRIPT \"liveimap\" {6+}", ""), transport.written)
         assertArrayEquals(script.toByteArray(StandardCharsets.UTF_8), transport.writtenBytes.single())
         assertEquals(6, transport.writtenBytes.single().size)
         assertEquals("missing semicolon", warnings)
@@ -361,7 +361,7 @@ class ManageSieveTest {
         val transport = ListTransport(listOf("OK", "OK"))
         assertEquals("", putConsentedInclude(transport, plan, consent = true))
         assertEquals(
-            listOf("CHECKSCRIPT {36+}", "PUTSCRIPT \"vacation\" {36+}"),
+            listOf("CHECKSCRIPT {36+}", "", "PUTSCRIPT \"vacation\" {36+}", ""),
             transport.written,
         )
         val bytes = rewritten.toByteArray(StandardCharsets.UTF_8)
@@ -695,6 +695,7 @@ class ManageSieveTest {
             listOf(
                 "AUTHENTICATE \"PLAIN\" \"AGFkYQBzZWNyZXQ=\"",
                 "CHECKSCRIPT {6+}",
+                "",
             ),
             transport.written,
         )
