@@ -38,6 +38,19 @@ passdb lab-cert {
 # end lab-clientcert
 CONF
     docker cp "$tmp" "$c:$conf" >/dev/null
+    # LAB_TLS_MAX=1.2 caps the server at TLS 1.2 (Dovecot has no max-protocol setting, so it goes into the
+    # container's system OpenSSL config, which Dovecot loads); unset restores the original (TLS 1.3).
+    # /usr/lib/ssl/openssl.cnf is a symlink to /etc/ssl/openssl.cnf; always write the real file. The pristine
+    # copy comes from the image (the container has no cp), so re-runs never stack edits.
+    ssl=/etc/ssl/openssl.cnf
+    t=$(docker create "$(docker inspect -f '{{.Config.Image}}' "$c")")
+    docker cp -L "$t:$ssl" - | tar xO > "$tmp"
+    docker rm "$t" >/dev/null
+    if [ "${LAB_TLS_MAX:-}" = 1.2 ]; then
+      sed -i '/^\[openssl_init\]/a ssl_conf = lab_ssl_sect' "$tmp"
+      printf '\n[lab_ssl_sect]\nsystem_default = lab_tls_sect\n[lab_tls_sect]\nMaxProtocol = TLSv1.2\n' >> "$tmp"
+    fi
+    docker cp "$tmp" "$c:$ssl" >/dev/null
     rm -f "$tmp"
     docker exec "$c" doveconf -n >/dev/null
     docker restart "$c" >/dev/null ;;
