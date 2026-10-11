@@ -53,7 +53,9 @@ object KeystoreSealer : Sealer {
  * Imported PKCS#12 client certificates in app-private storage (filesDir/client-certs). Each import is
  * `<id>.p12` with its password sealed by the Android keystore in `<id>.pw.sealed` beside it (design docs:
  * secrets live in the Android keystore; never in AccountSettings, so settings exports carry no secret).
- * AccountSettings.clientCert holds the .p12 path. A plaintext `<id>.pw` from before sealing is migrated on load.
+ * AccountSettings.clientCert holds the .p12 path. There is no migration: only sealed passwords are read.
+ * The settings screen no longer imports here (an imported .p12 goes into AndroidKeyStore, see KeyChainCerts);
+ * this store remains for the lab's in-memory p12 path.
  *
  * The other per-account choice, an Android KeyChain certificate, is [KeyChainCerts].
  */
@@ -95,11 +97,6 @@ object ClientCertStore {
         val file = File(path)
         if (!file.isFile) return null
         val sealed = sealedFile(file)
-        val legacy = passwordFile(file)
-        if (!sealed.isFile && legacy.isFile) {
-            writePrivate(sealed, sealer.seal(legacy.readBytes()))
-            legacy.delete()
-        }
         if (!sealed.isFile) return null
         val password = try {
             sealer.open(sealed.readBytes()).toString(Charsets.UTF_8)
@@ -112,14 +109,11 @@ object ClientCertStore {
     fun remove(path: String) {
         if (path.isBlank()) return
         val file = File(path)
-        passwordFile(file).delete()
         sealedFile(file).delete()
         file.delete()
     }
 
     private fun sealedFile(p12: File) = File(p12.parentFile, p12.name.removeSuffix(".p12") + ".pw.sealed")
-
-    private fun passwordFile(p12: File) = File(p12.parentFile, p12.name.removeSuffix(".p12") + ".pw")
 
     private fun writePrivate(file: File, bytes: ByteArray) {
         file.writeBytes(bytes)

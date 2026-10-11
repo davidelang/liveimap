@@ -2094,7 +2094,10 @@ private fun ClientCertField(editor: SettingsEditor) {
     if (current.isBlank() && alias.isNotBlank()) {
         // Per-account choice 2: an Android KeyChain certificate (key stays in the system keystore).
         Text(stringResource(R.string.settings_client_cert_keychain_current, alias))
-        TextButton(onClick = { editor.persist(editor.settings.copy(clientCertAlias = "")) }) {
+        TextButton(onClick = {
+            org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias)
+            editor.persist(editor.settings.copy(clientCertAlias = ""))
+        }) {
             Text(stringResource(R.string.settings_client_cert_remove))
         }
     } else if (current.isBlank()) {
@@ -2147,13 +2150,17 @@ private fun ClientCertField(editor: SettingsEditor) {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                        ClientCertStore.import(java.io.File(context.filesDir, "client-certs"), bytes, typed)
+                        ClientCertStore.check(bytes, typed)
+                        // The key goes into AndroidKeyStore; neither the .p12 nor its password is stored.
+                        org.dlang.liveimap.engine.KeyChainCerts.importP12(java.util.UUID.randomUUID().toString(), bytes, typed)
                     }
                 }
-                result.onSuccess { path ->
+                result.onSuccess { alias ->
                     val old = editor.settings.clientCert
-                    editor.persist(editor.settings.copy(clientCert = path, clientCertAlias = ""))
-                    if (old.isNotBlank() && old != path) ClientCertStore.remove(old)
+                    val oldAlias = editor.settings.clientCertAlias
+                    editor.persist(editor.settings.copy(clientCert = "", clientCertAlias = alias))
+                    if (old.isNotBlank()) ClientCertStore.remove(old)
+                    if (oldAlias != alias) org.dlang.liveimap.engine.KeyChainCerts.removeImported(oldAlias)
                     pending = null
                     password = ""
                     message = null

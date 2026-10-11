@@ -38,15 +38,15 @@ class ClientCertStoreTest {
     }
 
     @Test
-    fun legacyPlainPasswordIsMigrated() {
-        val dir = Files.createTempDirectory("cc").toFile()
-        val p12 = File(dir, "old.p12").apply { writeBytes(res("client-cert-test.p12")) }
-        File(dir, "old.pw").writeText("test-pass")
-        assertEquals("test-pass", ClientCertStore.load(p12.path)!!.password)
-        assertFalse(File(dir, "old.pw").exists())
-        assertTrue(File(dir, "old.pw.sealed").exists())
-        assertEquals("test-pass", ClientCertStore.load(p12.path)!!.password)
+    fun plainPasswordFileIsNotRead() {
+        // No migration: a stray plaintext .pw beside a .p12 is ignored.
+        val dir = createTempDir()
+        java.io.File(dir, "old.p12").writeBytes(byteArrayOf(1, 2, 3))
+        java.io.File(dir, "old.pw").writeText("test-pass")
+        assertEquals(null, ClientCertStore.load(java.io.File(dir, "old.p12").absolutePath))
+        assertTrue(java.io.File(dir, "old.pw").exists())
     }
+
     private fun res(name: String) = javaClass.classLoader!!.getResourceAsStream(name)!!.readBytes()
 
     @Test

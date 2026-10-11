@@ -52,7 +52,14 @@ object KeyChainCerts {
      * Lab only: puts the key and chain of a PKCS#12 into this app's AndroidKeyStore under [name], allowing the
      * operations TLS needs (PKCS#1 and raw RSA for PSS, ECDSA over a digest). Returns the alias to store.
      */
-    fun importLab(name: String, p12: ByteArray, password: String): String {
+    /** Lab runs: same as [importP12]. */
+    fun importLab(name: String, p12: ByteArray, password: String): String = importP12(name, p12, password)
+
+    /**
+     * Imports a .p12 into this app's AndroidKeyStore as [name] (non-exportable key; the .p12 bytes and its
+     * password are not kept anywhere). Returns the account alias ("androidkeystore:<name>").
+     */
+    fun importP12(name: String, p12: ByteArray, password: String): String {
         val src = KeyStore.getInstance("PKCS12").apply { load(ByteArrayInputStream(p12), password.toCharArray()) }
         val entry = src.aliases().toList().first { src.isKeyEntry(it) }
         val key = src.getKey(entry, password.toCharArray()) as PrivateKey
@@ -72,6 +79,14 @@ object KeyChainCerts {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         ks.setEntry(name, KeyStore.PrivateKeyEntry(key, chain), protection)
         return LAB_PREFIX + name
+    }
+
+    /** Deletes an app-imported key (alias with [LAB_PREFIX]); system KeyChain aliases are left alone. */
+    fun removeImported(alias: String) {
+        if (!alias.startsWith(LAB_PREFIX)) return
+        runCatching {
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias.removePrefix(LAB_PREFIX))
+        }
     }
 
     fun subject(cert: KeyChainCert): String =
