@@ -1,0 +1,203 @@
+Cap the length of one line read by mailstream_read_line*().
+
+mailstream_read_line_append grew the line buffer until a newline arrived, so a hostile or broken server (or a
+MITM on a plaintext connection) could exhaust memory with one endless line. struct mailstream gets
+max_line_length (default MAILSTREAM_DEFAULT_MAX_LINE_LENGTH, 64 MiB, the same as the IMAP literal limit;
+0 = no limit) with mailstream_set/get_max_line_length(); a longer line fails the read (NULL).
+
+diff -ruN a/src/data-types/mailstream.c b/src/data-types/mailstream.c
+--- a/src/data-types/mailstream.c
++++ b/src/data-types/mailstream.c
+@@ -83,6 +83,7 @@
+   
+   s->logger = NULL;
+   s->logger_context = NULL;
++  s->max_line_length = MAILSTREAM_DEFAULT_MAX_LINE_LENGTH;
+   
+   mailstream_set_low(s, low);
+   
+@@ -420,3 +421,13 @@
+   }
+   carray_free(certificate_chain);
+ }
++
++void mailstream_set_max_line_length(mailstream * s, size_t max_line_length)
++{
++  s->max_line_length = max_line_length;
++}
++
++size_t mailstream_get_max_line_length(mailstream * s)
++{
++  return s->max_line_length;
++}
+diff -ruN a/src/data-types/mailstream.h b/src/data-types/mailstream.h
+--- a/src/data-types/mailstream.h
++++ b/src/data-types/mailstream.h
+@@ -55,6 +55,13 @@
+ LIBETPAN_EXPORT
+ mailstream * mailstream_new(mailstream_low * low, size_t buffer_size);
+ 
++/* Longest line accepted by mailstream_read_line*(); longer lines fail the read (NULL). 0 = no limit. */
++LIBETPAN_EXPORT
++void mailstream_set_max_line_length(mailstream * s, size_t max_line_length);
++
++LIBETPAN_EXPORT
++size_t mailstream_get_max_line_length(mailstream * s);
++
+ LIBETPAN_EXPORT
+ ssize_t mailstream_write(mailstream * s, const void * buf, size_t count);
+ 
+diff -ruN a/src/data-types/mailstream_helper.c b/src/data-types/mailstream_helper.c
+--- a/src/data-types/mailstream_helper.c
++++ b/src/data-types/mailstream_helper.c
+@@ -78,19 +78,26 @@
+ 
+ char * mailstream_read_line_append(mailstream * stream, MMAPString * line)
+ {
++  size_t start;
++
+   if (stream == NULL)
+     return NULL;
+ 
++  start = line->len;
+   do {
+     if (stream->read_buffer_len > 0) {
+       size_t i;
++      size_t take;
+ 
+       i = 0;
+-      while (i < stream->read_buffer_len) {
+-        if (stream->read_buffer[i] == '\n')
+-          return mailstream_read_len_append(stream, line, i + 1);
++      while (i < stream->read_buffer_len && stream->read_buffer[i] != '\n')
+         i++;
+-      }
++      take = (i < stream->read_buffer_len) ? i + 1 : stream->read_buffer_len;
++      /* A hostile peer could otherwise grow one line until memory runs out. */
++      if (stream->max_line_length != 0 && line->len - start + take > stream->max_line_length)
++        return NULL;
++      if (i < stream->read_buffer_len)
++        return mailstream_read_len_append(stream, line, take);
+       if (mailstream_read_len_append(stream, line,
+ 				     stream->read_buffer_len) == NULL)
+         return NULL;
+diff -ruN a/src/data-types/mailstream_types.h b/src/data-types/mailstream_types.h
+--- a/src/data-types/mailstream_types.h
++++ b/src/data-types/mailstream_types.h
+@@ -87,8 +87,14 @@
+   void (* logger)(mailstream * s, int log_type,
+       const char * str, size_t size, void * logger_context);
+   void * logger_context;
++
++  /* Longest line mailstream_read_line_append() accepts in one call (0 = no limit). */
++  size_t max_line_length;
+ };
+ 
++/* Default line limit: a server cannot make the client buffer an endless line. Literals have their own limit. */
++#define MAILSTREAM_DEFAULT_MAX_LINE_LENGTH (64U * 1024U * 1024U)
++
+ struct mailstream_low_driver {
+   ssize_t (* mailstream_read)(mailstream_low *, void *, size_t);
+   ssize_t (* mailstream_write)(mailstream_low *, const void *, size_t);
+diff -ruN a/unittest/imap/imap_tests.h b/unittest/imap/imap_tests.h
+--- a/unittest/imap/imap_tests.h
++++ b/unittest/imap/imap_tests.h
+@@ -19,6 +19,7 @@
+ #include "response_data_test.h"
+ #include "response_done_test.h"
+ #include "unsupported_response_test.h"
++#include "line_length_test.h"
+ #include "body_depth_test.h"
+ 
+ #endif
+diff -ruN a/unittest/imap/line_length_test.c b/unittest/imap/line_length_test.c
+--- a/unittest/imap/line_length_test.c
++++ b/unittest/imap/line_length_test.c
+@@ -0,0 +1,55 @@
++#include <assert.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "line_length_test.h"
++#include "imap_test_utils.h"
++#include "mailstream.h"
++#include "mmapstring.h"
++
++/* A server must not be able to make the client buffer an endless line. */
++int imap_line_length_test_run(void)
++{
++  MMAPString * line = mmap_string_new("");
++  char * big = malloc(5001);
++  mailstream * s;
++
++  memset(big, 'x', 5000);
++  big[5000] = 0;
++
++  /* The default limit exists and is generous. */
++  s = imap_test_stream_from_string("* OK hi\r\n");
++  assert(mailstream_get_max_line_length(s) == MAILSTREAM_DEFAULT_MAX_LINE_LENGTH);
++  assert(mailstream_read_line(s, line) != NULL && strcmp(line->str, "* OK hi\r\n") == 0);
++  mailstream_close(s);
++
++  /* Over the limit, with or without a newline in sight: the read fails. */
++  s = imap_test_stream_from_string(big);
++  mailstream_set_max_line_length(s, 1000);
++  assert(mailstream_read_line(s, line) == NULL);
++  mailstream_close(s);
++
++  /* Exactly at the limit (newline included) still reads; the next line is separate. */
++  {
++    char text[64];
++    memset(text, 'y', 18);
++    memcpy(text + 18, "\r\n* OK next\r\n", 14);
++    s = imap_test_stream_from_string(text);
++    mailstream_set_max_line_length(s, 20);
++    assert(mailstream_read_line(s, line) != NULL && line->len == 20);
++    assert(mailstream_read_line(s, line) != NULL && strcmp(line->str, "* OK next\r\n") == 0);
++    mailstream_close(s);
++  }
++
++  /* 0 means no limit. */
++  s = imap_test_stream_from_string(big);
++  mailstream_set_max_line_length(s, 0);
++  assert(mailstream_read_line(s, line) != NULL && line->len == 5000);
++  mailstream_close(s);
++
++  free(big);
++  mmap_string_free(line);
++  puts("line_length_test: ok");
++  return 0;
++}
+diff -ruN a/unittest/imap/line_length_test.h b/unittest/imap/line_length_test.h
+--- a/unittest/imap/line_length_test.h
++++ b/unittest/imap/line_length_test.h
+@@ -0,0 +1,6 @@
++#ifndef LINE_LENGTH_TEST_H
++#define LINE_LENGTH_TEST_H
++
++int imap_line_length_test_run(void);
++
++#endif
+diff -ruN a/unittest/imap/main.c b/unittest/imap/main.c
+--- a/unittest/imap/main.c
++++ b/unittest/imap/main.c
+@@ -22,6 +22,7 @@
+   imap_metadata_test_run();
+   imap_pipeline_test_run();
+   imap_utf8_test_run();
++  imap_line_length_test_run();
+   imap_body_depth_test_run();
+ 
+   puts("imap_test: ok");
+diff -ruN a/unittest/Makefile b/unittest/Makefile
+--- a/unittest/Makefile
++++ b/unittest/Makefile
+@@ -127,6 +127,7 @@
+ 	imap/metadata_test.c \
+ 	imap/pipeline_test.c \
+ 	imap/utf8_test.c \
++	imap/line_length_test.c \
+ 	imap/body_depth_test.c \
+ 	imap/imap_test_utils.c
+ IMAP_TEST_DEPS = $(IMAP_TEST_SRCS) imap/*.h
