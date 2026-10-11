@@ -386,7 +386,7 @@ class LabSuiteTest {
                     if (got != want) throw IllegalStateException("got $got want $want")
                     // The same criteria sent with SORT, ESORT PARTIAL and THREAD must select the same messages.
                     val group = org.dlang.liveimap.ui.index.filterChainGroup(chain)!!
-                    val key = org.dlang.liveimap.session.SortKey.Subject
+                    val key = org.dlang.liveimap.settings.SortKey.Subject
                     val notes = ArrayList<String>()
                     if (session.featureCaps.sort) {
                         val sorted = session.sortMatching(key, false, group)?.sorted()
@@ -399,7 +399,7 @@ class LabSuiteTest {
                         }
                     }
                     if (session.featureCaps.threadReferences) {
-                        val tree = session.threadMatching(org.dlang.liveimap.session.SortKey.ThreadReferences, group)
+                        val tree = session.threadMatching(org.dlang.liveimap.settings.SortKey.ThreadReferences, group)
                         val inTree = ArrayList<Long>()
                         tree?.forEachPreorder { n -> n.uid?.let { inTree.add(it) } }
                         if (inTree.sorted() != want) throw IllegalStateException("THREAD got $inTree want $want")
