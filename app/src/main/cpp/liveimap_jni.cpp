@@ -2066,6 +2066,10 @@ const int kReadTimeoutSec = 60;
 
 void enableKeepalive(int fd) {
     int on = 1;
+    // IMAP is many small command lines: send each at once instead of waiting for Nagle to coalesce.
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) < 0) {
+        __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "TCP_NODELAY failed: %s", strerror(errno));
+    }
     if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on)) < 0) {
         __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "SO_KEEPALIVE failed: %s", strerror(errno));
     }
