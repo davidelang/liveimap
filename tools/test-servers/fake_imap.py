@@ -14,6 +14,16 @@ lock = threading.Lock()
 DUMP = __import__("os").environ.get("FAKE_DUMP", "")  # diagnosis: raw bytes sent per connection
 DELAY = int(__import__("os").environ.get("FAKE_DELAY_MS", "0")) / 1000.0
 log = open(logpath, "a")
+MODEL = None
+if __import__("os").environ.get("FAKE_MODEL"):
+    from fake_model import Model
+    _caps = set()
+    for _vs in p["table"].values():
+        for _v in _vs:
+            for _it in _v["items"]:
+                _m = re.search(r"CAPABILITY ([^\]]*)", _it.get("line", ""), re.I)
+                if _m: _caps |= set(_m.group(1).split())
+    MODEL = Model(json.loads(__import__("os").environ["FAKE_MODEL"]), _caps)
 
 
 def note(**kw):
@@ -30,7 +40,8 @@ def serve(conn, cid):
         if dump:
             dump.write(b); dump.flush()
         conn.sendall(b)
-    send((p["greeting"] + "\r\n").encode("latin-1"))
+    st = {"sel": None, "rw": False}
+    send(((MODEL.strip_caps(p["greeting"]) if MODEL else p["greeting"]) + "\r\n").encode("latin-1"))
     while True:
         raw = f.readline()
         if not raw:
@@ -48,6 +59,17 @@ def serve(conn, cid):
         never = bool(NEVER.match(rest))
         if cmd == "IDLE":
             send(b"+ idling\r\n"); f.readline(); send(f"{tag} OK IDLE done\r\n".encode()); note(c=cid, cmd=rest[:120], shape=sh, ok=True); continue
+        if MODEL and authed:
+            with lock:
+                before = len(MODEL.expunged)
+                got = MODEL.handle(st, tag, rest)
+                new = MODEL.expunged[before:]
+            if got is not None:
+                lines, ok, why = got
+                send("".join(l + "\r\n" for l in lines).encode("latin-1"))
+                note(c=cid, cmd=rest[:200], shape=sh, ok=ok, never=never, model=True,
+                     unexpected=bool(why), why=why, expunged=[[b, u, w] for b, u, w in new])
+                continue
         allv = p["table"].get(sh) or []
         approx = False
         if not allv and "(QRESYNC" in sh.upper():  # cached-state QRESYNC open: answer as the plain open
@@ -97,7 +119,8 @@ def fix_literal_lines(items, tag):
         # Every recorded line lost its CRLF, including a "{n}" literal header: RFC 3501 puts CRLF between
         # "{n}" and the literal bytes. Leaving it out shifted each literal by 2 bytes, which libetpan
         # tolerated until a burst of pipelined literals (indexNewest) broke the parse mid-body.
-        out += it["line"].replace("{TAG}", tag, 1).encode("latin-1") + b"\r\n"
+        line = it["line"].replace("{TAG}", tag, 1)
+        out += (MODEL.strip_caps(line) if MODEL else line).encode("latin-1") + b"\r\n"
     return bytes(out)
 
 
