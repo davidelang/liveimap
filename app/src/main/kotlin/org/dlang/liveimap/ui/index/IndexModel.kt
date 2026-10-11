@@ -1252,23 +1252,41 @@ class IndexModel(
         if (!allMailbox && uids.isEmpty()) return heldRows
         val settings = store.load()
         account = settings
+        moveStop = false
+        var stoppedNote: String? = null
         try {
-            if (allMailbox) session.copyAllThenDelete(moveMailbox)
-            else session.copyThenDelete(uids, moveMailbox)
-            val dest = session.takeCopiedUids()
+            var moved = uids
+            val dest: List<Long>
+            if (allMailbox) {
+                session.copyAllThenDelete(moveMailbox)
+                dest = session.takeCopiedUids()
+            } else {
+                // Big moves go in chunks: progress between chunks, and Stop takes effect before the next one.
+                // Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
+                val outcome = moveInChunks(uids, MoveChunk, { moveStop }, { done, total ->
+                    if (uids.size > MoveChunk) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
+                }) { chunk ->
+                    session.copyThenDelete(chunk, moveMailbox)
+                    session.takeCopiedUids()
+                }
+                if (uids.size > MoveChunk) onSearchProgress?.invoke(null)
+                moved = outcome.moved
+                dest = outcome.dest
+                if (moved.size < uids.size) stoppedNote = "Moved ${moved.size} of ${uids.size}; stopped"
+            }
             val usedMove = moveCommandKind(settings.moveMethod, session.featureCaps.move) == "Move"
             if (allMailbox) {
                 order = emptyList()
                 heldRows = emptyList()
             } else {
-                val gone = uids.toSet()
+                val gone = moved.toSet()
                 order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone }
             }
-            notice = null
+            notice = stoppedNote
             mailUndo = MailUndo(
                 delete = false,
-                uids = uids,
+                uids = moved,
                 allMailbox = allMailbox,
                 targetMailbox = moveMailbox,
                 destUids = dest,
@@ -1983,10 +2001,13 @@ class IndexModel(
 
     private var presetHits: List<Long>? = null
 
-    /** Cancel the running long search, if any: drops its connection. */
+    /** Cancel the running long search (drops its connection), or stop a chunked move before its next chunk. */
     fun cancelSearch() {
+        moveStop = true
         runningSearch?.cancel()
     }
+
+    @Volatile private var moveStop = false
 
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
@@ -2268,4 +2289,31 @@ class IndexModel(
         val byUid = fetched.associateBy { it.uid }
         return uids.mapNotNull { byUid[it] }
     }
+}
+
+/** UIDs per MOVE/COPY command for big moves (review 3.7: 10,000 in one command took 40 s with no feedback). */
+const val MoveChunk = 1000
+
+data class ChunkedMove(val moved: List<Long>, val dest: List<Long>)
+
+/**
+ * Runs [moveChunk] over [uids] in chunks of [size], reporting progress after each and checking [stop] before
+ * every chunk but the first. Returns what was moved; a failure propagates after the chunks already done.
+ */
+suspend fun moveInChunks(
+    uids: List<Long>,
+    size: Int,
+    stop: () -> Boolean,
+    progress: (done: Int, total: Int) -> Unit,
+    moveChunk: suspend (List<Long>) -> List<Long>,
+): ChunkedMove {
+    val moved = ArrayList<Long>(uids.size)
+    val dest = ArrayList<Long>()
+    for ((index, chunk) in uids.chunked(size).withIndex()) {
+        if (index > 0 && stop()) break
+        dest += moveChunk(chunk)
+        moved += chunk
+        progress(moved.size, uids.size)
+    }
+    return ChunkedMove(moved, dest)
 }
