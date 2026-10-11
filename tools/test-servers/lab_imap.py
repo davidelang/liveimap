@@ -115,9 +115,11 @@ def message(i, kind):
     msg["To"] = "liveimap@example.test"
     if i % 5 == 0:
         msg["Cc"] = "cc-person@example.test"
-    msg["Date"] = format_datetime(datetime.now(timezone.utc) - timedelta(minutes=10 * i))
-    msg["Message-ID"] = make_msgid(domain="lab.liveimap.test")
+    # Later messages are newer, so replies are dated after the message they answer.
+    msg["Date"] = format_datetime(datetime.now(timezone.utc) - timedelta(minutes=10 * max(0, 5000 - i)))
     root = i - (i % 4)
+    # A thread's root carries the Message-ID its replies reference, so THREAD REFERENCES links them (no placeholder).
+    msg["Message-ID"] = f"<thread-{root}@lab.liveimap.test>" if i % 4 == 0 else make_msgid(domain="lab.liveimap.test")
     if i % 4:
         msg["In-Reply-To"] = f"<thread-{root}@lab.liveimap.test>"
         msg["References"] = f"<thread-{root}@lab.liveimap.test>"
