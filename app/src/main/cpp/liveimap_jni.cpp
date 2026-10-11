@@ -2003,7 +2003,7 @@ void watchMain(LiveSession * session) {
         mailstream * ws = session->watch->imap_stream;
         bool buffered = ws != nullptr && ws->read_buffer_len > 0;
         if (!buffered && ws != nullptr && mailstream_get_low(ws) != nullptr
-            && mailstream_get_low(ws)->driver == mailstream_ssl_driver) {
+            && mailstream_get_low(ws)->driver != mailstream_socket_driver) {  // TLS (the watch never compresses)
             ssl_st * wssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(ws));
             buffered = wssl != nullptr && SSL_pending(wssl) > 0;
         }
