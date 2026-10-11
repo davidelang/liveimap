@@ -51,8 +51,10 @@ class PlainSieveTransport internal constructor(
     private var authPending = false
 
     private fun record(type: Int, bytes: ByteArray) {
-        TrafficRecorder.accept("sieve", type, bytes)
-        TrafficRecorder.flush()
+        TrafficRecorder.active?.let {
+            it.accept("sieve", type, bytes)
+            it.flush()
+        }
     }
 
     override suspend fun readLine(): String {
