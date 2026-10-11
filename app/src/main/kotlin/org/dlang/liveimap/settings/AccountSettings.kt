@@ -415,6 +415,11 @@ data class AccountSettings(
     val allowOldTls: Boolean = false,
     /** Advanced: force the IMAP login method. "" = automatic, "IMAP-LOGIN" = the LOGIN command, else a SASL name. */
     val authMechanism: String = "",
+    /**
+     * Advanced: TLS client certificate for IMAP and SMTP, the path of an imported PKCS#12 file in app-private
+     * storage (see ClientCertStore; its password sits beside it, not in these settings). "" = none.
+     */
+    val clientCert: String = "",
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
@@ -526,6 +531,7 @@ private val fieldNames = listOf(
     "acceptInvalidCert",
     "allowOldTls",
     "authMechanism",
+    "clientCert",
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
@@ -648,6 +654,7 @@ fun AccountSettings.encode(): String = buildString {
     if (acceptInvalidCert) appendLine("acceptInvalidCert=true")
     if (allowOldTls) appendLine("allowOldTls=true")
     if (authMechanism.isNotBlank()) appendLine("authMechanism=${percentEncode(authMechanism)}")
+    if (clientCert.isNotBlank()) appendLine("clientCert=${percentEncode(clientCert)}")
     if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
@@ -760,6 +767,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "acceptInvalidCert" ||
             key == "allowOldTls" ||
             key == "authMechanism" ||
+            key == "clientCert" ||
             key == "inboundRules" ||
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
@@ -868,6 +876,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         acceptInvalidCert = values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false,
         allowOldTls = values["allowOldTls"]?.let { parseBoolean(it) } ?: false,
         authMechanism = values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "",
+        clientCert = values["clientCert"]?.let { percentDecode(it) } ?: "",
         inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
         watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
         extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,

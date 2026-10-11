@@ -256,6 +256,10 @@ class LibetpanMailSession : MailSession {
             TrafficLog.noteStatus("Authenticating")
         }
         TrafficRecorder.event("main", "connect", "${account.imapHost}:${account.imapPort} ${account.tlsMode.name}")
+        val clientCert = ClientCertStore.load(account.clientCert)
+        if (account.clientCert.isNotBlank() && clientCert == null) {
+            throw MailFailure("client certificate missing; import it again in account settings")
+        }
         val opened = nativeOpen(
             account.imapHost,
             account.imapPort,
@@ -273,6 +277,8 @@ class LibetpanMailSession : MailSession {
             account.acceptInvalidCert,
             account.allowOldTls,
             account.authMechanism,
+            clientCert?.p12,
+            clientCert?.password ?: "",
         )
         nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
@@ -1055,6 +1061,8 @@ class LibetpanMailSession : MailSession {
         acceptInvalidCert: Boolean,
         allowOldTls: Boolean,
         authMechanism: String,
+        clientP12: ByteArray?,
+        clientP12Password: String,
     ): Long
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)

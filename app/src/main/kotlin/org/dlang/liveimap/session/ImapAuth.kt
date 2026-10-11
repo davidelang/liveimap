@@ -16,6 +16,7 @@ fun chooseImapAuth(
     plaintextOk: Boolean,
     channelBinding: Boolean,
     clientMechanisms: String = "",
+    clientCert: Boolean = false,
 ): String? {
     // Only mechanisms the local SASL library has; blank means unknown (no filter). X-PLUS comes with X.
     val client = clientMechanisms.uppercase().split(Regex("\\s+")).filter { it.isNotEmpty() }.toSet()
@@ -33,6 +34,8 @@ fun chooseImapAuth(
         if (!clientHas(name)) continue
         offered.add(name)
     }
+    // A client certificate was presented on this TLS connection: EXTERNAL (identity from the cert) first.
+    if (tls && clientCert && "EXTERNAL" in offered) return "EXTERNAL"
     if (allowPlus) {
         for (name in plusImapAuth) {
             if (name in offered) return name

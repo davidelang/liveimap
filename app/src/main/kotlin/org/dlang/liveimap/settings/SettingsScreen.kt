@@ -99,6 +99,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.R
+import org.dlang.liveimap.engine.ClientCertStore
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -736,6 +737,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
                 editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
             }
+            ClientCertField(editor)
             if (settings.certPin.isBlank()) {
                 Text(stringResource(R.string.settings_cert_pin_none))
             } else {
@@ -2052,6 +2054,66 @@ private class LineCommitter {
         if (!commitOnLeave || !ready || skipLeave()) return
         commit()
     }
+}
+
+/** Advanced: import a PKCS#12 client certificate (.p12 + password) for IMAP and SMTP, or remove it. */
+@Composable
+private fun ClientCertField(editor: SettingsEditor) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<android.net.Uri?>(null) }
+    var password by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        pending = uri
+        password = ""
+        message = null
+    }
+    val current = editor.settings.clientCert
+    Text(stringResource(R.string.settings_client_cert))
+    if (current.isBlank()) {
+        Text(stringResource(R.string.settings_client_cert_none))
+    } else {
+        Text(ClientCertStore.load(current)?.let { runCatching { ClientCertStore.check(it.p12, it.password) }.getOrNull() }
+            ?: stringResource(R.string.settings_client_cert_missing))
+        TextButton(onClick = {
+            ClientCertStore.remove(current)
+            editor.persist(editor.settings.copy(clientCert = ""))
+        }) { Text(stringResource(R.string.settings_client_cert_remove)) }
+    }
+    TextButton(onClick = { pick.launch(arrayOf("application/x-pkcs12", "application/octet-stream", "*/*")) }) {
+        Text(stringResource(R.string.settings_client_cert_import))
+    }
+    val uri = pending
+    if (uri != null) {
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text(stringResource(R.string.settings_client_cert_password)) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+        )
+        TextButton(onClick = {
+            val typed = password
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                        ClientCertStore.import(java.io.File(context.filesDir, "client-certs"), bytes, typed)
+                    }
+                }
+                result.onSuccess { path ->
+                    val old = editor.settings.clientCert
+                    editor.persist(editor.settings.copy(clientCert = path))
+                    if (old.isNotBlank() && old != path) ClientCertStore.remove(old)
+                    pending = null
+                    password = ""
+                    message = null
+                }.onFailure { message = it.message ?: it.toString() }
+            }
+        }) { Text(stringResource(R.string.settings_client_cert_save)) }
+    }
+    message?.let { Text(it) }
 }
 
 @Composable

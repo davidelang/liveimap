@@ -16,6 +16,7 @@ fun sameImapIdentity(
         current.acceptInvalidCert == next.acceptInvalidCert &&
         current.allowOldTls == next.allowOldTls &&
         current.authMechanism == next.authMechanism &&
+        current.clientCert == next.clientCert &&
         current.username == next.username &&
         currentPassword == nextPassword &&
         current.smtpHost == next.smtpHost &&

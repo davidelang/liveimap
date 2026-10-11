@@ -77,6 +77,14 @@ class LabSuiteTest {
             logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
+            // Lab client certificate (lab.py LAB_CLIENT_CERT=1): PKCS#12 passed base64, imported like the UI does.
+            clientCert = arg("labClientCertB64").takeIf { it.isNotEmpty() }?.let {
+                org.dlang.liveimap.engine.ClientCertStore.import(
+                    java.io.File(ctx.filesDir, "client-certs"),
+                    android.util.Base64.decode(it, android.util.Base64.DEFAULT),
+                    arg("labClientCertPass"),
+                )
+            } ?: "",
             email = arg("labRcpt"),
             smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25,

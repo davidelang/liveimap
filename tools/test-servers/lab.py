@@ -196,6 +196,15 @@ def sieve_args(s):
     return []
 
 
+def client_cert_args(tls):
+    """LAB_CLIENT_CERT=1: present the lab client cert (client-cert.sh, CN = lab user) on TLS modes."""
+    if os.environ.get("LAB_CLIENT_CERT", "0") != "1" or tls == "None":
+        return []
+    import base64
+    p12 = open(os.path.join(HERE, "generated", "ca", "client.p12"), "rb").read()
+    return ["-e", "labClientCertB64", base64.b64encode(p12).decode(), "-e", "labClientCertPass", "liveimap"]
+
+
 def instrument(s, port, tls, run, commit, mech=""):
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
@@ -207,6 +216,7 @@ def instrument(s, port, tls, run, commit, mech=""):
          "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
          *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
          *smtp_args(s, tls), *(sieve_args(s) if tls != "None" else []),
+         *client_cert_args(tls),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout

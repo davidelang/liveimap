@@ -726,5 +726,12 @@
     <string name="settings_check_unreachable">Server not reachable</string>
     <string name="settings_check_save_anyway">Save anyway</string>
     <string name="settings_check_revert">Revert</string>
+    <string name="settings_client_cert">Client certificate (IMAP and SMTP; SASL EXTERNAL when the server offers it)</string>
+    <string name="settings_client_cert_none">None</string>
+    <string name="settings_client_cert_missing">Imported certificate is missing or unreadable</string>
+    <string name="settings_client_cert_import">Import .p12…</string>
+    <string name="settings_client_cert_password">Certificate password</string>
+    <string name="settings_client_cert_save">Use this certificate</string>
+    <string name="settings_client_cert_remove">Remove certificate</string>
     <string name="settings_auth_mechanism">Login method (blank = automatic; IMAP-LOGIN for the LOGIN command; PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-256…)</string>
 </resources>
