@@ -2,10 +2,10 @@ package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.UidWindow
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 class UidWindowTest {
     @Test
