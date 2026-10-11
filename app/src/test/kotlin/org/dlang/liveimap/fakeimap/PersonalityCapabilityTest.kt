@@ -18,8 +18,8 @@ class PersonalityCapabilityTest {
 
     private fun postLoginCaps(json: String): String? {
         // The authenticated CAPABILITY reply, else the [CAPABILITY ...] code of the LOGIN/AUTHENTICATE OK.
-        val auth = Regex("\"auth\": true, \"cmd\": \"CAPABILITY\", \"items\": \\[\\{\"line\": \"([^\"]*)\"").find(json)
-        val m = auth?.groupValues?.get(1) ?: Regex("\"line\": \"\\{TAG\\} OK \\[CAPABILITY ([^\\]]*)\\]").find(json)
+        val auth = Regex("\"auth\":\\s*true,\\s*\"cmd\":\\s*\"CAPABILITY\",\\s*\"items\":\\s*\\[\\s*\\{\\s*\"line\":\\s*\"([^\"]*)\"").find(json)
+        val m = auth?.groupValues?.get(1) ?: Regex("\"line\":\\s*\"\\{TAG\\} OK \\[CAPABILITY ([^\\]]*)\\]").find(json)
             ?.let { return it.groupValues[1] } ?: return null
         val c = capLine.find(m) ?: return null
         return c.groupValues[1].ifEmpty { c.groupValues[2] }
@@ -30,8 +30,9 @@ class PersonalityCapabilityTest {
         assumeTrue("no generated personalities", files.isNotEmpty())
         val out = StringBuilder("server\tmove\tsearch\tsort\tresync\tpreview\tfetch\tidle\tfuzzy\n")
         var n = 0
+        val missing = mutableListOf<String>()
         for (f in files) {
-            val caps = postLoginCaps(f.readText()) ?: continue
+            val caps = postLoginCaps(f.readText()) ?: run { missing += f.name; null } ?: continue
             val tok = caps.uppercase().split(' ').toSet()
             val c = capabilityChoice(caps)
             val name = f.nameWithoutExtension
@@ -43,7 +44,7 @@ class PersonalityCapabilityTest {
             out.append("$name\t${c.move}\t${c.search}\t${c.sort}\t${c.resync}\t${c.preview}\t${c.fetch}\t${c.idle}\t${c.searchFuzzy}\n")
             n++
         }
-        assumeTrue("no personality had a post-login CAPABILITY", n > 0)
+        assertEquals("personalities without a post-login CAPABILITY", emptyList<String>(), missing)
         File("build/personality-choices.tsv").writeText(out.toString())
     }
 }
