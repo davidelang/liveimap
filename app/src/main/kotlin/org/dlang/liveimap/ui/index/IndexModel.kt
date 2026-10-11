@@ -1851,7 +1851,17 @@ class IndexModel(
         val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
             session.select(mailbox)
             requireClientFallbackRoom()
-            restrict(session.clientOrder(key, newestFirst))
+            // Chunked client sort: progress and Cancel through the same bar as long searches and big moves.
+            moveStop = false
+            try {
+                restrict(
+                    session.clientOrder(key, newestFirst, { done, total ->
+                        onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
+                    }, { moveStop }),
+                )
+            } finally {
+                onSearchProgress?.invoke(null)
+            }
         } else {
             restrict(session.sort(key, newestFirst))
         }
