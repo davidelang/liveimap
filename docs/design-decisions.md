@@ -292,6 +292,7 @@ Avoid:
 * A filter is a list of steps: a first search, then AND (narrow) or OR (widen)
   steps, each with its own Not switch.
 * The whole filter is one server search. The client never intersects result
+In Subject/Date/... sorts and thread views the same criteria go with UID SORT (or ESORT RETURN (PARTIAL ..) windows) and UID THREAD, so the server orders and threads only the matching messages; restricting the full order to the search result is only the fallback for servers or paths that can't. The thread filter's chip shows the thread's subject, and the quick filters (Show new, Show not deleted, Show this thread) sit at the top of the index menu.
   lists itself.
 * Counts come only on demand: `UID SEARCH RETURN (COUNT)` with ESEARCH,
   otherwise the length of the `UID SEARCH` result. Never `FETCH` to count.
