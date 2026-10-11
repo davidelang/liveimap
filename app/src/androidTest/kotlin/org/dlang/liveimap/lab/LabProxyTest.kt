@@ -32,6 +32,7 @@ class LabProxyTest {
         assumeTrue("labAccountMatch not given", match.isNotEmpty())
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val store = AccountStore.shared(ctx)
+        val seen = mutableListOf<String>()
         data class Target(val host: String, val port: Int, val tls: String, val user: String, val password: String)
         val target = runBlocking {
             val accounts = store.listAccounts()
@@ -41,7 +42,8 @@ class LabProxyTest {
                 for (a in accounts) {
                     store.selectAccount(a.id)
                     val s = store.load()
-                    if (s.imapHost.contains(match, ignoreCase = true)) {
+                    seen += "${a.name} -> ${s.username}@${s.imapHost}"
+                    if (s.imapHost.contains(match, ignoreCase = true) || a.name.contains(match, ignoreCase = true)) {
                         found = Target(s.imapHost, s.imapPort, s.tlsMode.name, s.username, store.password())
                         break
                     }
@@ -50,7 +52,7 @@ class LabProxyTest {
                 if (original != null) store.selectAccount(original)
             }
             found
-        } ?: throw IllegalStateException("no account whose IMAP host contains \"$match\"")
+        } ?: throw IllegalStateException("no account whose name or IMAP host contains \"$match\"; accounts: $seen")
         android.util.Log.i("LiveIMAP", "proxy: account ${target.user}@${target.host}:${target.port} ${target.tls}")
         val server = ServerSocket(arg("labProxyPort").toIntOrNull() ?: 18143, 8, InetAddress.getByName("127.0.0.1"))
         server.soTimeout = 1000
