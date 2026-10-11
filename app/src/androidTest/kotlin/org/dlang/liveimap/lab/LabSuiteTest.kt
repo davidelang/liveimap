@@ -154,6 +154,18 @@ class LabSuiteTest {
                     check(w.uids.sorted() == full.sorted().takeLast(3)) { "window ${w.uids} != tail ${full.sorted().takeLast(3)}" }
                     "${w.total} ${w.uids.size}"
                 }
+                if ("PARTIAL" in session.capabilities && "ESEARCH" in session.capabilities) step("windowedOrder") {
+                    // The index model's window loader, with 7-message windows, newest first, against the full search.
+                    val full = session.searchCriterion("NotDeleted", "").sortedDescending()
+                    val total = full.size
+                    val order = org.dlang.liveimap.ui.index.WindowedOrder(total, 7) { lo, hi ->
+                        val (a, b) = org.dlang.liveimap.ui.index.searchWindowRange(lo, hi, total, true)
+                        session.searchWindow("NotDeleted", "", a, b)!!.uids.sorted().reversed()
+                    }
+                    order.ensure(0, total)
+                    check(order.toList() == full) { "windowed order differs from full search" }
+                    "$total ${order.loadedWindows()}"
+                }
                 if ("THREAD=REFERENCES" in session.capabilities) step("threadReferences") { session.thread(SortKey.ThreadReferences).toString().take(40) }
                 if ("THREAD=ORDEREDSUBJECT" in session.capabilities) step("threadOrderedSubject") { session.thread(SortKey.ThreadOrderedSubject).toString().take(40) }
                 // Lab-only send: the SMTP host is the lab host (no relay), the recipient a lab test account.
