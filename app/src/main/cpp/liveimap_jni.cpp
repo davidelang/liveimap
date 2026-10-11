@@ -1737,7 +1737,8 @@ int authenticateExternal(mailimap * imap) {
     return MAILIMAP_NO_ERROR;
 }
 
-int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_response ** response) {
+int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_response ** response,
+    struct mailimap_search_key * criteria = nullptr, bool utf8 = false) {
     const char * wire = nullptr;
     if (algorithm != nullptr) {
         if (strcasecmp(algorithm, "REFERENCES") == 0) wire = "REFERENCES";
@@ -1758,11 +1759,13 @@ int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_respo
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_astring_send(imap->imap_stream, "US-ASCII");
+    r = mailimap_astring_send(imap->imap_stream, utf8 ? "UTF-8" : "US-ASCII");
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_token_send(imap->imap_stream, "ALL");
+    // The filter chain's criteria travel with THREAD, so the server threads only the matching messages.
+    r = criteria != nullptr ? mailimap_search_key_send(imap->imap_stream, criteria)
+                            : mailimap_token_send(imap->imap_stream, "ALL");
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -4214,7 +4217,7 @@ int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, co
 }
 
 int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool esort, struct mailimap_response ** response,
-    const char * ret = "ALL") {
+    const char * ret = "ALL", struct mailimap_search_key * criteria = nullptr, bool utf8 = false) {
     const char * key = nullptr;
     if (keyName != nullptr) {
         if (strcasecmp(keyName, "DATE") == 0) key = "DATE";
@@ -4255,9 +4258,16 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_space_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_astring_send(imap->imap_stream, "US-ASCII");
+    r = mailimap_astring_send(imap->imap_stream, utf8 ? "UTF-8" : "US-ASCII");
     if (r != MAILIMAP_NO_ERROR) return r;
-    r = sendWord(imap->imap_stream, "ALL", true);
+    if (criteria != nullptr) {
+        // The filter chain's criteria travel with SORT, so the server sorts only the matching messages.
+        r = mailimap_space_send(imap->imap_stream);
+        if (r != MAILIMAP_NO_ERROR) return r;
+        r = mailimap_search_key_send(imap->imap_stream, criteria);
+    } else {
+        r = sendWord(imap->imap_stream, "ALL", true);
+    }
     if (r != MAILIMAP_NO_ERROR) return r;
     return finishParsed(imap, response);
 }
@@ -7274,12 +7284,37 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIE
     return arr;
 }
 
+namespace {
+// Filter-chain criteria for SORT/THREAD: a group argument (IndexModel.groupArgument) or null for ALL. Sets *bad and
+// throws when malformed.
+struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf8, bool * bad) {
+    *utf8 = false;
+    *bad = false;
+    if (criteria == nullptr) return nullptr;
+    JChars text(env, criteria);
+    for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text.c()); p != nullptr && *p != 0; ++p) {
+        if (*p >= 0x80) { *utf8 = true; break; }
+    }
+    struct mailimap_search_key * key = groupKey(env, text.c(), 0);
+    if (key == nullptr || env->ExceptionCheck()) {
+        if (key != nullptr) mailimap_search_key_free(key);
+        *bad = true;
+        return nullptr;
+    }
+    return key;
+}
+}  // namespace
+
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobject, jlong handle,
-    jstring keyName, jboolean newestFirst, jboolean useEsort) {
+    jstring keyName, jboolean newestFirst, jboolean useEsort, jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    bool utf8 = false, bad = false;
+    struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
+    if (bad) return nullptr;
     LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return nullptr;
+    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
     bool displayName = strcasecmp(name.c(), "DISPLAYFROM") == 0 || strcasecmp(name.c(), "DISPLAYTO") == 0;
     bool known = strcasecmp(name.c(), "DATE") == 0 || strcasecmp(name.c(), "FROM") == 0
@@ -7295,7 +7330,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
         bool esort = useEsort == JNI_TRUE;
         bool reverse = newestFirst == JNI_TRUE;
         struct mailimap_response * response = nullptr;
-        int r = sendUidSortChoice(session->imap, name.c(), reverse, esort, &response);
+        int r = sendUidSortChoice(session->imap, name.c(), reverse, esort, &response, "ALL", crit, utf8);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "sort failed");
             unlockSession(session);
@@ -7328,11 +7363,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
         unlockSession(session);
         return nullptr;
     }
-    struct mailimap_search_key * all = mailimap_search_key_new_all();
+    struct mailimap_search_key * all = crit != nullptr ? nullptr : mailimap_search_key_new_all();
     clist * result = nullptr;
-    int r = mailimap_uid_sort(session->imap, "US-ASCII", key, all, &result);
+    int r = mailimap_uid_sort(session->imap, utf8 ? "UTF-8" : "US-ASCII", key, crit != nullptr ? crit : all, &result);
     mailimap_sort_key_free(key);
-    mailimap_search_key_free(all);
+    if (all != nullptr) mailimap_search_key_free(all);
     if (!cmdOk(r)) {
         throwImap(env, session, r, "sort failed");
         unlockSession(session);
@@ -7368,10 +7403,14 @@ std::string partialReturn(jint first, jint last) {
 // UID SORT RETURN (PARTIAL first:last COUNT): one window of the sorted order plus the total (ESORT + PARTIAL).
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env, jobject, jlong handle,
-    jstring keyName, jboolean newestFirst, jint first, jint last) {
+    jstring keyName, jboolean newestFirst, jint first, jint last, jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    bool utf8 = false, bad = false;
+    struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
+    if (bad) return nullptr;
     LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return nullptr;
+    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
     std::string ret = partialReturn(first, last);
     if (!validPartialReturn(ret.c_str())) {
@@ -7383,7 +7422,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
     tlsEsearchExtCount = -1;
     tlsLive = session;
     struct mailimap_response * response = nullptr;
-    int r = sendUidSortChoice(session->imap, name.c(), newestFirst == JNI_TRUE, true, &response, ret.c_str());
+    int r = sendUidSortChoice(session->imap, name.c(), newestFirst == JNI_TRUE, true, &response, ret.c_str(), crit, utf8);
     tlsLive = nullptr;
     if (r != MAILIMAP_NO_ERROR) {
         throwImap(env, session, r, "sort failed");
@@ -7450,10 +7489,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(J
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jobject, jlong handle, jstring algorithm) {
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jobject, jlong handle, jstring algorithm,
+    jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    bool utf8 = false, bad = false;
+    struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
+    if (bad) return nullptr;
     LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return nullptr;
+    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars alg(env, algorithm);
     if (strcasecmp(alg.c(), "REFERENCES") != 0 && strcasecmp(alg.c(), "ORDEREDSUBJECT") != 0) {
         throwFailure(env, "thread algorithm must be REFERENCES or ORDEREDSUBJECT");
@@ -7461,7 +7505,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
         return nullptr;
     }
     struct mailimap_response * response = nullptr;
-    int r = sendUidThread(session->imap, alg.c(), &response);
+    int r = sendUidThread(session->imap, alg.c(), &response, crit, utf8);
     if (r != MAILIMAP_NO_ERROR) {
         throwImap(env, session, r, "thread failed");
         unlockSession(session);

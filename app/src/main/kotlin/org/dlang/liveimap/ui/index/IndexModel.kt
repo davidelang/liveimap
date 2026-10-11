@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.index
 
 import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.session.ComposeKind
+import org.dlang.liveimap.session.UidWindow
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
@@ -288,10 +289,40 @@ fun combinedFilterSearch(filters: List<AppliedFilter>): Pair<String, String>? {
     return "Advanced" to (encodeAdvancedQuery(AdvancedCombiner.And, steps, fuzzy) ?: return null)
 }
 
+/** The filter chain as one AND group for SORT/THREAD criteria (groupArgument format). Null for an empty chain. */
+fun filterChainGroup(filters: List<AppliedFilter>): String? {
+    if (filters.isEmpty()) return null
+    val steps = ArrayList<AdvancedStep>()
+    for (f in filters) {
+        if (f.kind != "Advanced") {
+            steps.add(AdvancedStep(false, f.kind, f.argument))
+            continue
+        }
+        val q = parseAdvancedQuery(f.argument) ?: continue
+        if (q.combiner == AdvancedCombiner.And) steps.addAll(q.steps)
+        else steps.add(AdvancedStep(false, "Group", groupArgument(q)))
+    }
+    return groupArgument(AdvancedQuery(AdvancedCombiner.And, steps))
+}
+
 /** A nested query as one step argument: lines split by RS (0x1e), fields by US (0x1f); parsed by groupKey (JNI). */
 fun groupArgument(q: AdvancedQuery): String =
     (listOf(q.combiner.name) + q.steps.map { (if (it.negated) "Not" else "Yes") + "\u001f" + it.kind + "\u001f" + it.argument })
         .joinToString("\u001e")
+
+/** A chip's text: the label, plus the argument for text criteria (a UID set is never shown). */
+fun filterChipText(filter: AppliedFilter): String =
+    if (filter.argument.isEmpty() || filter.kind == "Uid") filter.label else "${filter.label} ${filter.argument}"
+
+/** "Show this thread" chip: the thread's subject (without Re:/Fwd: prefixes), or just the label. */
+fun threadChipLabel(label: String, subject: String?): String {
+    var s = subject?.trim().orEmpty()
+    while (true) {
+        val m = Regex("^(?i)(re|fwd?|aw|sv|wg)(\\[\\d+])?:\\s*").find(s) ?: break
+        s = s.substring(m.range.last + 1)
+    }
+    return if (s.isEmpty()) label else "$label: $s"
+}
 
 /** UIDs as an IMAP set, runs collapsed: 1,3:5,9. */
 fun uidSetText(uids: Collection<Long>): String {
@@ -1108,7 +1139,9 @@ class IndexModel(
             }
         }
         val uids = threadSubtree(plan, uid)
-        return applyCriterion("Uid", uidSetText(uids), narrow = true, label = label)
+        val subject = (heldRows.firstOrNull { it.uid == uid } ?: threadMembers[uid])?.subject
+            ?: runCatching { fetchByUid(listOf(uid), preview = false).firstOrNull()?.subject }.getOrNull()
+        return applyCriterion("Uid", uidSetText(uids), narrow = true, label = threadChipLabel(label, subject))
     }
 
     suspend fun showAll(): List<IndexRow> {
@@ -1870,10 +1903,14 @@ class IndexModel(
         return first..last
     }
 
+    /** The active filter chain as SORT/THREAD criteria, or null when no filter is on. */
+    private fun chainCriteria(): String? = if (filterUids == null) null else filterChainGroup(appliedFilters)
+
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
-        if (filterUids == null) {
-            val windowed = windowedSort(key, newestFirst)
+        val criteria = chainCriteria()
+        run {
+            val windowed = windowedSort(key, newestFirst, criteria)
             if (windowed != null) {
                 order = windowed
                 arrivalTotal = 0
@@ -1897,7 +1934,8 @@ class IndexModel(
                 onSearchProgress?.invoke(null)
             }
         } else {
-            restrict(session.sort(key, newestFirst))
+            // With a filter on, the criteria go with SORT; restricting to the search result is only the fallback.
+            criteria?.let { session.sortMatching(key, newestFirst, it) } ?: restrict(session.sort(key, newestFirst))
         }
         order = uids
         arrivalTotal = 0
@@ -1920,10 +1958,13 @@ class IndexModel(
             requireClientFallbackRoom()
             session.clientThread(key)
         } else {
-            session.thread(key)
+            null
         }
-        val collapsed = collapsedThreads(node, newestFirst)
-        val kept = restrictThreads(collapsed)
+        val criteria = chainCriteria()
+        val matched = if (node == null && criteria != null) session.threadMatching(key, criteria) else null
+        val collapsed = collapsedThreads(node ?: matched ?: session.thread(key), newestFirst)
+        // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
+        val kept = if (matched != null) collapsed else restrictThreads(collapsed)
         threading = true
         threadPlan = kept
         threadMembers = emptyMap()
@@ -1986,12 +2027,17 @@ class IndexModel(
      * The sorted order as windows (ESORT PARTIAL): one round trip for the first window plus COUNT, instead of the
      * whole UID list. Null when the server cannot do it, or answers COUNT without the window (Cyrus 3.12/3.13).
      */
-    private suspend fun windowedSort(key: SortKey, newestFirst: Boolean): WindowedOrder? {
+    private suspend fun windowedSort(key: SortKey, newestFirst: Boolean, criteria: String? = null): WindowedOrder? {
         val size = IndexPageSize * 2
-        val first = session.sortWindow(key, newestFirst, 1, size) ?: return null
+        suspend fun window(lo: Int, hi: Int): UidWindow? = if (criteria == null) {
+            session.sortWindow(key, newestFirst, lo, hi)
+        } else {
+            session.sortWindowMatching(key, newestFirst, lo, hi, criteria)
+        }
+        val first = window(1, size) ?: return null
         if (first.total <= size) return null
         val order = WindowedOrder(first.total, size) { lo, hi ->
-            session.sortWindow(key, newestFirst, lo, hi)?.uids ?: throw MailFailure("sort failed")
+            window(lo, hi)?.uids ?: throw MailFailure("sort failed")
         }
         order.seed(0, first.uids)
         return order

@@ -186,6 +186,45 @@ class IndexWindowTest {
     }
 
     @Test
+    fun filterCriteriaTravelWithSortAndThread() {
+        val session = FakeMailSession()
+        (1L..10L).forEach { session.rows[it] = row(it) }
+        session.sortUids = (1L..10L).toList()
+        val store = MemorySettingsStore(
+            AccountSettings(folderViews = mapOf("INBOX" to FolderView(SortKey.Subject, newestFirst = false))),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        // The single search says {2, 4, 6}; SORT with the same criteria answers in its own order, used as is.
+        session.searchUids = listOf(2L, 4L, 6L)
+        session.matchingSortUids = listOf(6L, 2L, 4L)
+        runImmediate { model.applyCriterion("NotDeleted", "", narrow = false, label = "Not deleted") }
+        assertEquals(listOf("SORT Subject And\u001eYes\u001fNotDeleted\u001f"), session.matchingCalls)
+        assertEquals(listOf(6L, 2L, 4L), model.order)
+        // A session that cannot send criteria with SORT falls back to the full order restricted to the search result.
+        session.matchingSortUids = null
+        session.sortUids = listOf(9L, 6L, 1L, 4L, 2L)
+        runImmediate { model.applyCriterion("New", "", narrow = true, label = "New") }
+        assertEquals(listOf(6L, 4L, 2L), model.order)
+
+        // Thread view: THREAD carries the criteria and its tree is used without restricting.
+        val threadSession = FakeMailSession()
+        (1L..10L).forEach { threadSession.rows[it] = row(it) }
+        threadSession.threadNode = ThreadNode(null, (1L..10L).map { ThreadNode(it, emptyList()) })
+        val threadModel = IndexModel(
+            threadSession,
+            MemorySettingsStore(AccountSettings(defaultView = FolderView(SortKey.ThreadReferences, newestFirst = false))),
+            "INBOX",
+        )
+        runImmediate { threadModel.loadWindow() }
+        threadSession.searchUids = listOf(3L, 7L)
+        threadSession.matchingThread = ThreadNode(null, listOf(ThreadNode(3L, listOf(ThreadNode(7L, emptyList())))))
+        runImmediate { threadModel.applyCriterion("Uid", "3,7", narrow = false, label = "Thread: x") }
+        assertEquals(listOf("THREAD ThreadReferences And\u001eYes\u001fUid\u001f3,7"), threadSession.matchingCalls)
+        assertEquals(listOf(3L), threadModel.order)
+    }
+
+    @Test
     fun threadViewOldestFirst() {
         val session = FakeMailSession()
         val tree = ThreadNode(
@@ -2360,6 +2399,20 @@ private class FakeMailSession(
         threadCalls += key
         throwIfArmed()
         return threadNode
+    }
+
+    val matchingCalls = mutableListOf<String>()
+    var matchingSortUids: List<Long>? = null
+    var matchingThread: ThreadNode? = null
+
+    override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? {
+        matchingCalls += "SORT $key $criteria"
+        return matchingSortUids
+    }
+
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? {
+        matchingCalls += "THREAD $key $criteria"
+        return matchingThread
     }
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {

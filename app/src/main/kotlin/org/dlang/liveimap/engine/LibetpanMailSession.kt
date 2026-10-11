@@ -750,7 +750,12 @@ class LibetpanMailSession : MailSession {
         ids.asList()
     }
 
-    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = sortWith(key, newestFirst, null)
+
+    override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long> =
+        sortWith(key, newestFirst, criteria)
+
+    private suspend fun sortWith(key: SortKey, newestFirst: Boolean, criteria: String?): List<Long> {
         if (key == SortKey.Arrival) {
             throw MailFailure("use an arrival IndexMode")
         }
@@ -764,14 +769,31 @@ class LibetpanMailSession : MailSession {
             val h = requireHandle()
             val command = featureCaps.sortKind()
             val token = featureCaps.imapSortKey(sortToken(key))
-            remember("SORT $token $newestFirst") {
-                val ids = nativeSort(h, token, newestFirst, command == "Esort") ?: throw MailFailure("sort failed")
+            remember("SORT $token $newestFirst ${criteria.orEmpty()}") {
+                val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria) ?: throw MailFailure("sort failed")
                 ids.asList()
             }
         }
     }
 
-    override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? {
+    override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? =
+        sortWindowWith(key, newestFirst, first, last, null)
+
+    override suspend fun sortWindowMatching(
+        key: SortKey,
+        newestFirst: Boolean,
+        first: Int,
+        last: Int,
+        criteria: String,
+    ): UidWindow? = sortWindowWith(key, newestFirst, first, last, criteria)
+
+    private suspend fun sortWindowWith(
+        key: SortKey,
+        newestFirst: Boolean,
+        first: Int,
+        last: Int,
+        criteria: String?,
+    ): UidWindow? {
         if (key == SortKey.Arrival || key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject) return null
         if (!featureCaps.sort || !featureCaps.esort || !featureCaps.partialWindows) return null
         require(first in 1..last) { "window $first..$last" }
@@ -780,7 +802,7 @@ class LibetpanMailSession : MailSession {
             if (sortPartialIgnored) return@read null
             val h = requireHandle()
             run {
-                val raw = nativeSortWindow(h, token, newestFirst, first, last) ?: throw MailFailure("sort failed")
+                val raw = nativeSortWindow(h, token, newestFirst, first, last, criteria) ?: throw MailFailure("sort failed")
                 val window = uidWindowOf(raw)
                 if (!partialWindowIgnored(window, first)) return@read window
                 // Cyrus 3.12/3.13 answer UID SORT RETURN (PARTIAL ..) with COUNT only: report "no windows" so the
@@ -848,7 +870,11 @@ class LibetpanMailSession : MailSession {
         if (h != 0L) nativeAbort(h)
     }
 
-    override suspend fun thread(key: SortKey): ThreadNode {
+    override suspend fun thread(key: SortKey): ThreadNode = threadWith(key, null)
+
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode = threadWith(key, criteria)
+
+    private suspend fun threadWith(key: SortKey, criteria: String?): ThreadNode {
         val algorithm = when (key) {
             SortKey.ThreadReferences -> {
                 if (!featureCaps.threadReferences) {
@@ -866,8 +892,8 @@ class LibetpanMailSession : MailSession {
         }
         return keeper.read("thread") {
             val h = requireHandle()
-            remember("THREAD $algorithm") {
-                nativeThread(h, algorithm) ?: throw MailFailure("thread failed")
+            remember("THREAD $algorithm ${criteria.orEmpty()}") {
+                nativeThread(h, algorithm, criteria) ?: throw MailFailure("thread failed")
             }
         }
     }
@@ -1300,11 +1326,24 @@ class LibetpanMailSession : MailSession {
     ): LongArray?
 
     private external fun nativeLocateUid(handle: Long, uid: Long, useEsearch: Boolean): LongArray?
-    private external fun nativeSort(handle: Long, key: String, newestFirst: Boolean, useEsort: Boolean): LongArray?
+    private external fun nativeSort(
+        handle: Long,
+        key: String,
+        newestFirst: Boolean,
+        useEsort: Boolean,
+        criteria: String?,
+    ): LongArray?
     private external fun nativePrepareLongSearch(handle: Long, timeoutSec: Int)
     private external fun nativeProgress(handle: Long): LongArray?
     private external fun nativeAbort(handle: Long)
-    private external fun nativeSortWindow(handle: Long, key: String, newestFirst: Boolean, first: Int, last: Int): LongArray?
+    private external fun nativeSortWindow(
+        handle: Long,
+        key: String,
+        newestFirst: Boolean,
+        first: Int,
+        last: Int,
+        criteria: String?,
+    ): LongArray?
     private external fun nativeSearchCriterionWindow(
         handle: Long,
         kind: String,
@@ -1315,7 +1354,7 @@ class LibetpanMailSession : MailSession {
     ): LongArray?
     private external fun nativeFetchSortFieldsRange(handle: Long, field: String, first: Int, last: Int): Array<SortField>?
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
-    private external fun nativeThread(handle: Long, algorithm: String): ThreadNode?
+    private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
     private external fun nativeWatch(handle: Long, mailbox: String)
     private external fun nativeStopWatch(handle: Long)
     private external fun nativeSmtp(

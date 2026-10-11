@@ -53,4 +53,16 @@ class FilterChainTest {
         assertEquals(listOf(9L), threadSubtree(plan, 9L))
         assertEquals(listOf(42L), threadSubtree(plan, 42L))
     }
+
+    @Test
+    fun chipTextHidesUidSetsAndThreadChipUsesSubject() {
+        assertEquals("Show this thread: Lab thread 288", threadChipLabel("Show this thread", "Re: Fwd: RE[2]: Lab thread 288"))
+        assertEquals("Show this thread", threadChipLabel("Show this thread", null))
+        assertEquals("Show this thread: x", filterChipText(AppliedFilter("Show this thread: x", "4,7:9", "Uid")))
+        assertEquals("From ada", filterChipText(AppliedFilter("From", "ada", "From")))
+        assertEquals(
+            "And\u001eYes\u001fFrom\u001fada\u001eYes\u001fUid\u001f4",
+            filterChainGroup(listOf(AppliedFilter("From", "ada", "From"), AppliedFilter("t", "4", "Uid"))),
+        )
+    }
 }

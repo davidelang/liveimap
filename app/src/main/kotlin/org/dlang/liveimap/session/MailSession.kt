@@ -83,6 +83,18 @@ interface MailSession {
      */
     suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? = null
     suspend fun thread(key: SortKey): ThreadNode
+
+    /**
+     * SORT / ESORT PARTIAL / THREAD over only the messages matching [criteria] (a filter chain as
+     * IndexModel.groupArgument), sent in the same command. Null when the session cannot (the caller then restricts
+     * the full order to the filter's single search result).
+     */
+    suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? = null
+
+    suspend fun sortWindowMatching(key: SortKey, newestFirst: Boolean, first: Int, last: Int, criteria: String): UidWindow? =
+        null
+
+    suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? = null
     suspend fun clientOrder(
         key: SortKey,
         newestFirst: Boolean,

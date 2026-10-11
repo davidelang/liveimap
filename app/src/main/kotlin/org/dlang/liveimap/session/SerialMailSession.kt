@@ -147,6 +147,20 @@ class SerialMailSession(
     override suspend fun thread(key: SortKey): ThreadNode =
         onLane { inner.thread(key) }
 
+    override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? =
+        onLane { inner.sortMatching(key, newestFirst, criteria) }
+
+    override suspend fun sortWindowMatching(
+        key: SortKey,
+        newestFirst: Boolean,
+        first: Int,
+        last: Int,
+        criteria: String,
+    ): UidWindow? = onLane { inner.sortWindowMatching(key, newestFirst, first, last, criteria) }
+
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? =
+        onLane { inner.threadMatching(key, criteria) }
+
     override suspend fun clientOrder(
         key: SortKey,
         newestFirst: Boolean,

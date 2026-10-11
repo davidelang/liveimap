@@ -2561,6 +2561,36 @@ private fun MessageIndexLoaded(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                     ) {
+                        // Quick filters first (easy to reach). Each narrows the list, combined with the active filters into one
+                        // server search (IndexModel.setFilters).
+                        val labelNew = stringResource(R.string.index_show_new)
+                        val labelUndeleted = stringResource(R.string.index_show_not_deleted)
+                        val labelThread = stringResource(R.string.index_show_thread)
+                        for ((label, run) in listOf<Pair<String, suspend () -> Unit>>(
+                            labelNew to { model.showNew(labelNew) },
+                            labelUndeleted to { model.showNotDeleted(labelUndeleted) },
+                            labelThread to {
+                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(model.startIndex)?.uid
+                                if (uid != null) model.showThreadOf(uid, labelThread)
+                            },
+                        )) {
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                modifier = Modifier.testTag("index-quick-" + label),
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch {
+                                        gate.withLock {
+                                            noteVisibleTop()
+                                            run()
+                                            pull()
+                                        }
+                                        model.notice?.let { postSnack(it) }
+                                    }
+                                },
+                            )
+                        }
+                        HorizontalDivider()
                         val fieldKeys = menuKeys.filter { key ->
                             key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject
                         }
@@ -2757,35 +2787,6 @@ private fun MessageIndexLoaded(
                                 confirmMarkAllRead = true
                             },
                         )
-                        // Quick filters: each narrows the current list, combined with any active filters into one
-                        // server search (IndexModel.setFilters).
-                        val labelNew = stringResource(R.string.index_show_new)
-                        val labelUndeleted = stringResource(R.string.index_show_not_deleted)
-                        val labelThread = stringResource(R.string.index_show_thread)
-                        for ((label, run) in listOf<Pair<String, suspend () -> Unit>>(
-                            labelNew to { model.showNew(labelNew) },
-                            labelUndeleted to { model.showNotDeleted(labelUndeleted) },
-                            labelThread to {
-                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(model.startIndex)?.uid
-                                if (uid != null) model.showThreadOf(uid, labelThread)
-                            },
-                        )) {
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                modifier = Modifier.testTag("index-quick-" + label),
-                                onClick = {
-                                    menuOpen = false
-                                    scope.launch {
-                                        gate.withLock {
-                                            noteVisibleTop()
-                                            run()
-                                            pull()
-                                        }
-                                        model.notice?.let { postSnack(it) }
-                                    }
-                                },
-                            )
-                        }
                         for (entry in indexMenuTail(barLayout)) {
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()
@@ -2933,11 +2934,7 @@ private fun MessageIndexLoaded(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         filters.forEachIndexed { index, filter ->
-                            val chipText = if (filter.argument.isEmpty()) {
-                                filter.label
-                            } else {
-                                "${filter.label} ${filter.argument}"
-                            }
+                            val chipText = filterChipText(filter)
                             FilterChip(
                                 selected = true,
                                 onClick = {
