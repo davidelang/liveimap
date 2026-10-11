@@ -2269,7 +2269,7 @@ void postTrafficBytes(const std::string & connectionId, int logType, const char 
     JNIEnv * env = nullptr;
     bool attached = false;
     if (!beginTrafficJni(&env, &attached)) return;
-    jstring id = env->NewStringUTF(connectionId.c_str());
+    jstring id = newString(env, connectionId.c_str());
     jbyteArray bytes = env->NewByteArray(static_cast<jsize>(size));
     if (id != nullptr && bytes != nullptr) {
         env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(size), reinterpret_cast<const jbyte *>(data));
@@ -2286,8 +2286,8 @@ void postTrafficNote(const std::string & connectionId, const std::string & text)
     JNIEnv * env = nullptr;
     bool attached = false;
     if (!beginTrafficJni(&env, &attached)) return;
-    jstring id = env->NewStringUTF(connectionId.c_str());
-    jstring line = env->NewStringUTF(text.c_str());
+    jstring id = newString(env, connectionId.c_str());
+    jstring line = newString(env, text.c_str());
     if (id != nullptr && line != nullptr) {
         env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficNote, id, line);
     }
@@ -4838,8 +4838,8 @@ std::string decodePreviewBytes(const char * bytes, size_t length, const std::str
         return std::string();
     }
     jbyteArray array = env->NewByteArray(static_cast<jsize>(length));
-    jstring jCharset = env->NewStringUTF(charset.c_str());
-    jstring jEncoding = env->NewStringUTF(encoding.c_str());
+    jstring jCharset = newString(env, charset.c_str());
+    jstring jEncoding = newString(env, encoding.c_str());
     if (array == nullptr || jCharset == nullptr || jEncoding == nullptr) {
         env->ExceptionClear();
         if (array != nullptr) env->DeleteLocalRef(array);
@@ -4913,8 +4913,8 @@ extern "C" int liveimapCharconv(const char * tocode, const char * fromcode, cons
     JNIEnv * env = thread.env;
     if (env->ExceptionCheck()) env->ExceptionClear();
 
-    jstring jTo = env->NewStringUTF(tocode);
-    jstring jFrom = env->NewStringUTF(fromcode);
+    jstring jTo = newString(env, tocode);
+    jstring jFrom = newString(env, fromcode);
     jbyteArray input = env->NewByteArray(static_cast<jsize>(length));
     if (jTo == nullptr || jFrom == nullptr || input == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -6939,7 +6939,7 @@ bool readSortRow(struct mailimap_msg_att * att, const char * field, SortRow * ro
 jstring jStringOrEmpty(JNIEnv * env, const std::string & text) {
     jstring value = newString(env, text.c_str());
     if (value != nullptr) return value;
-    return env->NewStringUTF("");
+    return newString(env, "");
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -7808,5 +7808,5 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeTls(JNIEnv * env, jclass) {
     std::string text = gLastTls;
     gLastTls.clear();
-    return env->NewStringUTF(text.c_str());
+    return newString(env, text.c_str());
 }
