@@ -26,6 +26,20 @@ for abi in arm64-v8a x86_64; do
   fi
 done
 
+# Build options (flags, not patches): see build-options.env.
+# shellcheck source=/dev/null
+. "$HERE/build-options.env"
+# ndk-build ignores APP_CFLAGS from the environment; a variable definition in MAKEFLAGS acts like one on the
+# make command line (spaces escaped), so it reaches every ndk-build that build.sh runs.
+export MAKEFLAGS="${MAKEFLAGS:+$MAKEFLAGS }APP_CFLAGS=${LIBETPAN_APP_CFLAGS// /\\ }"
+stamp="$SRC/build-android/.liveimap-build-options"
+if [[ "$(cat "$stamp" 2>/dev/null)" != "$LIBETPAN_APP_CFLAGS" ]]; then
+  # Options changed: drop cached archives so libetpan and Cyrus SASL rebuild with them.
+  rm -rf "$SRC/build-android"/libetpan-android-*.zip "$SRC/build-android"/libetpan-android-[0-9]* \
+    "$SRC/build-android/dependencies/cyrus-sasl"/cyrus-sasl-android-*.zip \
+    "$SRC/build-android/third-party"/cyrus-sasl-android-*
+fi
+
 export ANDROID_NDK="$NDK"
 export ANDROID_NDK_HOME="$NDK"
 export JSON_C_PATH_ROOT="$FJ_ROOT"
@@ -62,8 +76,8 @@ for abi in arm64-v8a x86_64; do
     "openssl-android-3/libs/$abi/libcrypto.a" \
     "$out/libcrypto.a"
   copy_from_zip \
-    "$SRC/build-android/dependencies/cyrus-sasl/cyrus-sasl-android-5.zip" \
-    "cyrus-sasl-android-5/libs/$abi/libsasl2.a" \
+    "$SRC/build-android/dependencies/cyrus-sasl/cyrus-sasl-android-4.zip" \
+    "cyrus-sasl-android-4/libs/$abi/libsasl2.a" \
     "$out/libsasl2.a"
   copy_from_zip \
     "$SRC/build-android/dependencies/iconv/iconv-android-1.zip" \
@@ -71,4 +85,5 @@ for abi in arm64-v8a x86_64; do
     "$out/libiconv.a"
 done
 
+printf '%s' "$LIBETPAN_APP_CFLAGS" > "$stamp"
 echo "libetpan out-libs ready"

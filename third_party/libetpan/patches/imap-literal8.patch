@@ -37,7 +37,7 @@ index 43da025..bf96fd1 100644
  #include "body_literal_space_test.h"
  #include "command_parameter_sender_test.h"
  #include "command_sender_test.h"
-diff --git a/b/unittest/imap/literal8_test.c b/unittest/imap/literal8_test.c
+diff --git a/unittest/imap/literal8_test.c b/unittest/imap/literal8_test.c
 new file mode 100644
 index 0000000..cba9cd4
 --- /dev/null
@@ -89,7 +89,7 @@ index 0000000..cba9cd4
 +  puts("literal8_test: ok");
 +  return 0;
 +}
-diff --git a/b/unittest/imap/literal8_test.h b/unittest/imap/literal8_test.h
+diff --git a/unittest/imap/literal8_test.h b/unittest/imap/literal8_test.h
 new file mode 100644
 index 0000000..a9469a5
 --- /dev/null

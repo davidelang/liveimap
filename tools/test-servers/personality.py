@@ -42,20 +42,24 @@ def build(path):
     # never sees STARTTLS (scrubbed from caps), so drop the STARTTLS command itself.
     # Commands may be pipelined: pair responses by tag; untagged lines go to the oldest pending command.
     greeting, table, order = None, {}, []
-    pending = []  # [shape, tag, items]
+    pending = []  # [shape, tag, items, authenticated]
+    authed = False
     for r in rows:
         d = r.get("dir")
+        if d == "E" and r.get("event") == "connect":
+            authed, pending = False, []
+            continue
         if d == "S" and greeting is None and "line" in r:
             greeting = scrub_caps(r["line"])
             continue
         if d == "C" and "line" in r:
             tag, _, rest = r["line"].partition(" ")
             if re.match(r"^[A-Za-z0-9.]+$", tag) and rest:
-                pending.append(["__skip__" if rest.upper().startswith("STARTTLS") else shape(rest), tag, []])
+                pending.append(["__skip__" if rest.upper().startswith("STARTTLS") else shape(rest), tag, [], authed])
             continue
         if d == "C" and "redacted" in r and "line" not in r:
             if not pending or pending[-1][0] != "LOGIN":
-                pending.append(["LOGIN", None, []])
+                pending.append(["LOGIN", None, [], authed])
             continue
         if d != "S" or not pending:
             continue
@@ -72,8 +76,11 @@ def build(path):
             continue
         hit[2].append({"line": scrub_caps("{TAG}" + line[len(first):])})
         if hit[0] != "__skip__":
-            table.setdefault(hit[0], []).append(hit[2])
+            # Variants are kept per login state, so a post-login CAPABILITY never replays the pre-login one.
+            table.setdefault(hit[0], []).append({"auth": hit[3], "items": hit[2]})
             order.append(hit[0])
+            if hit[0] == "LOGIN" and " OK" in line.upper():
+                authed = True
         pending.remove(hit)
     return {"server": head["server"]["name"], "source": os.path.relpath(path, HERE), "commit": head.get("commit"),
             "greeting": greeting, "table": table, "order": order}
