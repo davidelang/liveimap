@@ -159,7 +159,7 @@ class LabSuiteTest {
                     kotlinx.coroutines.delay(1500)
                     val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE $run\r\n" +
                         "Message-ID: <idle-$run@liveimap.lab>\r\n\r\nIDLE lab test.\r\n").toByteArray()
-                    val uid = session.appendReturningUid("INBOX", msg, setOf("\\Seen"))
+                    val uid = session.appendReturningUid("INBOX", msg, emptySet())
                     val got = kotlinx.coroutines.withTimeoutOrNull(20_000) { seen.await() }
                     session.stopWatch()
                     if (uid > 0) {
