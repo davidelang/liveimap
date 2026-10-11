@@ -76,3 +76,4 @@
 
 - Client certificates: KeyChain-backed (non-exportable) keys. Today a per-account PKCS#12 is imported into app-private storage and loaded straight into OpenSSL (ClientCertStore, useClientP12). KeyChain aliases need a JNI signing callback (incl. RSA-PSS) instead; deferred by David 2026-10-10.
 - Client cert p12 password sits in a 0600 sidecar file next to the .p12; consider moving it to the AccountStore password slot.
+- SMTP AUTH EXTERNAL: Cyrus SASL client EXTERNAL fails locally (sasl_client_start), so IMAP sends AUTHENTICATE EXTERNAL = directly (SASL-IR only). SMTP presents the cert but still uses password auth; add a direct "AUTH EXTERNAL =" path and find why Cyrus EXTERNAL fails.

@@ -1681,6 +1681,27 @@ LiveThread * detachThread(mailimap * imap) {
     return tree;
 }
 
+// AUTHENTICATE EXTERNAL = (RFC 4959 SASL-IR, empty authorization identity) over a TLS connection that
+// presented a client certificate. Returns MAILIMAP_NO_ERROR_AUTHENTICATED on a tagged OK.
+int authenticateExternal(mailimap * imap) {
+    int r = mailimap_send_current_tag(imap);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_token_send(imap->imap_stream, "AUTHENTICATE EXTERNAL =");
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_crlf_send(imap->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    struct mailimap_response * response = nullptr;
+    r = mailimap_parse_response(imap, &response);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    bool ok = taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok) return MAILIMAP_ERROR_LOGIN;
+    imap->imap_state = MAILIMAP_STATE_AUTHENTICATED;
+    return MAILIMAP_NO_ERROR_AUTHENTICATED;
+}
+
 int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_response ** response) {
     const char * wire = nullptr;
     if (algorithm != nullptr) {
@@ -2685,7 +2706,13 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     } else {
         mailimap_set_channel_binding(imap, nullptr, nullptr, 0);
     }
-    if (mechanism.empty() || name[0] == '\0') {
+    std::string capsUpper = " " + line + " ";
+    for (auto & ch : capsUpper) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    if (mechanism == "EXTERNAL" && capsUpper.find(" SASL-IR ") != std::string::npos) {
+        // Sent directly: Cyrus's client EXTERNAL fails locally here. Empty authzid ("="): the server takes
+        // the identity from the verified client certificate.
+        r = authenticateExternal(imap);
+    } else if (mechanism.empty() || name[0] == '\0') {
         r = mailimap_login(imap, user, password);
     } else {
         // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
@@ -2697,7 +2724,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed");
         if (!gClientCertError.empty()) *error += " (" + gClientCertError + ")";
-        if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty()) {
+        if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty() && mechanism != "EXTERNAL") {
             *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
                 + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
         }
@@ -7192,7 +7219,9 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
     args[3].z = channelBinding ? JNI_TRUE : JNI_FALSE;
     args[4].l = jclient;  // was missing: an uninitialized jobject aborted the VM on the first SMTP AUTH
-    args[5].z = tls && gClientCertLoaded ? JNI_TRUE : JNI_FALSE;
+    // The client certificate is presented on SMTP too, but EXTERNAL is not chosen yet: Cyrus's client
+    // EXTERNAL fails locally (see IMAP authenticateExternal) and SMTP has no direct path yet (TODO.md).
+    args[5].z = JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     if (jclient != nullptr) env->DeleteLocalRef(jclient);
