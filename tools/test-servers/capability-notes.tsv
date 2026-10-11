@@ -7,7 +7,7 @@ APPENDLIMIT	gap	RFC 7889	Largest APPEND the server accepts.	Yes, cheap: check be
 BINARY	used	RFC 3516	Server-side decoding of base64/QP parts (FETCH BINARY).	Keep using (already used): fetches decoded slices, fewer bytes.
 CATENATE	gap	RFC 4469	Build an APPEND from parts of existing messages.	Later: forward-as-attachment without download. Low priority.
 CHILDREN	used	RFC 3348	\HasChildren/\HasNoChildren on LIST.	Keep using (already used): one-level folder tree.
-COMPRESS=DEFLATE	gap	RFC 4978	Deflate the connection.	Yes, as a setting (default on for mobile data): pure bandwidth win, no state. Needs zlib in the libetpan build.
+COMPRESS=DEFLATE	used	RFC 4978	Deflate the connection.	Implemented: LibetpanMailSession.kt:313 (on unless the traffic log is on, so lab recordings never show it).
 CONDSTORE	gap	RFC 7162	MODSEQ per message; CHANGEDSINCE/UNCHANGEDSINCE.	Partly: UNCHANGEDSINCE on STORE guards against overwriting outside flag changes. No local store, so no resync use.
 CONTEXT=SEARCH	gap	RFC 5267	Live-updating search results.	No: heavy server-side state per search; re-run the search on EXISTS/EXPUNGE as the design says.
 CREATE-SPECIAL-USE	gap	RFC 6154	CREATE a mailbox with a special-use attribute.	Yes, small: when the user picks "create Trash/Sent", tag it so other clients agree.
@@ -33,7 +33,7 @@ MESSAGELIMIT	gap	RFC 9738	Max messages per command.	Yes when offered: cap UID se
 METADATA	gap	RFC 5464	Server/mailbox annotations.	No: nothing in alpine needs it.
 MOVE	used	RFC 6851	UID MOVE (atomic copy+expunge of only those UIDs).	Yes (implemented, MoveMethod=ImapMove, off by default for alpine parity). Exercised by the safety suite.
 MULTIAPPEND	gap	RFC 3502	Several messages in one APPEND.	Later: saving several messages to a folder. Low priority.
-MULTISEARCH	gap	RFC 7377	Search several mailboxes in one command.	Yes when offered: search scopes (Current/All/Subscribed) in one command instead of a loop.
+MULTISEARCH	used	RFC 7377	Search several mailboxes in one command.	Implemented: All-folders search scope (IndexModel.kt:198).
 NAMESPACE	used	RFC 2342	Personal/other/shared roots.	Keep using (already used).
 NOTIFY	gap	RFC 5465	Push for many mailboxes on one connection.	Yes, later (designed for more watched folders).
 NO_ATOMIC_RENAME	internal	Dovecot	Rename is not atomic.	No action: informational.
@@ -48,11 +48,11 @@ SASL-IR	used	RFC 4959	Initial response in AUTHENTICATE.	Yes: saves a round trip.
 SAVEDATE	gap	RFC 8514	The date a message was saved to the mailbox.	Later: "sort by arrival in this folder" accuracy. Low priority.
 SAVELIMIT	internal	RFC 9738	Max saved search results.	With SEARCHRES only.
 SCAN	internal	Cyrus	Search across mailbox names.	No.
-SEARCH=FUZZY	gap	RFC 6203	Fuzzy search and relevancy.	Optional setting for text search; not alpine behaviour.
+SEARCH=FUZZY	used	RFC 6203	Fuzzy search and relevancy.	Implemented: Advanced search Fuzzy switch when offered (server-fuzzy-search, 46bf312).
 SEARCHRES	gap	RFC 5182	$ result variable for chained commands.	Yes, small: SEARCH then UID STORE/COPY $ avoids sending large UID sets back (bulk select-all actions).
 SNIPPET=FUZZY	obsolete	draft (Dovecot)	Old name of PREVIEW=FUZZY.	PREVIEW (RFC 8970)
 SORT	used	RFC 5256	Server-side sort.	Keep using (already used).
-SORT=DISPLAY	gap	RFC 5957	Sort by display name.	Yes: alpine's "From" sort matches display names more closely.
+SORT=DISPLAY	used	RFC 5957	Sort by display name.	Implemented: FROM/TO sort become DISPLAYFROM/DISPLAYTO when offered (Capabilities.kt:50).
 SORT=MODSEQ	internal	draft	Sort by MODSEQ.	No.
 SORT=UID	obsolete	draft	Sort by UID.	plain SORT/ESORT on arrival (UID order)
 SPECIAL-USE	used	RFC 6154	\Trash, \Sent, \Drafts ... attributes.	Keep using (already used, knownTrash).
