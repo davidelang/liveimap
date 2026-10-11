@@ -181,6 +181,19 @@ def smtp_args(s, tls):
     return []
 
 
+def sieve_args(s):
+    """Lab ManageSieve from sieve.tsv (server, TLS mode, container port): mapped host port and mode."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sieve.tsv")
+    for line in open(path):
+        f = line.rstrip("\n").split("\t")
+        if len(f) == 3 and f[0] == s["name"]:
+            out = subprocess.run(["docker", "port", "liveimap-" + f[0], f[2]], capture_output=True, text=True).stdout
+            hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
+            if hp:
+                return ["-e", "labSievePort", hp, "-e", "labSieveTls", f[1]]
+    return []
+
+
 def instrument(s, port, tls, run, commit, mech=""):
     a = ["shell", "am", "instrument", "-w", "-r",
          "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
@@ -191,7 +204,7 @@ def instrument(s, port, tls, run, commit, mech=""):
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
          "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
          *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
-         *smtp_args(s, tls),
+         *smtp_args(s, tls), *(sieve_args(s) if tls != "None" else []),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout

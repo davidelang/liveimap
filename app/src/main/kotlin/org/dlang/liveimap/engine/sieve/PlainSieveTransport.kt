@@ -21,6 +21,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.engine.TrafficRecorder
 import org.dlang.liveimap.engine.applyTlsPolicy
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.settings.TlsMode
@@ -44,9 +46,23 @@ class PlainSieveTransport internal constructor(
     private var layered: SSLSocket? = null
     private val closed = AtomicBoolean(false)
 
+    // Recording (TrafficRecorder, connection "sieve"): from AUTHENTICATE until the server's OK/NO/BYE, client
+    // data is private (redacted, mechanism kept).
+    private var authPending = false
+
+    private fun record(type: Int, bytes: ByteArray) {
+        TrafficRecorder.accept("sieve", type, bytes)
+        TrafficRecorder.flush()
+    }
+
     override suspend fun readLine(): String {
         return withContext(Dispatchers.IO) {
             val bytes = readRawLine()
+            record(TrafficLog.LOG_RECEIVED, bytes + CR_LF)
+            if (authPending && bytes.size >= 2) {
+                val head = String(bytes, 0, minOf(bytes.size, 3), StandardCharsets.US_ASCII).uppercase()
+                if (head.startsWith("OK") || head.startsWith("NO") || head.startsWith("BYE")) authPending = false
+            }
             val text = String(bytes, StandardCharsets.UTF_8)
             if (text.codePointCount(0, text.length) > MAX_LINE_CHARS) throw SieveFailure("line")
             text
@@ -54,6 +70,14 @@ class PlainSieveTransport internal constructor(
     }
 
     override suspend fun writeLine(line: String) {
+        if (line.startsWith("AUTHENTICATE ", ignoreCase = true)) {
+            authPending = true
+            // Same shape as libetpan's "tag AUTHENTICATE MECH" so the recorder keeps the mechanism.
+            record(TrafficLog.LOG_PRIVATE, ("S " + line.replace("\"", "")).toByteArray(StandardCharsets.UTF_8))
+        } else {
+            record(if (authPending) TrafficLog.LOG_PRIVATE else TrafficLog.LOG_SENT,
+                (line + "\r\n").toByteArray(StandardCharsets.UTF_8))
+        }
         withContext(Dispatchers.IO) {
             output.write(line.toByteArray(StandardCharsets.UTF_8))
             output.write(CR_LF)
@@ -75,11 +99,13 @@ class PlainSieveTransport internal constructor(
                 if (n <= 0) throw SieveFailure("read")
                 offset += n
             }
+            record(TrafficLog.LOG_RECEIVED, bytes)
             bytes
         }
     }
 
     override suspend fun writeBytes(bytes: ByteArray) {
+        record(if (authPending) TrafficLog.LOG_PRIVATE else TrafficLog.LOG_SENT, bytes)
         withContext(Dispatchers.IO) {
             output.write(bytes)
             output.flush()

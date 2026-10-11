@@ -131,6 +131,17 @@ class LabSuiteTest {
                         session.smtpSend(msg, listOf(rcpt)); ""
                     }
                 }
+                val sievePort = arg("labSievePort").toIntOrNull()
+                if (sievePort != null) {
+                    step("sieveDeliver") {
+                        TrafficRecorder.event("sieve", "connect", "$host:$sievePort ${arg("labSieveTls")}")
+                        org.dlang.liveimap.engine.sieve.openAndDeliverLiveimap(
+                            host, sievePort, TlsMode.valueOf(arg("labSieveTls")), "", { true }, { },
+                            arg("labUser"), arg("labPass"), "# LiveIMAP lab test\r\nkeep;\r\n",
+                            allowPlaintextAuth = false,
+                        )
+                    }
+                }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
                 assertTrue("exists $exists", exists >= 0)
