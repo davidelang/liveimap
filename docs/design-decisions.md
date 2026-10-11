@@ -178,6 +178,7 @@ Avoid:
   an unexpected expunge is the worst failure the client can have.
 * "Permanently delete" removes just the chosen messages with `UID EXPUNGE`
   (UIDPLUS). Without UIDPLUS it is hidden or disabled.
+* **Closing the session.** With Auto-expunge on and a mailbox open read-write, the session sends `CLOSE` before disconnecting (the same intended auto-expunge as leaving the folder); otherwise it disconnects without `CLOSE`.
 * **Leaving a mailbox.** With Auto-expunge on, `CLOSE` (the intended
   auto-expunge). Otherwise `UNSELECT` when the server has it. Without UNSELECT,
   never `CLOSE`: selecting or examining the next mailbox is the switch, and
