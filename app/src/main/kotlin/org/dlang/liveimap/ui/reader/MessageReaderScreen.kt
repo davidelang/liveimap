@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -406,6 +407,11 @@ private fun MessageReaderLoaded(
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var structure by held.structureState
     var selectedView by held.selectedViewState
+    var rawTruncated by remember { mutableStateOf(false) }
+    var allHeadersOpen by remember(uid) { mutableStateOf(false) }
+    var allHeaderText by remember(uid) { mutableStateOf<String?>(null) }
+    var allHeadersTruncated by remember(uid) { mutableStateOf(false) }
+    var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
     var bodyText by held.bodyTextState
     var charsetNote by held.charsetNoteState
@@ -589,7 +595,13 @@ private fun MessageReaderLoaded(
         bodySection = section
         carry.pending = ByteArray(0)
         var marked = false
+        val built = StringBuilder()
+        rawTruncated = false
         while (true) {
+            if (bodyOffset >= RawViewCapBytes) {
+                rawTruncated = true
+                break
+            }
             val length = 4096
             val chunk = try {
                 session.peekPart(uid, section, bodyOffset, length)
@@ -607,13 +619,14 @@ private fun MessageReaderLoaded(
             bodyOffset += chunk.size
             val (text, rest) = appendUtf8(carry.pending, chunk)
             carry.pending = rest
-            bodyText += text
+            built.append(text)
             if (chunk.size < length) break
         }
         if (carry.pending.isNotEmpty()) {
-            bodyText += carry.pending.toString(Charsets.UTF_8)
+            built.append(carry.pending.toString(Charsets.UTF_8))
             carry.pending = ByteArray(0)
         }
+        bodyText = built.toString()
     }
 
     suspend fun readPart(part: MimePart, markSeen: Boolean): ByteArray? {
@@ -1339,6 +1352,26 @@ private fun MessageReaderLoaded(
         }
     }
 
+    /** Opens/closes all headers in the header card; the first open fetches BODY.PEEK[HEADER], capped. */
+    fun toggleAllHeaders() {
+        allHeadersOpen = !allHeadersOpen
+        if (!allHeadersOpen || allHeaderText != null) return
+        scope.launch {
+            gate.withLock {
+                if (!connected) return@withLock
+                try {
+                    val (text, truncated) = readCappedText(RawViewCapBytes) { offset, length ->
+                        session.peekPart(uid, "HEADER", offset, length)
+                    }
+                    allHeaderText = text
+                    allHeadersTruncated = truncated
+                } catch (error: MailFailure) {
+                    postSnack(error.text)
+                }
+            }
+        }
+    }
+
     fun runReaderAction(action: ReaderAction) {
         when (action) {
             ReaderAction.Reply ->
@@ -1352,6 +1385,7 @@ private fun MessageReaderLoaded(
             ReaderAction.Spam -> runSpam()
             ReaderAction.Bounce ->
                 onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
+            ReaderAction.Headers -> toggleAllHeaders()
         }
     }
 
@@ -1728,6 +1762,12 @@ private fun MessageReaderLoaded(
                     subject = headerSubject,
                     deleted = "\\Deleted" in rowFlags,
                     onUndelete = { undeleteMessage() },
+                    allHeaders = allHeadersOpen,
+                    allHeaderText = allHeaderText,
+                    allHeadersTruncated = allHeadersTruncated,
+                    decode = decodeHeaderView,
+                    onDecode = { decodeHeaderView = it },
+                    onToggleAllHeaders = { toggleAllHeaders() },
                 )
             }
             PullToRefreshBox(
@@ -1873,6 +1913,17 @@ private fun MessageReaderLoaded(
                                 .fillMaxWidth(),
                         )
                         }
+                    }
+                    absent == null && (selectedView == BodyView.Headers || selectedView == BodyView.Raw) -> {
+                        RawTextView(
+                            text = bodyText,
+                            headers = selectedView == BodyView.Headers,
+                            truncated = rawTruncated,
+                            decode = decodeHeaderView,
+                            onDecode = { decodeHeaderView = it },
+                            scroll = scroll,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
                     }
                     absent == null -> {
                         Column(
@@ -2301,6 +2352,7 @@ private fun readerActionName(action: ReaderAction): String = stringResource(
         ReaderAction.Move -> R.string.label_move
         ReaderAction.Spam -> R.string.label_spam
         ReaderAction.Bounce -> R.string.compose_bounce
+        ReaderAction.Headers -> R.string.reader_all_headers
     },
 )
 
@@ -2329,6 +2381,7 @@ private fun ReaderToolbarAction.readerAction(): ReaderAction? = when (this) {
     ReaderToolbarAction.Move -> ReaderAction.Move
     ReaderToolbarAction.Spam -> ReaderAction.Spam
     ReaderToolbarAction.Bounce -> ReaderAction.Bounce
+    ReaderToolbarAction.Headers -> ReaderAction.Headers
 }
 
 private fun readerActionImage(action: ReaderAction) = when (action) {
@@ -2339,6 +2392,7 @@ private fun readerActionImage(action: ReaderAction) = when (action) {
     ReaderAction.Move -> moveImage
     ReaderAction.Spam -> spamImage
     ReaderAction.Bounce -> Icons.AutoMirrored.Filled.Redo
+    ReaderAction.Headers -> Icons.Filled.Code
 }
 
 @Composable
@@ -2349,6 +2403,12 @@ private fun ReaderHeaderCard(
     subject: String,
     deleted: Boolean,
     onUndelete: () -> Unit,
+    allHeaders: Boolean = false,
+    allHeaderText: String? = null,
+    allHeadersTruncated: Boolean = false,
+    decode: Boolean = false,
+    onDecode: (Boolean) -> Unit = {},
+    onToggleAllHeaders: () -> Unit = {},
 ) {
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
     Card(
@@ -2357,7 +2417,39 @@ private fun ReaderHeaderCard(
             .padding(8.dp),
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(stringResource(R.string.reader_from, from))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.reader_from, from), modifier = Modifier.weight(1f))
+                // Short header <-> all headers, in place (Pine's H).
+                IconButton(onClick = onToggleAllHeaders, modifier = Modifier.testTag("reader-all-headers")) {
+                    Icon(
+                        if (allHeaders) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = stringResource(
+                            if (allHeaders) R.string.reader_short_headers else R.string.reader_all_headers,
+                        ),
+                    )
+                }
+            }
+            if (allHeaders) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Switch(
+                        checked = decode,
+                        onCheckedChange = onDecode,
+                        modifier = Modifier.testTag("reader-decode-headers"),
+                    )
+                    Text(stringResource(R.string.reader_decode_headers), modifier = Modifier.padding(start = 8.dp))
+                }
+                if (allHeadersTruncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+                Box(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(
+                            text = allHeaderText?.let { headerViewText(it, decode) } ?: "…",
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.fillMaxWidth().testTag("reader-all-headers-text"),
+                        )
+                    }
+                }
+            }
             if (toLine != null) {
                 // The tap target is a full-width row at least 48dp high, so Compose does not grow the touch bounds of
                 // a one-line Text past its own line over the From and Date lines.
@@ -2640,4 +2732,61 @@ private fun appendUtf8(pending: ByteArray, chunk: ByteArray): Pair<String, ByteA
     val text = if (cut == 0) "" else all.copyOfRange(0, cut).toString(Charsets.UTF_8)
     val rest = if (keep == 0) ByteArray(0) else all.copyOfRange(cut, all.size)
     return text to rest
+}
+
+/** Header and raw-source views stop after this many bytes, so a huge or hostile message cannot exhaust memory. */
+const val RawViewCapBytes = 1 shl 20
+
+/**
+ * Reads a section in 4 KB partial fetches, stopping at [cap] bytes; returns the UTF-8 text (malformed bytes replaced)
+ * and whether it stopped at the cap.
+ */
+suspend fun readCappedText(cap: Int, peek: suspend (offset: Int, length: Int) -> ByteArray): Pair<String, Boolean> {
+    val out = java.io.ByteArrayOutputStream()
+    while (out.size() < cap) {
+        val length = minOf(4096, cap - out.size())
+        val chunk = peek(out.size(), length)
+        out.write(chunk)
+        if (chunk.size < length) return out.toByteArray().toString(Charsets.UTF_8) to false
+    }
+    // At the cap: one more byte tells whether anything was cut.
+    val more = peek(out.size(), 1).isNotEmpty()
+    return out.toByteArray().toString(Charsets.UTF_8) to more
+}
+
+/** The header block as shown: raw bytes as text, or with RFC 2047 encoded-words decoded line by line on request. */
+fun headerViewText(raw: String, decode: Boolean): String =
+    if (!decode) raw else raw.lineSequence().joinToString("\n") { org.dlang.liveimap.ui.compose.decodeHeaderWordsForView(it) }
+
+/** Unparsed, selectable text in a monospace font: no links, no HTML, nothing rendered. */
+@Composable
+private fun RawTextView(
+    text: String,
+    headers: Boolean,
+    truncated: Boolean,
+    decode: Boolean,
+    onDecode: (Boolean) -> Unit,
+    scroll: androidx.compose.foundation.ScrollState,
+    modifier: Modifier,
+) {
+    Column(modifier.verticalScroll(scroll).padding(8.dp)) {
+        if (headers) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Switch(
+                    checked = decode,
+                    onCheckedChange = onDecode,
+                    modifier = Modifier.testTag("reader-decode-headers"),
+                )
+                Text(stringResource(R.string.reader_decode_headers), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        if (truncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+        androidx.compose.foundation.text.selection.SelectionContainer {
+            Text(
+                text = if (headers) headerViewText(text, decode) else text,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.fillMaxWidth().testTag("reader-raw-text"),
+            )
+        }
+    }
 }

@@ -2536,6 +2536,7 @@ private fun readerActionName(action: ReaderAction): String = stringResource(
         ReaderAction.Move -> R.string.label_move
         ReaderAction.Spam -> R.string.label_spam
         ReaderAction.Bounce -> R.string.compose_bounce
+        ReaderAction.Headers -> R.string.reader_all_headers
     },
 )
 

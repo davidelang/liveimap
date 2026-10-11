@@ -241,6 +241,8 @@ enum class ReaderAction {
     Move,
     Spam,
     Bounce,
+    /** Toggle the raw header view (Pine's H): BODY.PEEK[HEADER] shown unparsed. */
+    Headers,
 }
 
 fun readerActionLabel(action: ReaderAction): String = when (action) {
@@ -251,6 +253,7 @@ fun readerActionLabel(action: ReaderAction): String = when (action) {
     ReaderAction.Move -> "Move"
     ReaderAction.Spam -> "Spam"
     ReaderAction.Bounce -> "Bounce"
+    ReaderAction.Headers -> "Headers"
 }
 
 val defaultReaderBar: List<ReaderAction> = listOf(

@@ -530,6 +530,7 @@ private fun readerToolbarActionRes(action: ReaderToolbarAction): Int = when (act
     ReaderToolbarAction.Move -> R.string.label_move
     ReaderToolbarAction.Spam -> R.string.label_spam
     ReaderToolbarAction.Bounce -> R.string.compose_bounce
+    ReaderToolbarAction.Headers -> R.string.reader_all_headers
 }
 
 private fun composeBarActionRes(action: ComposeBarAction): Int = when (action) {

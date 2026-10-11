@@ -468,6 +468,7 @@ enum class ReaderToolbarAction {
     Move,
     Spam,
     Bounce,
+    Headers,
 }
 
 data class ReaderToolbarLayout(
@@ -497,6 +498,7 @@ fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
         ReaderToolbarAction.Move,
         ReaderToolbarAction.Spam,
         ReaderToolbarAction.Bounce,
+        ReaderToolbarAction.Headers,
     ),
     hidden = emptyList(),
 )
@@ -598,6 +600,7 @@ private fun ReaderAction.toToolbarAction(): ReaderToolbarAction = when (this) {
     ReaderAction.Move -> ReaderToolbarAction.Move
     ReaderAction.Spam -> ReaderToolbarAction.Spam
     ReaderAction.Bounce -> ReaderToolbarAction.Bounce
+    ReaderAction.Headers -> ReaderToolbarAction.Headers
 }
 
 private fun ReaderToolbarLayout.sectionOf(action: ReaderToolbarAction): BarSection? = when {

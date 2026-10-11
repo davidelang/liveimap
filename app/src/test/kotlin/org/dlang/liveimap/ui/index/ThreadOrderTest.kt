@@ -73,9 +73,10 @@ class ThreadOrderTest {
             ),
             newestFirst = true,
         )
-        assertEquals(listOf(2L, 1L), siblings.map { it.rootUid })
-        assertEquals(emptyList<Long>(), siblings[0].hiddenUids)
-        assertEquals(emptyList<Long>(), siblings[1].hiddenUids)
+        // Siblings under a placeholder root are one thread (first child as root), not separate threads.
+        assertEquals(listOf(1L), siblings.map { it.rootUid })
+        assertEquals(listOf(2L), siblings.single().hiddenUids)
+        assertEquals(mapOf(2L to 1), siblings.single().depthByUid)
         val nested = collapsedThreads(
             ThreadNode(
                 uid = null,
@@ -95,5 +96,21 @@ class ThreadOrderTest {
         )
         assertEquals(listOf(5L), nested.map { it.rootUid })
         assertEquals(listOf(1L, 2L), nested.single().hiddenUids)
+    }
+
+    @Test
+    fun placeholderRootKeepsLabThreadTogether() {
+        // Dovecot's answer for the lab seed: ((292)(291)(290)(289)) -- replies whose parent is missing -- and (297).
+        val tree = ThreadNode(
+            null,
+            listOf(
+                ThreadNode(null, listOf(292L, 291L, 290L, 289L).map { ThreadNode(it, emptyList()) }),
+                ThreadNode(297L, emptyList()),
+            ),
+        )
+        val threads = collapsedThreads(tree, newestFirst = true)
+        assertEquals(listOf(297L, 292L), threads.map { it.rootUid })
+        assertEquals(listOf(291L, 290L, 289L), threads[1].hiddenUids)
+        assertEquals(setOf(1), threads[1].depthByUid.values.toSet())
     }
 }

@@ -461,7 +461,7 @@ private fun preorderUids(current: ThreadNode): List<Long> {
 }
 
 fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThread> {
-    val flat = flattenNullParents(node.children)
+    val flat = node.children.mapNotNull { threadWithoutPlaceholderRoot(it) }
     val maxOf = java.util.IdentityHashMap<ThreadNode, Long?>()
     for (c in flat) maxOf.putAll(subtreeMaxUids(c))
     val children = flat.sortedWith(byNewest(maxOf, newestFirst))
@@ -472,6 +472,18 @@ fun collapsedThreads(node: ThreadNode, newestFirst: Boolean): List<CollapsedThre
         out.add(CollapsedThread(uids.first(), uids.drop(1), threadDepths(child)))
     }
     return out
+}
+
+/**
+ * One top-level THREAD entry as one thread. A placeholder root (RFC 5256 dummy parent: the replies' parent is not in
+ * the folder) keeps its children together, as Pine and mutt do: the first child becomes the root and the other
+ * children its replies. Placeholders below the root are replaced by their children.
+ */
+private fun threadWithoutPlaceholderRoot(top: ThreadNode): ThreadNode? {
+    if (top.uid != null) return flattenNullParents(listOf(top)).single()
+    val kids = flattenNullParents(top.children)
+    if (kids.isEmpty()) return null
+    return ThreadNode(kids[0].uid, kids[0].children + kids.drop(1))
 }
 
 /** Replaces every placeholder (null-uid) node by its children, at every level, iteratively (post-order rebuild). */

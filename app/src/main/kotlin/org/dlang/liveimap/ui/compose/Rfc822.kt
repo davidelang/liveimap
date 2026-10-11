@@ -1237,3 +1237,6 @@ private fun atLineStart(data: ByteArray, offset: Int): Boolean {
     if (offset <= 0) return true
     return data[offset - 1] == '\n'.code.toByte()
 }
+
+/** decodeHeaderWords for the reader's header view (one header line at a time). */
+fun decodeHeaderWordsForView(line: String): String = decodeHeaderWords(line)

@@ -756,4 +756,8 @@
     <string name="settings_move_all_deleted">Move entire folder includes deleted messages</string>
     <string name="settings_move_all_deleted_note">Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).</string>
     <string name="folders_no_account">No mail account yet</string>
+    <string name="reader_all_headers">All headers</string>
+    <string name="reader_short_headers">Short header</string>
+    <string name="reader_decode_headers">Decode encoded words (RFC 2047)</string>
+    <string name="reader_raw_truncated">Showing the first %1$d KB only.</string>
 </resources>
