@@ -97,6 +97,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -2926,6 +2927,10 @@ private fun MessageIndexLoaded(
                 }
             }
             if (searchVisible) {
+                // Focus the query field when search opens, so typing (keyboard, voice, handwriting) goes into it
+                // instead of the list's Pine key commands.
+                val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(Unit) { searchFocus.requestFocus() }
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -2990,7 +2995,10 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         ),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(searchFocus)
+                            .testTag("index-search-field"),
                     )
                     TextButton(onClick = onAdvanced) {
                         Text(stringResource(R.string.index_search_advanced))
