@@ -786,7 +786,7 @@ class LibetpanMailSession : MailSession {
             val command = featureCaps.sortKind()
             val token = featureCaps.imapSortKey(sortToken(key))
             remember("SORT $token $newestFirst ${criteria.orEmpty()}") {
-                val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria) ?: throw MailFailure("sort failed")
+                val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria?.let(::requireCriteria)) ?: throw MailFailure("sort failed")
                 ids.asList()
             }
         }
@@ -818,7 +818,7 @@ class LibetpanMailSession : MailSession {
             if (sortPartialIgnored) return@read null
             val h = requireHandle()
             run {
-                val raw = nativeSortWindow(h, token, newestFirst, first, last, criteria) ?: throw MailFailure("sort failed")
+                val raw = nativeSortWindow(h, token, newestFirst, first, last, criteria?.let(::requireCriteria)) ?: throw MailFailure("sort failed")
                 val window = uidWindowOf(raw)
                 if (!partialWindowIgnored(window, first)) return@read window
                 // Cyrus 3.12/3.13 answer UID SORT RETURN (PARTIAL ..) with COUNT only: report "no windows" so the
@@ -909,7 +909,7 @@ class LibetpanMailSession : MailSession {
         return keeper.read("thread") {
             val h = requireHandle()
             remember("THREAD $algorithm ${criteria.orEmpty()}") {
-                nativeThread(h, algorithm, criteria) ?: throw MailFailure("thread failed")
+                nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
             }
         }
     }

@@ -152,12 +152,11 @@ class AccountSetupActivity : ComponentActivity() {
         response.onResult(result)
     }
 
-    private fun setupCallerAllowed(caller: String?): Boolean {
-        if (caller == null) return false
-        if (caller == packageName) return true
-        val info = runCatching { packageManager.getApplicationInfo(caller, 0) }.getOrNull() ?: return false
-        return setupCallerIsSystem(info.flags, info.uid)
-    }
+    private fun setupCallerAllowed(caller: String?): Boolean =
+        setupCallerDecision(caller, packageName) { name ->
+            val info = runCatching { packageManager.getApplicationInfo(name, 0) }.getOrNull()
+            info != null && setupCallerIsSystem(info.flags, info.uid)
+        }
 
     private fun readResponse(source: Intent): AccountAuthenticatorResponse? {
         val key = AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE
@@ -207,3 +206,13 @@ private fun AccountSetupContent() {
 internal fun setupCallerIsSystem(flags: Int, uid: Int): Boolean =
     uid == android.os.Process.SYSTEM_UID ||
         (flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+
+/**
+ * F03: who may open the setup activity. A plain startActivity has no calling package (null): refused, and the
+ * activity finishes before sendResult can hand the account name to any AccountAuthenticatorResponse.
+ */
+internal fun setupCallerDecision(caller: String?, ownPackage: String, isSystem: (String) -> Boolean): Boolean {
+    if (caller == null) return false
+    if (caller == ownPackage) return true
+    return isSystem(caller)
+}

@@ -44,3 +44,6 @@ fun requireSearchArgument(kind: String, argument: String): String {
     }
     return argument
 }
+
+/** SORT/THREAD criteria: raw IMAP search keys; a CR or LF would end the command (F42). */
+fun requireCriteria(criteria: String): String = requireWireText(criteria)
