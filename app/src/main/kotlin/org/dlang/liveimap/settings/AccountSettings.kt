@@ -1440,6 +1440,29 @@ fun AccountSettings.tlsPolicy(): org.dlang.liveimap.engine.TlsPolicy =
     org.dlang.liveimap.engine.TlsPolicy(acceptInvalidCert = acceptInvalidCert, allowOldTls = allowOldTls)
 
 /** True when the fields the server check probes are unchanged. */
+/** What the server-settings check does after a settings change (see [serverCheckStep]). */
+enum class ServerCheckStep { Rebase, Wait, Check, Nothing }
+
+/**
+ * The reachability/conflict check runs only for a server change the user saved: switching accounts, loading,
+ * Revert, or opening and leaving settings unchanged just adopt the current settings as the baseline, and while
+ * a server text field still has focus (host typed, port not yet) the check waits.
+ */
+fun serverCheckStep(
+    baseline: AccountSettings?,
+    baselineAccount: String?,
+    current: AccountSettings,
+    currentAccount: String?,
+    userSaved: Boolean,
+    editing: Boolean,
+): ServerCheckStep = when {
+    baseline == null || baselineAccount != currentAccount || current.imapHost.isBlank() -> ServerCheckStep.Rebase
+    sameServerSettings(baseline, current) -> ServerCheckStep.Nothing
+    !userSaved -> ServerCheckStep.Rebase
+    editing -> ServerCheckStep.Wait
+    else -> ServerCheckStep.Check
+}
+
 fun sameServerSettings(a: AccountSettings, b: AccountSettings): Boolean =
     a.imapHost == b.imapHost && a.imapPort == b.imapPort && a.tlsMode == b.tlsMode &&
         a.acceptInvalidCert == b.acceptInvalidCert && a.allowOldTls == b.allowOldTls &&

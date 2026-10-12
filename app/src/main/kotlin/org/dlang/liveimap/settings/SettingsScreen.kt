@@ -468,7 +468,17 @@ private fun AccountGroup(editor: SettingsEditor) {
     // Capability sanity check when the server is saved: baseline is the last accepted server settings.
     var serverBaseline by remember { mutableStateOf<AccountSettings?>(null) }
     var serverCheck by remember { mutableStateOf<ServerCheck?>(null) }
+    var baselineAccount by remember { mutableStateOf<String?>(null) }
+    var serverUserSaved by remember { mutableStateOf(false) }
+    var serverFieldFocus by remember { mutableStateOf(0) }
+    val chosenAccount = editor.accounts.firstOrNull { it.chosen }?.id
+    fun userServerSave(next: AccountSettings) {
+        serverUserSaved = true
+        editor.persist(next)
+    }
     val serverKey = listOf(
+        chosenAccount,
+        serverFieldFocus > 0,
         settings.imapHost,
         settings.imapPort,
         settings.tlsMode,
@@ -478,14 +488,20 @@ private fun AccountGroup(editor: SettingsEditor) {
     )
     LaunchedEffect(editor.ready, serverKey) {
         if (!editor.ready) return@LaunchedEffect
-        val base = serverBaseline
         val current = editor.settings
-        if (base == null || current.imapHost.isBlank()) {
-            serverBaseline = current
-            return@LaunchedEffect
+        when (serverCheckStep(serverBaseline, baselineAccount, current, chosenAccount, serverUserSaved, serverFieldFocus > 0)) {
+            ServerCheckStep.Rebase -> {
+                serverBaseline = current
+                baselineAccount = chosenAccount
+                serverUserSaved = false
+                return@LaunchedEffect
+            }
+            ServerCheckStep.Nothing -> { serverUserSaved = false; return@LaunchedEffect }
+            ServerCheckStep.Wait -> return@LaunchedEffect
+            ServerCheckStep.Check -> Unit
         }
-        if (sameServerSettings(base, current)) return@LaunchedEffect
         delay(1500)
+        serverUserSaved = false
         val result = withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(current) }
         if (result.reachable && result.conflicts.isEmpty()) {
             serverBaseline = current
@@ -699,11 +715,12 @@ private fun AccountGroup(editor: SettingsEditor) {
             onToggle = { sections.toggle("server") },
         ) {
             Text(stringResource(R.string.settings_plaintext_ports))
-            LineField(stringResource(R.string.settings_imap_host), settings.imapHost, ready = editor.ready) {
-                editor.persist(editor.settings.copy(imapHost = it))
+            val focusCount: (Boolean) -> Unit = { focused -> serverFieldFocus = (serverFieldFocus + if (focused) 1 else -1).coerceAtLeast(0) }
+            LineField(stringResource(R.string.settings_imap_host), settings.imapHost, ready = editor.ready, onFocus = focusCount) {
+                userServerSave(editor.settings.copy(imapHost = it))
             }
-            PortField(stringResource(R.string.settings_imap_port), settings.imapPort, ready = editor.ready) {
-                editor.persist(editor.settings.copy(imapPort = it))
+            PortField(stringResource(R.string.settings_imap_port), settings.imapPort, ready = editor.ready, onFocus = focusCount) {
+                userServerSave(editor.settings.copy(imapPort = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_tls),
@@ -711,7 +728,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                 settings.tlsMode,
                 { tlsName(it) },
             ) { mode ->
-                editor.persist(editor.settings.withTlsMode(mode))
+                userServerSave(editor.settings.withTlsMode(mode))
             }
             // Warning only: the setting itself is never changed for the user.
             noTlsWarning(settings)?.let { res ->
@@ -727,21 +744,21 @@ private fun AccountGroup(editor: SettingsEditor) {
                 settings.allowPlaintextAuth,
                 note = stringResource(R.string.settings_allow_plaintext_note),
             ) { enabled ->
-                editor.persist(editor.settings.copy(allowPlaintextAuth = enabled))
+                userServerSave(editor.settings.copy(allowPlaintextAuth = enabled))
             }
             BoolField(
                 stringResource(R.string.settings_accept_invalid_cert),
                 settings.acceptInvalidCert,
                 note = stringResource(R.string.settings_accept_invalid_cert_note),
             ) { enabled ->
-                editor.persist(editor.settings.copy(acceptInvalidCert = enabled))
+                userServerSave(editor.settings.copy(acceptInvalidCert = enabled))
             }
             BoolField(
                 stringResource(R.string.settings_allow_old_tls),
                 settings.allowOldTls,
                 note = stringResource(R.string.settings_allow_old_tls_note),
             ) { enabled ->
-                editor.persist(editor.settings.copy(allowOldTls = enabled))
+                userServerSave(editor.settings.copy(allowOldTls = enabled))
             }
             LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
                 editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
@@ -2250,6 +2267,7 @@ private fun LineField(
     accept: (String) -> Boolean = { true },
     onDraft: ((String) -> Unit)? = null,
     interpret: (String, String) -> String? = { draft, stored -> commitText(draft, stored) },
+    onFocus: ((Boolean) -> Unit)? = null,
     onCommit: (String) -> Unit,
 ) {
     val draftState = rememberSaveable { mutableStateOf(value) }
@@ -2300,6 +2318,7 @@ private fun LineField(
             .fillMaxWidth()
             .onFocusChanged { state ->
                 if (hadFocus && !state.isFocused && !committer.skipLeave()) committer.commit()
+                if (hadFocus != state.isFocused) onFocus?.invoke(state.isFocused)
                 hadFocus = state.isFocused
             },
     )
@@ -2348,6 +2367,7 @@ private fun PortField(
     label: String,
     value: Int,
     ready: Boolean = true,
+    onFocus: ((Boolean) -> Unit)? = null,
     onValue: (Int) -> Unit,
 ) {
     val storedPort = value
@@ -2356,6 +2376,7 @@ private fun PortField(
         value = value.toString(),
         keyboardType = KeyboardType.Number,
         ready = ready,
+        onFocus = onFocus,
         interpret = { draft, stored ->
             commitPort(draft, stored.toIntOrNull() ?: storedPort)?.toString()
         },
