@@ -266,7 +266,7 @@ val defaultReaderBar: List<ReaderAction> = listOf(
 
 const val pineSourceId: String = "pine"
 
-/** Auto: chosen from the screen's size in dp and inches ([autoPaneCount]); the default for new accounts. */
+/** Auto: chosen from the screen's size in dp and inches ([classifyScreen]); the default for new accounts. */
 enum class MultiPane {
     Off,
     Wide,
@@ -276,7 +276,7 @@ enum class MultiPane {
 enum class LayoutChoice {
     Off,
     On,
-    /** Folder pane only: shown when [autoPaneCount] gives three panes. Elsewhere it counts as Off. */
+    /** Folder pane only: shown when [classifyScreen] gives three panes. Elsewhere it counts as Off. */
     Auto,
 }
 
@@ -1433,20 +1433,3 @@ fun effectiveTextZoom(setting: Int, pinch: Float): Int {
     return clampTextZoom(Math.round(clampTextZoom(setting) * p))
 }
 
-/** Phones and narrow windows: one pane. */
-const val TwoPaneMinWidthDp = 840
-const val TwoPaneMinSmallestDp = 600
-/** Three panes (folders + list + reader) only on very large landscape screens. */
-const val ThreePaneMinWidthDp = 1200
-const val ThreePaneMinDiagonalIn = 12.0
-
-/**
- * Default pane count from the window width and the screen's smallest width (dp, density-independent) and its
- * physical diagonal (inches): 1 below a tablet-sized, at least 840 dp wide window; 3 when 1200 dp or wider on a
- * screen of 12 inches or more; else 2.
- */
-fun autoPaneCount(widthDp: Int, smallestWidthDp: Int, diagonalInches: Double): Int {
-    if (smallestWidthDp < TwoPaneMinSmallestDp || widthDp < TwoPaneMinWidthDp) return 1
-    if (widthDp >= ThreePaneMinWidthDp && diagonalInches >= ThreePaneMinDiagonalIn) return 3
-    return 2
-}

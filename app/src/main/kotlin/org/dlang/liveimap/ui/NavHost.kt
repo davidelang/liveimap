@@ -90,7 +90,8 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.setMailCertConfirmer
 import org.dlang.liveimap.session.setMailPlaintextConfirmer
 import org.dlang.liveimap.settings.AccountChoice
-import org.dlang.liveimap.settings.autoPaneCount
+import org.dlang.liveimap.settings.classifyScreen
+import org.dlang.liveimap.settings.PaneArrangement
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.ExpandedFoldersScreen
@@ -131,17 +132,15 @@ fun LiveImapNavHost() {
     var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
     var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val metrics = androidx.compose.ui.platform.LocalContext.current.resources.displayMetrics
-    val autoPanes = autoPaneCount(
-        configuration.screenWidthDp,
-        configuration.smallestScreenWidthDp,
-        screenDiagonalInches(metrics),
-    )
+    val autoLayout = classifyScreen(configuration.screenWidthDp, configuration.screenHeightDp)
+    val autoPanes = autoLayout.panes
     val split = useMultiPane(multiPane, autoPanes)
     val splitNow = rememberUpdatedState(split)
     val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
     val axis = paneAxis(
-        foldOn = useFoldPosture(foldPosture),
+        foldOn = useFoldPosture(foldPosture) ||
+            (multiPane == MultiPane.Auto && autoLayout.arrangement == PaneArrangement.TopBottom),
+        autoTopBottom = multiPane == MultiPane.Auto && autoLayout.arrangement == PaneArrangement.TopBottom,
         hingeVertical = hinges.firstOrNull()?.isVertical == true,
         hingePresent = hinges.isNotEmpty(),
     )
@@ -1313,13 +1312,6 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 internal fun useMultiPane(mode: MultiPane, autoPanes: Int = 1): Boolean =
     mode == MultiPane.Wide || (mode == MultiPane.Auto && autoPanes >= 2)
 
-/** Physical diagonal from the real pixel size and dpi (not the window). */
-internal fun screenDiagonalInches(m: android.util.DisplayMetrics): Double {
-    if (m.xdpi <= 0f || m.ydpi <= 0f) return 0.0
-    val w = m.widthPixels / m.xdpi.toDouble()
-    val h = m.heightPixels / m.ydpi.toDouble()
-    return Math.sqrt(w * w + h * h)
-}
 
 internal fun useFolderPane(choice: LayoutChoice, autoPanes: Int = 1): Boolean =
     choice == LayoutChoice.On || (choice == LayoutChoice.Auto && autoPanes >= 3)
@@ -1336,8 +1328,9 @@ internal fun showFolderPane(choice: LayoutChoice, route: String?, autoPanes: Int
         (route == "index/{mailbox}" || route == "reader/{mailbox}/{uid}/{sequence}")
 }
 
-internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boolean): PaneAxis {
+internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boolean, autoTopBottom: Boolean = false): PaneAxis {
     if (foldOn && hingePresent && !hingeVertical) return PaneAxis.TopBottom
+    if (autoTopBottom && !hingePresent) return PaneAxis.TopBottom
     return PaneAxis.SideBySide
 }
 

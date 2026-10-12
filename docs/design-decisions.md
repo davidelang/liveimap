@@ -373,10 +373,20 @@ Avoid:
   selection, expanded folders, cached data) is restored, and the session
   cache is never persisted.
 * No `android:configChanges` override and no orientation lock.
-* Multi-pane is Off or On, and Off is the default. On shows the drawer, the
+* Multi-pane is Off, On (Wide) or Automatic. New accounts start on Automatic; a
+  stored account keeps whatever it had (no key = Off). On shows the drawer, the
   index, and an open message as panes. A bar between panes resizes them, and
-  dragging a pane to the edge closes it. Window width does not choose the
-  panes.
+  dragging a pane to the edge closes it. Automatic classifies the current window
+  by its real size in inches (dp / 160) and aspect (long / short side), and
+  re-classifies on rotation and fold/unfold:
+  | Class | Rule | Portrait | Landscape |
+  |---|---|---|---|
+  | Narrow phone (~3.5x7 in) | aspect >= 1.6, short side < 4 in | 1 pane | 1 pane |
+  | Folding phone open (~7 in, near square) | aspect < 1.3, diagonal < 9 in | list + reader | list + reader |
+  | Small page tablet / e-reader (~6 in) | diagonal < 8.5 in | 1 pane | 1 pane |
+  | Page tablet ~10 in | diagonal < 12 in | 1 pane | list + reader |
+  | Page tablet ~13 in and up | diagonal >= 12 in | list over reader | folders + list + reader |
+  Folder pane Automatic follows the three-pane rows. Explicit choices override.
 
 - Back is predictive on every Android version that has it (13+): the manifest sets
   `android:enableOnBackInvokedCallback="true"`, so 13–15 behave like 16, where it is the default; all screens use
