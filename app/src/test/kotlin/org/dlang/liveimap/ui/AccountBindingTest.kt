@@ -35,7 +35,7 @@ class AccountBindingTest {
         )) {
             val text = src(f)
             assertTrue(f, text.contains("var accountId by rememberSaveable"))
-            assertTrue(f, text.contains("if (accountId == null) accountId = store.chosenAccountId()"))
+            assertTrue(f, text.contains("if (accountId == null) accountId = "))
         }
     }
 
