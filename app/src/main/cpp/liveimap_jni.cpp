@@ -3173,6 +3173,7 @@ void enableNamed(LiveSession * session, const char * capName) {
     const char * wire = nullptr;
     if (strcasecmp(capName, "QRESYNC") == 0) wire = "QRESYNC";
     else if (strcasecmp(capName, "CONDSTORE") == 0) wire = "CONDSTORE";
+    else if (strcasecmp(capName, "UTF8=ACCEPT") == 0) wire = "UTF8=ACCEPT";
     if (wire == nullptr) return;
     clist * list = clist_new();
     if (list == nullptr) return;
@@ -7608,6 +7609,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         throwFailure(env, error);
         unlockSession(session);
         return;
+    }
+    if (session->utf8) {
+        // Same mailbox-name form as the main connection (the name passed in is UTF-8 there).
+        mailimap * main = session->imap;
+        session->imap = watch;
+        bool before = session->utf8;
+        enableNamed(session, "UTF8=ACCEPT");
+        session->utf8 = before;
+        session->imap = main;
     }
     int r = mailimap_examine(watch, mb.c());
     if (!cmdOk(r)) {
