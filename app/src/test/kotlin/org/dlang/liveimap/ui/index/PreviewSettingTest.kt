@@ -6,6 +6,7 @@ import org.dlang.liveimap.settings.FolderPositionChoice
 import org.dlang.liveimap.settings.PreviewChoice
 import org.dlang.liveimap.settings.PreviewSize
 import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.encode
 import org.dlang.liveimap.settings.newAccountSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
