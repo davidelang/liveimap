@@ -432,6 +432,83 @@ Avoid:
 * `[plaintext]` in an address-book comment means "send plain text, not HTML, to
   this address".
 
+## Sending rules and roles
+
+David, 2026-10-12. Who a message is from, its signature, Fcc, quote style and
+delivery-status request all come from **sending rules**. Simple things are
+trivial, complex things are possible, and roles are built on the same rules.
+
+* **One rule list per account**, shown in the account's server setup as
+  "Sending rules". First match wins; rules are reordered by drag. A final
+  built-in **account default** rule (no conditions) always matches and holds
+  the account's From address, display name, signature and Fcc, so the simple
+  case is just "edit From address / Signature" on that one row.
+* **A rule = conditions + actions + a name.**
+  * Conditions (all must hold; empty = always): compose kind (new, reply,
+    reply-all, forward), recipient matches (To/Cc of the draft; address,
+    `@domain`, or glob), original was sent to (To/Cc/Delivered-To/X-Original-To
+    of the message replied to or forwarded; plus addresses match their base:
+    `me+lists@x` matches `me@x` and is kept), original List-Id, current
+    folder (glob, `*` and `%` as in IMAP LIST), original From matches.
+  * Actions (each optional; an unset action falls through to the next
+    matching rule, ending at the account default): From name and address,
+    Reply-To, signature (text, or "none"), signature placement (below the
+    reply, at the bottom), sig-dashes, quote prefix, reply lead-in, Fcc
+    mailbox, DSN request (off / failures / failures+delay / all), reply to
+    list by default, and a role label shown in the From picker.
+  * So a rule that only sets a signature for lists keeps the From of the
+    rule that sets it (field-wise first match: each field takes the first
+    matching rule that sets it). This is Alpine's "inherit" without a
+    separate inherit flag.
+* **Stored** as text lines in AccountSettings (`sendingRules=`), one encoded
+  rule per line, percent-encoded fields; unknown keys are kept (forward
+  compatible). The engine is pure Kotlin (`compose/SendingRules.kt`),
+  unit-tested without Android.
+* **Presets** (easy setup) only generate ordinary rules the user can then
+  edit or reorder; nothing is special at run time:
+  1. *Per-account role*: the account default rule (replies use the account
+     whose message is being answered, always).
+  2. *Reply from the address it was sent to*: one rule per alt-address/alias
+     with "original sent to X" -> From X (plus addresses keep their tag).
+  3. *Per recipient or domain*: "recipient matches @work.example" -> From,
+     signature; applies to new messages too.
+  4. *Per folder*: "folder matches Work/*" -> From, Fcc, signature.
+  5. *Mailing list*: "original List-Id is <id>" -> From the subscribed
+     address, reply to list by default, short or no signature.
+  6. *Plus folders*: "original sent to me+tag@x" -> From me+tag@x, Fcc the
+     folder named tag (if it exists).
+  7. *Signature by context*: reply vs new and list replies get different
+     signatures.
+  8. *Fcc per role*: Fcc action on the rule.
+  9. *Forwards keep the original's role*: forward kind uses the same
+     "original sent to" matching as replies (on by default via preset 2).
+  10. *Safety net*: on Send, if the From differs from what the rules pick
+      for the current recipients (e.g. personal From to a work domain), ask
+      once: "Rules expect From X for these recipients. Send anyway?"
+* **Compose From picker**: the From line is a dropdown of the From addresses
+  the rules know (plus the account's); it shows which rule chose the current
+  one ("Rule: Work domain"). Choosing another From re-evaluates signature and
+  Fcc with that From pinned. Changing recipients re-evaluates until the user
+  picks a From by hand.
+* **Signature text** is inserted below the cursor block for new messages and
+  replies-above-quote, or at the end; with sig-dashes it is preceded by
+  "-- " on its own line. A signature already in the body (reply resume,
+  postponed) is not added twice. Changing role swaps the inserted signature
+  only if the user hasn't edited it.
+* **Quote prefix** (default "> ") and **lead-in** ("On {date}, {from}
+  wrote:"; tokens `{date}`, `{from}`, `{name}`, `{subject}`) come from rules.
+* **DSN** (RFC 3461): when requested and the server advertises DSN, `MAIL
+  FROM ... RET=HDRS` and `RCPT TO ... NOTIFY=...`; when not advertised, send
+  normally and say so once.
+* **pinerc import** writes into the same list: `signature-file` is never
+  read; `literal-signature`, `reply-indent-string`, `reply-leadin`,
+  `enable-sigdashes`, `signature-at-bottom`,
+  `enable-delivery-status-notification`, and `patterns-roles` (each role
+  becomes a rule; unsupported pattern parts are listed as skipped) map to
+  rules or the account default.
+* Full roles UI beyond this (role switching outside compose, role-based
+  incoming actions) needs discussion with David first.
+
 ## UTF-8 safety
 
 - IMAP: with UTF8=ACCEPT enabled, mailbox names are UTF-8 on the wire; saved names from before the switch
