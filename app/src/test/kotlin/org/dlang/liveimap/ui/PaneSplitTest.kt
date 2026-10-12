@@ -19,6 +19,8 @@ class PaneSplitTest {
         assertEquals(0, initialDrawerDp(880, readerOpen = true))
         assertEquals(360, initialDrawerDp(1200, readerOpen = true))
         assertEquals(360, initialDrawerDp(880, readerOpen = false))
+        assertEquals(0, initialDrawerDp(1600, readerOpen = false, folderColumn = true))
+        assertEquals(0, initialDrawerDp(1600, readerOpen = true, folderColumn = true))
     }
 
     @Test

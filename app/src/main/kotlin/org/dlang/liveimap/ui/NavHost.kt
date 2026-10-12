@@ -239,6 +239,14 @@ fun LiveImapNavHost() {
     var drawerWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
+    val folderColumn = !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
+    val folderColumnNow = rememberUpdatedState(folderColumn)
+    LaunchedEffect(folderColumn, split) {
+        val available = availableDpState.intValue
+        if (split && !userSized && available > 0) {
+            drawerWidthDp = initialDrawerDp(available, readerOpen, folderColumn).toFloat()
+        }
+    }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
         if (!split) {
             { scope.launch { drawerState.open() } }
@@ -399,14 +407,14 @@ fun LiveImapNavHost() {
                     readerOpen = open
                     val available = availableDpState.intValue
                     if (userSized || available <= 0) return@LaunchedEffect
-                    drawerWidthDp = initialDrawerDp(available, open).toFloat()
+                    drawerWidthDp = initialDrawerDp(available, open, folderColumnNow.value).toFloat()
                 }
                 DisposableEffect(Unit) {
                     onDispose {
                         readerOpen = false
                         val available = availableDpState.intValue
                         if (!userSized && available > 0) {
-                            drawerWidthDp = initialDrawerDp(available, false).toFloat()
+                            drawerWidthDp = initialDrawerDp(available, false, folderColumnNow.value).toFloat()
                         }
                     }
                 }
@@ -975,14 +983,14 @@ fun LiveImapNavHost() {
                 axis = axis,
                 leadingDp = drawerWidthDp,
                 fallback = { span ->
-                    initialDrawerDp(span.roundToInt(), readerOpen).toFloat()
+                    initialDrawerDp(span.roundToInt(), readerOpen, folderColumnNow.value).toFloat()
                 },
                 onSpan = { availableDpState.intValue = it.roundToInt() },
                 onDrag = { delta, span ->
                     userSized = true
                     val max = (span - 8f).coerceAtLeast(0f)
                     val base = if (drawerWidthDp < 0f) {
-                        initialDrawerDp(span.roundToInt(), readerOpen).toFloat()
+                        initialDrawerDp(span.roundToInt(), readerOpen, folderColumnNow.value).toFloat()
                     } else {
                         drawerWidthDp
                     }
@@ -1007,7 +1015,7 @@ fun LiveImapNavHost() {
                     val resolvedDrawerDp = if (drawerWidthDp >= 0f) {
                         drawerWidthDp
                     } else {
-                        initialDrawerDp(availableDpState.intValue, readerOpen).toFloat()
+                        initialDrawerDp(availableDpState.intValue, readerOpen, folderColumnNow.value).toFloat()
                     }
                     val hostModifier = if (resolvedDrawerDp > 0f) {
                         Modifier
@@ -1050,7 +1058,7 @@ fun LiveImapNavHost() {
         }
     }
     LiveImapScaffold {
-        if (!(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)) {
+        if (folderColumn) {
             AxisSplit(
                 axis = axis,
                 leadingDp = folderWidthDp,
@@ -1370,7 +1378,9 @@ internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boo
     return PaneAxis.SideBySide
 }
 
-internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean): Int {
+internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean, folderColumn: Boolean = false): Int {
+    // The folder column already shows folders: the account drawer pane starts hidden (still openable).
+    if (folderColumn) return 0
     if (!readerOpen) return minOf(360, availableDp)
     return if (availableDp < 1000) 0 else 360
 }
