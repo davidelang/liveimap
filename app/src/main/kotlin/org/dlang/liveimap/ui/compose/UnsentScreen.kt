@@ -58,6 +58,8 @@ fun UnsentScreen(
             Text(
                 if (copy.appendOnly) {
                     stringResource(R.string.unsent_sent_copy)
+                } else if (copy.uncertain) {
+                    stringResource(R.string.unsent_uncertain)
                 } else {
                     stringResource(R.string.unsent_not_sent)
                 },

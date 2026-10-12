@@ -8,11 +8,16 @@ import org.junit.Test
 
 class UnsentStoreTest {
     @Test
-    fun emptyIdUsesLegacyUnsentDir() {
+    fun oddIdsGetTheirOwnHashedDirNeverTheSharedOne() {
+        // F51: no id falls back to the shared legacy directory
         val filesDir = File("/tmp/liveimap-files")
         val legacy = File(filesDir, "unsent")
-        assertEquals(legacy, unsentAccountDir(filesDir, ""))
-        assertEquals(legacy, unsentAccountDir(filesDir, "   "))
+        val dirs = listOf("", "   ", ".", "..", "a/b", "a\\b").map { unsentAccountDir(filesDir, it) }
+        for (d in dirs) {
+            assertEquals(legacy, d.parentFile)
+            assertTrue(d.name.startsWith(".id-"))
+        }
+        assertEquals(dirs.size, dirs.toSet().size)
     }
 
     @Test
@@ -22,77 +27,49 @@ class UnsentStoreTest {
     }
 
     @Test
-    fun unsafeIdsStayOnLegacyDir() {
-        val filesDir = File("/tmp/liveimap-files")
-        val legacy = File(filesDir, "unsent")
-        assertEquals(legacy, unsentAccountDir(filesDir, "."))
-        assertEquals(legacy, unsentAccountDir(filesDir, ".."))
-        assertEquals(legacy, unsentAccountDir(filesDir, "a/b"))
-        assertEquals(legacy, unsentAccountDir(filesDir, "a\\b"))
-    }
-
-    @Test
     fun sentMailStaysOnePathSegment() {
         val filesDir = File("/tmp/liveimap-files")
         assertEquals(File(File(filesDir, "unsent"), "Sent Mail"), unsentAccountDir(filesDir, "Sent Mail"))
     }
 
     @Test
-    fun emptyIdReturnsOnlyLegacyDir() {
+    fun accountIdReturnsOnlyItsOwnDir() {
         val filesDir = File("/tmp/liveimap-files")
-        assertEquals(listOf(File(filesDir, "unsent")), unsentDirs(filesDir, ""))
+        assertEquals(listOf(File(File(filesDir, "unsent"), "acct-1")), unsentDirs(filesDir, "acct-1"))
     }
 
     @Test
-    fun accountIdReturnsAccountDirThenLegacy() {
-        val filesDir = File("/tmp/liveimap-files")
-        assertEquals(
-            listOf(File(File(filesDir, "unsent"), "acct-1"), File(filesDir, "unsent")),
-            unsentDirs(filesDir, "acct-1"),
-        )
-    }
-
-    @Test
-    fun mergeKeepsAccountCopyThenNewLegacy() {
-        val accountA = DeviceCopy("a", false, "acct", emptyList(), "A".toByteArray())
-        val legacyA = DeviceCopy("a", true, "legacy", emptyList(), "L".toByteArray())
-        val legacyC = DeviceCopy("c", false, "legacy", emptyList(), "C".toByteArray())
-        val merged = mergedAccountCopies(listOf(accountA), listOf(legacyA, legacyC))
-        assertEquals(listOf("a", "c"), merged.map { it.id })
-        assertEquals("acct", merged[0].mailbox)
-        assertEquals("A", merged[0].bytes.toString(Charsets.UTF_8))
-        assertEquals("legacy", merged[1].mailbox)
-    }
-
-    @Test
-    fun writeGoesToAccountDirAndDeleteRemovesBoth() {
+    fun accountsNeverSeeEachOthersOrLegacyCopies() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {
-            val accountA = DeviceCopy("a", false, "acct", listOf("a@b"), "A".toByteArray())
-            val legacyA = DeviceCopy("a", true, "legacy", listOf("a@b"), "L".toByteArray())
-            val legacyC = DeviceCopy("c", false, "legacy", emptyList(), "C".toByteArray())
-            val accountB = DeviceCopy("b", false, "acct", emptyList(), "B".toByteArray())
-            writeCopy(root, accountA, "acct-1")
-            writeCopy(root, legacyA, "")
-            writeCopy(root, legacyC, "")
-            writeCopy(root, accountB, "acct-1")
-            val accountDir = File(File(root, "unsent"), "acct-1")
-            val legacyDir = File(root, "unsent")
-            assertTrue(File(accountDir, "a.rfc822").isFile)
-            assertTrue(File(accountDir, "b.rfc822").isFile)
-            assertFalse(File(legacyDir, "b.rfc822").isFile)
-            val read = readCopies(root, "acct-1")
-            assertEquals(listOf("a", "b", "c"), read.map { it.id })
-            assertEquals("acct", read[0].mailbox)
-            assertEquals("A", read[0].bytes.toString(Charsets.UTF_8))
-            assertEquals("legacy", read.first { it.id == "c" }.mailbox)
-            deleteCopy(root, "a", "acct-1")
-            assertFalse(File(accountDir, "a.rfc822").isFile)
-            assertFalse(File(accountDir, "a.meta").isFile)
-            assertFalse(File(legacyDir, "a.rfc822").isFile)
-            assertFalse(File(legacyDir, "a.meta").isFile)
-            assertTrue(File(legacyDir, "c.rfc822").isFile)
-            assertEquals(listOf("b", "c"), readCopies(root, "acct-1").map { it.id })
+            writeCopy(root, DeviceCopy("a", false, "Sent", listOf("a@b"), "A".toByteArray()), "acct-1")
+            writeCopy(root, DeviceCopy("b", false, "Sent", emptyList(), "B".toByteArray()), "acct-2")
+            writeCopy(root, DeviceCopy("z", false, "Sent", emptyList(), "Z".toByteArray()), "")
+            val legacy = File(root, "unsent")
+            File(legacy, "old.rfc822").writeText("O")
+            File(legacy, "old.meta").writeText("unsent\nSent\nx@y\n")
+            assertEquals(listOf("a"), readCopies(root, "acct-1").map { it.id })
+            assertEquals(listOf("b"), readCopies(root, "acct-2").map { it.id })
+            deleteCopy(root, "old", "acct-1")
+            assertTrue(File(legacy, "old.meta").isFile)  // discard under one account never touches shared files
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun legacyCopiesMoveOnlyWhenTheOwnerIsCertain() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val legacy = File(root, "unsent")
+            legacy.mkdirs()
+            File(legacy, "old.rfc822").writeText("O")
+            File(legacy, "old.meta").writeText("unsent\nSent\nx@y\n")
+            assertEquals(1, migrateLegacyUnsent(root, listOf("acct-1", "acct-2")))
+            assertTrue(readCopies(root, "acct-1").isEmpty())
+            assertEquals(0, migrateLegacyUnsent(root, listOf("acct-1")))
+            assertEquals(listOf("old"), readCopies(root, "acct-1").map { it.id })
+            assertFalse(File(legacy, "old.meta").exists())
         } finally {
             root.deleteRecursively()
         }
@@ -137,5 +114,34 @@ class UnsentStoreTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun uncertainCopyRoundTripsAtomicallyAndWriteFailureIsReported() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), "U".toByteArray(), uncertain = true)
+            assertTrue(writeCopy(root, copy, "acct-1"))
+            val read = readCopies(root, "acct-1").single()
+            assertTrue(read.uncertain)
+            assertFalse(read.appendOnly)
+            val dir = unsentAccountDir(root, "acct-1")
+            assertTrue(dir.listFiles()!!.none { it.name.endsWith(".tmp") })
+            assertTrue(writeCopy(root, read.copyWith(uncertain = false), "acct-1"))
+            assertFalse(readCopies(root, "acct-1").single().uncertain)
+            // F50: a failed write is reported, not swallowed
+            val blocked = File(root, "blocked")
+            blocked.writeText("not a directory")
+            assertFalse(writeCopy(blocked, copy, "acct-1"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun uncertainSmtpPrefix() {
+        assertTrue(smtpUncertain("smtp-uncertain: DATA: timeout"))
+        assertEquals("DATA: timeout", smtpFailureText("smtp-uncertain: DATA: timeout"))
+        assertFalse(smtpUncertain("RCPT: 550 no"))
     }
 }

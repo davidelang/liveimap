@@ -1273,16 +1273,22 @@ private fun ComposeLoaded(
                         removePostponedSource()
                         return@launchLocked true
                     }
+                    // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
+                    // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
+                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
+                    writeCopy(appContext, sending, accountId)
                     val accepted = try {
                         sendSmtp(built.rfc822, built.recipients, via)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                        writeCopy(appContext, copy, accountId)
+                        val uncertain = smtpUncertain(error.text)
+                        val copy = sending.copyWith(uncertain = uncertain)
+                        val saved = writeCopy(appContext, copy, accountId)
                         held = copy
-                        notice = error.text
-                        status = notSentNotice
+                        notice = smtpFailureText(error.text) +
+                            if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
+                        status = if (uncertain) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
                         return@launchLocked false
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })

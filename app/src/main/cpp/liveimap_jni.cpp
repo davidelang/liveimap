@@ -8345,14 +8345,19 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
     }
     r = mailsmtp_data(smtp);
+    bool bodySent = false;
     if (r == MAILSMTP_NO_ERROR) {
         jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
         jbyte * bytes = n > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
+        bodySent = true;
         r = mailsmtp_data_message(smtp, bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n));
         if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
     }
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = where + asciiSafe(smtp->response, "smtp error");
+        // F50: a lost connection or timeout once the message was handed over leaves the result unknown (the server
+        // may already have accepted it); say so instead of "not sent", so a retry does not send it twice.
+        bool uncertain = bodySent && (r == MAILSMTP_ERROR_STREAM || r == MAILSMTP_ERROR_CONNECTION_REFUSED);
+        std::string why = std::string(uncertain ? "smtp-uncertain: " : "") + where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);

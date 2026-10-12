@@ -13,7 +13,19 @@ internal class DeviceCopy(
     val modifiedMillis: Long = 0,
     /** Account whose servers send this copy (a sending rule's "send through"); empty = this account. */
     val via: String = "",
+    /** F50: sending started (or the server's answer after DATA was lost): it may already be sent; check Sent. */
+    val uncertain: Boolean = false,
 )
+
+/** F50: native prefix on an SMTP failure that happened after the message was handed to the server. */
+internal const val SmtpUncertainPrefix = "smtp-uncertain: "
+
+internal fun DeviceCopy.copyWith(appendOnly: Boolean = this.appendOnly, uncertain: Boolean = this.uncertain) =
+    DeviceCopy(id, appendOnly, mailbox, recipients, bytes, modifiedMillis, via, uncertain)
+
+internal fun smtpUncertain(text: String): Boolean = text.startsWith(SmtpUncertainPrefix)
+
+internal fun smtpFailureText(text: String): String = text.removePrefix(SmtpUncertainPrefix)
 
 internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
     val text = bytes.toString(Charsets.ISO_8859_1)
@@ -37,20 +49,50 @@ internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
     return missingSubject
 }
 
+/**
+ * F51: each account has its own directory and nothing is shared. An id that is not a safe file name (blank, ".",
+ * "..", a slash) gets a hashed directory of its own instead of the shared legacy one, so its copies never show up
+ * (and can never be retried) under another account.
+ */
 internal fun unsentAccountDir(filesDir: File, accountId: String): File {
     val id = accountId.trim()
     val legacy = File(filesDir, "unsent")
-    if (id.isEmpty() || id == "." || id == ".." || '/' in id || '\\' in id) {
-        return legacy
+    if (id.isEmpty() || id == "." || id == ".." || '/' in id || '\\' in id || id.startsWith(".")) {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(accountId.toByteArray(Charsets.UTF_8))
+        return File(legacy, ".id-" + digest.joinToString("") { "%02x".format(it) }.take(32))
     }
     return File(legacy, id)
 }
 
-internal fun unsentDirs(filesDir: File, accountId: String): List<File> {
-    val account = unsentAccountDir(filesDir, accountId)
+internal fun unsentDirs(filesDir: File, accountId: String): List<File> = listOf(unsentAccountDir(filesDir, accountId))
+
+/**
+ * F51: copies written before per-account directories sit directly in `unsent/`. With exactly one account they
+ * can only be that account's, so they move there. With several, the owner is unknown: they stay where they are
+ * and are not offered under any account (sending them through the wrong server and Sent folder is worse).
+ * Returns how many copies were left unassigned.
+ */
+internal fun migrateLegacyUnsent(filesDir: File, accountIds: List<String>): Int {
     val legacy = File(filesDir, "unsent")
-    if (account == legacy) return listOf(legacy)
-    return listOf(account, legacy)
+    val metas = legacy.listFiles { f -> f.isFile && f.name.endsWith(".meta") } ?: return 0
+    if (metas.isEmpty()) return 0
+    if (accountIds.size != 1) return metas.size
+    val target = unsentAccountDir(filesDir, accountIds[0])
+    target.mkdirs()
+    var left = 0
+    for (meta in metas) {
+        val id = meta.name.removeSuffix(".meta")
+        val bytes = File(legacy, "$id.rfc822")
+        val toBytes = File(target, "$id.rfc822")
+        val toMeta = File(target, "$id.meta")
+        if (toMeta.exists()) {
+            left++
+            continue
+        }
+        val moved = (!bytes.isFile || bytes.renameTo(toBytes)) && meta.renameTo(toMeta)
+        if (!moved) left++
+    }
+    return left
 }
 
 internal fun mergedAccountCopies(account: List<DeviceCopy>, legacy: List<DeviceCopy>): List<DeviceCopy> {
@@ -77,6 +119,7 @@ private fun copiesIn(dir: File): List<DeviceCopy> {
             DeviceCopy(
                 id = id,
                 appendOnly = lines[0].substringBefore(' ') == "append-only",
+                uncertain = lines[0].substringBefore(' ') == "uncertain",
                 via = lines[0].substringAfter(" via=", "").trim(),
                 mailbox = lines[1],
                 recipients = lines.drop(2).filter { it.isNotEmpty() },
@@ -102,13 +145,34 @@ internal fun readCopies(filesDir: File, accountId: String): List<DeviceCopy> {
 internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCopy> =
     readCopies(context.filesDir, accountId)
 
-internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String) {
-    val dir = unsentDirs(filesDir, accountId).firstOrNull() ?: return
+/**
+ * Writes the copy atomically (temp file + rename, bytes before meta, so a crash never leaves a meta pointing at
+ * half a message). Returns false when it could not be written; the caller tells the user (F50).
+ */
+internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boolean {
+    val dir = unsentDirs(filesDir, accountId).firstOrNull() ?: return false
     try {
         dir.mkdirs()
-        File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
+        fun atomic(name: String, data: ByteArray) {
+            val tmp = File(dir, "$name.tmp")
+            java.io.FileOutputStream(tmp).use { out ->
+                out.write(data)
+                out.fd.sync()
+            }
+            if (!tmp.renameTo(File(dir, name))) {
+                tmp.delete()
+                throw java.io.IOException("rename failed")
+            }
+        }
+        atomic("${copy.id}.rfc822", copy.bytes)
         val text = buildString {
-            append(if (copy.appendOnly) "append-only" else "unsent")
+            append(
+                when {
+                    copy.appendOnly -> "append-only"
+                    copy.uncertain -> "uncertain"
+                    else -> "unsent"
+                },
+            )
             if (copy.via.isNotEmpty()) append(" via=").append(copy.via.filter { it.isLetterOrDigit() || it == '-' })
             append('\n')
             appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
@@ -116,17 +180,18 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String) {
                 appendLine(recipient.replace("\n", "").replace("\r", ""))
             }
         }
-        File(dir, "${copy.id}.meta").writeText(text, Charsets.UTF_8)
+        atomic("${copy.id}.meta", text.toByteArray(Charsets.UTF_8))
+        return true
     } catch (error: CancellationException) {
         throw error
     } catch (_: Exception) {
-        // The screen keeps the same bytes in memory when the file write fails.
+        // The screen keeps the same bytes in memory; the caller reports that the device copy is missing.
+        return false
     }
 }
 
-internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "") {
+internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = ""): Boolean =
     writeCopy(context.filesDir, copy, accountId)
-}
 
 internal fun deleteCopy(filesDir: File, id: String, accountId: String) {
     for (dir in unsentDirs(filesDir, accountId)) {
@@ -140,8 +205,5 @@ internal fun deleteCopy(context: Context, id: String, accountId: String = "") {
 }
 
 internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
-    val account = unsentAccountDir(filesDir, accountId)
-    val legacy = File(filesDir, "unsent")
-    if (account == legacy) return
-    account.deleteRecursively()
+    unsentAccountDir(filesDir, accountId).deleteRecursively()
 }
