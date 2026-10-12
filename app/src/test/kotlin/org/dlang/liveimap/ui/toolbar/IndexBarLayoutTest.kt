@@ -268,6 +268,7 @@ class IndexBarLayoutTest {
                 ReaderToolbarAction.Move,
                 ReaderToolbarAction.Spam,
                 ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
             ),
             replyOnly.overflow,
         )
