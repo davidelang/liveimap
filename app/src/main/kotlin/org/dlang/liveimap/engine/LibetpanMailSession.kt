@@ -1039,6 +1039,7 @@ class LibetpanMailSession : MailSession {
                 recipients.toTypedArray(),
                 account?.smtpUsername ?: "",
                 smtpPassword,
+                0,
             )
         }
     }
@@ -1376,7 +1377,8 @@ class LibetpanMailSession : MailSession {
         recipients: Array<String>,
         smtpUsername: String,
         smtpPassword: String,
-    )
+        dsnNotify: Int,
+    ): Int
 
     companion object {
         init {
