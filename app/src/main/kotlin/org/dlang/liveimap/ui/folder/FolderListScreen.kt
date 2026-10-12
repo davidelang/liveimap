@@ -177,10 +177,10 @@ private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
     FolderBarAction.ResetDefault -> R.string.folders_reset_default
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 /** True when the folder list sits above the message list, which already has its own Compose button. */
 val LocalFolderPaneAboveList = androidx.compose.runtime.staticCompositionLocalOf { false }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
