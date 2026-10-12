@@ -28,10 +28,11 @@ class ConnectionKeeper(
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Connected)
     val connectionState: StateFlow<ConnectionState> = state
 
-    private var lastUsed = clock()
-    private var lastSelect: SelectResult? = null
-    private var broken = false
-    private var watchLost = false
+    // Written from the native IDLE thread too (markWatchLost via onNativeWatch, F25).
+    @Volatile private var lastUsed = clock()
+    @Volatile private var lastSelect: SelectResult? = null
+    @Volatile private var broken = false
+    @Volatile private var watchLost = false
 
     fun noteSelected(result: SelectResult) {
         lastSelect = result

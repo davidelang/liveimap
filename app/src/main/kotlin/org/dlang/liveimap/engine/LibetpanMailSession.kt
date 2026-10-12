@@ -89,7 +89,8 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
-    private val cache = mutableMapOf<CacheKey, Any>()
+    // Concurrent: onNativeWatch prunes it from the native IDLE thread while the lane reads it (F25).
+    private val cache = java.util.concurrent.ConcurrentHashMap<CacheKey, Any>()
     private val link = SessionLink()
     private val keeper = ConnectionKeeper(
         link,
