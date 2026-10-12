@@ -67,6 +67,7 @@ data class PinercPhrases(
     val viewerHeadersLabel: String = "Viewer headers",
     val rolesLabel: String = "Sending rule from role",
     val roleSkipped: String = "Role %1\$s not imported (unsupported pattern)",
+    val roleNoConditions: String = "Role %1\$s not imported: it has no conditions, so it would apply to every message",
 )
 
 fun parsePinerc(text: String): Map<String, String?> =
@@ -306,7 +307,12 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
             for (item in splitOutsideQuotes(v.raw)) {
                 if (item.isBlank()) continue
                 val rule = pineRole(item)
-                if (rule == null) skipped.add(phrases.roleSkipped.format(item.take(40))) else imported.add(rule)
+                when {
+                    rule == null -> skipped.add(phrases.roleSkipped.format(item.take(40)))
+                    // F106: an empty pattern matches every compose, so it would silently set From/Reply-To/Fcc
+                    rule.conditions.isEmpty -> skipped.add(phrases.roleNoConditions.format(rule.name))
+                    else -> imported.add(rule)
+                }
             }
             if (imported.isNotEmpty()) {
                 val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
@@ -1207,7 +1213,28 @@ private fun diffRows(
     add(phrases.viewerHeadersLabel, current.viewerHeaders, next.viewerHeaders)
     val before = org.dlang.liveimap.ui.compose.decodeRules(current.sendingRules).map { it.name }
     for (rule in org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)) {
-        if (rule.name !in before) rows.add("${phrases.rolesLabel}: ${rule.name}")
+        if (rule.name !in before) rows.add("${phrases.rolesLabel}: ${roleSummary(rule)}")
     }
     return rows
+}
+
+/** F106: what an imported role does and when, for the import preview (not just its name). */
+internal fun roleSummary(rule: org.dlang.liveimap.ui.compose.SendingRule): String {
+    val c = rule.conditions
+    val a = rule.actions
+    val whenParts = buildList {
+        if (c.sentTo.isNotEmpty()) add("sent to ${c.sentTo.joinToString(", ")}")
+        if (c.originalFrom.isNotEmpty()) add("from ${c.originalFrom.joinToString(", ")}")
+        if (c.recipient.isNotEmpty()) add("to ${c.recipient.joinToString(", ")}")
+        if (c.folder.isNotEmpty()) add("in ${c.folder}")
+        if (c.listId.isNotEmpty()) add("list ${c.listId}")
+    }
+    val sets = buildList {
+        val from = listOfNotNull(a.fromName, a.fromAddress?.let { "<$it>" }).joinToString(" ")
+        if (from.isNotEmpty()) add("From $from")
+        a.replyTo?.let { add("Reply-To $it") }
+        a.fcc?.let { add("Fcc $it") }
+        a.signature?.let { add(if (it.isEmpty()) "no signature" else "signature") }
+    }
+    return "${rule.name} (when ${whenParts.joinToString("; ").ifEmpty { "always" }}; sets ${sets.joinToString(", ").ifEmpty { "nothing" }})"
 }

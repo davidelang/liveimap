@@ -613,6 +613,7 @@ private fun AccountGroup(editor: SettingsEditor) {
         viewerHeadersLabel = stringResource(R.string.pinerc_viewer_headers),
         rolesLabel = stringResource(R.string.pinerc_role_rule),
         roleSkipped = stringResource(R.string.pinerc_role_skipped),
+        roleNoConditions = stringResource(R.string.pinerc_role_no_conditions),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult

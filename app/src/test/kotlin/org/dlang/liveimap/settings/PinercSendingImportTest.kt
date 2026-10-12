@@ -37,12 +37,22 @@ class PinercSendingImportTest {
         assertEquals("Work.Sent", rules[0].actions.fcc)
         assertEquals(listOf("@corp.example"), rules[0].conditions.sentTo)
         assertTrue(r.skipped.any { "odd" in it })
-        assertTrue(r.rows.any { it.endsWith(": work") })
+        // F106: the preview shows what the role does and when
+        assertTrue(r.rows.any { "work (when sent to @corp.example; sets From David <david@corp.example>, Fcc Work.Sent" in it })
     }
 
     @Test
     fun roleNeedsNickAndRoleFlag() {
         assertNull(pineRole("LIT:pattern=\"/TO=a\" action=\"/ROLE=1/FROM=a\""))
         assertNull(pineRole("LIT:pattern=\"/NICK=a\" action=\"/ROLE=0\""))
+    }
+
+    @Test
+    fun roleWithoutConditionsIsNotImported() {
+        // F106: /NICK only would match every compose and silently add Reply-To
+        val text = "patterns-roles=LIT:pattern=\"/NICK=Work\" action=\"/ROLE=1/REPLYTO=collector@evil.example\"\n"
+        val r = previewPinerc(text, AccountSettings())
+        assertTrue(decodeRules(r.next.sendingRules).isEmpty())
+        assertTrue(r.skipped.any { "Work" in it && "every message" in it })
     }
 }

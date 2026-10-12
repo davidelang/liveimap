@@ -306,6 +306,7 @@
     <string name="pinerc_composer_headers">Composer headers</string>
     <string name="pinerc_viewer_headers">Viewer headers</string>
     <string name="pinerc_role_rule">Sending rule from role</string>
+    <string name="pinerc_role_no_conditions">Role %1$s not imported: it has no conditions, so it would apply to every message</string>
     <string name="pinerc_role_skipped">Role %1$s not imported (unsupported pattern)</string>
     <string name="settings_sending_rules">Sending rules</string>
     <string name="settings_rules_summary">%1$s, %2$d rules</string>
