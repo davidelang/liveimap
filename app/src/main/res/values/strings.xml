@@ -717,6 +717,8 @@
     <string name="settings_sieve_cert_pin_clear">Clear Sieve pin</string>
     <string name="settings_tls">TLS</string>
     <string name="settings_tls_none">None</string>
+    <string name="settings_no_tls_warning">No TLS: mail and folder names travel unencrypted, and anyone on the network can read or change them.</string>
+    <string name="settings_no_tls_password_warning">No TLS and plaintext login allowed: your password, mail and folder names travel unencrypted. Use STARTTLS or implicit TLS if the server offers it.</string>
     <string name="settings_tls_starttls">STARTTLS</string>
     <string name="settings_tls_implicit">Implicit TLS</string>
     <string name="cert_changed_title">This certificate changed</string>

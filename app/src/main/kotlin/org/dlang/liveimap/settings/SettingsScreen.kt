@@ -713,6 +713,15 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { mode ->
                 editor.persist(editor.settings.withTlsMode(mode))
             }
+            // Warning only: the setting itself is never changed for the user.
+            noTlsWarning(settings)?.let { res ->
+                Text(
+                    stringResource(res),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-tls-warning"),
+                )
+            }
             BoolField(
                 stringResource(R.string.settings_allow_plaintext),
                 settings.allowPlaintextAuth,

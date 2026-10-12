@@ -1459,3 +1459,10 @@ fun effectiveTextZoom(setting: Int, pinch: Float): Int {
     return clampTextZoom(Math.round(clampTextZoom(setting) * p))
 }
 
+
+/** Warning text for an account without TLS (null when TLS is on); stronger when the password goes in clear. */
+fun noTlsWarning(settings: AccountSettings): Int? = when {
+    settings.tlsMode != TlsMode.None -> null
+    settings.allowPlaintextAuth -> org.dlang.liveimap.R.string.settings_no_tls_password_warning
+    else -> org.dlang.liveimap.R.string.settings_no_tls_warning
+}
