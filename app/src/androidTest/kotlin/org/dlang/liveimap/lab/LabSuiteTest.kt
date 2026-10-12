@@ -133,9 +133,12 @@ class LabSuiteTest {
                         ?: throw IllegalStateException("no folder with leaf $want under $box: " +
                             rows.joinToString { l -> l.leaf + "[" + l.leaf.map { "%04x".format(it.code) }.joinToString(".") + "]" })
                     val sel = session.select(hit.mailbox)
+                    // A name saved before the UTF-8 switch is modified UTF-7; it must still open.
+                    val saved = hit.mailbox.dropLast(want.length) + org.dlang.liveimap.ui.compose.Mutf7.encode(want)
+                    val savedSel = session.select(saved)
                     session.select(box)
                     val wire = if (hit.mailbox.contains('\u00eb')) "utf8" else "mutf7"
-                    "$wire utf8Accept=${session.featureCaps.utf8Accept} exists=${sel.exists}"
+                    "$wire utf8Accept=${session.featureCaps.utf8Accept} exists=${sel.exists} savedMutf7Exists=${savedSel.exists}"
                 }
                 step("listTest") { session.mailboxListed(box).toString() }
                 step("statusInbox") { session.statusMessages(listOf("INBOX")).toString() }
