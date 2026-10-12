@@ -33,8 +33,10 @@ suspend fun <T> MailSession.onRefs(
     val out = ArrayList<T>(groups.size)
     try {
         for ((folder, uids) in groups) {
-            selectChecked(folder.first, folder.second)
-            out += block(folder.first, uids)
+            out += pinned {
+                selectChecked(folder.first, folder.second)
+                block(folder.first, uids)
+            }
         }
     } finally {
         if (home != null) {

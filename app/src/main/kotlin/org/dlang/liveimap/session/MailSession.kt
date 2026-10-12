@@ -20,6 +20,12 @@ data class CertPrompt(
 )
 
 interface MailSession {
+    /**
+     * F116/F105: run [block] with the selection pinned. No other caller can select (or issue any command) until it
+     * returns, so "select folder X, check UIDVALIDITY, then act by UID" can't be split by another screen. Reentrant.
+     */
+    suspend fun <T> pinned(block: suspend () -> T): T = block()
+
     val capabilities: Set<String>
     val featureCaps: Capabilities
         get() = Capabilities.parse(capabilities.joinToString(" "))

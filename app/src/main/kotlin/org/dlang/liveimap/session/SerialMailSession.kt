@@ -3,6 +3,11 @@ package org.dlang.liveimap.session
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
@@ -212,5 +217,20 @@ class SerialMailSession(
         inner.close()
     }
 
-    private suspend fun <T> onLane(block: suspend () -> T): T = withContext(lane) { block() }
+    private val pin = Mutex()
+
+    private class PinHolder(val owner: SerialMailSession) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<PinHolder>
+    }
+
+    private suspend fun holdsPin(): Boolean = coroutineContext[PinHolder]?.owner === this
+
+    override suspend fun <T> pinned(block: suspend () -> T): T {
+        if (holdsPin()) return block()
+        return pin.withLock { withContext(PinHolder(this)) { block() } }
+    }
+
+    /** Every command waits while another caller holds the pin (its selection must not move under it). */
+    private suspend fun <T> onLane(block: suspend () -> T): T =
+        if (holdsPin()) withContext(lane) { block() } else pin.withLock { withContext(lane) { block() } }
 }
