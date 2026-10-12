@@ -1,5 +1,17 @@
 package org.dlang.liveimap.ui
 
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import org.dlang.liveimap.settings.PaneContent
+import org.dlang.liveimap.settings.PaneNode
+import org.dlang.liveimap.settings.SplitAxis
+import org.dlang.liveimap.settings.decodePaneLayout
+import org.dlang.liveimap.settings.leaves
+import org.dlang.liveimap.settings.listSide
+import org.dlang.liveimap.settings.mailNode
+import org.dlang.liveimap.settings.mailSplit
+import org.dlang.liveimap.settings.messageFirst
+import org.dlang.liveimap.settings.paneLayoutProblem
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -130,6 +142,10 @@ private class PendingCert(
 @Composable
 fun LiveImapNavHost() {
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
+    // Custom panel layout (null = Auto); design-decisions.md "Custom panel layout".
+    var customTree by remember { mutableStateOf<PaneNode?>(null) }
+    val treeDp = remember { mutableStateMapOf<String, Float>() }
+    val drawerPaneSlot = remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
     var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
     var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -144,17 +160,19 @@ fun LiveImapNavHost() {
     // Folders above the list (left column) is planned but not rendered yet; that plan uses two panes for now.
     val autoPanes = if (autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.Beside) 3 else minOf(autoLayout.panes, 2)
     var folderPosition by remember { mutableStateOf(org.dlang.liveimap.settings.FolderPositionChoice.Beside) }
-    val foldersAbove = useFolderPane(folderPane, 3) &&
+    val foldersAbove = customTree == null && useFolderPane(folderPane, 3) &&
         (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.AboveList ||
             (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.Auto &&
                 autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)) &&
         (folderPane != LayoutChoice.Auto || autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)
     val stackedNow = arrangement == ArrangementChoice.Stacked ||
         (arrangement == ArrangementChoice.Auto && autoLayout.arrangement == PaneArrangement.Stacked)
-    val split = useMultiPane(multiPane, autoPanes)
+    val customMail = customTree?.let { mailSplit(it) }
+    val customMailNow = rememberUpdatedState(customMail)
+    val split = if (customTree != null) customMail != null else useMultiPane(multiPane, autoPanes)
     val splitNow = rememberUpdatedState(split)
     val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
-    val axis = paneAxis(
+    val axis = customMail?.let { if (it.axis == SplitAxis.Horizontal) PaneAxis.SideBySide else PaneAxis.TopBottom } ?: paneAxis(
         foldOn = useFoldPosture(foldPosture),
         autoTopBottom = stackedNow,
         hingeVertical = hinges.firstOrNull()?.isVertical == true,
@@ -239,7 +257,7 @@ fun LiveImapNavHost() {
     var drawerWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
-    val folderColumn = !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
+    val folderColumn = customTree == null && !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
     val folderColumnNow = rememberUpdatedState(folderColumn)
     LaunchedEffect(folderColumn, split) {
         val available = availableDpState.intValue
@@ -248,7 +266,9 @@ fun LiveImapNavHost() {
         }
     }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
-        if (!split) {
+        if (customTree?.leaves()?.contains(PaneContent.AccountDrawer) == true) {
+            null
+        } else if (!split || customTree != null) {
             { scope.launch { drawerState.open() } }
         } else if (drawerWidthDp >= 0f && drawerWidthDp <= 0f) {
             {
@@ -268,6 +288,8 @@ fun LiveImapNavHost() {
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
         multiPane = account.multiPane
+        customTree = decodePaneLayout(account.customLayout)?.takeIf { paneLayoutProblem(it) == null }
+        treeDp.clear()
         folderPane = account.folderPane
         textZoom = account.readerTextZoom
         arrangement = account.paneArrangement
@@ -420,7 +442,7 @@ fun LiveImapNavHost() {
                 }
                 LaunchedEffect(useSplit, paneUid, contentSpan, userSized) {
                     if (useSplit && paneUid >= 0L && !userSized && contentSpan > 8f) {
-                        indexWidthDp = (contentSpan - 8f) * autoLayout.listShare.coerceIn(0.2f, 0.8f)
+                        indexWidthDp = (contentSpan - 8f) * (customMailNow.value?.ratio?.coerceIn(0.1f, 0.9f) ?: autoLayout.listShare.coerceIn(0.2f, 0.8f))
                     }
                 }
                 val advancedQuery by entry.savedStateHandle
@@ -467,31 +489,31 @@ fun LiveImapNavHost() {
                         )
                     }
                 }
+                @Composable
+                fun ListSide(viewKey: Int, watch: Boolean) {
+                    val cm = customMailNow.value
+                    if (cm == null) {
+                        IndexBody(viewKey, watch)
+                    } else {
+                        PaneTree(cm.listSide(), "L", treeDp, null, {}) { content ->
+                            when (content) {
+                                PaneContent.MessageList -> IndexBody(viewKey, watch)
+                                PaneContent.Folders -> folderListPane()
+                                PaneContent.AccountDrawer -> drawerPaneSlot.value?.invoke()
+                                PaneContent.Message -> Unit
+                            }
+                        }
+                    }
+                }
                 BackHandler(enabled = useSplit && paneUid >= 0L) {
                     paneUid = -1L
                 }
                 if (!useSplit) {
                     IndexBody(folderViewToken, watch = true)
                 } else if (paneUid < 0L) {
-                    IndexBody(shownViewToken, watch = true)
+                    ListSide(shownViewToken, watch = true)
                 } else {
-                    AxisSplit(
-                        axis = useAxis,
-                        leadingDp = indexWidthDp,
-                        fallback = { span -> ((span - 8f) / 2f).coerceAtLeast(0f) },
-                        onSpan = { contentSpan = it },
-                        onDrag = { delta, span ->
-                            userSized = true
-                            val max = (span - 8f).coerceAtLeast(0f)
-                            val base = if (indexWidthDp < 0f) (span - 8f) / 2f else indexWidthDp
-                            val next = base.coerceIn(0f, max) + delta
-                            if (next + 8f >= span) {
-                                paneUid = -1L
-                            } else {
-                                indexWidthDp = next.coerceAtLeast(0f)
-                            }
-                        },
-                        leading = {
+                    val listLeading: @Composable () -> Unit = {
                             if (foldersAboveNow.value) {
                                 Column(Modifier.fillMaxSize()) {
                                     Box(Modifier.weight(0.35f).fillMaxWidth()) {
@@ -503,10 +525,11 @@ fun LiveImapNavHost() {
                                     Box(Modifier.weight(0.65f).fillMaxWidth()) { IndexBody(shownViewToken, watch = false) }
                                 }
                             } else {
-                                IndexBody(shownViewToken, watch = false)
+                                ListSide(shownViewToken, watch = false)
                             }
-                        },
-                        trailing = {
+                        
+                    }
+                    val readerSide: @Composable () -> Unit = {
                             key(paneUid) {
                                 MessageReaderScreen(
                                     mailbox = mailbox,
@@ -525,6 +548,28 @@ fun LiveImapNavHost() {
                                     },
                                 )
                             }
+                    }
+                    AxisSplit(
+                        axis = useAxis,
+                        leadingDp = indexWidthDp,
+                        fallback = { span -> ((span - 8f) / 2f).coerceAtLeast(0f) },
+                        onSpan = { contentSpan = it },
+                        onDrag = { delta, span ->
+                            userSized = true
+                            val max = (span - 8f).coerceAtLeast(0f)
+                            val base = if (indexWidthDp < 0f) (span - 8f) / 2f else indexWidthDp
+                            val next = base.coerceIn(0f, max) + delta
+                            if (next + 8f >= span) {
+                                paneUid = -1L
+                            } else {
+                                indexWidthDp = next.coerceAtLeast(0f)
+                            }
+                        },
+                        leading = {
+                            if (customMailNow.value?.messageFirst() == true) readerSide() else listLeading()
+                        },
+                        trailing = {
+                            if (customMailNow.value?.messageFirst() == true) listLeading() else readerSide()
                         },
                     )
                 }
@@ -1057,8 +1102,42 @@ fun LiveImapNavHost() {
             }
         }
     }
+    val drawerPanel: @Composable () -> Unit = {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) { drawerSheet() }
+    }
+    drawerPaneSlot.value = drawerPanel
+
+    @Composable
+    fun CustomMailArea() {
+        if (customTree?.leaves()?.contains(PaneContent.AccountDrawer) == true) {
+            NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
+        } else {
+            ModalNavigationDrawer(
+                drawerContent = {
+                    ModalDrawerSheet(
+                        windowInsets = mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
+                        content = drawerSheet,
+                    )
+                },
+                modifier = Modifier.fillMaxSize(),
+                drawerState = drawerState,
+                gesturesEnabled = drawerGestures,
+            ) {
+                NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
+            }
+        }
+    }
     LiveImapScaffold {
-        if (folderColumn) {
+        val tree = customTree
+        if (tree != null) {
+            PaneTree(tree, "T", treeDp, mailNode(tree), { CustomMailArea() }) { content ->
+                when (content) {
+                    PaneContent.Folders -> folderListPane()
+                    PaneContent.AccountDrawer -> drawerPanel()
+                    else -> Unit
+                }
+            }
+        } else if (folderColumn) {
             AxisSplit(
                 axis = axis,
                 leadingDp = folderWidthDp,
@@ -1575,5 +1654,37 @@ private fun InsetPage(content: @Composable () -> Unit) {
             .windowInsetsPadding(mailScreenInsets()),
     ) {
         content()
+    }
+}
+
+/** Renders a custom layout tree; [mail] (the list/message part) is drawn by [mailArea]. */
+@Composable
+private fun PaneTree(
+    node: PaneNode,
+    key: String,
+    sizes: SnapshotStateMap<String, Float>,
+    mail: PaneNode?,
+    mailArea: @Composable () -> Unit,
+    leaf: @Composable (PaneContent) -> Unit,
+) {
+    if (mail != null && node == mail) {
+        mailArea()
+        return
+    }
+    when (node) {
+        is PaneNode.Leaf -> Box(Modifier.fillMaxSize()) { leaf(node.content) }
+        is PaneNode.Split -> AxisSplit(
+            axis = if (node.axis == SplitAxis.Horizontal) PaneAxis.SideBySide else PaneAxis.TopBottom,
+            leadingDp = sizes[key] ?: unsetPaneDp,
+            fallback = { span -> ((span - 8f) * node.ratio).coerceAtLeast(0f) },
+            onSpan = { _ -> },
+            onDrag = { delta, span ->
+                val max = (span - 8f).coerceAtLeast(0f)
+                val base = sizes[key] ?: ((span - 8f) * node.ratio)
+                sizes[key] = (base + delta).coerceIn(0f, max)
+            },
+            leading = { PaneTree(node.first, key + "0", sizes, mail, mailArea, leaf) },
+            trailing = { PaneTree(node.second, key + "1", sizes, mail, mailArea, leaf) },
+        )
     }
 }

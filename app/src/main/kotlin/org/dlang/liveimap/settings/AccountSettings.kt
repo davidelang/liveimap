@@ -449,6 +449,8 @@ data class AccountSettings(
     val paneArrangement: ArrangementChoice = ArrangementChoice.SideBySide,
     val previewSize: PreviewChoice = PreviewChoice.Density,
     val folderPosition: FolderPositionChoice = FolderPositionChoice.Beside,
+    /** Custom panel layout (PaneLayout.kt text form); empty = Auto. */
+    val customLayout: String = "",
     val nonAsciiDisplay: NonAsciiDisplay = NonAsciiDisplay.HighlightSuspicious,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
@@ -581,6 +583,7 @@ private val fieldNames = listOf(
     "paneArrangement",
     "previewSize",
     "folderPosition",
+    "customLayout",
     "nonAsciiDisplay",
     "sieveHost",
     "sievePort",
@@ -714,6 +717,7 @@ fun AccountSettings.encode(): String = buildString {
     if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
     if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
+    if (customLayout.isNotEmpty()) appendLine("customLayout=${percentEncode(customLayout)}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
@@ -834,6 +838,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "paneArrangement" ||
             key == "previewSize" ||
             key == "folderPosition" ||
+            key == "customLayout" ||
             key == "nonAsciiDisplay" ||
             key == "sieveHost" ||
             key == "sievePort" ||
@@ -951,6 +956,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
         paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
         folderPosition = values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside,
+        customLayout = values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty(),
         nonAsciiDisplay = values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious,
         previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",

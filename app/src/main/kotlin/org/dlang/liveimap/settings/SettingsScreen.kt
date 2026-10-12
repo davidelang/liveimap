@@ -1792,6 +1792,9 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
             ) {
                 editor.persist(editor.settings.copy(folderPosition = it))
             }
+            PaneLayoutEditor(settings.customLayout, settings.readerTextZoom) { text ->
+                editor.persist(editor.settings.copy(customLayout = text))
+            }
             ChoiceField(
                 stringResource(R.string.settings_preview_size),
                 PreviewChoice.entries,

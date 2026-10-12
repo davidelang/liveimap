@@ -794,4 +794,18 @@
     <string name="settings_non_ascii_escape">Show as code points</string>
     <string name="compose_needs_smtputf8">Not sent: this server does not offer SMTPUTF8, which non-ASCII addresses or headers need (%1$s). Use an ASCII address or another server.</string>
     <string name="settings_checking_server">Checking server…</string>
+    <string name="layout_custom">Custom panel layout</string>
+    <string name="layout_auto_hint">Off: panels follow the screen size (Auto). This is the Auto arrangement for this screen.</string>
+    <string name="layout_custom_hint">Tap a panel, then split it side by side or top and bottom, remove it, or choose what it shows.</string>
+    <string name="layout_panel_folders">Folders</string>
+    <string name="layout_panel_list">Message list</string>
+    <string name="layout_panel_message">Message</string>
+    <string name="layout_panel_drawer">Accounts drawer</string>
+    <string name="layout_split_side">Split side by side</string>
+    <string name="layout_split_stack">Split top and bottom</string>
+    <string name="layout_remove">Remove panel</string>
+    <string name="layout_reset_auto">Start from Auto</string>
+    <string name="layout_problem_no_list">The layout needs a message list. Not saved yet.</string>
+    <string name="layout_problem_duplicate">Each panel type can appear only once. Not saved yet.</string>
+    <string name="layout_problem_message">The message panel must share a split with the message list. Not saved yet.</string>
 </resources>
