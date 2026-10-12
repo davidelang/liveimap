@@ -18,10 +18,10 @@ Paths under `app/src/main/kotlin/org/dlang/liveimap/ui/contacts/`.
 | Edit / delete / rename an entry, edit lists | missing | no editor; `AddressBookPicker.kt` only picks |
 | Android contact sets (per account, owning-app label) | done for completion | `Completion.kt` `androidContactSetsOnce`, `androidEntriesOnce` (RawContacts by ACCOUNT_TYPE/NAME) |
 | Alpine book as a completion source beside Android sets | done | `completionSourcesInOrder`, `withSourceEnabled`, `moveCompletionSource` |
-| A contacts browser listing all sources | missing | only the picker (Alpine) and the copy screen |
+| A unified contacts browser | not wanted | like no unified inbox: each source is browsed on its own (David, 2026-10-12) |
 | Copy Alpine <-> Android | done | `CopyMap.kt` `copyContacts(intoPine=…)`, `ContactCopyScreen.kt` (route in `ui/NavHost.kt`); `CopyMapTest` |
 | Copy Android set -> other Android set | done | destination is any other enabled source (`ContactCopyScreen.kt:253`), `copyIntoAndroid` |
-| Copy Alpine book of account A -> account B | missing | copy screen is bound to one account |
+| Copy records from account A's Alpine book to account B's | missing | copy screen is bound to one account (whole books are copied as raw messages, not here) |
 | Extras kept on copy | partial | Android->Alpine: dropped, or flattened into comments as "Label: value" (`extraLines`) — not parseable back. Alpine->Android: `pine-fcc:` / `pine-plaintext:` lines in the note (`buildNote`/`parseNote`) — these do round-trip |
 
 ## Model
@@ -90,17 +90,19 @@ plaintext=yes
 2. **Extras block.** Encoder/decoder plus round-trip tests: Android -> Alpine
    -> Android and Alpine -> Android -> Alpine return identical contacts
    (except photo/ringtone/starred/linked, which the preview names).
-3. **Copy between any two sources.** Copy screen picks source and destination
-   from the full list (including another account's Alpine book, Android set to
-   Android set). Keeps the existing preview, merge, one-entry-per-email and
+3. **Copy records between any two sources.** Copy individual records:
+   multi-select and Select all in the source list; never a whole-book copy
+   (users copy a whole Alpine book as its raw message). Source and destination
+   come from the full list (including another account's Alpine book, Android
+   set to Android set). Keeps the existing preview, merge, one-entry-per-email and
    one confirm. WRITE_CONTACTS asked only when an Android set is written.
 4. **Alpine book editing.** Add / edit / delete / rename entry and edit list
    members; each save is one book write with history trim. Conflict check:
    re-read the latest copy before writing; if it changed (another client),
    show the difference and ask.
-5. **Contacts browser.** One list across enabled sources, source shown per
-   row, search, open entry, "Copy to…", "Edit" (Alpine; Android opens the
-   system editor via ACTION_EDIT).
+5. **Extra address books.** pinerc's further `address-book` entries and
+   `global-address-book` arrive as more Alpine sources with this integration
+   (read-only for global ones).
 6. **Lab test.** Alpine-book write and copy steps in LabSuiteTest on a lab
    server; emulator check of copy both ways with a test Google-less local set.
 

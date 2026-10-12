@@ -54,7 +54,10 @@ Patterns are per account, stored in AccountSettings, importable from pinerc
   full background as an option. First matching rule wins; drag to reorder.
 * **Cost:** same window-only matching as scores; shares that code.
 
-## Order
+## Status (David, 2026-10-12)
 
-Roles first (most mail impact, needs signature), then index colors and scores
-together (shared matcher), display filters last.
+* **Roles:** approved and being built as the rules engine with presets
+  (design-decisions.md "Sending rules and roles").
+* **Keywords, scores, setup filters, archive/prune:** needs discussion, not
+  scheduled.
+* **Display filters, index colors:** proposal only.
