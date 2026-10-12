@@ -403,6 +403,7 @@ class IndexWindowTest {
     fun imapMoveSetsUsedMoveOnlyWhenAdvertised() {
         val advertised = FakeMailSession(capabilities = setOf("MOVE"))
         advertised.arrivalRows = listOf(row(1))
+        advertised.copiedUids = listOf(31L)  // COPYUID reported
         val chosen = MemorySettingsStore(AccountSettings(moveMethod = MoveMethod.ImapMove))
         val model = IndexModel(advertised, chosen, "INBOX")
         runImmediate { model.loadWindow() }
@@ -416,6 +417,13 @@ class IndexWindowTest {
         runImmediate { fallback.moveMessages(listOf(1L), "Archive") }
         assertEquals(listOf(CopyWrite(listOf(1L), "Archive")), silent.copies)
         assertEquals(false, fallback.mailUndo?.usedMove)
+        // F45: MOVE with no COPYUID: destination unknown, so no undo is offered
+        val noCopyUid = FakeMailSession(capabilities = setOf("MOVE"))
+        noCopyUid.arrivalRows = listOf(row(1))
+        val m3 = IndexModel(noCopyUid, MemorySettingsStore(AccountSettings(moveMethod = MoveMethod.ImapMove)), "INBOX")
+        runImmediate { m3.loadWindow() }
+        runImmediate { m3.moveMessages(listOf(1L), "Archive") }
+        assertNull(m3.mailUndo)
     }
 
     @Test
@@ -2376,6 +2384,10 @@ private class FakeMailSession(
         throwIfArmed()
         copies += CopyWrite(uids, targetMailbox)
     }
+
+    var copiedUids: List<Long> = emptyList()
+
+    override suspend fun takeCopiedUids(): List<Long> = copiedUids.also { copiedUids = emptyList() }
 
     override suspend fun searchText(query: String): List<Long> {
         searchCalls += query

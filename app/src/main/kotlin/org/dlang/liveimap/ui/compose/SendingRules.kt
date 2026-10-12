@@ -209,7 +209,8 @@ private fun dec(v: String): String {
     var i = 0
     while (i < v.length) {
         val c = v[i]
-        if (c == '%' && i + 2 < v.length && v.substring(i + 1, i + 3).all { it.isLetterOrDigit() }) {
+        // F65: only real hex escapes; "%zz" in a hand-edited rules string stays literal instead of crashing load.
+        if (c == '%' && i + 2 < v.length && v.substring(i + 1, i + 3).all { isHex(it) }) {
             out.write(v.substring(i + 1, i + 3).toInt(16)); i += 3
         } else {
             out.write(c.toString().toByteArray(Charsets.UTF_8)); i += 1
@@ -217,6 +218,8 @@ private fun dec(v: String): String {
     }
     return out.toString("UTF-8")
 }
+
+private fun isHex(c: Char) = c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F'
 
 private fun list(v: List<String>) = v.joinToString(",") { enc(it).replace(",", "%2C") }
 private fun unlist(v: String) = if (v.isEmpty()) emptyList() else v.split(',').map { dec(it) }
@@ -337,10 +340,24 @@ fun accountDefaultRule(settings: org.dlang.liveimap.settings.AccountSettings) = 
 
 fun accountRules(settings: org.dlang.liveimap.settings.AccountSettings): List<SendingRule> = decodeRules(settings.sendingRules)
 
+/**
+ * F65: the addresses a sentTo rule matches. Every sentTo rule names one of the user's own addresses, so the
+ * delivery headers the user's own server adds on top (the first Delivered-To, else the first X-Original-To) are
+ * used when present: a sender who Cc's a known rule address cannot switch the reply identity. Without them, To/Cc.
+ */
+fun sentToAddresses(original: ParsedRfc822): List<String> {
+    for (name in listOf("Delivered-To", "X-Original-To")) {
+        val top = original.headers.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: continue
+        val got = splitAddresses(top.raw).map(::decodeAddressDisplay)
+        if (got.isNotEmpty()) return got
+    }
+    return listOf("To", "Cc").flatMap { addresses(original, it) }
+}
+
 /** Context from the message being answered or forwarded ([original] null for new messages). */
 fun composeContext(kind: ComposeKindTag, original: ParsedRfc822?, recipients: List<String>, folder: String): ComposeContext {
     if (original == null) return ComposeContext(kind, recipients = recipients, folder = folder)
-    val to = listOf("To", "Cc", "Delivered-To", "X-Original-To").flatMap { addresses(original, it) }
+    val to = sentToAddresses(original)
     return ComposeContext(
         kind = kind,
         recipients = recipients,
@@ -377,7 +394,39 @@ fun headerNames(list: String): List<String> =
 fun listPostAddress(message: ParsedRfc822): String? {
     val value = headerValues(message, "List-Post").firstOrNull()?.trim() ?: return null
     val m = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE).find(value) ?: return null
-    return java.net.URLDecoder.decode(m.groupValues[1], "UTF-8").trim().ifEmpty { null }
+    // F59: RFC 3986 percent-decoding by hand: no '+' to space, a bad escape gives null (not a crash), and the
+    // result must be a plain addr-spec that can go raw into RCPT TO (no CR/LF or other controls).
+    val decoded = percentDecodeOrNull(m.groupValues[1])?.trim() ?: return null
+    if (decoded.isEmpty() || !org.dlang.liveimap.ui.compose.envelopeAddressOk(decoded)) return null
+    val at = decoded.lastIndexOf('@')
+    if (at <= 0 || at == decoded.length - 1) return null
+    return decoded
+}
+
+/** Strict %XX decoding as UTF-8; null on a malformed escape or invalid UTF-8. '+' is kept. */
+internal fun percentDecodeOrNull(v: String): String? {
+    val out = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < v.length) {
+        val c = v[i]
+        if (c == '%') {
+            if (i + 2 >= v.length || !isHex(v[i + 1]) || !isHex(v[i + 2])) return null
+            out.write(v.substring(i + 1, i + 3).toInt(16))
+            i += 3
+        } else {
+            out.write(c.toString().toByteArray(Charsets.UTF_8))
+            i += 1
+        }
+    }
+    val bytes = out.toByteArray()
+    val decoder = Charsets.UTF_8.newDecoder()
+        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+    return try {
+        decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+    } catch (_: java.nio.charset.CharacterCodingException) {
+        null
+    }
 }
 
 /**

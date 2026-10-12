@@ -85,5 +85,8 @@ class SendingRulesTest {
         ).map { it.copy(actions = it.actions.copy(dsn = DsnMode.FailureDelay, leadIn = "On {date} {from}:")) }
         assertEquals(rules, decodeRules(encodeRules(rules)))
         assertEquals("me+shop@x.org", rules[2].actions.fromAddress)
+        // F65: a non-hex escape in a hand-edited string stays literal instead of throwing on load
+        val edited = encodeRules(rules).replace("me", "%zzme")
+        assertEquals(rules.size, decodeRules(edited).size)
     }
 }
