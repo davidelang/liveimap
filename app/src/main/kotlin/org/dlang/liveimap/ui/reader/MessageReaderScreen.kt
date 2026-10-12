@@ -513,12 +513,14 @@ private fun MessageReaderLoaded(
         snackEvent += 1
     }
 
+    // Per-open cache token: the same UID and section in another folder or account never shares a file (F06).
+    val cacheToken = remember(uid) { readerCacheToken() }
     val saveDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         val row = saveTarget.row
         val messageUid = saveTarget.uid
         saveTarget.row = null
         if (uri == null || row == null) return@rememberLauncherForActivityResult
-        val file = File(appContext.cacheDir, attachmentCacheName(messageUid, row.section))
+        val file = File(appContext.cacheDir, attachmentCacheName(cacheToken, messageUid, row.section))
         try {
             val output = context.contentResolver.openOutputStream(uri)
             if (output == null) {
@@ -535,7 +537,7 @@ private fun MessageReaderLoaded(
 
     DisposableEffect(uid) {
         onDispose {
-            deleteReaderAttachmentCache(appContext.cacheDir, uid)
+            deleteReaderAttachmentCache(appContext.cacheDir, cacheToken)
         }
     }
 
@@ -857,7 +859,7 @@ private fun MessageReaderLoaded(
                     }
                     val offset = try {
                         streamAttachment(
-                            File(appContext.cacheDir, attachmentCacheName(uid, current.section)),
+                            File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section)),
                             current.size,
                             65536,
                             fetch = { at, length -> session.peekPart(uid, current.section, at, length) },
@@ -885,7 +887,7 @@ private fun MessageReaderLoaded(
     // downloads the part nor sets \Seen) and compare it with the claimed type and the extension.
     fun checkTypeThen(row: AttachmentRow, action: AttachmentAction, proceed: () -> Unit) {
         scope.launch {
-            val cached = File(appContext.cacheDir, attachmentCacheName(uid, row.section))
+            val cached = File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, row.section))
             val head = try {
                 if (cached.isFile && cached.length() > 0) {
                     cached.inputStream().use { input ->
@@ -913,7 +915,7 @@ private fun MessageReaderLoaded(
     }
 
     fun openAttachmentAs(row: AttachmentRow, mime: String) {
-        val uri = attachmentUri(attachmentCacheName(uid, row.section))
+        val uri = attachmentUri(attachmentCacheName(cacheToken, uid, row.section))
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -927,7 +929,7 @@ private fun MessageReaderLoaded(
     }
 
     fun shareAttachmentAs(row: AttachmentRow, mime: String) {
-        val uri = attachmentUri(attachmentCacheName(uid, row.section))
+        val uri = attachmentUri(attachmentCacheName(cacheToken, uid, row.section))
         val send = Intent(Intent.ACTION_SEND).apply {
             type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -2703,15 +2705,21 @@ internal fun isNestedPart(row: AttachmentRow): Boolean =
 
 private fun attachmentMime(row: AttachmentRow): String = safeAttachmentMime(row.type, row.subtype)
 
-private fun attachmentCacheName(uid: Long, section: String): String {
+internal fun readerCacheToken(): String {
+    val bytes = ByteArray(8)
+    java.security.SecureRandom().nextBytes(bytes)
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
+internal fun attachmentCacheName(token: String, uid: Long, section: String): String {
     val safe = section.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    return "liveimap-$uid-$safe"
+    return "liveimap-$token-$uid-$safe"
 }
 
 private fun attachmentUri(name: String): Uri = Uri.parse("content://org.dlang.liveimap.attachments/$name")
 
-private fun deleteReaderAttachmentCache(dir: File, messageUid: Long) {
-    val prefix = "liveimap-$messageUid-"
+private fun deleteReaderAttachmentCache(dir: File, token: String) {
+    val prefix = "liveimap-$token-"
     val files = dir.listFiles() ?: return
     for (file in files) {
         if (file.isFile && file.name.startsWith(prefix)) file.delete()
