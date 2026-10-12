@@ -927,22 +927,38 @@ class LibetpanMailSession : MailSession {
             SortKey.Size -> "SIZE"
             else -> throw MailFailure("use an arrival IndexMode")
         }
-        val exists = selectedExists()
-        return remember("CLIENT SORT $field $newestFirst") {
-            // Chunks of ClientSortChunk messages: progress and Cancel between chunks, and only (uid, key) kept.
+        // F108: RFC 5256 keys (Date: header, base subject, first addr-mailbox), and a walk that is restarted when
+        // another client's expunge shifts sequence numbers under it (a missing or doubled UID shows that).
+        val wireField = if (field == "DATE") "DATEHDR" else field
+        var attempt = 0
+        while (true) {
+            val exists = selectedExists()
             val keys = ClientSortKeys(exists, numeric = key == SortKey.Date || key == SortKey.Size)
+            val seen = HashSet<Long>(exists * 2)
+            var drift = false
             var first = 1
             while (first <= exists) {
                 if (cancelled()) throw MailFailure("sort cancelled")
                 val last = minOf(exists, first + ClientSortChunk - 1)
                 val rows = keeper.read("client-sort") {
-                    nativeFetchSortFieldsRange(requireHandle(), field, first, last) ?: throw MailFailure("sort failed")
+                    nativeFetchSortFieldsRange(requireHandle(), wireField, first, last) ?: throw MailFailure("sort failed")
                 }
-                for (row in rows) keys.add(row)
+                for (row in rows) {
+                    if (!seen.add(row.uid)) drift = true
+                    keys.add(sortKeyRow(key, row))
+                }
                 onProgress(last, exists)
                 first = last + 1
             }
-            keys.order(newestFirst).asList()
+            if (!drift && seen.size == exists && selectedExists() == exists && !sequencesStale) {
+                return keys.order(newestFirst).asList()
+            }
+            attempt += 1
+            if (attempt >= 3) throw MailFailure("the folder kept changing during the sort; try again")
+            keeper.read("select") {
+                sequencesStale = true
+                selectNow(selectedMailbox ?: throw MailFailure("sort failed"))
+            }
         }
     }
 
@@ -1534,6 +1550,19 @@ internal fun onCellular(): Boolean {
  * Client-side sort keys in primitive arrays: uid and numeric key as longs, text keys lowercased once. Blank keys
  * sort after the rest by uid, as before.
  */
+/** F108: turn a fetched header into its RFC 5256 sort key. */
+internal fun sortKeyRow(key: SortKey, row: SortField): SortField = when (key) {
+    SortKey.Date -> {
+        val epoch = org.dlang.liveimap.session.dateHeaderEpoch(row.text)
+        SortField(row.uid, "", epoch ?: row.number, epoch == null && row.number == 0L)
+    }
+    SortKey.Subject -> row.copy(text = org.dlang.liveimap.session.baseSubject(
+        org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
+    SortKey.From, SortKey.To, SortKey.Cc -> row.copy(text = org.dlang.liveimap.session.firstAddrMailbox(
+        org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
+    else -> row
+}
+
 internal class ClientSortKeys(capacity: Int, private val numeric: Boolean) {
     private var uids = LongArray(capacity.coerceAtLeast(16))
     private var numbers = if (numeric) LongArray(uids.size) else LongArray(0)

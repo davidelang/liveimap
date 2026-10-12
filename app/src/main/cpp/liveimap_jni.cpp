@@ -7362,6 +7362,7 @@ bool readSortRow(struct mailimap_msg_att * att, const char * field, SortRow * ro
     if (strcasecmp(field, "FROM") == 0) name = "From";
     else if (strcasecmp(field, "TO") == 0) name = "To";
     else if (strcasecmp(field, "CC") == 0) name = "Cc";
+    else if (strcasecmp(field, "DATEHDR") == 0) name = "Date";
     row->text = headerField(block, name);
     row->number = 0;
     row->empty = row->text.empty();
@@ -7384,7 +7385,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JN
     const char * field = fieldChars.c();
     bool known = strcasecmp(field, "DATE") == 0 || strcasecmp(field, "FROM") == 0
         || strcasecmp(field, "SUBJECT") == 0 || strcasecmp(field, "TO") == 0
-        || strcasecmp(field, "CC") == 0 || strcasecmp(field, "SIZE") == 0;
+        || strcasecmp(field, "CC") == 0 || strcasecmp(field, "SIZE") == 0
+        || strcasecmp(field, "DATEHDR") == 0; // F108: RFC 5256 sorts by the Date: header
     if (!known) {
         throwFailure(env, "use an arrival IndexMode");
         unlockSession(session);
@@ -7398,6 +7400,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JN
         if (strcasecmp(field, "FROM") == 0) name = "From";
         else if (strcasecmp(field, "TO") == 0) name = "To";
         else if (strcasecmp(field, "CC") == 0) name = "Cc";
+        else if (strcasecmp(field, "DATEHDR") == 0) name = "Date";
         const char * names[] = { name };
         extra = peekHeaderFields(names, 1);
     }
