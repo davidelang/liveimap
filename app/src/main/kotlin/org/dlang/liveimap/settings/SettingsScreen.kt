@@ -17,6 +17,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import org.dlang.liveimap.ui.compose.formatMailbox
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -975,6 +980,14 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { enabled ->
                 editor.persist(editor.settings.copy(emailSubmission = enabled))
             }
+        }
+        SettingsSection(
+            title = stringResource(R.string.settings_sending_rules),
+            summary = sendingRulesSummary(settings),
+            expanded = "rules" in sections.open,
+            onToggle = { sections.toggle("rules") },
+        ) {
+            SendingRulesRows(editor)
         }
         SettingsSection(
             title = stringResource(R.string.settings_import),
@@ -2903,5 +2916,178 @@ private fun readPinercStream(resolver: ContentResolver, uri: Uri): PinercRead {
         PinercRead.Bad
     } catch (e: SecurityException) {
         PinercRead.Bad
+    }
+}
+
+
+@Composable
+private fun sendingRulesSummary(settings: AccountSettings): String {
+    val count = org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules).size
+    return stringResource(R.string.settings_rules_summary, formatMailbox(settings.displayName, settings.email), count)
+}
+
+/** The account's sending rules: simple defaults first, then the ordered rule list and presets. */
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SendingRulesRows(editor: SettingsEditor) {
+    val settings = editor.settings
+    val rules = org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)
+    fun save(list: List<org.dlang.liveimap.ui.compose.SendingRule>) =
+        editor.persist(editor.settings.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(list)))
+    var editing by remember { mutableStateOf<Int?>(null) }
+
+    Text(stringResource(R.string.settings_rules_default))
+    LineField(stringResource(R.string.settings_signature), settings.signature, singleLine = false, ready = editor.ready) {
+        editor.persist(editor.settings.copy(signature = it))
+    }
+    BoolField(stringResource(R.string.settings_sig_dashes), settings.sigDashes) {
+        editor.persist(editor.settings.copy(sigDashes = it))
+    }
+    BoolField(stringResource(R.string.settings_sig_bottom), settings.sigAtBottom) {
+        editor.persist(editor.settings.copy(sigAtBottom = it))
+    }
+    LineField(stringResource(R.string.settings_quote_prefix), settings.quotePrefix, ready = editor.ready,
+        interpret = { draft, _ -> draft }) {
+        editor.persist(editor.settings.copy(quotePrefix = it))
+    }
+    LineField(stringResource(R.string.settings_lead_in), settings.replyLeadIn, ready = editor.ready) {
+        editor.persist(editor.settings.copy(replyLeadIn = it.ifBlank { org.dlang.liveimap.ui.compose.DefaultLeadIn }))
+    }
+    Text(stringResource(R.string.settings_dsn))
+    FlowRow {
+        for (mode in org.dlang.liveimap.ui.compose.DsnMode.entries) {
+            FilterChip(
+                selected = settings.dsnMode == mode,
+                onClick = { editor.persist(editor.settings.copy(dsnMode = mode)) },
+                label = { Text(dsnLabel(mode)) },
+            )
+        }
+    }
+    LineField(stringResource(R.string.settings_composer_headers), settings.composerHeaders, ready = editor.ready) {
+        editor.persist(editor.settings.copy(composerHeaders = it))
+    }
+    LineField(stringResource(R.string.settings_viewer_headers), settings.viewerHeaders, ready = editor.ready) {
+        editor.persist(editor.settings.copy(viewerHeaders = it))
+    }
+
+    Text(stringResource(R.string.settings_rules_list))
+    rules.forEachIndexed { index, rule ->
+        ListItem(
+            headlineContent = { Text("${index + 1}. ${rule.name}") },
+            supportingContent = { Text(ruleSummary(rule)) },
+            modifier = Modifier.clickable { editing = if (editing == index) null else index },
+        )
+        Row {
+            TextButton(enabled = index > 0, onClick = {
+                save(rules.toMutableList().also { it.add(index - 1, it.removeAt(index)) }); editing = null
+            }) { Text(stringResource(R.string.settings_rule_up)) }
+            TextButton(enabled = index < rules.size - 1, onClick = {
+                save(rules.toMutableList().also { it.add(index + 1, it.removeAt(index)) }); editing = null
+            }) { Text(stringResource(R.string.settings_rule_down)) }
+            TextButton(onClick = { save(rules.filterIndexed { i, _ -> i != index }); editing = null }) {
+                Text(stringResource(R.string.settings_rule_delete))
+            }
+        }
+        if (editing == index) RuleEditor(rule, editor.ready) { changed ->
+            save(rules.toMutableList().also { it[index] = changed })
+        }
+    }
+    Text(stringResource(R.string.settings_rules_presets))
+    val me = settings.email
+    FlowRow {
+        fun add(new: List<org.dlang.liveimap.ui.compose.SendingRule>) {
+            if (new.isEmpty()) return
+            save(rules + new); editing = rules.size
+        }
+        val p = org.dlang.liveimap.ui.compose.RulePresets
+        AssistChip(onClick = { add(p.replyFromSentTo(settings.altAddresses.ifEmpty { listOf(me) })) },
+            label = { Text(stringResource(R.string.settings_preset_sent_to)) })
+        AssistChip(onClick = { add(listOf(p.perRecipient("@example.com", me))) },
+            label = { Text(stringResource(R.string.settings_preset_recipient)) })
+        AssistChip(onClick = { add(listOf(p.perFolder("Work*", me, null, null))) },
+            label = { Text(stringResource(R.string.settings_preset_folder)) })
+        AssistChip(onClick = { add(listOf(p.mailingList("list.example.org", me))) },
+            label = { Text(stringResource(R.string.settings_preset_list)) })
+        AssistChip(onClick = { add(listOf(p.plusFolder(me, "tag"))) },
+            label = { Text(stringResource(R.string.settings_preset_plus)) })
+        AssistChip(onClick = { add(listOf(org.dlang.liveimap.ui.compose.SendingRule(
+            "Rule ${rules.size + 1}")) ) },
+            label = { Text(stringResource(R.string.settings_preset_blank)) })
+    }
+}
+
+@Composable
+private fun dsnLabel(mode: org.dlang.liveimap.ui.compose.DsnMode): String = stringResource(
+    when (mode) {
+        org.dlang.liveimap.ui.compose.DsnMode.Off -> R.string.settings_dsn_off
+        org.dlang.liveimap.ui.compose.DsnMode.Failure -> R.string.settings_dsn_failure
+        org.dlang.liveimap.ui.compose.DsnMode.FailureDelay -> R.string.settings_dsn_delay
+        org.dlang.liveimap.ui.compose.DsnMode.All -> R.string.settings_dsn_all
+    },
+)
+
+private fun ruleSummary(rule: org.dlang.liveimap.ui.compose.SendingRule): String {
+    val c = rule.conditions
+    val a = rule.actions
+    val when_ = listOfNotNull(
+        c.kinds.takeIf { it.isNotEmpty() }?.joinToString("/") { it.code },
+        c.recipient.takeIf { it.isNotEmpty() }?.let { "to " + it.joinToString(",") },
+        c.sentTo.takeIf { it.isNotEmpty() }?.let { "sent to " + it.joinToString(",") },
+        c.listId.takeIf { it.isNotEmpty() }?.let { "list $it" },
+        c.folder.takeIf { it.isNotEmpty() }?.let { "folder $it" },
+        c.originalFrom.takeIf { it.isNotEmpty() }?.let { "from " + it.joinToString(",") },
+    ).ifEmpty { listOf("always") }.joinToString(", ")
+    val then = listOfNotNull(
+        a.fromAddress?.let { "From $it" }, a.replyTo?.let { "Reply-To $it" },
+        a.signature?.let { "signature" }, a.fcc?.let { "Fcc $it" }, a.dsn?.let { "DSN ${it.code}" },
+        a.sendAccount?.let { "send via $it" },
+    ).joinToString(", ")
+    return "$when_ → $then"
+}
+
+/** Field-by-field editor for one rule; list fields are comma separated, empty means "not set". */
+@Composable
+private fun RuleEditor(
+    rule: org.dlang.liveimap.ui.compose.SendingRule,
+    ready: Boolean,
+    onChange: (org.dlang.liveimap.ui.compose.SendingRule) -> Unit,
+) {
+    fun list(t: String) = t.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    fun opt(t: String) = t.ifBlank { null }
+    val c = rule.conditions
+    val a = rule.actions
+    LineField(stringResource(R.string.settings_rule_name), rule.name, ready = ready) { onChange(rule.copy(name = it.ifBlank { rule.name })) }
+    LineField(stringResource(R.string.settings_rule_recipient), c.recipient.joinToString(", "), ready = ready) {
+        onChange(rule.copy(conditions = c.copy(recipient = list(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_sent_to), c.sentTo.joinToString(", "), ready = ready) {
+        onChange(rule.copy(conditions = c.copy(sentTo = list(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_list_id), c.listId, ready = ready) {
+        onChange(rule.copy(conditions = c.copy(listId = it.trim())))
+    }
+    LineField(stringResource(R.string.settings_rule_folder), c.folder, ready = ready) {
+        onChange(rule.copy(conditions = c.copy(folder = it.trim())))
+    }
+    LineField(stringResource(R.string.settings_rule_orig_from), c.originalFrom.joinToString(", "), ready = ready) {
+        onChange(rule.copy(conditions = c.copy(originalFrom = list(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_from_name), a.fromName.orEmpty(), ready = ready) {
+        onChange(rule.copy(actions = a.copy(fromName = opt(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_from), a.fromAddress.orEmpty(), KeyboardType.Email, ready = ready) {
+        onChange(rule.copy(actions = a.copy(fromAddress = opt(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_reply_to), a.replyTo.orEmpty(), KeyboardType.Email, ready = ready) {
+        onChange(rule.copy(actions = a.copy(replyTo = opt(it))))
+    }
+    LineField(stringResource(R.string.settings_signature), a.signature.orEmpty(), singleLine = false, ready = ready) {
+        onChange(rule.copy(actions = a.copy(signature = opt(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_fcc), a.fcc.orEmpty(), ready = ready) {
+        onChange(rule.copy(actions = a.copy(fcc = opt(it))))
+    }
+    LineField(stringResource(R.string.settings_rule_send_account), a.sendAccount.orEmpty(), ready = ready) {
+        onChange(rule.copy(actions = a.copy(sendAccount = opt(it))))
     }
 }
