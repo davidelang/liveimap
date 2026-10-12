@@ -826,7 +826,7 @@ class AccountSettingsTest {
         val encoded = saved.encode()
         assertTrue(
             encoded.contains(
-                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete|O:Move,Spam,Bounce|H:",
+                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete|O:Move,Spam,Bounce,Headers|H:",
             ),
         )
         assertTrue(encoded.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
@@ -836,7 +836,7 @@ class AccountSettingsTest {
         val movedText = AccountSettings(readerToolbar = moved).encode()
         assertTrue(
             movedText.contains(
-                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete,Bounce|O:Move,Spam|H:",
+                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete,Bounce|O:Move,Spam,Headers|H:",
             ),
         )
         assertEquals(moved, decodeAccountSettings(movedText).readerToolbar)
