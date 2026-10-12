@@ -10,6 +10,7 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.session.UidWindow
 import org.dlang.liveimap.session.MailboxUids
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
@@ -1001,6 +1002,28 @@ class IndexWindowTest {
         assertTrue(session.searchCalls.isEmpty())
         assertEquals(before, model.rows.map { it.uid })
         assertEquals(0, model.pendingNew)
+        assertTrue(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun newMailInWindowedSortDoesNotRefetch() {
+        // ESORT PARTIAL windows: a new message must not re-run the sort windows or re-fetch rows.
+        val session = folder(300)
+        session.sortUids = (300L downTo 1L).toList()
+        session.windowedSort = true
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        assertTrue("windowed path used", session.sortWindowCalls.isNotEmpty())
+        assertTrue("no full sort", session.sortCalls.isEmpty())
+        val windows = session.sortWindowCalls.size
+        val fetches = session.fetchRequests.size
+        val before = model.rows.map { it.uid }
+        session.exists = 301
+        session.rows[301L] = row(301L)
+        runImmediate { model.applyChange(MailboxChange.Exists(301)) }
+        assertEquals(windows, session.sortWindowCalls.size)
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(before, model.rows.map { it.uid })
         assertTrue(model.newMailUnnumbered)
     }
 
@@ -2388,6 +2411,16 @@ private class FakeMailSession(
 
     private fun isMarked(row: IndexRow, seq: Set<Int>, ids: Set<Long>, flag: String): Boolean =
         row.sequence in seq || row.uid in ids || flag in row.flags
+
+    var windowedSort = false
+    val sortWindowCalls = mutableListOf<Pair<Int, Int>>()
+
+    override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? {
+        if (!windowedSort) return null
+        sortWindowCalls += first to last
+        val hi = minOf(last, sortUids.size)
+        return UidWindow(sortUids.size, if (first > hi) emptyList() else sortUids.subList(first - 1, hi))
+    }
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         sortCalls += key to newestFirst

@@ -256,6 +256,8 @@ struct LiveSession {
     std::string capabilityLine;
     std::map<std::string, char> delims;
     bool qresync = false;
+    // ENABLE UTF8=ACCEPT accepted (RFC 6855): mailbox names on the wire are UTF-8, not modified UTF-7.
+    bool utf8 = false;
     std::map<std::string, ResyncState> resyncByMailbox;
     std::string selectedMailbox;
     bool selectedReadWrite = false;
@@ -2993,7 +2995,7 @@ void freeSession(LiveSession * session, JNIEnv * env) {
     }
 }
 
-std::string leafOf(const char * mailbox, char delim) {
+std::string leafOf(const char * mailbox, char delim, bool utf8) {
     std::string raw = mailbox != nullptr ? mailbox : "";
     std::string comp = raw;
     if (delim != 0) {
@@ -3002,6 +3004,7 @@ std::string leafOf(const char * mailbox, char delim) {
             comp = raw.substr(pos + 1);
         }
     }
+    if (utf8) return comp;  // UTF8=ACCEPT: already UTF-8; '&' is a plain character
     char * decoded = charconv_decode_mutf7(comp.c_str());
     std::string leaf = decoded != nullptr ? decoded : comp;
     free(decoded);
@@ -3192,8 +3195,18 @@ void enableNamed(LiveSession * session, const char * capName) {
     int r = mailimap_enable(session->imap, data, &result);
     mailimap_capability_data_free(data);
     if (r != MAILIMAP_NO_ERROR) return;
+    bool granted = false;
+    if (result != nullptr && result->cap_list != nullptr) {
+        for (clistiter * it = clist_begin(result->cap_list); it != nullptr; it = clist_next(it)) {
+            auto * c = static_cast<struct mailimap_capability *>(clist_content(it));
+            const char * n = c != nullptr && c->cap_type == MAILIMAP_CAPABILITY_NAME ? c->cap_data.cap_name : nullptr;
+            if (n != nullptr && strcasecmp(n, wire) == 0) granted = true;
+        }
+    }
     if (result != nullptr) mailimap_capability_data_free(result);
     if (strcmp(wire, "QRESYNC") == 0) session->qresync = true;
+    // Only an ENABLED response naming UTF8=ACCEPT switches name handling (RFC 5161: the server may ignore it).
+    if (strcmp(wire, "UTF8=ACCEPT") == 0 && granted) session->utf8 = true;
 }
 
 void compressSession(LiveSession * session) {
@@ -5658,7 +5671,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
             auto * mb = static_cast<struct mailimap_mailbox_list *>(clist_content(cur));
             if (mb == nullptr || mb->mb_name == nullptr) continue;
             session->delims[mb->mb_name] = mb->mb_delimiter;
-            std::string leaf = leafOf(mb->mb_name, mb->mb_delimiter);
+            std::string leaf = leafOf(mb->mb_name, mb->mb_delimiter, session->utf8);
             std::string use = extended ? specialUseOf(mb) : "";
             jstring jmb = newString(env, mb->mb_name);
             jstring jleaf = newString(env, leaf.c_str());

@@ -26,6 +26,8 @@ class Capabilities private constructor(
     val condstore: Boolean,
     val compressDeflate: Boolean,
     val names: Set<String>,
+    /** RFC 6855 UTF8=ACCEPT (ENABLEd after login). */
+    val utf8Accept: Boolean = false,
 ) {
     fun moveKind(): String = if (move) "Move" else "CopyThenDelete"
 
@@ -109,6 +111,7 @@ class Capabilities private constructor(
                 condstore = has("CONDSTORE"),
                 compressDeflate = has("COMPRESS=DEFLATE"),
                 names = tokens.toSet(),
+                utf8Accept = has("UTF8=ACCEPT") && has("ENABLE"),
             )
         }
     }

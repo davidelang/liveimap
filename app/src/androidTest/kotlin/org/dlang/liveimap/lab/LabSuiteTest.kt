@@ -124,6 +124,18 @@ class LabSuiteTest {
             if (opened) {
                 step("namespaces") { session.namespaces().size.toString() }
                 step("listRoot") { session.listLevel("", null, true).size.toString() }
+                step("utf8Folder") {
+                    // Seeded <box><d>Tëst-Ünï (modified UTF-7 on the wire unless UTF8=ACCEPT is enabled): the leaf
+                    // must read as UTF-8 either way, and SELECT by the listed name must work.
+                    val want = "T\u00ebst-\u00dcn\u00ef"
+                    val hit = session.listLevel("", box, false).firstOrNull { it.leaf == want }
+                        ?: throw IllegalStateException("no folder with leaf $want under $box: " +
+                            session.listLevel("", box, false).joinToString { it.leaf })
+                    val sel = session.select(hit.mailbox)
+                    session.select(box)
+                    val wire = if (hit.mailbox.contains('\u00eb')) "utf8" else "mutf7"
+                    "$wire utf8Accept=${session.featureCaps.utf8Accept} exists=${sel.exists}"
+                }
                 step("listTest") { session.mailboxListed(box).toString() }
                 step("statusInbox") { session.statusMessages(listOf("INBOX")).toString() }
                 var exists = 0

@@ -313,6 +313,8 @@ class LibetpanMailSession : MailSession {
             "Qresync" -> nativeEnable(opened, "QRESYNC")
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
+        // RFC 6855: UTF-8 mailbox names (and quoted strings) instead of modified UTF-7.
+        if (featureCaps.utf8Accept) nativeEnable(opened, "UTF8=ACCEPT")
         if (featureCaps.compressDeflate && !account.logImapTraffic &&
             compressionWanted(account.compression, onCellular())
         ) {

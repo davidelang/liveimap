@@ -104,6 +104,26 @@ def count(m, box):
     return int(data[0]) if typ == "OK" else -1
 
 
+UTF8_LEAF = "T\u00ebst-\u00dcn\u00ef"  # "Tëst-Ünï": non-ASCII folder for the UTF8=ACCEPT / modified UTF-7 step
+
+
+def mutf7(text):
+    """RFC 3501 modified UTF-7 mailbox name."""
+    import base64
+    out, run = [], []
+    def flush():
+        if run:
+            b = base64.b64encode("".join(run).encode("utf-16-be")).decode().rstrip("=").replace("/", ",")
+            out.append("&" + b + "-"); run.clear()
+    for ch in text:
+        if 0x20 <= ord(ch) <= 0x7e:
+            flush(); out.append("&-" if ch == "&" else ch)
+        else:
+            run.append(ch)
+    flush()
+    return "".join(out)
+
+
 def ensure(m, box):
     if count(m, box) < 0:
         m.create(f'"{box}"')
@@ -240,7 +260,8 @@ def seed(a, allow):
         hit = re.match(rb'\(\("([^"]*)"', ns[0])
         if hit and hit.group(1):
             root = hit.group(1).decode() + TEST_ROOT  # e.g. INBOX. on Cyrus 2.x and Courier
-    boxes = {root: a.count, f"{root}{d}Sub": max(5, a.count // 10), f"{root}{d}Trash": 0}
+    boxes = {root: a.count, f"{root}{d}Sub": max(5, a.count // 10), f"{root}{d}Trash": 0,
+             f"{root}{d}{mutf7(UTF8_LEAF)}": 1}
     if a.big:
         boxes[f"{root}{d}Big"] = a.big
     for box, target in boxes.items():
