@@ -107,8 +107,9 @@ fun jmapApplyPush(
     return jmapEmailChanges(session, sinceState, username, password, pin, post, trust)
 }
 
-fun platformJmapEventSource(url: String, authorization: String): JmapHttpExchange {
+fun platformJmapEventSource(url: String, authorization: String, pin: String): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+        pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000

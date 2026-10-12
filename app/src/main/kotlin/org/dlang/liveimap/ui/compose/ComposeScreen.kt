@@ -69,8 +69,8 @@ import org.dlang.liveimap.jmap.JmapSendChoice
 import org.dlang.liveimap.jmap.jmapSendChosen
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.platformJmapExchange
-import org.dlang.liveimap.jmap.platformJmapPost
-import org.dlang.liveimap.jmap.platformJmapUpload
+import org.dlang.liveimap.jmap.pinnedJmapPost
+import org.dlang.liveimap.jmap.pinnedJmapUpload
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -818,8 +818,8 @@ private fun ComposeLoaded(
                             account.username,
                             password,
                             account.certPin,
-                            ::platformJmapUpload,
-                            ::platformJmapPost,
+                            pinnedJmapUpload(account.certPin),
+                            pinnedJmapPost(account.certPin),
                         )
                     ) {
                         is JmapSendChoice.Submitted -> Unit
@@ -1233,8 +1233,8 @@ private fun ComposeLoaded(
                                     account.username,
                                     password,
                                     account.certPin,
-                                    ::platformJmapUpload,
-                                    ::platformJmapPost,
+                                    pinnedJmapUpload(account.certPin),
+                                    pinnedJmapPost(account.certPin),
                                 )
                             ) {
                                 is JmapSendChoice.Submitted -> Unit
@@ -1606,8 +1606,8 @@ private fun ComposeLoaded(
                                             account.username,
                                             password,
                                             account.certPin,
-                                            ::platformJmapUpload,
-                                            ::platformJmapPost,
+                                            pinnedJmapUpload(account.certPin),
+                                            pinnedJmapPost(account.certPin),
                                         )
                                     ) {
                                         is JmapSendChoice.Submitted -> {

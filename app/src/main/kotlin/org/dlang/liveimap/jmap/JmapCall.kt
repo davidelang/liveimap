@@ -73,8 +73,9 @@ fun jmapMailboxChildren(
     return jmapMailboxParentIds(parentListText(result.body))
 }
 
-fun platformJmapPost(url: String, body: String, authorization: String): JmapHttpExchange {
+fun platformJmapPost(url: String, body: String, authorization: String, pin: String): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+        pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -117,8 +118,10 @@ fun platformJmapUpload(
     bytes: ByteArray,
     contentType: String,
     authorization: String,
+    pin: String,
 ): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+        pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000

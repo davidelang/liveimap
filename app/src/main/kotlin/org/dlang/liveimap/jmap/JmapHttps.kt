@@ -104,3 +104,36 @@ private fun jmapTrustHost(url: String): String {
     }
     return host
 }
+
+/**
+ * Runs the account's trust verdict (pin, lab hooks, platform CAs, host name) inside the TLS handshake, so a
+ * request carrying credentials is never written to a peer that fails it (F02). The verdict after the exchange
+ * stays as a second check; unauthenticated discovery keeps the post-exchange check so a changed certificate
+ * can still be offered for pinning.
+ */
+fun pinJmapTls(connection: HttpsURLConnection, pin: String) {
+    val host = jmapTrustHost(connection.url.toString())
+    val manager = object : javax.net.ssl.X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
+            throw java.security.cert.CertificateException("client trust is not used")
+
+        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
+            val ders = chain?.map { it.encoded } ?: emptyList()
+            val verdict = org.dlang.liveimap.engine.PeerTrust.check(host, ders, pin)
+            if (verdict.isNotEmpty()) throw java.security.cert.CertificateException(verdict)
+        }
+
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+    }
+    val context = javax.net.ssl.SSLContext.getInstance("TLS")
+    context.init(null, arrayOf(manager), null)
+    connection.sslSocketFactory = context.socketFactory
+    // PeerTrust.check has already matched the leaf against this host in the handshake.
+    connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(connection.url.host, ignoreCase = true) }
+}
+
+fun pinnedJmapPost(pin: String): (String, String, String) -> JmapHttpExchange =
+    { url, body, authorization -> platformJmapPost(url, body, authorization, pin) }
+
+fun pinnedJmapUpload(pin: String): (String, ByteArray, String, String) -> JmapHttpExchange =
+    { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin) }

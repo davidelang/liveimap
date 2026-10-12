@@ -157,7 +157,7 @@ class JmapFolderScreenModel(
 
     fun pushOpen(): (String) -> JmapHttpExchange {
         val authorization = jmapBasicAuthorization(username, password)
-        return { url -> platformJmapEventSource(url, authorization) }
+        return { url -> platformJmapEventSource(url, authorization, pin) }
     }
 }
 

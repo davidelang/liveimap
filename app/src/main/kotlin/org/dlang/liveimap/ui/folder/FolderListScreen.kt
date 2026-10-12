@@ -108,7 +108,7 @@ import org.dlang.liveimap.jmap.folderOfferOrImap
 import org.dlang.liveimap.jmap.jmapFolderRoute
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.platformJmapExchange
-import org.dlang.liveimap.jmap.platformJmapPost
+import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -250,7 +250,7 @@ fun FolderListScreen(
                     settings.username,
                     store.password(),
                     settings.certPin,
-                    ::platformJmapPost,
+                    pinnedJmapPost(settings.certPin),
                     markSeenOnOpen = settings.markSeenOnOpen,
                     deletePolicy = settings.deletePolicy,
                 )
