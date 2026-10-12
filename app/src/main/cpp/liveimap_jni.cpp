@@ -3040,6 +3040,30 @@ char delimFor(LiveSession * session, const char * parent) {
     return best;
 }
 
+// Delimiter not seen yet (children listed before the top level): ask the server. LIST "" <parent> gives the
+// parent's own delimiter; LIST "" "" the hierarchy delimiter. Without this, LIST "<parent>" "%" returned the
+// parent itself instead of its children.
+char learnDelim(LiveSession * session, const char * parent) {
+    char d = delimFor(session, parent);
+    if (d != 0) return d;
+    const char * patterns[] = { parent, "" };
+    for (const char * pat : patterns) {
+        clist * l = nullptr;
+        int r = mailimap_list(session->imap, "", pat, &l);
+        if (cmdOk(r) && l != nullptr) {
+            for (clistiter * cur = clist_begin(l); cur != nullptr; cur = clist_next(cur)) {
+                auto * mb = static_cast<struct mailimap_mailbox_list *>(clist_content(cur));
+                if (mb == nullptr || mb->mb_delimiter == 0) continue;
+                if (mb->mb_name != nullptr && mb->mb_name[0] != 0) session->delims[mb->mb_name] = mb->mb_delimiter;
+                d = mb->mb_delimiter;
+            }
+        }
+        if (l != nullptr) mailimap_list_result_free(l);
+        if (d != 0) return d;
+    }
+    return 0;
+}
+
 uint64_t highestModseq(mailimap * imap) {
     uint64_t mod = 0;
     if (imap == nullptr || imap->imap_response_info == nullptr || imap->imap_response_info->rsp_extension_list == nullptr) {
@@ -5650,7 +5674,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     std::string reference;
     if (parent != nullptr && par.c()[0] != 0) {
         reference = par.c();
-        char delim = delimFor(session, par.c());
+        char delim = learnDelim(session, par.c());
         if (delim != 0) reference.push_back(delim);
     } else {
         reference = pref.c();
