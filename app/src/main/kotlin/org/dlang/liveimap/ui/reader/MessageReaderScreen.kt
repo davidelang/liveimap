@@ -2074,47 +2074,24 @@ private fun MessageReaderLoaded(
     if (warning != null) {
         val m = warning.mismatch
         val openAs = safeAttachmentMime(m.detected.mime.substringBefore('/'), m.detected.mime.substringAfter('/'))
-        AlertDialog(
-            onDismissRequest = { typeWarning = null },
-            title = { Text(stringResource(R.string.reader_type_mismatch_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.reader_type_mismatch_body,
-                        warning.row.filename ?: warning.row.label,
-                        m.claimed,
-                        m.extension ?: "-",
-                        "${m.detected.label} (${m.detected.mime})",
-                    ) + if (m.detected.dangerous) "\n\n" + stringResource(R.string.reader_type_mismatch_danger) else "",
-                )
+        TypeMismatchDialog(
+            name = warning.row.filename ?: warning.row.label,
+            mismatch = m,
+            openAs = openAs,
+            share = warning.action == AttachmentAction.Share,
+            onDismiss = { typeWarning = null },
+            onSave = {
+                typeWarning = null
+                saveAttachmentNow(warning.row)
             },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = {
-                        typeWarning = null
-                        saveAttachmentNow(warning.row)
-                    }) { Text(stringResource(R.string.reader_type_mismatch_save)) }
-                    TextButton(onClick = {
-                        typeWarning = null
-                        val row = warning.row
-                        when {
-                            !row.done -> postSnack(notConnected)
-                            warning.action == AttachmentAction.Share -> shareAttachmentAs(row, openAs)
-                            else -> openAttachmentAs(row, openAs)
-                        }
-                    }) {
-                        Text(
-                            stringResource(
-                                if (warning.action == AttachmentAction.Share) R.string.reader_type_mismatch_share
-                                else R.string.reader_type_mismatch_open,
-                                openAs,
-                            ),
-                        )
-                    }
+            onOpenAs = {
+                typeWarning = null
+                val row = warning.row
+                when {
+                    !row.done -> postSnack(notConnected)
+                    warning.action == AttachmentAction.Share -> shareAttachmentAs(row, openAs)
+                    else -> openAttachmentAs(row, openAs)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { typeWarning = null }) { Text(stringResource(R.string.reader_cancel)) }
             },
         )
     }
@@ -2926,4 +2903,46 @@ internal fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerIn
             }
         } while (event.changes.any { it.pressed })
     }
+}
+
+/** Warning shown when an attachment's content does not match its claimed type or extension. */
+@Composable
+internal fun TypeMismatchDialog(
+    name: String,
+    mismatch: TypeMismatch,
+    openAs: String,
+    share: Boolean,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+    onOpenAs: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.reader_type_mismatch_title)) },
+        text = {
+            Text(
+                stringResource(
+                    R.string.reader_type_mismatch_body,
+                    name,
+                    mismatch.claimed,
+                    mismatch.extension ?: "-",
+                    "${mismatch.detected.label} (${mismatch.detected.mime})",
+                ) + if (mismatch.detected.dangerous) "\n\n" + stringResource(R.string.reader_type_mismatch_danger) else "",
+            )
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onSave) { Text(stringResource(R.string.reader_type_mismatch_save)) }
+                TextButton(onClick = onOpenAs) {
+                    Text(
+                        stringResource(
+                            if (share) R.string.reader_type_mismatch_share else R.string.reader_type_mismatch_open,
+                            openAs,
+                        ),
+                    )
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) } },
+    )
 }
