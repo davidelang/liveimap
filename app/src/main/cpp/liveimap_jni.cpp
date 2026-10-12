@@ -665,7 +665,10 @@ jstring newString(JNIEnv * env, const char * text) {
             ++p;
             continue;
         }
-        if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+        // F111: overlong 3/4-byte forms (E0 80..9F, F0 80..8F) would decode to '.', '/', NUL... and alias another
+        // name when sent back in shortest form; they become '?' like any other invalid sequence.
+        const bool overlong = (n == 3 && cp < 0x800) || (n == 4 && cp < 0x10000);
+        if (overlong || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
             u.push_back(u'?');
         } else if (cp < 0x10000) {
             u.push_back(static_cast<char16_t>(cp));
@@ -723,6 +726,19 @@ void unlockSession(LiveSession * session) {
         session->mu.unlock();
         session->users.fetch_sub(1);
     }
+}
+
+/* F110: after a stream/parse error throwImap NULLs session->imap but keeps the session; an IMAP entry point must
+ * not hand that NULL to libetpan. */
+LiveSession * lockImapSession(JNIEnv * env, jlong handle) {
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return nullptr;
+    if (session->imap == nullptr) {
+        unlockSession(session);
+        throwConnectionLost(env, "IMAP connection lost");
+        return nullptr;
+    }
+    return session;
 }
 
 void releaseBurstFailure(JNIEnv * env, LiveSession * session, int r, const char * fallback) {
@@ -1132,7 +1148,10 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
     if (part != nullptr && part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr
         && part->bd_data.bd_type_msg->bd_body != nullptr) {
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
-        jobject child = mimeFromBody(env, inner, section + ".1", depth + 1);
+        // F112 (RFC 3501 6.4.5): a multipart body of message/rfc822 has no number of its own; its children are
+        // <section>.1, <section>.2 ... Only a single-part body is <section>.1 (as findPreferred does).
+        const std::string innerSection = inner->bd_type == MAILIMAP_BODY_MPART ? section : section + ".1";
+        jobject child = mimeFromBody(env, inner, innerSection, depth + 1);
         if (child != nullptr) {
             listAdd(env, children, child);
             env->DeleteLocalRef(child);
@@ -1221,6 +1240,7 @@ struct Row {
     std::string preview;
     bool hasPreview = false;
     std::string recipients;
+    bool hasEnvelope = false; // F113: index rows need it; an unsolicited flags-only FETCH has none
 };
 
 bool sameMailbox(const char * mailbox, const char * host, const char * email) {
@@ -1423,6 +1443,7 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
                 break;
             case MAILIMAP_MSG_ATT_ENVELOPE:
                 if (st->att_data.att_env != nullptr) {
+                    row->hasEnvelope = true;
                     struct mailimap_envelope * env = st->att_data.att_env;
                     if (env->env_subject != nullptr) row->subject = env->env_subject;
                     if (env->env_date != nullptr) row->date = env->env_date;
@@ -1505,7 +1526,9 @@ std::vector<Row> rowsFromList(clist * list, const char * accountEmail, const cha
     for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
         Row row;
         readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs);
-        if (row.uid != 0) {
+        // F113: only answers to our FETCH (they carry ENVELOPE). Another client's flag change arriving mid-fetch
+        // carries UID too, with any extension enabled or none, and must not become a blank row.
+        if (row.uid != 0 && row.hasEnvelope) {
             rows.push_back(row);
         }
     }
@@ -5565,7 +5588,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCapabilityLine(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     jstring line = newString(env, session->capabilityLine.c_str());
     unlockSession(session);
@@ -5575,7 +5598,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCapabilityLine(JNIEnv *
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeEnable(JNIEnv * env, jobject, jlong handle, jstring capability) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     JChars name(env, capability);
     enableNamed(session, name.c());
@@ -5610,7 +5633,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSessionDead(JNIEnv * en
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return -1;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     if (session->imap == nullptr) {
         throwImap(env, session, MAILIMAP_ERROR_STREAM, "noop failed");
@@ -5632,7 +5655,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobj
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCompress(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     compressSession(session);
     unlockSession(session);
@@ -5653,7 +5676,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeClose(JNIEnv * env, job
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     struct mailimap_namespace_data * data = nullptr;
     int r = mailimap_namespace(session->imap, &data);
@@ -5697,7 +5720,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
 extern "C" JNIEXPORT jchar JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeHierarchyDelimiter(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return 0;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return 0;
     if (session->imap == nullptr) {
         throwFailure(env, "not connected");
@@ -5735,7 +5758,7 @@ extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv * env, jobject, jlong handle,
     jobjectArray mailboxes) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     std::vector<std::string> names;
     if (mailboxes != nullptr) {
@@ -5806,7 +5829,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env, jobject, jlong handle,
     jstring prefix, jstring parent, jstring kind) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars pref(env, prefix);
     JChars par(env, parent);
@@ -5886,7 +5909,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeMailboxListed(JNIEnv * 
         throwFailure(env, "list failed");
         return JNI_FALSE;
     }
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return JNI_FALSE;
     JChars name(env, mailbox);
     clist * list = nullptr;
@@ -5918,7 +5941,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSubscribedMailboxes(JNIEnv * env, jobject, jlong handle,
     jboolean extended) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (session->imap == nullptr) {
         throwFailure(env, "not connected");
@@ -5961,7 +5984,7 @@ extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jobject, jlong handle, jstring mailbox,
     jboolean readWrite) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars mb(env, mailbox);
     if (!selectMailbox(env, session, mb.c(), readWrite == JNI_TRUE)) {
@@ -5980,7 +6003,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jo
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     int r = mailimap_unselect(session->imap);
     if (!cmdOk(r)) {
@@ -5995,7 +6018,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     if (session->selectedMailbox.empty() || session->imap == nullptr) {
         throwFailure(env, "close failed");
@@ -6018,7 +6041,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
     jint prefetch, jboolean includePreview, jint previewByteLimit, jboolean preferHtml, jboolean showDeleted,
     jboolean useServerPreview, jstring accountEmail, jstring altAddresses) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars accountEmailChars(env, accountEmail);
     JChars altChars(env, altAddresses);
@@ -6233,7 +6256,7 @@ struct mailimap_body * bodyAtSection(struct mailimap_body * body, const std::str
             && body->bd_data.bd_body_1part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG
             && body->bd_data.bd_body_1part->bd_data.bd_type_msg != nullptr && under(here)) {
             next = body->bd_data.bd_body_1part->bd_data.bd_type_msg->bd_body;
-            nextSection = here + ".1";
+            nextSection = next != nullptr && next->bd_type == MAILIMAP_BODY_MPART ? here : here + ".1"; // F112
             if (next != nullptr && next->bd_type != MAILIMAP_BODY_MPART && nextSection == target) {
                 *found = nextSection;
                 return next;
@@ -6263,7 +6286,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
 
 jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     struct mailimap_set * set = mailimap_set_new_single(static_cast<uint32_t>(uid));
     struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
@@ -6353,7 +6376,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, jobject, jlong handle,
     jlong uid, jstring section, jint offset, jint length, jboolean useBinary) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars spec(env, section);
     const std::string text = spec.c();
@@ -6450,7 +6473,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * env, jobject, jlong handle, jlong uid) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     struct mailimap_set * set = mailimap_set_new_single(static_cast<uint32_t>(uid));
     struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
@@ -6624,7 +6647,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env, jobject, jlong handle,
     jlongArray uids, jobjectArray add, jobjectArray remove) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
     if (values.empty()) {
@@ -6646,7 +6669,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * env, jobject, jlong handle,
     jobjectArray add, jobjectArray remove) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
     if (set == nullptr) {
@@ -6662,7 +6685,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
     int r = mailimap_uid_expunge(session->imap, set);
@@ -6675,7 +6698,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env, jobject, jlong handle,
     jlongArray uids) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
     if (values.empty()) {
@@ -6698,7 +6721,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv * env, jobject, jlong handle,
     jlongArray uids, jstring target, jstring moveKind) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
     if (values.empty()) {
@@ -6722,7 +6745,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEnv * env, jobject, jlong handle,
     jstring target, jstring moveKind) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
     if (set == nullptr) {
@@ -6831,7 +6854,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jbyteArray message, jobjectArray flags) {
     if (!ensureJni(env)) return 0;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return 0;
     if (!appendFlagsAreDraft(env, flags)) {
         throwFailure(env, "unsupported append flag");
@@ -6864,7 +6887,7 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env, jobject, jlong handle,
     jstring query, jboolean useEsearch) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars q(env, query);
     struct mailimap_search_key * key = mailimap_search_key_new_text(strdup(q.c()));
@@ -6910,7 +6933,7 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean useEsearch, jboolean withCharset) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars kindChars(env, kind);
     JChars argChars(env, argument);
@@ -6997,7 +7020,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv *
     jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean useEsearch, jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars combinerChars(env, combiner);
     struct mailimap_search_key * key = advancedKey(env, combinerChars.c(), negated, kinds, arguments);
@@ -7014,7 +7037,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionCount(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean withCharset) {
     if (!ensureJni(env)) return -1;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars kindChars(env, kind);
     JChars argChars(env, argument);
@@ -7033,7 +7056,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvancedCount(JNI
     jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments, jboolean withCharset,
     jboolean fuzzy) {
     if (!ensureJni(env)) return -1;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars combinerChars(env, combiner);
     struct mailimap_search_key * key = advancedKey(env, combinerChars.c(), negated, kinds, arguments);
@@ -7051,7 +7074,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScope(JNIEnv * en
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars scopeChars(env, scope);
     JChars homeChars(env, home);
@@ -7071,7 +7094,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean withCharset, jboolean fuzzy) {
     if (!ensureJni(env)) return -1;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars scopeChars(env, scope);
     JChars homeChars(env, home);
@@ -7090,7 +7113,7 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchStart(JNIEnv * env, jobject, jlong handle,
     jstring rule, jboolean byUid, jstring edge, jboolean useEsearch) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars ruleChars(env, rule);
     JChars edgeChars(env, edge);
@@ -7119,7 +7142,7 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeLocateUid(JNIEnv * env, jobject, jlong handle,
     jlong uid, jboolean useEsearch) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > 0xffffffffll) {
         throwFailure(env, "bad search");
@@ -7379,7 +7402,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JNIEnv * env, jobject, jlong handle,
     jstring fieldName, jint first, jint last) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars fieldChars(env, fieldName);
     const char * field = fieldChars.c();
@@ -7467,7 +7490,7 @@ struct HeaderRow {
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     const char * names[] = { "Message-ID", "References", "In-Reply-To", "Subject" };
     clist * list = uidFetchAll(env, session, uidPlusExtra(peekHeaderFields(names, 4)));
@@ -7555,7 +7578,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
     if (bad) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
@@ -7651,7 +7674,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
     if (bad) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
@@ -7692,7 +7715,7 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean withCharset, jint first, jint last) {
     if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars kindChars(env, kind);
     JChars argChars(env, argument);
@@ -7738,7 +7761,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
     if (bad) return nullptr;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars alg(env, algorithm);
@@ -7772,7 +7795,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject thiz, jlong handle, jstring mailbox) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     if (tlsWatch == session) {
         signalWatchStop(session);
@@ -8565,7 +8588,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePrepareLongSearch(JNIEnv * env, jobject, jlong handle,
     jint timeoutSec) {
     if (!ensureJni(env)) return;
-    LiveSession * session = lockSession(env, handle);
+    LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     session->progressDone.store(-1);
     session->progressTotal.store(-1);
