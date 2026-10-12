@@ -334,6 +334,8 @@ fun newAccountSettings(): AccountSettings = AccountSettings(
     imapPort = defaultImapPort(TlsMode.Implicit),
     smtpPort = defaultSmtpPort(TlsMode.Implicit),
     tlsMode = TlsMode.Implicit,
+    multiPane = MultiPane.Auto,
+    folderPane = LayoutChoice.Auto,
 )
 
 fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
@@ -425,9 +427,9 @@ data class AccountSettings(
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
     val quellFlowed: Boolean = false,
-    // New accounts: Auto. A stored account without the key keeps Off (existing settings never change).
-    val multiPane: MultiPane = MultiPane.Auto,
-    val folderPane: LayoutChoice = LayoutChoice.Auto,
+    // Off here so stored accounts without the key keep Off; new accounts get Auto from [newAccountSettings].
+    val multiPane: MultiPane = MultiPane.Off,
+    val folderPane: LayoutChoice = LayoutChoice.Off,
     val foldPosture: LayoutChoice = LayoutChoice.Off,
     val fullScreen: Boolean = false,
     val sieveHost: String = "",

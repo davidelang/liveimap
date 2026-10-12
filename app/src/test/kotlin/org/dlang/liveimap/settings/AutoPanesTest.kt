@@ -31,12 +31,13 @@ class AutoPanesTest {
 
     @Test
     fun existingAccountsKeepOffNewAccountsAuto() {
-        assertEquals(MultiPane.Auto, AccountSettings().multiPane)
+        assertEquals(MultiPane.Auto, newAccountSettings().multiPane)
+        assertEquals(MultiPane.Off, AccountSettings().multiPane)
         val legacy = AccountSettings(multiPane = MultiPane.Off, folderPane = LayoutChoice.Off).encode()
         assertFalse(legacy.contains("multiPane"))
         assertEquals(MultiPane.Off, decodeAccountSettings(legacy).multiPane)
         assertEquals(LayoutChoice.Off, decodeAccountSettings(legacy).folderPane)
-        val fresh = decodeAccountSettings(AccountSettings().encode())
+        val fresh = decodeAccountSettings(newAccountSettings().encode())
         assertEquals(MultiPane.Auto, fresh.multiPane)
         assertEquals(LayoutChoice.Auto, fresh.folderPane)
     }
