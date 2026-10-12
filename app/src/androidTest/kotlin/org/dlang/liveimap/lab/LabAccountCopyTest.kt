@@ -48,6 +48,7 @@ class LabAccountCopyTest {
         val (s64, p64) = java.io.File("/data/local/tmp/lab-acct").readText().trim().split(":")
         val src = decodeAccountSettings(String(Base64.decode(s64, Base64.NO_WRAP)))
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
+        val original = store.listAccounts().firstOrNull { it.chosen }?.id
         store.addAccount()
         store.load()
         store.save(
@@ -58,5 +59,22 @@ class LabAccountCopyTest {
             ),
         )
         store.setPassword(String(Base64.decode(p64, Base64.NO_WRAP)))
+        if (original != null) store.selectAccount(original)
+    }
+
+    /** Removes the one blank account (no user, no host) left by a failed import; re-selects a real account. */
+    @Test
+    fun removeBlankAccount() = runBlocking {
+        val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
+        val blank = ArrayList<String>()
+        val real = ArrayList<String>()
+        for (a in store.listAccounts()) {
+            store.selectAccount(a.id)
+            val s = store.load()
+            if (s.username.isEmpty() && s.imapHost.isEmpty()) blank.add(a.id) else real.add(a.id)
+        }
+        check(blank.size == 1) { "expected one blank account, got ${blank.size}" }
+        check(store.removeAccount(blank.single())) { "remove refused" }
+        real.firstOrNull()?.let { store.selectAccount(it) }
     }
 }
