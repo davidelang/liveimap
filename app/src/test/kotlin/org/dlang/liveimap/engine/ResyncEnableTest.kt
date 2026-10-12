@@ -13,10 +13,10 @@ class ResyncEnableTest {
 
     /** F52 (David): no implicit IMAP-to-SMTP fallback, even for the same host. */
     @Test fun smtpPasswordNeverFallsBackSilently() {
-        assertEquals(null, smtpPasswordFor(false, "", "imap-secret"))
+        assertEquals("", smtpPasswordFor(false, "", "imap-secret"))  // no AUTH, never the IMAP password
         assertEquals("smtp-secret", smtpPasswordFor(false, "smtp-secret", "imap-secret"))
         assertEquals("imap-secret", smtpPasswordFor(true, "", "imap-secret"))
         assertEquals("imap-secret", smtpPasswordFor(true, "stale", "imap-secret"))
-        assertEquals(null, smtpPasswordFor(true, "", ""))
+        assertEquals("", smtpPasswordFor(true, "", ""))
     }
 }

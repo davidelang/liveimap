@@ -1050,13 +1050,9 @@ class LibetpanMailSession : MailSession {
         val ownSmtpPassword = credentials?.smtpPassword
             ?: if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
         // F52 (David): the IMAP password is used for SMTP only when "Same as IMAP password" is ticked; it is never
-        // assumed. No password at all fails before connecting, with a prompt, instead of falling back silently.
+        // assumed. No SMTP password = send without AUTH (native adds a prompt if the server then demands AUTH).
         val acct = account
         val smtpPassword = smtpPasswordFor(acct?.smtpSameAsImap == true, ownSmtpPassword, loggedInPassword.orEmpty())
-            ?: throw MailFailure(
-                context?.getString(org.dlang.liveimap.R.string.smtp_password_missing)
-                    ?: "No SMTP password is set for this account",
-            )
         val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
         return keeper.write("send") {
             forgetSelected()
@@ -1588,9 +1584,6 @@ internal fun enableForResync(kind: String): String = when (kind) {
     else -> ""
 }
 
-/** F52: SMTP password choice; null = none configured (the send must stop and ask). */
-internal fun smtpPasswordFor(sameAsImap: Boolean, smtpPassword: String, imapPassword: String): String? = when {
-    sameAsImap -> imapPassword.ifEmpty { null }
-    smtpPassword.isNotEmpty() -> smtpPassword
-    else -> null
-}
+/** F52: SMTP password choice; "" = none configured (sent without AUTH, never the IMAP password). */
+internal fun smtpPasswordFor(sameAsImap: Boolean, smtpPassword: String, imapPassword: String): String =
+    if (sameAsImap) imapPassword else smtpPassword

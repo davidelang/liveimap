@@ -58,24 +58,6 @@ class UnsentStoreTest {
     }
 
     @Test
-    fun legacyCopiesMoveOnlyWhenTheOwnerIsCertain() {
-        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
-        try {
-            val legacy = File(root, "unsent")
-            legacy.mkdirs()
-            File(legacy, "old.rfc822").writeText("O")
-            File(legacy, "old.meta").writeText("unsent\nSent\nx@y\n")
-            assertEquals(1, migrateLegacyUnsent(root, listOf("acct-1", "acct-2")))
-            assertTrue(readCopies(root, "acct-1").isEmpty())
-            assertEquals(0, migrateLegacyUnsent(root, listOf("acct-1")))
-            assertEquals(listOf("old"), readCopies(root, "acct-1").map { it.id })
-            assertFalse(File(legacy, "old.meta").exists())
-        } finally {
-            root.deleteRecursively()
-        }
-    }
-
-    @Test
     fun deleteRemovesOneAccountDirectory() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {

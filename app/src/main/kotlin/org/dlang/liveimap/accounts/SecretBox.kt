@@ -11,12 +11,13 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager
 /**
  * Small secrets (SMTP passwords, the legacy account password), F20: each value sealed with Tink AES-256-GCM
  * (associated data = the entry name) in a plain SharedPreferences file. The Tink keyset lives in its own
- * SharedPreferences file, wrapped by an AndroidKeyStore key. Replaces androidx.security EncryptedSharedPreferences;
- * the old file is read once (through [legacy]), copied here, then cleared and deleted.
+ * SharedPreferences file, wrapped by an AndroidKeyStore key. Replaces androidx.security EncryptedSharedPreferences,
+ * whose old file is not read (no legacy path; such accounts re-enter their passwords).
+ * F96: an entry that cannot be opened (Keystore key lost after restore, corrupt value) reads as unset, so the
+ * user is asked for the password again instead of every account failing to open.
  */
 internal class SecretBox(
     private val context: Context,
-    private val legacy: () -> SharedPreferences,
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(secretBoxFile, Context.MODE_PRIVATE)
 
@@ -31,23 +32,20 @@ internal class SecretBox(
             .getPrimitive(Aead::class.java)
     }
 
-    @Volatile private var migrated = false
-
     fun getString(key: String, default: String?): String? {
-        migrate()
         val stored = prefs.getString(key, null) ?: return default
-        return open(key, stored)
+        return try {
+            open(key, stored)
+        } catch (_: java.security.GeneralSecurityException) {
+            default
+        } catch (_: IllegalArgumentException) {
+            default
+        }
     }
 
-    fun contains(key: String): Boolean {
-        migrate()
-        return prefs.contains(key)
-    }
+    fun contains(key: String): Boolean = prefs.contains(key)
 
-    fun edit(): Editor {
-        migrate()
-        return Editor()
-    }
+    fun edit(): Editor = Editor()
 
     inner class Editor {
         private val edit = prefs.edit()
@@ -71,36 +69,10 @@ internal class SecretBox(
     private fun open(key: String, stored: String): String =
         String(aead.decrypt(Base64.decode(stored, Base64.NO_WRAP), key.toByteArray(Charsets.UTF_8)), Charsets.UTF_8)
 
-    /** One-time copy from the EncryptedSharedPreferences file; the old file goes only after the copy commits. */
-    @Synchronized
-    private fun migrate() {
-        if (migrated) return
-        if (prefs.getBoolean(migratedFlag, false)) {
-            migrated = true
-            return
-        }
-        val oldFile = java.io.File(context.applicationInfo.dataDir, "shared_prefs/$legacySecretFile.xml")
-        if (oldFile.exists()) {
-            val old = legacy()
-            val edit = prefs.edit()
-            for ((key, value) in old.all) {
-                if (value is String) edit.putString(key, seal(key, value))
-            }
-            edit.putBoolean(migratedFlag, true)
-            if (!edit.commit()) error("secrets not migrated")
-            old.edit().clear().commit()
-            context.deleteSharedPreferences(legacySecretFile)
-        } else if (!prefs.edit().putBoolean(migratedFlag, true).commit()) {
-            error("secrets not migrated")
-        }
-        migrated = true
-    }
-
     private companion object {
         const val secretBoxFile = "liveimap_secret_v2"
         const val keysetFile = "liveimap_secret_keyset"
         const val keysetName = "liveimap_secret_keyset"
         const val masterKeyUri = "android-keystore://liveimap_secret_master"
-        const val migratedFlag = "__migrated_from_encrypted_prefs"
     }
 }

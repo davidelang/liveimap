@@ -44,14 +44,6 @@ class MainActivity : ComponentActivity() {
         store = DataStoreSettingsStore(applicationContext)
         org.dlang.liveimap.engine.KeyChainCerts.appContext = applicationContext
         org.dlang.liveimap.ui.reader.clearStaleAttachmentCache(cacheDir)
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val ids = org.dlang.liveimap.accounts.AccountStore.shared(applicationContext).listAccounts().map { it.id }
-                org.dlang.liveimap.ui.compose.migrateLegacyUnsent(filesDir, ids)
-            } catch (error: kotlinx.coroutines.CancellationException) {
-                throw error
-            } catch (_: Exception) {
-            }
         }
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(

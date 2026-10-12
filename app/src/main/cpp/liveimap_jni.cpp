@@ -8256,6 +8256,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return 0;
     }
+    // F52 (David): no SMTP password configured = send without AUTH (existing accounts work this way). If the
+    // server insists on AUTH, MAIL FROM fails and the message says how to set the password.
+    const bool noCredentials = authPass.empty() && mechanism != "EXTERNAL";
+    if (noCredentials) mechanism.clear();
     bool plus = mechanism.size() >= 5
         && mechanism.compare(mechanism.size() - 5, 5, "-PLUS") == 0;
     if (plus && bindingLen > 0) {
@@ -8297,7 +8301,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             unlockSession(session);
             return 0;
         }
-    } else if (!offeredAuth.empty()) {
+    } else if (!offeredAuth.empty() && !noCredentials) {
         if (!authUser.empty() && !smtpTls && !session->allowPlaintextAuth &&
             offeredPlainOrLogin(offeredAuth)) {
             mailsmtp_free(smtp);
@@ -8364,6 +8368,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     if (r != MAILSMTP_NO_ERROR) {
         std::string why = where + asciiSafe(smtp->response, "smtp error");
+        if (noCredentials && !offeredAuth.empty()) {
+            why += " (no SMTP password is set: set it in Settings, or tick \"Same as IMAP password\")";
+        }
         mailsmtp_free(smtp);
         throwFailure(env, why);
         unlockSession(session);

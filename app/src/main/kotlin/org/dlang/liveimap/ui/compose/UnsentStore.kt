@@ -66,35 +66,6 @@ internal fun unsentAccountDir(filesDir: File, accountId: String): File {
 
 internal fun unsentDirs(filesDir: File, accountId: String): List<File> = listOf(unsentAccountDir(filesDir, accountId))
 
-/**
- * F51: copies written before per-account directories sit directly in `unsent/`. With exactly one account they
- * can only be that account's, so they move there. With several, the owner is unknown: they stay where they are
- * and are not offered under any account (sending them through the wrong server and Sent folder is worse).
- * Returns how many copies were left unassigned.
- */
-internal fun migrateLegacyUnsent(filesDir: File, accountIds: List<String>): Int {
-    val legacy = File(filesDir, "unsent")
-    val metas = legacy.listFiles { f -> f.isFile && f.name.endsWith(".meta") } ?: return 0
-    if (metas.isEmpty()) return 0
-    if (accountIds.size != 1) return metas.size
-    val target = unsentAccountDir(filesDir, accountIds[0])
-    target.mkdirs()
-    var left = 0
-    for (meta in metas) {
-        val id = meta.name.removeSuffix(".meta")
-        val bytes = File(legacy, "$id.rfc822")
-        val toBytes = File(target, "$id.rfc822")
-        val toMeta = File(target, "$id.meta")
-        if (toMeta.exists()) {
-            left++
-            continue
-        }
-        val moved = (!bytes.isFile || bytes.renameTo(toBytes)) && meta.renameTo(toMeta)
-        if (!moved) left++
-    }
-    return left
-}
-
 internal fun mergedAccountCopies(account: List<DeviceCopy>, legacy: List<DeviceCopy>): List<DeviceCopy> {
     val seen = HashSet<String>()
     for (copy in account) seen.add(copy.id)

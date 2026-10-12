@@ -419,9 +419,8 @@
     <string name="settings_smtp_username">SMTP username</string>
     <string name="settings_smtp_username_hint">Blank uses the IMAP username.</string>
     <string name="settings_smtp_password">SMTP password</string>
-    <string name="settings_smtp_password_hint">The IMAP password is used for SMTP only when \"Same as IMAP password\" is ticked.</string>
+    <string name="settings_smtp_password_hint">Blank sends without SMTP AUTH. The IMAP password is used only when \"Same as IMAP password\" is ticked.</string>
     <string name="settings_smtp_same_as_imap">Same as IMAP password</string>
-    <string name="smtp_password_missing">No SMTP password is set for this account. Set it in Settings, or tick \"Same as IMAP password\".</string>
     <string name="settings_email_submission">JMAP EmailSubmission</string>
     <string name="settings_email_submission_note">Off uses SMTP.</string>
     <string name="settings_import">Import</string>

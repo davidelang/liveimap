@@ -11,8 +11,6 @@ import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -46,21 +44,8 @@ class AccountStore private constructor(private val context: Context) {
     private val cipher = AndroidAccountCipher()
     private var migrationSettled = false
 
-    // Tink-sealed secrets (F20); the EncryptedSharedPreferences file is only read for the one-time migration.
-    private val secretPrefs: SecretBox by lazy { SecretBox(context) { legacySecretPrefs() } }
-
-    private fun legacySecretPrefs(): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        return EncryptedSharedPreferences.create(
-            context,
-            legacySecretFile,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-    }
+    // Tink-sealed secrets (F20). No EncryptedSharedPreferences read: old secrets are not carried over (David).
+    private val secretPrefs: SecretBox by lazy { SecretBox(context) }
 
     suspend fun load(): AccountSettings {
         ensureMigrated()

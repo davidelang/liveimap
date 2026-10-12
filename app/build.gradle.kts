@@ -81,11 +81,8 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive-layout")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
-    // F20: secrets are sealed with tink-android; security-crypto stays only to read the old file once.
+    // F20: secrets are sealed with tink-android (security-crypto removed; no legacy read).
     implementation("com.google.crypto.tink:tink-android:1.15.0")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06") {
-        exclude(group = "com.google.crypto.tink", module = "tink")
-    }
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
