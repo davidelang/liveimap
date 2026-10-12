@@ -55,12 +55,12 @@ class AccountDataTest {
         val c = ManagedAccount("c", mapOf(userAccountId to "c"), "")
         val migrated = ManagedAccount(
             "b",
-            mapOf(userAccountId to "b", userMigratedFrom to "datastore-v1"),
+            mapOf(userAccountId to "b"),
             "",
         )
         val removeSelected = accountRemoval(listOf(c, migrated, a), "a", "a")
         assertTrue(removeSelected.remove)
-        assertEquals("b", removeSelected.selectedId)
+        assertEquals("c", removeSelected.selectedId) // first remaining; no migrated-account preference
     }
 
     @Test
