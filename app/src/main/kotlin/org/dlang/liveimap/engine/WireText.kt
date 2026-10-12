@@ -38,7 +38,7 @@ fun requireSearchArgument(kind: String, argument: String): String {
     if (kind == "Advanced") {
         val parsed = parseAdvancedQuery(argument)
         parsed?.steps?.forEach { step ->
-            if (step.argument.contains('\r')) throw MailFailure("text with a line break cannot be sent to the server")
+            if (step.argument.contains('\r') || step.argument.contains('\u0000')) throw MailFailure("text with a line break cannot be sent to the server")
             if (step.kind in keywordKinds && !flagAtomOk(step.argument)) throw MailFailure("not a valid IMAP keyword")
         }
     }

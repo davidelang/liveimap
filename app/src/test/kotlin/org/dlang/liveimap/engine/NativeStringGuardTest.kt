@@ -57,4 +57,17 @@ class NativeStringGuardTest {
         assertTrue(!src.contains("if (authPass.empty()) authPass = session->password;"))
         assertTrue(src.contains("const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);"))
     }
+
+    /** F97 reserve, F100 empty user, F94 deferred delete waits, F42 native backstops. */
+    @Test fun pass4NativeGuards() {
+        val src = File("src/main/cpp/liveimap_jni.cpp").readText()
+        assertTrue(src.contains("out.reserve(static_cast<size_t>(length) * 4u + 1u);"))
+        val login = src.substringAfter("bool loginImap(JNIEnv * env, mailimap * imap").substringBefore("\n}\n")
+        assertTrue(login.contains("*error = \"user name is empty\";"))
+        assertTrue(!login.contains("name[0] != '\\0') {"))
+        assertTrue(login.contains("!wireOk(name)"))
+        val watchExit = src.substringAfter("if (session->deleteAfterWatch) {").substringBefore("delete session;")
+        assertTrue(watchExit.contains("while (session->users.load() > 0)"))
+        assertTrue(src.substringAfter("bool selectMailbox(JNIEnv * env, LiveSession * session").substringBefore("int r;").contains("wireOk(mailbox)"))
+    }
 }

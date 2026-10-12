@@ -693,6 +693,7 @@ class LibetpanMailSession : MailSession {
     ): List<MailboxUids> = keeper.read("search") {
         if (kind != "Advanced") throw MailFailure("search failed")
         if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
+        requireWireText(home)  // F42: the scope home folder goes out as a quoted string too
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -719,6 +720,7 @@ class LibetpanMailSession : MailSession {
     ): Int = keeper.read("search") {
         if (kind != "Advanced") throw MailFailure("search failed")
         if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
+        requireWireText(home)  // F42: the scope home folder goes out as a quoted string too
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")

@@ -1154,7 +1154,7 @@ private fun decodeQEncoding(data: String, charset: Charset): String {
             i++
         } else if (ch == '=' && i + 2 < data.length) {
             val hex = data.substring(i + 1, i + 3)
-            val value = hex.toIntOrNull(16)
+            val value = hexByteOrNull(hex)
             if (value != null) {
                 out.write(value)
                 i += 3
@@ -1203,7 +1203,7 @@ private fun decodeQuotedPrintable(bytes: ByteArray): ByteArray {
             }
             if (i + 2 < bytes.size) {
                 val hex = bytes.copyOfRange(i + 1, i + 3).toString(Charsets.US_ASCII)
-                val value = hex.toIntOrNull(16)
+                val value = hexByteOrNull(hex)
                 if (value != null) {
                     out.write(value)
                     i += 3
@@ -1334,4 +1334,12 @@ fun withSignature(body: String, block: String, atBottom: Boolean, cursorAtTop: B
     if (block.isEmpty() || body.contains(block)) return body
     if (atBottom || !cursorAtTop) return if (body.isEmpty()) "\n\n$block" else body.trimEnd('\n') + "\n\n" + block
     return "\n\n$block\n\n" + body.trimStart('\n')
+}
+
+/** F80: exactly two hex digits; toIntOrNull(16) would also take "-1" (0xFF) or "+F" as an escape. */
+fun hexByteOrNull(hex: String): Int? {
+    if (hex.length != 2) return null
+    fun d(c: Char) = when (c) { in '0'..'9' -> c - '0'; in 'a'..'f' -> c - 'a' + 10; in 'A'..'F' -> c - 'A' + 10; else -> -1 }
+    val hi = d(hex[0]); val lo = d(hex[1])
+    return if (hi < 0 || lo < 0) null else hi * 16 + lo
 }

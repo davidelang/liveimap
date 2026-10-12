@@ -1474,7 +1474,7 @@ private fun percentDecode(value: String): String {
         if (c == '%') {
             if (i + 2 >= value.length) throw IllegalArgumentException("bad encoding")
             val hex = value.substring(i + 1, i + 3)
-            val byte = hex.toIntOrNull(16) ?: throw IllegalArgumentException("bad encoding")
+            val byte = org.dlang.liveimap.ui.compose.hexByteOrNull(hex) ?: throw IllegalArgumentException("bad encoding")
             out.add(byte.toByte())
             i += 3
         } else if (c.code.isUnreserved()) {

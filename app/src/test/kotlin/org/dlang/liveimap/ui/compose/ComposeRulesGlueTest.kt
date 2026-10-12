@@ -99,6 +99,9 @@ class CrossAccountTest {
         assertEquals(null, p("List-Post: <mailto:nodomain>"))
         assertEquals("list+post@x", p("List-Post: <mailto:list+post@x>"))
         assertEquals("dev@lists.x", p("List-Post: <mailto:dev%40lists.x>"))
+        // F95: an escaped comma cannot smuggle a second recipient
+        assertEquals(null, p("List-Post: <mailto:list@example.org%2C%20attacker@evil.example>"))
+        assertEquals(null, p("List-Post: =?utf-8?Q?<mailto:a@x>?="))
     }
 
     @Test

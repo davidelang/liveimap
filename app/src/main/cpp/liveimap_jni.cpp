@@ -1514,7 +1514,12 @@ int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, 
 int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
     uint64_t knownModseq, uint64_t * modseq, const char * command);
 
+bool wireOk(const char * text);
 bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bool readWrite) {
+    if (!wireOk(mailbox)) {  // F42 native backstop (also covers nativeFetchIndex's own re-select)
+        throwFailure(env, "text with a line break cannot be sent to the server");
+        return false;
+    }
     int r;
     uint64_t mod = 0;
     const char * command = readWrite ? "SELECT" : "EXAMINE";
@@ -2158,6 +2163,8 @@ void watchMain(LiveSession * session) {
         if (session->selfGlobal != nullptr && attached != nullptr) attached->DeleteGlobalRef(session->selfGlobal);
         session->selfGlobal = nullptr;
         gVm->DetachCurrentThread();
+        // F94: a thread that took a use count before freeSession may still be about to unlock / release it.
+        while (session->users.load() > 0) std::this_thread::yield();
         delete session;
         return;
     }
@@ -2796,6 +2803,15 @@ std::string saslClientMechs() {
     return out.empty() ? "none" : out;
 }
 
+/* F42 native backstop: text sent as an IMAP quoted string / atom must not carry CR or LF (NUL ends a C string). */
+bool wireOk(const char * text) {
+    if (text == nullptr) return true;
+    for (const char * p = text; *p != 0; ++p) {
+        if (*p == '\r' || *p == '\n') return false;
+    }
+    return true;
+}
+
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
     const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk,
     const std::string & forced) {
@@ -2892,7 +2908,17 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
             return false;
         }
     }
-    if (!tls && !plaintextOk && mechanism.empty() && name[0] != '\0') {
+    // F100: an empty user never skips the guard (LOGIN "" "<password>" would go out in clear) and never logs in.
+    // F42: libetpan quotes LOGIN arguments without escaping CR/LF; a line break would end the command.
+    if (!wireOk(name) || (password != nullptr && !wireOk(password))) {
+        *error = "user name or password contains a line break";
+        return false;
+    }
+    if (name[0] == '\0' && mechanism != "EXTERNAL") {
+        *error = "user name is empty";
+        return false;
+    }
+    if (!tls && !plaintextOk && mechanism.empty()) {
         *error = "plaintext login needs confirmation";
         return false;
     }
@@ -2913,7 +2939,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         // Sent directly: Cyrus's client EXTERNAL fails locally here. Empty authzid ("="): the server takes
         // the identity from the verified client certificate.
         r = authenticateExternal(imap);
-    } else if (mechanism.empty() || name[0] == '\0') {
+    } else if (mechanism.empty()) {
         r = mailimap_login(imap, user, password);
     } else {
         // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
@@ -4326,6 +4352,7 @@ int sendEsearchIn(mailimap * imap, const char * scopeName, const char * home, co
     bool subtree = false;
     if (!scopeSource(scopeName, &source, &subtree)) return MAILIMAP_ERROR_INVAL;
     if (subtree && (home == nullptr || home[0] == 0)) return MAILIMAP_ERROR_INVAL;
+    if (!wireOk(home)) return MAILIMAP_ERROR_INVAL;  // F42 native backstop
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
     r = sendWord(imap->imap_stream, "ESEARCH", false);
@@ -5124,7 +5151,8 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
     if (chars == nullptr) return std::string();
     jsize length = env->GetStringLength(value);
     std::string out;
-    out.reserve(static_cast<size_t>(length));
+    // F97: worst case up front (4 bytes per UTF-16 unit), so a password never reallocates and leaves an unwiped copy.
+    out.reserve(static_cast<size_t>(length) * 4u + 1u);
     for (jsize i = 0; i < length; ++i) {
         uint32_t cp = chars[i];
         if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length) {

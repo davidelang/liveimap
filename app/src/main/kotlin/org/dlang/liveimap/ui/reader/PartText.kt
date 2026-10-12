@@ -211,7 +211,7 @@ private fun splitQuotedPrintable(bytes: ByteArray): Pair<ByteArray, ByteArray> {
         }
         if (i + 2 >= bytes.size) break
         val hex = bytes.copyOfRange(i + 1, i + 3).toString(Charsets.US_ASCII)
-        if (hex.toIntOrNull(16) != null) {
+        if (org.dlang.liveimap.ui.compose.hexByteOrNull(hex) != null) {
             i += 3
             safe = i
         } else {

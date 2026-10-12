@@ -392,7 +392,8 @@ fun headerNames(list: String): List<String> =
 
 /** RFC 2369 List-Post mailto address, or null (absent, "NO", or not mailto). */
 fun listPostAddress(message: ParsedRfc822): String? {
-    val value = headerValues(message, "List-Post").firstOrNull()?.trim() ?: return null
+    // F95: the header as sent; encoded words are never decoded into an address.
+    val value = message.headers.firstOrNull { it.name.equals("List-Post", ignoreCase = true) }?.raw?.trim() ?: return null
     val m = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE).find(value) ?: return null
     // F59: RFC 3986 percent-decoding by hand: no '+' to space, a bad escape gives null (not a crash), and the
     // result must be a plain addr-spec that can go raw into RCPT TO (no CR/LF or other controls).
