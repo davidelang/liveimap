@@ -758,8 +758,7 @@ private fun writeAndroidContacts(
     for (entry in entries) {
         if (entry.group || !entry.changed) continue
         val rawId = if (entry.rawId > 0L) {
-            clearMappedRows(resolver, entry.rawId)
-            insertMappedRows(resolver, entry.rawId, entry)
+            updateMappedRows(resolver, entry.rawId, entry)
             entry.rawId
         } else {
             insertRawContact(resolver, accountType, accountName, entry)
@@ -788,17 +787,24 @@ private fun insertRawContact(
     accountName: String,
     entry: CopyContact,
 ): Long {
+    // One atomic batch: the raw contact and its rows, or nothing (F26).
     val values = ContentValues()
     putAccount(values, ContactsContract.RawContacts.ACCOUNT_TYPE, ContactsContract.RawContacts.ACCOUNT_NAME, accountType, accountName)
-    val uri = resolver.insert(ContactsContract.RawContacts.CONTENT_URI, values) ?: return 0L
-    val rawId = ContentUris.parseId(uri)
-    insertMappedRows(resolver, rawId, entry)
-    return rawId
+    val ops = arrayListOf(
+        android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI).withValues(values).build(),
+    )
+    ops += mappedRowOps(entry, existing = emptyList(), rawId = null)
+    val results = resolver.applyBatch(ContactsContract.AUTHORITY, ops)
+    val uri = results.firstOrNull()?.uri ?: return 0L
+    return ContentUris.parseId(uri)
 }
 
-private fun clearMappedRows(resolver: ContentResolver, rawId: Long) {
-    resolver.delete(
+/** Existing name/nickname/email/note rows of one raw contact: (row id, mimetype, data1). */
+private fun mappedRows(resolver: ContentResolver, rawId: Long): List<Triple<Long, String, String>> {
+    val out = ArrayList<Triple<Long, String, String>>()
+    resolver.query(
         ContactsContract.Data.CONTENT_URI,
+        arrayOf(ContactsContract.Data._ID, ContactsContract.Data.MIMETYPE, ContactsContract.Data.DATA1),
         "${ContactsContract.Data.RAW_CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE} IN (?,?,?,?)",
         arrayOf(
             rawId.toString(),
@@ -807,51 +813,82 @@ private fun clearMappedRows(resolver: ContentResolver, rawId: Long) {
             ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
             ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE,
         ),
-    )
+        null,
+    )?.use { c ->
+        while (c.moveToNext()) out += Triple(c.getLong(0), c.getString(1).orEmpty(), c.getString(2).orEmpty())
+    }
+    return out
 }
 
-private fun insertMappedRows(resolver: ContentResolver, rawId: Long, entry: CopyContact) {
+/**
+ * F26: update an existing contact in place, in one atomic batch. Name, nickname and note rows are updated
+ * (so fields the copy does not model, such as prefix or phonetic names, stay); emails the copy keeps are left
+ * untouched (type and label stay), new ones are added, and only emails the copy dropped are removed.
+ */
+private fun updateMappedRows(resolver: ContentResolver, rawId: Long, entry: CopyContact) {
+    val ops = mappedRowOps(entry, mappedRows(resolver, rawId), rawId)
+    if (ops.isNotEmpty()) resolver.applyBatch(ContactsContract.AUTHORITY, ArrayList(ops))
+}
+
+private fun mappedRowOps(
+    entry: CopyContact,
+    existing: List<Triple<Long, String, String>>,
+    rawId: Long?,
+): List<android.content.ContentProviderOperation> {
+    val ops = ArrayList<android.content.ContentProviderOperation>()
+    fun insert(mime: String, fill: ContentValues.() -> Unit) {
+        val values = ContentValues().apply { put(ContactsContract.Data.MIMETYPE, mime); fill() }
+        val b = android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        if (rawId == null) b.withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+        else values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+        ops += b.withValues(values).build()
+    }
+    fun update(id: Long, values: ContentValues) {
+        ops += android.content.ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+            .withSelection("${ContactsContract.Data._ID}=?", arrayOf(id.toString()))
+            .withValues(values).build()
+    }
+    fun first(mime: String) = existing.firstOrNull { it.second == mime }
+    val nameMime = ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE
     if (entry.displayName.isNotEmpty() || entry.givenName.isNotEmpty() || entry.familyName.isNotEmpty()) {
         val values = ContentValues()
-        values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
-        values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-        if (entry.displayName.isNotEmpty()) {
-            values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, entry.displayName)
+        if (entry.displayName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, entry.displayName)
+        if (entry.givenName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, entry.givenName)
+        if (entry.familyName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, entry.familyName)
+        val row = first(nameMime)
+        if (row != null) update(row.first, values) else insert(nameMime) { putAll(values) }
+    }
+    val nickMime = ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE
+    if (entry.nickname.isNotEmpty() && existing.none { it.second == nickMime && it.third == entry.nickname }) {
+        val row = first(nickMime)
+        val values = ContentValues().apply { put(ContactsContract.CommonDataKinds.Nickname.NAME, entry.nickname) }
+        if (row != null) update(row.first, values) else insert(nickMime) { putAll(values) }
+    }
+    val emailMime = ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE
+    val wanted = entry.emails.filter { it.isNotEmpty() }
+    val wantedLower = wanted.map { it.lowercase() }.toSet()
+    val have = existing.filter { it.second == emailMime }
+    for (row in have) {
+        if (row.third.lowercase() !in wantedLower) {
+            ops += android.content.ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+                .withSelection("${ContactsContract.Data._ID}=?", arrayOf(row.first.toString())).build()
         }
-        if (entry.givenName.isNotEmpty()) {
-            values.put(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, entry.givenName)
+    }
+    val haveLower = have.map { it.third.lowercase() }.toMutableSet()
+    for (email in wanted) {
+        if (!haveLower.add(email.lowercase())) continue
+        insert(emailMime) {
+            put(ContactsContract.CommonDataKinds.Email.ADDRESS, email)
+            put(ContactsContract.CommonDataKinds.Email.TYPE, ContactsContract.CommonDataKinds.Email.TYPE_OTHER)
         }
-        if (entry.familyName.isNotEmpty()) {
-            values.put(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, entry.familyName)
-        }
-        resolver.insert(ContactsContract.Data.CONTENT_URI, values)
     }
-    if (entry.nickname.isNotEmpty()) {
-        val values = ContentValues()
-        values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
-        values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE)
-        values.put(ContactsContract.CommonDataKinds.Nickname.NAME, entry.nickname)
-        resolver.insert(ContactsContract.Data.CONTENT_URI, values)
+    val noteMime = ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE
+    if (entry.note.isNotEmpty() && existing.none { it.second == noteMime && it.third == entry.note }) {
+        val row = first(noteMime)
+        val values = ContentValues().apply { put(ContactsContract.CommonDataKinds.Note.NOTE, entry.note) }
+        if (row != null) update(row.first, values) else insert(noteMime) { putAll(values) }
     }
-    for (email in entry.emails) {
-        if (email.isEmpty()) continue
-        val values = ContentValues()
-        values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
-        values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
-        values.put(ContactsContract.CommonDataKinds.Email.ADDRESS, email)
-        values.put(
-            ContactsContract.CommonDataKinds.Email.TYPE,
-            ContactsContract.CommonDataKinds.Email.TYPE_OTHER,
-        )
-        resolver.insert(ContactsContract.Data.CONTENT_URI, values)
-    }
-    if (entry.note.isNotEmpty()) {
-        val values = ContentValues()
-        values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
-        values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE)
-        values.put(ContactsContract.CommonDataKinds.Note.NOTE, entry.note)
-        resolver.insert(ContactsContract.Data.CONTENT_URI, values)
-    }
+    return ops
 }
 
 private fun insertGroup(
@@ -868,6 +905,16 @@ private fun insertGroup(
 }
 
 private fun insertMembership(resolver: ContentResolver, rawId: Long, groupId: Long) {
+    // No duplicate memberships (F26).
+    val exists = resolver.query(
+        ContactsContract.Data.CONTENT_URI,
+        arrayOf(ContactsContract.Data._ID),
+        "${ContactsContract.Data.RAW_CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE}=? AND " +
+            "${ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID}=?",
+        arrayOf(rawId.toString(), ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE, groupId.toString()),
+        null,
+    )?.use { it.moveToFirst() } ?: false
+    if (exists) return
     val values = ContentValues()
     values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
     values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
