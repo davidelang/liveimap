@@ -294,6 +294,9 @@ struct LiveSession {
     int watchWakeFd = -1;
     // F35: the session was freed from its own watch thread; watchMain deletes it on the way out.
     bool deleteAfterWatch = false;
+    // F27: callers between the gLiveMu lookup and their own unlock; freeSession waits for them.
+    std::atomic<int> users{0};
+    bool closed = false;  // under mu
     std::vector<uint32_t> copiedUids;
     int64_t esearchCount = -1;
 };
@@ -696,20 +699,32 @@ bool cmdOk(int r) {
     return r == MAILIMAP_NO_ERROR;
 }
 
+// F27: look the session up under gLiveMu and take a use count, then wait for its own mutex with gLiveMu
+// released, so one slow session (connect, IDLE start, big fetch) no longer stalls every other account.
 LiveSession * lockSession(JNIEnv * env, jlong handle) {
-    std::lock_guard<std::mutex> lock(gLiveMu);
     auto * session = reinterpret_cast<LiveSession *>(handle);
-    if (gLive.find(session) == gLive.end()) {
+    {
+        std::lock_guard<std::mutex> lock(gLiveMu);
+        if (gLive.find(session) == gLive.end()) {
+            throwFailure(env, "not connected");
+            return nullptr;
+        }
+        session->users.fetch_add(1);
+    }
+    session->mu.lock();
+    if (session->closed) {
+        session->mu.unlock();
+        session->users.fetch_sub(1);
         throwFailure(env, "not connected");
         return nullptr;
     }
-    session->mu.lock();
     return session;
 }
 
 void unlockSession(LiveSession * session) {
     if (session != nullptr) {
         session->mu.unlock();
+        session->users.fetch_sub(1);
     }
 }
 
@@ -3028,9 +3043,10 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
 void freeSession(LiveSession * session, JNIEnv * env) {
     {
         std::lock_guard<std::mutex> lock(gLiveMu);
-        gLive.erase(session);
+        if (gLive.erase(session) == 0) return;  // already freed by a concurrent close
     }
     session->mu.lock();
+    session->closed = true;
     if (tlsWatch != session) {
         stopWatchLocked(session, env);
     } else {
@@ -3046,6 +3062,8 @@ void freeSession(LiveSession * session, JNIEnv * env) {
     flushTrafficTail(session);
     session->mu.unlock();
     if (tlsWatch != session) {
+        // Callers that looked the session up before the erase still hold a use count: let them see `closed`.
+        while (session->users.load() > 0) std::this_thread::yield();
         delete session;
     }
 }

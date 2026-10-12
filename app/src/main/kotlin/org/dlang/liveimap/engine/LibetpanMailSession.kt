@@ -1403,10 +1403,11 @@ class LibetpanMailSession : MailSession {
             System.loadLibrary("liveimap")
         }
 
-        /** IDLE is renewed (DONE + IDLE) after this many seconds; 0 restores the default (9 min). Lab hook. */
+        /** IDLE poll backstop in ms (F38; account setting idleWakeSeconds). */
         @JvmStatic
         external fun nativeSetWatchWakeMillis(millis: Int)
 
+        /** IDLE is renewed (DONE + IDLE) after this many seconds; 0 restores the default (9 min). Lab hook. */
         @JvmStatic
         external fun nativeSetIdleRenewSeconds(seconds: Int)
 
