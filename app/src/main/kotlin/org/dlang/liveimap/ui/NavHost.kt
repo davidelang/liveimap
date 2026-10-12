@@ -992,9 +992,9 @@ fun LiveImapNavHost() {
                                 mailScreenInsets().only(
                                     WindowInsetsSides.Vertical + WindowInsetsSides.Start,
                                 ),
-                            )
-                            .verticalScroll(rememberScrollState()),
+                            ),
                     ) {
+                        // drawerSheet scrolls itself; a second verticalScroll here crashed pane mode.
                         drawerSheet()
                     }
                 },
