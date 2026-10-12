@@ -266,14 +266,18 @@ val defaultReaderBar: List<ReaderAction> = listOf(
 
 const val pineSourceId: String = "pine"
 
+/** Auto: chosen from the screen's size in dp and inches ([autoPaneCount]); the default for new accounts. */
 enum class MultiPane {
     Off,
     Wide,
+    Auto,
 }
 
 enum class LayoutChoice {
     Off,
     On,
+    /** Folder pane only: shown when [autoPaneCount] gives three panes. Elsewhere it counts as Off. */
+    Auto,
 }
 
 enum class DeletePolicy {
@@ -421,8 +425,9 @@ data class AccountSettings(
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
     val quellFlowed: Boolean = false,
-    val multiPane: MultiPane = MultiPane.Off,
-    val folderPane: LayoutChoice = LayoutChoice.Off,
+    // New accounts: Auto. A stored account without the key keeps Off (existing settings never change).
+    val multiPane: MultiPane = MultiPane.Auto,
+    val folderPane: LayoutChoice = LayoutChoice.Auto,
     val foldPosture: LayoutChoice = LayoutChoice.Off,
     val fullScreen: Boolean = false,
     val sieveHost: String = "",
@@ -1424,4 +1429,22 @@ fun clampTextZoom(percent: Int): Int = percent.coerceIn(MinTextZoom, MaxTextZoom
 fun effectiveTextZoom(setting: Int, pinch: Float): Int {
     val p = if (pinch.isNaN() || pinch <= 0f) 1f else pinch
     return clampTextZoom(Math.round(clampTextZoom(setting) * p))
+}
+
+/** Phones and narrow windows: one pane. */
+const val TwoPaneMinWidthDp = 840
+const val TwoPaneMinSmallestDp = 600
+/** Three panes (folders + list + reader) only on very large landscape screens. */
+const val ThreePaneMinWidthDp = 1200
+const val ThreePaneMinDiagonalIn = 12.0
+
+/**
+ * Default pane count from the window width and the screen's smallest width (dp, density-independent) and its
+ * physical diagonal (inches): 1 below a tablet-sized, at least 840 dp wide window; 3 when 1200 dp or wider on a
+ * screen of 12 inches or more; else 2.
+ */
+fun autoPaneCount(widthDp: Int, smallestWidthDp: Int, diagonalInches: Double): Int {
+    if (smallestWidthDp < TwoPaneMinSmallestDp || widthDp < TwoPaneMinWidthDp) return 1
+    if (widthDp >= ThreePaneMinWidthDp && diagonalInches >= ThreePaneMinDiagonalIn) return 3
+    return 2
 }

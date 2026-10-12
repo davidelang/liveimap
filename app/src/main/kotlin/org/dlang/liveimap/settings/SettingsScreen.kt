@@ -1713,7 +1713,7 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
             }
             ChoiceField(
                 stringResource(R.string.settings_fold_posture),
-                LayoutChoice.entries,
+                listOf(LayoutChoice.Off, LayoutChoice.On),
                 settings.foldPosture,
                 { layoutChoiceName(it) },
             ) {
@@ -2487,6 +2487,7 @@ private fun multiPaneName(mode: MultiPane): String = stringResource(
     when (mode) {
         MultiPane.Off -> R.string.settings_multi_pane_off
         MultiPane.Wide -> R.string.settings_multi_pane_wide
+        MultiPane.Auto -> R.string.settings_pane_auto
     },
 )
 
@@ -2495,12 +2496,13 @@ private fun layoutChoiceName(choice: LayoutChoice): String = stringResource(
     when (choice) {
         LayoutChoice.Off -> R.string.settings_multi_pane_off
         LayoutChoice.On -> R.string.settings_multi_pane_wide
+        LayoutChoice.Auto -> R.string.settings_pane_auto
     },
 )
 
 @Composable
 private fun layoutOffOn(settings: AccountSettings): String = stringResource(
-    if (
+    if (settings.multiPane == MultiPane.Auto) R.string.settings_pane_auto else if (
         settings.multiPane == MultiPane.Off &&
         settings.folderPane == LayoutChoice.Off &&
         settings.foldPosture == LayoutChoice.Off &&

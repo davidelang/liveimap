@@ -335,13 +335,13 @@ fun encodePinerc(settings: AccountSettings): String {
     ) {
         lines.add("# toolbar")
     }
-    if (settings.folderPane != LayoutChoice.Off ||
+    if ((settings.folderPane != LayoutChoice.Off && settings.folderPane != LayoutChoice.Auto) ||
         settings.foldPosture != LayoutChoice.Off ||
         settings.fullScreen
     ) {
         lines.add("# layout")
     }
-    if (settings.multiPane != MultiPane.Off) lines.add("# multi-pane")
+    if (settings.multiPane != MultiPane.Off && settings.multiPane != MultiPane.Auto) lines.add("# multi-pane")
     if (settings.emailSubmission) lines.add("# JMAP")
     if (settings.sieveHost.isNotEmpty() ||
         settings.sievePort != 4190 ||
