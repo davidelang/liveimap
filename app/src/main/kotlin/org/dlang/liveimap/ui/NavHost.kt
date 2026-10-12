@@ -1501,9 +1501,10 @@ private fun DragSplit(
                         leading()
                     }
                 }
+                // A collapsed pane (e.g. the hidden drawer) leaves only a 1 dp line; the drag target stays.
                 Box(
                     Modifier
-                        .width(8.dp)
+                        .width(if (width > 0.dp) 8.dp else 1.dp)
                         .fillMaxHeight()
                         .background(MaterialTheme.colorScheme.outlineVariant),
                 )
@@ -1566,7 +1567,7 @@ private fun StackSplit(
                 }
                 Box(
                     Modifier
-                        .height(8.dp)
+                        .height(if (height > 0.dp) 8.dp else 1.dp)
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.outlineVariant),
                 )
