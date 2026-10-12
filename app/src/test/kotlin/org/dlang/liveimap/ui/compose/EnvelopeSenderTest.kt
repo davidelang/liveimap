@@ -60,7 +60,9 @@ class EncodedAddressTest {
         val m = parsed("Reply-To: <=?utf-8?q?me@example.com=0D=0ARCPT_TO:=3Cspy@evil=3E?=>")
         val rcpts = envelopeRecipients(addresses(m, "Reply-To"), emptyList(), emptyList())
         org.junit.Assert.assertTrue(rcpts.none { it.contains('\r') || it.contains('\n') })
-        org.junit.Assert.assertFalse(rcpts.all(::envelopeAddressOk))
+        // The encoded word stays as sent: one bogus but harmless recipient, never a second SMTP command.
+        org.junit.Assert.assertEquals(1, rcpts.size)
+        org.junit.Assert.assertTrue(rcpts[0], rcpts[0].startsWith("=?utf-8?q?"))
     }
 
     @org.junit.Test fun encodedCommaDoesNotSplit() {
