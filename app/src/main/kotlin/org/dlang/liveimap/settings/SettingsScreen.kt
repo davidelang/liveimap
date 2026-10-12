@@ -1732,6 +1732,18 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
                 editor.persist(editor.settings.copy(paneArrangement = it))
             }
             ChoiceField(
+                stringResource(R.string.settings_folder_position),
+                FolderPositionChoice.entries,
+                settings.folderPosition,
+                { stringResource(when (it) {
+                    FolderPositionChoice.Auto -> R.string.settings_pane_auto
+                    FolderPositionChoice.Beside -> R.string.settings_folder_beside
+                    FolderPositionChoice.AboveList -> R.string.settings_folder_above
+                }) },
+            ) {
+                editor.persist(editor.settings.copy(folderPosition = it))
+            }
+            ChoiceField(
                 stringResource(R.string.settings_preview_size),
                 PreviewChoice.entries,
                 settings.previewSize,

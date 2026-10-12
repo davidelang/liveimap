@@ -256,6 +256,9 @@
     <string name="settings_preview_none">None</string>
     <string name="settings_preview_small">Small</string>
     <string name="settings_preview_large">Large</string>
+    <string name="settings_folder_position">Folder pane position</string>
+    <string name="settings_folder_beside">Own column</string>
+    <string name="settings_folder_above">Above the list</string>
     <string name="settings_pane_auto">Automatic (by screen size)</string>
     <string name="settings_text_size">Message text size</string>
     <string name="reader_original_colors">Original colors</string>

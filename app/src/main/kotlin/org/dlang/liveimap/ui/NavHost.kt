@@ -143,6 +143,12 @@ fun LiveImapNavHost() {
     )
     // Folders above the list (left column) is planned but not rendered yet; that plan uses two panes for now.
     val autoPanes = if (autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.Beside) 3 else minOf(autoLayout.panes, 2)
+    var folderPosition by remember { mutableStateOf(org.dlang.liveimap.settings.FolderPositionChoice.Beside) }
+    val foldersAbove = useFolderPane(folderPane, 3) &&
+        (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.AboveList ||
+            (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.Auto &&
+                autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)) &&
+        (folderPane != LayoutChoice.Auto || autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)
     val stackedNow = arrangement == ArrangementChoice.Stacked ||
         (arrangement == ArrangementChoice.Auto && autoLayout.arrangement == PaneArrangement.Stacked)
     val split = useMultiPane(multiPane, autoPanes)
@@ -257,6 +263,7 @@ fun LiveImapNavHost() {
         folderPane = account.folderPane
         textZoom = account.readerTextZoom
         arrangement = account.paneArrangement
+        folderPosition = account.folderPosition
         foldPosture = account.foldPosture
         accounts = store.listAccounts()
         drawerAccounts = store.listDrawerAccounts()
@@ -291,6 +298,28 @@ fun LiveImapNavHost() {
     }
 
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
+    val folderListPane: @Composable () -> Unit = {
+                    FolderListScreen(
+                        onOpenMailbox = { mailbox ->
+                            navController.navigate("index/${Uri.encode(mailbox)}")
+                        },
+                        onCompose = { seed ->
+                            composeKindName.value = seed.kind.name
+                            composeMailbox.value = seed.mailbox.orEmpty()
+                            composeUids.value = seed.uids.joinToString(",")
+                            composeUnsentId.value = ""
+                            composeRetryOnOpen.value = false
+                            navController.navigate("compose")
+                        },
+                        onOpenUnsent = { navController.navigate("unsent") },
+                        onOpenHelp = { navController.navigate("help") },
+                        onCustomize = { navController.navigate("toolbar/folders") },
+                        focusMailbox = focusMailbox.value,
+                        focusToken = focusToken.value,
+                        onOpenDrawer = openDrawerState.value,
+                    )
+    }
+    val foldersAboveNow = rememberUpdatedState(foldersAbove)
     val navGraph: NavGraphBuilder.() -> Unit = remember {
         {
             fun openCompose(seed: ComposeSeed) {
@@ -453,7 +482,17 @@ fun LiveImapNavHost() {
                                 indexWidthDp = next.coerceAtLeast(0f)
                             }
                         },
-                        leading = { IndexBody(shownViewToken, watch = false) },
+                        leading = {
+                            if (foldersAboveNow.value) {
+                                Column(Modifier.fillMaxSize()) {
+                                    Box(Modifier.weight(0.35f).fillMaxWidth()) { folderListPane() }
+                                    Box(Modifier.height(8.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outlineVariant))
+                                    Box(Modifier.weight(0.65f).fillMaxWidth()) { IndexBody(shownViewToken, watch = false) }
+                                }
+                            } else {
+                                IndexBody(shownViewToken, watch = false)
+                            }
+                        },
                         trailing = {
                             key(paneUid) {
                                 MessageReaderScreen(
@@ -1006,7 +1045,7 @@ fun LiveImapNavHost() {
         }
     }
     LiveImapScaffold {
-        if (showFolderPane(folderPane, route, autoPanes)) {
+        if (!(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)) {
             AxisSplit(
                 axis = axis,
                 leadingDp = folderWidthDp,
@@ -1017,27 +1056,7 @@ fun LiveImapNavHost() {
                     val base = if (folderWidthDp < 0f) minOf(360f, span) else folderWidthDp
                     folderWidthDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
                 },
-                leading = {
-                    FolderListScreen(
-                        onOpenMailbox = { mailbox ->
-                            navController.navigate("index/${Uri.encode(mailbox)}")
-                        },
-                        onCompose = { seed ->
-                            composeKindName.value = seed.kind.name
-                            composeMailbox.value = seed.mailbox.orEmpty()
-                            composeUids.value = seed.uids.joinToString(",")
-                            composeUnsentId.value = ""
-                            composeRetryOnOpen.value = false
-                            navController.navigate("compose")
-                        },
-                        onOpenUnsent = { navController.navigate("unsent") },
-                        onOpenHelp = { navController.navigate("help") },
-                        onCustomize = { navController.navigate("toolbar/folders") },
-                        focusMailbox = focusMailbox.value,
-                        focusToken = focusToken.value,
-                        onOpenDrawer = openDrawerState.value,
-                    )
-                },
+                leading = { folderListPane() },
                 trailing = { DrawerScaffold() },
             )
         } else {
