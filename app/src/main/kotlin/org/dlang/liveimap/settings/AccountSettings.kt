@@ -712,7 +712,8 @@ fun AccountSettings.encode(): String = buildString {
     if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
     if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
-    if (nonAsciiDisplay != NonAsciiDisplay.HighlightSuspicious) appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
+    // Always written: the one-time look-alike migration keys off its presence.
+    appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
@@ -1496,4 +1497,15 @@ fun noTlsWarning(settings: AccountSettings): Int? = when {
     settings.tlsMode != TlsMode.None -> null
     settings.allowPlaintextAuth -> org.dlang.liveimap.R.string.settings_no_tls_password_warning
     else -> org.dlang.liveimap.R.string.settings_no_tls_warning
+}
+
+/**
+ * One-time look-alike migration (David, 2026-10-12): a stored account with no explicit
+ * nonAsciiDisplay line gets HighlightSuspicious written. Returns the new text, or null when the
+ * line is already there (so a later user choice, even Normal, is never overwritten).
+ */
+fun withExplicitNonAsciiDisplay(stored: String): String? {
+    if (stored.lineSequence().any { it.startsWith("nonAsciiDisplay=") }) return null
+    val body = if (stored.isEmpty() || stored.endsWith("\n")) stored else stored + "\n"
+    return body + "nonAsciiDisplay=${NonAsciiDisplay.HighlightSuspicious.name}\n"
 }
