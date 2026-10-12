@@ -609,15 +609,25 @@ private fun ComposeLoaded(
         }
     }
 
-    suspend fun sendSmtp(bytes: ByteArray, recipients: List<String>): ByteArray {
+    suspend fun sendSmtp(bytes: ByteArray, envelope: List<String>): ByteArray {
+        // IDN domains go as punycode; non-ASCII local parts need SMTPUTF8 (refused natively as "smtputf8").
+        val recipients = envelope.map(::asciiDomainAddress)
+        fun utf8Refused(error: MailFailure): Nothing =
+            throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
         try {
             session.smtpSend(bytes, recipients)
             return bytes
         } catch (error: MailFailure) {
+            if (error.text == "smtputf8") utf8Refused(error)
             if (error.text != "8bitmime") throw error
         }
         val rewritten = withoutEightBit(bytes)
-        session.smtpSend(rewritten, recipients)
+        try {
+            session.smtpSend(rewritten, recipients)
+        } catch (error: MailFailure) {
+            if (error.text == "smtputf8") utf8Refused(error)
+            throw error
+        }
         return rewritten
     }
 

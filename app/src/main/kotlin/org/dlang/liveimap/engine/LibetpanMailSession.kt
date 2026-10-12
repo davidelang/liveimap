@@ -314,7 +314,11 @@ class LibetpanMailSession : MailSession {
             "Condstore" -> nativeEnable(opened, "CONDSTORE")
         }
         // RFC 6855: UTF-8 mailbox names (and quoted strings) instead of modified UTF-7.
-        if (featureCaps.utf8Accept) nativeEnable(opened, "UTF8=ACCEPT")
+        utf8Names = false
+        if (featureCaps.utf8Accept) {
+            nativeEnable(opened, "UTF8=ACCEPT")
+            utf8Names = true
+        }
         if (featureCaps.compressDeflate && !account.logImapTraffic &&
             compressionWanted(account.compression, onCellular())
         ) {
@@ -434,7 +438,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun mailboxListed(name: String): Boolean = keeper.read("list") {
-        nativeMailboxListed(requireHandle(), name)
+        nativeMailboxListed(requireHandle(), wire(name))
     }
 
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
@@ -445,7 +449,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun select(mailbox: String): SelectResult = keeper.read("select") {
-        selectNow(mailbox)
+        selectNow(wire(mailbox))
     }
 
     override suspend fun unselect() {
@@ -564,7 +568,7 @@ class LibetpanMailSession : MailSession {
             nativeCopyThenDelete(
                 requireHandle(),
                 uids.toLongArray(),
-                targetMailbox,
+                wire(targetMailbox),
                 moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
             )
         }
@@ -578,7 +582,7 @@ class LibetpanMailSession : MailSession {
             nativeCopyThenDelete(
                 requireHandle(),
                 uids.toLongArray(),
-                targetMailbox,
+                wire(targetMailbox),
                 "Copy",
             )
         }
@@ -590,7 +594,7 @@ class LibetpanMailSession : MailSession {
             ensureReadWrite()
             nativeCopyAllThenDelete(
                 requireHandle(),
-                targetMailbox,
+                wire(targetMailbox),
                 moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
             )
         }
@@ -952,7 +956,7 @@ class LibetpanMailSession : MailSession {
         keeper.read("watch") {
             watchMailbox = mailbox
             watchCallback = onChange
-            nativeWatch(requireHandle(), mailbox)
+            nativeWatch(requireHandle(), wire(mailbox))
             noteTraffic("Idling")
         }
     }
@@ -1014,14 +1018,14 @@ class LibetpanMailSession : MailSession {
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
             forgetSelected()
-            nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
+            nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
         }
     }
 
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         keeper.write("append") {
             forgetSelected()
-            nativeAppend(requireHandle(), mailbox, rfc822, flags.toTypedArray())
+            nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
         }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
@@ -1115,7 +1119,7 @@ class LibetpanMailSession : MailSession {
         override fun rewatch() {
             val mailbox = watchMailbox ?: return
             if (watchCallback == null) return
-            nativeWatch(requireHandle(), mailbox)
+            nativeWatch(requireHandle(), wire(mailbox))
             noteTraffic("Idling")
         }
 
@@ -1210,6 +1214,13 @@ class LibetpanMailSession : MailSession {
 
     private external fun nativeCapabilityLine(handle: Long): String
     private external fun nativeEnable(handle: Long, capability: String)
+
+    /** True once UTF8=ACCEPT is on: mailbox names are UTF-8 on the wire (RFC 6855). */
+    @Volatile private var utf8Names = false
+
+    /** Saved names (Sent, Drafts, favorites…) from before the UTF-8 switch are mUTF-7; send them as UTF-8. */
+    private fun wire(name: String): String =
+        if (utf8Names) org.dlang.liveimap.ui.compose.Mutf7.savedForUtf8(name) else name
     private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?

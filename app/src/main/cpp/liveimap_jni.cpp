@@ -7695,6 +7695,36 @@ bool lineIs8bitCte(const char * line, size_t n) {
     return true;
 }
 
+// EHLO keyword (whole word after the 250- / 250 code libetpan strips), e.g. SMTPUTF8.
+bool smtpOffers(const char * response, const char * keyword) {
+    if (response == nullptr) return false;
+    size_t k = strlen(keyword);
+    const char * p = response;
+    while (*p != '\0') {
+        const char * line = p;
+        while (*p != '\0' && *p != '\n' && *p != '\r') p++;
+        size_t n = static_cast<size_t>(p - line);
+        while (*p == '\n' || *p == '\r') p++;
+        if (n >= k && strncasecmp(line, keyword, k) == 0 && (n == k || line[k] == ' ')) return true;
+    }
+    return false;
+}
+
+bool has8bit(const char * s, size_t n) {
+    for (size_t i = 0; i < n; ++i) if (static_cast<unsigned char>(s[i]) >= 0x80) return true;
+    return false;
+}
+
+// Header section only (up to the first empty line).
+bool headerHas8bit(const char * raw, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char c = static_cast<unsigned char>(raw[i]);
+        if (c >= 0x80) return true;
+        if (c == '\n' && (i + 1 < n) && (raw[i + 1] == '\n' || (raw[i + 1] == '\r' && i + 2 < n && raw[i + 2] == '\n'))) return false;
+    }
+    return false;
+}
+
 std::string smtpAuthOffered(const char * response) {
     std::string offered;
     if (response == nullptr) return offered;
@@ -7970,10 +8000,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
     }
     bool allow8bit = false;
+    bool smtpUtf8 = false;
     std::string offeredAuth;
     int r = mailesmtp_ehlo(smtp);
     if (r == MAILSMTP_NO_ERROR) {
         allow8bit = (smtp->esmtp & MAILSMTP_ESMTP_8BITMIME) != 0;
+        smtpUtf8 = smtpOffers(smtp->response, "SMTPUTF8");
         offeredAuth = smtpAuthOffered(smtp->response);
     } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||
         r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
@@ -8078,8 +8110,37 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
+    // RFC 6531: non-ASCII addresses or raw UTF-8 headers need SMTPUTF8; without it, refuse before MAIL FROM
+    // ("smtputf8") so the user is told instead of the server mangling or bouncing the message.
+    bool needUtf8 = has8bit(session->from.data(), session->from.size()) ||
+        (raw != nullptr && headerHas8bit(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg)));
+    {
+        jsize nr = recipients != nullptr ? env->GetArrayLength(recipients) : 0;
+        for (jsize i = 0; i < nr && !needUtf8; ++i) {
+            auto js = static_cast<jstring>(env->GetObjectArrayElement(recipients, i));
+            {
+                JChars rc(env, js);
+                if (rc.c() != nullptr && has8bit(rc.c(), strlen(rc.c()))) needUtf8 = true;
+            }
+            if (js != nullptr) env->DeleteLocalRef(js);
+        }
+    }
     if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
-    r = mailsmtp_mail(smtp, session->from.c_str());
+    if (needUtf8 && !smtpUtf8) {
+        mailsmtp_free(smtp);
+        throwFailure(env, "smtputf8");
+        unlockSession(session);
+        return;
+    }
+    if (needUtf8) {
+        std::string cmd = "MAIL FROM:<" + session->from + "> SMTPUTF8\r\n";
+        r = mailsmtp_send_command(smtp, const_cast<char *>(cmd.c_str()));
+        if (r == MAILSMTP_NO_ERROR) {
+            r = mailsmtp_read_response(smtp) == 250 ? MAILSMTP_NO_ERROR : MAILSMTP_ERROR_MAILBOX_UNAVAILABLE;
+        }
+    } else {
+        r = mailsmtp_mail(smtp, session->from.c_str());
+    }
     if (r != MAILSMTP_NO_ERROR) {
         std::string why = where + asciiSafe(smtp->response, "smtp error");
         mailsmtp_free(smtp);

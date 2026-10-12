@@ -432,6 +432,16 @@ Avoid:
 * `[plaintext]` in an address-book comment means "send plain text, not HTML, to
   this address".
 
+## UTF-8 safety
+
+- IMAP: with UTF8=ACCEPT enabled, mailbox names are UTF-8 on the wire; saved names from before the switch
+  (Sent, Drafts, favorites, postponed) are modified UTF-7 and are sent as their UTF-8 form when they are
+  strict mUTF-7 (stored settings are not rewritten). Without UTF8=ACCEPT names stay mUTF-7, which works on
+  every server. The app has no folder create/rename yet; `Mutf7.encode` is the encoder for it.
+- SMTP: IDN domains in envelope recipients are sent as punycode. A non-ASCII local part, sender or raw UTF-8
+  header needs SMTPUTF8: if EHLO offers it, MAIL FROM carries `SMTPUTF8`; if not, sending stops before MAIL FROM
+  with a message naming the addresses. 8-bit bodies without 8BITMIME are re-encoded (unchanged).
+
 ## Security: TLS and authentication
 
 * TLS mode and authentication are per-account settings, for IMAP, SMTP and
