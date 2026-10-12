@@ -62,6 +62,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
 
     override suspend fun smtpPassword(): String = store.smtpPassword()
 
+    suspend fun accountById(accountId: String): org.dlang.liveimap.accounts.AccountCredentials? = store.accountById(accountId)
+
     override suspend fun setSmtpPassword(value: String) = store.setSmtpPassword(value)
 
     override suspend fun listAccounts(): List<AccountChoice> = store.listAccounts()

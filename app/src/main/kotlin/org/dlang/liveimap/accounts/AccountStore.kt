@@ -104,6 +104,26 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Settings and passwords of one account by id, without selecting it: used when a sending rule routes a
+     * message through another account's servers. Null when there is no such account (multi-account store only).
+     */
+    suspend fun accountById(accountId: String): AccountCredentials? {
+        ensureMigrated()
+        return gate.withLock {
+            withContext(Dispatchers.IO) {
+                if (shouldUseLegacyLocked()) return@withContext null
+                val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId }
+                    ?: return@withContext null
+                val text = storedPreference(accountId) ?: return@withContext null
+                val settings = overlayAccountFields(decodeAccountSettings(text), account.userData)
+                val password = if (account.passwordSlot.isEmpty()) "" else cipher.decrypt(accountId, account.passwordSlot)
+                val smtp = secretPrefs.getString(smtpPasswordKeyFor(accountId), "") ?: ""
+                AccountCredentials(accountId, settings, password, smtp)
+            }
+        }
+    }
+
     suspend fun setSmtpPassword(value: String) {
         ensureMigrated()
         gate.withLock {
@@ -630,4 +650,14 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
         deleteUnsentAccount(appContext.filesDir, accountId)
     }
     File(appContext.cacheDir, "imap-traffic.log").delete()
+}
+
+/** One account's settings and secrets, for sending through it (see AccountStore.accountById). */
+class AccountCredentials(
+    val accountId: String,
+    val settings: AccountSettings,
+    val password: String,
+    val smtpPassword: String,
+) {
+    override fun toString(): String = "AccountCredentials($accountId)"
 }

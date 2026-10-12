@@ -369,3 +369,10 @@ fun dsnMask(mode: DsnMode): Int = when (mode) {
 /** Composer header list: comma or space separated names, e.g. "Reply-To, X-Priority". */
 fun headerNames(list: String): List<String> =
     list.split(',', ' ', '\n').map { it.trim().trimEnd(':') }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+
+/** RFC 2369 List-Post mailto address, or null (absent, "NO", or not mailto). */
+fun listPostAddress(message: ParsedRfc822): String? {
+    val value = headerValues(message, "List-Post").firstOrNull()?.trim() ?: return null
+    val m = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE).find(value) ?: return null
+    return java.net.URLDecoder.decode(m.groupValues[1], "UTF-8").trim().ifEmpty { null }
+}

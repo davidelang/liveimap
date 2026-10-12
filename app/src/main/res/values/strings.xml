@@ -331,9 +331,13 @@
     <string name="settings_rule_from">From address</string>
     <string name="settings_rule_reply_to">Reply-To</string>
     <string name="settings_rule_fcc">Fcc folder</string>
-    <string name="settings_rule_send_account">Send through account (id; empty = this account)</string>
+    <string name="settings_rule_send_account">Send through (SMTP and Fcc)</string>
+    <string name="settings_rule_send_this">This account</string>
+    <string name="settings_rule_reply_list">Reply to the list (List-Post)</string>
     <string name="compose_dsn_unsupported">The server doesn\'t offer delivery status notifications; sent without them.</string>
-    <string name="compose_send_account_unavailable">Rule “%1$s” sends through another account, which isn\'t supported yet. Not sent.</string>
+    <string name="compose_send_account_unavailable">Rule “%1$s” sends through an account that no longer exists. Not sent.</string>
+    <string name="compose_send_account_missing">The account this message is routed through no longer exists. Not sent.</string>
+    <string name="compose_send_account_failed">Could not connect to %1$s to send: %2$s</string>
     <string name="compose_from_mismatch">Sending rules expect From %1$s (rule “%2$s”). Tap Send again to send anyway.</string>
     <string name="compose_from_change">Change</string>
     <string name="compose_from_by_rule">by rule “%1$s”</string>

@@ -122,9 +122,18 @@ class LibetpanMailSession : MailSession {
         keeper.suspendConnections()
     }
 
+    /** Set by openWith: this session belongs to a non-selected account, so its own secrets are used. */
+    @Volatile
+    private var credentials: org.dlang.liveimap.accounts.AccountCredentials? = null
+
+    override suspend fun openWith(credentials: org.dlang.liveimap.accounts.AccountCredentials): OpenResult {
+        this.credentials = credentials
+        return open(credentials.settings)
+    }
+
     override suspend fun open(account: AccountSettings): OpenResult {
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
-        val password = LabTestHooks.passwordFor(account.imapHost) ?: try {
+        val password = LabTestHooks.passwordFor(account.imapHost) ?: credentials?.password ?: try {
             DataStoreSettingsStore(context).password()
         } catch (error: Exception) {
             return OpenResult.Failed(error.message ?: "keystore unavailable")
@@ -171,7 +180,7 @@ class LibetpanMailSession : MailSession {
                     host = account.imapHost,
                     port = account.imapPort,
                 )
-                if (confirm(prompt)) {
+                if (credentials == null && confirm(prompt)) {
                     val pinned = account.copy(certPin = prompt.fingerprint)
                     val text = opened.text
                     try {
@@ -187,7 +196,7 @@ class LibetpanMailSession : MailSession {
         }
         if (opened is OpenResult.Failed && opened.text == "plaintext login needs confirmation") {
             val confirm = plaintextConfirmer
-            val accepted = confirm != null && confirm()
+            val accepted = credentials == null && confirm != null && confirm()
             val stopped = context.getString(R.string.plaintext_auth_stopped)
             if (!accepted) {
                 opened = OpenResult.Failed(stopped)
@@ -245,7 +254,7 @@ class LibetpanMailSession : MailSession {
             val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
             try {
                 // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
-                runBlocking {
+                credentials?.password ?: runBlocking {
                     DataStoreSettingsStore(context).password()
                 }
             } catch (error: Exception) {
@@ -1030,7 +1039,8 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int {
         val context = currentApplication()
-        val smtpPassword = if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
+        val smtpPassword = credentials?.smtpPassword
+            ?: if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
         return keeper.write("send") {
             forgetSelected()
             nativeSmtp(

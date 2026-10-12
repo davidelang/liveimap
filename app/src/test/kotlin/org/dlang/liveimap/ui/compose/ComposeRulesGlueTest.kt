@@ -83,3 +83,29 @@ class ViewerHeadersTest {
         )
     }
 }
+
+class CrossAccountTest {
+    @Test
+    fun listPost() {
+        fun p(h: String) = listPostAddress(parseRfc822("$h\r\nSubject: s\r\n\r\nb".toByteArray()))
+        assertEquals("dev@lists.x", p("List-Post: <mailto:dev@lists.x?subject=hi>"))
+        assertEquals(null, p("List-Post: NO (posting not allowed)"))
+        assertEquals(null, p("From: a@x"))
+    }
+
+    @Test
+    fun unsentCopyKeepsSendingAccount() {
+        val dir = java.nio.file.Files.createTempDirectory("unsent").toFile()
+        try {
+            writeCopy(dir, DeviceCopy("c1", true, "Sent", listOf("b@x"), "x".toByteArray(), via = "acct-2"), "acct-1")
+            writeCopy(dir, DeviceCopy("c2", false, "Sent", listOf("b@x"), "y".toByteArray()), "acct-1")
+            val read = readCopies(dir, "acct-1").associateBy { it.id }
+            assertEquals("acct-2", read.getValue("c1").via)
+            assertTrue(read.getValue("c1").appendOnly)
+            assertEquals("", read.getValue("c2").via)
+            assertFalse(read.getValue("c2").appendOnly)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+}

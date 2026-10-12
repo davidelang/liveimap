@@ -2946,6 +2946,11 @@ private fun SendingRulesRows(editor: SettingsEditor) {
     fun save(list: List<org.dlang.liveimap.ui.compose.SendingRule>) =
         editor.persist(editor.settings.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(list)))
     var editing by remember { mutableStateOf<Int?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        accounts = DataStoreSettingsStore(context.applicationContext).listAccounts()
+    }
 
     Text(stringResource(R.string.settings_rules_default))
     LineField(stringResource(R.string.settings_signature), settings.signature, singleLine = false, ready = editor.ready) {
@@ -2999,7 +3004,7 @@ private fun SendingRulesRows(editor: SettingsEditor) {
                 Text(stringResource(R.string.settings_rule_delete))
             }
         }
-        if (editing == index) RuleEditor(rule, editor.ready) { changed ->
+        if (editing == index) RuleEditor(rule, editor.ready, accounts) { changed ->
             save(rules.toMutableList().also { it[index] = changed })
         }
     }
@@ -3051,16 +3056,18 @@ private fun ruleSummary(rule: org.dlang.liveimap.ui.compose.SendingRule): String
     val then = listOfNotNull(
         a.fromAddress?.let { "From $it" }, a.replyTo?.let { "Reply-To $it" },
         a.signature?.let { "signature" }, a.fcc?.let { "Fcc $it" }, a.dsn?.let { "DSN ${it.code}" },
-        a.sendAccount?.let { "send via $it" },
+        a.sendAccount?.let { "send via another account" }, a.replyToList?.takeIf { it }?.let { "reply to list" },
     ).joinToString(", ")
     return "$when_ → $then"
 }
 
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 /** Field-by-field editor for one rule; list fields are comma separated, empty means "not set". */
 @Composable
 private fun RuleEditor(
     rule: org.dlang.liveimap.ui.compose.SendingRule,
     ready: Boolean,
+    accounts: List<AccountChoice>,
     onChange: (org.dlang.liveimap.ui.compose.SendingRule) -> Unit,
 ) {
     fun list(t: String) = t.split(',').map { it.trim() }.filter { it.isNotEmpty() }
@@ -3098,7 +3105,22 @@ private fun RuleEditor(
     LineField(stringResource(R.string.settings_rule_fcc), a.fcc.orEmpty(), ready = ready) {
         onChange(rule.copy(actions = a.copy(fcc = opt(it))))
     }
-    LineField(stringResource(R.string.settings_rule_send_account), a.sendAccount.orEmpty(), ready = ready) {
-        onChange(rule.copy(actions = a.copy(sendAccount = opt(it))))
+    BoolField(stringResource(R.string.settings_rule_reply_list), a.replyToList == true) {
+        onChange(rule.copy(actions = a.copy(replyToList = if (it) true else null)))
+    }
+    Text(stringResource(R.string.settings_rule_send_account))
+    FlowRow {
+        FilterChip(
+            selected = a.sendAccount == null,
+            onClick = { onChange(rule.copy(actions = a.copy(sendAccount = null))) },
+            label = { Text(stringResource(R.string.settings_rule_send_this)) },
+        )
+        for (choice in accounts) {
+            FilterChip(
+                selected = a.sendAccount == choice.id,
+                onClick = { onChange(rule.copy(actions = a.copy(sendAccount = choice.id))) },
+                label = { Text(choice.name) },
+            )
+        }
     }
 }

@@ -28,6 +28,13 @@ interface MailSession {
     suspend fun resume() {}
     suspend fun suspendConnections() {}
     suspend fun open(account: AccountSettings): OpenResult
+
+    /**
+     * Open with this account's own secrets rather than the selected account's: a sending rule routes the message
+     * through another account. Certificate and plaintext confirmations are refused here (they would be saved to
+     * the wrong account); open that account normally once first.
+     */
+    suspend fun openWith(credentials: org.dlang.liveimap.accounts.AccountCredentials): OpenResult = open(credentials.settings)
     fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {}
     fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {}
     suspend fun namespaces(): List<Namespace>

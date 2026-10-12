@@ -35,6 +35,9 @@ class SerialMailSession(
     override suspend fun open(account: AccountSettings): OpenResult =
         onLane { inner.open(account) }
 
+    override suspend fun openWith(credentials: org.dlang.liveimap.accounts.AccountCredentials): OpenResult =
+        onLane { inner.openWith(credentials) }
+
     override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
         inner.setCertConfirmer(confirm)
     }

@@ -11,6 +11,8 @@ internal class DeviceCopy(
     val recipients: List<String>,
     val bytes: ByteArray,
     val modifiedMillis: Long = 0,
+    /** Account whose servers send this copy (a sending rule's "send through"); empty = this account. */
+    val via: String = "",
 )
 
 internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
@@ -74,7 +76,8 @@ private fun copiesIn(dir: File): List<DeviceCopy> {
             if (!bytesFile.isFile) return@mapNotNull null
             DeviceCopy(
                 id = id,
-                appendOnly = lines[0] == "append-only",
+                appendOnly = lines[0].substringBefore(' ') == "append-only",
+                via = lines[0].substringAfter(" via=", "").trim(),
                 mailbox = lines[1],
                 recipients = lines.drop(2).filter { it.isNotEmpty() },
                 bytes = bytesFile.readBytes(),
@@ -105,7 +108,9 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String) {
         dir.mkdirs()
         File(dir, "${copy.id}.rfc822").writeBytes(copy.bytes)
         val text = buildString {
-            appendLine(if (copy.appendOnly) "append-only" else "unsent")
+            append(if (copy.appendOnly) "append-only" else "unsent")
+            if (copy.via.isNotEmpty()) append(" via=").append(copy.via.filter { it.isLetterOrDigit() || it == '-' })
+            append('\n')
             appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
             for (recipient in copy.recipients) {
                 appendLine(recipient.replace("\n", "").replace("\r", ""))
