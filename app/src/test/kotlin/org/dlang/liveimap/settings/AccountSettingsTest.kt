@@ -113,6 +113,7 @@ class AccountSettingsTest {
                 "openAtInIndexMenu",
                 "pinercStartDefault",
                 "plainTextMonospace",
+                "nonAsciiDisplay",
                 "altAddresses",
             ),
             keys,

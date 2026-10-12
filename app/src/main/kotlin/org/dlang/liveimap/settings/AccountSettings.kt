@@ -659,6 +659,8 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     if (readerTextZoom != 100) appendLine("readerTextZoom=$readerTextZoom")
+    // Always written (still optional on decode): the one-time look-alike migration keys off it.
+    appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
     // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
@@ -712,8 +714,6 @@ fun AccountSettings.encode(): String = buildString {
     if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
     if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
-    // Always written: the one-time look-alike migration keys off its presence.
-    appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")

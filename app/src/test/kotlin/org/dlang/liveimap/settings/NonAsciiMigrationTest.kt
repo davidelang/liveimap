@@ -17,7 +17,9 @@ class NonAsciiMigrationTest {
     }
 
     @Test fun encodeAlwaysWritesIt() {
-        val text = decodeAccountSettings(withExplicitNonAsciiDisplay("imapHost=h")!!).encode()
+        val old = AccountSettings().encode().lines().filterNot { it.startsWith("nonAsciiDisplay=") }.joinToString("\n")
+        assertEquals(NonAsciiDisplay.HighlightSuspicious, decodeAccountSettings(old).nonAsciiDisplay)
+        val text = decodeAccountSettings(withExplicitNonAsciiDisplay(old)!!).encode()
         assertNull(withExplicitNonAsciiDisplay(text))
         assertEquals(NonAsciiDisplay.HighlightSuspicious, decodeAccountSettings(text).nonAsciiDisplay)
     }
