@@ -130,7 +130,7 @@ class LabSuiteTest {
                     val want = "T\u00ebst-\u00dcn\u00ef"
                     val hit = session.listLevel("", box, false).firstOrNull { it.leaf == want }
                         ?: throw IllegalStateException("no folder with leaf $want under $box: " +
-                            session.listLevel("", box, false).joinToString { it.leaf })
+                            session.listLevel("", box, false).joinToString { l -> l.leaf + "[" + l.leaf.map { "%04x".format(it.code) }.joinToString(".") + "]" })
                     val sel = session.select(hit.mailbox)
                     session.select(box)
                     val wire = if (hit.mailbox.contains('\u00eb')) "utf8" else "mutf7"
