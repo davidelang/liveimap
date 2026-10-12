@@ -26,6 +26,13 @@ for abi in arm64-v8a x86_64; do
   fi
 done
 
+# Build-script changes (not library code, so not in patches/): scripts/android-build.patch edits the upstream
+# build-android scripts (ABIs, OpenSSL version, autogen/configure with libfastjson, set -eu). Applied once per
+# fresh src; a src that already has it is left alone.
+if ! git -C "$SRC" apply --reverse --check "$HERE/scripts/android-build.patch" 2>/dev/null; then
+  git -C "$SRC" apply --whitespace=nowarn "$HERE/scripts/android-build.patch"
+fi
+
 # Compile flags (not patches): scripts/build-flags.sh, documented in SOURCE.md.
 # shellcheck source=scripts/build-flags.sh
 . "$HERE/scripts/build-flags.sh"

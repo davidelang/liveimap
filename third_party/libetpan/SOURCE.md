@@ -16,7 +16,13 @@
 | `stream-line-length.patch` | Caps one line read by `mailstream_read_line*()`: `struct mailstream` gets `max_line_length` (default `MAILSTREAM_DEFAULT_MAX_LINE_LENGTH`, 64 MiB; 0 = no limit) with `mailstream_set/get_max_line_length()`, and a longer line fails the read instead of growing the buffer until memory runs out (hostile server, or MITM on a plaintext account). Literal sizes were already capped in the fork itself (commit 7bb634c, `MAILIMAP_LITERAL_SIZE_MAX` 64 MiB, parse error), so this patch only adds the line cap. Unit test `unittest/imap/line_length_test.c`. Applies after `imap-nesting-depth.patch` (its unittest hunks sit next to that patch's lines). **Upstream candidate; pending Grok Build review; to move to the libpin repo.** |
 | `sasl-realm-default.patch` | SASL GETREALM callbacks (IMAP, POP3, SMTP) answered NULL when no realm was set; Cyrus's DIGEST-MD5 client then sent the server host name as realm, and Dovecot authenticated `user@host` (fails). Now: the configured realm, else the server's first offered realm, else empty. Upstream candidate. |
 | `stream-eof-spin.patch` | `mailstream_read_line_append()` returned the unchanged line at EOF, so parser loops that read until the buffer grows (iCloud Message-ID workaround, quoted strings) spun at 100% CPU forever when a server closed mid-response. Now returns NULL when EOF adds nothing. Found by libFuzzer. Upstream candidate. |
-| `android-full-features.patch` | Android build-script changes (ABIs arm64-v8a/x86_64, OpenSSL 3.5.9, autogen/configure with libfastjson, `set -eu`). Mostly build configuration, not library code: a candidate to move into `scripts/` (see below). |
+| `channel-binding.patch` | SCRAM-*-PLUS channel binding: `mailimap_set_channel_binding()` and the SMTP equivalent store the binding name and data and pass them to Cyrus SASL (`SASL_CHANNEL_BINDING`, critical) before AUTHENTICATE; `mailstream_ssl_get_openssl_ssl()` exposes the stream's `SSL *` so the caller can read the binding data. Upstream candidate. (Split from the former `android-full-features.patch`.) |
+
+## Build scripts (`scripts/android-build.patch`)
+
+Applied by `build` to the upstream `build-android/` scripts (not library code, so not in `patches/`): ABIs
+arm64-v8a and x86_64, OpenSSL 3.5.9, autogen/configure with libfastjson, `set -eu` instead of `sh -x`. Split
+from the former `android-full-features.patch`; the build output is unchanged (compared object by object).
 
 ## Build flags (`scripts/build-flags.sh`)
 
