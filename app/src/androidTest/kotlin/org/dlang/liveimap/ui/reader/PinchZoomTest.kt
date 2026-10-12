@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.reader
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,7 @@ class PinchZoomTest {
         rule.setContent {
             Box(Modifier.size(300.dp).testTag("t")) {
                 val st = rememberScrollState().also { scroll = it }
-                Column(Modifier.verticalScroll(st)) { repeat(80) { Text("line $it") } }
+                Column(Modifier.fillMaxSize().verticalScroll(st)) { repeat(80) { Text("line $it") } }
             }
         }
         rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
@@ -44,7 +45,7 @@ class PinchZoomTest {
         rule.setContent {
             Box(Modifier.size(300.dp).testTag("t").pinchToZoom { zoom *= it }) {
                 val st = rememberScrollState().also { scroll = it }
-                Column(Modifier.verticalScroll(st)) { repeat(80) { Text("line $it") } }
+                Column(Modifier.fillMaxSize().verticalScroll(st)) { repeat(80) { Text("line $it") } }
             }
         }
         rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
