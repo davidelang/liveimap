@@ -626,21 +626,15 @@ bool ensureJni(JNIEnv * env) {
     return gJni.ready;
 }
 
+/* Standard UTF-8 (not JNI modified UTF-8) because these strings go on the wire (F41): a supplementary character
+ * must be one 4-byte sequence, not two encoded surrogates. The copy is wiped on release (it may be a password). */
 struct JChars {
-    JNIEnv * env;
-    jstring js;
-    const char * p;
-    JChars(JNIEnv * e, jstring s) : env(e), js(s), p(nullptr) {
-        if (s != nullptr) {
-            p = e->GetStringUTFChars(s, nullptr);
-        }
-    }
-    ~JChars() {
-        if (js != nullptr && p != nullptr) {
-            env->ReleaseStringUTFChars(js, p);
-        }
-    }
-    const char * c() const { return p != nullptr ? p : ""; }
+    std::string s;
+    JChars(JNIEnv * e, jstring js) : s(utf8FromJava(e, js)) {}
+    ~JChars() { wipeSecret(s); }
+    JChars(const JChars &) = delete;
+    JChars & operator=(const JChars &) = delete;
+    const char * c() const { return s.c_str(); }
 };
 
 jstring newString(JNIEnv * env, const char * text) {
