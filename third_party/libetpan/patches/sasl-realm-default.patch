@@ -1,0 +1,42 @@
+--- a/src/low-level/imap/mailimap.c
++++ b/src/low-level/imap/mailimap.c
+@@ -1734,7 +1734,10 @@
+   switch (id) {
+   case SASL_CB_GETREALM:
+     if (result != NULL)
+-      * result = session->imap_sasl.sasl_realm;
++      /* No realm configured: the server's first offered realm, else none. Cyrus's DIGEST-MD5 client
++         otherwise falls back to the server host name, and Dovecot logs the user in as user@host. */
++      * result = session->imap_sasl.sasl_realm != NULL ? session->imap_sasl.sasl_realm
++          : (availrealms != NULL && availrealms[0] != NULL) ? availrealms[0] : "";
+     return SASL_OK;
+   }
+   
+--- a/src/low-level/pop3/mailpop3.c
++++ b/src/low-level/pop3/mailpop3.c
+@@ -1513,7 +1513,10 @@
+   switch (id) {
+   case SASL_CB_GETREALM:
+     if (result != NULL)
+-      * result = session->pop3_sasl.sasl_realm;
++      /* No realm configured: the server's first offered realm, else none. Cyrus's DIGEST-MD5 client
++         otherwise falls back to the server host name, and Dovecot logs the user in as user@host. */
++      * result = session->pop3_sasl.sasl_realm != NULL ? session->pop3_sasl.sasl_realm
++          : (availrealms != NULL && availrealms[0] != NULL) ? availrealms[0] : "";
+     return SASL_OK;
+   }
+   
+--- a/src/low-level/smtp/mailsmtp.c
++++ b/src/low-level/smtp/mailsmtp.c
+@@ -1527,7 +1527,10 @@
+   switch (id) {
+   case SASL_CB_GETREALM:
+     if (result != NULL)
+-      * result = session->smtp_sasl.sasl_realm;
++      /* No realm configured: the server's first offered realm, else none. Cyrus's DIGEST-MD5 client
++         otherwise falls back to the server host name, and Dovecot logs the user in as user@host. */
++      * result = session->smtp_sasl.sasl_realm != NULL ? session->smtp_sasl.sasl_realm
++          : (availrealms != NULL && availrealms[0] != NULL) ? availrealms[0] : "";
+     return SASL_OK;
+   }
+   
