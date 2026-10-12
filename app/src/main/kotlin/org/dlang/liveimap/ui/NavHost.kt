@@ -183,6 +183,10 @@ fun LiveImapNavHost() {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    // Back with the drawer open closes it (it used to leave the app).
+    androidx.activity.compose.BackHandler(enabled = drawerState.isOpen || drawerState.targetValue == DrawerValue.Open) {
+        scope.launch { drawerState.close() }
+    }
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
     val drawerGestures = route == "folders"
