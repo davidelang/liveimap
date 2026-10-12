@@ -282,7 +282,8 @@ enum class LayoutChoice {
 
 enum class ArrangementChoice { Auto, SideBySide, Stacked }
 
-enum class PreviewChoice { Auto, None, Small, Large }
+/** Density = preview lines follow the Density setting (stored accounts); Auto = from [planLayout]. */
+enum class PreviewChoice { Auto, Density, None, Small, Large }
 
 enum class FolderPositionChoice { Auto, Beside, AboveList }
 
@@ -443,7 +444,7 @@ data class AccountSettings(
     val fullScreen: Boolean = false,
     /** Auto = [planLayout]; stored accounts without the key keep SideBySide. */
     val paneArrangement: ArrangementChoice = ArrangementChoice.SideBySide,
-    val previewSize: PreviewChoice = PreviewChoice.None,
+    val previewSize: PreviewChoice = PreviewChoice.Density,
     val folderPosition: FolderPositionChoice = FolderPositionChoice.Beside,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
@@ -704,7 +705,7 @@ fun AccountSettings.encode(): String = buildString {
     if (foldPosture != LayoutChoice.Off) appendLine("foldPosture=${foldPosture.name}")
     if (fullScreen) appendLine("fullScreen=true")
     if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
-    if (previewSize != PreviewChoice.None) appendLine("previewSize=${previewSize.name}")
+    if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
@@ -942,7 +943,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
         paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
         folderPosition = values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside,
-        previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.None,
+        previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
         tlsMode = values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None,

@@ -253,6 +253,7 @@
     <string name="settings_pane_side_by_side">Side by side</string>
     <string name="settings_pane_stacked">List above message</string>
     <string name="settings_preview_size">Message preview in list</string>
+    <string name="settings_preview_density">Follow row density</string>
     <string name="settings_preview_none">None</string>
     <string name="settings_preview_small">Small</string>
     <string name="settings_preview_large">Large</string>

@@ -376,7 +376,8 @@ Avoid:
 * Layout is user-configurable in Settings > Layout: multi-pane (Off = the
   message opens full screen, Wide = split, Automatic), folder pane (Off/On/
   Automatic), list/message arrangement (side by side, list above message,
-  Automatic), message preview in the list (none/small/large/Automatic), fold
+  Automatic), folder pane position, message preview in the list
+  (follow density/none/small/large/Automatic), fold
   posture, full screen. New accounts start on Automatic; a stored account keeps
   what it had (missing keys read as Off / side by side / no preview). A bar
   between panes resizes them; dragging a pane to the edge closes it.
@@ -392,10 +393,14 @@ Avoid:
   - Folders get their own column when side by side and 160 columns fit;
     otherwise above the list in the left column when 56 lines fit (so a short,
     wide car dash gets no folder pane while an equally wide tall screen does).
-    The above-the-list placement is planned but still renders as two panes.
+    Above the list, folders take 35% of the left column. Folder pane position
+    (own column / above the list / Automatic) is its own setting.
   - Side-by-side list width: its minimum plus a third of the spare columns,
-    25-50% of the span. Preview: none under 12 lines or 30 columns, large at 40+
-    lines with 50+ list columns, else small (list rows do not draw previews yet).
+    25-50% of the span. Preview: none under 12 lines or 30 columns, large (5
+    lines) at 40+ lines with 50+ list columns, else small (2 lines). Preview text
+    comes with the index fetch: server PREVIEW (RFC 8970) when offered, else a
+    capped peek of the first text part; nothing is fetched when the preview is
+    None. Stored accounts keep "Follow row density" (Compact 0, Medium 3, Large 7).
   - Re-planned on every configuration change: rotation, fold/unfold, window
     resize, font scale or text size.
 

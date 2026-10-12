@@ -24,6 +24,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.Density
+import org.dlang.liveimap.settings.PreviewChoice
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
@@ -372,6 +373,26 @@ fun previewLineCount(density: Density): Int = when (density) {
     Density.Compact -> 0
     Density.Medium -> 3
     Density.Large -> 7
+}
+
+/** Preview lines for a row: the preview setting, else Density; Auto uses the planned size for this window. */
+fun previewLines(account: AccountSettings, planned: org.dlang.liveimap.settings.PreviewSize): Int = when (account.previewSize) {
+    PreviewChoice.Density -> previewLineCount(account.density)
+    PreviewChoice.None -> 0
+    PreviewChoice.Small -> 2
+    PreviewChoice.Large -> 5
+    PreviewChoice.Auto -> when (planned) {
+        org.dlang.liveimap.settings.PreviewSize.None -> 0
+        org.dlang.liveimap.settings.PreviewSize.Small -> 2
+        org.dlang.liveimap.settings.PreviewSize.Large -> 5
+    }
+}
+
+/** Whether index fetches carry preview text (server PREVIEW when offered, else a capped body peek). */
+fun wantsPreview(account: AccountSettings): Boolean = when (account.previewSize) {
+    PreviewChoice.Density -> account.density != Density.Compact
+    PreviewChoice.None -> false
+    else -> true
 }
 
 fun swipeReached(offsetPx: Float, widthPx: Float): Boolean {
@@ -1008,7 +1029,7 @@ class IndexModel(
         if (advanced == null) activeSearch = null
         filterUids = null
         appliedFilters.clear()
-        includePreview = loaded.density != Density.Compact
+        includePreview = wantsPreview(loaded)
         view = next
         armKeep()
         return if (advanced != null) {
@@ -1035,7 +1056,7 @@ class IndexModel(
             return replaceWindow { fetchCurrent() }
         }
         account = store.load()
-        includePreview = account.density != Density.Compact
+        includePreview = wantsPreview(account)
         activeSearch = query
         activeSearchField = field
         armKeep()
@@ -1051,7 +1072,7 @@ class IndexModel(
         filterUids = null
         appliedFilters.clear()
         account = store.load()
-        includePreview = account.density != Density.Compact
+        includePreview = wantsPreview(account)
         activeAdvanced = text
         activeSearch = text
         activeScope = scope
@@ -1087,7 +1108,7 @@ class IndexModel(
         val savedFilters = appliedFilters.toList()
         val loaded = store.load()
         account = loaded
-        includePreview = loaded.density != Density.Compact
+        includePreview = wantsPreview(loaded)
         activeSearch = null
         activeAdvanced = null
         clearSearchScope()
@@ -1581,7 +1602,7 @@ class IndexModel(
     private suspend fun fetchCurrent(preserveAnchor: Int? = null): List<IndexRow> {
         val loaded = store.load()
         account = loaded
-        includePreview = loaded.density != Density.Compact
+        includePreview = wantsPreview(loaded)
         val query = activeSearch
         if (query != null) return fetchSearch(query, preserveAnchor)
         val saved = if (loadedWindow) {

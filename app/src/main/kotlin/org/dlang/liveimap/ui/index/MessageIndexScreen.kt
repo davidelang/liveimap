@@ -3965,7 +3965,13 @@ private fun IndexMessageRow(
                         }
                     }
                 }
-                val lines = previewLineCount(account.density)
+                val config = androidx.compose.ui.platform.LocalConfiguration.current
+                val lines = previewLines(
+                    account,
+                    org.dlang.liveimap.settings.planLayout(
+                        config.screenWidthDp, config.screenHeightDp, config.fontScale * account.readerTextZoom / 100f,
+                    ).preview,
+                )
                 val preview = row.preview
                 if (lines > 0 && preview != null) {
                     Text(

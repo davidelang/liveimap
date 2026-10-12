@@ -1749,6 +1749,7 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
                 settings.previewSize,
                 { stringResource(when (it) {
                     PreviewChoice.Auto -> R.string.settings_pane_auto
+                    PreviewChoice.Density -> R.string.settings_preview_density
                     PreviewChoice.None -> R.string.settings_preview_none
                     PreviewChoice.Small -> R.string.settings_preview_small
                     PreviewChoice.Large -> R.string.settings_preview_large
