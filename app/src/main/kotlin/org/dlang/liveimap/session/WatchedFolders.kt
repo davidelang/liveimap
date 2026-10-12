@@ -118,9 +118,11 @@ class ExtraWatchApply {
 /** One session per extra IDLE name. Does not call STATUS or the screen. */
 class ExtraIdleSessions(private val factory: () -> MailSession) {
     private val open = ArrayList<Held>()
-    private val changeFlow = MutableSharedFlow<IdleFolderChange>(extraBufferCapacity = 16)
+    // F28: never drop. Flag changes (the bulk-burst source) are not forwarded: the only consumer, the folder
+    // list, uses message counts. Count changes are few, so the buffer is unbounded.
+    private val changeFlow = MutableSharedFlow<IdleFolderChange>(extraBufferCapacity = kotlinx.coroutines.channels.Channel.UNLIMITED)
 
-    /** A full buffer drops the new change. Older changes stay. */
+    /** Count and reset changes per extra IDLE folder; nothing is dropped. */
     val changes: SharedFlow<IdleFolderChange> = changeFlow
 
     fun openNames(): List<String> = open.map { it.name }
@@ -147,7 +149,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                     try {
                         session.select(name)
                         session.watch(name) { change ->
-                            changeFlow.tryEmit(IdleFolderChange(name, change))
+                            if (change !is MailboxChange.Flags) changeFlow.tryEmit(IdleFolderChange(name, change))
                         }
                     } catch (failure: Throwable) {
                         suppressClose(session, failure)

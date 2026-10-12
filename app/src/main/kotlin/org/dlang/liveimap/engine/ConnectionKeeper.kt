@@ -181,6 +181,10 @@ class ConnectionKeeper(
         if (selected != null && previous != null && selected.uidValidity != previous.uidValidity) {
             link.emit(MailboxChange.UidValidityReset)
         } else {
+            // F28: equal EXISTS can hide arrivals plus expunges in the gap; a moved UIDNEXT still reports them.
+            val arrived = selected != null && previous != null && selected.exists == previous.exists &&
+                selected.uidNext != previous.uidNext
+            if (arrived) link.emit(MailboxChange.Exists(selected!!.exists))
             if (selected != null && previous != null && selected.exists != previous.exists) {
                 if (selected.exists > previous.exists) {
                     link.emit(MailboxChange.Exists(selected.exists))
