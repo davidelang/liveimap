@@ -24,6 +24,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -133,6 +139,8 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.clampTextZoom
+import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
@@ -242,6 +250,7 @@ internal class ReaderHeld : ViewModel() {
     val showHtmlButtonState = mutableStateOf(false)
     val allowImagesState = mutableStateOf(false)
     val originalColorsState = mutableStateOf(false)
+    val pinchZoomState = mutableStateOf(1f)
     val noTextPartState = mutableStateOf(false)
     val connectedState = mutableStateOf(false)
     val seenStoredState = mutableStateOf(false)
@@ -281,6 +290,7 @@ internal class ReaderHeld : ViewModel() {
         showHtmlButtonState.value = false
         allowImagesState.value = false
         originalColorsState.value = false
+        pinchZoomState.value = 1f
         noTextPartState.value = false
         connectedState.value = false
         seenStoredState.value = false
@@ -442,6 +452,7 @@ private fun MessageReaderLoaded(
     var typeWarning by remember { mutableStateOf<TypeWarning?>(null) }
     var allowImages by held.allowImagesState
     var originalColors by held.originalColorsState
+    var pinchZoom by held.pinchZoomState
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
     var noTextPart by held.noTextPartState
@@ -1434,6 +1445,7 @@ private fun MessageReaderLoaded(
     val htmlBackground = MaterialTheme.colorScheme.background.toArgb()
     val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
     val plainFont = if (account.plainTextMonospace) FontFamily.Monospace else null
+    val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
     val plainLines = remember(bodyText, quoteTint, linkColor, linkBridge) {
         readerLines(bodyText).map { line ->
@@ -1964,6 +1976,11 @@ private fun MessageReaderLoaded(
                             },
                             update = { view ->
                                 view.settings.javaScriptEnabled = false
+                                // Text size setting; pinch-zoom is the WebView's own (no on-screen zoom buttons).
+                                view.settings.textZoom = clampTextZoom(account.readerTextZoom)
+                                view.settings.setSupportZoom(true)
+                                view.settings.builtInZoomControls = true
+                                view.settings.displayZoomControls = false
                                 view.settings.blockNetworkLoads = !allowImages
                                 // Original colors (dark theme only): the sender's own colors on a white page.
                                 val recolor = dark && !originalColors
@@ -2000,9 +2017,16 @@ private fun MessageReaderLoaded(
                             Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
+                                .pinchToZoom { factor ->
+                                    pinchZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom * factor) /
+                                        clampTextZoom(account.readerTextZoom).toFloat()
+                                }
                                 .verticalScroll(scroll)
-                                .padding(8.dp),
+                                .padding(8.dp)
+                                .testTag("reader-plain"),
                         ) {
+                          val base = LocalTextStyle.current
+                          CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = base.fontSize * (textZoom / 100f))) {
                             val note = charsetNote
                             if (note != null) Text(note)
                             for ((quoted, line) in plainLines) {
@@ -2012,6 +2036,7 @@ private fun MessageReaderLoaded(
                                     Text(text = line, fontFamily = plainFont, modifier = Modifier.fillMaxWidth())
                                 }
                             }
+                          }
                         }
                     }
                     else -> {
@@ -2882,5 +2907,22 @@ private fun RawTextView(
                 modifier = Modifier.fillMaxWidth().testTag("reader-raw-text"),
             )
         }
+    }
+}
+
+/** Two-finger pinch only: reports each zoom step and consumes it; one-finger drags stay with scrolling. */
+internal fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        do {
+            val event = awaitPointerEvent()
+            if (event.changes.count { it.pressed } >= 2) {
+                val z = event.calculateZoom()
+                if (z != 1f && !z.isNaN()) {
+                    onZoom(z)
+                    event.changes.forEach { it.consume() }
+                }
+            }
+        } while (event.changes.any { it.pressed })
     }
 }

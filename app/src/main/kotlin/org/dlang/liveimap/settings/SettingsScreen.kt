@@ -1268,6 +1268,12 @@ private fun ReadingGroup(editor: SettingsEditor) {
             BoolField(stringResource(R.string.settings_monospace), settings.plainTextMonospace) {
                 editor.persist(editor.settings.copy(plainTextMonospace = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_text_size),
+                ReaderTextZooms,
+                settings.readerTextZoom.takeIf { it in ReaderTextZooms } ?: 100,
+                { "$it%" },
+            ) { editor.persist(editor.settings.copy(readerTextZoom = it)) }
         }
         SettingsSection(
             title = stringResource(R.string.settings_deleting),

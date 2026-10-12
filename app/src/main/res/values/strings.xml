@@ -249,6 +249,7 @@
     <string name="reader_undelete">Undelete</string>
     <string name="reader_share">Share</string>
     <string name="reader_save">Save</string>
+    <string name="settings_text_size">Message text size</string>
     <string name="reader_original_colors">Original colors</string>
     <string name="reader_dark_colors">Dark theme colors</string>
     <string name="reader_images_sender_on">Always show images from %1$s</string>

@@ -391,6 +391,8 @@ data class AccountSettings(
     val openAtInIndexMenu: Boolean = false,
     val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
     val plainTextMonospace: Boolean = false,
+    /** Reader text size in percent (plain text and HTML); pinch-zoom adjusts it per message on top. */
+    val readerTextZoom: Int = 100,
     val altAddresses: List<String> = emptyList(),
     val completionSources: List<String> = listOf(pineSourceId),
     val clientSort: Boolean = false,
@@ -517,6 +519,7 @@ private val fieldNames = listOf(
     "openAtInIndexMenu",
     "pinercStartDefault",
     "plainTextMonospace",
+    "readerTextZoom",
     "altAddresses",
     "completionSources",
     "addressBookHistory",
@@ -626,6 +629,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("openAtInIndexMenu=$openAtInIndexMenu")
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
+    if (readerTextZoom != 100) appendLine("readerTextZoom=$readerTextZoom")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
     // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
@@ -759,6 +763,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "openAtInIndexMenu" ||
             key == "pinercStartDefault" ||
             key == "plainTextMonospace" ||
+            key == "readerTextZoom" ||
             key == "altAddresses" ||
             key == "completionSources" ||
             key == "addressBookHistory" ||
@@ -870,6 +875,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         pinercStartDefault = values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
             ?: PinercStartDefault.LeaveUnchanged,
         plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
+        readerTextZoom = values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100,
         altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
         completionSources = decodeCompletionSources(values["completionSources"]),
         addressBookHistory = values["addressBookHistory"]?.let { parseIntField(it) } ?: 3,
@@ -1407,3 +1413,15 @@ fun AccountSettings.withServerOf(base: AccountSettings): AccountSettings = copy(
     allowOldTls = base.allowOldTls,
     allowPlaintextAuth = base.allowPlaintextAuth,
 )
+
+val ReaderTextZooms = listOf(75, 90, 100, 115, 130, 150, 175, 200, 250)
+const val MinTextZoom = 50
+const val MaxTextZoom = 300
+
+fun clampTextZoom(percent: Int): Int = percent.coerceIn(MinTextZoom, MaxTextZoom)
+
+/** Setting times the per-message pinch factor, clamped; what the reader shows. */
+fun effectiveTextZoom(setting: Int, pinch: Float): Int {
+    val p = if (pinch.isNaN() || pinch <= 0f) 1f else pinch
+    return clampTextZoom(Math.round(clampTextZoom(setting) * p))
+}
