@@ -11,6 +11,7 @@ data class HeaderFields(
     val cc: String,
     val sender: String,
     val resentTo: String,
+    val listId: String = "",
 )
 
 fun headerFields(header: String): HeaderFields {
@@ -19,6 +20,7 @@ fun headerFields(header: String): HeaderFields {
     var cc = ""
     var sender = ""
     var resentTo = ""
+    var listId = ""
     for (line in unfoldedHeaderLines(header)) {
         val colon = line.indexOf(':')
         if (colon <= 0) continue
@@ -30,9 +32,10 @@ fun headerFields(header: String): HeaderFields {
             name.equals("Cc", ignoreCase = true) -> cc = joinHeader(cc, value)
             name.equals("Sender", ignoreCase = true) -> if (sender.isEmpty()) sender = value
             name.equals("Resent-To", ignoreCase = true) -> resentTo = value
+            name.equals("List-Id", ignoreCase = true) -> if (listId.isEmpty()) listId = value
         }
     }
-    return HeaderFields(from, to, cc, sender, resentTo)
+    return HeaderFields(from, to, cc, sender, resentTo, listId)
 }
 
 fun saveFolderName(

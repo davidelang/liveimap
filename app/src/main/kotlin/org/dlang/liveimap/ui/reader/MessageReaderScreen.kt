@@ -232,6 +232,7 @@ internal class ReaderHeld : ViewModel() {
     val headerCcState = mutableStateOf("")
     val headerSenderState = mutableStateOf("")
     val headerResentToState = mutableStateOf("")
+    val headerListIdState = mutableStateOf("")
     val headerDateState = mutableStateOf("")
     val headerSubjectState = mutableStateOf("")
     val headerReadyState = mutableStateOf(false)
@@ -269,6 +270,7 @@ internal class ReaderHeld : ViewModel() {
         headerCcState.value = ""
         headerSenderState.value = ""
         headerResentToState.value = ""
+        headerListIdState.value = ""
         headerDateState.value = ""
         headerSubjectState.value = ""
         headerReadyState.value = false
@@ -425,6 +427,8 @@ private fun MessageReaderLoaded(
     var headerCc by held.headerCcState
     var headerSender by held.headerSenderState
     var headerResentTo by held.headerResentToState
+    var headerListId by held.headerListIdState
+    var imageTrust by remember(accountId) { mutableStateOf(loadImageTrust(context.filesDir, accountId)) }
     var headerDate by held.headerDateState
     var headerSubject by held.headerSubjectState
     var headerReady by held.headerReadyState
@@ -1056,6 +1060,9 @@ private fun MessageReaderLoaded(
                     headerCc = fields.cc
                     headerSender = fields.sender
                     headerResentTo = fields.resentTo
+                    headerListId = fields.listId
+                    // "Always show images from this sender / list": open with remote images allowed.
+                    if (imagesTrusted(imageTrust, headerFrom, headerListId)) allowImages = true
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1683,9 +1690,49 @@ private fun MessageReaderLoaded(
                     text = { Text(stringResource(R.string.reader_filter_like)) },
                     onClick = {
                         moreMenu = false
-                        onFilterLike(headerFrom, headerTo, "", headerSubject)
+                        onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject)
                     },
                 )
+                if (renderedHtml && trustSenderKey(headerFrom).isNotEmpty()) {
+                    val on = trustSenderKey(headerFrom) in imageTrust.senders
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (on) R.string.reader_images_sender_off else R.string.reader_images_sender_on,
+                                    trustSenderKey(headerFrom),
+                                ),
+                            )
+                        },
+                        onClick = {
+                            moreMenu = false
+                            imageTrust = withSender(imageTrust, headerFrom, !on)
+                            saveImageTrust(context.filesDir, accountId, imageTrust)
+                            if (!on) allowImages = true
+                        },
+                        modifier = Modifier.testTag("reader-images-sender"),
+                    )
+                }
+                if (renderedHtml && listIdKey(headerListId).isNotEmpty()) {
+                    val on = listIdKey(headerListId) in imageTrust.lists
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (on) R.string.reader_images_list_off else R.string.reader_images_list_on,
+                                    listIdKey(headerListId),
+                                ),
+                            )
+                        },
+                        onClick = {
+                            moreMenu = false
+                            imageTrust = withList(imageTrust, headerListId, !on)
+                            saveImageTrust(context.filesDir, accountId, imageTrust)
+                            if (!on) allowImages = true
+                        },
+                        modifier = Modifier.testTag("reader-images-list"),
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                     onClick = {
