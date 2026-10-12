@@ -23,3 +23,5 @@ third_party/*/*.local
 /.gradle-home/
 /.gradle/
 /.android-shared/
+/app/build/
+/app/.cxx/
