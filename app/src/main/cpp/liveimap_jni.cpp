@@ -100,6 +100,7 @@ void SSL_CTX_set_verify(ssl_ctx_st * ctx, int mode, int (* callback)(int, x509_s
 int X509_STORE_CTX_get_error_depth(x509_store_ctx_st * ctx);
 x509_st * X509_STORE_CTX_get_current_cert(x509_store_ctx_st * ctx);
 stack_st * X509_STORE_CTX_get0_chain(x509_store_ctx_st * ctx);
+stack_st * X509_STORE_CTX_get0_untrusted(x509_store_ctx_st * ctx);
 int OPENSSL_sk_num(const stack_st * sk);
 void * OPENSSL_sk_value(const stack_st * sk, int i);
 int i2d_X509(x509_st * cert, unsigned char ** out);
@@ -4925,6 +4926,17 @@ extern "C" int recordPeerCerts(int, x509_store_ctx_st * store) {
     if (tlsCapture->ders.empty()) {
         std::vector<unsigned char> der;
         if (encodeDer(X509_STORE_CTX_get_current_cert(store), &der)) tlsCapture->ders.push_back(std::move(der));
+    }
+    // F18: when OpenSSL could not build the whole chain, the built chain can lack intermediates the server
+    // did send. Append those so the Java trust manager sees everything the peer offered.
+    stack_st * sent = X509_STORE_CTX_get0_untrusted(store);
+    int extra = sent != nullptr ? OPENSSL_sk_num(sent) : 0;
+    for (int i = 0; i < extra; ++i) {
+        std::vector<unsigned char> der;
+        if (!encodeDer(static_cast<x509_st *>(OPENSSL_sk_value(sent, i)), &der)) continue;
+        bool have = false;
+        for (const auto & d : tlsCapture->ders) if (d == der) { have = true; break; }
+        if (!have) tlsCapture->ders.push_back(std::move(der));
     }
     return 1;
 }
