@@ -32,7 +32,7 @@ class PinchZoomTest {
                 Column(Modifier.verticalScroll(scroll)) { repeat(80) { Text("line $it") } }
             }
         }
-        rule.onNodeWithTag("t").performTouchInput { swipeUp() }
+        rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
         rule.waitForIdle()
         assertEquals(1f, zoom)
         assertTrue("one-finger drag scrolls", scroll.value > 0)
