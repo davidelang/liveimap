@@ -303,7 +303,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     entries["patterns-roles"]?.let { v ->
         if (v.raw.isNotEmpty()) {
             val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
-            for (item in splitList(v.raw)) {
+            for (item in splitOutsideQuotes(v.raw)) {
                 if (item.isBlank()) continue
                 val rule = pineRole(item)
                 if (rule == null) skipped.add(phrases.roleSkipped.format(item.take(40))) else imported.add(rule)
