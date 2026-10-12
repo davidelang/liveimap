@@ -2513,7 +2513,7 @@ private fun ReaderHeaderCard(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.reader_from, from), modifier = Modifier.weight(1f))
+                Text(org.dlang.liveimap.ui.nonAscii(stringResource(R.string.reader_from, from)), modifier = Modifier.weight(1f))
                 // Short header <-> all headers, in place (Pine's H).
                 IconButton(onClick = onToggleAllHeaders, modifier = Modifier.testTag("reader-all-headers")) {
                     Icon(
@@ -2564,7 +2564,7 @@ private fun ReaderHeaderCard(
                 }
             }
             Text(date)
-            Text(subject, style = MaterialTheme.typography.titleMedium)
+            Text(org.dlang.liveimap.ui.nonAscii(subject), style = MaterialTheme.typography.titleMedium)
             if (deleted) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(onClick = {}, label = { Text(stringResource(R.string.reader_deleted)) })

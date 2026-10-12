@@ -287,6 +287,9 @@ enum class PreviewChoice { Auto, Density, None, Small, Large }
 
 enum class FolderPositionChoice { Auto, Beside, AboveList }
 
+/** Anti-phishing display of non-ASCII in folder names, From and subjects (see ui/NonAsciiText). */
+enum class NonAsciiDisplay { Normal, HighlightSuspicious, HighlightAll, Warn, Escape }
+
 enum class DeletePolicy {
     MarkDeleted,
     MoveToTrash,
@@ -446,6 +449,7 @@ data class AccountSettings(
     val paneArrangement: ArrangementChoice = ArrangementChoice.SideBySide,
     val previewSize: PreviewChoice = PreviewChoice.Density,
     val folderPosition: FolderPositionChoice = FolderPositionChoice.Beside,
+    val nonAsciiDisplay: NonAsciiDisplay = NonAsciiDisplay.HighlightSuspicious,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
     val tlsMode: TlsMode = TlsMode.None,
@@ -577,6 +581,7 @@ private val fieldNames = listOf(
     "paneArrangement",
     "previewSize",
     "folderPosition",
+    "nonAsciiDisplay",
     "sieveHost",
     "sievePort",
     "tlsMode",
@@ -707,6 +712,7 @@ fun AccountSettings.encode(): String = buildString {
     if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
     if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
+    if (nonAsciiDisplay != NonAsciiDisplay.HighlightSuspicious) appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
@@ -827,6 +833,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "paneArrangement" ||
             key == "previewSize" ||
             key == "folderPosition" ||
+            key == "nonAsciiDisplay" ||
             key == "sieveHost" ||
             key == "sievePort" ||
             key == "tlsMode" ||
@@ -943,6 +950,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
         paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
         folderPosition = values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside,
+        nonAsciiDisplay = values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious,
         previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,

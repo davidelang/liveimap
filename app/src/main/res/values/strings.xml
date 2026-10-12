@@ -786,4 +786,10 @@
     <string name="index_show_new">Show new</string>
     <string name="index_show_not_deleted">Show not deleted</string>
     <string name="index_show_thread">Show this thread</string>
+    <string name="settings_non_ascii">Unusual characters (folders, senders, subjects)</string>
+    <string name="settings_non_ascii_normal">Show normally</string>
+    <string name="settings_non_ascii_suspicious">Highlight look-alikes and mixed scripts</string>
+    <string name="settings_non_ascii_all">Highlight all non-ASCII</string>
+    <string name="settings_non_ascii_warn">Warn on look-alikes</string>
+    <string name="settings_non_ascii_escape">Show as code points</string>
 </resources>

@@ -482,6 +482,18 @@ Avoid:
   client certificates (EXTERNAL), and GSSAPI (MIT krb5 through cyrus-sasl,
   low priority, under Advanced).
 
+## Look-alike characters (anti-phishing)
+
+- Folder names, From names/addresses and subjects (index rows, folder list, reader header) go through one
+  per-account setting, *Unusual characters*: Show normally / Highlight look-alikes and mixed scripts
+  (default, also for stored accounts) / Highlight all non-ASCII / Warn on look-alikes (⚠ prefix plus
+  highlight) / Show as code points (`\u{0430}`).
+- Suspicious means: a word mixing letter scripts (Cyrillic а in `pаypal`; Han/Kana/Hangul count as one
+  script), a non-Latin word made only of Latin look-alikes in Latin text (`аррӏе`), full-width ASCII mixed with
+  Latin, invisible or bidi control characters, and IDN domains (`xn--` or non-ASCII labels) in addresses.
+  Ordinary accented or non-Latin text (Café, Привет, 日本語) is not highlighted.
+- Highlight is a background colour plus underline, so it still shows on black-and-white e-ink.
+
 ## Accounts
 
 * An account has an id and its own settings, secrets and toolbar layouts.

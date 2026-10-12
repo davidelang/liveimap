@@ -1208,7 +1208,7 @@ private fun FolderListRow(
                 tint = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = shownLeaf,
+                text = org.dlang.liveimap.ui.nonAscii(shownLeaf),
                 fontStyle = if (emptyPrefix) FontStyle.Italic else FontStyle.Normal,
                 modifier = Modifier
                     .weight(1f)

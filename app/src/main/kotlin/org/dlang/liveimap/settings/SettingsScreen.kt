@@ -1766,6 +1766,20 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
             ) {
                 editor.persist(editor.settings.copy(previewSize = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_non_ascii),
+                NonAsciiDisplay.entries,
+                settings.nonAsciiDisplay,
+                { stringResource(when (it) {
+                    NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
+                    NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
+                    NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
+                    NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
+                    NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
+                }) },
+            ) {
+                editor.persist(editor.settings.copy(nonAsciiDisplay = it))
+            }
             BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
                 editor.persist(editor.settings.copy(fullScreen = it))
             }

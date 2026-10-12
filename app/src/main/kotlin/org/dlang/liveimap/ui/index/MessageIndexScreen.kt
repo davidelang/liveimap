@@ -3902,7 +3902,7 @@ private fun IndexMessageRow(
                     Column(Modifier.weight(1f)) {
                         if (row.mailbox.isNotEmpty()) {
                             Text(
-                                text = row.mailbox,
+                                text = org.dlang.liveimap.ui.nonAscii(row.mailbox),
                                 color = textColor,
                                 textDecoration = decoration,
                                 maxLines = 1,
@@ -3920,7 +3920,7 @@ private fun IndexMessageRow(
                                 )
                             }
                             Text(
-                                text = indexPartyName(mailbox, account.sentMailbox, row.recipients, row.from),
+                                text = org.dlang.liveimap.ui.nonAscii(indexPartyName(mailbox, account.sentMailbox, row.recipients, row.from)),
                                 modifier = Modifier.weight(1f),
                                 color = textColor,
                                 textDecoration = decoration,
@@ -3968,7 +3968,7 @@ private fun IndexMessageRow(
                                 )
                             }
                             Text(
-                                text = row.subject,
+                                text = org.dlang.liveimap.ui.nonAscii(row.subject),
                                 modifier = Modifier.weight(1f),
                                 color = textColor,
                                 textDecoration = decoration,

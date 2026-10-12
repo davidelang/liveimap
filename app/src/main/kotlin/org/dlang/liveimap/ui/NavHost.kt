@@ -264,6 +264,7 @@ fun LiveImapNavHost() {
         textZoom = account.readerTextZoom
         arrangement = account.paneArrangement
         folderPosition = account.folderPosition
+        NonAsciiText.active = account.nonAsciiDisplay
         foldPosture = account.foldPosture
         accounts = store.listAccounts()
         drawerAccounts = store.listDrawerAccounts()
