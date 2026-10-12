@@ -231,7 +231,9 @@ class AccountStore private constructor(private val context: Context) {
                 val account = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
                     manager.getUserData(row, userAccountId) == accountId
                 } ?: return@withContext false
+                val stored = storedPreference(accountId)
                 if (!manager.removeAccountExplicitly(account)) return@withContext false
+                removeAccountFiles(context, accountId, stored)
                 deleteUnsentAccount(context.filesDir, accountId)
                 AndroidAccountCipher().delete(accountId)
                 context.accountSettingsDataStore.edit { prefs ->
@@ -557,6 +559,11 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    /** Drops one account's SMTP password (system-initiated removal, F29). */
+    internal fun forgetSmtpPassword(accountId: String) {
+        secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
+    }
+
     companion object {
         private val instanceGate = Any()
 
@@ -645,6 +652,12 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
     val accountId = AccountManager.get(appContext).getUserData(account, userAccountId)
     if (!accountId.isNullOrEmpty()) {
         AndroidAccountCipher().delete(accountId)
+        // F29: the same clean-up as the in-app removal: SMTP password, client cert, imported key, image trust.
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            val stored = appContext.accountSettingsDataStore.data.first()[stringPreferencesKey(accountId)]
+            removeAccountFiles(appContext, accountId, stored)
+            AccountStore.shared(appContext).forgetSmtpPassword(accountId)
+        }
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             appContext.accountSettingsDataStore.edit { prefs ->
                 prefs.remove(stringPreferencesKey(accountId))
@@ -663,4 +676,17 @@ class AccountCredentials(
     val smtpPassword: String,
 ) {
     override fun toString(): String = "AccountCredentials($accountId)"
+}
+
+/**
+ * F29: files and keys one account leaves outside AccountManager and DataStore. Both removal paths (in-app and
+ * Settings > Accounts) call this. [stored] is the account's encoded settings, read before they are deleted.
+ */
+internal fun removeAccountFiles(context: Context, accountId: String, stored: String?) {
+    val settings = stored?.let { runCatching { decodeAccountSettings(it) }.getOrNull() }
+    if (settings != null) {
+        if (settings.clientCert.isNotBlank()) runCatching { org.dlang.liveimap.engine.ClientCertStore.remove(settings.clientCert) }
+        if (settings.clientCertAlias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(settings.clientCertAlias)
+    }
+    org.dlang.liveimap.ui.reader.imageTrustFile(context.filesDir, accountId)?.delete()
 }
