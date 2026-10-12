@@ -347,6 +347,7 @@ suspend fun openAndDeliverLiveimap(
     password: String,
     script: String,
     allowPlaintextAuth: Boolean,
+    consent: (suspend (LiveimapActivatePlan) -> Boolean)? = null,
 ): String {
     if (host.isBlank() || username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
     val plaintextOk = mode != TlsMode.None || allowPlaintextAuth
@@ -371,6 +372,7 @@ suspend fun openAndDeliverLiveimap(
                 username,
                 password,
                 plaintextOk,
+                consent,
             )
         } finally {
             transport.close()

@@ -706,6 +706,46 @@ class ManageSieveTest {
         assertTrue(transport.written.none { it.startsWith("PUTSCRIPT") })
         assertTrue(transport.written.none { it.startsWith("SETACTIVE") })
     }
+
+    @Test
+    fun activationAsksThenAddsTheInclude() = runBlocking {
+        val transport = ListTransport(
+            listOf("\"liveimap\"", "\"vacation\" ACTIVE", "OK", "{6}", "OK", "OK", "OK"),
+            listOf("keep;\n".toByteArray(StandardCharsets.UTF_8)),
+        )
+        var asked: LiveimapActivatePlan? = null
+        val done = activateWithConsent(transport, SieveCapabilities(extensions = listOf("fileinto", "include"))) {
+            asked = it; true
+        }
+        assertEquals(LiveimapActivateAction.Include, done)
+        assertEquals("vacation", asked?.activeName)
+        assertEquals(listOf("LISTSCRIPTS", "GETSCRIPT \"vacation\""), transport.written.take(2))
+        assertTrue(transport.written.any { it.startsWith("PUTSCRIPT \"vacation\"") })
+        assertTrue(transport.written.none { it.startsWith("SETACTIVE") })
+    }
+
+    @Test
+    fun activationDeclinedWritesNothing() = runBlocking {
+        val transport = ListTransport(listOf("\"liveimap\"", "OK"))
+        val done = activateWithConsent(transport, SieveCapabilities(extensions = listOf("include"))) { false }
+        assertEquals(LiveimapActivateAction.None, done)
+        assertEquals(listOf("LISTSCRIPTS"), transport.written)
+    }
+
+    @Test
+    fun activationWithNoActiveScriptSetsLiveimapActive() = runBlocking {
+        val transport = ListTransport(listOf("\"liveimap\"", "OK", "OK"))
+        val done = activateWithConsent(transport, SieveCapabilities()) { true }
+        assertEquals(LiveimapActivateAction.SetActive, done)
+        assertEquals(listOf("LISTSCRIPTS", "SETACTIVE \"liveimap\""), transport.written)
+    }
+
+    @Test
+    fun alreadyActiveDoesNotAsk() = runBlocking {
+        val transport = ListTransport(listOf("\"liveimap\" ACTIVE", "OK"))
+        val done = activateWithConsent(transport, SieveCapabilities()) { error("asked") }
+        assertEquals(LiveimapActivateAction.None, done)
+    }
 }
 
 private class ListTransport(

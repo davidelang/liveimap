@@ -70,6 +70,12 @@
     <string name="filter_redirect_value">Redirect %1$s</string>
     <string name="filter_upload">Upload</string>
     <string name="filter_uploaded">Uploaded</string>
+    <string name="filter_uploaded_not_active">Not active: the server will not run these rules until the liveimap script is included or made active.</string>
+    <string name="filter_activate_title">Turn on these rules?</string>
+    <string name="filter_activate_include">Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.</string>
+    <string name="filter_activate_setactive">Make the liveimap script the active one? The server runs only one active script; any other script stops running.</string>
+    <string name="filter_activate_yes">Turn on</string>
+    <string name="filter_activate_no">Not now</string>
     <string name="drawer_settings">Settings</string>
     <string name="drawer_favorite">Favorite</string>
     <string name="drawer_name">Name</string>

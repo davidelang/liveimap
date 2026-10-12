@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
@@ -32,12 +33,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
+import org.dlang.liveimap.engine.sieve.LiveimapActivateAction
+import org.dlang.liveimap.engine.sieve.LiveimapActivatePlan
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
 import org.dlang.liveimap.engine.sieve.SieveFailure
@@ -58,6 +62,8 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
     var rules by remember { mutableStateOf<List<InboundRule>?>(null) }
     var uploading by remember { mutableStateOf(false) }
     var uploadReport by remember { mutableStateOf("") }
+    // Asking before the active script changes (include line) or liveimap becomes the active script.
+    var asking by remember { mutableStateOf<Pair<LiveimapActivatePlan, CompletableDeferred<Boolean>>?>(null) }
     LifecycleStartEffect(store) {
         val job = scope.launch {
             val loaded = try {
@@ -74,6 +80,25 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
     val loaded = rules ?: return
     val script = emitSieve(loaded)
     val uploaded = stringResource(R.string.filter_uploaded)
+    val notActive = stringResource(R.string.filter_uploaded_not_active)
+    asking?.let { (plan, answer) ->
+        fun reply(yes: Boolean) { asking = null; answer.complete(yes) }
+        AlertDialog(
+            onDismissRequest = { reply(false) },
+            title = { Text(stringResource(R.string.filter_activate_title)) },
+            text = {
+                Text(
+                    if (plan.action == LiveimapActivateAction.Include) {
+                        stringResource(R.string.filter_activate_include, plan.activeName)
+                    } else {
+                        stringResource(R.string.filter_activate_setactive)
+                    },
+                )
+            },
+            confirmButton = { TextButton(onClick = { reply(true) }) { Text(stringResource(R.string.filter_activate_yes)) } },
+            dismissButton = { TextButton(onClick = { reply(false) }) { Text(stringResource(R.string.filter_activate_no)) } },
+        )
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -109,6 +134,7 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                 if (uploading) return@TextButton
                 uploading = true
                 uploadReport = ""
+                var declined = false
                 scope.launch {
                     try {
                         val account = store.load()
@@ -128,9 +154,16 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                                 password,
                                 emitSieve(account.inboundRules),
                                 account.allowPlaintextAuth,
-                            )
+                            ) { plan ->
+                                val answer = CompletableDeferred<Boolean>()
+                                asking = plan to answer
+                                answer.await().also { declined = !it }
+                            }
                         }
-                        uploadReport = if (warning.isEmpty()) uploaded else warning
+                        uploadReport = listOfNotNull(
+                            warning.ifEmpty { uploaded },
+                            notActive.takeIf { declined },
+                        ).joinToString("\n")
                     } catch (error: CancellationException) {
                         throw error
                     } catch (failure: SieveFailure) {

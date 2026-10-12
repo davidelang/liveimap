@@ -254,6 +254,29 @@ suspend fun activateConsented(
     return setActive(transport, liveimapScriptName)
 }
 
+/**
+ * After an upload: makes liveimap run, asking first (include line in the active script, or SETACTIVE when
+ * there is no active script or no `include`). Returns the action taken; None when already active or declined.
+ */
+suspend fun activateWithConsent(
+    transport: SieveLineTransport,
+    capabilities: SieveCapabilities,
+    consent: suspend (LiveimapActivatePlan) -> Boolean,
+): LiveimapActivateAction {
+    val scripts = listScripts(transport)
+    val active = scripts.firstOrNull { it.active }?.name.orEmpty()
+    val hasInclude = capabilities.extensions.any { it.equals("include", ignoreCase = true) }
+    val text = if (active.isNotEmpty() && active != liveimapScriptName && hasInclude) getScript(transport, active) else ""
+    val plan = planLiveimapActivation(capabilities.extensions, scripts, text)
+    if (plan.action == LiveimapActivateAction.None || !consent(plan)) return LiveimapActivateAction.None
+    when (plan.action) {
+        LiveimapActivateAction.Include -> putConsentedInclude(transport, plan, true)
+        LiveimapActivateAction.SetActive -> activateConsented(transport, plan, true)
+        LiveimapActivateAction.None -> Unit
+    }
+    return plan.action
+}
+
 /** Picks CRAM-MD5, else PLAIN when plaintext auth is allowed. Does not open a socket. */
 fun chooseSieveSasl(mechanisms: List<String>, plaintextOk: Boolean): String? {
     val tokens = ArrayList<String>()
@@ -324,6 +347,7 @@ suspend fun authenticateAndUpload(
     username: String,
     password: String,
     plaintextOk: Boolean,
+    consent: (suspend (LiveimapActivatePlan) -> Boolean)? = null,
 ): String {
     if (username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
     when (chooseSieveSasl(capabilities.sasl, plaintextOk)) {
@@ -332,6 +356,7 @@ suspend fun authenticateAndUpload(
         else -> throw SieveFailure("sasl")
     }
     val warning = uploadLiveimap(transport, script)
+    if (consent != null) activateWithConsent(transport, capabilities, consent)
     logout(transport)
     return warning
 }
