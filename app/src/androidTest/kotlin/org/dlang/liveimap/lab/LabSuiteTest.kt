@@ -134,7 +134,7 @@ class LabSuiteTest {
                             rows.joinToString { l -> l.leaf + "[" + l.leaf.map { "%04x".format(it.code) }.joinToString(".") + "]" })
                     val sel = session.select(hit.mailbox)
                     // A name saved before the UTF-8 switch is modified UTF-7; it must still open.
-                    val saved = hit.mailbox.dropLast(want.length) + org.dlang.liveimap.ui.compose.Mutf7.encode(want)
+                    val saved = if (hit.mailbox.endsWith(want)) hit.mailbox.dropLast(want.length) + org.dlang.liveimap.ui.compose.Mutf7.encode(want) else hit.mailbox
                     val savedSel = session.select(saved)
                     session.select(box)
                     val wire = if (hit.mailbox.contains('\u00eb')) "utf8" else "mutf7"
