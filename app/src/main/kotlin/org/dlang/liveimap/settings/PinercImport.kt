@@ -56,6 +56,17 @@ data class PinercPhrases(
     val missingFolder: String,
     val folderCheck: String,
     val favorite: String,
+    val signatureFile: String = "signature-file is not read; paste the text into the account's signature",
+    val signatureLabel: String = "Signature",
+    val quotePrefixLabel: String = "Reply quote prefix",
+    val leadInLabel: String = "Reply lead-in",
+    val sigDashesLabel: String = "Signature dashes",
+    val sigBottomLabel: String = "Signature at bottom",
+    val dsnLabel: String = "Delivery status notifications",
+    val composerHeadersLabel: String = "Composer headers",
+    val viewerHeadersLabel: String = "Viewer headers",
+    val rolesLabel: String = "Sending rule from role",
+    val roleSkipped: String = "Role %1\$s not imported (unsupported pattern)",
 )
 
 fun parsePinerc(text: String): Map<String, String?> =
@@ -262,11 +273,47 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
                 "no-expunge-without-confirm-everywhere",
                 -> ask = true
                 "expunge-only-manually" -> skipped.add(phrases.expunge)
+                "enable-sigdashes" -> next = next.copy(sigDashes = true)
+                "no-enable-sigdashes" -> next = next.copy(sigDashes = false)
+                "signature-at-bottom" -> next = next.copy(sigAtBottom = true)
+                "no-signature-at-bottom" -> next = next.copy(sigAtBottom = false)
+                "enable-delivery-status-notification" ->
+                    next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.FailureDelay)
+                "no-enable-delivery-status-notification" ->
+                    next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.Off)
                 else -> omitted += 1
             }
         }
         if (ask != null) next = next.copy(askBeforeExpunge = ask)
         offerAutoExpunge = ask == false
+    }
+
+    entries["literal-signature"]?.decoded?.let { next = next.copy(signature = pineEscapes(it)) }
+    entries["reply-indent-string"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(quotePrefix = it) }
+    entries["reply-leadin"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(replyLeadIn = pineLeadIn(it)) }
+    entries["customized-hdrs"]?.let { v ->
+        if (v.raw.isNotEmpty()) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
+    }
+    entries["default-composer-hdrs"]?.let { v ->
+        if (v.raw.isNotEmpty() && entries["customized-hdrs"] == null) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
+    }
+    entries["viewer-hdrs"]?.let { v ->
+        if (v.raw.isNotEmpty()) next = next.copy(viewerHeaders = headerList(splitList(v.raw)))
+    }
+    entries["patterns-roles"]?.let { v ->
+        if (v.raw.isNotEmpty()) {
+            val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
+            for (item in splitList(v.raw)) {
+                if (item.isBlank()) continue
+                val rule = pineRole(item)
+                if (rule == null) skipped.add(phrases.roleSkipped.format(item.take(40))) else imported.add(rule)
+            }
+            if (imported.isNotEmpty()) {
+                val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
+                val merged = existing + imported.filter { r -> existing.none { it.name == r.name } }
+                next = next.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(merged))
+            }
+        }
     }
 
     for (name in entries.keys) {
@@ -277,8 +324,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         when (name) {
             "stay-open-folders", "folder-collections" ->
                 skipped.add(phrases.folders)
-            "signature-file", "literal-signature" ->
-                skipped.add(phrases.signature)
+            "signature-file" -> skipped.add(phrases.signatureFile)
             "patterns-other" -> {
                 val raw = entries[name]?.raw.orEmpty()
                 if (raw.contains("/START=", ignoreCase = true)) {
@@ -554,7 +600,91 @@ private val appliedNames = setOf(
     "sort-key",
     "feature-list",
     "incoming-startup-rule",
+    "literal-signature",
+    "reply-indent-string",
+    "reply-leadin",
+    "customized-hdrs",
+    "default-composer-hdrs",
+    "viewer-hdrs",
+    "patterns-roles",
 )
+
+/** Pine's literal-signature escapes: \n newline, \t tab, \\ backslash. */
+internal fun pineEscapes(text: String): String = buildString {
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (c == '\\' && i + 1 < text.length) {
+            when (text[i + 1]) {
+                'n' -> { append('\n'); i += 2; continue }
+                't' -> { append('\t'); i += 2; continue }
+                '\\' -> { append('\\'); i += 2; continue }
+            }
+        }
+        append(c)
+        i++
+    }
+}
+
+/** Pine lead-in tokens (_FROM_, _DATE_, _SUBJECT_, _PERSONAL_ ...) to ours. */
+internal fun pineLeadIn(text: String): String = text
+    .replace("_FROM_", "{from}").replace("_FROMADDRESS_", "{from}").replace("_PERSONAL_", "{name}")
+    .replace("_DATE_", "{date}").replace("_LONGDATE_", "{date}").replace("_SUBJECT_", "{subject}")
+
+/** "Reply-To: x" (customized-hdrs may carry defaults) to the name list; header names only. */
+private fun headerList(items: List<String>): String =
+    items.map { it.substringBefore(':').trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.joinToString(", ")
+
+/**
+ * One patterns-roles entry: pattern="/NICK=n/TO=a,b/FROM=x/FLDTYPE=SPEC/FOLDER=f" action="/ROLE=1/FROM=me/REPLYTO=r/FCC=f/LSIG=s".
+ * Only roles whose conditions we can express come back; anything else (scores, headers, ages) is refused.
+ */
+internal fun pineRole(entry: String): org.dlang.liveimap.ui.compose.SendingRule? {
+    fun section(key: String): Map<String, String>? {
+        val at = entry.indexOf("$key=\"")
+        if (at < 0) return null
+        val start = at + key.length + 2
+        val sb = StringBuilder()
+        var i = start
+        while (i < entry.length && entry[i] != '"') {
+            if (entry[i] == '\\' && i + 1 < entry.length) { sb.append(entry[i + 1]); i += 2; continue }
+            sb.append(entry[i]); i++
+        }
+        val out = LinkedHashMap<String, String>()
+        for (part in Regex("/(?=[A-Z]+=)").split(sb.toString())) {
+            val eq = part.indexOf('=')
+            if (eq > 0) out[part.substring(0, eq)] = part.substring(eq + 1)
+        }
+        return out
+    }
+    val pattern = section("pattern") ?: return null
+    val action = section("action") ?: return null
+    if (action["ROLE"] != "1") return null
+    val name = pattern["NICK"]?.takeIf { it.isNotBlank() } ?: return null
+    val known = setOf("NICK", "COMM", "TO", "CC", "RECIP", "FROM", "FLDTYPE", "FOLDER", "STATS")
+    if (pattern.keys.any { it !in known }) return null
+    fun list(v: String?) = v.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    val folder = if (pattern["FLDTYPE"] == "SPEC") list(pattern["FOLDER"]).firstOrNull().orEmpty() else ""
+    val from = action["FROM"].orEmpty()
+    val fromAddress = Regex("<([^>]+)>").find(from)?.groupValues?.get(1) ?: from.trim().ifEmpty { null }
+    val fromName = if ('<' in from) from.substringBefore('<').trim().trim('"').ifEmpty { null } else null
+    return org.dlang.liveimap.ui.compose.SendingRule(
+        name = name,
+        conditions = org.dlang.liveimap.ui.compose.RuleConditions(
+            sentTo = list(pattern["TO"]) + list(pattern["CC"]) + list(pattern["RECIP"]),
+            originalFrom = list(pattern["FROM"]),
+            folder = folder,
+        ),
+        actions = org.dlang.liveimap.ui.compose.RuleActions(
+            fromName = fromName,
+            fromAddress = fromAddress,
+            replyTo = action["REPLYTO"]?.ifBlank { null },
+            fcc = action["FCC"]?.ifBlank { null },
+            signature = action["LSIG"]?.let(::pineEscapes),
+            role = name,
+        ),
+    )
+}
 
 private val variableName = Regex("[A-Za-z0-9][A-Za-z0-9_-]*")
 
@@ -1067,5 +1197,17 @@ private fun diffRows(
     add(phrases.newest, current.defaultView.newestFirst, next.defaultView.newestFirst)
     add(phrases.askExpunge, current.askBeforeExpunge, next.askBeforeExpunge)
     add(phrases.inboxOpens, startRuleLabel(current.inboxStart), startRuleLabel(next.inboxStart))
+    add(phrases.signatureLabel, current.signature, next.signature)
+    add(phrases.quotePrefixLabel, current.quotePrefix, next.quotePrefix)
+    add(phrases.leadInLabel, current.replyLeadIn, next.replyLeadIn)
+    add(phrases.sigDashesLabel, current.sigDashes, next.sigDashes)
+    add(phrases.sigBottomLabel, current.sigAtBottom, next.sigAtBottom)
+    add(phrases.dsnLabel, current.dsnMode, next.dsnMode)
+    add(phrases.composerHeadersLabel, current.composerHeaders, next.composerHeaders)
+    add(phrases.viewerHeadersLabel, current.viewerHeaders, next.viewerHeaders)
+    val before = org.dlang.liveimap.ui.compose.decodeRules(current.sendingRules).map { it.name }
+    for (rule in org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)) {
+        if (rule.name !in before) rows.add("${phrases.rolesLabel}: ${rule.name}")
+    }
     return rows
 }

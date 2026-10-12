@@ -324,8 +324,7 @@ class PinercImportTest {
         )
         assertEquals(
             listOf(
-                "Signature is not a setting",
-                "Signature is not a setting",
+                "signature-file is not read; paste the text into the account's signature",
                 "Folder lists are not imported",
                 "Folder lists are not imported",
             ),
@@ -336,8 +335,9 @@ class PinercImportTest {
             listOf(FolderFavorite(node = false, mailbox = "a", delimiter = '.', label = "")),
             notes.next.favorites,
         )
-        assertEquals(listOf("Favorite: a"), notes.rows)
-        assertEquals(AccountSettings(), notes.next.copy(favorites = emptyList()))
+        assertEquals(listOf("Signature: changed", "Favorite: a").size, notes.rows.size)
+        assertEquals("hi", notes.next.signature)
+        assertEquals(AccountSettings(), notes.next.copy(favorites = emptyList(), signature = ""))
         assertEquals(listOf("Display name: Old → Ada"), previewPinerc(
             "personal-name=Ada\n",
             AccountSettings(displayName = "Old"),
