@@ -21,7 +21,11 @@ class MessageRefTest {
             } else if (method.name == "pinned") {
                 // the suspend block: (Continuation) -> result; no lock needed in this single-caller test
                 @Suppress("UNCHECKED_CAST")
-                (args!![0] as Function1<Any?, Any?>).invoke(args[1])
+                try {
+                    (args!![0] as Function1<Any?, Any?>).invoke(args[1])
+                } catch (e: MailFailure) {
+                    throw e // rethrown as is; pinned is declared @Throws so the proxy passes it unwrapped
+                }
             } else {
                 throw UnsupportedOperationException(method.name)
             }
