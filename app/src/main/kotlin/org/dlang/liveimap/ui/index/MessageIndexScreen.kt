@@ -1865,7 +1865,8 @@ private fun MessageIndexLoaded(
         fun deliverMailboxChange(change: MailboxChange) {
             when (change) {
                 MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
-                MailboxChange.WatchLost -> watchRecovery.onWatchLost(scope, session)
+                // Called on the native IDLE thread: hop to the screen scope first (F25).
+                MailboxChange.WatchLost -> scope.launch { watchRecovery.onWatchLost(scope, session) }
                 else -> scope.launch {
                     when (change) {
                         is MailboxChange.Exists -> folderExists = change.exists
