@@ -485,7 +485,11 @@ fun LiveImapNavHost() {
                         leading = {
                             if (foldersAboveNow.value) {
                                 Column(Modifier.fillMaxSize()) {
-                                    Box(Modifier.weight(0.35f).fillMaxWidth()) { folderListPane() }
+                                    Box(Modifier.weight(0.35f).fillMaxWidth()) {
+                                        androidx.compose.runtime.CompositionLocalProvider(
+                                            org.dlang.liveimap.ui.folder.LocalFolderPaneAboveList provides true,
+                                        ) { folderListPane() }
+                                    }
                                     Box(Modifier.height(8.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outlineVariant))
                                     Box(Modifier.weight(0.65f).fillMaxWidth()) { IndexBody(shownViewToken, watch = false) }
                                 }

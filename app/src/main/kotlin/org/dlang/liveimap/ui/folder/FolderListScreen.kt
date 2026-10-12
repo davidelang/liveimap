@@ -178,6 +178,9 @@ private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** True when the folder list sits above the message list, which already has its own Compose button. */
+val LocalFolderPaneAboveList = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable
 fun FolderListScreen(
     onOpenMailbox: (String) -> Unit,
@@ -973,7 +976,7 @@ private fun FolderListLoaded(
             }
         }
     }
-        HelpExtendedFab(
+        if (!LocalFolderPaneAboveList.current) HelpExtendedFab(
             label = stringResource(R.string.folders_compose),
             help = stringResource(R.string.help_folders_compose),
             page = "folders.html#compose",
