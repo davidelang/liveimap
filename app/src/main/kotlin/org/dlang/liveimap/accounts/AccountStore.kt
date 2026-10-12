@@ -1,5 +1,6 @@
 package org.dlang.liveimap.accounts
 
+import kotlin.coroutines.coroutineContext
 import android.accounts.Account
 import android.accounts.AccountManager
 import android.content.Context
@@ -73,7 +74,7 @@ class AccountStore private constructor(private val context: Context) {
         return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
-                val chosen = chooseAccount(accounts, selectedId())
+                val chosen = pick(accounts)
                 val id = chosen?.userData?.get(userAccountId)
                 if (!id.isNullOrEmpty() && secretPrefs.contains(smtpPasswordKeyFor(id))) {
                     return@withContext secretPrefs.getString(smtpPasswordKeyFor(id), "") ?: ""
@@ -167,8 +168,8 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
-    suspend fun addAccount() {
-        gate.withLock {
+    suspend fun addAccount(): String {
+        return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val settings = newAccountSettings()
@@ -180,7 +181,9 @@ class AccountStore private constructor(private val context: Context) {
                     forceInsert = true,
                 )
                 writePreference(accountId, settings.encode())
-                writeSelectedId(accountId)
+                // F121: only the drawer chooses the active account; the first account becomes active by default
+                if (accounts.isEmpty()) writeSelectedId(accountId)
+                accountId
             }
         }
     }
@@ -235,7 +238,7 @@ class AccountStore private constructor(private val context: Context) {
 
     private suspend fun loadLocked(): AccountSettings {
         val accounts = readAccounts()
-        val account = chooseAccount(accounts, selectedId())
+        val account = pick(accounts)
         val accountId = account?.userData?.get(userAccountId) ?: return newAccountSettings()
         val text = storedPreference(accountId) ?: return newAccountSettings()
         return overlayAccountFields(decodeAccountSettings(text), account.userData)
@@ -245,7 +248,7 @@ class AccountStore private constructor(private val context: Context) {
         settings: AccountSettings,
         encoded: String,
     ): suspend () -> Unit {
-        val existing = chooseAccount(readAccounts(), selectedId())
+        val existing = pick(readAccounts())
         val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
             ?: java.util.UUID.randomUUID().toString()
         val name = nameFor(existing, settings, accountId)
@@ -255,7 +258,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun passwordLocked(): String {
-        val account = chooseAccount(readAccounts(), selectedId()) ?: return ""
+        val account = pick(readAccounts()) ?: return ""
         val slot = account.passwordSlot
         if (slot.isEmpty()) return ""
         val accountId = account.userData[userAccountId] ?: return ""
@@ -263,7 +266,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun stagePassword(value: String): suspend () -> Unit {
-        val existing = chooseAccount(readAccounts(), selectedId())
+        val existing = pick(readAccounts())
         if (existing == null) {
             val settings = loadLocked()
             val accountId = java.util.UUID.randomUUID().toString()
@@ -382,6 +385,17 @@ class AccountStore private constructor(private val context: Context) {
         return "${account.userData[userUsername].orEmpty()}@${account.userData[userImapHost].orEmpty()}"
     }
 
+    /**
+     * F121: the account an operation acts on. Inside [AccountTarget] (a screen or Settings bound to one account)
+     * it is exactly that account, or none; never the drawer's active account and never a fallback to another.
+     */
+    private suspend fun pick(accounts: List<ManagedAccount>): ManagedAccount? {
+        val target = coroutineContext[AccountTarget]?.accountId
+            ?: return chooseAccount(accounts, selectedId())
+        return accounts.firstOrNull { it.userData[userAccountId] == target }
+            ?: throw IllegalStateException("account $target no longer exists")
+    }
+
     private suspend fun selectedId(): String? {
         return context.accountSettingsDataStore.data.first()[stringPreferencesKey(selectedAccountIdKey)]
     }
@@ -394,7 +408,7 @@ class AccountStore private constructor(private val context: Context) {
 
     private suspend fun smtpAccountId(): String {
         val accounts = readAccounts()
-        val chosenId = chooseAccount(accounts, selectedId())
+        val chosenId = pick(accounts)
             ?.userData
             ?.get(userAccountId)
             ?.takeIf { it.isNotEmpty() }
@@ -546,4 +560,10 @@ internal fun removeAccountFiles(context: Context, accountId: String, stored: Str
         if (settings.clientCertAlias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(settings.clientCertAlias)
     }
     org.dlang.liveimap.ui.reader.imageTrustFile(context.filesDir, accountId)?.delete()
+}
+
+
+/** F121: binds AccountStore calls made in this coroutine context to one account id (see AccountStore.pick). */
+class AccountTarget(val accountId: String) : kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+    companion object Key : kotlin.coroutines.CoroutineContext.Key<AccountTarget>
 }

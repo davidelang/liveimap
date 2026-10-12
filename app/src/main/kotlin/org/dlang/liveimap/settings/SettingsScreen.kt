@@ -172,11 +172,16 @@ private class SettingsEditor(
     var smtpPassword by smtpPasswordState
     var accounts by accountsState
 
+    /** F121: the account Settings is editing. Settings never changes the drawer's active account. */
+    var editingId by mutableStateOf<String?>(null)
+    val bound: SettingsStore
+        get() = editingId?.let { store.forAccount(it) } ?: store
+
     fun persist(next: AccountSettings) {
         if (!ready) return
         settings = next
         settingsIo.launch {
-            settingsMutex.withLock { store.save(settingsState.value) }
+            settingsMutex.withLock { bound.save(settingsState.value) }
         }
     }
 
@@ -184,7 +189,7 @@ private class SettingsEditor(
         if (!ready) return
         password = value
         settingsIo.launch {
-            settingsMutex.withLock { store.setPassword(passwordState.value) }
+            settingsMutex.withLock { bound.setPassword(passwordState.value) }
         }
     }
 
@@ -192,7 +197,7 @@ private class SettingsEditor(
         if (!ready) return
         smtpPassword = value
         settingsIo.launch {
-            settingsMutex.withLock { store.setSmtpPassword(smtpPasswordState.value) }
+            settingsMutex.withLock { bound.setSmtpPassword(smtpPasswordState.value) }
         }
     }
 
@@ -205,7 +210,7 @@ private class SettingsEditor(
     fun selectAccount(id: String) {
         settingsIo.launch {
             settingsMutex.withLock {
-                store.selectAccount(id)
+                editingId = id // F121: edit it; the active account is unchanged
                 reloadLocked()
             }
         }
@@ -214,7 +219,7 @@ private class SettingsEditor(
     fun addAccount() {
         settingsIo.launch {
             settingsMutex.withLock {
-                store.addAccount()
+                editingId = store.addAccount().ifEmpty { null } // F121: edit the new account; not made active
                 reloadLocked()
             }
         }
@@ -225,16 +230,22 @@ private class SettingsEditor(
             settingsMutex.withLock {
                 if (!store.removeAccount(id)) return@withLock
                 dropMailSession(id)
+                if (editingId == id) editingId = null
                 reloadLocked()
             }
         }
     }
 
     private suspend fun reloadLocked() {
-        settings = store.load()
-        password = store.password()
-        smtpPassword = store.smtpPassword()
-        accounts = store.listAccounts()
+        val listed = store.listAccounts()
+        if (editingId == null || listed.none { it.id == editingId }) {
+            editingId = listed.firstOrNull { it.chosen }?.id ?: listed.firstOrNull()?.id
+        }
+        settings = bound.load()
+        password = bound.password()
+        smtpPassword = bound.smtpPassword()
+        // "chosen" here marks the account being edited (Settings' own selection), not the active one
+        accounts = listed.map { it.copy(chosen = it.id == editingId) }
         ready = true
     }
 }
@@ -332,7 +343,7 @@ fun ExpandedFoldersScreen() {
     }
     if (picking) {
         MailboxChooser(
-            store = editor.store,
+            store = editor.bound,
             saveMutex = settingsMutex,
             onStored = { _ -> },
             onPick = { mailbox ->
@@ -388,7 +399,7 @@ fun FolderViewsScreen() {
     }
     if (picking) {
         MailboxChooser(
-            store = editor.store,
+            store = editor.bound,
             saveMutex = settingsMutex,
             onStored = { _ -> },
             onPick = { mailbox ->
@@ -641,7 +652,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                     ) {
                         names.add(built.next.addressBookMailbox)
                     }
-                    val id = editor.store.chosenAccountId()
+                    val id = editor.bound.chosenAccountId()
                     val shown = if (id == null) {
                         withoutCheckedFavorites(
                             withoutCheckedMailboxes(built, current, pinercPhrases),
@@ -1031,7 +1042,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                         val account = editor.settings
                         probing = true
                         editor.ui.launch {
-                            val id = editor.store.chosenAccountId()
+                            val id = editor.bound.chosenAccountId()
                             if (id == null) {
                                 probing = false
                             } else {
@@ -2036,7 +2047,7 @@ private fun MailboxPickDialog(
 ) {
     val field = picking ?: return
     MailboxChooser(
-        store = editor.store,
+        store = editor.bound,
         saveMutex = settingsMutex,
         onStored = { loaded ->
             editor.settings = editor.settings.copy(expandedFolders = loaded.expandedFolders)
@@ -2044,8 +2055,8 @@ private fun MailboxPickDialog(
         onPick = { mailbox ->
             settingsIo.launch {
                 settingsMutex.withLock {
-                    val next = assignMailbox(editor.store.load(), field, mailbox)
-                    editor.store.save(next)
+                    val next = assignMailbox(editor.bound.load(), field, mailbox)
+                    editor.bound.save(next)
                     editor.settings = next
                 }
                 onPicking(null)

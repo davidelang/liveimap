@@ -3,7 +3,9 @@ package org.dlang.liveimap.settings
 import android.content.Context
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.accounts.AccountStore
+import org.dlang.liveimap.accounts.AccountTarget
 
 data class AccountChoice(
     val id: String,
@@ -44,7 +46,8 @@ interface SettingsStore {
     suspend fun listDrawerAccounts(): List<DrawerAccount> = emptyList()
     suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
-    suspend fun addAccount() {}
+    /** Creates an account and returns its id; does not make it the active account (F121). */
+    suspend fun addAccount(): String = ""
     suspend fun removeAccount(accountId: String): Boolean = false
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
@@ -78,9 +81,27 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
 
     override suspend fun selectAccount(accountId: String) = store.selectAccount(accountId)
 
-    override suspend fun addAccount() = store.addAccount()
+    override suspend fun addAccount(): String = store.addAccount()
 
     override suspend fun removeAccount(accountId: String): Boolean = store.removeAccount(accountId)
 
     override fun theme(): Flow<ThemeMode> = store.theme()
+
+    /** F121: this store, bound to one account: reads and writes reach only [accountId], whatever the drawer shows. */
+    fun forAccount(accountId: String): SettingsStore = BoundSettingsStore(this, accountId)
+}
+
+/** F121: every account-scoped call runs with [AccountTarget]; listing and selection stay global. */
+class BoundSettingsStore(private val inner: SettingsStore, val accountId: String) : SettingsStore by inner {
+    private suspend fun <T> bound(block: suspend () -> T): T = withContext(AccountTarget(accountId)) { block() }
+    override suspend fun load(): AccountSettings = bound { inner.load() }
+    override suspend fun save(settings: AccountSettings) = bound { inner.save(settings) }
+    override suspend fun password(): String = bound { inner.password() }
+    override suspend fun setPassword(value: String) = bound { inner.setPassword(value) }
+    override suspend fun smtpPassword(): String = bound { inner.smtpPassword() }
+    override suspend fun setSmtpPassword(value: String) = bound { inner.setSmtpPassword(value) }
+    override suspend fun chosenAccountId(): String? = accountId
+    override suspend fun selectAccount(accountId: String) {
+        // F121: a bound screen never changes the active account; only the drawer does (through the unbound store)
+    }
 }
