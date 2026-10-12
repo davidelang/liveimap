@@ -1,0 +1,34 @@
+diff --git a/src/low-level/imap/mailimap.c b/src/low-level/imap/mailimap.c
+--- a/src/low-level/imap/mailimap.c
++++ b/src/low-level/imap/mailimap.c
+@@ -3386,21 +3386,27 @@
+   greeting_store(session, greeting);
+ 
+   if (greeting->gr_type == MAILIMAP_GREETING_RESP_COND_BYE) {
++    /* The greeting is not handed back on these paths, so free it here (it leaked on every BYE greeting). */
+     if (greeting->gr_data.gr_bye->rsp_text->rsp_text != NULL) {
+       if (mmap_string_assign(session->imap_response_buffer,
+-              greeting->gr_data.gr_bye->rsp_text->rsp_text) == NULL)
++              greeting->gr_data.gr_bye->rsp_text->rsp_text) == NULL) {
++        mailimap_greeting_free(greeting);
+         return MAILIMAP_ERROR_MEMORY;
++      }
+     }
+ 
+     session->imap_response = session->imap_response_buffer->str;
+-    
++    mailimap_greeting_free(greeting);
++
+     return MAILIMAP_ERROR_DONT_ACCEPT_CONNECTION;
+   }
+   
+   if (greeting->gr_data.gr_auth->rsp_text->rsp_text != NULL) {
+     if (mmap_string_assign(session->imap_response_buffer,
+-            greeting->gr_data.gr_auth->rsp_text->rsp_text) == NULL)
++            greeting->gr_data.gr_auth->rsp_text->rsp_text) == NULL) {
++      mailimap_greeting_free(greeting);
+       return MAILIMAP_ERROR_MEMORY;
++    }
+   }
+   
+   session->imap_response = session->imap_response_buffer->str;

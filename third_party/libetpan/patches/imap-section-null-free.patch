@@ -1,0 +1,14 @@
+diff --git a/src/low-level/imap/mailimap_parser.c b/src/low-level/imap/mailimap_parser.c
+--- a/src/low-level/imap/mailimap_parser.c
++++ b/src/low-level/imap/mailimap_parser.c
+@@ -11003,7 +11003,9 @@
+   return MAILIMAP_NO_ERROR;
+ 
+  free:
+-  mailimap_section_spec_free(section_spec);
++  /* section_spec stays NULL when "[" is not followed by a section spec (e.g. "BODY[x"); freeing NULL crashed. */
++  if (section_spec != NULL)
++    mailimap_section_spec_free(section_spec);
+  err:
+   return res;
+ }

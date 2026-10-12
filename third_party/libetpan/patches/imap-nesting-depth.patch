@@ -69,12 +69,12 @@ diff -ruN a/src/low-level/imap/mailimap_parser.c b/src/low-level/imap/mailimap_p
 +  struct mailimap_body_type_1part * part;
 +  char * subtype;
 +
-+  subtype = strdup(MAILIMAP_BODY_TOO_DEEP_SUBTYPE);
++  /* An MMAPString, like parsed strings: mailimap_media_subtype_free() is mmap_string_unref(), so a strdup() leaked. */ { MMAPString * ms = mmap_string_new(MAILIMAP_BODY_TOO_DEEP_SUBTYPE); subtype = (ms != NULL && mmap_string_ref(ms) == 0) ? ms->str : NULL; if (ms != NULL && subtype == NULL) mmap_string_free(ms); }
 +  if (subtype == NULL)
 +    return MAILIMAP_ERROR_MEMORY;
 +  media = mailimap_media_basic_new(MAILIMAP_MEDIA_BASIC_APPLICATION, NULL, subtype);
 +  if (media == NULL) {
-+    free(subtype);
++    mmap_string_unref(subtype);
 +    return MAILIMAP_ERROR_MEMORY;
 +  }
 +  encoding = mailimap_body_fld_enc_new(MAILIMAP_BODY_FLD_ENC_7BIT, NULL);
