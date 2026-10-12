@@ -2338,15 +2338,17 @@ private fun LineField(
         }),
         modifier = Modifier
             .fillMaxWidth()
-            // Hardware Enter: commit and close the keyboard like IME Done; consume down and up so the key-up
-            // never reaches whatever takes focus next (it used to activate Navigate up).
+            // Hardware Enter: commit on key-down, give up focus only on key-up. Clearing focus on key-down sent
+            // the key-up to the next focused element, which activated it (Navigate up left the screen).
             .onPreviewKeyEvent { event ->
                 val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
                 when (lineFieldKey(enter, event.type == KeyEventType.KeyDown, singleLine)) {
                     LineKey.Pass -> false
-                    LineKey.Swallow -> true
                     LineKey.Commit -> {
                         committer.commit()
+                        true
+                    }
+                    LineKey.Swallow -> {
                         focusManager.clearFocus()
                         true
                     }
