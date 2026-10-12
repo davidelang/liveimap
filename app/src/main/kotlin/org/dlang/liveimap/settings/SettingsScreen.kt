@@ -496,7 +496,9 @@ private fun AccountGroup(editor: SettingsEditor) {
     LaunchedEffect(editor.ready, serverKey) {
         if (!editor.ready) return@LaunchedEffect
         val current = editor.settings
-        when (serverCheckStep(serverBaseline, baselineAccount, current, chosenAccount, serverUserSaved, serverFieldFocus > 0)) {
+        val step = serverCheckStep(serverBaseline, baselineAccount, current, chosenAccount, serverUserSaved, serverFieldFocus > 0)
+        android.util.Log.d("LiveIMAP", "serverCheck step=$step saved=$serverUserSaved focus=$serverFieldFocus acct=${chosenAccount != null}/${baselineAccount == chosenAccount}")
+        when (step) {
             ServerCheckStep.Rebase -> {
                 serverBaseline = current
                 baselineAccount = chosenAccount
