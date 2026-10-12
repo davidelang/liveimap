@@ -61,8 +61,8 @@ class ComposeChromeTest {
 
     @Test
     fun foldReaderIntoIndex() {
-        assertTrue(foldReaderIntoIndex(true, "reader/{mailbox}/{uid}/{sequence}"))
-        assertFalse(foldReaderIntoIndex(false, "reader/{mailbox}/{uid}/{sequence}"))
+        assertTrue(foldReaderIntoIndex(true, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))
+        assertFalse(foldReaderIntoIndex(false, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))
         assertFalse(foldReaderIntoIndex(true, "index/{mailbox}"))
         assertFalse(foldReaderIntoIndex(true, "folders"))
         assertFalse(foldReaderIntoIndex(true, null))

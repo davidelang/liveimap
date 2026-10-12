@@ -74,6 +74,7 @@ import org.dlang.liveimap.jmap.pinnedJmapUpload
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.selectChecked
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
@@ -256,6 +257,7 @@ private fun ComposeLoaded(
     var connected by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
+    val boxEpochs = remember { HashMap<String, Long>() }
     var toText by rememberSaveable { mutableStateOf("") }
     var ccText by rememberSaveable { mutableStateOf("") }
     var bccText by rememberSaveable { mutableStateOf("") }
@@ -328,12 +330,20 @@ private fun ComposeLoaded(
         referencesHeader = draft.references
     }
 
+    /**
+     * F116: select [box] before every UID use, checked against the UIDVALIDITY its UIDs came from (the seed's, or
+     * the first one seen here). No local "already selected" cache: the session's selection is shared and moves.
+     */
     suspend fun ensureMailbox(box: String?) {
         if (box == null) return
-        if (selectedMailbox != box) {
-            session.select(box)
-            selectedMailbox = box
+        val known = boxEpochs[box] ?: if (box == seed.mailbox && seed.uidValidity != 0L) seed.uidValidity else 0L
+        if (known == 0L) {
+            boxEpochs[box] = session.select(box).uidValidity
+        } else {
+            session.selectChecked(box, known)
+            boxEpochs[box] = known
         }
+        selectedMailbox = box
     }
 
     suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
@@ -623,6 +633,7 @@ private fun ComposeLoaded(
                 row.bytes to row.wireBase64
             } else {
                 if (uid == null) throw MailFailure(fetchFailed)
+                ensureMailbox(seed.mailbox ?: account.postponedMailbox) // F116: the source's folder, not wherever
                 val fetched = peekWireBytes(row.size, 65536, true) { offset, length ->
                     session.peekPart(uid, row.section, offset, length)
                 }
@@ -660,7 +671,9 @@ private fun ComposeLoaded(
             session.storeFlags(uids, flags, emptySet())
         } catch (error: CancellationException) {
             throw error
-        } catch (_: MailFailure) {
+        } catch (failure: MailFailure) {
+            // F116: sent, but say the source was not marked (instead of swallowing it)
+            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
         }
     }
 
@@ -1542,6 +1555,7 @@ private fun ComposeLoaded(
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
                             for (uid in seed.uids) {
+                                ensureMailbox(box) // the previous send dropped the selection
                                 val original = session.fetchRfc822(uid)
                                 val bounced = buildBounce(
                                     original,
@@ -1590,6 +1604,7 @@ private fun ComposeLoaded(
                                 return@launchLocked false
                             }
                             for (uid in seed.uids) {
+                                ensureMailbox(box) // the previous send dropped the selection
                                 val original = session.fetchRfc822(uid)
                                 val bounced = buildBounce(
                                     original,

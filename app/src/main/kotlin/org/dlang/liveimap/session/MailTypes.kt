@@ -215,7 +215,13 @@ data class ComposeSeed(
     val kind: ComposeKind,
     val mailbox: String?,
     val uids: List<Long> = emptyList(),
-)
+    /** F105/F116: UIDVALIDITY of [mailbox] when [uids] were listed; 0 = captured on first use. */
+    val uidValidity: Long = 0L,
+) {
+    /** The source messages as references (empty until the epoch is known). */
+    fun refs(accountId: String): List<MessageRef> =
+        if (mailbox == null || uidValidity == 0L) emptyList() else uids.map { MessageRef(accountId, mailbox, uidValidity, it) }
+}
 
 data class SelectedAddress(
     val name: String,

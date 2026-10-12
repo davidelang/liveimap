@@ -223,6 +223,8 @@ private data class PendingDelete(
     val fromSwipe: Boolean,
     /** F105: folder of a cross-folder search hit ("" = this index's folder). */
     val rowMailbox: String = "",
+    /** F105: selected hits from other folders, (folder, UID). */
+    val hits: List<Pair<String, Long>> = emptyList(),
 )
 
 private val filterChoices = listOf(
@@ -606,6 +608,8 @@ internal class IndexScreenHeld : ViewModel() {
     var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<IndexRow>>(emptyList())
     val selectedState = mutableStateOf<List<Long>>(emptyList())
+    /** F105: multi-selected hits from other folders, by (folder, UID): a bare UID would name this folder's mail. */
+    val selectedHitsState = mutableStateOf<Set<Pair<String, Long>>>(emptySet())
     val allMailboxState = mutableStateOf(false)
     var anchorUid: Long? = null
     var anchorOffset: Int = 0
@@ -626,6 +630,7 @@ internal class IndexScreenHeld : ViewModel() {
         boundMailbox = mailbox
         rowsState.value = emptyList()
         selectedState.value = emptyList()
+        selectedHitsState.value = emptySet()
         allMailboxState.value = false
         anchorUid = null
         anchorOffset = 0
@@ -644,6 +649,7 @@ internal class IndexScreenHeld : ViewModel() {
         boundMailbox = null
         rowsState.value = emptyList()
         selectedState.value = emptyList()
+        selectedHitsState.value = emptySet()
         allMailboxState.value = false
         anchorUid = null
         anchorOffset = 0
@@ -680,7 +686,7 @@ private fun Context.hostActivity(): Activity? {
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
-    onOpen: (Long, Int, String) -> Unit,
+    onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
     onCustomize: () -> Unit = {},
@@ -724,7 +730,7 @@ private fun MessageIndexLoaded(
     accountId: String,
     store: SettingsStore,
     mailbox: String,
-    onOpen: (Long, Int, String) -> Unit,
+    onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
     onCustomize: () -> Unit = {},
@@ -848,6 +854,8 @@ private fun MessageIndexLoaded(
         mutableStateOf(reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value))
     }
     var selected by held.selectedState
+    var selectedHits by held.selectedHitsState
+    fun foreignRow(row: IndexRow) = row.mailbox.isNotEmpty() && row.mailbox != mailbox
     var allMailbox by held.allMailboxState
     var mailboxExists by remember { mutableIntStateOf(0) }
     var folderExists by remember(mailbox) { mutableIntStateOf(0) }
@@ -892,6 +900,8 @@ private fun MessageIndexLoaded(
             multiSelect -> {
                 multiSelect = false
                 selected = emptyList()
+        selectedHits = emptySet()
+                selectedHits = emptySet()
                 allMailbox = false
                 selectionMore = false
             }
@@ -938,6 +948,7 @@ private fun MessageIndexLoaded(
     fun clearSelection() {
         multiSelect = false
         selected = emptyList()
+        selectedHits = emptySet()
         allMailbox = false
         selectionMore = false
     }
@@ -950,11 +961,12 @@ private fun MessageIndexLoaded(
 
     fun applySelectionFlags(add: Set<String>, remove: Set<String>) {
         val uids = selected.toList()
+        val hits = selectedHits.toList()
         val entire = allMailbox
         selectionMore = false
         scope.launch {
             gate.withLock {
-                model.changeFlags(uids, add, remove, entire)
+                model.acrossFolders(uids, hits, entire) { u, e, _ -> model.changeFlags(u, add, remove, e) }
                 sync.block()
             }
         }
@@ -1064,8 +1076,18 @@ private fun MessageIndexLoaded(
 
     fun selectAllMessages() {
         if (blocksFolderSelection(model.orderMailboxes, mailbox)) {
-            model.reportNotice(appContext.getString(R.string.index_search_open_folder))
-            pull()
+            // F105: every hit, each by its own folder (home-folder hits as plain UIDs)
+            val boxes = model.orderMailboxes
+            val own = ArrayList<Long>()
+            val hits = LinkedHashSet<Pair<String, Long>>()
+            for ((i, uid) in model.order.withIndex()) {
+                val box = boxes.getOrNull(i).orEmpty()
+                if (box.isEmpty() || box == mailbox) own += uid else hits += box to uid
+            }
+            allMailbox = false
+            selected = own
+            selectedHits = hits
+            multiSelect = true
             return
         }
         when (val target = selectAllTarget(filterActive || model.searchActive, model.order)) {
@@ -1090,6 +1112,8 @@ private fun MessageIndexLoaded(
                     mailboxExists = exists
                     folderExists = exists
                     selected = emptyList()
+        selectedHits = emptySet()
+                selectedHits = emptySet()
                     multiSelect = true
                 }
             }
@@ -1113,14 +1137,24 @@ private fun MessageIndexLoaded(
         uids: List<Long>,
         entire: Boolean,
         trash: String,
+        hits: List<Pair<String, Long>> = emptyList(),
     ) {
         var undo: MailUndo? = null
         gate.withLock {
             model.clearMailUndo()
-            when (policy) {
-                DeletePolicy.MarkDeleted -> model.deleteMessages(uids, entire)
-                DeletePolicy.MoveToTrash -> model.moveMessages(uids, trash, entire)
-                DeletePolicy.DeletePermanently -> model.deletePermanently(uids, entire)
+            model.acrossFolders(uids, hits, entire) { u, e, folder ->
+                // a hit in Trash is deleted the way Trash itself would be
+                val here = if (folder == mailbox) policy else effectiveDeletePolicy(
+                    policy,
+                    trash.isNotEmpty() && folder == trash,
+                    session.featureCaps.uidPlus,
+                    trash.isNotEmpty(),
+                )
+                when (here) {
+                    DeletePolicy.MarkDeleted -> model.deleteMessages(u, e)
+                    DeletePolicy.MoveToTrash -> model.moveMessages(u, trash, e)
+                    DeletePolicy.DeletePermanently -> model.deletePermanently(u, e)
+                }
             }
             pull()
             undo = model.mailUndo
@@ -2173,7 +2207,7 @@ private fun MessageIndexLoaded(
         modifier = Modifier.fillMaxSize().testTag("smoke-index"),
         topBar = {
             val selectionOrder = if (multiSelect) model.order else emptyList()
-            val selectionCount = if (multiSelect) selected.size else 0
+            val selectionCount = if (multiSelect) selected.size + selectedHits.size else 0
             val filterComplete = multiSelect && !allMailbox && filterActive && selectionOrder.isNotEmpty() &&
                 selectionCount == selectionOrder.size && selected.toSet() == selectionOrder.toSet()
             val titleExists = when {
@@ -2277,12 +2311,15 @@ private fun MessageIndexLoaded(
                         }
                         val moveSelected = {
                             val uids = selected.toList()
+                            val hits = selectedHits.toList()
                             val entire = allMailbox
                             scope.launch {
                                 var undo: MailUndo? = null
                                 gate.withLock {
                                     model.clearMailUndo()
-                                    model.moveMessages(uids, barMoveMailbox(account), entire)
+                                    model.acrossFolders(uids, hits, entire) { u, e, _ ->
+                                        model.moveMessages(u, barMoveMailbox(account), e)
+                                    }
                                     pull()
                                     undo = model.mailUndo
                                 }
@@ -2293,6 +2330,7 @@ private fun MessageIndexLoaded(
                         }
                         val deleteSelected = {
                             val uids = selected.toList()
+                            val hits = selectedHits.toList()
                             val entire = allMailbox
                             scope.launch {
                                 val trash = readKnownTrash()
@@ -2302,10 +2340,12 @@ private fun MessageIndexLoaded(
                                     session.featureCaps.uidPlus,
                                     trash.isNotEmpty(),
                                 )
-                                if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
+                                val hitInTrash = trash.isNotEmpty() && hits.any { it.first == trash } &&
+                                    session.featureCaps.uidPlus
+                                if ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge) {
+                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false, hits = hits)
                                 } else {
-                                    applyDeletePolicy(policy, uids, entire, trash)
+                                    applyDeletePolicy(policy, uids, entire, trash, hits)
                                 }
                             }
                             Unit
@@ -2381,13 +2421,14 @@ private fun MessageIndexLoaded(
                                         onClick = {
                                             selectionMore = false
                                             val uids = selected.toList()
+                                            val hits = selectedHits.toList()
                                             val entire = allMailbox
                                             scope.launch {
                                                 val trash = readKnownTrash()
                                                 if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false)
+                                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false, hits = hits)
                                                 } else {
-                                                    applyDeletePolicy(policy, uids, entire, trash)
+                                                    applyDeletePolicy(policy, uids, entire, trash, hits)
                                                 }
                                             }
                                         },
@@ -2409,13 +2450,13 @@ private fun MessageIndexLoaded(
                                 }
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.index_bounce)) },
-                                    enabled = !allMailbox,
+                                    enabled = !allMailbox && selectedHits.isEmpty(), // a bounce seed names one folder
                                     onClick = {
                                         selectionMore = false
                                         onCompose(model.bounceSeed(selected))
                                     },
                                 )
-                                if (!allMailbox && selected.size == 1) {
+                                if (!allMailbox && selected.size == 1 && selectedHits.isEmpty()) {
                                     val oneUid = selected.single()
                                     DropdownMenuItem(
                                         text = { Text(forwardStyleName(account.forwardAsAttachment)) },
@@ -2423,7 +2464,7 @@ private fun MessageIndexLoaded(
                                             selectionMore = false
                                             armForwardOnce(!account.forwardAsAttachment)
                                             onCompose(
-                                                ComposeSeed(ComposeKind.Forward, mailbox, listOf(oneUid)),
+                                                ComposeSeed(ComposeKind.Forward, mailbox, listOf(oneUid), model.listedEpoch(mailbox)),
                                             )
                                         },
                                     )
@@ -3265,7 +3306,8 @@ private fun MessageIndexLoaded(
                                 account = account,
                                 depth = entry.depth,
                                 position = entry.position,
-                                selected = allMailbox || row.uid in selected,
+                                selected = if (foreignRow(row)) (row.mailbox to row.uid) in selectedHits
+                                    else allMailbox || row.uid in selected,
                                 multiSelect = multiSelect,
                                 leftToRight = leftToRight,
                                 sequenceWidth = sequenceWidth,
@@ -3286,7 +3328,10 @@ private fun MessageIndexLoaded(
                                 threadCount = threadCount,
                                 onToggleThread = { toggleThread(row.uid) },
                                 onClick = {
-                                    if (multiSelect) {
+                                    if (multiSelect && foreignRow(row)) {
+                                        val hit = row.mailbox to row.uid
+                                        selectedHits = if (hit in selectedHits) selectedHits - hit else selectedHits + hit
+                                    } else if (multiSelect) {
                                         if (allMailbox) {
                                             allMailbox = false
                                             selected = rows.map { it.uid }.filter { it != row.uid }
@@ -3295,15 +3340,16 @@ private fun MessageIndexLoaded(
                                         }
                                     } else {
                                         val seed = model.openSeed(row.uid)
-                                        if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence, row.mailbox)
+                                        if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence, row.mailbox, model.listedEpoch(row.mailbox))
                                     }
                                 },
                                 onLongPress = {
-                                    // F105: selection holds bare UIDs, which would act on this folder; hits from
-                                    // other folders are acted on one at a time (swipe or open) instead.
-                                    if (row.mailbox.isEmpty() || row.mailbox == mailbox) {
-                                        multiSelect = true
-                                        if (!allMailbox && row.uid !in selected) selected = selected + row.uid
+                                    // F105: hits from other folders are selected by (folder, UID) and acted on there.
+                                    multiSelect = true
+                                    if (foreignRow(row)) {
+                                        selectedHits = selectedHits + (row.mailbox to row.uid)
+                                    } else if (!allMailbox && row.uid !in selected) {
+                                        selected = selected + row.uid
                                     }
                                 },
                                 onSwipe = { binding ->
@@ -3427,6 +3473,7 @@ private fun MessageIndexLoaded(
                                 request.uids,
                                 request.allMailbox,
                                 knownTrashName,
+                                request.hits,
                             )
                         }
                     }

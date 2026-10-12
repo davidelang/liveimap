@@ -136,6 +136,7 @@ import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.sameMailbox
+import org.dlang.liveimap.session.selectChecked
 import org.dlang.liveimap.ui.index.refUndo
 import org.dlang.liveimap.ui.compose.mailboxLeaf
 import org.dlang.liveimap.session.MimePart
@@ -319,6 +320,7 @@ fun MessageReaderScreen(
     mailbox: String,
     uid: Long,
     sequence: Int,
+    uidValidity: Long = 0L,
     onCompose: (ComposeSeed) -> Unit,
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
@@ -340,6 +342,7 @@ fun MessageReaderScreen(
         mailbox = mailbox,
         uid = uid,
         sequence = sequence,
+        uidValidity = uidValidity,
         onCompose = onCompose,
         onAdvance = onAdvance,
         onBack = onBack,
@@ -357,6 +360,7 @@ private fun MessageReaderLoaded(
     mailbox: String,
     uid: Long,
     sequence: Int,
+    uidValidity: Long = 0L,
     onCompose: (ComposeSeed) -> Unit,
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
@@ -463,6 +467,14 @@ private fun MessageReaderLoaded(
     var connected by held.connectedState
     var seenStored by held.seenStoredState
     var selectedMailbox by held.selectedMailboxState
+    // F105: the folder epoch this message's UID belongs to (from its listed row; else the first one seen here)
+    var readerEpoch by remember(mailbox) { mutableStateOf(uidValidity) }
+    suspend fun selectRef(): Long {
+        if (readerEpoch == 0L) readerEpoch = session.select(mailbox).uidValidity
+        session.selectChecked(mailbox, readerEpoch)
+        selectedMailbox = mailbox
+        return readerEpoch
+    }
     var choosingMove by remember { mutableStateOf(false) }
     var choosingSave by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
@@ -561,7 +573,7 @@ private fun MessageReaderLoaded(
         if (markSeen && !seenStored && account.markSeenOnOpen) {
             seenStored = true
             try {
-                session.select(mailbox)  // F43: act on this folder's UID
+                selectRef()  // F43: act on this folder's UID
                 session.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
             } catch (error: CancellationException) {
                 throw error
@@ -827,10 +839,7 @@ private fun MessageReaderLoaded(
                 if (!connected) return@withLock
                 markAttachment(row.section, 0, done = false, busy = true)
                 try {
-                    if (selectedMailbox != mailbox) {
-                        session.select(mailbox)
-                        selectedMailbox = mailbox
-                    }
+                    selectRef()
                     val subtree = session.fetchStructureAt(uid, row.section)
                     val rows = nestedLeafParts(subtree).map { part -> attachmentRowOf(part) }
                     attachments = attachments.flatMap { if (it.section == row.section) rows else listOf(it) }
@@ -857,10 +866,7 @@ private fun MessageReaderLoaded(
                 if (current.done || current.busy) return@withLock
                 markAttachment(current.section, current.fetched, done = false, busy = true)
                 try {
-                    if (selectedMailbox != mailbox) {
-                        session.select(mailbox)
-                        selectedMailbox = mailbox
-                    }
+                    selectRef()
                     val offset = try {
                         streamAttachment(
                             File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section)),
@@ -901,10 +907,7 @@ private fun MessageReaderLoaded(
                     }
                 } else {
                     gate.withLock {
-                        if (selectedMailbox != mailbox) {
-                            session.select(mailbox)
-                            selectedMailbox = mailbox
-                        }
+                        selectRef()
                         session.peekPart(uid, row.section, 0, SniffBytes)
                     }
                 }
@@ -1032,8 +1035,7 @@ private fun MessageReaderLoaded(
             }
             heading = mailboxTitleFor(session, mailbox)
             try {
-                session.select(mailbox)
-                selectedMailbox = mailbox
+                selectRef()
                 val tree = session.fetchStructure(uid)
                 structure = tree
                 attachments = attachmentParts(tree).map { part -> attachmentRowOf(part) }
@@ -1206,7 +1208,7 @@ private fun MessageReaderLoaded(
             var failed = false
             gate.withLock {
                 try {
-                    session.select(mailbox)  // F43: expunge these UIDs in this folder, not wherever the session is
+                    selectRef()  // F43: expunge these UIDs in this folder, not wherever the session is
                     selectedMailbox = mailbox
                     session.uidExpunge(uids)
                 } catch (error: CancellationException) {
@@ -1267,7 +1269,7 @@ private fun MessageReaderLoaded(
         scope.launch {
             gate.withLock {
                 try {
-                    session.select(mailbox)  // F43: act on this folder's UID
+                    selectRef()  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
                     rowFlags = rowFlags - "\\Deleted"
                 } catch (error: CancellationException) {
@@ -1284,7 +1286,7 @@ private fun MessageReaderLoaded(
         try {
             when (policy) {
                 DeletePolicy.MarkDeleted -> {
-                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
+                    val epoch = selectRef()  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     showActionUndo(refUndo(account, mailbox, epoch, uid), target)
                 }
@@ -1292,7 +1294,7 @@ private fun MessageReaderLoaded(
                     val trash = session.knownTrash()
                     knownTrashName = trash
                     if (trash.isEmpty()) return
-                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
+                    val epoch = selectRef()  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), trash)
                     val targetEpoch = session.copiedEpoch()
                     val dest = session.takeCopiedUids()
@@ -1301,7 +1303,7 @@ private fun MessageReaderLoaded(
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) return
-                    session.select(mailbox)  // F43: act on this folder's UID
+                    selectRef()  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     session.uidExpunge(listOf(uid))
                     openNextOrIndex(target)
@@ -1359,7 +1361,7 @@ private fun MessageReaderLoaded(
             gate.withLock {
                 val target = nextAfterDeleteOrMove()
                 try {
-                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
+                    val epoch = selectRef()  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), spamMailbox)
                     val targetEpoch = session.copiedEpoch()
                     val dest = session.takeCopiedUids()
@@ -1400,16 +1402,16 @@ private fun MessageReaderLoaded(
     fun runReaderAction(action: ReaderAction) {
         when (action) {
             ReaderAction.Reply ->
-                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid)))
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
             ReaderAction.ReplyAll ->
-                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid)))
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch))
             ReaderAction.Forward ->
-                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
+                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
             ReaderAction.Delete -> runDelete()
             ReaderAction.Move -> choosingMove = true
             ReaderAction.Spam -> runSpam()
             ReaderAction.Bounce ->
-                onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid)))
+                onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid), readerEpoch))
             ReaderAction.Headers -> toggleAllHeaders()
         }
     }
@@ -1773,7 +1775,7 @@ private fun MessageReaderLoaded(
                     onClick = {
                         moreMenu = false
                         armForwardOnce(!account.forwardAsAttachment)
-                        onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid)))
+                        onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
                     },
                 )
                 BodyView.entries.forEach { view ->
@@ -2214,7 +2216,7 @@ private fun MessageReaderLoaded(
                         gate.withLock {
                             val target = nextAfterDeleteOrMove()
                             try {
-                                val epoch = session.select(mailbox).uidValidity  // F43: this folder's UID
+                                val epoch = selectRef()  // F43: this folder's UID
                                 session.copyThenDelete(listOf(uid), picked)
                                 val targetEpoch = session.copiedEpoch()
                                 val dest = session.takeCopiedUids()
@@ -2233,6 +2235,7 @@ private fun MessageReaderLoaded(
                 }
             },
             onDismiss = { choosingMove = false },
+            exclude = mailbox,
         )
     }
     fun copySavedMessage(destination: String) {
@@ -2343,8 +2346,7 @@ private fun MessageReaderLoaded(
                     postSnack(error.text)
                 }
                 try {
-                    session.select(mailbox)
-                    selectedMailbox = mailbox
+                    selectRef()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {

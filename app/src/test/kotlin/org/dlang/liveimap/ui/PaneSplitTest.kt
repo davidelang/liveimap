@@ -40,7 +40,7 @@ class PaneSplitTest {
         assertFalse(showFolderPane(LayoutChoice.Off, "index/{mailbox}"))
         assertFalse(showFolderPane(LayoutChoice.On, "folders"))
         assertTrue(showFolderPane(LayoutChoice.On, "index/{mailbox}"))
-        assertTrue(showFolderPane(LayoutChoice.On, "reader/{mailbox}/{uid}/{sequence}"))
+        assertTrue(showFolderPane(LayoutChoice.On, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))
         assertFalse(showFolderPane(LayoutChoice.On, "settings"))
     }
 

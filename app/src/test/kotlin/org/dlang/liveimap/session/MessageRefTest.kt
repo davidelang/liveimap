@@ -64,4 +64,25 @@ class MessageRefTest {
         assertTrue(runCatching { run { r.session.onRefs("a1", listOf(MessageRef("a1", "INBOX", 0, 5))) { _, _ -> } } }.isFailure)
         assertTrue(r.selects.isEmpty())
     }
+
+    @Test
+    fun sameMailboxFoldsOnlyInbox() {
+        assertTrue(sameMailbox("INBOX", "inbox"))
+        assertTrue(sameMailbox("Spam", "Spam"))
+        assertTrue(!sameMailbox("Spam", "spam"))
+    }
+
+    @Test
+    fun chooserHidesTheCurrentFolder() {
+        val rows = listOf("INBOX", "Archive", "Spam")
+        org.junit.Assert.assertEquals(listOf("Archive", "Spam"), org.dlang.liveimap.ui.folder.chooserRows(rows, "inbox") { it })
+        org.junit.Assert.assertEquals(rows, org.dlang.liveimap.ui.folder.chooserRows(rows, "") { it })
+    }
+
+    @Test
+    fun composeSeedCarriesRefs() {
+        val seed = ComposeSeed(ComposeKind.Reply, "Archive", listOf(4L), uidValidity = 9L)
+        org.junit.Assert.assertEquals(listOf(MessageRef("a", "Archive", 9L, 4L)), seed.refs("a"))
+        assertTrue(ComposeSeed(ComposeKind.Reply, "Archive", listOf(4L)).refs("a").isEmpty())
+    }
 }

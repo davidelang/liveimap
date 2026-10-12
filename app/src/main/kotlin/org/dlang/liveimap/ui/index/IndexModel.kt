@@ -1380,6 +1380,16 @@ class IndexModel(
         return now
     }
 
+    /** F105: the home folder's epoch as listed (loads end with it selected); first listing wins. */
+    private suspend fun noteOwnEpoch() {
+        if (epochs.containsKey(mailbox)) return
+        val info = session.selectedInfo()
+        if (info.uidValidity > 0) epochs[mailbox] = info.uidValidity
+    }
+
+    /** F105: [folder]'s UIDVALIDITY as recorded when its rows were listed; 0 when not known yet. */
+    fun listedEpoch(folder: String): Long = epochs[folder.ifEmpty { mailbox }] ?: 0L
+
     /** A folder's UIDVALIDITY as seen when its rows were listed (search paths; tests). */
     internal fun noteFolderEpoch(folder: String, epoch: Long) {
         epochs[folder] = epoch
@@ -1430,6 +1440,49 @@ class IndexModel(
             } catch (_: MailFailure) {
             }
         }
+    }
+
+    /**
+     * F105: run [op] on a selection that may span folders: [own] UIDs (or the entire folder) here, and each other
+     * folder's [hits] inside that folder through its refs. Notices are joined; undo merges every part's refs.
+     */
+    suspend fun acrossFolders(
+        own: List<Long>,
+        hits: List<Pair<String, Long>>,
+        entire: Boolean,
+        op: suspend (uids: List<Long>, entire: Boolean, folder: String) -> List<IndexRow>,
+    ): List<IndexRow> {
+        if (hits.isEmpty()) return op(own, entire, mailbox)
+        val undos = ArrayList<MailUndo>()
+        val notes = ArrayList<String>()
+        var parts = 0
+        suspend fun part(block: suspend () -> Unit) {
+            parts += 1
+            mailUndo = null
+            notice = null
+            block()
+            mailUndo?.let(undos::add)
+            notice?.let(notes::add)
+        }
+        if (own.isNotEmpty() || entire) part { op(own, entire, mailbox) }
+        for ((folder, uids) in hits.groupBy({ it.first }, { it.second })) {
+            part { inRowFolder(folder) { op(uids, false, folder) } }
+        }
+        notice = notes.distinct().joinToString("; ").ifEmpty { null }
+        mailUndo = if (undos.size == parts) mergeUndo(undos) else null
+        return heldRows
+    }
+
+    private fun mergeUndo(parts: List<MailUndo>): MailUndo? {
+        val first = parts.firstOrNull() ?: return null
+        if (parts.any { it.source.isEmpty() || it.delete != first.delete || it.targetMailbox != first.targetMailbox ||
+                it.usedMove != first.usedMove }) return null
+        return first.copy(
+            uids = parts.flatMap { it.uids },
+            destUids = parts.flatMap { it.destUids },
+            source = parts.flatMap { it.source },
+            dest = parts.flatMap { it.dest },
+        )
     }
 
     suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
@@ -1603,9 +1656,12 @@ class IndexModel(
                 mailUndo = null
                 return heldRows
             }
-            val back = u.source.first().mailbox
             if (u.usedMove) {
-                session.onRefs(accountKey, u.dest, home = mailbox) { _, uids -> session.copyThenDelete(uids, back) }
+                // copies go back to each one's own source folder (a multi-folder selection has several)
+                val byHome = u.source.indices.groupBy({ u.source[it].mailbox }, { u.dest[it] })
+                for ((back, refs) in byHome) {
+                    session.onRefs(accountKey, refs, home = mailbox) { _, uids -> session.copyThenDelete(uids, back) }
+                }
             } else {
                 session.onRefs(accountKey, u.source, home = mailbox) { _, uids ->
                     session.storeFlags(uids, emptySet(), setOf("\\Deleted"))
@@ -1741,7 +1797,7 @@ class IndexModel(
             when (binding.action) {
                 SwipeAction.Reply, SwipeAction.ReplyAll -> {
                     val kind = if (binding.action == SwipeAction.Reply) ComposeKind.Reply else ComposeKind.ReplyAll
-                    return IndexCommand.Compose(ComposeSeed(kind, rowMailbox, listOf(uid)))
+                    return IndexCommand.Compose(ComposeSeed(kind, rowMailbox, listOf(uid), listedEpoch(rowMailbox)))
                 }
                 SwipeAction.FlagScreen -> {
                     notice = "Open the message to change flags on a hit from another folder"
@@ -1787,7 +1843,7 @@ class IndexModel(
 
     fun openSeed(uid: Long): ComposeSeed? {
         if (mailbox == account.postponedMailbox) {
-            return ComposeSeed(ComposeKind.ResumePostpone, mailbox, listOf(uid))
+            return ComposeSeed(ComposeKind.ResumePostpone, mailbox, listOf(uid), listedEpoch(mailbox))
         }
         return null
     }
@@ -1795,7 +1851,7 @@ class IndexModel(
     fun bounceSeed(uids: List<Long>): ComposeSeed = actionSeed(ComposeKind.Bounce, uids)
 
     fun actionSeed(kind: ComposeKind, uids: List<Long>): ComposeSeed =
-        ComposeSeed(kind, mailbox, uids)
+        ComposeSeed(kind, actFolder ?: mailbox, uids, listedEpoch(actFolder ?: mailbox))
 
     suspend fun watch(onChange: (MailboxChange) -> Unit) {
         session.watch(mailbox, onChange)
@@ -1819,6 +1875,7 @@ class IndexModel(
         windowFailed = false
         try {
             heldRows = load()
+            noteOwnEpoch()
             loadedWindow = true
             notice = pendingNotice
             pendingNotice = null

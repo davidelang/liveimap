@@ -89,6 +89,8 @@ internal fun MailboxChooser(
     onStored: (AccountSettings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** F103: the folder the messages are in; it is not offered as a target. */
+    exclude: String = "",
 ) {
     var accountId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
@@ -103,6 +105,7 @@ internal fun MailboxChooser(
         onStored = onStored,
         onPick = onPick,
         onDismiss = onDismiss,
+        exclude = exclude,
     )
 }
 
@@ -114,6 +117,7 @@ private fun MailboxChooserLoaded(
     onStored: (AccountSettings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    exclude: String = "",
 ) {
     val notConnected = stringResource(R.string.reader_not_connected)
     val session = remember(accountId) { mailSession(accountId) }
@@ -198,7 +202,7 @@ private fun MailboxChooserLoaded(
                     Text(text = message)
                 }
                 if (!stopped) {
-                    for (row in rows) {
+                    for (row in chooserRows(rows, exclude) { it.mailbox }) {
                         MailboxPickRow(
                             row = row,
                             onPick = { onPick(row.mailbox) },
@@ -277,3 +281,7 @@ private fun MailboxPickRow(
         )
     }
 }
+
+/** F103: the rows offered as targets: everything but [exclude] (INBOX compared case-insensitively). */
+internal fun <T> chooserRows(rows: List<T>, exclude: String, name: (T) -> String): List<T> =
+    if (exclude.isEmpty()) rows else rows.filterNot { org.dlang.liveimap.session.sameMailbox(name(it), exclude) }

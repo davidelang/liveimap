@@ -375,6 +375,7 @@
     <string name="compose_resent_missing">Resent-To is not set</string>
     <string name="compose_draft_not_saved">The draft is not saved.</string>
     <string name="compose_unsent_gone">That unsent copy is no longer on this device.</string>
+    <string name="compose_flags_not_stored">Sent, but the original was not marked answered/forwarded: %1$s</string>
     <string name="compose_postponed_remains">Postponed copy is still in %1$s</string>
     <string name="compose_fetch_failed">fetch failed</string>
     <string name="compose_quote_header">From: %1$s\nDate: %2$s\nSubject: %3$s</string>
@@ -731,7 +732,6 @@
     <string name="index_search_cancel">Cancel</string>
     <string name="index_search_folder_progress">Folder %1$d of %2$d</string>
     <string name="index_search_skipped">Skipped %1$s.</string>
-    <string name="index_search_open_folder">Open that folder to change these messages.</string>
     <string name="toolbar_customize">Customize toolbar…</string>
     <string name="toolbar_reset">Reset to default</string>
     <string name="toolbar_section_toolbar">Toolbar</string>

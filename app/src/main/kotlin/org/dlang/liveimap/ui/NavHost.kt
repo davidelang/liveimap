@@ -245,6 +245,7 @@ fun LiveImapNavHost() {
     val composeKindName = rememberSaveable { mutableStateOf(ComposeKind.New.name) }
     val composeMailbox = rememberSaveable { mutableStateOf("") }
     val composeUids = rememberSaveable { mutableStateOf("") }
+    val composeEpoch = rememberSaveable { mutableStateOf(0L) }
     val composeUnsentId = rememberSaveable { mutableStateOf("") }
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
     val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
@@ -322,6 +323,7 @@ fun LiveImapNavHost() {
         if (readerMailbox != indexMailbox) return@LaunchedEffect
         previous.savedStateHandle["paneUid"] = readerArgs.getLong("uid")
         previous.savedStateHandle["paneSequence"] = readerArgs.getInt("sequence")
+        previous.savedStateHandle["paneEpoch"] = readerArgs.getLong("epoch")
         navController.popBackStack()
     }
 
@@ -363,6 +365,7 @@ fun LiveImapNavHost() {
                 composeKindName.value = seed.kind.name
                 composeMailbox.value = seed.mailbox.orEmpty()
                 composeUids.value = seed.uids.joinToString(",")
+                composeEpoch.value = seed.uidValidity
                 composeUnsentId.value = ""
                 composeRetryOnOpen.value = false
                 navController.navigate("compose")
@@ -395,6 +398,8 @@ fun LiveImapNavHost() {
                 val useAxis = axisNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
                 var paneSequence by rememberSaveable { mutableIntStateOf(0) }
+                // F105: the opened row's folder UIDVALIDITY as listed; the reader acts only in that epoch.
+                var paneEpoch by rememberSaveable { mutableStateOf(0L) }
                 var contentSpan by remember { mutableFloatStateOf(0f) }
                 val folderViewToken by entry.savedStateHandle
                     .getStateFlow("folderViewToken", 0)
@@ -414,8 +419,10 @@ fun LiveImapNavHost() {
                     if (!handle.contains("paneUid")) return@LaunchedEffect
                     val foldedUid = handle.remove<Long>("paneUid")
                     val foldedSequence = handle.remove<Int>("paneSequence") ?: 0
+                    val foldedEpoch = handle.remove<Long>("paneEpoch") ?: 0L
                     if (foldedUid == null) return@LaunchedEffect
                     paneSequence = foldedSequence
+                    paneEpoch = foldedEpoch
                     paneUid = foldedUid
                 }
                 LaunchedEffect(useSplit, paneUid, paneSequence) {
@@ -423,7 +430,7 @@ fun LiveImapNavHost() {
                         val uid = paneUid
                         val sequence = paneSequence
                         paneUid = -1L
-                        navController.navigate("reader/${Uri.encode(mailbox)}/$uid/$sequence")
+                        navController.navigate(readerRoute(mailbox, uid, sequence, paneEpoch))
                     }
                 }
                 LaunchedEffect(useSplit, paneUid, availableDpState.intValue) {
@@ -465,13 +472,14 @@ fun LiveImapNavHost() {
                     entry.savedStateHandle.remove<String>("advancedQuery")
                     entry.savedStateHandle.remove<String>("advancedScope")
                 }
-                fun openMessage(uid: Long, sequence: Int, rowMailbox: String) {
+                fun openMessage(uid: Long, sequence: Int, rowMailbox: String, epoch: Long) {
                     val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
                     if (useSplit && target == mailbox) {
                         paneUid = uid
                         paneSequence = sequence
+                        paneEpoch = epoch
                     } else {
-                        navController.navigate("reader/${Uri.encode(target)}/$uid/$sequence")
+                        navController.navigate(readerRoute(target, uid, sequence, epoch))
                     }
                 }
                 @Composable
@@ -479,7 +487,7 @@ fun LiveImapNavHost() {
                     key(viewKey) {
                         MessageIndexScreen(
                             mailbox = mailbox,
-                            onOpen = { uid, sequence, rowMailbox -> openMessage(uid, sequence, rowMailbox) },
+                            onOpen = { uid, sequence, rowMailbox, epoch -> openMessage(uid, sequence, rowMailbox, epoch) },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
                             onCustomize = { navController.navigate("toolbar/index") },
@@ -541,6 +549,7 @@ fun LiveImapNavHost() {
                                     mailbox = mailbox,
                                     uid = paneUid,
                                     sequence = paneSequence,
+                                    uidValidity = paneEpoch,
                                     onCompose = { seed -> openCompose(seed) },
                                     onAdvance = { nextUid, nextSequence ->
                                         paneUid = nextUid
@@ -628,11 +637,15 @@ fun LiveImapNavHost() {
                 }
             }
             composable(
-                route = "reader/{mailbox}/{uid}/{sequence}",
+                route = ReaderRoutePattern,
                 arguments = listOf(
                     navArgument("mailbox") { type = NavType.StringType },
                     navArgument("uid") { type = NavType.LongType },
                     navArgument("sequence") { type = NavType.IntType },
+                    navArgument("epoch") {
+                        type = NavType.LongType
+                        defaultValue = 0L
+                    },
                 ),
             ) { entry ->
                 val args = entry.arguments ?: return@composable
@@ -642,12 +655,13 @@ fun LiveImapNavHost() {
                     mailbox = mailbox,
                     uid = args.getLong("uid"),
                     sequence = args.getInt("sequence"),
+                    uidValidity = args.getLong("epoch"),
                     onCompose = { seed -> openCompose(seed) },
                     onAdvance = { nextUid, nextSequence ->
                         navController.navigate(
-                            "reader/${Uri.encode(mailbox)}/$nextUid/$nextSequence",
+                            readerRoute(mailbox, nextUid, nextSequence, args.getLong("epoch")),
                         ) {
-                            popUpTo("reader/{mailbox}/{uid}/{sequence}") { inclusive = true }
+                            popUpTo(ReaderRoutePattern) { inclusive = true }
                         }
                     },
                     onBack = { navController.popBackStack() },
@@ -676,6 +690,7 @@ fun LiveImapNavHost() {
                     } else {
                         uidText.split(',').map { it.toLong() }
                     },
+                    uidValidity = composeEpoch.value,
                 )
                 ComposeScreen(
                     seed = seed,
@@ -1435,7 +1450,7 @@ internal fun favoriteDrawerLabel(favorite: FolderFavorite): String {
 }
 
 internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
-    return expanded && route == "reader/{mailbox}/{uid}/{sequence}"
+    return expanded && route == ReaderRoutePattern
 }
 
 internal fun useMultiPane(mode: MultiPane, autoPanes: Int = 1): Boolean =
@@ -1462,7 +1477,7 @@ internal fun drawerHiddenFor(folderColumn: Boolean, route: String?, multiPane: M
 
 internal fun showFolderPane(choice: LayoutChoice, route: String?, autoPanes: Int = 1): Boolean {
     return useFolderPane(choice, autoPanes) &&
-        (route == "index/{mailbox}" || route == "reader/{mailbox}/{uid}/{sequence}")
+        (route == "index/{mailbox}" || route == ReaderRoutePattern)
 }
 
 internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boolean, autoTopBottom: Boolean = false): PaneAxis {
@@ -1703,3 +1718,9 @@ private fun PaneTree(
         )
     }
 }
+
+/** F105: the reader route carries the folder's UIDVALIDITY as listed (0 = unknown, captured on first open). */
+internal const val ReaderRoutePattern = "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"
+
+internal fun readerRoute(mailbox: String, uid: Long, sequence: Int, epoch: Long): String =
+    "reader/${Uri.encode(mailbox)}/$uid/$sequence?epoch=$epoch"

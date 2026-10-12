@@ -624,6 +624,28 @@ class IndexWindowTest {
     }
 
     @Test
+    fun multiSelectAcrossFoldersActsInEachFolderAndUndoesByRefs() {
+        // F105: INBOX UID 4 plus Archive UID 4 and Old UID 7: each acted on in its own folder
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("INBOX", 1L)
+        model.noteFolderEpoch("Archive", 1L)
+        model.noteFolderEpoch("Old", 1L)
+        val hits = listOf("Archive" to 4L, "Old" to 7L)
+        runImmediate { model.acrossFolders(listOf(4L), hits, false) { u, e, _ -> model.deleteMessages(u, e) } }
+        assertEquals(3, session.stores.size)
+        assertEquals(listOf("INBOX", "Archive", "Old"), session.storeFolders)
+        assertEquals("INBOX", session.selectedName)
+        val undo = model.mailUndo!!
+        assertEquals(setOf("INBOX", "Archive", "Old"), undo.source.map { it.mailbox }.toSet())
+        session.stores.clear()
+        session.storeFolders.clear()
+        runImmediate { model.undo(undo) }
+        assertEquals(listOf("INBOX", "Archive", "Old"), session.storeFolders)
+        assertTrue(session.stores.all { it.remove == setOf("\\Deleted") })
+    }
+
+    @Test
     fun moveIntoTheCurrentFolderIsRefused() {
         // F103
         val session = FakeMailSession()
@@ -2344,6 +2366,7 @@ private class FakeMailSession(
     val deletedUids = HashSet<Long>()
     var startFailure: MailFailure? = null
     val stores = mutableListOf<FlagWrite>()
+    val storeFolders = mutableListOf<String>()
     val copies = mutableListOf<CopyWrite>()
     val rows = HashMap<Long, IndexRow>()
     var arrivalRows: List<IndexRow> = emptyList()
@@ -2452,6 +2475,7 @@ private class FakeMailSession(
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
         throwIfArmed()
         stores += FlagWrite(uids, add, remove)
+        storeFolders += selectedName
         for (uid in uids) {
             val current = rows[uid] ?: continue
             rows[uid] = applyFlagEdit(current, add, remove)
