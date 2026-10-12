@@ -428,4 +428,30 @@ class WatchedFoldersTest {
             calls.add("status $mailbox")
         }
     }
+
+    @Test
+    fun coalescerKeepsLatestCountPerFolderForLargeBursts() {
+        val c = IdleChangeCoalescer()
+        for (n in 1..5000) c.offer(IdleFolderChange("A", MailboxChange.Exists(n)))
+        c.offer(IdleFolderChange("B", MailboxChange.Expunge(7)))
+        c.offer(IdleFolderChange("A", MailboxChange.Flags(1, setOf("\\Seen"))))
+        c.offer(IdleFolderChange("A", MailboxChange.Reconnected))
+        c.offer(IdleFolderChange("A", MailboxChange.Expunge(4999)))
+        assertEquals(
+            listOf(
+                IdleFolderChange("B", MailboxChange.Expunge(7)),
+                IdleFolderChange("A", MailboxChange.Reconnected),
+                IdleFolderChange("A", MailboxChange.Expunge(4999)),
+            ),
+            c.drain(),
+        )
+        assertEquals(emptyList<IdleFolderChange>(), c.drain())
+    }
+
+    @Test
+    fun coalescerFlowDeliversAfterBurst() = runBlocking {
+        val c = IdleChangeCoalescer()
+        for (n in 1..100) c.offer(IdleFolderChange("A", MailboxChange.Exists(n)))
+        assertEquals(IdleFolderChange("A", MailboxChange.Exists(100)), c.changes.first())
+    }
 }

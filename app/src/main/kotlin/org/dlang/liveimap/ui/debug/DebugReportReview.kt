@@ -59,6 +59,7 @@ fun DebugReportReview(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(stringResource(R.string.debug_report_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.traffic_share_warning), color = MaterialTheme.colorScheme.error)
                 Column(
                     modifier = Modifier
                         .weight(1f)

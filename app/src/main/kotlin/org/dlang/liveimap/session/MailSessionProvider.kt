@@ -1,6 +1,5 @@
 package org.dlang.liveimap.session
 
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.engine.LibetpanMailSession
@@ -49,7 +48,7 @@ suspend fun stopExtraIdle() {
 }
 
 /** Extra IDLE changes from the process holder. Does not open a socket. */
-fun extraIdleChanges(): SharedFlow<IdleFolderChange> = extraIdleSessions.changes
+fun extraIdleChanges(): kotlinx.coroutines.flow.Flow<IdleFolderChange> = extraIdleSessions.changes
 
 suspend fun dropMailSession(accountId: String) {
     accountSessions.drop(accountId)

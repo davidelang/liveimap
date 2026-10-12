@@ -1933,6 +1933,7 @@ private fun DebugGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen("logging")
     val settings = editor.settings
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
+    var confirmShareLog by remember { mutableStateOf(false) }
     val contextState = rememberUpdatedState(LocalContext.current)
     SettingsPage {
         SettingsSection(
@@ -1954,10 +1955,7 @@ private fun DebugGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(logImapTraffic = it))
             }
             Text(stringResource(R.string.settings_log_note))
-            TextButton(onClick = {
-                val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
-                log.shareFile(contextState.value)
-            }) { Text(stringResource(R.string.settings_share_log)) }
+            TextButton(onClick = { confirmShareLog = true }) { Text(stringResource(R.string.settings_share_log)) }
             TextButton(onClick = {
                 val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
                 val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
@@ -1997,6 +1995,24 @@ private fun DebugGroup(editor: SettingsEditor) {
                 }
             }
         }
+    }
+    if (confirmShareLog) {
+        // F10: the log keeps full message bodies (replay needs them); say so before it leaves the device.
+        AlertDialog(
+            onDismissRequest = { confirmShareLog = false },
+            title = { Text(stringResource(R.string.settings_share_log)) },
+            text = { Text(stringResource(R.string.traffic_share_warning)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmShareLog = false
+                    val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
+                    log.shareFile(contextState.value)
+                }) { Text(stringResource(R.string.traffic_share_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmShareLog = false }) { Text(stringResource(R.string.debug_dismiss)) }
+            },
+        )
     }
     val shownReport = reportLines
     if (shownReport != null) {

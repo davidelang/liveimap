@@ -1,7 +1,8 @@
 package org.dlang.liveimap.session
 
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import org.dlang.liveimap.settings.AccountSettings
 
 data class WatchPlan(
@@ -116,14 +117,50 @@ class ExtraWatchApply {
 }
 
 /** One session per extra IDLE name. Does not call STATUS or the screen. */
+/**
+ * F28: coalesces extra-IDLE changes instead of buffering or dropping them. Per mailbox only the newest count change
+ * (Exists/Expunge) is kept, and each reset marker (UidValidityReset, WatchLost, Reconnected) is kept once, so a
+ * burst of any size costs O(folders) memory and the consumer always ends on the current count. Flags are not kept
+ * (the only consumer uses counts). One consumer drains it. Does not open a socket.
+ */
+class IdleChangeCoalescer {
+    private val pending = LinkedHashMap<Pair<String, String>, IdleFolderChange>()
+    private val signal = Channel<Unit>(Channel.CONFLATED)
+
+    fun offer(change: IdleFolderChange) {
+        val kind = when (change.change) {
+            is MailboxChange.Flags -> return
+            is MailboxChange.Exists, is MailboxChange.Expunge -> "count"
+            else -> change.change.toString()
+        }
+        synchronized(pending) {
+            val key = change.mailbox to kind
+            pending.remove(key)
+            pending[key] = change
+        }
+        signal.trySend(Unit)
+    }
+
+    fun drain(): List<IdleFolderChange> = synchronized(pending) {
+        val out = pending.values.toList()
+        pending.clear()
+        out
+    }
+
+    val changes: Flow<IdleFolderChange> = flow {
+        while (true) {
+            for (change in drain()) emit(change)
+            signal.receive()
+        }
+    }
+}
+
 class ExtraIdleSessions(private val factory: () -> MailSession) {
     private val open = ArrayList<Held>()
-    // F28: never drop. Flag changes (the bulk-burst source) are not forwarded: the only consumer, the folder
-    // list, uses message counts. Count changes are few, so the buffer is unbounded.
-    private val changeFlow = MutableSharedFlow<IdleFolderChange>(extraBufferCapacity = kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val coalescer = IdleChangeCoalescer()
 
-    /** Count and reset changes per extra IDLE folder; nothing is dropped. */
-    val changes: SharedFlow<IdleFolderChange> = changeFlow
+    /** Count and reset changes per extra IDLE folder, coalesced per folder (F28); nothing is lost. */
+    val changes: Flow<IdleFolderChange> = coalescer.changes
 
     fun openNames(): List<String> = open.map { it.name }
 
@@ -149,7 +186,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                     try {
                         session.select(name)
                         session.watch(name) { change ->
-                            if (change !is MailboxChange.Flags) changeFlow.tryEmit(IdleFolderChange(name, change))
+                            coalescer.offer(IdleFolderChange(name, change))
                         }
                     } catch (failure: Throwable) {
                         suppressClose(session, failure)

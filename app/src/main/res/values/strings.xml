@@ -130,6 +130,8 @@
     <string name="debug_remove_line">Remove line</string>
     <string name="debug_copy">Copy</string>
     <string name="debug_share">Share</string>
+    <string name="traffic_share_warning">Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.</string>
+    <string name="traffic_share_anyway">Share anyway</string>
     <string name="debug_dismiss">Dismiss</string>
     <string name="debug_clipboard">LiveIMAP debug report</string>
     <string name="debug_share_title">Share debug report</string>
