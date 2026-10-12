@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
         store = DataStoreSettingsStore(applicationContext)
         org.dlang.liveimap.engine.KeyChainCerts.appContext = applicationContext
         org.dlang.liveimap.ui.reader.clearStaleAttachmentCache(cacheDir)
-        }
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()
