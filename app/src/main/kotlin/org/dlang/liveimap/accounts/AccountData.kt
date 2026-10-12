@@ -1,16 +1,11 @@
 package org.dlang.liveimap.accounts
 
-import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
 
 internal const val liveimapAccountType: String = "org.dlang.liveimap"
 internal const val accountSchemaValue: String = "1"
-internal const val migratedFromDatastoreV1: String = "datastore-v1"
-internal const val legacyAccountKey: String = "account"
-internal const val legacySecretFile: String = "liveimap_secret"
-internal const val legacyPasswordKey: String = "password"
 internal const val smtpPasswordKey: String = "smtpPassword"
 internal const val selectedAccountIdKey: String = "selectedAccountId"
 
@@ -22,7 +17,7 @@ internal fun chooseAccount(accounts: List<ManagedAccount>, selectedId: String?):
         accounts.firstOrNull { it.userData[userAccountId] == selectedId }?.let { return it }
     }
     if (accounts.size == 1) return accounts.first()
-    return accounts.firstOrNull { !it.userData[userMigratedFrom].isNullOrEmpty() } ?: accounts.first()
+    return accounts.first()
 }
 
 internal data class AccountRemoval(
@@ -74,30 +69,9 @@ internal data class ManagedAccount(
     val passwordSlot: String,
 )
 
-internal interface LegacyAccount {
-    suspend fun encoded(): String?
-    suspend fun password(): String
-    suspend fun deleteEncoded()
-    suspend fun deletePassword()
-}
-
-internal interface AccountMap {
-    suspend fun accounts(): List<ManagedAccount>
-    suspend fun write(name: String, userData: Map<String, String>, passwordSlot: String)
-    suspend fun preference(accountId: String): String?
-    suspend fun putPreference(accountId: String, value: String)
-}
-
 internal interface AccountCipher {
     fun encrypt(accountId: String, password: String): String
     fun decrypt(accountId: String, passwordSlot: String): String
-}
-
-internal enum class MigrationOutcome {
-    Already,
-    NothingToDo,
-    Migrated,
-    Failed,
 }
 
 internal fun accountVisibleName(settings: AccountSettings): String {
@@ -133,51 +107,4 @@ internal fun overlayAccountFields(base: AccountSettings, userData: Map<String, S
         username = userData.getValue(userUsername),
         email = userData.getValue(userEmail),
     )
-}
-
-internal suspend fun migrateAccount(
-    legacy: LegacyAccount,
-    accounts: AccountMap,
-    cipher: AccountCipher,
-    newAccountId: () -> String = { java.util.UUID.randomUUID().toString() },
-    log: (String) -> Unit = {},
-): MigrationOutcome {
-    try {
-        if (accounts.accounts().any { it.userData[userMigratedFrom] == migratedFromDatastoreV1 }) {
-            return MigrationOutcome.Already
-        }
-        val text = legacy.encoded() ?: return MigrationOutcome.NothingToDo
-        val settings = decodeAccountSettings(text)
-        val password = legacy.password()
-        val existing = accounts.accounts().firstOrNull()
-        val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
-            ?: newAccountId()
-        val name = existing?.name ?: accountVisibleName(settings)
-        val userData = accountUserData(accountId, settings, migratedFrom = null)
-        val slot = cipher.encrypt(accountId, password)
-        accounts.write(name, userData, slot)
-        accounts.putPreference(accountId, settings.encode())
-        val read = accounts.accounts().firstOrNull { it.userData[userAccountId] == accountId }
-            ?: return migrationFailed(log)
-        val stored = accounts.preference(accountId) ?: return migrationFailed(log)
-        val loaded = overlayAccountFields(decodeAccountSettings(stored), read.userData)
-        val decodedPassword = cipher.decrypt(accountId, read.passwordSlot)
-        if (loaded != settings || decodedPassword != password) return migrationFailed(log)
-        // Old stores stay until this match. The marker is set only after the delete.
-        legacy.deleteEncoded()
-        legacy.deletePassword()
-        accounts.write(name, accountUserData(accountId, settings, migratedFromDatastoreV1), slot)
-        log("account migrated")
-        return MigrationOutcome.Migrated
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        log("account migration failed")
-        return MigrationOutcome.Failed
-    }
-}
-
-private fun migrationFailed(log: (String) -> Unit): MigrationOutcome {
-    log("account migration failed")
-    return MigrationOutcome.Failed
 }

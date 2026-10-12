@@ -42,18 +42,15 @@ private val Context.accountSettingsDataStore by preferencesDataStore(name = "acc
 class AccountStore private constructor(private val context: Context) {
     private val gate = Mutex()
     private val cipher = AndroidAccountCipher()
-    private var migrationSettled = false
 
     // Tink-sealed secrets (F20). No EncryptedSharedPreferences read: old secrets are not carried over (David).
     private val secretPrefs: SecretBox by lazy { SecretBox(context) }
 
     suspend fun load(): AccountSettings {
-        ensureMigrated()
         return gate.withLock { withContext(Dispatchers.IO) { loadLocked() } }
     }
 
     suspend fun save(settings: AccountSettings) {
-        ensureMigrated()
         val encoded = settings.encode()
         val writePreferences = gate.withLock {
             withContext(Dispatchers.IO) { stageSave(settings, encoded) }
@@ -62,12 +59,10 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun password(): String {
-        ensureMigrated()
         return gate.withLock { withContext(Dispatchers.IO) { passwordLocked() } }
     }
 
     suspend fun setPassword(value: String) {
-        ensureMigrated()
         val writePreferences = gate.withLock {
             withContext(Dispatchers.IO) { stagePassword(value) }
         }
@@ -75,7 +70,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun smtpPassword(): String {
-        ensureMigrated()
         return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
@@ -83,9 +77,6 @@ class AccountStore private constructor(private val context: Context) {
                 val id = chosen?.userData?.get(userAccountId)
                 if (!id.isNullOrEmpty() && secretPrefs.contains(smtpPasswordKeyFor(id))) {
                     return@withContext secretPrefs.getString(smtpPasswordKeyFor(id), "") ?: ""
-                }
-                if (accounts.size == 1) {
-                    return@withContext secretPrefs.getString(smtpPasswordKey, "") ?: ""
                 }
                 ""
             }
@@ -97,10 +88,8 @@ class AccountStore private constructor(private val context: Context) {
      * message through another account's servers. Null when there is no such account (multi-account store only).
      */
     suspend fun accountById(accountId: String): AccountCredentials? {
-        ensureMigrated()
         return gate.withLock {
             withContext(Dispatchers.IO) {
-                if (shouldUseLegacyLocked()) return@withContext null
                 val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId }
                     ?: return@withContext null
                 val text = storedPreference(accountId) ?: return@withContext null
@@ -113,7 +102,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun setSmtpPassword(value: String) {
-        ensureMigrated()
         gate.withLock {
             withContext(Dispatchers.IO) {
                 val id = smtpAccountId()
@@ -130,7 +118,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun listAccounts(): List<AccountChoice> {
-        ensureMigrated()
         return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
@@ -149,7 +136,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun listDrawerAccounts(): List<DrawerAccount> {
-        ensureMigrated()
         return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
@@ -172,7 +158,6 @@ class AccountStore private constructor(private val context: Context) {
 
     suspend fun selectAccount(accountId: String) {
         if (accountId.isBlank()) return
-        ensureMigrated()
         gate.withLock {
             withContext(Dispatchers.IO) {
                 val known = readAccounts().any { it.userData[userAccountId] == accountId }
@@ -183,13 +168,9 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun addAccount() {
-        ensureMigrated()
         gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
-                if (accounts.size == 1) {
-                    copyLegacySmtpPassword(accounts[0])
-                }
                 val settings = newAccountSettings()
                 val accountId = java.util.UUID.randomUUID().toString()
                 writeAccount(
@@ -205,7 +186,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun removeAccount(accountId: String): Boolean {
-        ensureMigrated()
         return gate.withLock {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
@@ -242,7 +222,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     fun theme(): Flow<ThemeMode> = flow {
-        ensureMigrated()
         context.accountSettingsDataStore.data.collect { prefs ->
             val text = withContext(Dispatchers.IO) { themeText(prefs) }
             val mode = if (text == null) {
@@ -254,72 +233,28 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
-    private suspend fun ensureMigrated() {
-        if (migrationSettled) return
-        gate.withLock { withContext(Dispatchers.IO) { ensureMigratedLocked() } }
-    }
-
-    private suspend fun ensureMigratedLocked() {
-        if (migrationSettled) return
-        val outcome = migrateAccount(
-            legacy = legacyAdapter(),
-            accounts = accountAdapter(),
-            cipher = cipher,
-            log = { message -> Log.i(logTag, message) },
-        )
-        if (outcome != MigrationOutcome.Failed) migrationSettled = true
-    }
-
-    private fun legacyAdapter(): LegacyAccount = object : LegacyAccount {
-        override suspend fun encoded(): String? = legacyEncoded()
-        override suspend fun password(): String = legacyPassword()
-        override suspend fun deleteEncoded() = deleteLegacyEncoded()
-        override suspend fun deletePassword() = deleteLegacyPassword()
-    }
-
-    private fun accountAdapter(): AccountMap = object : AccountMap {
-        override suspend fun accounts(): List<ManagedAccount> = readAccounts()
-
-        override suspend fun write(name: String, userData: Map<String, String>, passwordSlot: String) {
-            writeAccount(name, userData, passwordSlot)
-        }
-
-        override suspend fun preference(accountId: String): String? = storedPreference(accountId)
-
-        override suspend fun putPreference(accountId: String, value: String) {
-            writePreference(accountId, value)
-        }
-    }
-
     private suspend fun loadLocked(): AccountSettings {
         val accounts = readAccounts()
         val account = chooseAccount(accounts, selectedId())
-        if (account != null && (useNewStoreLocked(account) || accounts.size > 1)) {
-            val accountId = account.userData[userAccountId] ?: return newAccountSettings()
-            val text = storedPreference(accountId) ?: return newAccountSettings()
-            return overlayAccountFields(decodeAccountSettings(text), account.userData)
-        }
-        val text = legacyEncoded() ?: return newAccountSettings()
-        return decodeAccountSettings(text)
+        val accountId = account?.userData?.get(userAccountId) ?: return newAccountSettings()
+        val text = storedPreference(accountId) ?: return newAccountSettings()
+        return overlayAccountFields(decodeAccountSettings(text), account.userData)
     }
 
     private suspend fun stageSave(
         settings: AccountSettings,
         encoded: String,
     ): suspend () -> Unit {
-        if (shouldUseLegacyLocked()) return { writeLegacy(encoded) }
         val existing = chooseAccount(readAccounts(), selectedId())
         val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
             ?: java.util.UUID.randomUUID().toString()
-        val marker = existing?.userData?.get(userMigratedFrom)
         val name = nameFor(existing, settings, accountId)
         val slot = existing?.passwordSlot ?: ""
-        writeAccount(name, accountUserData(accountId, settings, marker), slot)
+        writeAccount(name, accountUserData(accountId, settings, null), slot)
         return { writePreference(accountId, encoded) }
     }
 
     private suspend fun passwordLocked(): String {
-        if (shouldUseLegacyLocked()) return legacyPassword()
         val account = chooseAccount(readAccounts(), selectedId()) ?: return ""
         val slot = account.passwordSlot
         if (slot.isEmpty()) return ""
@@ -328,10 +263,6 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun stagePassword(value: String): suspend () -> Unit {
-        if (shouldUseLegacyLocked()) {
-            writeLegacyPassword(value)
-            return {}
-        }
         val existing = chooseAccount(readAccounts(), selectedId())
         if (existing == null) {
             val settings = loadLocked()
@@ -349,29 +280,8 @@ class AccountStore private constructor(private val context: Context) {
 
     private fun themeText(prefs: androidx.datastore.preferences.core.Preferences): String? {
         val account = chooseAccount(readAccounts(), prefs[stringPreferencesKey(selectedAccountIdKey)])
-        val legacy = prefs[stringPreferencesKey(legacyAccountKey)]
-        val accountId = account?.userData?.get(userAccountId)
-        val migrated = account?.userData?.get(userMigratedFrom) == migratedFromDatastoreV1
-        if (migrated && accountId != null) {
-            return prefs[stringPreferencesKey(accountId)] ?: legacy
-        }
-        if (legacy != null) return legacy
-        if (accountId != null) return prefs[stringPreferencesKey(accountId)]
-        return null
-    }
-
-    private suspend fun useNewStoreLocked(account: ManagedAccount?): Boolean {
-        if (account == null) return false
-        if (account.userData[userMigratedFrom] == migratedFromDatastoreV1) return true
-        return legacyEncoded() == null && !account.userData[userAccountId].isNullOrEmpty()
-    }
-
-    private suspend fun shouldUseLegacyLocked(): Boolean {
-        val accounts = readAccounts()
-        if (accounts.size > 1) return false
-        val account = chooseAccount(accounts, selectedId())
-        if (useNewStoreLocked(account)) return false
-        return legacyEncoded() != null
+        val accountId = account?.userData?.get(userAccountId) ?: return null
+        return prefs[stringPreferencesKey(accountId)]
     }
 
     private suspend fun nameFor(
@@ -494,44 +404,6 @@ class AccountStore private constructor(private val context: Context) {
         val accountId = java.util.UUID.randomUUID().toString()
         writeAccount(accountVisibleName(settings), accountUserData(accountId, settings, null), "")
         return accountId
-    }
-
-    private fun copyLegacySmtpPassword(account: ManagedAccount) {
-        val accountId = account.userData[userAccountId]
-        if (accountId.isNullOrEmpty()) return
-        val perId = smtpPasswordKeyFor(accountId)
-        val legacy = secretPrefs.getString(smtpPasswordKey, "") ?: ""
-        if (secretPrefs.contains(perId) || legacy.isEmpty()) return
-        val saved = secretPrefs.edit().putString(perId, legacy).commit()
-        if (!saved) error("smtp password not saved")
-    }
-
-    private suspend fun legacyEncoded(): String? {
-        return context.accountSettingsDataStore.data.first()[stringPreferencesKey(legacyAccountKey)]
-    }
-
-    private suspend fun writeLegacy(text: String) {
-        context.accountSettingsDataStore.edit { prefs ->
-            prefs[stringPreferencesKey(legacyAccountKey)] = text
-        }
-    }
-
-    private suspend fun deleteLegacyEncoded() {
-        context.accountSettingsDataStore.edit { prefs ->
-            prefs.remove(stringPreferencesKey(legacyAccountKey))
-        }
-    }
-
-    private fun legacyPassword(): String = secretPrefs.getString(legacyPasswordKey, "") ?: ""
-
-    private fun writeLegacyPassword(value: String) {
-        val saved = secretPrefs.edit().putString(legacyPasswordKey, value).commit()
-        if (!saved) error("password not saved")
-    }
-
-    private fun deleteLegacyPassword() {
-        val saved = secretPrefs.edit().remove(legacyPasswordKey).commit()
-        if (!saved) error("password not removed")
     }
 
     private suspend fun storedPreference(accountId: String): String? {
