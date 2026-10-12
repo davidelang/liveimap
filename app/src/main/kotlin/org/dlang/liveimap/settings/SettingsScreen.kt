@@ -2934,7 +2934,7 @@ private fun readPinercStream(resolver: ContentResolver, uri: Uri): PinercRead {
 @Composable
 private fun sendingRulesSummary(settings: AccountSettings): String {
     val count = org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules).size
-    return stringResource(R.string.settings_rules_summary, formatMailbox(settings.displayName, settings.email), count)
+    return stringResource(R.string.settings_rules_summary, rulesSummaryWho(settings), count)
 }
 
 /** The account's sending rules: simple defaults first, then the ordered rule list and presets. */
@@ -3124,3 +3124,10 @@ private fun RuleEditor(
         }
     }
 }
+
+/** Who the Sending rules summary names: From as composed, else the login, else the host. Never blank. */
+internal fun rulesSummaryWho(settings: AccountSettings): String =
+    formatMailbox(settings.displayName, settings.email).trim()
+        .ifEmpty { settings.username.trim() }
+        .ifEmpty { settings.imapHost.trim() }
+        .ifEmpty { "?" }
