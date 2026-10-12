@@ -35,10 +35,13 @@ class LabAccountTest {
     @Test
     fun selectLabAccount() = runBlocking {
         val match = InstrumentationRegistry.getArguments().getString("labAccountMatch").orEmpty()
+        // labPort (optional) narrows to one lab container when several accounts share the host.
+        val port = InstrumentationRegistry.getArguments().getString("labPort")?.toIntOrNull()
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
         for (a in store.listAccounts()) {
             store.selectAccount(a.id)
-            if (store.load().imapHost.contains(match)) return@runBlocking
+            val s = store.load()
+            if (s.imapHost.contains(match) && (port == null || s.imapPort == port)) return@runBlocking
         }
         error("no account matching " + match)
     }
