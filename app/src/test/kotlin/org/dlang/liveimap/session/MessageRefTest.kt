@@ -18,6 +18,10 @@ class MessageRefTest {
                 selects += name
                 val v = validity[name] ?: throw MailFailure("no such folder")
                 SelectResult(v, 1, 0)
+            } else if (method.name == "pinned") {
+                // the suspend block: (Continuation) -> result; no lock needed in this single-caller test
+                @Suppress("UNCHECKED_CAST")
+                (args!![0] as Function1<Any?, Any?>).invoke(args[1])
             } else {
                 throw UnsupportedOperationException(method.name)
             }
