@@ -25,30 +25,32 @@ class PinchZoomTest {
 
     @Test
     fun controlScrollWithoutPinchModifier() {
-        val scroll = androidx.compose.foundation.ScrollState(0)
+        var scroll: androidx.compose.foundation.ScrollState? = null
         rule.setContent {
             Box(Modifier.size(300.dp).testTag("t")) {
-                Column(Modifier.verticalScroll(scroll)) { repeat(80) { Text("line $it") } }
+                val st = rememberScrollState().also { scroll = it }
+                Column(Modifier.verticalScroll(st)) { repeat(80) { Text("line $it") } }
             }
         }
         rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
         rule.waitForIdle()
-        assertTrue("control scrolls: ${scroll.value}", scroll.value > 0)
+        assertTrue("control scrolls: ${scroll!!.value}", scroll!!.value > 0)
     }
 
     @Test
     fun twoFingerPinchZoomsOneFingerScrolls() {
         var zoom = 1f
-        val scroll = androidx.compose.foundation.ScrollState(0)
+        var scroll: androidx.compose.foundation.ScrollState? = null
         rule.setContent {
             Box(Modifier.size(300.dp).testTag("t").pinchToZoom { zoom *= it }) {
-                Column(Modifier.verticalScroll(scroll)) { repeat(80) { Text("line $it") } }
+                val st = rememberScrollState().also { scroll = it }
+                Column(Modifier.verticalScroll(st)) { repeat(80) { Text("line $it") } }
             }
         }
         rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
         rule.waitForIdle()
         assertEquals(1f, zoom)
-        assertTrue("one-finger drag scrolls", scroll.value > 0)
+        assertTrue("one-finger drag scrolls", scroll!!.value > 0)
         rule.onNodeWithTag("t").performTouchInput {
             pinch(center - Offset(20f, 0f), center - Offset(200f, 0f), center + Offset(20f, 0f), center + Offset(200f, 0f))
         }
