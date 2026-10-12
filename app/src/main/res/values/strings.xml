@@ -285,7 +285,7 @@
     <string name="compose_plain_only">Plain text only</string>
     <string name="compose_subject">Subject</string>
     <string name="pinerc_signature_file">signature-file is not read; paste the text into the account\'s signature</string>
-    <string name="pinerc_signature">Signature</string>
+    <string name="pinerc_signature_label">Signature</string>
     <string name="pinerc_quote_prefix">Reply quote prefix</string>
     <string name="pinerc_lead_in">Reply lead-in</string>
     <string name="pinerc_sig_dashes">Signature dashes</string>

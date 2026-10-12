@@ -603,7 +603,7 @@ private fun AccountGroup(editor: SettingsEditor) {
         folderCheck = stringResource(R.string.pinerc_folder_check),
         favorite = stringResource(R.string.pinerc_favorite),
         signatureFile = stringResource(R.string.pinerc_signature_file),
-        signatureLabel = stringResource(R.string.pinerc_signature),
+        signatureLabel = stringResource(R.string.pinerc_signature_label),
         quotePrefixLabel = stringResource(R.string.pinerc_quote_prefix),
         leadInLabel = stringResource(R.string.pinerc_lead_in),
         sigDashesLabel = stringResource(R.string.pinerc_sig_dashes),
