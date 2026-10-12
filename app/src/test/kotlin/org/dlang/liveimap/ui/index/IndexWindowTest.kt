@@ -646,6 +646,23 @@ class IndexWindowTest {
     }
 
     @Test
+    fun draftsHitResumesInItsOwnFolder() {
+        // F124: searching from INBOX, a Drafts hit resumes Drafts UID 5 (not INBOX 5); from Drafts, an INBOX hit opens
+        val session = FakeMailSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings(postponedMailbox = "Drafts")), "INBOX")
+        runImmediate { model.loadWindow() }
+        model.noteFolderEpoch("Drafts", 3L)
+        val seed = model.openSeed(5L, "Drafts")!!
+        assertEquals("Drafts", seed.mailbox)
+        assertEquals(3L, seed.uidValidity)
+        assertNull(model.openSeed(5L, "INBOX"))
+        assertNull(model.openSeed(5L))
+        val inDrafts = IndexModel(session, MemorySettingsStore(AccountSettings(postponedMailbox = "Drafts")), "Drafts")
+        runImmediate { inDrafts.loadWindow() }
+        assertNull(inDrafts.openSeed(5L, "INBOX"))
+    }
+
+    @Test
     fun moveIntoTheCurrentFolderIsRefused() {
         // F103
         val session = FakeMailSession()

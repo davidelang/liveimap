@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.contacts
 
+import org.dlang.liveimap.session.selectChecked
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -138,6 +139,7 @@ data class PineBookState(
     val separator: ByteArray,
     val entries: List<AlpineEntry>,
     val uids: List<Long>,
+    val uidValidity: Long = 0L,
 )
 
 sealed class PineRead {
@@ -187,6 +189,7 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
             separator = split.separator,
             entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
             uids = ordered.map { it.uid },
+            uidValidity = selected.uidValidity,
         ),
     )
 }
@@ -210,16 +213,17 @@ suspend fun writePineBook(
     System.arraycopy(state.separator, 0, message, state.headerBytes.size, state.separator.size)
     System.arraycopy(body, 0, message, state.headerBytes.size + state.separator.size, body.size)
     val appended = session.appendReturningUid(mailbox, message, emptySet())
-    val uids = when (val after = readPineBook(session, mailbox)) {
-        is PineRead.Ready -> {
-            val listed = after.state.uids
-            if (appended > 0L && appended !in listed) listed + appended else listed
-        }
-        is PineRead.NotBook -> if (appended > 0L) state.uids + appended else state.uids
+    // F127: trimming deletes by UID, so only within the epoch the UIDs were listed in, after reselecting it
+    val after = readPineBook(session, mailbox)
+    if (after !is PineRead.Ready || state.uidValidity == 0L || after.state.uidValidity != state.uidValidity) {
+        return PineWriteResult.Wrote(emptyList())
     }
+    val listed = after.state.uids
+    val uids = if (appended > 0L && appended !in listed) listed + appended else listed
     val uidPlus = session.featureCaps.uidPlus
     val expunge = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
     if (expunge.isNotEmpty()) {
+        session.selectChecked(mailbox, state.uidValidity)
         session.storeFlags(expunge, setOf("\\Deleted"), emptySet())
         session.uidExpunge(expunge)
     }

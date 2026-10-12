@@ -3339,7 +3339,7 @@ private fun MessageIndexLoaded(
                                             selected = if (row.uid in selected) selected - row.uid else selected + row.uid
                                         }
                                     } else {
-                                        val seed = model.openSeed(row.uid)
+                                        val seed = model.openSeed(row.uid, row.mailbox)
                                         if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence, row.mailbox, model.listedEpoch(row.mailbox))
                                     }
                                 },

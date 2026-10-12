@@ -475,6 +475,11 @@ private fun MessageReaderLoaded(
         selectedMailbox = mailbox
         return readerEpoch
     }
+    /** Reader body/attachment reads: always in this message's folder and epoch (select is free when current). */
+    suspend fun peekRef(section: String, offset: Int, length: Int): ByteArray {
+        selectRef()
+        return session.peekPart(uid, section, offset, length)
+    }
     var choosingMove by remember { mutableStateOf(false) }
     var choosingSave by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
@@ -605,7 +610,7 @@ private fun MessageReaderLoaded(
         }
         if (length <= 0) return
         val chunk = try {
-            session.peekPart(uid, part.section, bodyOffset, length)
+            peekRef(part.section, bodyOffset, length)
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
@@ -643,7 +648,7 @@ private fun MessageReaderLoaded(
             }
             val length = 4096
             val chunk = try {
-                session.peekPart(uid, section, bodyOffset, length)
+                peekRef(section, bodyOffset, length)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -674,7 +679,7 @@ private fun MessageReaderLoaded(
         var marked = false
         suspend fun take(length: Int): ByteArray? {
             val chunk = try {
-                session.peekPart(uid, part.section, offset, length)
+                peekRef(part.section, offset, length)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -727,7 +732,7 @@ private fun MessageReaderLoaded(
         val out = StringBuilder()
         var offset = 0
         while (true) {
-            val chunk = session.peekPart(uid, section, offset, 4096)
+            val chunk = peekRef(section, offset, 4096)
             if (chunk.isEmpty()) break
             offset += chunk.size
             val (text, rest) = appendUtf8(local.pending, chunk)
@@ -872,7 +877,7 @@ private fun MessageReaderLoaded(
                             File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section)),
                             current.size,
                             65536,
-                            fetch = { at, length -> session.peekPart(uid, current.section, at, length) },
+                            fetch = { at, length -> peekRef(current.section, at, length) },
                             progress = { bytes -> markAttachment(current.section, bytes, done = false, busy = true) },
                         )
                     } catch (error: CancellationException) {
@@ -908,7 +913,7 @@ private fun MessageReaderLoaded(
                 } else {
                     gate.withLock {
                         selectRef()
-                        session.peekPart(uid, row.section, 0, SniffBytes)
+                        peekRef(row.section, 0, SniffBytes)
                     }
                 }
             } catch (error: CancellationException) {
@@ -1388,7 +1393,7 @@ private fun MessageReaderLoaded(
                 if (!connected) return@withLock
                 try {
                     val (text, truncated) = readCappedText(RawViewCapBytes) { offset, length ->
-                        session.peekPart(uid, "HEADER", offset, length)
+                        peekRef("HEADER", offset, length)
                     }
                     allHeaderText = text
                     allHeadersTruncated = truncated
@@ -2244,6 +2249,7 @@ private fun MessageReaderLoaded(
             var copied = false
             gate.withLock {
                 try {
+                    selectRef() // F126: copy this folder's UID, not the same number wherever the session is
                     session.copyUids(listOf(uid), destination)
                     postSnack(savedText)
                     copied = true

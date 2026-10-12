@@ -1841,9 +1841,11 @@ class IndexModel(
         return IndexCommand.None
     }
 
-    fun openSeed(uid: Long): ComposeSeed? {
-        if (mailbox == account.postponedMailbox) {
-            return ComposeSeed(ComposeKind.ResumePostpone, mailbox, listOf(uid), listedEpoch(mailbox))
+    /** F124: a row resumes as a draft only when its own folder (not the index's) is Postponed. */
+    fun openSeed(uid: Long, rowMailbox: String = ""): ComposeSeed? {
+        val folder = rowMailbox.ifEmpty { mailbox }
+        if (account.postponedMailbox.isNotEmpty() && sameMailbox(folder, account.postponedMailbox)) {
+            return ComposeSeed(ComposeKind.ResumePostpone, folder, listOf(uid), listedEpoch(folder))
         }
         return null
     }
