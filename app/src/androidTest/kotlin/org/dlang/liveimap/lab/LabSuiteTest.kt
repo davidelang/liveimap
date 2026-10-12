@@ -128,9 +128,10 @@ class LabSuiteTest {
                     // Seeded <box><d>Tëst-Ünï (modified UTF-7 on the wire unless UTF8=ACCEPT is enabled): the leaf
                     // must read as UTF-8 either way, and SELECT by the listed name must work.
                     val want = "T\u00ebst-\u00dcn\u00ef"
-                    val hit = session.listLevel("", box, false).firstOrNull { it.leaf == want }
+                    val rows = session.listLevel("", box, false)
+                    val hit = rows.firstOrNull { it.leaf == want }
                         ?: throw IllegalStateException("no folder with leaf $want under $box: " +
-                            session.listLevel("", box, false).joinToString { l -> l.leaf + "[" + l.leaf.map { "%04x".format(it.code) }.joinToString(".") + "]" })
+                            rows.joinToString { l -> l.leaf + "[" + l.leaf.map { "%04x".format(it.code) }.joinToString(".") + "]" })
                     val sel = session.select(hit.mailbox)
                     session.select(box)
                     val wire = if (hit.mailbox.contains('\u00eb')) "utf8" else "mutf7"
