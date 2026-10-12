@@ -27,6 +27,17 @@ class TrafficRecorderTest {
     }
 
     @Test
+    fun loginLiteralsAreRedacted() {
+        val r = recorder()
+        r.accept("main", TrafficLog.LOG_SENT, "A1 LOGIN {3+}\r\nada {13+}\r\nhunter2secret\r\n".toByteArray())
+        r.accept("main", TrafficLog.LOG_SENT, "A2 SELECT {5+}\r\nINBOX\r\n".toByteArray())
+        val all = lines(r).joinToString("\n")
+        val b64 = Base64.getEncoder().encodeToString("hunter2secret".toByteArray())
+        assertFalse(all, all.contains("hunter2secret") || all.contains(b64))
+        assertTrue(all, all.contains(Base64.getEncoder().encodeToString("INBOX".toByteArray())))
+    }
+
+    @Test
     fun splitLiteralKeptInFull() {
         val r = recorder()
         r.accept("main", TrafficLog.LOG_RECEIVED, "* 1 FETCH (BODY[] {10}\r\nHel".toByteArray())

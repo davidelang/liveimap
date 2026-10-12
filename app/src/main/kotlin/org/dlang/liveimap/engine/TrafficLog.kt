@@ -193,7 +193,9 @@ class TrafficLog(
             store(connectionId, "$prefix $text")
         }
         if (prefix == "C" && text.startsWith("<redacted ")) return
-        val literal = literalSize(text)
+        // The literal announced by the line as sent, not as redacted: "LOGIN user {6}" must still skip the
+        // six password bytes instead of logging them as the next line (F10).
+        val literal = literalSize(if (prefix == "C") shown else text)
         if (literal != null) {
             half.literalTotal = literal
             half.literalLeft = literal

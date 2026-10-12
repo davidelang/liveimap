@@ -2360,8 +2360,8 @@ void appendTrafficLine(const std::string & path, const std::string & line) {
 }
 
 void emitTrafficLine(const std::string & line, const std::string & path) {
+    // One logcat copy, debug level only (F10: the INFO duplicate doubled the exposure).
     __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s", line.c_str());
-    __android_log_print(ANDROID_LOG_INFO, "LiveIMAP", "%s", line.c_str());
     appendTrafficLine(path, line);
 }
 

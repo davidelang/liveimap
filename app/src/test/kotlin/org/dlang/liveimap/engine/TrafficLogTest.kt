@@ -32,6 +32,15 @@ class TrafficLogTest {
     }
 
     @Test
+    fun loginLiteralPasswordIsNotLogged() {
+        val file = tempLog()
+        val log = TrafficLog(file, clock = { 5L })
+        log.accept("main", TrafficLog.LOG_SENT, "A1 LOGIN ada {13+}\r\nhunter2secret\r\n".toByteArray(Charsets.US_ASCII))
+        val text = file.readText()
+        assertFalse(text, text.contains("hunter2secret"))
+    }
+
+    @Test
     fun authenticateContinuationIsRedacted() {
         val file = tempLog()
         val log = TrafficLog(file, clock = { 5L })

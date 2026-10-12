@@ -108,9 +108,16 @@ class TrafficRecorder(
         val key = conn
         if (dir == "S" && (text == "+" || text.startsWith("+ "))) saslArmed.add(key)
         if (dir == "C") {
+            // Continuation of a credential command (LOGIN user {n} / pass {m}): redact it and its literals (F10).
+            if (half.secret) {
+                line(conn, dir, null, text.length)
+                if (!armLiteral(conn, dir, half, text)) half.secret = false
+                return
+            }
             val red = redact(key, text)
             if (red != null) {
                 line(conn, dir, red.first, red.second)
+                if (armLiteral(conn, dir, half, text)) half.secret = true
                 return
             }
         }
@@ -160,7 +167,21 @@ class TrafficRecorder(
         write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},$body}")
     }
 
+    private fun armLiteral(conn: String, dir: String, half: Half, text: String): Boolean {
+        val size = literalSize(text) ?: return false
+        half.literalLeft = size
+        half.literal.reset()
+        if (size == 0L) literal(conn, dir, half)
+        return true
+    }
+
     private fun literal(conn: String, dir: String, half: Half) {
+        if (half.secret) {
+            val n = half.literal.size()
+            half.literal.reset()
+            write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},\"redacted\":$n}")
+            return
+        }
         val b64 = Base64.getEncoder().encodeToString(half.literal.toByteArray())
         half.literal.reset()
         write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},\"literal_b64\":${jq(b64)}}")
@@ -175,6 +196,7 @@ class TrafficRecorder(
         val pending = java.io.ByteArrayOutputStream()
         val literal = java.io.ByteArrayOutputStream()
         var literalLeft = 0L
+        var secret = false
     }
 
     companion object {
