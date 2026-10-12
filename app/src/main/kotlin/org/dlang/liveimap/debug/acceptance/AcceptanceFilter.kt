@@ -32,11 +32,14 @@ data class ReportRow(
     val plans: List<String>,
     val result: String,
     val reason: String,
+    val millis: Long = -1,
 )
 
 data class AcceptanceReport(
     val suite: AcceptanceSuite,
     val rows: List<ReportRow>,
+    /** Build, device, server, TLS, capability line... (no passwords, no bodies). */
+    val header: List<Pair<String, String>> = emptyList(),
 )
 
 private val stampPattern = Regex("""\d{8}-\d{4}""")
@@ -133,13 +136,16 @@ private fun reportJson(report: AcceptanceReport): String {
             "\"feature\":${jsonString(row.feature)}," +
             "\"plans\":${jsonArray(row.plans)}," +
             "\"result\":${jsonString(row.result)}," +
-            "\"reason\":${jsonString(row.reason)}}"
+            "\"reason\":${jsonString(row.reason)}" +
+            (if (row.millis >= 0) ",\"ms\":${row.millis}" else "") + "}"
     }
-    return "{\"suite\":${jsonString(report.suite.name)},\"rows\":$rows}"
+    val header = report.header.joinToString("") { (k, v) -> "${jsonString(k)}:${jsonString(v)}," }
+    return "{$header\"suite\":${jsonString(report.suite.name)},\"rows\":$rows}"
 }
 
 private fun reportText(report: AcceptanceReport): String {
     val text = StringBuilder()
+    for ((k, v) in report.header) text.append("# ").append(k).append(": ").append(v).append('\n')
     for (row in report.rows) {
         text.append(row.name)
         text.append('\t')

@@ -1052,6 +1052,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             for (line in serverReport) {
                 Text(text = line, fontFamily = FontFamily.Monospace)
             }
+            org.dlang.liveimap.debug.acceptance.AcceptanceSection()
         }
     }
     val removing = removingId

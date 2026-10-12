@@ -423,6 +423,11 @@
     <string name="settings_advanced">Advanced</string>
     <string name="settings_test_server">Test server</string>
     <string name="settings_testing">Testing…</string>
+    <string name="acceptance_test_this_server">Test this server</string>
+    <string name="acceptance_running">Testing this server…</string>
+    <string name="acceptance_full">Full regression</string>
+    <string name="acceptance_this_turn">This turn</string>
+    <string name="acceptance_last_n">Last 3 plans</string>
     <string name="settings_import_title">Import from .pinerc</string>
     <string name="settings_will_change">Will change</string>
     <string name="settings_not_applied">Not applied</string>
