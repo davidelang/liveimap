@@ -75,7 +75,6 @@ private class FakeLab(override val capabilities: Set<String>) : MailSession {
     var plain: (suspend () -> Boolean)? = null
     var suspends: Int = 0
 
-    override val capabilities: Set<String> = emptySet()
 
     override suspend fun suspendConnections() {
         suspends += 1
