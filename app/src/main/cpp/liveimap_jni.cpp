@@ -3416,6 +3416,8 @@ uint32_t starUid() {
     return 0;
 }
 
+constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jelly has 200k
+
 int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx, uint32_t * out) {
     if (peekChar(buffer, *indx) == '*') {
         *indx += 1;
@@ -3426,6 +3428,7 @@ int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_
 }
 
 int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx, clist * list) {
+    uint64_t total = static_cast<uint64_t>(clist_count(list));
     for (;;) {
         uint32_t first = 0;
         int r = parseSeqNumber(fd, buffer, ctx, indx, &first);
@@ -3443,7 +3446,11 @@ int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_con
         }
         if (static_cast<uint64_t>(last) - first > 1000000u) {
             if (!appendUid(list, first) || !appendUid(list, last)) return MAILIMAP_ERROR_MEMORY;
+            total += 2;
         } else {
+            // Many ranges of up to 1M each must not add up to billions of list nodes either.
+            total += static_cast<uint64_t>(last) - first + 1;
+            if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
             uint32_t n = first;
             for (;;) {
                 if (!appendUid(list, n)) return MAILIMAP_ERROR_MEMORY;
@@ -6329,9 +6336,28 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
     return true;
 }
 
-void rememberDestUids(LiveSession * session, struct mailimap_set * dest) {
+// UIDs named by a request set; '*' (set_last 0) or a huge range counts as kMaxSetExpand.
+constexpr uint64_t kMaxSetExpand = 2000000;
+uint64_t requestedCount(struct mailimap_set * set) {
+    uint64_t n = 0;
+    if (set == nullptr || set->set_list == nullptr) return 0;
+    for (clistiter * cur = clist_begin(set->set_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_set_item *>(clist_content(cur));
+        if (item == nullptr) continue;
+        if (item->set_first == 0 || item->set_last == 0) return kMaxSetExpand;
+        uint32_t a = item->set_first, b = item->set_last;
+        n += (a > b ? a - b : b - a) + 1ULL;
+        if (n >= kMaxSetExpand) return kMaxSetExpand;
+    }
+    return n;
+}
+
+// COPYUID's destination set, expanded. A server cannot make the client expand more UIDs than it asked to copy
+// (a dest of 1:4294967295 once meant 4 billion push_backs); an oversized or inconsistent set is dropped.
+void rememberDestUids(LiveSession * session, struct mailimap_set * dest, uint64_t limit) {
     session->copiedUids.clear();
     if (dest == nullptr || dest->set_list == nullptr) return;
+    if (limit > kMaxSetExpand) limit = kMaxSetExpand;
     for (clistiter * cur = clist_begin(dest->set_list); cur != nullptr; cur = clist_next(cur)) {
         auto * item = static_cast<struct mailimap_set_item *>(clist_content(cur));
         if (item == nullptr || item->set_last == 0) continue;
@@ -6341,6 +6367,10 @@ void rememberDestUids(LiveSession * session, struct mailimap_set * dest) {
             uint32_t swap = first;
             first = last;
             last = swap;
+        }
+        if (static_cast<uint64_t>(last) - first + 1 + session->copiedUids.size() > limit) {
+            session->copiedUids.clear();
+            return;
         }
         for (uint32_t uid = first;; ++uid) {
             if (uid != 0) session->copiedUids.push_back(uid);
@@ -6370,7 +6400,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
         throwImap(env, session, r, move ? "move failed" : "copy failed");
         return false;
     }
-    rememberDestUids(session, copied);
+    rememberDestUids(session, copied, requestedCount(set));
     freeUidSets(source, copied);
     if (move || copyOnly) return true;
     struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
