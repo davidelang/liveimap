@@ -133,8 +133,10 @@ def message(i, kind):
         del msg["Subject"]; msg["Subject"] = f"\u65e5\u672c\u8a9e {i}"
         msg.set_content(f"\u3053\u3093\u306b\u3061\u306f {i}\n", charset="shift_jis")
     elif kind == "html":
+        msg["List-Id"] = "Lab list <lab-list.liveimap.test>"  # "always show images from this list"
         msg.set_content("<html><body><p>HTML only <b>message</b> %d.</p><ul><li>one</li><li>two</li></ul>"
-                        "<blockquote>quoted</blockquote><a href=\"https://example.test/%d\">link</a></body></html>" % (i, i),
+                        "<blockquote>quoted</blockquote><a href=\"https://example.test/%d\">link</a>"
+                        "<img src=\"https://example.test/pixel-%d.png\" alt=\"remote\"></body></html>" % (i, i, i),
                         subtype="html")
     elif kind == "attach":
         msg.set_content(f"Message {i} with an attachment.\n")
