@@ -50,14 +50,21 @@ interface MailSession {
     suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray
     suspend fun fetchRfc822(uid: Long): ByteArray
     suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>)
-    suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {}
+    // F71: mail-changing defaults fail rather than succeed silently (the index would show the change and offer undo).
+    suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
+        throw MailFailure("not supported")
+    }
     suspend fun uidExpungeDeleted()
-    suspend fun uidExpunge(uids: List<Long>) {}
+    suspend fun uidExpunge(uids: List<Long>) {
+        throw MailFailure("not supported")
+    }
     suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String)
     suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
         throw MailFailure("copy failed")
     }
-    suspend fun copyAllThenDelete(targetMailbox: String) {}
+    suspend fun copyAllThenDelete(targetMailbox: String) {
+        throw MailFailure("not supported")
+    }
     suspend fun selectedExists(): Int = 0
     suspend fun takeCopiedUids(): List<Long> = emptyList()
     suspend fun searchText(query: String): List<Long>

@@ -1313,17 +1313,31 @@ class IndexModel(
         return heldRows
     }
 
+    /**
+     * F43: every UID operation runs in this model's mailbox. select() is free when it is already selected; when
+     * another screen sharing the session moved the selection, this re-selects before UIDs are used.
+     */
+    private suspend fun selectOwn() {
+        session.select(mailbox)
+    }
+
     suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            if (allMailbox) session.storeFlagsAll(setOf("\\Deleted"), emptySet())
-            else session.storeFlags(uids, setOf("\\Deleted"), emptySet())
-            val idSet = uids.toSet()
+            selectOwn()
+            // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
+            // and undo only clears \Deleted on UIDs this action actually changed.
+            val target = if (allMailbox) allUidsInWindows(session) else uids
+            val before = if (allMailbox) session.searchCriterion("Deleted", "").toSet()
+                else heldRows.filter { it.uid in uids.toSet() && "\\Deleted" in it.flags }.map { it.uid }.toSet()
+            for (part in target.chunked(MoveChunk)) session.storeFlags(part, setOf("\\Deleted"), emptySet())
+            val changed = target.filter { it !in before }
+            val idSet = target.toSet()
             heldRows = heldRows.map { row ->
-                if (allMailbox || row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
+                if (row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
             }
             notice = null
-            mailUndo = MailUndo(delete = true, uids = uids, allMailbox = allMailbox)
+            mailUndo = if (changed.isEmpty()) null else MailUndo(delete = true, uids = changed, allMailbox = false)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1342,6 +1356,7 @@ class IndexModel(
         account = settings
         moveStop = false
         try {
+            selectOwn()
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
             val all = if (allMailbox) allUidsInWindows(session, kind = moveAllKind(settings)) else uids
@@ -1372,7 +1387,8 @@ class IndexModel(
                 moved.size < all.size -> "Moved ${moved.size} of ${all.size}; stopped"
                 else -> null
             }
-            mailUndo = if (moved.isEmpty()) null else MailUndo(
+            // F45: after MOVE without COPYUID the destination UIDs are unknown, so no undo is offered.
+            mailUndo = if (moved.isEmpty() || (usedMove && outcome.dest.isEmpty())) null else MailUndo(
                 delete = false,
                 uids = moved,
                 allMailbox = false,
@@ -1392,11 +1408,17 @@ class IndexModel(
         if (!session.featureCaps.uidPlus) return heldRows
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
+            selectOwn()
             if (allMailbox) {
-                session.storeFlagsAll(setOf("\\Deleted"), emptySet())
-                session.uidExpungeDeleted()
-                order = emptyList()
-                heldRows = emptyList()
+                // F44: snapshot UIDs; UID EXPUNGE only those, so a message arriving now is never destroyed unseen.
+                val snapshot = allUidsInWindows(session)
+                for (part in snapshot.chunked(MoveChunk)) {
+                    session.storeFlags(part, setOf("\\Deleted"), emptySet())
+                    session.uidExpunge(part)
+                }
+                val gone = snapshot.toSet()
+                order = orderWithout(order, gone)
+                heldRows = heldRows.filter { it.uid !in gone }
             } else {
                 session.storeFlags(uids, setOf("\\Deleted"), emptySet())
                 session.uidExpunge(uids)
@@ -1416,11 +1438,12 @@ class IndexModel(
 
     suspend fun undoDelete(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
         try {
-            if (allMailbox) session.storeFlagsAll(emptySet(), setOf("\\Deleted"))
-            else if (uids.isNotEmpty()) session.storeFlags(uids, emptySet(), setOf("\\Deleted"))
+            selectOwn()
+            // F44: undo is per recorded UID; a whole-folder clear would also undelete earlier \Deleted mail.
+            for (part in uids.chunked(MoveChunk)) session.storeFlags(part, emptySet(), setOf("\\Deleted"))
             val idSet = uids.toSet()
             heldRows = heldRows.map { row ->
-                if (allMailbox || row.uid in idSet) row.copy(flags = row.flags - "\\Deleted") else row
+                if (row.uid in idSet) row.copy(flags = row.flags - "\\Deleted") else row
             }
             notice = null
             mailUndo = null
@@ -1437,18 +1460,30 @@ class IndexModel(
         usedMove: Boolean,
         allMailbox: Boolean = false,
     ): List<IndexRow> {
+        if (usedMove && destUids.isEmpty()) {
+            // F45: nothing to move back; do not report an undo that did not happen.
+            notice = "Undo not possible: the server did not report where the messages went"
+            mailUndo = null
+            return heldRows
+        }
         try {
-            if (usedMove) {
-                session.select(targetMailbox)
-                session.copyThenDelete(destUids, mailbox)
-                session.select(mailbox)
-            } else {
-                if (allMailbox) session.storeFlagsAll(emptySet(), setOf("\\Deleted"))
-                else if (sourceUids.isNotEmpty()) session.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
-                if (destUids.isNotEmpty()) {
+            try {
+                if (usedMove) {
                     session.select(targetMailbox)
-                    session.storeFlags(destUids, setOf("\\Deleted"), emptySet())
-                    session.select(mailbox)
+                    session.copyThenDelete(destUids, mailbox)
+                } else {
+                    selectOwn()
+                    if (sourceUids.isNotEmpty()) session.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
+                    if (destUids.isNotEmpty()) {
+                        session.select(targetMailbox)
+                        session.storeFlags(destUids, setOf("\\Deleted"), emptySet())
+                    }
+                }
+            } finally {
+                // F43: never leave the session in the target folder, also when the work there failed.
+                try {
+                    selectOwn()
+                } catch (_: MailFailure) {
                 }
             }
             notice = null
@@ -1472,11 +1507,13 @@ class IndexModel(
             return heldRows
         }
         try {
-            if (allMailbox) session.storeFlagsAll(add, remove)
-            else session.storeFlags(uids, add, remove)
-            val idSet = uids.toSet()
+            selectOwn()
+            // F44: snapshot UIDs, so new mail is not marked (e.g. \Seen) before it was ever shown.
+            val target = if (allMailbox) allUidsInWindows(session) else uids
+            for (part in target.chunked(MoveChunk)) session.storeFlags(part, add, remove)
+            val idSet = target.toSet()
             heldRows = heldRows.map { row ->
-                if (allMailbox || row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
+                if (row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
             }
             notice = null
         } catch (failure: MailFailure) {
@@ -1488,6 +1525,7 @@ class IndexModel(
     suspend fun expunge(): List<IndexRow> {
         if (!session.featureCaps.uidPlus) return heldRows
         try {
+            selectOwn()
             session.uidExpungeDeleted()
         } catch (failure: MailFailure) {
             notice = failure.text
@@ -1500,6 +1538,7 @@ class IndexModel(
     suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
         if (uids.isEmpty()) return heldRows
         try {
+            selectOwn()
             session.uidExpunge(uids)
         } catch (failure: MailFailure) {
             notice = failure.text

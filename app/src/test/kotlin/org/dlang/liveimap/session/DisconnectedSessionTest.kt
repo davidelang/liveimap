@@ -29,6 +29,10 @@ class DisconnectedSessionTest {
         assertThrowsNotConnected { runImmediate { session.listLevel("", null, false) } }
         assertThrowsNotConnected { runImmediate { session.select("INBOX") } }
         assertThrowsNotConnected { runImmediate { session.unselect() } }
+        // F71: whole-folder and per-UID mail changes must not succeed silently while offline
+        assertThrowsNotConnected { runImmediate { session.storeFlagsAll(setOf("\\Deleted"), emptySet()) } }
+        assertThrowsNotConnected { runImmediate { session.uidExpunge(listOf(1L)) } }
+        assertThrowsNotConnected { runImmediate { session.copyAllThenDelete("Trash") } }
         assertThrowsNotConnected {
             runImmediate { session.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest)) }
         }

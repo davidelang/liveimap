@@ -499,15 +499,17 @@ class IndexWindowTest {
     }
 
     @Test
-    fun deletePermanentlyAllMailboxUsesUidExpungeDeleted() {
+    fun deletePermanentlyAllMailboxExpungesOnlyTheSnapshot() {
         val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
         session.arrivalRows = listOf(row(1), row(2))
+        session.searchUids = listOf(1L, 2L)
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         runImmediate { model.deletePermanently(emptyList(), allMailbox = true) }
-        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Deleted"), emptySet())), session.stores)
-        assertEquals(1, session.expungeCount)
-        assertTrue(session.uidExpunges.isEmpty())
+        // F44: UID snapshot, never 1:* / a plain expunge that could take mail that arrived meanwhile
+        assertEquals(listOf(FlagWrite(listOf(1L, 2L), setOf("\\Deleted"), emptySet())), session.stores)
+        assertEquals(0, session.expungeCount)
+        assertEquals(listOf(listOf(1L, 2L)), session.uidExpunges)
         assertTrue(model.rows.isEmpty())
         assertNull(model.mailUndo)
     }
@@ -524,7 +526,7 @@ class IndexWindowTest {
         val rows = runImmediate {
             model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
         }
-        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Seen"), emptySet())), session.stores)
+        assertEquals(listOf(FlagWrite(listOf(2L, 4L), setOf("\\Seen"), emptySet())), session.stores)
         assertTrue(rows.all { "\\Seen" in it.flags })
         assertEquals(setOf("\\Seen", "\\Flagged"), rows.first { it.uid == 2L }.flags)
         assertEquals(0, session.expungeCount)
@@ -535,10 +537,60 @@ class IndexWindowTest {
             model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
         }
         assertEquals("store failed", model.notice)
-        assertEquals(listOf(FlagWrite(emptyList(), setOf("\\Seen"), emptySet())), session.stores)
+        assertEquals(listOf(FlagWrite(listOf(2L, 4L), setOf("\\Seen"), emptySet())), session.stores)
         assertEquals(rows, kept)
         assertEquals(0, session.expungeCount)
         assertTrue(session.uidExpunges.isEmpty())
+    }
+
+    @Test
+    fun uidOperationsReselectOwnMailbox() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { session.select("Archive") }  // another screen moved the shared selection (F43)
+        runImmediate { model.deleteMessages(listOf(4L)) }
+        assertEquals("INBOX", session.selectedName)
+        runImmediate { session.select("Archive") }
+        runImmediate { model.changeFlags(listOf(4L), setOf("\\Seen"), emptySet()) }
+        assertEquals("INBOX", session.selectedName)
+        runImmediate { session.select("Archive") }
+        runImmediate { model.deletePermanently(listOf(4L)) }
+        assertEquals("INBOX", session.selectedName)
+    }
+
+    @Test
+    fun undoMoveRestoresSelectionWhenTargetWorkFails() {
+        val session = FakeMailSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        session.failure = MailFailure("copy failed")
+        runImmediate { model.undoMove(listOf(1L), "Trash", listOf(9L), usedMove = true) }
+        assertEquals("INBOX", session.selectedName)
+        assertEquals("copy failed", model.notice)
+    }
+
+    @Test
+    fun undoMoveWithoutDestinationUidsIsRefused() {
+        val session = FakeMailSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.undoMove(listOf(1L), "Trash", emptyList(), usedMove = true) }
+        assertTrue(session.copies.isEmpty())
+        assertTrue(model.notice!!.startsWith("Undo not possible"))
+    }
+
+    @Test
+    fun deleteAllUsesSnapshotAndUndoOnlyClearsWhatChanged() {
+        val session = folder(3)
+        session.deletedUids.add(2L)  // already \Deleted before the action
+        session.searchUids = listOf(1L, 2L, 3L)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.deleteMessages(emptyList(), allMailbox = true) }
+        assertEquals(listOf(FlagWrite(listOf(1L, 2L, 3L), setOf("\\Deleted"), emptySet())), session.stores)
+        val undo = model.mailUndo!!
+        assertEquals(listOf(1L, 3L), undo.uids)
+        assertFalse(undo.allMailbox)
+        session.stores.clear()
+        runImmediate { model.undoDelete(undo.uids, undo.allMailbox) }
+        assertEquals(listOf(FlagWrite(listOf(1L, 3L), emptySet(), setOf("\\Deleted"))), session.stores)
     }
 
     @Test
@@ -2337,6 +2389,7 @@ private class FakeMailSession(
         searchKinds += kind
         searchMailboxes += selectedName
         throwIfArmed()
+        if (kind == "Deleted") return deletedUids.sorted()
         return searchUids
     }
 
