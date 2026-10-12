@@ -52,3 +52,27 @@ class EnvelopeAddressOkTest {
         org.junit.Assert.assertEquals("", envelopeSender("me+x@example.org\r\nRSET", "me@example.org", emptyList()))
     }
 }
+
+class EncodedAddressTest {
+    private fun parsed(header: String) = parseRfc822("$header\r\nSubject: x\r\n\r\nbody".toByteArray())
+
+    @org.junit.Test fun encodedCrLfStaysOutOfTheAddrSpec() {
+        val m = parsed("Reply-To: <=?utf-8?q?me@example.com=0D=0ARCPT_TO:=3Cspy@evil=3E?=>")
+        val rcpts = envelopeRecipients(addresses(m, "Reply-To"), emptyList(), emptyList())
+        org.junit.Assert.assertTrue(rcpts.none { it.contains('\r') || it.contains('\n') })
+        org.junit.Assert.assertFalse(rcpts.all(::envelopeAddressOk))
+    }
+
+    @org.junit.Test fun encodedCommaDoesNotSplit() {
+        val m = parsed("To: =?utf-8?q?Ann=2C_spy=40evil.example?= <ann@example.org>")
+        val list = addresses(m, "To")
+        org.junit.Assert.assertEquals(1, list.size)
+        org.junit.Assert.assertEquals("ann@example.org", addrSpec(list[0]))
+        org.junit.Assert.assertTrue(list[0], list[0].startsWith("\"Ann, spy@evil.example\""))
+    }
+
+    @org.junit.Test fun displayNameDecoded() {
+        val m = parsed("From: =?utf-8?q?Caf=C3=A9?= <c@example.org>")
+        org.junit.Assert.assertEquals("Café <c@example.org>", addresses(m, "From")[0])
+    }
+}

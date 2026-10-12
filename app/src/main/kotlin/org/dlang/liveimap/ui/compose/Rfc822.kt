@@ -10,7 +10,8 @@ import java.util.Base64
 import java.util.Locale
 import java.util.UUID
 
-class HeaderField(val name: String, val value: String)
+/** [value] has encoded words decoded (display); [raw] is the unfolded text as sent (structure, F24). */
+class HeaderField(val name: String, val value: String, val raw: String = value)
 
 class ParsedRfc822(
     val headers: List<HeaderField>,
@@ -172,8 +173,8 @@ fun parseRfc822(bytes: ByteArray): ParsedRfc822 {
         val colon = line.indexOf(':')
         if (colon <= 0) continue
         val name = line.substring(0, colon).trim()
-        val value = decodeHeaderWords(line.substring(colon + 1).trim())
-        if (name.isNotEmpty()) headers.add(HeaderField(name, value))
+        val raw = line.substring(colon + 1).trim()
+        if (name.isNotEmpty()) headers.add(HeaderField(name, decodeHeaderWords(raw), raw))
     }
     return ParsedRfc822(headers, body)
 }
@@ -181,8 +182,31 @@ fun parseRfc822(bytes: ByteArray): ParsedRfc822 {
 fun headerValues(message: ParsedRfc822, name: String): List<String> =
     message.headers.filter { it.name.equals(name, ignoreCase = true) }.map { it.value }
 
+/**
+ * Address headers are split on the text as sent; encoded words are then decoded only in the display name,
+ * never in the addr-spec, so a decoded CR/LF, ',' or '<' cannot add or change a recipient (F24, RFC 2047 §5).
+ */
 fun addresses(message: ParsedRfc822, name: String): List<String> =
-    headerValues(message, name).flatMap { splitAddresses(it) }
+    message.headers.filter { it.name.equals(name, ignoreCase = true) }
+        .flatMap { splitAddresses(it.raw) }
+        .map(::decodeAddressDisplay)
+
+fun decodeAddressDisplay(address: String): String {
+    val lt = address.lastIndexOf('<')
+    if (lt <= 0 || !address.contains("=?")) return address
+    val phrase = address.substring(0, lt).trim()
+    if (!phrase.contains("=?")) return address
+    val decoded = decodeHeaderWords(phrase)
+        .map { if (it < ' ' || it == '\u007f') ' ' else it }
+        .joinToString("")
+        .trim()
+    val safe = if (decoded.any { it in "\"<>,;:@()[]\\" }) {
+        "\"" + decoded.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    } else {
+        decoded
+    }
+    return safe + " " + address.substring(lt)
+}
 
 fun splitAddresses(value: String): List<String> {
     val out = ArrayList<String>()
