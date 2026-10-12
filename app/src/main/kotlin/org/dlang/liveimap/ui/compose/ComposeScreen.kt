@@ -1446,7 +1446,7 @@ private fun ComposeLoaded(
             }
             DropdownMenu(expanded = fromMenuOpen, onDismissRequest = { fromMenuOpen = false }) {
                 val froms = (listOf(account.email) + account.altAddresses +
-                    knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { baseAddress(it) }
+                    knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { it.trim().lowercase() }
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.compose_from_by_rules)) },
                     onClick = { pinnedFrom = null; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },

@@ -167,7 +167,7 @@ fun resolveSending(rules: List<SendingRule>, accountDefault: SendingRule, accoun
 /** Every From the rules know, for the compose picker (account's first). */
 fun knownFroms(rules: List<SendingRule>, accountDefault: SendingRule): List<String> =
     (listOfNotNull(accountDefault.actions.fromAddress) + rules.mapNotNull { it.actions.fromAddress })
-        .filter { it.isNotBlank() }.distinctBy { baseAddress(it) }
+        .filter { it.isNotBlank() }.distinctBy { it.trim().lowercase() }
 
 data class FromMismatch(val expectedFrom: String, val expectedAccount: String, val rule: String)
 

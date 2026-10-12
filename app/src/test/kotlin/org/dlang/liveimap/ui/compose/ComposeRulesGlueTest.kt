@@ -109,3 +109,11 @@ class CrossAccountTest {
         }
     }
 }
+
+class KnownFromsTest {
+    @Test
+    fun plusAddressesStayDistinct() {
+        val rules = listOf(SendingRule("b", actions = RuleActions(fromAddress = "me+b@x")), SendingRule("c", actions = RuleActions(fromAddress = "ME@x")))
+        assertEquals(listOf("me@x", "me+b@x"), knownFroms(rules, SendingRule(AccountDefaultRule, actions = RuleActions(fromAddress = "me@x"))))
+    }
+}
