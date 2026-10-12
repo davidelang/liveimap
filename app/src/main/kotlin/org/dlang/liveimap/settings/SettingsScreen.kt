@@ -65,8 +65,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
@@ -471,6 +477,7 @@ private fun AccountGroup(editor: SettingsEditor) {
     var baselineAccount by remember { mutableStateOf<String?>(null) }
     var serverUserSaved by remember { mutableStateOf(false) }
     var serverFieldFocus by remember { mutableStateOf(0) }
+    var serverChecking by remember { mutableStateOf(false) }
     val chosenAccount = editor.accounts.firstOrNull { it.chosen }?.id
     fun userServerSave(next: AccountSettings) {
         serverUserSaved = true
@@ -502,7 +509,13 @@ private fun AccountGroup(editor: SettingsEditor) {
         }
         delay(1500)
         serverUserSaved = false
-        val result = withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(current) }
+        // Leaving the screen cancels this effect: the check is dropped, no deferred re-check.
+        serverChecking = true
+        val result = try {
+            withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(current) }
+        } finally {
+            serverChecking = false
+        }
         if (result.reachable && result.conflicts.isEmpty()) {
             serverBaseline = current
             serverCheck = if (result.notes.isEmpty()) null else result
@@ -715,6 +728,15 @@ private fun AccountGroup(editor: SettingsEditor) {
             onToggle = { sections.toggle("server") },
         ) {
             Text(stringResource(R.string.settings_plaintext_ports))
+            if (serverChecking) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
+                }
+            }
             val focusCount: (Boolean) -> Unit = { focused -> serverFieldFocus = (serverFieldFocus + if (focused) 1 else -1).coerceAtLeast(0) }
             LineField(stringResource(R.string.settings_imap_host), settings.imapHost, ready = editor.ready, onFocus = focusCount) {
                 userServerSave(editor.settings.copy(imapHost = it))
@@ -2316,6 +2338,20 @@ private fun LineField(
         }),
         modifier = Modifier
             .fillMaxWidth()
+            // Hardware Enter: commit and close the keyboard like IME Done; consume down and up so the key-up
+            // never reaches whatever takes focus next (it used to activate Navigate up).
+            .onPreviewKeyEvent { event ->
+                val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
+                when (lineFieldKey(enter, event.type == KeyEventType.KeyDown, singleLine)) {
+                    LineKey.Pass -> false
+                    LineKey.Swallow -> true
+                    LineKey.Commit -> {
+                        committer.commit()
+                        focusManager.clearFocus()
+                        true
+                    }
+                }
+            }
             .onFocusChanged { state ->
                 if (hadFocus && !state.isFocused && !committer.skipLeave()) committer.commit()
                 if (hadFocus != state.isFocused) onFocus?.invoke(state.isFocused)

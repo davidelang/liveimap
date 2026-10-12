@@ -793,4 +793,5 @@
     <string name="settings_non_ascii_warn">Warn on look-alikes</string>
     <string name="settings_non_ascii_escape">Show as code points</string>
     <string name="compose_needs_smtputf8">Not sent: this server does not offer SMTPUTF8, which non-ASCII addresses or headers need (%1$s). Use an ASCII address or another server.</string>
+    <string name="settings_checking_server">Checking server…</string>
 </resources>
