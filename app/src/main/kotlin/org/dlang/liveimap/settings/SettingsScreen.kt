@@ -949,6 +949,9 @@ private fun AccountGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(smtpUsername = it))
             }
             Text(stringResource(R.string.settings_smtp_password_hint))
+            BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
+                editor.persist(editor.settings.copy(smtpSameAsImap = it))
+            }
             LineField(
                 stringResource(R.string.settings_smtp_password),
                 editor.smtpPassword,

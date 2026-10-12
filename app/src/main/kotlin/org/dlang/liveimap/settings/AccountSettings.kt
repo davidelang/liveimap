@@ -368,6 +368,8 @@ data class AccountSettings(
     val smtpHost: String = "",
     val smtpPort: Int = 25,
     val smtpUsername: String = "",
+    /** F52 (David): use the IMAP password for SMTP only when this is ticked; never assumed. */
+    val smtpSameAsImap: Boolean = false,
     val username: String = "",
     val displayName: String = "",
     val email: String = "",
@@ -517,6 +519,7 @@ private val fieldNames = listOf(
     "smtpHost",
     "smtpPort",
     "smtpUsername",
+    "smtpSameAsImap",
     "username",
     "displayName",
     "email",
@@ -642,6 +645,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("smtpHost=${percentEncode(smtpHost)}")
     appendLine("smtpPort=$smtpPort")
     if (smtpUsername.isNotEmpty()) appendLine("smtpUsername=${percentEncode(smtpUsername)}")
+    if (smtpSameAsImap) appendLine("smtpSameAsImap=true")
     appendLine("username=${percentEncode(username)}")
     appendLine("displayName=${percentEncode(displayName)}")
     appendLine("email=${percentEncode(email)}")
@@ -807,6 +811,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
     for (key in fieldNames) {
         if (
             key == "smtpUsername" ||
+            key == "smtpSameAsImap" ||
             key == "friendlyName" ||
             key == "theme" ||
             key == "showUnreadCounts" ||
@@ -918,6 +923,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         smtpHost = percentDecode(values.getValue("smtpHost")),
         smtpPort = parseIntField(values.getValue("smtpPort")),
         smtpUsername = values["smtpUsername"]?.let { percentDecode(it) } ?: "",
+        smtpSameAsImap = values["smtpSameAsImap"] == "true",
         username = percentDecode(values.getValue("username")),
         displayName = percentDecode(values.getValue("displayName")),
         email = percentDecode(values.getValue("email")),

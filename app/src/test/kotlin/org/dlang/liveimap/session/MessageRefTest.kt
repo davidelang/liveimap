@@ -1,0 +1,67 @@
+package org.dlang.liveimap.session
+
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.lang.reflect.Proxy
+
+class MessageRefTest {
+    /** A MailSession whose select() answers from [validity]; every other call is recorded and fails. */
+    private class Recorder(val validity: Map<String, Long>) {
+        val selects = ArrayList<String>()
+        val session: MailSession = Proxy.newProxyInstance(
+            MailSession::class.java.classLoader, arrayOf(MailSession::class.java),
+        ) { _, method, args ->
+            if (method.name == "select") {
+                val name = args!![0] as String
+                selects += name
+                val v = validity[name] ?: throw MailFailure("no such folder")
+                SelectResult(v, 1, 0)
+            } else {
+                throw UnsupportedOperationException(method.name)
+            }
+        } as MailSession
+    }
+
+    private fun <T> run(block: suspend () -> T): T = runBlocking { block() }
+
+    @Test fun crossFolderSearchHitsActInTheirOwnFoldersThenReturnHome() {
+        val r = Recorder(mapOf("INBOX" to 1L, "Archive/2019" to 7L))
+        val acted = ArrayList<Pair<String, List<Long>>>()
+        val refs = listOf(
+            MessageRef("a1", "Archive/2019", 7, 4711),
+            MessageRef("a1", "INBOX", 1, 4711),
+            MessageRef("a1", "Archive/2019", 7, 12),
+        )
+        run { r.session.onRefs("a1", refs, home = "INBOX") { mb, uids -> acted += mb to uids } }
+        assertEquals(listOf("Archive/2019" to listOf(4711L, 12L), "INBOX" to listOf(4711L)), acted)
+        assertEquals("INBOX", r.selects.last())
+    }
+
+    @Test fun wrongAccountIsRefusedBeforeAnyIo() {
+        val r = Recorder(mapOf("INBOX" to 1L))
+        val failure = runCatching {
+            run { r.session.onRefs("a1", listOf(MessageRef("a2", "INBOX", 1, 5))) { _, _ -> } }
+        }.exceptionOrNull()
+        assertTrue(failure is MailFailure)
+        assertTrue(r.selects.isEmpty())
+    }
+
+    @Test fun uidValidityMismatchFailsSafelyAndRestoresHome() {
+        val r = Recorder(mapOf("INBOX" to 1L, "Archive" to 99L))
+        var acted = false
+        val failure = runCatching {
+            run { r.session.onRefs("a1", listOf(MessageRef("a1", "Archive", 7, 5)), home = "INBOX") { _, _ -> acted = true } }
+        }.exceptionOrNull()
+        assertTrue(failure is MailFailure)
+        assertTrue(!acted)
+        assertEquals("INBOX", r.selects.last())
+    }
+
+    @Test fun unknownEpochIsRefused() {
+        val r = Recorder(mapOf("INBOX" to 1L))
+        assertTrue(runCatching { run { r.session.onRefs("a1", listOf(MessageRef("a1", "INBOX", 0, 5))) { _, _ -> } } }.isFailure)
+        assertTrue(r.selects.isEmpty())
+    }
+}
