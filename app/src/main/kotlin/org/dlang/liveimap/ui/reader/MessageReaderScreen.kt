@@ -23,6 +23,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
@@ -2094,16 +2096,39 @@ private fun MessageReaderLoaded(
     val confirmedLink = pendingLink
     if (confirmedLink != null) {
         val safety = linkSafety(confirmedLink)
+        val check = remember(confirmedLink, bodyText, renderedHtml) {
+            checkLink(confirmedLink, if (renderedHtml) bodyText else null)
+        }
         AlertDialog(
             onDismissRequest = { pendingLink = null },
+            title = if (check.host.isNotEmpty()) {
+                { Text(check.host, modifier = Modifier.testTag("link-host")) }
+            } else null,
             text = {
-                Text(
-                    confirmedLink + when (safety) {
-                        LinkSafety.Safe -> ""
-                        LinkSafety.Warn -> "\n\n" + stringResource(R.string.reader_link_warn)
-                        LinkSafety.Blocked -> "\n\n" + stringResource(R.string.reader_link_blocked)
-                    },
-                )
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (check.claimedHost.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.reader_link_mismatch, check.claimedHost, check.host),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("link-mismatch"),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (check.asciiHost.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.reader_link_idn, check.asciiHost),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("link-idn"),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    SelectionContainer { Text(confirmedLink.take(2000), style = MaterialTheme.typography.bodySmall) }
+                    when (safety) {
+                        LinkSafety.Safe -> {}
+                        LinkSafety.Warn -> Text("\n" + stringResource(R.string.reader_link_warn))
+                        LinkSafety.Blocked -> Text("\n" + stringResource(R.string.reader_link_blocked))
+                    }
+                }
             },
             confirmButton = {
                 if (safety != LinkSafety.Blocked) {
@@ -2113,7 +2138,7 @@ private fun MessageReaderLoaded(
                     }) {
                         Text(
                             stringResource(R.string.reader_open),
-                            color = if (safety == LinkSafety.Warn) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
+                            color = if (safety == LinkSafety.Warn || check.claimedHost.isNotEmpty() || check.asciiHost.isNotEmpty()) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
                         )
                     }
                 }

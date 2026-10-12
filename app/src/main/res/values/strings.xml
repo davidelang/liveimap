@@ -747,6 +747,8 @@
     <string name="reader_type_mismatch_danger">This kind of file can run code or install an app. Open it only if you trust the sender.</string>
     <string name="reader_type_mismatch_open">Open as %1$s</string>
     <string name="reader_type_mismatch_save">Save</string>
+    <string name="reader_link_mismatch">The link text shows %1$s, but the link goes to %2$s.</string>
+    <string name="reader_link_idn">This address uses non-Latin look-alike letters. Its real form is %1$s.</string>
     <string name="reader_link_warn">This is not a web or mail link. It opens another app, which may call, send a message or act for you. Open it only if you trust the sender.</string>
     <string name="reader_link_blocked">Links of this type are blocked: they can reach files, other apps\' data or run code.</string>
     <string name="reader_type_mismatch_share">Share as %1$s</string>
