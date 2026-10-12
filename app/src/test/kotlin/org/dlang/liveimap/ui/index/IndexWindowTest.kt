@@ -123,7 +123,7 @@ class IndexWindowTest {
         val store = MemorySettingsStore(AccountSettings())
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
-        assertEquals(listOf("INBOX"), session.selects)
+        assertEquals(setOf("INBOX"), session.selects.toSet()) // F128: queries reselect their own folder
         assertEquals(listOf(8L, 3L), rows.map { it.uid })
         assertEquals(IndexMode.ArrivalRange, session.fetchRequests.single().mode)
         assertTrue(session.fetchRequests.none { it.firstSequence == 0 && it.lastSequence == 0 })
@@ -138,7 +138,7 @@ class IndexWindowTest {
         val model = IndexModel(session, store, "INBOX")
         val rows = runImmediate { model.loadWindow() }
         assertTrue(rows.isEmpty())
-        assertEquals(listOf("INBOX"), session.selects)
+        assertEquals(setOf("INBOX"), session.selects.toSet())
         assertTrue(session.fetchRequests.isEmpty())
     }
 
@@ -802,7 +802,7 @@ class IndexWindowTest {
         val store = MemorySettingsStore(AccountSettings(postponedMailbox = "Drafts"))
         val drafts = IndexModel(session, store, "Drafts")
         runImmediate { drafts.loadWindow() }
-        assertEquals(ComposeSeed(ComposeKind.ResumePostpone, "Drafts", listOf(8L)), drafts.openSeed(8L))
+        assertEquals(ComposeSeed(ComposeKind.ResumePostpone, "Drafts", listOf(8L), 1L), drafts.openSeed(8L))
         val inbox = IndexModel(session, store, "INBOX")
         runImmediate { inbox.loadWindow() }
         assertNull(inbox.openSeed(8L))
@@ -1722,7 +1722,7 @@ class IndexWindowTest {
         assertEquals(listOf(text), session.searchCalls)
         assertTrue(session.textSearches.isEmpty())
         assertTrue(session.listCalls.isEmpty())
-        assertTrue(session.selects.isEmpty())
+        assertTrue(session.selects.all { it == "INBOX" }) // F128: only its own folder
         assertTrue(model.orderMailboxes.isEmpty())
         assertTrue(searched.all { it.mailbox.isEmpty() })
         assertFalse(blocksFolderSelection(model.orderMailboxes, "INBOX"))
@@ -1952,7 +1952,7 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         val searched = runImmediate { model.applyAdvanced(text, SearchScope.Subtree) }
-        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text, emptyList())), session.scopeCalls)
+        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text, listOf("INBOX", "INBOX"))), session.scopeCalls) // F128: own-folder reselects only
         assertTrue(session.searchKinds.isEmpty())
         assertTrue(session.listCalls.isEmpty())
         assertTrue(searched.any { it.mailbox == "INBOX" })
