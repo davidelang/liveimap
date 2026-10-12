@@ -255,6 +255,10 @@ fun LiveImapNavHost() {
     val filterSeedSubject = rememberSaveable { mutableStateOf("") }
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
+    // F121: the favorite being edited belongs to one account; edits go to that account, never the active one
+    var editingAccountId by remember { mutableStateOf<String?>(null) }
+    var editingFavorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
+    var editingWhere by remember { mutableStateOf(FavoriteWhere("", "", "")) }
     val favoriteMutex = remember { Mutex() }
     val availableDpState = remember { mutableIntStateOf(0) }
     var readerOpen by remember { mutableStateOf(false) }
@@ -831,42 +835,64 @@ fun LiveImapNavHost() {
         }
     }
 
-    fun openFavoriteEditor(favorite: FolderFavorite) {
-        editingFavorite = favorite
-        favoriteDraft = favoriteDrawerLabel(favorite)
+    fun openFavoriteEditor(favorite: FolderFavorite, accountId: String? = null) {
+        scope.launch {
+            val id = accountId ?: store.chosenAccountId() ?: return@launch
+            val settings = store.forAccount(id).load()
+            editingAccountId = id
+            editingFavorites = settings.favorites
+            editingWhere = FavoriteWhere(
+                account = settings.email.ifBlank { settings.username },
+                server = settings.imapHost,
+                path = favorite.mailbox,
+            )
+            editingFavorite = favorite
+            favoriteDraft = favoriteDrawerLabel(favorite)
+        }
+    }
+
+    /** F121: saves [next] as the edited account's favorites (the drawer list too when it is the active one). */
+    fun persistEditingFavorites(next: List<FolderFavorite>) {
+        val id = editingAccountId ?: return
+        editingFavorites = next
+        scope.launch {
+            val active = store.chosenAccountId()
+            if (id == active) favorites = next
+            favoriteMutex.withLock {
+                val bound = store.forAccount(id)
+                bound.save(bound.load().copy(favorites = next))
+            }
+            drawerAccounts = store.listDrawerAccounts()
+        }
     }
 
     fun moveEditingFavorite(delta: Int) {
         val current = editingFavorite ?: return
-        val index = favorites.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
+        val list = editingFavorites
+        val index = list.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
         if (index < 0) return
         val target = index + delta
-        if (target !in favorites.indices) return
-        val next = favorites.toMutableList()
+        if (target !in list.indices) return
+        val next = list.toMutableList()
         val swap = next[target]
         next[target] = next[index]
         next[index] = swap
-        persistFavorites(next)
+        persistEditingFavorites(next)
     }
 
     fun saveEditingFavorite() {
         val current = editingFavorite ?: return
         val trimmed = favoriteDraft.trim()
-        val next = favorites.map { item ->
-            if (item.node == current.node && item.mailbox == current.mailbox) {
-                item.copy(label = trimmed)
-            } else {
-                item
-            }
+        val next = editingFavorites.map { item ->
+            if (item.node == current.node && item.mailbox == current.mailbox) item.copy(label = trimmed) else item
         }
-        persistFavorites(next)
+        persistEditingFavorites(next)
         editingFavorite = null
     }
 
     fun deleteEditingFavorite() {
         val current = editingFavorite ?: return
-        val next = favorites.filterNot { it.node == current.node && it.mailbox == current.mailbox }
-        persistFavorites(next)
+        persistEditingFavorites(editingFavorites.filterNot { it.node == current.node && it.mailbox == current.mailbox })
         editingFavorite = null
     }
 
@@ -967,11 +993,7 @@ fun LiveImapNavHost() {
             openFavoriteEditor(favorite)
             return
         }
-        scope.launch {
-            store.selectAccount(account.id)
-            applyOpenAccount()
-            openFavoriteEditor(favorite)
-        }
+        openFavoriteEditor(favorite, account.id) // F121: manage it in its own account; no account switch
     }
 
     val drawerSheet: @Composable ColumnScope.() -> Unit = {
@@ -1181,6 +1203,7 @@ fun LiveImapNavHost() {
                 editingFavorite = null
             }
             FavoriteEditDialog(
+                where = editingWhere,
                 name = favoriteDraft,
                 onName = { favoriteDraft = it },
                 onMoveUp = { moveEditingFavorite(-1) },
@@ -1411,6 +1434,7 @@ private fun ColumnScope.DrawerSheetContent(
 
 @Composable
 private fun FavoriteEditDialog(
+    where: FavoriteWhere,
     name: String,
     onName: (String) -> Unit,
     onMoveUp: () -> Unit,
@@ -1423,12 +1447,20 @@ private fun FavoriteEditDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.drawer_favorite)) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onName,
-                label = { Text(stringResource(R.string.drawer_name)) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column {
+                // F121: which account and server, and the folder's full path, so same-named folders are told apart
+                Text(
+                    favoriteWhereText(where),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("favorite-where"),
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onName,
+                    label = { Text(stringResource(R.string.drawer_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         },
         confirmButton = {
             Column {
@@ -1442,6 +1474,15 @@ private fun FavoriteEditDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.drawer_cancel)) }
         },
     )
+}
+
+/** F121: where a favorite lives: account, its IMAP server, and the folder's full server path. */
+internal data class FavoriteWhere(val account: String, val server: String, val path: String)
+
+internal fun favoriteWhereText(where: FavoriteWhere): String {
+    val owner = listOf(where.account, where.server).filter { it.isNotBlank() }.joinToString(" on ")
+    val path = where.path.ifEmpty { "(top level)" }
+    return if (owner.isEmpty()) path else "$owner\n$path"
 }
 
 internal fun favoriteDrawerLabel(favorite: FolderFavorite): String {
