@@ -873,7 +873,17 @@ private fun ComposeLoaded(
             } finally {
                 busy = false
             }
-            if (leave) onDone()
+            if (leave) {
+                // Compose closes on success, which would hide the status; this note must outlive the screen.
+                if (deliveryDone && dsnRefused) {
+                    android.widget.Toast.makeText(
+                        appContext,
+                        appContext.getString(R.string.compose_dsn_unsupported),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                onDone()
+            }
         }
     }
 
