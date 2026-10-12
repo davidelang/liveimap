@@ -306,7 +306,8 @@ JavaVM * gVm = nullptr;
 std::mutex gLiveMu;
 std::unordered_set<LiveSession *> gLive;
 std::mutex gErrMu;
-std::string gLastError;
+// F12 addendum: per thread, like the cert offer, so another thread's error text can never be shown here.
+thread_local std::string gLastError;
 std::mutex gCertOfferMu;
 // Per thread (F12): the offer is recorded during a handshake and taken right after the failed open on the
 // same thread, so a watch or probe connection on another thread can never swap in its certificate.
@@ -5474,6 +5475,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
     if (!ensureJni(env)) return 0;
+    clearCertOffer();  // F12: a pooled thread must not keep an offer from an earlier failed connection
+    setLastError("");
     JChars h(env, host);
     JChars u(env, user);
     JChars p(env, password);
@@ -8445,6 +8448,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
     jstring host, jint port, jstring tlsMode, jstring certPin, jboolean acceptInvalidCert, jboolean allowOldTls) {
     registerExtensions();
     if (!ensureJni(env)) return nullptr;
+    clearCertOffer();  // F12
+    setLastError("");
     JChars h(env, host);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);

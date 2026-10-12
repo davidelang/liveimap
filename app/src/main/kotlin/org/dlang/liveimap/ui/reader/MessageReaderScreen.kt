@@ -558,6 +558,7 @@ private fun MessageReaderLoaded(
         if (markSeen && !seenStored && account.markSeenOnOpen) {
             seenStored = true
             try {
+                session.select(mailbox)  // F43: act on this folder's UID
                 session.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
             } catch (error: CancellationException) {
                 throw error
@@ -1194,6 +1195,8 @@ private fun MessageReaderLoaded(
                     offer.usedMove,
                     offer.allMailbox,
                 )
+                // F98: the undo selects other folders; never trust the reader's remembered selection after it.
+                selectedMailbox = null
                 val reported = helper.notice
                 if (reported != null) postSnack(reported)
             }
@@ -1207,6 +1210,8 @@ private fun MessageReaderLoaded(
             var failed = false
             gate.withLock {
                 try {
+                    session.select(mailbox)  // F43: expunge these UIDs in this folder, not wherever the session is
+                    selectedMailbox = mailbox
                     session.uidExpunge(uids)
                 } catch (error: CancellationException) {
                     throw error
@@ -1266,6 +1271,7 @@ private fun MessageReaderLoaded(
         scope.launch {
             gate.withLock {
                 try {
+                    session.select(mailbox)  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
                     rowFlags = rowFlags - "\\Deleted"
                 } catch (error: CancellationException) {
@@ -1282,6 +1288,7 @@ private fun MessageReaderLoaded(
         try {
             when (policy) {
                 DeletePolicy.MarkDeleted -> {
+                    session.select(mailbox)  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
                 }
@@ -1289,6 +1296,7 @@ private fun MessageReaderLoaded(
                     val trash = session.knownTrash()
                     knownTrashName = trash
                     if (trash.isEmpty()) return
+                    session.select(mailbox)  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), trash)
                     val dest = session.takeCopiedUids()
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
@@ -1305,6 +1313,7 @@ private fun MessageReaderLoaded(
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) return
+                    session.select(mailbox)  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     session.uidExpunge(listOf(uid))
                     openNextOrIndex(target)
@@ -1358,6 +1367,7 @@ private fun MessageReaderLoaded(
             gate.withLock {
                 val target = nextAfterDeleteOrMove()
                 try {
+                    session.select(mailbox)  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), spamMailbox)
                     val dest = session.takeCopiedUids()
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
@@ -2215,6 +2225,7 @@ private fun MessageReaderLoaded(
                         gate.withLock {
                             val target = nextAfterDeleteOrMove()
                             try {
+                                session.select(mailbox)  // F43: act on this folder's UID
                                 session.copyThenDelete(listOf(uid), picked)
                                 val dest = session.takeCopiedUids()
                                 val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
