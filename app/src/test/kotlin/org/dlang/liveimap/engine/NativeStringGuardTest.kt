@@ -38,4 +38,14 @@ class NativeStringGuardTest {
         assertTrue(!body.contains("1000000u"))
         assertTrue(body.contains("if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;"))
     }
+
+    /** F31: APPEND completion is matched against the current tag, not any tagged-looking line. */
+    @Test fun appendCompletionMatchesTag() {
+        val src = File("src/main/cpp/liveimap_jni.cpp").readText()
+        val at = src.substringAfter("int taggedCondAt(").substringBefore("\n}\n")
+        assertTrue(at.startsWith("const char * line, const std::string & tag)"))
+        assertTrue(at.contains("strncasecmp(line, tag.c_str(), tag.size())"))
+        val append = src.substringAfter("int appendLiteralPlus(").substringBefore("\n}\n")
+        assertTrue(append.contains("currentTagText(imap)"))
+    }
 }

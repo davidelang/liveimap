@@ -1819,11 +1819,25 @@ int sendUidThread(mailimap * imap, const char * algorithm, struct mailimap_respo
     return mailimap_parse_response(imap, response);
 }
 
-int taggedCondAt(const char * line) {
+/* The tag of the command in flight, as libetpan sent it (format_tag in mailimap.c is static). */
+std::string currentTagText(mailimap * imap) {
+    char tag[16];
+    if (mailimap_is_163_workaround_enabled(imap)) {
+        snprintf(tag, sizeof(tag), "C%i", imap->imap_tag);
+    } else {
+        snprintf(tag, sizeof(tag), "%i", imap->imap_tag);
+    }
+    return tag;
+}
+
+/* F31: 1/2/3 for "<tag> OK|NO|BAD" only when <tag> is the expected one; a stale or pipelined tagged reply, or a
+ * literal line that looks like one, does not count. */
+int taggedCondAt(const char * line, const std::string & tag) {
     if (line == nullptr || line[0] == 0 || line[0] == '*' || line[0] == '+') return 0;
     const char * p = line;
     while (*p != 0 && *p != ' ' && *p != '\r' && *p != '\n') p++;
     if (p == line || *p != ' ') return 0;
+    if (static_cast<size_t>(p - line) != tag.size() || strncasecmp(line, tag.c_str(), tag.size()) != 0) return 0;
     ++p;
     if (strncasecmp(p, "OK", 2) == 0) {
         char n = p[2];
@@ -1842,16 +1856,16 @@ int taggedCondAt(const char * line) {
 
 int taggedCondInBuffer(mailimap * imap) {
     if (imap == nullptr || imap->imap_stream_buffer == nullptr || imap->imap_stream_buffer->str == nullptr) return 0;
+    const std::string tag = currentTagText(imap);
     const char * p = imap->imap_stream_buffer->str;
-    int found = 0;
     while (*p != 0) {
-        int kind = taggedCondAt(p);
-        if (kind != 0) found = kind;
+        int kind = taggedCondAt(p, tag);
+        if (kind != 0) return kind;  // the first line with our tag is the completion
         const char * nl = strchr(p, '\n');
         if (nl == nullptr) break;
         p = nl + 1;
     }
-    return found;
+    return 0;
 }
 
 int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes, size_t size,
@@ -1917,6 +1931,13 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
         return r;
     }
     bool ok = taggedOk(response);
+    // F31: the tagged completion must carry this APPEND's tag.
+    if (ok) {
+        struct mailimap_response_done * done = response->rsp_resp_done;
+        const char * got = (done != nullptr && done->rsp_type == MAILIMAP_RESP_DONE_TYPE_TAGGED &&
+            done->rsp_data.rsp_tagged != nullptr) ? done->rsp_data.rsp_tagged->rsp_tag : nullptr;
+        ok = got != nullptr && strcasecmp(got, currentTagText(imap).c_str()) == 0;
+    }
     mailimap_response_free(response);
     if (ok || taggedCondInBuffer(imap) == 1) return MAILIMAP_NO_ERROR;
     return MAILIMAP_ERROR_APPEND;

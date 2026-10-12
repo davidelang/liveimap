@@ -319,9 +319,10 @@ class LibetpanMailSession : MailSession {
         capabilityLine = line
         cache.clear()
         compressed = false
+        // F30: QRESYNC is not enabled. Its VANISHED/changed-FETCH answers were never processed, and once enabled the
+        // server sends VANISHED instead of EXPUNGE on this connection. CONDSTORE keeps HIGHESTMODSEQ and EXPUNGE.
         when (featureCaps.resyncKind()) {
-            "Qresync" -> nativeEnable(opened, "QRESYNC")
-            "Condstore" -> nativeEnable(opened, "CONDSTORE")
+            "Qresync", "Condstore" -> nativeEnable(opened, enableForResync(featureCaps.resyncKind()))
         }
         // RFC 6855: UTF-8 mailbox names (and quoted strings) instead of modified UTF-7.
         utf8Names = false
@@ -1568,4 +1569,10 @@ internal class ClientSortKeys(capacity: Int, private val numeric: Boolean) {
         for (i in blanks) out[k++] = uids[i]
         return out
     }
+}
+
+/** F30: the ENABLE token for a resync kind. QRESYNC data is not processed, so QRESYNC servers get CONDSTORE. */
+internal fun enableForResync(kind: String): String = when (kind) {
+    "Qresync", "Condstore" -> "CONDSTORE"
+    else -> ""
 }

@@ -212,6 +212,39 @@ class ConnectionKeeperTest {
         assertEquals(1, runs)
         assertEquals(0, link.connects)
     }
+    @Test
+    fun reconnectReportsArrivalsHiddenByExpunges() {
+        val before = org.dlang.liveimap.session.SelectResult(7, 100, 50)
+        // 3 arrived, 5 expunged: EXISTS fell, but UIDNEXT moved.
+        assertEquals(
+            listOf(MailboxChange.Expunge(48), MailboxChange.Exists(48), MailboxChange.Reconnected),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 103, 48)),
+        )
+        // equal counts, UIDNEXT moved
+        assertEquals(
+            listOf(MailboxChange.Expunge(50), MailboxChange.Exists(50), MailboxChange.Reconnected),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 102, 50)),
+        )
+        assertEquals(listOf(MailboxChange.Reconnected), reconnectChanges(before, before))
+        // 5 arrived, 2 expunged
+        assertEquals(
+            listOf(MailboxChange.Expunge(53), MailboxChange.Exists(53), MailboxChange.Reconnected),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 105, 53)),
+        )
+        // 3 arrived only
+        assertEquals(
+            listOf(MailboxChange.Exists(53), MailboxChange.Reconnected),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 103, 53)),
+        )
+        assertEquals(
+            listOf(MailboxChange.Expunge(40), MailboxChange.Reconnected),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 100, 40)),
+        )
+        assertEquals(
+            listOf(MailboxChange.UidValidityReset),
+            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(8, 1, 0)),
+        )
+    }
 }
 
 private class Clock {
@@ -276,37 +309,4 @@ private class FakeLink : Link {
         emissions.add(change)
     }
 
-    @Test
-    fun reconnectReportsArrivalsHiddenByExpunges() {
-        val before = org.dlang.liveimap.session.SelectResult(7, 100, 50)
-        // 3 arrived, 5 expunged: EXISTS fell, but UIDNEXT moved.
-        assertEquals(
-            listOf(MailboxChange.Expunge(48), MailboxChange.Exists(48), MailboxChange.Reconnected),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 103, 48)),
-        )
-        // equal counts, UIDNEXT moved
-        assertEquals(
-            listOf(MailboxChange.Expunge(50), MailboxChange.Exists(50), MailboxChange.Reconnected),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 102, 50)),
-        )
-        assertEquals(listOf(MailboxChange.Reconnected), reconnectChanges(before, before))
-        // 5 arrived, 2 expunged
-        assertEquals(
-            listOf(MailboxChange.Expunge(53), MailboxChange.Exists(53), MailboxChange.Reconnected),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 105, 53)),
-        )
-        // 3 arrived only
-        assertEquals(
-            listOf(MailboxChange.Exists(53), MailboxChange.Reconnected),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 103, 53)),
-        )
-        assertEquals(
-            listOf(MailboxChange.Expunge(40), MailboxChange.Reconnected),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(7, 100, 40)),
-        )
-        assertEquals(
-            listOf(MailboxChange.UidValidityReset),
-            reconnectChanges(before, org.dlang.liveimap.session.SelectResult(8, 1, 0)),
-        )
-    }
 }
