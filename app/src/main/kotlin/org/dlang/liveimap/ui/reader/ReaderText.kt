@@ -38,6 +38,23 @@ fun headerFields(header: String): HeaderFields {
     return HeaderFields(from, to, cc, sender, resentTo, listId)
 }
 
+/** The account's viewer header list ("viewerHeaders"): those headers, in list order, decoded. */
+fun viewerHeaderLines(header: String, list: String): List<Pair<String, String>> {
+    val names = org.dlang.liveimap.ui.compose.headerNames(list)
+    if (names.isEmpty()) return emptyList()
+    val lines = unfoldedHeaderLines(header)
+    val out = ArrayList<Pair<String, String>>()
+    for (want in names) {
+        for (line in lines) {
+            val colon = line.indexOf(':')
+            if (colon <= 0) continue
+            val name = line.substring(0, colon).trim()
+            if (name.equals(want, ignoreCase = true)) out.add(name to decodeHeaderWords(line.substring(colon + 1).trim()))
+        }
+    }
+    return out
+}
+
 fun saveFolderName(
     rule: SaveNameRule,
     savedMailbox: String,

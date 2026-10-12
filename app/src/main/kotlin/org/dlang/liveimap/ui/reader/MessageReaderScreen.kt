@@ -426,6 +426,7 @@ private fun MessageReaderLoaded(
     var rawTruncated by remember { mutableStateOf(false) }
     var allHeadersOpen by remember(uid) { mutableStateOf(false) }
     var allHeaderText by remember(uid) { mutableStateOf<String?>(null) }
+    var viewerExtra by remember(uid) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var allHeadersTruncated by remember(uid) { mutableStateOf(false) }
     var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
@@ -1070,7 +1071,9 @@ private fun MessageReaderLoaded(
                     headerDate = if (row.envelopeDate.isNotBlank()) row.envelopeDate else formatted
                 }
                 try {
-                    val fields = headerFields(readSectionText(section = "HEADER"))
+                    val headerText = readSectionText(section = "HEADER")
+                    val fields = headerFields(headerText)
+                    viewerExtra = viewerHeaderLines(headerText, settings.viewerHeaders)
                     if (fields.from.contains('@')) headerFrom = fields.from
                     headerTo = fields.to
                     headerCc = fields.cc
@@ -1848,6 +1851,7 @@ private fun MessageReaderLoaded(
                     decode = decodeHeaderView,
                     onDecode = { decodeHeaderView = it },
                     onToggleAllHeaders = { toggleAllHeaders() },
+                    extraHeaders = viewerExtra,
                 )
             }
             PullToRefreshBox(
@@ -2504,6 +2508,7 @@ private fun ReaderHeaderCard(
     decode: Boolean = false,
     onDecode: (Boolean) -> Unit = {},
     onToggleAllHeaders: () -> Unit = {},
+    extraHeaders: List<Pair<String, String>> = emptyList(),
 ) {
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
     Card(
@@ -2544,6 +2549,13 @@ private fun ReaderHeaderCard(
                         )
                     }
                 }
+            }
+            for ((name, value) in extraHeaders) {
+                Text(
+                    org.dlang.liveimap.ui.nonAscii("$name: $value"),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("reader-viewer-header"),
+                )
             }
             if (toLine != null) {
                 // The tap target is a full-width row at least 48dp high, so Compose does not grow the touch bounds of
