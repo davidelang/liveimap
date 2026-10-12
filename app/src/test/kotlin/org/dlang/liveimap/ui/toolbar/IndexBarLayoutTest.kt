@@ -279,6 +279,7 @@ class IndexBarLayoutTest {
                 ReaderToolbarAction.Delete,
                 ReaderToolbarAction.Move,
                 ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
             ),
             visibleReaderActions(replyOnly.overflow, ""),
         )
@@ -301,6 +302,7 @@ class IndexBarLayoutTest {
                 ReaderToolbarAction.Move,
                 ReaderToolbarAction.Spam,
                 ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
             ),
             fresh.overflow,
         )
