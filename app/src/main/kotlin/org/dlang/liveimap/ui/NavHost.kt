@@ -263,7 +263,7 @@ fun LiveImapNavHost() {
     var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     val folderColumn = customTree == null && !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
     // Hidden (openable) drawer when the folder column shows, or when Auto finds no room for a drawer pane.
-    val drawerHidden = folderColumn || (multiPane == MultiPane.Auto && !autoLayout.drawerPane)
+    val drawerHidden = drawerHiddenFor(folderColumn, route, multiPane, autoLayout.drawerPane)
     val folderColumnNow = rememberUpdatedState(drawerHidden)
     LaunchedEffect(drawerHidden, split) {
         val available = availableDpState.intValue
@@ -1451,6 +1451,14 @@ internal enum class PaneAxis {
     SideBySide,
     TopBottom,
 }
+
+/**
+ * The account drawer is a hidden (openable) drawer when a folder column shows, or in Auto when there is no
+ * room for it. In Auto the folder list screen counts as folders shown: the app starts there before it opens
+ * the start folder, and a drawer pane beside the folder list flashed on the Boox before the list appeared.
+ */
+internal fun drawerHiddenFor(folderColumn: Boolean, route: String?, multiPane: MultiPane, autoDrawerPane: Boolean): Boolean =
+    folderColumn || (multiPane == MultiPane.Auto && (!autoDrawerPane || route == "folders"))
 
 internal fun showFolderPane(choice: LayoutChoice, route: String?, autoPanes: Int = 1): Boolean {
     return useFolderPane(choice, autoPanes) &&
