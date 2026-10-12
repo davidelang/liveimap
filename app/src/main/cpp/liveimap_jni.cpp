@@ -3345,7 +3345,8 @@ void enableNamed(LiveSession * session, const char * capName) {
         }
     }
     if (result != nullptr) mailimap_capability_data_free(result);
-    if (strcmp(wire, "QRESYNC") == 0) session->qresync = true;
+    // F30 condition: a resync extension counts only when the ENABLED response names it.
+    if (strcmp(wire, "QRESYNC") == 0 && granted) session->qresync = true;
     // Only an ENABLED response naming UTF8=ACCEPT switches name handling (RFC 5161: the server may ignore it).
     if (strcmp(wire, "UTF8=ACCEPT") == 0 && granted) session->utf8 = true;
 }
@@ -8028,18 +8029,6 @@ static bool envelopeAddressOk(const char * a) {
     return !quoted;
 }
 
-/* F52: true when the IMAP login may be reused for SMTP: the same host, or siblings under the same parent domain
- * when both names have at least three labels (imap.example.com / smtp.example.com). Never across providers. */
-bool smtpSameProvider(const std::string & imapHost, const std::string & smtpHost) {
-    if (imapHost.empty() || smtpHost.empty()) return false;
-    if (strcasecmp(imapHost.c_str(), smtpHost.c_str()) == 0) return true;
-    auto labels = [](const std::string & h) { return std::count(h.begin(), h.end(), '.') + 1; };
-    if (labels(imapHost) < 3 || labels(smtpHost) < 3) return false;
-    std::string a = imapHost.substr(imapHost.find('.') + 1);
-    std::string b = smtpHost.substr(smtpHost.find('.') + 1);
-    return strcasecmp(a.c_str(), b.c_str()) == 0;
-}
-
 std::string smtpTlsModeFor(const std::string & imapMode, int smtpPort) {
     if (imapMode == "None") return imapMode;
     if (imapMode != "StartTls" && imapMode != "Implicit") return imapMode;
@@ -8052,16 +8041,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
-    // F52: the IMAP login is reused for SMTP only when SMTP is the same host. A separate relay without its own
-    // password gets no AUTH (it fails clearly if it needs one) instead of receiving the IMAP password.
-    const bool sameHost = smtpSameProvider(session->host, session->smtpHost);
+    // F52: no silent fallback to the IMAP login here. Kotlin passes the IMAP login explicitly only when the SMTP
+    // host is the same host or registrable domain (Public Suffix List, smtpMayReuseImapLogin).
     std::string authUser = utf8FromJava(env, smtpUsername);
     std::string authPass = utf8FromJava(env, smtpPassword);
     SecretWipe authPassWipe{authPass};
-    if (authPass.empty() && sameHost) {
-        authPass = session->password;
-        if (authUser.empty()) authUser = session->user;
-    }
     if (authPass.empty()) authUser.clear();
     // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
     std::string mailFrom = utf8FromJava(env, envelopeFrom);
@@ -8298,8 +8282,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } else if (!mechanism.empty()) {
         if (authUser.empty()) {
             mailsmtp_free(smtp);
-            throwFailure(env, sameHost ? "no usable SMTP authentication"
-                : "SMTP server needs its own password (the IMAP password is not sent to a different host)");
+            throwFailure(env, "SMTP server needs a password (the IMAP password is only reused for the same provider)");
             unlockSession(session);
             return 0;
         }

@@ -1047,15 +1047,20 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
         val context = currentApplication()
-        val smtpPassword = credentials?.smtpPassword
+        val ownSmtpPassword = credentials?.smtpPassword
             ?: if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
+        // F52: the IMAP login goes to SMTP only for the same host or registrable domain (PSL).
+        val acct = account
+        val reuse = ownSmtpPassword.isEmpty() && acct != null && smtpMayReuseImapLogin(acct.imapHost, acct.smtpHost)
+        val smtpPassword = if (reuse) loggedInPassword.orEmpty() else ownSmtpPassword
+        val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
         return keeper.write("send") {
             forgetSelected()
             nativeSmtp(
                 requireHandle(),
                 rfc822,
                 recipients.toTypedArray(),
-                account?.smtpUsername ?: "",
+                smtpUser,
                 smtpPassword,
                 dsnNotify,
                 envelopeFrom,
