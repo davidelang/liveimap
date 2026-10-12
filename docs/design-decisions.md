@@ -378,6 +378,11 @@ Avoid:
   dragging a pane to the edge closes it. Window width does not choose the
   panes.
 
+- Back is predictive on every Android version that has it (13+): the manifest sets
+  `android:enableOnBackInvokedCallback="true"`, so 13–15 behave like 16, where it is the default; all screens use
+  Compose `BackHandler` / Navigation back, which follow the predictive back callbacks. The navigation drawer
+  scrolls, so its Settings/Help/About items stay reachable in landscape with several accounts.
+
 ## Compose and sending
 
 * Bcc is an envelope recipient and is not left in the saved copy.

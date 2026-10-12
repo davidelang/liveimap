@@ -2742,9 +2742,10 @@ private fun recipientLine(to: String, cc: String): String? {
     return bothLine
 }
 
-private fun readerLines(text: String): List<String> {
+internal fun readerLines(text: String): List<String> {
     if (text.isEmpty()) return emptyList()
-    val parts = text.split('\n')
+    // CRLF line ends: drop the CR so lines carry no stray control character.
+    val parts = text.split('\n').map { it.removeSuffix("\r") }
     if (parts.size > 1 && parts.last().isEmpty()) return parts.dropLast(1)
     return parts
 }
