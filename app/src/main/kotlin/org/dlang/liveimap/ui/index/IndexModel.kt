@@ -1,5 +1,10 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.session.MessageRef
+import org.dlang.liveimap.session.onRefs
+import org.dlang.liveimap.session.sameMailbox
+import org.dlang.liveimap.session.selectChecked
+
 import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.UidWindow
@@ -496,7 +501,40 @@ data class MailUndo(
     val targetMailbox: String = "",
     val destUids: List<Long> = emptyList(),
     val usedMove: Boolean = false,
+    /** F105: the changed messages with folder and UIDVALIDITY; [IndexModel.undo] acts on exactly these. */
+    val source: List<MessageRef> = emptyList(),
+    /** Their copies in [targetMailbox] (from COPYUID), same epoch rules. */
+    val dest: List<MessageRef> = emptyList(),
 )
+
+/** The account scope of a [MessageRef] made for [settings]. */
+fun refAccountKey(settings: AccountSettings): String = "${settings.username}@${settings.imapHost}"
+
+/**
+ * F105: a reader action's undo, as refs: the message in [folder] (UIDVALIDITY [epoch]) and its copy in [target]
+ * ([targetEpoch] from COPYUID). Undo refuses when the copy is unknown (F102).
+ */
+fun refUndo(
+    settings: AccountSettings,
+    folder: String,
+    epoch: Long,
+    uid: Long,
+    target: String = "",
+    dest: List<Long> = emptyList(),
+    targetEpoch: Long = 0L,
+    usedMove: Boolean = false,
+): MailUndo {
+    val key = refAccountKey(settings)
+    return MailUndo(
+        delete = target.isEmpty(),
+        uids = listOf(uid),
+        targetMailbox = target,
+        destUids = dest,
+        usedMove = usedMove,
+        source = listOf(MessageRef(key, folder, epoch, uid)),
+        dest = if (targetEpoch > 0) dest.map { MessageRef(key, target, targetEpoch, it) } else emptyList(),
+    )
+}
 
 fun mailUndoText(undo: MailUndo): String {
     if (undo.delete) return "Marked deleted"
@@ -1304,6 +1342,9 @@ class IndexModel(
                 if (loadedWindow) reloadKeepingAnchor()
             }
             MailboxChange.UidValidityReset -> {
+                epochs.remove(mailbox)
+                allMailboxCeiling = 0L
+                mailUndo = null
                 replaceWindow { fetchCurrent() }
             }
             MailboxChange.WatchLost,
@@ -1318,7 +1359,48 @@ class IndexModel(
      * another screen sharing the session moved the selection, this re-selects before UIDs are used.
      */
     private suspend fun selectOwn() {
-        session.select(actFolder ?: mailbox)
+        val folder = actFolder ?: mailbox
+        session.selectChecked(folder, epochOf(folder))
+    }
+
+    /**
+     * F105: UIDVALIDITY of each folder as of when its rows were listed. Every UID action goes through
+     * [MessageRef]s built from it, so a UID is only ever used in the folder and epoch it was read from.
+     */
+    private val epochs = HashMap<String, Long>()
+
+    /** Account scope for this model's refs (one model, one account). */
+    private val accountKey: String get() = refAccountKey(account)
+
+    private suspend fun epochOf(folder: String): Long {
+        epochs[folder]?.let { return it }
+        if (folder != mailbox) return 0L // a hit's folder is recorded when it is listed; unknown = refuse
+        val now = session.select(mailbox).uidValidity
+        epochs[mailbox] = now
+        return now
+    }
+
+    /** A folder's UIDVALIDITY as seen when its rows were listed (search paths; tests). */
+    internal fun noteFolderEpoch(folder: String, epoch: Long) {
+        epochs[folder] = epoch
+    }
+
+    private suspend fun refsFor(uids: List<Long>, folder: String = actFolder ?: mailbox): List<MessageRef> {
+        val epoch = epochOf(folder)
+        return uids.map { MessageRef(accountKey, folder, epoch, it) }
+    }
+
+    /** F107: UIDs at or above this (the UIDNEXT when "entire folder" was chosen) are never part of it. */
+    private var allMailboxCeiling: Long = 0L
+
+    suspend fun freezeAllMailbox() {
+        allMailboxCeiling = session.selectChecked(mailbox, epochOf(mailbox)).uidNext
+    }
+
+    private suspend fun frozenAll(kind: String = "All"): List<Long> {
+        val all = allUidsInWindows(session, kind = kind)
+        val ceiling = allMailboxCeiling
+        return if (ceiling > 0) all.filter { it < ceiling } else all
     }
 
     /** F105: while set, UID actions run in this folder (a cross-folder search hit's own folder). */
@@ -1343,7 +1425,6 @@ class IndexModel(
             return block()
         } finally {
             actFolder = null
-            mailUndo = null
             try {
                 session.select(mailbox)
             } catch (_: MailFailure) {
@@ -1357,7 +1438,7 @@ class IndexModel(
             selectOwn()
             // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
             // and undo only clears \Deleted on UIDs this action actually changed.
-            val target = if (allMailbox) allUidsInWindows(session) else uids
+            val target = if (allMailbox) frozenAll() else uids
             val before = if (allMailbox) session.searchCriterion("Deleted", "").toSet()
                 else heldRows.filter { it.uid in uids.toSet() && "\\Deleted" in it.flags }.map { it.uid }.toSet()
             for (part in target.chunked(MoveChunk)) session.storeFlags(part, setOf("\\Deleted"), emptySet())
@@ -1367,7 +1448,12 @@ class IndexModel(
                 if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags + "\\Deleted") else row
             }
             notice = null
-            mailUndo = if (changed.isEmpty()) null else MailUndo(delete = true, uids = changed, allMailbox = false)
+            mailUndo = if (changed.isEmpty()) null else MailUndo(
+                delete = true,
+                uids = changed,
+                allMailbox = false,
+                source = refsFor(changed),
+            )
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1382,6 +1468,12 @@ class IndexModel(
             return heldRows
         }
         if (!allMailbox && uids.isEmpty()) return heldRows
+        if (sameMailbox(moveMailbox, actFolder ?: mailbox)) {
+            // F103: copy-then-mark into the same folder would duplicate every message.
+            notice = "Already in ${mailboxLeaf(moveMailbox)}"
+            mailUndo = null
+            return heldRows
+        }
         val settings = store.load()
         account = settings
         moveStop = false
@@ -1389,13 +1481,16 @@ class IndexModel(
             selectOwn()
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
-            val all = if (allMailbox) allUidsInWindows(session, kind = moveAllKind(settings)) else uids
+            val all = if (allMailbox) frozenAll(moveAllKind(settings)) else uids
             val chunk = LabTestHooks.moveChunk() ?: MoveChunk
             val big = all.size > chunk
+            var targetEpoch = -1L // one destination epoch for all batches, else 0 (no undo)
             val outcome = moveInChunks(all, chunk, { moveStop }, { done, total ->
                 if (big) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
             }) { part ->
                 session.copyThenDelete(part, moveMailbox)
+                val epoch = session.copiedEpoch()
+                targetEpoch = if (targetEpoch == -1L || targetEpoch == epoch) epoch else 0L
                 session.takeCopiedUids()
             }
             if (big) onSearchProgress?.invoke(null)
@@ -1410,22 +1505,34 @@ class IndexModel(
                 if (actFolder == null) order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
+            // F102: with copy-then-mark a failed batch may already be copied (COPY ok, STORE failed).
+            val maybeCopied = if (outcome.failure != null && !usedMove) {
+                "; the failed batch may already be copied to ${mailboxLeaf(moveMailbox)}, check it before retrying"
+            } else {
+                ""
+            }
             notice = when {
                 outcome.failure != null && moved.isNotEmpty() ->
-                    "Moved ${moved.size} of ${all.size}, then: ${outcome.failure.text}"
-                outcome.failure != null -> outcome.failure.text
+                    "Moved ${moved.size} of ${all.size}, then: ${outcome.failure.text}$maybeCopied"
+                outcome.failure != null -> outcome.failure.text + maybeCopied
                 moved.size < all.size -> "Moved ${moved.size} of ${all.size}; stopped"
                 else -> null
             }
-            // F45: after MOVE without COPYUID the destination UIDs are unknown, so no undo is offered.
-            mailUndo = if (moved.isEmpty() || (usedMove && outcome.dest.isEmpty())) null else MailUndo(
+            // F45/F102: undo only when the server named every copy (COPYUID for each moved message); otherwise a
+            // MOVE could not be reversed and copy-then-mark would leave duplicates.
+            mailUndo = if (moved.isEmpty() || outcome.dest.size != moved.size || targetEpoch <= 0L) null else MailUndo(
                 delete = false,
                 uids = moved,
                 allMailbox = false,
                 targetMailbox = moveMailbox,
                 destUids = outcome.dest,
                 usedMove = usedMove,
+                source = refsFor(moved),
+                dest = outcome.dest.map { MessageRef(accountKey, moveMailbox, targetEpoch, it) },
             )
+            if (moved.isNotEmpty() && mailUndo == null && outcome.failure == null) {
+                notice = "Moved; undo is not available (the server did not report the new message IDs)"
+            }
             OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
@@ -1441,7 +1548,7 @@ class IndexModel(
             selectOwn()
             if (allMailbox) {
                 // F44: snapshot UIDs; UID EXPUNGE only those, so a message arriving now is never destroyed unseen.
-                val snapshot = allUidsInWindows(session)
+                val snapshot = frozenAll()
                 for (part in snapshot.chunked(MoveChunk)) {
                     session.storeFlags(part, setOf("\\Deleted"), emptySet())
                     session.uidExpunge(part)
@@ -1462,6 +1569,56 @@ class IndexModel(
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
+        }
+        return heldRows
+    }
+
+    /**
+     * F105: undo exactly what [u] recorded, in the folders and UIDVALIDITY epochs it recorded (a cross-folder hit's
+     * undo works too). An undo without refs (built elsewhere) goes the old way, in this folder.
+     */
+    suspend fun undo(u: MailUndo): List<IndexRow> {
+        account = store.load()
+        if (u.source.isEmpty()) {
+            return if (u.delete) undoDelete(u.uids, u.allMailbox)
+            else undoMove(u.uids, u.targetMailbox, u.destUids, u.usedMove, u.allMailbox)
+        }
+        try {
+            if (u.delete) {
+                session.onRefs(accountKey, u.source, home = mailbox) { _, uids ->
+                    for (part in uids.chunked(MoveChunk)) session.storeFlags(part, emptySet(), setOf("\\Deleted"))
+                }
+                val keys = u.source.filter { sameMailbox(it.mailbox, mailbox) }.map { it.uid }.toSet()
+                val hits = u.source.map { it.mailbox to it.uid }.toSet()
+                heldRows = heldRows.map { row ->
+                    val own = row.uid in keys && (row.mailbox.isEmpty() || row.mailbox == mailbox)
+                    if (own || (row.mailbox to row.uid) in hits) row.copy(flags = row.flags - "\\Deleted") else row
+                }
+                notice = null
+                mailUndo = null
+                return heldRows
+            }
+            if (u.dest.size != u.source.size) {
+                notice = "Undo not possible: the server did not report where the messages went"
+                mailUndo = null
+                return heldRows
+            }
+            val back = u.source.first().mailbox
+            if (u.usedMove) {
+                session.onRefs(accountKey, u.dest, home = mailbox) { _, uids -> session.copyThenDelete(uids, back) }
+            } else {
+                session.onRefs(accountKey, u.source, home = mailbox) { _, uids ->
+                    session.storeFlags(uids, emptySet(), setOf("\\Deleted"))
+                }
+                session.onRefs(accountKey, u.dest, home = mailbox) { _, uids ->
+                    session.storeFlags(uids, setOf("\\Deleted"), emptySet())
+                }
+            }
+            notice = null
+            mailUndo = null
+            if (loadedWindow) return reloadKeepingAnchor()
+        } catch (failure: MailFailure) {
+            notice = failure.text
         }
         return heldRows
     }
@@ -1539,7 +1696,7 @@ class IndexModel(
         try {
             selectOwn()
             // F44: snapshot UIDs, so new mail is not marked (e.g. \Seen) before it was ever shown.
-            val target = if (allMailbox) allUidsInWindows(session) else uids
+            val target = if (allMailbox) frozenAll() else uids
             for (part in target.chunked(MoveChunk)) session.storeFlags(part, add, remove)
             val idSet = target.toSet()
             heldRows = heldRows.map { row ->
@@ -2306,7 +2463,7 @@ class IndexModel(
                 if (cancelled()) break
                 progress(index + 1, boxes.size)
                 val opened = try {
-                    session.select(box)
+                    epochs[box] = session.select(box).uidValidity
                     true
                 } catch (error: CancellationException) {
                     throw error
@@ -2348,7 +2505,10 @@ class IndexModel(
                 while (next < end && mailboxes[next] == box) next += 1
                 val slice = uids.subList(index, next)
                 val opened = try {
-                    session.select(box)
+                    val epoch = session.select(box).uidValidity
+                    if (epochs.putIfAbsent(box, epoch).let { it != null && it != epoch }) {
+                        throw MailFailure("folder $box changed on the server (UIDVALIDITY)")
+                    }
                     true
                 } catch (error: CancellationException) {
                     throw error

@@ -392,6 +392,7 @@ class IndexWindowTest {
     fun defaultMoveStillCopiesWhenMoveIsAdvertised() {
         val session = FakeMailSession(capabilities = setOf("MOVE"))
         session.arrivalRows = listOf(row(1))
+        session.copiedUids = listOf(31L) // F102: undo needs every COPYUID
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         runImmediate { model.moveMessages(listOf(1L), "Archive") }
@@ -412,6 +413,7 @@ class IndexWindowTest {
         assertEquals(true, model.mailUndo?.usedMove)
         val silent = FakeMailSession()
         silent.arrivalRows = listOf(row(1))
+        silent.copiedUids = listOf(31L)
         val fallback = IndexModel(silent, MemorySettingsStore(AccountSettings(moveMethod = MoveMethod.ImapMove)), "INBOX")
         runImmediate { fallback.loadWindow() }
         runImmediate { fallback.moveMessages(listOf(1L), "Archive") }
@@ -571,14 +573,110 @@ class IndexWindowTest {
         // F105: UID 4711 in Archive/2019 must never touch INBOX UID 4711
         val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("Archive/2019", 1L) // listed by the search
         session.selects.clear()
         runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Flagged"), "Archive/2019") }
         assertEquals(listOf(FlagWrite(listOf(4711L), setOf("\\Flagged"), emptySet())), session.stores)
         assertEquals("Archive/2019", session.selects.first())
         assertEquals("INBOX", session.selectedName)
-        assertNull(model.mailUndo)
+        assertNull(model.mailUndo) // flags offer no undo
         val reply = runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.Reply), "Archive/2019") }
         assertEquals("Archive/2019", (reply as IndexCommand.Compose).seed.mailbox)
+    }
+
+    @Test
+    fun crossFolderHitWithUnknownEpochIsRefused() {
+        // F105: a folder never listed has no recorded UIDVALIDITY, so its UIDs are not trusted
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Flagged"), "Elsewhere") }
+        assertTrue(session.stores.isEmpty())
+        assertTrue(model.notice!!.contains("reload"))
+        assertEquals("INBOX", session.selectedName)
+    }
+
+    @Test
+    fun hitFolderWhoseEpochChangedIsRefused() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("Archive", 5L)
+        session.epochs["Archive"] = 6L // recreated on the server since the search
+        runImmediate { model.performSwipe(9L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Seen"), "Archive") }
+        assertTrue(session.stores.isEmpty())
+        assertTrue(model.notice!!.contains("UIDVALIDITY"))
+        assertEquals("INBOX", session.selectedName)
+    }
+
+    @Test
+    fun crossFolderDeleteCanBeUndoneInItsOwnFolder() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("Archive", 1L)
+        runImmediate { model.performSwipe(9L, SwipeBinding(SwipeAction.Delete), "Archive") }
+        val undo = model.mailUndo!!
+        assertEquals("Archive", undo.source.single().mailbox)
+        session.stores.clear()
+        session.selects.clear()
+        runImmediate { model.undo(undo) }
+        assertEquals(listOf(FlagWrite(listOf(9L), emptySet(), setOf("\\Deleted"))), session.stores)
+        assertEquals("Archive", session.selects.first())
+        assertEquals("INBOX", session.selectedName)
+    }
+
+    @Test
+    fun moveIntoTheCurrentFolderIsRefused() {
+        // F103
+        val session = FakeMailSession()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.moveMessages(listOf(1L), "inbox") }
+        assertTrue(session.copies.isEmpty())
+        assertTrue(model.notice!!.startsWith("Already in"))
+        model.noteFolderEpoch("Spam", 1L)
+        runImmediate { model.performSwipe(3L, SwipeBinding(SwipeAction.Move, moveMailbox = "Spam"), "Spam") }
+        assertTrue(session.copies.isEmpty())
+    }
+
+    @Test
+    fun copyThenMarkWithoutEveryCopyUidOffersNoUndo() {
+        // F102: one copy unreported, so undo could not flag it: refuse up front
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(1), row(2))
+        session.copiedUids = listOf(31L)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.moveMessages(listOf(1L, 2L), "Archive") }
+        assertNull(model.mailUndo)
+        assertTrue(model.notice!!.contains("undo is not available"))
+    }
+
+    @Test
+    fun moveUndoUsesRefsWithTheCopyUidEpoch() {
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(1))
+        session.copiedUids = listOf(31L)
+        session.targetEpoch = 42L
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.moveMessages(listOf(1L), "Archive") }
+        val undo = model.mailUndo!!
+        assertEquals(42L, undo.dest.single().uidValidity)
+        session.epochs["Archive"] = 43L // Archive recreated: the copy's UID now names something else
+        session.stores.clear()
+        runImmediate { model.undo(undo) }
+        assertTrue(model.notice!!.contains("UIDVALIDITY"))
+        assertEquals("INBOX", session.selectedName)
+    }
+
+    @Test
+    fun entireFolderIsFrozenAtSelectTime() {
+        // F107: mail arriving between "select all" and the confirm is not touched
+        val session = folder(3)
+        session.searchUids = listOf(1L, 2L, 3L)
+        session.uidNext = 3L // UID 3 arrives after the freeze
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.freezeAllMailbox() }
+        runImmediate { model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true) }
+        assertEquals(listOf(FlagWrite(listOf(1L, 2L), setOf("\\Seen"), emptySet())), session.stores)
     }
 
     @Test
@@ -2282,10 +2380,13 @@ private class FakeMailSession(
         selects += mailbox
         if (mailbox in failSelect) throw MailFailure("select failed")
         selectedName = mailbox
-        return SelectResult(uidValidity = 1L, uidNext = 1L, exists = exists.coerceAtLeast(0))
+        return SelectResult(uidValidity = epochs[mailbox] ?: 1L, uidNext = uidNext, exists = exists.coerceAtLeast(0))
     }
 
     override suspend fun unselect() = Unit
+
+    val epochs = HashMap<String, Long>()
+    var uidNext = 1L
 
     override suspend fun selectedExists(): Int {
         val beforeSelect = existsBeforeSelect
@@ -2403,6 +2504,9 @@ private class FakeMailSession(
     var copiedUids: List<Long> = emptyList()
 
     override suspend fun takeCopiedUids(): List<Long> = copiedUids.also { copiedUids = emptyList() }
+
+    var targetEpoch = 7L
+    override suspend fun copiedEpoch(): Long = targetEpoch
 
     override suspend fun searchText(query: String): List<Long> {
         searchCalls += query

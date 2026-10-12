@@ -118,7 +118,7 @@ class LabSafetyTest {
             }
             step("final") { session.searchCriterion("NotDeleted", "").joinToString(",") }
             step("unselect") { session.unselect(); "" }
-            step("leaveFolder") { session.expungeOnLeave(); "" }
+            step("leaveFolder") { session.expungeOnLeave(box); "" }
         } finally {
             session.close()
             TrafficRecorder.stop()

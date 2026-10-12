@@ -910,7 +910,7 @@ private fun MessageIndexLoaded(
         leavingIndex = true
         scope.launch {
             try {
-                gate.withLock { session.expungeOnLeave() }
+                gate.withLock { session.expungeOnLeave(mailbox) }
                 onBack()
             } catch (error: CancellationException) {
                 leavingIndex = false
@@ -1003,14 +1003,7 @@ private fun MessageIndexLoaded(
         undoOffer = null
         scope.launch {
             gate.withLock {
-                if (current.delete) model.undoDelete(current.uids, current.allMailbox)
-                else model.undoMove(
-                    current.uids,
-                    current.targetMailbox,
-                    current.destUids,
-                    current.usedMove,
-                    current.allMailbox,
-                )
+                model.undo(current)
                 sync.block()
             }
             snackbarHostState.currentSnackbarData?.dismiss()
@@ -1083,7 +1076,16 @@ private fun MessageIndexLoaded(
             }
             SelectAllTarget.EntireMailbox -> {
                 scope.launch {
-                    val exists = gate.withLock { session.selectedExists() }
+                    // F107: freeze "entire folder" at UIDNEXT now; mail arriving before the confirm is not included.
+                    val exists = gate.withLock {
+                        try {
+                            model.freezeAllMailbox()
+                        } catch (failure: MailFailure) {
+                            model.reportNotice(failure.text)
+                            return@launch
+                        }
+                        session.selectedExists()
+                    }
                     allMailbox = true
                     mailboxExists = exists
                     folderExists = exists

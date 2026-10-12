@@ -484,11 +484,6 @@ androidx.savedstate:savedstate-ktx:1.2.1
   https://developer.android.com/jetpack/androidx/releases/savedstate#1.2.1
   License: Apache-2.0
 
-androidx.security:security-crypto:1.1.0-alpha06
-  AndroidX Security
-  https://developer.android.com/jetpack/androidx/releases/security#1.1.0-alpha06
-  License: Apache-2.0
-
 androidx.startup:startup-runtime:1.1.1
   Android App Startup Runtime
   https://developer.android.com/jetpack/androidx/releases/startup#1.1.1

@@ -356,12 +356,7 @@ class LibetpanMailSession : MailSession {
                 nativeStopWatch(h)
             } catch (_: Exception) {
             }
-            if (account?.autoExpunge == true && selectedMailbox != null && selectedReadWrite) {
-                try {
-                    nativeCloseMailbox(h)
-                } catch (_: Exception) {
-                }
-            }
+            // F101: suspend/reconnect is not a user leave, so no CLOSE (it would expunge behind a pending Undo).
         }
         closeSockets()
         trashListed = false
@@ -390,12 +385,10 @@ class LibetpanMailSession : MailSession {
             return selected
         }
         val current = selectedMailbox
-        if (current != null && current != mailbox) {
-            if (account?.autoExpunge == true && wasReadWrite) {
-                closeSelectedMailbox()
-            } else if (featureCaps.unselect) {
-                unselectSelectedMailbox()
-            }
+        // F101: switching folders is never an expunge. Only an explicit user leave (expungeOnLeave) sends CLOSE;
+        // otherwise UNSELECT, or the SELECT below, which closes the old folder without expunging (RFC 3501 6.3.1).
+        if (current != null && current != mailbox && featureCaps.unselect) {
+            unselectSelectedMailbox()
         }
         val readWrite = write || (same && sequencesStale && wasReadWrite)
         val result = nativeSelect(requireHandle(), requireWireText(mailbox), readWrite) ?: run {
@@ -465,10 +458,6 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun unselect() {
         val mailbox = selectedMailbox
-        if (account?.autoExpunge == true && mailbox != null && selectedReadWrite) {
-            closeSelectedMailbox()
-            return
-        }
         if (featureCaps.unselect) {
             unselectSelectedMailbox()
             return
@@ -612,6 +601,12 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun selectedExists(): Int = selected.exists
+
+    override suspend fun copiedEpoch(): Long {
+        val h = handle
+        if (h == 0L) return 0L
+        return nativeCopiedEpoch(h)
+    }
 
     override suspend fun takeCopiedUids(): List<Long> {
         val h = handle
@@ -1016,15 +1011,16 @@ class LibetpanMailSession : MailSession {
         return found
     }
 
-    override suspend fun expungeOnLeave() {
-        if (account?.autoExpunge != true) return
-        if (selectedMailbox == null || !selectedReadWrite) return
-        val h = handle
-        if (h == 0L) return
-        nativeCloseMailbox(h)
-        selectedMailbox = null
-        selectedReadWrite = false
-        selected = SelectResult(0, 0, 0)
+    /**
+     * F14/F115: the user left [mailbox]. CLOSE (expunge) only that folder: reselect it read-write if the shared
+     * selection moved meanwhile, through the keeper so a dead link reconnects first.
+     */
+    override suspend fun expungeOnLeave(mailbox: String) {
+        if (account?.autoExpunge != true || mailbox.isEmpty()) return
+        keeper.write("close") {
+            openMailbox(wire(mailbox), write = true)
+            closeSelectedMailbox()
+        }
     }
 
     override suspend fun selectedInfo(): SelectResult = selected
@@ -1258,6 +1254,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeCloseMailbox(handle: Long)
+    private external fun nativeCopiedEpoch(handle: Long): Long
     private external fun nativeFetchIndex(
         handle: Long,
         mailbox: String,

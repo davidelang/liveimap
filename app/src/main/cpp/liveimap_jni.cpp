@@ -299,6 +299,7 @@ struct LiveSession {
     std::atomic<int> users{0};
     bool closed = false;  // under mu
     std::vector<uint32_t> copiedUids;
+    uint32_t copiedUidValidity = 0; // COPYUID's destination UIDVALIDITY (F105 refs for undo)
     int64_t esearchCount = -1;
 };
 
@@ -6578,6 +6579,7 @@ void freeUidSets(struct mailimap_set * source, struct mailimap_set * dest) {
 bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * set,
     const char * destMailbox, const char * kind) {
     session->copiedUids.clear();
+    session->copiedUidValidity = 0;
     uint32_t uidvalidity = 0;
     struct mailimap_set * source = nullptr;
     struct mailimap_set * copied = nullptr;
@@ -6592,6 +6594,7 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
         return false;
     }
     rememberDestUids(session, copied, requestedCount(set));
+    if (!session->copiedUids.empty()) session->copiedUidValidity = uidvalidity;
     freeUidSets(source, copied);
     if (move || copyOnly) return true;
     struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
@@ -6732,6 +6735,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEn
     copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
     mailimap_set_free(set);
     unlockSession(session);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopiedEpoch(JNIEnv * env, jobject, jlong handle) {
+    if (!ensureJni(env)) return 0;
+    LiveSession * session = lockSession(env, handle);
+    if (session == nullptr) return 0;
+    jlong epoch = static_cast<jlong>(session->copiedUidValidity);
+    unlockSession(session);
+    return epoch;
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL

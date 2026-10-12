@@ -67,6 +67,8 @@ interface MailSession {
     }
     suspend fun selectedExists(): Int = 0
     suspend fun takeCopiedUids(): List<Long> = emptyList()
+    /** UIDVALIDITY of the folder the last COPY/MOVE copied into (from COPYUID); 0 when unknown. */
+    suspend fun copiedEpoch(): Long = 0L
     suspend fun searchText(query: String): List<Long>
     suspend fun searchCriterion(kind: String, argument: String): List<Long>
     suspend fun searchCount(kind: String, argument: String): Int =
@@ -124,7 +126,8 @@ interface MailSession {
     suspend fun stopWatch()
     suspend fun noop() {}
     suspend fun knownTrash(): String = ""
-    suspend fun expungeOnLeave() {}
+    /** F115: CLOSE [mailbox] (the folder the user is leaving), only with auto-expunge on. */
+    suspend fun expungeOnLeave(mailbox: String) {}
     suspend fun selectedInfo(): SelectResult = SelectResult(0, 0, 0)
     suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String> = emptySet())
     suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String> = emptySet()): Long {

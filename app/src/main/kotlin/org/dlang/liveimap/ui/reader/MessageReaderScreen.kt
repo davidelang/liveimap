@@ -135,6 +135,9 @@ import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.sameMailbox
+import org.dlang.liveimap.ui.index.refUndo
+import org.dlang.liveimap.ui.compose.mailboxLeaf
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
@@ -1187,14 +1190,7 @@ private fun MessageReaderLoaded(
         scope.launch {
             gate.withLock {
                 val helper = IndexModel(session, store, mailbox)
-                if (offer.delete) helper.undoDelete(offer.uids, offer.allMailbox)
-                else helper.undoMove(
-                    offer.uids,
-                    offer.targetMailbox,
-                    offer.destUids,
-                    offer.usedMove,
-                    offer.allMailbox,
-                )
+                helper.undo(offer)
                 // F98: the undo selects other folders; never trust the reader's remembered selection after it.
                 selectedMailbox = null
                 val reported = helper.notice
@@ -1288,28 +1284,20 @@ private fun MessageReaderLoaded(
         try {
             when (policy) {
                 DeletePolicy.MarkDeleted -> {
-                    session.select(mailbox)  // F43: act on this folder's UID
+                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
                     session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                    showActionUndo(MailUndo(delete = true, uids = listOf(uid)), target)
+                    showActionUndo(refUndo(account, mailbox, epoch, uid), target)
                 }
                 DeletePolicy.MoveToTrash -> {
                     val trash = session.knownTrash()
                     knownTrashName = trash
                     if (trash.isEmpty()) return
-                    session.select(mailbox)  // F43: act on this folder's UID
+                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), trash)
+                    val targetEpoch = session.copiedEpoch()
                     val dest = session.takeCopiedUids()
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
-                    showActionUndo(
-                        MailUndo(
-                            delete = false,
-                            uids = listOf(uid),
-                            targetMailbox = trash,
-                            destUids = dest,
-                            usedMove = usedMove,
-                        ),
-                        target,
-                    )
+                    showActionUndo(refUndo(account, mailbox, epoch, uid, trash, dest, targetEpoch, usedMove), target)
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) return
@@ -1363,22 +1351,21 @@ private fun MessageReaderLoaded(
     fun runSpam() {
         val spamMailbox = account.spamMailbox
         if (spamMailbox.isEmpty()) return
+        if (sameMailbox(spamMailbox, mailbox)) {
+            postSnack("Already in ${mailboxLeaf(spamMailbox)}") // F103
+            return
+        }
         scope.launch {
             gate.withLock {
                 val target = nextAfterDeleteOrMove()
                 try {
-                    session.select(mailbox)  // F43: act on this folder's UID
+                    val epoch = session.select(mailbox).uidValidity  // F43: act on this folder's UID
                     session.copyThenDelete(listOf(uid), spamMailbox)
+                    val targetEpoch = session.copiedEpoch()
                     val dest = session.takeCopiedUids()
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                     showActionUndo(
-                        MailUndo(
-                            delete = false,
-                            uids = listOf(uid),
-                            targetMailbox = spamMailbox,
-                            destUids = dest,
-                            usedMove = usedMove,
-                        ),
+                        refUndo(account, mailbox, epoch, uid, spamMailbox, dest, targetEpoch, usedMove),
                         target,
                     )
                 } catch (error: CancellationException) {
@@ -2220,23 +2207,20 @@ private fun MessageReaderLoaded(
             },
             onPick = { picked ->
                 choosingMove = false
-                if (picked.isNotEmpty()) {
+                if (picked.isNotEmpty() && sameMailbox(picked, mailbox)) {
+                    postSnack("Already in ${mailboxLeaf(picked)}") // F103
+                } else if (picked.isNotEmpty()) {
                     scope.launch {
                         gate.withLock {
                             val target = nextAfterDeleteOrMove()
                             try {
-                                session.select(mailbox)  // F43: act on this folder's UID
+                                val epoch = session.select(mailbox).uidValidity  // F43: this folder's UID
                                 session.copyThenDelete(listOf(uid), picked)
+                                val targetEpoch = session.copiedEpoch()
                                 val dest = session.takeCopiedUids()
                                 val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                                 showActionUndo(
-                                    MailUndo(
-                                        delete = false,
-                                        uids = listOf(uid),
-                                        targetMailbox = picked,
-                                        destUids = dest,
-                                        usedMove = usedMove,
-                                    ),
+                                    refUndo(account, mailbox, epoch, uid, picked, dest, targetEpoch, usedMove),
                                     target,
                                 )
                             } catch (error: CancellationException) {

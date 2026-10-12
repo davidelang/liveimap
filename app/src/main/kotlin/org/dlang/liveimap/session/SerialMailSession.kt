@@ -114,6 +114,7 @@ class SerialMailSession(
     override suspend fun selectedExists(): Int = onLane { inner.selectedExists() }
 
     override suspend fun takeCopiedUids(): List<Long> = onLane { inner.takeCopiedUids() }
+    override suspend fun copiedEpoch(): Long = onLane { inner.copiedEpoch() }
 
     override suspend fun searchText(query: String): List<Long> =
         onLane { inner.searchText(query) }
@@ -188,8 +189,8 @@ class SerialMailSession(
 
     override suspend fun knownTrash(): String = onLane { inner.knownTrash() }
 
-    override suspend fun expungeOnLeave() {
-        onLane { inner.expungeOnLeave() }
+    override suspend fun expungeOnLeave(mailbox: String) {
+        onLane { inner.expungeOnLeave(mailbox) }
     }
 
     override suspend fun selectedInfo(): SelectResult = onLane { inner.selectedInfo() }

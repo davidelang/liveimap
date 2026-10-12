@@ -33,10 +33,7 @@ suspend fun <T> MailSession.onRefs(
     val out = ArrayList<T>(groups.size)
     try {
         for ((folder, uids) in groups) {
-            val selected = select(folder.first)
-            if (selected.uidValidity != folder.second) {
-                throw MailFailure("folder ${folder.first} changed on the server (UIDVALIDITY); reload the list")
-            }
+            selectChecked(folder.first, folder.second)
             out += block(folder.first, uids)
         }
     } finally {
@@ -49,3 +46,17 @@ suspend fun <T> MailSession.onRefs(
     }
     return out
 }
+
+/** Select [mailbox] and refuse when its UIDVALIDITY is no longer [uidValidity] (the UIDs would name other mail). */
+suspend fun MailSession.selectChecked(mailbox: String, uidValidity: Long): SelectResult {
+    if (uidValidity == 0L) throw MailFailure("message reference is incomplete; reload the list")
+    val selected = select(mailbox)
+    if (selected.uidValidity != uidValidity) {
+        throw MailFailure("folder $mailbox changed on the server (UIDVALIDITY); reload the list")
+    }
+    return selected
+}
+
+/** F103: the same folder (INBOX compares case-insensitively, RFC 3501 5.1). */
+fun sameMailbox(a: String, b: String): Boolean =
+    a == b || (a.equals("INBOX", ignoreCase = true) && b.equals("INBOX", ignoreCase = true))
