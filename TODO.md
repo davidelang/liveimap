@@ -75,7 +75,6 @@
 - DIGEST-MD5 realm (low priority; design says skip): when the server offers no realm, libetpan passes realm=NULL and Cyrus SASL's DIGEST client falls back to the server name (here the IP), so Dovecot 2.4 sees user=liveimap@10.2.3.133 and fails. Fix would need a GETREALM choice (offered realm, else none); not trivial with Cyrus's fallback. Lab: dovecot-245, dovecot-dev.
 
 - Client certificates, KeyChain: verify on a real device with a user-installed certificate via the chooser (lab runs use an AndroidKeyStore entry, same signing path, no chooser). RSA-PSS uses raw RSA (NoPadding decrypt); a KeyChain key whose authorizations exclude raw RSA fails TLS 1.3 with RSA keys.
-- SMTP AUTH EXTERNAL: Cyrus SASL client EXTERNAL fails locally (sasl_client_start), so IMAP sends AUTHENTICATE EXTERNAL = directly (SASL-IR only). SMTP presents the cert but still uses password auth; add a direct "AUTH EXTERNAL =" path and find why Cyrus EXTERNAL fails.
 
 - [ ] Design: subthread drill-down in the message index. Threads now have no depth limit (iterative everywhere);
   the index indents up to 6 levels and shows the depth number beyond. Needed: a way to open a subthread as its own
