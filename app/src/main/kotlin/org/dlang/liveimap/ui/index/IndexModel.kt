@@ -1318,7 +1318,37 @@ class IndexModel(
      * another screen sharing the session moved the selection, this re-selects before UIDs are used.
      */
     private suspend fun selectOwn() {
-        session.select(mailbox)
+        session.select(actFolder ?: mailbox)
+    }
+
+    /** F105: while set, UID actions run in this folder (a cross-folder search hit's own folder). */
+    private var actFolder: String? = null
+
+    /** True when [row] is one of the rows the current action is about (same folder as the action). */
+    private fun inActedFolder(row: IndexRow): Boolean {
+        val folder = actFolder
+        return if (folder == null) row.mailbox.isEmpty() || row.mailbox == mailbox else row.mailbox == folder
+    }
+
+    private fun foreign(rowMailbox: String) = rowMailbox.isNotEmpty() && rowMailbox != mailbox
+
+    /**
+     * F105: run [block] against [rowMailbox] (a search hit from another folder), then return the session to this
+     * index's folder. Undo is not offered for such actions: MailUndo carries no folder.
+     */
+    private suspend fun <T> inRowFolder(rowMailbox: String, block: suspend () -> T): T {
+        if (!foreign(rowMailbox)) return block()
+        actFolder = rowMailbox
+        try {
+            return block()
+        } finally {
+            actFolder = null
+            mailUndo = null
+            try {
+                session.select(mailbox)
+            } catch (_: MailFailure) {
+            }
+        }
     }
 
     suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
@@ -1334,7 +1364,7 @@ class IndexModel(
             val changed = target.filter { it !in before }
             val idSet = target.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet) row.copy(flags = row.flags + "\\Deleted") else row
+                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags + "\\Deleted") else row
             }
             notice = null
             mailUndo = if (changed.isEmpty()) null else MailUndo(delete = true, uids = changed, allMailbox = false)
@@ -1377,8 +1407,8 @@ class IndexModel(
                 heldRows = emptyList()
             } else if (moved.isNotEmpty()) {
                 val gone = moved.toSet()
-                order = orderWithout(order, gone)
-                heldRows = heldRows.filter { it.uid !in gone }
+                if (actFolder == null) order = orderWithout(order, gone)
+                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
             notice = when {
                 outcome.failure != null && moved.isNotEmpty() ->
@@ -1417,14 +1447,14 @@ class IndexModel(
                     session.uidExpunge(part)
                 }
                 val gone = snapshot.toSet()
-                order = orderWithout(order, gone)
-                heldRows = heldRows.filter { it.uid !in gone }
+                if (actFolder == null) order = orderWithout(order, gone)
+                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             } else {
                 session.storeFlags(uids, setOf("\\Deleted"), emptySet())
                 session.uidExpunge(uids)
                 val gone = uids.toSet()
-                order = orderWithout(order, gone)
-                heldRows = heldRows.filter { it.uid !in gone }
+                if (actFolder == null) order = orderWithout(order, gone)
+                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
             notice = null
             mailUndo = null
@@ -1443,7 +1473,7 @@ class IndexModel(
             for (part in uids.chunked(MoveChunk)) session.storeFlags(part, emptySet(), setOf("\\Deleted"))
             val idSet = uids.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet) row.copy(flags = row.flags - "\\Deleted") else row
+                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags - "\\Deleted") else row
             }
             notice = null
             mailUndo = null
@@ -1513,7 +1543,7 @@ class IndexModel(
             for (part in target.chunked(MoveChunk)) session.storeFlags(part, add, remove)
             val idSet = target.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet) row.copy(flags = (row.flags + add) - remove) else row
+                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = (row.flags + add) - remove) else row
             }
             notice = null
         } catch (failure: MailFailure) {
@@ -1549,7 +1579,24 @@ class IndexModel(
         return reloadKeepingAnchor()
     }
 
-    suspend fun performSwipe(uid: Long, binding: SwipeBinding): IndexCommand {
+    suspend fun performSwipe(uid: Long, binding: SwipeBinding, rowMailbox: String = ""): IndexCommand {
+        if (foreign(rowMailbox)) {
+            when (binding.action) {
+                SwipeAction.Reply, SwipeAction.ReplyAll -> {
+                    val kind = if (binding.action == SwipeAction.Reply) ComposeKind.Reply else ComposeKind.ReplyAll
+                    return IndexCommand.Compose(ComposeSeed(kind, rowMailbox, listOf(uid)))
+                }
+                SwipeAction.FlagScreen -> {
+                    notice = "Open the message to change flags on a hit from another folder"
+                    return IndexCommand.None
+                }
+                else -> return inRowFolder(rowMailbox) { performSwipeHere(uid, binding) }
+            }
+        }
+        return performSwipeHere(uid, binding)
+    }
+
+    private suspend fun performSwipeHere(uid: Long, binding: SwipeBinding): IndexCommand {
         when (binding.action) {
             SwipeAction.Delete -> {
                 val settings = store.load()
@@ -1557,7 +1604,7 @@ class IndexModel(
                 val trash = session.knownTrash()
                 val policy = effectiveDeletePolicy(
                     settings.deletePolicy,
-                    trash.isNotEmpty() && mailbox == trash,
+                    trash.isNotEmpty() && (actFolder ?: mailbox) == trash,
                     session.featureCaps.uidPlus,
                     trash.isNotEmpty(),
                 )

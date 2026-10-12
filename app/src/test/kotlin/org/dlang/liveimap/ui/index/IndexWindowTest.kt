@@ -567,6 +567,21 @@ class IndexWindowTest {
     }
 
     @Test
+    fun swipeOnCrossFolderHitActsInTheHitsFolder() {
+        // F105: UID 4711 in Archive/2019 must never touch INBOX UID 4711
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        session.selects.clear()
+        runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Flagged"), "Archive/2019") }
+        assertEquals(listOf(FlagWrite(listOf(4711L), setOf("\\Flagged"), emptySet())), session.stores)
+        assertEquals("Archive/2019", session.selects.first())
+        assertEquals("INBOX", session.selectedName)
+        assertNull(model.mailUndo)
+        val reply = runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.Reply), "Archive/2019") }
+        assertEquals("Archive/2019", (reply as IndexCommand.Compose).seed.mailbox)
+    }
+
+    @Test
     fun undoMoveRestoresSelectionWhenTargetWorkFails() {
         val session = FakeMailSession()
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")

@@ -221,6 +221,8 @@ private data class PendingDelete(
     val uids: List<Long>,
     val allMailbox: Boolean,
     val fromSwipe: Boolean,
+    /** F105: folder of a cross-folder search hit ("" = this index's folder). */
+    val rowMailbox: String = "",
 )
 
 private val filterChoices = listOf(
@@ -1125,11 +1127,11 @@ private fun MessageIndexLoaded(
         if (pending != null) publishUndo(pending)
     }
 
-    suspend fun finishSwipe(uid: Long, binding: SwipeBinding) {
+    suspend fun finishSwipe(uid: Long, binding: SwipeBinding, rowMailbox: String = "") {
         var undo: MailUndo? = null
         gate.withLock {
             model.clearMailUndo()
-            when (val command = model.performSwipe(uid, binding)) {
+            when (val command = model.performSwipe(uid, binding, rowMailbox)) {
                 is IndexCommand.Compose -> onCompose(command.seed)
                 is IndexCommand.ShowFlags -> flagUid = command.uid
                 IndexCommand.None -> Unit
@@ -3295,8 +3297,12 @@ private fun MessageIndexLoaded(
                                     }
                                 },
                                 onLongPress = {
-                                    multiSelect = true
-                                    if (!allMailbox && row.uid !in selected) selected = selected + row.uid
+                                    // F105: selection holds bare UIDs, which would act on this folder; hits from
+                                    // other folders are acted on one at a time (swipe or open) instead.
+                                    if (row.mailbox.isEmpty() || row.mailbox == mailbox) {
+                                        multiSelect = true
+                                        if (!allMailbox && row.uid !in selected) selected = selected + row.uid
+                                    }
                                 },
                                 onSwipe = { binding ->
                                     var askedPermanent = false
@@ -3304,7 +3310,7 @@ private fun MessageIndexLoaded(
                                         val trash = readKnownTrash()
                                         val policy = effectiveDeletePolicy(
                                             account.deletePolicy,
-                                            trash.isNotEmpty() && mailbox == trash,
+                                            trash.isNotEmpty() && row.mailbox.ifEmpty { mailbox } == trash,
                                             session.featureCaps.uidPlus,
                                             trash.isNotEmpty(),
                                         )
@@ -3313,11 +3319,12 @@ private fun MessageIndexLoaded(
                                                 listOf(row.uid),
                                                 allMailbox = false,
                                                 fromSwipe = true,
+                                                rowMailbox = row.mailbox,
                                             )
                                             askedPermanent = true
                                         }
                                     }
-                                    if (!askedPermanent) finishSwipe(row.uid, binding)
+                                    if (!askedPermanent) finishSwipe(row.uid, binding, row.mailbox)
                                 },
                             )
                         }
@@ -3411,7 +3418,7 @@ private fun MessageIndexLoaded(
                     pendingPermanent = null
                     scope.launch {
                         if (request.fromSwipe) {
-                            finishSwipe(request.uids.single(), SwipeBinding(SwipeAction.Delete))
+                            finishSwipe(request.uids.single(), SwipeBinding(SwipeAction.Delete), request.rowMailbox)
                         } else {
                             applyDeletePolicy(
                                 DeletePolicy.DeletePermanently,
