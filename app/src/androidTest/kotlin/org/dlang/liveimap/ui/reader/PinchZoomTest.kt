@@ -34,7 +34,7 @@ class PinchZoomTest {
         }
         rule.onNodeWithTag("t").performTouchInput { swipeUp(startY = bottom - 10f, endY = top + 10f, durationMillis = 300) }
         rule.waitForIdle()
-        assertTrue("control scrolls: ${scroll!!.value}", scroll!!.value > 0)
+        assertTrue("control scrolls: ${scroll!!.value} max ${scroll!!.maxValue}", scroll!!.value > 0)
     }
 
     @Test
