@@ -700,15 +700,16 @@ fun MessageIndexScreen(
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
-    var accountId by remember { mutableStateOf<String?>(null) }
+    // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
+    var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        accountId = store.chosenAccountId()
+        if (accountId == null) accountId = store.chosenAccountId()
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
     MessageIndexLoaded(
         accountId = id,
-        store = store,
+        store = remember(id) { store.forAccount(id) },
         mailbox = mailbox,
         onOpen = onOpen,
         onCompose = onCompose,

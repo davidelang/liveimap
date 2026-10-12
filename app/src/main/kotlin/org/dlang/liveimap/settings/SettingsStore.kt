@@ -52,34 +52,48 @@ interface SettingsStore {
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
 
-class DataStoreSettingsStore(context: Context) : SettingsStore {
+/**
+ * Settings and passwords. Unbound ([boundAccountId] null): the drawer's active account. Bound (F121): exactly
+ * that account for every read and write, whatever the drawer shows later; selectAccount is a no-op when bound.
+ */
+class DataStoreSettingsStore(
+    private val context: Context,
+    val boundAccountId: String? = null,
+) : SettingsStore {
     private val store = AccountStore.shared(context)
 
-    override suspend fun load(): AccountSettings = store.load()
+    private suspend fun <T> bound(block: suspend () -> T): T =
+        if (boundAccountId == null) block() else withContext(AccountTarget(boundAccountId)) { block() }
 
-    override suspend fun save(settings: AccountSettings) = store.save(settings)
+    override suspend fun load(): AccountSettings = bound { store.load() }
 
-    override suspend fun password(): String = store.password()
+    override suspend fun save(settings: AccountSettings) = bound { store.save(settings) }
 
-    override suspend fun setPassword(value: String) = store.setPassword(value)
+    override suspend fun password(): String = bound { store.password() }
 
-    override suspend fun smtpPassword(): String = store.smtpPassword()
+    override suspend fun setPassword(value: String) = bound { store.setPassword(value) }
+
+    override suspend fun smtpPassword(): String = bound { store.smtpPassword() }
 
     suspend fun accountById(accountId: String): org.dlang.liveimap.accounts.AccountCredentials? = store.accountById(accountId)
 
-    override suspend fun setSmtpPassword(value: String) = store.setSmtpPassword(value)
+    override suspend fun setSmtpPassword(value: String) = bound { store.setSmtpPassword(value) }
 
     override suspend fun listAccounts(): List<AccountChoice> = store.listAccounts()
 
     override suspend fun listDrawerAccounts(): List<DrawerAccount> = store.listDrawerAccounts()
 
     override suspend fun chosenAccountId(): String? {
+        boundAccountId?.let { return it }
         val id = store.listAccounts().firstOrNull { it.chosen }?.id
         if (id.isNullOrEmpty()) return null
         return id
     }
 
-    override suspend fun selectAccount(accountId: String) = store.selectAccount(accountId)
+    override suspend fun selectAccount(accountId: String) {
+        if (boundAccountId != null) return // F121: only the drawer (unbound store) changes the active account
+        store.selectAccount(accountId)
+    }
 
     override suspend fun addAccount(): String = store.addAccount()
 
@@ -87,21 +101,6 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 
-    /** F121: this store, bound to one account: reads and writes reach only [accountId], whatever the drawer shows. */
-    fun forAccount(accountId: String): SettingsStore = BoundSettingsStore(this, accountId)
-}
-
-/** F121: every account-scoped call runs with [AccountTarget]; listing and selection stay global. */
-class BoundSettingsStore(private val inner: SettingsStore, val accountId: String) : SettingsStore by inner {
-    private suspend fun <T> bound(block: suspend () -> T): T = withContext(AccountTarget(accountId)) { block() }
-    override suspend fun load(): AccountSettings = bound { inner.load() }
-    override suspend fun save(settings: AccountSettings) = bound { inner.save(settings) }
-    override suspend fun password(): String = bound { inner.password() }
-    override suspend fun setPassword(value: String) = bound { inner.setPassword(value) }
-    override suspend fun smtpPassword(): String = bound { inner.smtpPassword() }
-    override suspend fun setSmtpPassword(value: String) = bound { inner.setSmtpPassword(value) }
-    override suspend fun chosenAccountId(): String? = accountId
-    override suspend fun selectAccount(accountId: String) {
-        // F121: a bound screen never changes the active account; only the drawer does (through the unbound store)
-    }
+    /** F121: a store bound to [accountId]. */
+    fun forAccount(accountId: String): DataStoreSettingsStore = DataStoreSettingsStore(context, accountId)
 }

@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,15 +31,16 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
-    var accountId by remember { mutableStateOf<String?>(null) }
+    // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
+    var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        accountId = store.chosenAccountId()
+        if (accountId == null) accountId = store.chosenAccountId()
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
     AddressBookPickerLoaded(
         accountId = id,
-        store = store,
+        store = remember(id) { store.forAccount(id) },
         onPicked = onPicked,
         onDismiss = onDismiss,
     )

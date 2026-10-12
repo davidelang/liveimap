@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -134,16 +135,17 @@ fun AdvancedSearchScreen(
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
-    var accountId by remember { mutableStateOf<String?>(null) }
+    // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
+    var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        accountId = store.chosenAccountId()
+        if (accountId == null) accountId = store.chosenAccountId()
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
     AdvancedSearchLoaded(
         accountId = id,
         mailbox = mailbox,
-        store = store,
+        store = remember(id) { store.forAccount(id) },
         onSearch = onSearch,
         onBack = onBack,
     )

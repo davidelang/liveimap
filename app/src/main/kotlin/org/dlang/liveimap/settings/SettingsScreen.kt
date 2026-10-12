@@ -174,30 +174,33 @@ private class SettingsEditor(
 
     /** F121: the account Settings is editing. Settings never changes the drawer's active account. */
     var editingId by mutableStateOf<String?>(null)
-    val bound: SettingsStore
+    val bound: DataStoreSettingsStore
         get() = editingId?.let { store.forAccount(it) } ?: store
 
     fun persist(next: AccountSettings) {
         if (!ready) return
         settings = next
+        val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { bound.save(settingsState.value) }
+            settingsMutex.withLock { target.save(settingsState.value) }
         }
     }
 
     fun persistPassword(value: String) {
         if (!ready) return
         password = value
+        val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { bound.setPassword(passwordState.value) }
+            settingsMutex.withLock { target.setPassword(passwordState.value) }
         }
     }
 
     fun persistSmtpPassword(value: String) {
         if (!ready) return
         smtpPassword = value
+        val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { bound.setSmtpPassword(smtpPasswordState.value) }
+            settingsMutex.withLock { target.setSmtpPassword(smtpPasswordState.value) }
         }
     }
 
