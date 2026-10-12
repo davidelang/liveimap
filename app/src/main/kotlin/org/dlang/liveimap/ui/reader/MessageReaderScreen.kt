@@ -239,6 +239,7 @@ internal class ReaderHeld : ViewModel() {
     val rowFlagsState = mutableStateOf(emptySet<String>())
     val showHtmlButtonState = mutableStateOf(false)
     val allowImagesState = mutableStateOf(false)
+    val originalColorsState = mutableStateOf(false)
     val noTextPartState = mutableStateOf(false)
     val connectedState = mutableStateOf(false)
     val seenStoredState = mutableStateOf(false)
@@ -277,6 +278,7 @@ internal class ReaderHeld : ViewModel() {
         rowFlagsState.value = emptySet()
         showHtmlButtonState.value = false
         allowImagesState.value = false
+        originalColorsState.value = false
         noTextPartState.value = false
         connectedState.value = false
         seenStoredState.value = false
@@ -437,6 +439,7 @@ private fun MessageReaderLoaded(
     var pendingLink by remember { mutableStateOf<String?>(null) }
     var typeWarning by remember { mutableStateOf<TypeWarning?>(null) }
     var allowImages by held.allowImagesState
+    var originalColors by held.originalColorsState
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
     var noTextPart by held.noTextPartState
@@ -1693,6 +1696,22 @@ private fun MessageReaderLoaded(
                         onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject)
                     },
                 )
+                if (renderedHtml && dark) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (originalColors) R.string.reader_dark_colors else R.string.reader_original_colors,
+                                ),
+                            )
+                        },
+                        onClick = {
+                            moreMenu = false
+                            originalColors = !originalColors
+                        },
+                        modifier = Modifier.testTag("reader-original-colors"),
+                    )
+                }
                 if (renderedHtml && trustSenderKey(headerFrom).isNotEmpty()) {
                     val on = trustSenderKey(headerFrom) in imageTrust.senders
                     DropdownMenuItem(
@@ -1944,9 +1963,11 @@ private fun MessageReaderLoaded(
                             update = { view ->
                                 view.settings.javaScriptEnabled = false
                                 view.settings.blockNetworkLoads = !allowImages
-                                view.setBackgroundColor(htmlBackground)
+                                // Original colors (dark theme only): the sender's own colors on a white page.
+                                val recolor = dark && !originalColors
+                                view.setBackgroundColor(if (dark && originalColors) android.graphics.Color.WHITE else htmlBackground)
                                 applyHtmlDark(view.settings)
-                                val page = themedHtml(bodyText, dark, htmlBackground, htmlForeground)
+                                val page = themedHtml(bodyText, recolor, htmlBackground, htmlForeground)
                                 val token = page to allowImages
                                 if (view.tag != token) {
                                     view.tag = token
@@ -2556,7 +2577,8 @@ private fun QuotedReaderLine(
     }
 }
 
-private fun themedHtml(page: String, dark: Boolean, background: Int, foreground: Int): String {
+/** [dark] recolors the page to the app theme; "Original colors" passes dark = false (sender's colors, white page). */
+internal fun themedHtml(page: String, dark: Boolean, background: Int, foreground: Int): String {
     val styled = if (!dark) {
         page
     } else {
