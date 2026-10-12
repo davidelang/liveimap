@@ -57,6 +57,17 @@ class LongSearchTest {
     }
 
     @Test
+    fun coroutineCancelAbortsBlockedSearchAndCloses() = runBlocking {
+        val link = FakeLink { listOf(1L) }.apply { block = true }
+        val running = async { LongSearch(link, 5).run("Body", "x") {} }
+        delay(50)
+        running.cancel()
+        kotlinx.coroutines.withTimeout(2000) { running.join() }
+        assertTrue(link.aborted)
+        assertTrue(link.closed)
+    }
+
+    @Test
     fun lateResultAfterCancelIsDiscarded() = runBlocking {
         lateinit var search: LongSearch
         val link = FakeLink { search.cancel(); listOf(9L) }

@@ -1,6 +1,7 @@
 package org.dlang.liveimap.session
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -46,14 +47,24 @@ class LongSearch(private val link: LongSearchLink, private val pollMs: Long = 25
     suspend fun run(kind: String, argument: String, onProgress: (SearchProgress) -> Unit): LongSearchResult =
         coroutineScope {
             var seen = -1L
+            val finished = java.util.concurrent.atomic.AtomicBoolean(false)
             val poller = launch {
-                while (isActive) {
-                    val p = link.progress()
-                    if (p.lines != seen) {
-                        seen = p.lines
-                        onProgress(p)
+                try {
+                    while (isActive) {
+                        val p = link.progress()
+                        if (p.lines != seen) {
+                            seen = p.lines
+                            onProgress(p)
+                        }
+                        delay(pollMs)
                     }
-                    delay(pollMs)
+                } finally {
+                    // The scope was cancelled while the search is still blocked in native code (withContext waits
+                    // for it): drop the connection now so the IO thread and server connection are released (F61).
+                    if (!finished.get()) {
+                        cancelled = true
+                        link.abort()
+                    }
                 }
             }
             try {
@@ -65,11 +76,14 @@ class LongSearch(private val link: LongSearchLink, private val pollMs: Long = 25
             } catch (failure: MailFailure) {
                 if (cancelled) LongSearchResult.Cancelled else LongSearchResult.Failed(failure.text)
             } finally {
-                poller.cancel()
-                poller.join()
-                try {
-                    link.close()
-                } catch (_: Exception) {
+                finished.set(true)
+                withContext(NonCancellable) {
+                    poller.cancel()
+                    poller.join()
+                    try {
+                        link.close()
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }
