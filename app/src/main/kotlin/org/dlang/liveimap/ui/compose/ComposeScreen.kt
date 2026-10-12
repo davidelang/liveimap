@@ -429,7 +429,8 @@ private fun ComposeLoaded(
     fun sendingContext(): ComposeContext = composeContext(
         kindTag(),
         originalParsed,
-        splitAddresses(toText) + splitAddresses(ccText),
+        // Includes an address still being typed, so the From line follows it before Enter or a comma.
+        splitAddresses(chipProbe(toText, toBuffer)) + splitAddresses(chipProbe(ccText, ccBuffer)),
         seed.mailbox.orEmpty(),
     ).copy(pinnedFrom = pinnedFrom)
 
@@ -1028,7 +1029,7 @@ private fun ComposeLoaded(
     }
 
     // The From line follows the recipients as they are typed (rules match on To/Cc); a pinned From stays.
-    LaunchedEffect(toText, ccText) {
+    LaunchedEffect(toText, ccText, toBuffer, ccBuffer) {
         if (sending == null) return@LaunchedEffect
         kotlinx.coroutines.delay(300)
         resolveNow(account)
