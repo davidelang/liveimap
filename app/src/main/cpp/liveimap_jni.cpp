@@ -3463,9 +3463,16 @@ void freeUidList(clist * list) {
     clist_free(list);
 }
 
+// F48: strings from libetpan's quoted/literal parsers are MMAPStrings registered with mmap_string_ref; a plain
+// free() leaves a stale entry in libetpan's ref table (double free later). mailimap_astring_free unrefs those
+// and falls back to free() for plain malloc'd atoms, so it is right for every string these parsers return.
+static void imapStrFree(char * s) {
+    if (s != nullptr) mailimap_astring_free(s);
+}
+
 void freeScopeHit(LiveScopeHit * hit) {
     if (hit == nullptr) return;
-    free(hit->mailbox);
+    imapStrFree(hit->mailbox);
     freeUidList(hit->uids);
     free(hit);
 }
@@ -3543,12 +3550,12 @@ int parseTagValue(mailstream * fd, MMAPString * buffer, struct mailimap_parser_c
         char * text = nullptr;
         size_t len = 0;
         int r = mailimap_nstring_parse(fd, buffer, ctx, indx, &text, &len, 0, nullptr);
-        free(text);
+        imapStrFree(text);
         return r;
     }
     char * atom = nullptr;
     int r = mailimap_atom_parse(fd, buffer, ctx, indx, &atom, 0, nullptr);
-    free(atom);
+    imapStrFree(atom);
     return r;
 }
 
@@ -3571,7 +3578,7 @@ bool parseDecimal(MMAPString * buffer, size_t * indx, int64_t * out) {
 
 int failEsearch(clist * uids, char * mailbox, int r) {
     freeUidList(uids);
-    free(mailbox);
+    imapStrFree(mailbox);
     return r;
 }
 
@@ -3590,97 +3597,97 @@ int parseCorrelatorGroup(mailstream * fd, MMAPString * buffer, struct mailimap_p
         if (any) {
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
         }
         char * atom = nullptr;
         r = mailimap_atom_parse(fd, buffer, ctx, &cur, &atom, 0, nullptr);
         if (r != MAILIMAP_NO_ERROR) {
-            free(box);
+            imapStrFree(box);
             return r;
         }
         std::string name = atom != nullptr ? atom : "";
-        free(atom);
+        imapStrFree(atom);
         any = true;
         if (strcasecmp(name.c_str(), "TAG") == 0) {
             if (sawTag) {
-                free(box);
+                imapStrFree(box);
                 return MAILIMAP_ERROR_PARSE;
             }
             sawTag = true;
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
             r = parseTagValue(fd, buffer, ctx, &cur);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
             continue;
         }
         if (strcasecmp(name.c_str(), "MAILBOX") == 0) {
             if (sawBox || *sawMailbox) {
-                free(box);
+                imapStrFree(box);
                 return MAILIMAP_ERROR_PARSE;
             }
             sawBox = true;
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
             char * parsed = nullptr;
             r = mailimap_mailbox_parse(fd, buffer, ctx, &cur, &parsed, 0, nullptr);
             if (r != MAILIMAP_NO_ERROR || parsed == nullptr) {
-                free(parsed);
-                free(box);
+                imapStrFree(parsed);
+                imapStrFree(box);
                 return r != MAILIMAP_NO_ERROR ? r : MAILIMAP_ERROR_PARSE;
             }
-            free(box);
+            imapStrFree(box);
             box = parsed;
             continue;
         }
         if (strcasecmp(name.c_str(), "UIDVALIDITY") == 0) {
             if (sawValidity) {
-                free(box);
+                imapStrFree(box);
                 return MAILIMAP_ERROR_PARSE;
             }
             sawValidity = true;
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
             uint32_t number = 0;
             r = mailimap_nz_number_parse(fd, buffer, ctx, &cur, &number);
             if (r != MAILIMAP_NO_ERROR) {
-                free(box);
+                imapStrFree(box);
                 return r;
             }
             (void)number;
             continue;
         }
-        free(box);
+        imapStrFree(box);
         return MAILIMAP_ERROR_PARSE;
     }
     if (!any) {
-        free(box);
+        imapStrFree(box);
         return MAILIMAP_ERROR_PARSE;
     }
     r = mailimap_cparenth_parse(fd, buffer, ctx, &cur);
     if (r != MAILIMAP_NO_ERROR) {
-        free(box);
+        imapStrFree(box);
         return r;
     }
     if (sawBox) {
-        free(*mailbox);
+        imapStrFree(*mailbox);
         *mailbox = box;
         *sawMailbox = true;
     } else {
-        free(box);
+        imapStrFree(box);
     }
     *indx = cur;
     return MAILIMAP_NO_ERROR;
@@ -3714,7 +3721,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         r = mailimap_atom_parse(fd, buffer, ctx, &cur, &atom, 0, nullptr);
         if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
         std::string name = atom != nullptr ? atom : "";
-        free(atom);
+        imapStrFree(atom);
         if (strcasecmp(name.c_str(), "UID") == 0) continue;
         if (strcasecmp(name.c_str(), "ALL") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
@@ -3790,7 +3797,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         *indx = cur;
         return MAILIMAP_NO_ERROR;
     }
-    free(mailbox);
+    imapStrFree(mailbox);
     struct mailimap_extension_data * ext = mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, uids);
     if (ext == nullptr) {
         freeUidList(uids);
@@ -3804,7 +3811,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
 LiveBlob * blobFromNstring(char * text, size_t len) {
     auto * blob = static_cast<LiveBlob *>(calloc(1, sizeof(LiveBlob)));
     if (blob == nullptr) {
-        free(text);
+        imapStrFree(text);
         return nullptr;
     }
     if (text == nullptr) {
@@ -3831,7 +3838,7 @@ int parsePreviewAtt(mailstream * fd, MMAPString * buffer, struct mailimap_parser
     if (blob == nullptr) return MAILIMAP_ERROR_MEMORY;
     struct mailimap_extension_data * ext = mailimap_extension_data_new(&liveimap_extra_extension, LIVE_PREVIEW, blob);
     if (ext == nullptr) {
-        free(blob->data);
+        imapStrFree(blob->data);
         free(blob);
         return MAILIMAP_ERROR_MEMORY;
     }
@@ -3866,7 +3873,7 @@ int parseBinaryAtt(mailstream * fd, MMAPString * buffer, struct mailimap_parser_
     if (blob == nullptr) return MAILIMAP_ERROR_MEMORY;
     struct mailimap_extension_data * ext = mailimap_extension_data_new(&liveimap_extra_extension, LIVE_BINARY, blob);
     if (ext == nullptr) {
-        free(blob->data);
+        imapStrFree(blob->data);
         free(blob);
         return MAILIMAP_ERROR_MEMORY;
     }
@@ -3895,7 +3902,7 @@ static void live_ext_free(struct mailimap_extension_data * ext_data) {
     if (ext_data->ext_type == LIVE_PREVIEW || ext_data->ext_type == LIVE_BINARY) {
         auto * blob = static_cast<LiveBlob *>(ext_data->ext_data);
         if (blob != nullptr) {
-            free(blob->data);
+            imapStrFree(blob->data);
             free(blob);
         }
     } else if (ext_data->ext_type == LIVE_ESEARCH) {
