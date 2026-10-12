@@ -1028,10 +1028,10 @@ class LibetpanMailSession : MailSession {
             nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
         }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int {
         val context = currentApplication()
         val smtpPassword = if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
-        keeper.write("send") {
+        return keeper.write("send") {
             forgetSelected()
             nativeSmtp(
                 requireHandle(),
@@ -1039,7 +1039,7 @@ class LibetpanMailSession : MailSession {
                 recipients.toTypedArray(),
                 account?.smtpUsername ?: "",
                 smtpPassword,
-                0,
+                dsnNotify,
             )
         }
     }

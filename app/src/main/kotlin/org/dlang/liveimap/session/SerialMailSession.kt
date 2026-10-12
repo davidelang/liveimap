@@ -198,9 +198,8 @@ class SerialMailSession(
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         onLane { inner.appendReturningUid(mailbox, rfc822, flags) }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
-        onLane { inner.smtpSend(rfc822, recipients) }
-    }
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
+        onLane { inner.smtpSend(rfc822, recipients, dsnNotify) }
 
     override fun close() {
         inner.close()

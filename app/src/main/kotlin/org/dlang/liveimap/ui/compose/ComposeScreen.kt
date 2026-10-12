@@ -268,6 +268,13 @@ private fun ComposeLoaded(
     var draftLoaded by rememberSaveable { mutableStateOf(false) }
     var retryArmedFor by rememberSaveable { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
+    // Sending rules (design-decisions.md "Sending rules and roles").
+    var sending by remember { mutableStateOf<Resolved?>(null) }
+    var pinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
+    var originalParsed by remember { mutableStateOf<ParsedRfc822?>(null) }
+    var mismatchArmed by remember { mutableStateOf(false) }
+    var fromMenuOpen by remember { mutableStateOf(false) }
+    val headerValuesTyped = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
     var deliveryDone by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
@@ -409,13 +416,41 @@ private fun ComposeLoaded(
         return ""
     }
 
+    fun kindTag(): ComposeKindTag = when (seed.kind) {
+        ComposeKind.Reply -> ComposeKindTag.Reply
+        ComposeKind.ReplyAll -> ComposeKindTag.ReplyAll
+        ComposeKind.Forward, ComposeKind.Bounce -> ComposeKindTag.Forward
+        else -> ComposeKindTag.New
+    }
+
+    fun sendingContext(): ComposeContext = composeContext(
+        kindTag(),
+        originalParsed,
+        splitAddresses(toText) + splitAddresses(ccText),
+        seed.mailbox.orEmpty(),
+    ).copy(pinnedFrom = pinnedFrom)
+
+    fun resolveNow(settings: AccountSettings): Resolved {
+        val r = resolveSending(accountRules(settings), accountDefaultRule(settings), accountId, sendingContext())
+        sending = r
+        return r
+    }
+
+    fun cursorBeforeSignature(body: String, r: Resolved): Int {
+        val block = signatureBlock(r.signature, r.sigDashes)
+        val at = if (block.isEmpty()) -1 else body.lastIndexOf("\n\n" + block)
+        return if (at >= 0) at else body.length
+    }
+
     suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         ensureMailbox(box)
         val parsed = parseRfc822(session.fetchRfc822(uid))
+        originalParsed = parsed
         val quote = quotedBody(session.fetchStructure(uid), settings.bodyView, uid)
-        val draft = replyDraft(replyAll, parsed, settings.email, quote)
+        val rules0 = resolveNow(settings)
+        val draft = replyDraft(replyAll, parsed, settings.email, quote, rules0.quotePrefix, rules0.leadIn)
         val replyToAddrs = addresses(parsed, "Reply-To")
         val fromAddrs = addresses(parsed, "From")
         fun route(use: Boolean) = replyRecipients(
@@ -434,10 +469,18 @@ private fun ComposeLoaded(
         replyCcLine = replyRoute.second.joinToString(", ")
         offerReplyTo = replyToDiffers(replyToAddrs, fromAddrs)
         val chosen = if (useReplyTo) replyRoute else fromRoute
-        val shown = replyCursorBody(draft.body, settings.replyAboveQuote)
+        toText = chosen.first
+        ccText = chosen.second
+        val r = resolveNow(settings)
+        val shown = withSignature(
+            replyCursorBody(draft.body, settings.replyAboveQuote),
+            signatureBlock(r.signature, r.sigDashes),
+            r.sigAtBottom,
+            settings.replyAboveQuote,
+        )
         applyDraft(
             ReplyDraft(chosen.first, chosen.second, draft.subject, draft.inReplyTo, draft.references, shown),
-            cursor = if (settings.replyAboveQuote) 0 else shown.length,
+            cursor = if (settings.replyAboveQuote) 0 else cursorBeforeSignature(shown, r),
         )
     }
 
@@ -456,6 +499,8 @@ private fun ComposeLoaded(
             val original = session.fetchRfc822(uid)
             if (!draftLoaded) {
                 val parsed = parseRfc822(original)
+                originalParsed = parsed
+                resolveNow(settings)
                 val draft = forwardDraft(parsed, "")
                 applyDraft(
                     ReplyDraft(draft.to, draft.cc, draft.subject, "", "", ""),
@@ -480,16 +525,23 @@ private fun ComposeLoaded(
             session.fetchStructure(uid)
         } else {
             val parsed = parseRfc822(session.fetchRfc822(uid))
+            originalParsed = parsed
+            val r = resolveNow(settings)
             val fetched = session.fetchStructure(uid)
             val quote = quotedBody(fetched, settings.bodyView, uid)
-            val draft = forwardDraft(parsed, quote)
+            val draft = forwardDraft(parsed, quote, r.quotePrefix, r.leadIn)
             val header = appContext.getString(
                 R.string.compose_quote_header,
                 headerValues(parsed, "From").firstOrNull().orEmpty().trim(),
                 headerValues(parsed, "Date").firstOrNull().orEmpty().trim(),
                 headerValues(parsed, "Subject").firstOrNull().orEmpty().trim(),
             )
-            val shown = "\n" + forwardHeaderBody(header, quote)
+            val shown = withSignature(
+                "\n" + forwardHeaderBody(header, quote),
+                signatureBlock(r.signature, r.sigDashes),
+                r.sigAtBottom,
+                cursorAtTop = true,
+            )
             applyDraft(
                 ReplyDraft(draft.to, draft.cc, draft.subject, draft.inReplyTo, draft.references, shown),
                 cursor = 0,
@@ -546,6 +598,13 @@ private fun ComposeLoaded(
         applyEditor(loadEditor(session.fetchRfc822(uid)))
     }
 
+    fun composedHeaders(settings: AccountSettings): List<Pair<String, String>> {
+        val replyTo = sending?.replyTo.orEmpty()
+        val typed = headerNames(settings.composerHeaders).map { it to headerValuesTyped[it.lowercase()].orEmpty() }
+        val typedReplyTo = typed.any { it.first.equals("Reply-To", true) && it.second.isNotBlank() }
+        return (if (replyTo.isNotBlank() && !typedReplyTo) listOf("Reply-To" to replyTo) else emptyList()) + typed
+    }
+
     suspend fun assemble(settings: AccountSettings): BuiltMail {
         val parts = ArrayList<OutgoingPart>()
         val uid = sourceUid
@@ -566,6 +625,7 @@ private fun ComposeLoaded(
             PlainMessage(
                 fromName = settings.displayName,
                 fromEmail = settings.email,
+                extraHeaders = composedHeaders(settings),
                 to = splitAddresses(toText),
                 cc = splitAddresses(ccText),
                 bcc = splitAddresses(bccText),
@@ -609,13 +669,17 @@ private fun ComposeLoaded(
         }
     }
 
+    fun noteDsn(result: Int) {
+        if (result < 0) status = appContext.getString(R.string.compose_dsn_unsupported)
+    }
+
     suspend fun sendSmtp(bytes: ByteArray, envelope: List<String>): ByteArray {
         // IDN domains go as punycode; non-ASCII local parts need SMTPUTF8 (refused natively as "smtputf8").
         val recipients = envelope.map(::asciiDomainAddress)
         fun utf8Refused(error: MailFailure): Nothing =
             throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
         try {
-            session.smtpSend(bytes, recipients)
+            noteDsn(session.smtpSend(bytes, recipients, dsnMask(sending?.dsn ?: DsnMode.Off)))
             return bytes
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
@@ -623,7 +687,7 @@ private fun ComposeLoaded(
         }
         val rewritten = withoutEightBit(bytes)
         try {
-            session.smtpSend(rewritten, recipients)
+            noteDsn(session.smtpSend(rewritten, recipients, dsnMask(sending?.dsn ?: DsnMode.Off)))
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
             throw error
@@ -986,7 +1050,13 @@ private fun ComposeLoaded(
                     }
                 } else {
                     when (seed.kind) {
-                        ComposeKind.New -> Unit
+                        ComposeKind.New -> {
+                            val r = resolveNow(settings)
+                            if (!draftLoaded && bodyField.text.isEmpty()) {
+                                val block = signatureBlock(r.signature, r.sigDashes)
+                                if (block.isNotEmpty()) bodyField = TextFieldValue("\n\n" + block, TextRange(0))
+                            }
+                        }
                         ComposeKind.Reply -> if (!draftLoaded) loadReply(settings, replyAll = false)
                         ComposeKind.ReplyAll -> if (!draftLoaded) loadReply(settings, replyAll = true)
                         ComposeKind.Forward -> loadForward(settings)
@@ -1020,6 +1090,23 @@ private fun ComposeLoaded(
 
     fun sendMessage() {
                 launchLocked {
+                    val base = account
+                    val r = resolveNow(base)
+                    val account = base.withSending(r)
+                    if (r.sendAccount.isNotEmpty() && r.sendAccount != accountId) {
+                        // Never fall back to this account's server for mail a rule routes elsewhere.
+                        notice = appContext.getString(R.string.compose_send_account_unavailable, r.fromRule)
+                        return@launchLocked false
+                    }
+                    val mismatch = fromMismatch(
+                        accountRules(base), accountDefaultRule(base), accountId,
+                        sendingContext(), account.email, accountId,
+                    ) { listOf(base.email) + base.altAddresses + knownFroms(accountRules(base), accountDefaultRule(base)) }
+                    if (mismatch != null && pinnedFrom != null && !mismatchArmed) {
+                        mismatchArmed = true
+                        notice = appContext.getString(R.string.compose_from_mismatch, mismatch.expectedFrom, mismatch.rule)
+                        return@launchLocked false
+                    }
                     val saved = held
                     if (saved != null && saved.appendOnly) {
                         return@launchLocked retryCopy(saved)
@@ -1300,7 +1387,34 @@ private fun ComposeLoaded(
         ) {
             TextButton(onClick = onOpenUnsent) { Text(stringResource(R.string.unsent_title)) }
         }
-        Text(stringResource(R.string.reader_from, formatMailbox(account.displayName, account.email)))
+        val shownFrom = account.withSending(sending)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.reader_from, formatMailbox(shownFrom.displayName, shownFrom.email)),
+                modifier = Modifier.weight(1f),
+            )
+            val rule = sending?.fromRule
+            TextButton(onClick = { fromMenuOpen = true }) {
+                Text(
+                    if (rule == null || rule == AccountDefaultRule) stringResource(R.string.compose_from_change)
+                    else stringResource(R.string.compose_from_by_rule, rule),
+                )
+            }
+            DropdownMenu(expanded = fromMenuOpen, onDismissRequest = { fromMenuOpen = false }) {
+                val froms = (listOf(account.email) + account.altAddresses +
+                    knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { baseAddress(it) }
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.compose_from_by_rules)) },
+                    onClick = { pinnedFrom = null; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
+                )
+                for (from in froms) {
+                    DropdownMenuItem(
+                        text = { Text(from) },
+                        onClick = { pinnedFrom = from; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
+                    )
+                }
+            }
+        }
         if (seed.kind == ComposeKind.Bounce) {
             OutlinedTextField(
                 value = bounceTo,
@@ -1550,6 +1664,15 @@ private fun ComposeLoaded(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            for (name in headerNames(account.composerHeaders)) {
+                OutlinedTextField(
+                    value = headerValuesTyped[name.lowercase()].orEmpty(),
+                    onValueChange = { headerValuesTyped[name.lowercase()] = it },
+                    label = { Text(name) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             TextButton(onClick = {
                 pickerTarget = AddressTarget.To
                 pickerOpen = true

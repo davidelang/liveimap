@@ -124,7 +124,7 @@ private class OverlapInner : MailSession {
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
 
     override fun close() = Unit
 
@@ -200,7 +200,7 @@ private class AppendUidInner : MailSession {
         return 3955
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
 
     override fun close() = Unit
 

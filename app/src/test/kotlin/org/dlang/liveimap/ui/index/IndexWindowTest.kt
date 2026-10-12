@@ -2460,7 +2460,7 @@ private class FakeMailSession(
         appendCount += 1
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
 
     override fun close() = Unit
 

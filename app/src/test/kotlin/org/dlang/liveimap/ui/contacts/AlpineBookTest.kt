@@ -264,8 +264,9 @@ private class FakeBookSession : MailSession {
         appendCount += 1
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int {
         smtpCount += 1
+        return 0
     }
 
     override fun close() = Unit

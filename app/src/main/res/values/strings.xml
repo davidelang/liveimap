@@ -284,6 +284,12 @@
     <string name="compose_use_reply_to">Use Reply-To?</string>
     <string name="compose_plain_only">Plain text only</string>
     <string name="compose_subject">Subject</string>
+    <string name="compose_dsn_unsupported">The server doesn\'t offer delivery status notifications; sent without them.</string>
+    <string name="compose_send_account_unavailable">Rule “%1$s” sends through another account, which isn\'t supported yet. Not sent.</string>
+    <string name="compose_from_mismatch">Sending rules expect From %1$s (rule “%2$s”). Tap Send again to send anyway.</string>
+    <string name="compose_from_change">Change</string>
+    <string name="compose_from_by_rule">by rule “%1$s”</string>
+    <string name="compose_from_by_rules">Use sending rules</string>
     <string name="compose_to_book">To address book</string>
     <string name="compose_cc_book">Cc address book</string>
     <string name="compose_bcc_book">Bcc address book</string>

@@ -451,6 +451,16 @@ data class AccountSettings(
     val folderPosition: FolderPositionChoice = FolderPositionChoice.Beside,
     /** Custom panel layout (PaneLayout.kt text form); empty = Auto. */
     val customLayout: String = "",
+    // Account-default sending fields (design-decisions.md "Sending rules and roles").
+    val sendingRules: String = "",
+    val signature: String = "",
+    val sigDashes: Boolean = true,
+    val sigAtBottom: Boolean = false,
+    val quotePrefix: String = org.dlang.liveimap.ui.compose.DefaultQuotePrefix,
+    val replyLeadIn: String = org.dlang.liveimap.ui.compose.DefaultLeadIn,
+    val dsnMode: org.dlang.liveimap.ui.compose.DsnMode = org.dlang.liveimap.ui.compose.DsnMode.Off,
+    val composerHeaders: String = "",
+    val viewerHeaders: String = "",
     val nonAsciiDisplay: NonAsciiDisplay = NonAsciiDisplay.HighlightSuspicious,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
@@ -584,6 +594,15 @@ private val fieldNames = listOf(
     "previewSize",
     "folderPosition",
     "customLayout",
+    "sendingRules",
+    "signature",
+    "sigDashes",
+    "sigAtBottom",
+    "quotePrefix",
+    "replyLeadIn",
+    "dsnMode",
+    "composerHeaders",
+    "viewerHeaders",
     "nonAsciiDisplay",
     "sieveHost",
     "sievePort",
@@ -718,6 +737,15 @@ fun AccountSettings.encode(): String = buildString {
     if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
     if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
     if (customLayout.isNotEmpty()) appendLine("customLayout=${percentEncode(customLayout)}")
+    if (sendingRules.isNotEmpty()) appendLine("sendingRules=${percentEncode(sendingRules)}")
+    if (signature.isNotEmpty()) appendLine("signature=${percentEncode(signature)}")
+    if (!sigDashes) appendLine("sigDashes=${sigDashes}")
+    if (sigAtBottom) appendLine("sigAtBottom=${sigAtBottom}")
+    if (quotePrefix != org.dlang.liveimap.ui.compose.DefaultQuotePrefix) appendLine("quotePrefix=${percentEncode(quotePrefix)}")
+    if (replyLeadIn != org.dlang.liveimap.ui.compose.DefaultLeadIn) appendLine("replyLeadIn=${percentEncode(replyLeadIn)}")
+    if (dsnMode != org.dlang.liveimap.ui.compose.DsnMode.Off) appendLine("dsnMode=${dsnMode.name}")
+    if (composerHeaders.isNotEmpty()) appendLine("composerHeaders=${percentEncode(composerHeaders)}")
+    if (viewerHeaders.isNotEmpty()) appendLine("viewerHeaders=${percentEncode(viewerHeaders)}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
@@ -839,6 +867,15 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "previewSize" ||
             key == "folderPosition" ||
             key == "customLayout" ||
+            key == "sendingRules" ||
+            key == "signature" ||
+            key == "sigDashes" ||
+            key == "sigAtBottom" ||
+            key == "quotePrefix" ||
+            key == "replyLeadIn" ||
+            key == "dsnMode" ||
+            key == "composerHeaders" ||
+            key == "viewerHeaders" ||
             key == "nonAsciiDisplay" ||
             key == "sieveHost" ||
             key == "sievePort" ||
@@ -957,6 +994,15 @@ fun decodeAccountSettings(text: String): AccountSettings {
         paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
         folderPosition = values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside,
         customLayout = values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty(),
+        sendingRules = values["sendingRules"]?.let { percentDecode(it) } ?: "",
+        signature = values["signature"]?.let { percentDecode(it) } ?: "",
+        sigDashes = values["sigDashes"]?.let { it == "true" } ?: true,
+        sigAtBottom = values["sigAtBottom"]?.let { it == "true" } ?: false,
+        quotePrefix = values["quotePrefix"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultQuotePrefix,
+        replyLeadIn = values["replyLeadIn"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultLeadIn,
+        dsnMode = values["dsnMode"]?.let { runCatching { enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(it) }.getOrNull() } ?: org.dlang.liveimap.ui.compose.DsnMode.Off,
+        composerHeaders = values["composerHeaders"]?.let { percentDecode(it) } ?: "",
+        viewerHeaders = values["viewerHeaders"]?.let { percentDecode(it) } ?: "",
         nonAsciiDisplay = values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious,
         previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",

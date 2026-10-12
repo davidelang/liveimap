@@ -313,3 +313,59 @@ object RulePresets {
     /** 8: Fcc per role (From). */
     fun fccFor(from: String, fcc: String) = SendingRule("Fcc for ${addrSpec(from)}", RuleConditions(sentTo = listOf(addrSpec(from))), RuleActions(fcc = fcc))
 }
+
+// ---------- account glue ----------
+
+/** The account's simple fields as the always-matching last rule. */
+fun accountDefaultRule(settings: org.dlang.liveimap.settings.AccountSettings) = SendingRule(
+    AccountDefaultRule,
+    actions = RuleActions(
+        fromName = settings.displayName,
+        fromAddress = settings.email,
+        signature = settings.signature,
+        sigAtBottom = settings.sigAtBottom,
+        sigDashes = settings.sigDashes,
+        quotePrefix = settings.quotePrefix,
+        leadIn = settings.replyLeadIn,
+        fcc = settings.sentMailbox,
+        dsn = settings.dsnMode,
+    ),
+)
+
+fun accountRules(settings: org.dlang.liveimap.settings.AccountSettings): List<SendingRule> = decodeRules(settings.sendingRules)
+
+/** Context from the message being answered or forwarded ([original] null for new messages). */
+fun composeContext(kind: ComposeKindTag, original: ParsedRfc822?, recipients: List<String>, folder: String): ComposeContext {
+    if (original == null) return ComposeContext(kind, recipients = recipients, folder = folder)
+    val to = listOf("To", "Cc", "Delivered-To", "X-Original-To").flatMap { addresses(original, it) }
+    return ComposeContext(
+        kind = kind,
+        recipients = recipients,
+        originalTo = to,
+        listId = headerValues(original, "List-Id").firstOrNull().orEmpty(),
+        folder = folder,
+        originalFrom = addresses(original, "From"),
+    )
+}
+
+/** Settings as the composer sends with them: From, Fcc and the rest from [r]. */
+fun org.dlang.liveimap.settings.AccountSettings.withSending(r: Resolved?): org.dlang.liveimap.settings.AccountSettings {
+    if (r == null) return this
+    return copy(
+        displayName = r.fromName.ifEmpty { displayName },
+        email = r.fromAddress.ifEmpty { email },
+        sentMailbox = r.fcc.ifEmpty { sentMailbox },
+    )
+}
+
+/** RFC 3461 NOTIFY mask for libetpan (MAILSMTP_DSN_NOTIFY_*); 0 = no DSN. */
+fun dsnMask(mode: DsnMode): Int = when (mode) {
+    DsnMode.Off -> 0
+    DsnMode.Failure -> 2
+    DsnMode.FailureDelay -> 2 or 4
+    DsnMode.All -> 1 or 2 or 4
+}
+
+/** Composer header list: comma or space separated names, e.g. "Reply-To, X-Priority". */
+fun headerNames(list: String): List<String> =
+    list.split(',', ' ', '\n').map { it.trim().trimEnd(':') }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }

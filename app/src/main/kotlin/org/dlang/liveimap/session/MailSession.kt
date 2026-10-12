@@ -117,6 +117,7 @@ interface MailSession {
         append(mailbox, rfc822, flags)
         return 0
     }
-    suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>)
+    /** [dsnNotify]: RFC 3461 NOTIFY mask, 0 = none. Returns 1 DSN requested, -1 asked but not offered, 0 none. */
+    suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int = 0): Int
     fun close()
 }

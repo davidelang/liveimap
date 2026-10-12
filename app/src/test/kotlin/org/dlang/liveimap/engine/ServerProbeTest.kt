@@ -142,9 +142,7 @@ private class ProbeMailSession(
         refuse("append")
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) {
-        refuse("smtpSend")
-    }
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = refuse("smtpSend")
 
     override fun close() = Unit
 

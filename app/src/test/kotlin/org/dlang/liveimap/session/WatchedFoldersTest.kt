@@ -404,7 +404,7 @@ class WatchedFoldersTest {
 
         override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
 
-        override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = unused()
+        override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
 
         override fun close() {
             calls.add("close")

@@ -48,6 +48,8 @@ class PlainMessage(
     val attachments: List<OutgoingPart> = emptyList(),
     val wrapColumn: Int = 74,
     val flowed: Boolean = true,
+    /** Reply-To and user-chosen composer headers, in order. */
+    val extraHeaders: List<Pair<String, String>> = emptyList(),
 )
 
 class BuiltMail(
@@ -275,6 +277,8 @@ fun replyDraft(
     message: ParsedRfc822,
     accountEmail: String,
     peekedText: String,
+    quotePrefix: String = DefaultQuotePrefix,
+    leadIn: String = DefaultLeadIn,
 ): ReplyDraft {
     val (to, cc) = replyRecipients(
         replyAll = replyAll,
@@ -294,30 +298,51 @@ fun replyDraft(
         attributionLine(
             headerValues(message, "Date").firstOrNull().orEmpty(),
             headerValues(message, "From").firstOrNull().orEmpty(),
+            leadIn,
+            headerValues(message, "Subject").firstOrNull().orEmpty(),
         ),
         peekedText,
+        quotePrefix,
     )
     return ReplyDraft(to, cc, subject, messageId, references, body)
 }
 
-fun forwardDraft(message: ParsedRfc822, peekedText: String): ReplyDraft {
+fun forwardDraft(
+    message: ParsedRfc822,
+    peekedText: String,
+    quotePrefix: String = DefaultQuotePrefix,
+    leadIn: String = DefaultLeadIn,
+): ReplyDraft {
     val subject = markedSubject(headerValues(message, "Subject").firstOrNull().orEmpty(), "Fwd:")
     val body = quotePart(
         attributionLine(
             headerValues(message, "Date").firstOrNull().orEmpty(),
             headerValues(message, "From").firstOrNull().orEmpty(),
+            leadIn,
+            headerValues(message, "Subject").firstOrNull().orEmpty(),
         ),
         peekedText,
+        quotePrefix,
     )
     return ReplyDraft(emptyList(), emptyList(), subject, "", "", body)
 }
 
-fun attributionLine(date: String, from: String): String =
-    "On ${date.trim()}, ${from.trim()} wrote:"
+/** Headers the composer builds itself; a custom header list can't override them. */
+private val reservedHeaders = setOf(
+    "date", "from", "to", "cc", "bcc", "subject", "message-id", "in-reply-to", "references",
+    "mime-version", "content-type", "content-transfer-encoding",
+)
 
-fun quotePart(attribution: String, partText: String): String {
+/** Lead-in tokens: {date}, {from} (as written), {name} (display name or address), {subject}. */
+fun attributionLine(date: String, from: String, leadIn: String = DefaultLeadIn, subject: String = ""): String {
+    val name = from.substringBefore('<').trim().trim('"').ifEmpty { addrSpec(from) }
+    return leadIn.replace("{date}", date.trim()).replace("{from}", from.trim())
+        .replace("{name}", name).replace("{subject}", subject.trim())
+}
+
+fun quotePart(attribution: String, partText: String, prefix: String = DefaultQuotePrefix): String {
     val normalized = partText.replace("\r\n", "\n").replace('\r', '\n')
-    val quoted = normalized.split('\n').joinToString("\n") { line -> "> $line" }
+    val quoted = normalized.split('\n').joinToString("\n") { line -> "$prefix$line" }
     if (attribution.isEmpty()) return quoted
     return attribution + "\n" + quoted
 }
@@ -647,6 +672,14 @@ private fun baseHeaders(message: PlainMessage, contentType: String, encoding: St
         if (message.references.isNotBlank()) {
             append("References: ")
             append(cleanHeader(message.references.trim()))
+            append("\r\n")
+        }
+        for ((name, value) in message.extraHeaders) {
+            val clean = name.filter { it.isLetterOrDigit() || it == '-' }
+            if (clean.isEmpty() || value.isBlank() || clean.lowercase() in reservedHeaders) continue
+            append(clean)
+            append(": ")
+            append(headerText(value.trim()))
             append("\r\n")
         }
         append("MIME-Version: 1.0\r\n")
@@ -1240,3 +1273,20 @@ private fun atLineStart(data: ByteArray, offset: Int): Boolean {
 
 /** decodeHeaderWords for the reader's header view (one header line at a time). */
 fun decodeHeaderWordsForView(line: String): String = decodeHeaderWords(line)
+
+/** The signature as inserted: "-- " line first when [dashes]. Empty for no signature. */
+fun signatureBlock(signature: String, dashes: Boolean): String {
+    val text = signature.replace("\r\n", "\n").trimEnd()
+    if (text.isEmpty()) return ""
+    return if (dashes) "-- \n$text" else text
+}
+
+/**
+ * Body with the signature: at the end when [atBottom] or the cursor is at the end (reply below the quote,
+ * forward, new); else right after the cursor block at the top (reply above the quote). Never twice.
+ */
+fun withSignature(body: String, block: String, atBottom: Boolean, cursorAtTop: Boolean): String {
+    if (block.isEmpty() || body.contains(block)) return body
+    if (atBottom || !cursorAtTop) return if (body.isEmpty()) "\n\n$block" else body.trimEnd('\n') + "\n\n" + block
+    return "\n\n$block\n\n" + body.trimStart('\n')
+}
