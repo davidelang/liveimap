@@ -1115,6 +1115,10 @@ private fun ComposeLoaded(
 
     fun sendMessage() {
                 launchLocked {
+                    // An address still being typed (no comma or Enter yet) is a recipient too.
+                    toText = chipProbe(toText, toBuffer); toBuffer = ""
+                    ccText = chipProbe(ccText, ccBuffer); ccBuffer = ""
+                    bccText = chipProbe(bccText, bccBuffer); bccBuffer = ""
                     val base = account
                     val r = resolveNow(base)
                     // A rule may route this through another account's SMTP and Fcc; never fall back to this one's.
