@@ -278,6 +278,8 @@ private fun ComposeLoaded(
     val headerValuesTyped = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
     var deliveryDone by remember { mutableStateOf(false) }
+    // Set when the server took the message without the requested DSN; kept through the "Sent" status.
+    var dsnRefused by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
@@ -675,8 +677,14 @@ private fun ComposeLoaded(
         }
     }
 
+    fun sentStatus(savedLeaf: String?): String? = sentStatusText(
+        savedLeaf?.let { appContext.getString(R.string.compose_sent_saved, it) },
+        if (dsnRefused) appContext.getString(R.string.compose_dsn_unsupported) else null,
+    )
+
     fun noteDsn(result: Int) {
-        if (result < 0) status = appContext.getString(R.string.compose_dsn_unsupported)
+        dsnRefused = result < 0
+        if (dsnRefused) status = appContext.getString(R.string.compose_dsn_unsupported)
     }
 
     /** The session that sends (and files the Fcc of) mail routed through account [via]; empty = this account. */
@@ -701,10 +709,12 @@ private fun ComposeLoaded(
         val out = outbound(via)
         // IDN domains go as punycode; non-ASCII local parts need SMTPUTF8 (refused natively as "smtputf8").
         val recipients = envelope.map(::asciiDomainAddress)
+        val sender = (if (via.isEmpty() || via == accountId) account else store.accountById(via)?.settings ?: account)
+            .let { envelopeSender(headerFromAddress(bytes), it.email, it.altAddresses + knownFroms(accountRules(it), accountDefaultRule(it))) }
         fun utf8Refused(error: MailFailure): Nothing =
             throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
         try {
-            noteDsn(out.smtpSend(bytes, recipients, dsnMask(sending?.dsn ?: DsnMode.Off)))
+            noteDsn(out.smtpSendFrom(bytes, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
             return bytes
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
@@ -712,7 +722,7 @@ private fun ComposeLoaded(
         }
         val rewritten = withoutEightBit(bytes)
         try {
-            noteDsn(out.smtpSend(rewritten, recipients, dsnMask(sending?.dsn ?: DsnMode.Off)))
+            noteDsn(out.smtpSendFrom(rewritten, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
             throw error
@@ -740,7 +750,7 @@ private fun ComposeLoaded(
                 if (held?.id == copy.id) held = null
                 notice = null
                 deliveryDone = true
-                status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                status = sentStatus(mailboxLeaf(copy.mailbox))
                 removePostponedSource()
                 return true
             }
@@ -774,9 +784,9 @@ private fun ComposeLoaded(
                 notice = null
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
-                    appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                    sentStatus(mailboxLeaf(copy.mailbox))
                 } else {
-                    null
+                    sentStatus(null)
                 }
                 removePostponedSource()
                 return true
@@ -831,9 +841,9 @@ private fun ComposeLoaded(
                 notice = null
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
-                    appContext.getString(R.string.compose_sent_saved, mailboxLeaf(copy.mailbox))
+                    sentStatus(mailboxLeaf(copy.mailbox))
                 } else {
-                    null
+                    sentStatus(null)
                 }
                 removePostponedSource()
                 return true
@@ -1017,6 +1027,12 @@ private fun ComposeLoaded(
         onStopOrDispose { job.cancel() }
     }
 
+    // The From line follows the recipients as they are typed (rules match on To/Cc); a pinned From stays.
+    LaunchedEffect(toText, ccText) {
+        if (sending == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(300)
+        resolveNow(account)
+    }
     LaunchedEffect(seed, unsentId, retryOnOpen) {
         val storedId = unsentId?.takeIf { it.isNotEmpty() }
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
@@ -1150,7 +1166,7 @@ private fun ComposeLoaded(
                     }
                     if (deliveryDone) {
                         notice = null
-                        status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                        status = sentStatus(mailboxLeaf(account.sentMailbox))
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
@@ -1238,7 +1254,7 @@ private fun ComposeLoaded(
                         held = null
                         deliveryDone = true
                         notice = null
-                        status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                        status = sentStatus(mailboxLeaf(account.sentMailbox))
                         removePostponedSource()
                         return@launchLocked true
                     }
@@ -1271,7 +1287,7 @@ private fun ComposeLoaded(
                     held = null
                     deliveryDone = true
                     notice = null
-                    status = appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                    status = sentStatus(mailboxLeaf(account.sentMailbox))
                     removePostponedSource()
                     true
                 }
@@ -1615,9 +1631,9 @@ private fun ComposeLoaded(
                     notice = null
                     deliveryDone = true
                     status = if (account.bounceFcc) {
-                        appContext.getString(R.string.compose_sent_saved, mailboxLeaf(account.sentMailbox))
+                        sentStatus(mailboxLeaf(account.sentMailbox))
                     } else {
-                        null
+                        sentStatus(null)
                     }
                     true
                 }

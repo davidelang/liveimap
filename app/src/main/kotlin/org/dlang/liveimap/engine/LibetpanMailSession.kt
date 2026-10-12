@@ -1037,7 +1037,10 @@ class LibetpanMailSession : MailSession {
             nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
         }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int {
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
+        smtpSendFrom(rfc822, recipients, dsnNotify, "")
+
+    override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
         val context = currentApplication()
         val smtpPassword = credentials?.smtpPassword
             ?: if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
@@ -1050,6 +1053,7 @@ class LibetpanMailSession : MailSession {
                 account?.smtpUsername ?: "",
                 smtpPassword,
                 dsnNotify,
+                envelopeFrom,
             )
         }
     }
@@ -1388,6 +1392,7 @@ class LibetpanMailSession : MailSession {
         smtpUsername: String,
         smtpPassword: String,
         dsnNotify: Int,
+        envelopeFrom: String,
     ): Int
 
     companion object {

@@ -126,5 +126,8 @@ interface MailSession {
     }
     /** [dsnNotify]: RFC 3461 NOTIFY mask, 0 = none. Returns 1 DSN requested, -1 asked but not offered, 0 none. */
     suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int = 0): Int
+    /** As [smtpSend] with MAIL FROM [envelopeFrom]; empty = the account address. Sessions without SMTP ignore it. */
+    suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
+        smtpSend(rfc822, recipients, dsnNotify)
     fun close()
 }

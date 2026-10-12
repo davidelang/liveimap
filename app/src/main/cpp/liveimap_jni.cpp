@@ -7871,7 +7871,7 @@ bool messageHas8bitCte(const char * bytes, size_t n) {
 
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
-    jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify) {
+    jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
     if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
@@ -7879,6 +7879,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (authUser.empty()) authUser = session->user;
     std::string authPass = utf8FromJava(env, smtpPassword);
     if (authPass.empty()) authPass = session->password;
+    // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
+    std::string mailFrom = utf8FromJava(env, envelopeFrom);
+    if (mailFrom.empty()) mailFrom = session->from;
     const std::string & mode = session->tlsMode;
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
@@ -8131,7 +8134,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     // SMTPUTF8 before 8BITMIME: a body rewrite cannot fix raw UTF-8 headers or addresses.
     // RFC 6531: non-ASCII addresses or raw UTF-8 headers need SMTPUTF8; without it, refuse before MAIL FROM
     // ("smtputf8") so the user is told instead of the server mangling or bouncing the message.
-    bool needUtf8 = has8bit(session->from.data(), session->from.size()) ||
+    bool needUtf8 = has8bit(mailFrom.data(), mailFrom.size()) ||
         (raw != nullptr && headerHas8bit(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg)));
     {
         jsize nr = recipients != nullptr ? env->GetArrayLength(recipients) : 0;
@@ -8161,7 +8164,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
     if (needUtf8) {
-        std::string cmd = "MAIL FROM:<" + session->from + "> SMTPUTF8" +
+        std::string cmd = "MAIL FROM:<" + mailFrom + "> SMTPUTF8" +
             (dsnNotify != 0 && dsnOffered ? " RET=HDRS" : "") + "\r\n";
         r = mailsmtp_send_command(smtp, const_cast<char *>(cmd.c_str()));
         if (r == MAILSMTP_NO_ERROR) {
@@ -8169,8 +8172,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
     } else {
         // RFC 3461: RET=HDRS only when DSN is asked for (libetpan adds it when the server offers DSN).
-        r = dsnNotify != 0 ? mailesmtp_mail(smtp, session->from.c_str(), 0, nullptr)
-                           : mailsmtp_mail(smtp, session->from.c_str());
+        r = dsnNotify != 0 ? mailesmtp_mail(smtp, mailFrom.c_str(), 0, nullptr)
+                           : mailsmtp_mail(smtp, mailFrom.c_str());
     }
     if (r != MAILSMTP_NO_ERROR) {
         std::string why = where + asciiSafe(smtp->response, "smtp error");

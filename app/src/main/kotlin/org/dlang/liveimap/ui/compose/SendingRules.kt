@@ -379,3 +379,36 @@ fun listPostAddress(message: ParsedRfc822): String? {
     val m = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE).find(value) ?: return null
     return java.net.URLDecoder.decode(m.groupValues[1], "UTF-8").trim().ifEmpty { null }
 }
+
+/**
+ * The author address of an outgoing message, as pine takes it for MAIL FROM (alpine sets return_path from From):
+ * Resent-From for a resent (bounced) message, nothing when it is resent without one, else From.
+ */
+fun headerFromAddress(rfc822: ByteArray): String {
+    val text = String(rfc822, Charsets.ISO_8859_1)
+    val end = text.indexOf("\r\n\r\n").let { if (it < 0) text.length else it }
+    val fields = text.substring(0, end).replace(Regex("\r\n[ \t]+"), " ").split("\r\n")
+    fun field(name: String) = fields.firstOrNull { it.startsWith("$name:", ignoreCase = true) }
+        ?.substring(name.length + 1)?.trim()
+    field("Resent-From")?.let { return addrSpec(it).trim() }
+    if (fields.any { it.startsWith("Resent-", ignoreCase = true) }) return ""
+    return field("From")?.let { addrSpec(it).trim() }.orEmpty()
+}
+
+/**
+ * MAIL FROM for a message with author [from] sent through the account whose address is [accountEmail].
+ * Like pine, the From is used, but only when it is the account's own: a plus alias of it, or an address the
+ * account lists ([allowed]: alt-addresses and the Froms its rules set). Anything else, or the account address
+ * itself, gives "" (the account address), so a server that checks the sender does not refuse the message.
+ */
+fun envelopeSender(from: String, accountEmail: String, allowed: List<String>): String {
+    val f = addrSpec(from).trim()
+    if (f.isEmpty() || f.equals(accountEmail.trim(), ignoreCase = true)) return ""
+    val base = baseAddress(f)
+    if (base == baseAddress(accountEmail)) return f
+    return if (allowed.any { baseAddress(it) == base }) f else ""
+}
+
+/** Status after a send: the saved note and the DSN-refused note, either of which may be absent. */
+fun sentStatusText(saved: String?, dsnRefused: String?): String? =
+    listOfNotNull(saved, dsnRefused).joinToString("\n").ifEmpty { null }
