@@ -412,6 +412,8 @@ data class AccountSettings(
     val plainTextMonospace: Boolean = false,
     /** Reader text size in percent (plain text and HTML); pinch-zoom adjusts it per message on top. */
     val readerTextZoom: Int = 100,
+    /** F38: how often the IDLE wait wakes when nothing arrives (stop requests wake it at once). */
+    val idleWakeSeconds: Int = 5,
     val altAddresses: List<String> = emptyList(),
     val completionSources: List<String> = listOf(pineSourceId),
     val clientSort: Boolean = false,
@@ -557,6 +559,7 @@ private val fieldNames = listOf(
     "pinercStartDefault",
     "plainTextMonospace",
     "readerTextZoom",
+    "idleWakeSeconds",
     "altAddresses",
     "completionSources",
     "addressBookHistory",
@@ -681,6 +684,7 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
     appendLine("plainTextMonospace=$plainTextMonospace")
     if (readerTextZoom != 100) appendLine("readerTextZoom=$readerTextZoom")
+    if (idleWakeSeconds != 5) appendLine("idleWakeSeconds=$idleWakeSeconds")
     // Always written (still optional on decode), so each account stores its look-alike choice explicitly.
     appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
@@ -830,6 +834,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "pinercStartDefault" ||
             key == "plainTextMonospace" ||
             key == "readerTextZoom" ||
+            key == "idleWakeSeconds" ||
             key == "altAddresses" ||
             key == "completionSources" ||
             key == "addressBookHistory" ||
@@ -956,6 +961,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             ?: PinercStartDefault.LeaveUnchanged,
         plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
         readerTextZoom = values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100,
+        idleWakeSeconds = values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5,
         altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
         completionSources = decodeCompletionSources(values["completionSources"]),
         addressBookHistory = values["addressBookHistory"]?.let { parseIntField(it) } ?: 3,
@@ -1530,6 +1536,8 @@ fun AccountSettings.withServerOf(base: AccountSettings): AccountSettings = copy(
     allowOldTls = base.allowOldTls,
     allowPlaintextAuth = base.allowPlaintextAuth,
 )
+
+val IdleWakeSeconds = listOf(1, 2, 5, 10, 30, 60)
 
 val ReaderTextZooms = listOf(75, 90, 100, 115, 130, 150, 175, 200, 250)
 const val MinTextZoom = 50

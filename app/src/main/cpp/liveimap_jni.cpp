@@ -13,6 +13,7 @@
 #include <android/log.h>
 
 #include <poll.h>
+#include <sys/eventfd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -289,6 +290,10 @@ struct LiveSession {
     jobject selfGlobal = nullptr;
     uint32_t watchUidValidity = 0;
     int watchExists = 0;
+    // F38: written by a stop request so the IDLE poll wakes at once; the poll timeout is only a backstop.
+    int watchWakeFd = -1;
+    // F35: the session was freed from its own watch thread; watchMain deletes it on the way out.
+    bool deleteAfterWatch = false;
     std::vector<uint32_t> copiedUids;
     int64_t esearchCount = -1;
 };
@@ -355,6 +360,16 @@ struct JniCache {
 JniCache gJni;
 std::once_flag gExtOnce;
 thread_local LiveSession * tlsWatch = nullptr;
+
+void signalWatchStop(LiveSession * session) {
+    session->watchStop.store(true);
+    int fd = session->watchWakeFd;
+    if (fd >= 0) {
+        uint64_t one = 1;
+        ssize_t ignored = write(fd, &one, sizeof(one));
+        (void)ignored;
+    }
+}
 thread_local mailimap * tlsImap = nullptr;
 thread_local LiveSession * tlsLive = nullptr;
 thread_local const char * tlsTrafficId = nullptr;
@@ -1899,9 +1914,13 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
 }
 
 void stopWatchLocked(LiveSession * session, JNIEnv * env) {
-    session->watchStop.store(true);
+    signalWatchStop(session);
     if (session->watchThread.joinable()) {
         session->watchThread.join();
+    }
+    if (session->watchWakeFd >= 0) {
+        close(session->watchWakeFd);
+        session->watchWakeFd = -1;
     }
     if (session->watch != nullptr) {
         mailimap_free(session->watch);
@@ -1934,7 +1953,7 @@ void emitWatch(LiveSession * session, int kind, int exists, jlong uid, jobjectAr
     env->CallVoidMethod(session->selfGlobal, gJni.onWatch, kind, exists, uid, flags);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        session->watchStop.store(true);
+        signalWatchStop(session);
     }
     if (flags != nullptr) {
         env->DeleteLocalRef(flags);
@@ -2006,6 +2025,8 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data)
 // IDLE renew: DONE + IDLE well before NAT/firewall idle timeouts (often 10-15 min) and the server's 30 min
 // auto-logout; libetpan alone re-IDLEs at 28 min. Lab runs shorten it (nativeSetIdleRenewSeconds).
 std::atomic<int> gIdleRenewSec{9 * 60};
+// F38: IDLE poll backstop in ms (stop requests wake it through watchWakeFd). Configurable; default 5 s.
+std::atomic<int> gWatchWakeMs{5000};
 std::atomic<int> gIdleRenews{0};
 
 void watchMain(LiveSession * session) {
@@ -2066,12 +2087,14 @@ void watchMain(LiveSession * session) {
             buffered = wssl != nullptr && SSL_pending(wssl) > 0;
         }
         if (!buffered) {
-            struct pollfd pfd{};
-            pfd.fd = fd;
-            pfd.events = POLLIN;
-            int pr = poll(&pfd, 1, 500);
+            struct pollfd pfd[2]{};
+            pfd[0].fd = fd;
+            pfd[0].events = POLLIN;
+            pfd[1].fd = session->watchWakeFd;
+            pfd[1].events = POLLIN;
+            int pr = poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, gWatchWakeMs.load());
             if (session->watchStop.load()) break;
-            if (pr <= 0) continue;
+            if (pr <= 0 || (pfd[0].revents == 0)) continue;
         }
         if (mailimap_read_line(session->watch) == nullptr) {
             if (!session->watchStop.load()) {
@@ -2095,6 +2118,18 @@ void watchMain(LiveSession * session) {
         mailimap_idle_done(session->watch);
     }
     tlsWatch = nullptr;
+    if (session->deleteAfterWatch) {
+        // F35: freeSession ran on this thread; nobody else will join or delete, so finish it here.
+        if (session->watchThread.joinable()) session->watchThread.detach();
+        if (session->watchWakeFd >= 0) close(session->watchWakeFd);
+        if (session->watch != nullptr) mailimap_free(session->watch);
+        session->watch = nullptr;
+        if (session->selfGlobal != nullptr && attached != nullptr) attached->DeleteGlobalRef(session->selfGlobal);
+        session->selfGlobal = nullptr;
+        gVm->DetachCurrentThread();
+        delete session;
+        return;
+    }
     gVm->DetachCurrentThread();
 }
 
@@ -2999,7 +3034,8 @@ void freeSession(LiveSession * session, JNIEnv * env) {
     if (tlsWatch != session) {
         stopWatchLocked(session, env);
     } else {
-        session->watchStop.store(true);
+        signalWatchStop(session);
+        session->deleteAfterWatch = true;
     }
     if (session->imap != nullptr) {
         mailimap_free(session->imap);
@@ -7659,7 +7695,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
     if (tlsWatch == session) {
-        session->watchStop.store(true);
+        signalWatchStop(session);
         unlockSession(session);
         return;
     }
@@ -7712,6 +7748,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     }
     if (session->selfGlobal != nullptr) env->DeleteGlobalRef(session->selfGlobal);
     session->selfGlobal = env->NewGlobalRef(thiz);
+    if (session->watchWakeFd < 0) session->watchWakeFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     session->watchThread = std::thread(watchMain, session);
     {
         std::unique_lock<std::mutex> lock(session->startMu);
@@ -7731,7 +7768,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv * env, jobject, jlong handle) {
     if (!ensureJni(env)) return;
     if (tlsWatch != nullptr && reinterpret_cast<jlong>(tlsWatch) == handle) {
-        tlsWatch->watchStop.store(true);
+        signalWatchStop(tlsWatch);
         return;
     }
     LiveSession * session = lockSession(env, handle);
@@ -8470,6 +8507,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(JNIEnv *, jobject
     if (gLive.find(session) == gLive.end()) return;
     int fd = session->abortFd.load();
     if (fd >= 0) shutdown(fd, SHUT_RDWR);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetWatchWakeMillis(JNIEnv *, jclass, jint millis) {
+    gWatchWakeMs.store(millis >= 100 ? millis : 5000);
 }
 
 extern "C" JNIEXPORT void JNICALL

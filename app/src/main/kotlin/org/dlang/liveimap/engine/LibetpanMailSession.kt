@@ -966,6 +966,7 @@ class LibetpanMailSession : MailSession {
         keeper.read("watch") {
             watchMailbox = mailbox
             watchCallback = onChange
+            nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
             nativeWatch(requireHandle(), wire(mailbox))
             noteTraffic("Idling")
         }
@@ -1135,6 +1136,7 @@ class LibetpanMailSession : MailSession {
         override fun rewatch() {
             val mailbox = watchMailbox ?: return
             if (watchCallback == null) return
+            nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
             nativeWatch(requireHandle(), wire(mailbox))
             noteTraffic("Idling")
         }
@@ -1402,6 +1404,9 @@ class LibetpanMailSession : MailSession {
         }
 
         /** IDLE is renewed (DONE + IDLE) after this many seconds; 0 restores the default (9 min). Lab hook. */
+        @JvmStatic
+        external fun nativeSetWatchWakeMillis(millis: Int)
+
         @JvmStatic
         external fun nativeSetIdleRenewSeconds(seconds: Int)
 

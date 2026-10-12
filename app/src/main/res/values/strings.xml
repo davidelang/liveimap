@@ -880,4 +880,5 @@
     <string name="layout_problem_duplicate">Each panel type can appear only once. Not saved yet.</string>
     <string name="layout_problem_message">The message panel must share a split with the message list. Not saved yet.</string>
     <string name="compose_bad_envelope_address">Not sent: these addresses contain characters SMTP cannot carry: %1$s</string>
+    <string name="settings_idle_wake">IDLE wake interval</string>
 </resources>

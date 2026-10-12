@@ -1944,6 +1944,12 @@ private fun DebugGroup(editor: SettingsEditor) {
             BoolField(stringResource(R.string.settings_pipeline), settings.pipelineCommands) {
                 editor.persist(editor.settings.copy(pipelineCommands = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_idle_wake),
+                IdleWakeSeconds,
+                settings.idleWakeSeconds.takeIf { it in IdleWakeSeconds } ?: 5,
+                { "$it s" },
+            ) { editor.persist(editor.settings.copy(idleWakeSeconds = it)) }
             BoolField(stringResource(R.string.settings_log_traffic), settings.logImapTraffic) {
                 editor.persist(editor.settings.copy(logImapTraffic = it))
             }
