@@ -49,6 +49,11 @@ def compact(uids):
     return ",".join(out)
 
 
+def model_size(uid):
+    """Deterministic RFC822.SIZE for model messages (distinct, not in UID order)."""
+    return 1000 + (uid * 7919) % 5003
+
+
 class Model:
     def __init__(self, cfg, caps):
         self.cfg = cfg
@@ -179,10 +184,12 @@ class Model:
             return ([f'* ESEARCH (TAG "{tag}") UID ' + " ".join(parts), f"{tag} OK SORT done"], True, None)
         if cmd == "FETCH":
             items = arg.split(" ", 1)[1].upper() if " " in arg else ""
-            if not re.fullmatch(r"\(?(UID|FLAGS|\s)+\)?", items.strip()):
-                return None  # anything richer than flags falls through to the recorded table
+            if not re.fullmatch(r"\(?(UID|FLAGS|RFC822\.SIZE|\s)+\)?", items.strip()):
+                return None  # anything richer than flags/size falls through to the recorded table
             targets = self.targets(b, words[1], uid)
-            return ([f"* {b['uids'].index(u) + 1} FETCH (UID {u} FLAGS ({' '.join(sorted(b['flags'][u]))}))"
+            sized = "RFC822.SIZE" in items
+            return ([f"* {b['uids'].index(u) + 1} FETCH (UID {u} FLAGS ({' '.join(sorted(b['flags'][u]))})"
+                     + (f" RFC822.SIZE {model_size(u)}" if sized else "") + ")"
                      for u in targets] + [f"{tag} OK FETCH done"], True, None)
         if cmd == "STORE":
             if not st.get("rw"):

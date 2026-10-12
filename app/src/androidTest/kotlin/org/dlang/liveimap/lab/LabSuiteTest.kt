@@ -168,7 +168,7 @@ class LabSuiteTest {
                         check(client.size == server.size) { "client ${client.size} != server ${server.size}" }
                     }
                     check(reports >= 1) { "no progress" }
-                    "${client.size} in $reports chunk(s)"
+                    "${client.size} in $reports chunk(s) order=${client.take(20).joinToString(",")}"
                 }
                 step("longSearch") {
                     // Body search on a side connection: same hits as the main session, which stays usable.
