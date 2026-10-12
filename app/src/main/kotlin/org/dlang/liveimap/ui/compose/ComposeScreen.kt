@@ -244,7 +244,6 @@ private fun ComposeLoaded(
     val postponedMailboxMissing = stringResource(R.string.compose_postponed_mailbox)
     val fromMissing = stringResource(R.string.compose_from_missing)
     val resentMissing = stringResource(R.string.compose_resent_missing)
-    val draftNotSaved = stringResource(R.string.compose_draft_not_saved)
     val unsentGone = stringResource(R.string.compose_unsent_gone)
     val notConnected = stringResource(R.string.reader_not_connected)
     val fetchFailed = stringResource(R.string.compose_fetch_failed)
@@ -305,7 +304,6 @@ private fun ComposeLoaded(
     var useReplyTo by rememberSaveable { mutableStateOf(false) }
     var replyToLine by rememberSaveable { mutableStateOf("") }
     var replyCcLine by rememberSaveable { mutableStateOf("") }
-    var savedDraftUid by rememberSaveable { mutableLongStateOf(0L) }
     val forwardOnce = rememberSaveable {
         val code = ForwardOnce.code
         ForwardOnce.code = -1
@@ -969,61 +967,6 @@ private fun ComposeLoaded(
             removePostponedSource()
             true
         }
-    }
-
-    suspend fun saveDraftInBackground() {
-        if (account.postponedMailbox.isEmpty()) return
-        if (toText.isBlank() && subject.isBlank() && bodyField.text.isBlank()) return
-        try {
-            gate.withLock {
-                val built = try {
-                    assemble(account)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: MailFailure) {
-                    notice = draftNotSaved
-                    return@withLock
-                }
-                val uid = try {
-                    session.appendReturningUid(
-                        account.postponedMailbox,
-                        built.rfc822,
-                        setOf("\\Draft"),
-                    )
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: MailFailure) {
-                    notice = draftNotSaved
-                    return@withLock
-                }
-                val previous = when {
-                    savedDraftUid != 0L -> savedDraftUid
-                    seed.kind == ComposeKind.ResumePostpone -> sourceUid ?: 0L
-                    else -> 0L
-                }
-                if (previous != 0L && previous != uid) {
-                    try {
-                        ensureMailbox(account.postponedMailbox)
-                        session.storeFlags(listOf(previous), setOf("\\Deleted"), emptySet())
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: MailFailure) {
-                    }
-                }
-                if (uid != 0L) savedDraftUid = uid
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: MailFailure) {
-            notice = draftNotSaved
-        }
-    }
-
-    SideEffect {
-        ComposeBackgroundSave.hook = { saveDraftInBackground() }
-    }
-    DisposableEffect(Unit) {
-        onDispose { ComposeBackgroundSave.hook = null }
     }
 
     fun loadStoredCopy(id: String): DeviceCopy? {
@@ -2002,10 +1945,6 @@ private fun showsPlaintextChip(
         }
     }
     return false
-}
-
-internal object ComposeBackgroundSave {
-    var hook: (suspend () -> Unit)? = null
 }
 
 private fun appendAddress(current: String, next: String): String {

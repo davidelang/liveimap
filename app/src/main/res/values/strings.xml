@@ -373,7 +373,6 @@
     <string name="compose_postponed_mailbox">Postponed mailbox is not set</string>
     <string name="compose_from_missing">From address is not set</string>
     <string name="compose_resent_missing">Resent-To is not set</string>
-    <string name="compose_draft_not_saved">The draft is not saved.</string>
     <string name="compose_unsent_gone">That unsent copy is no longer on this device.</string>
     <string name="compose_flags_not_stored">Sent, but the original was not marked answered/forwarded: %1$s</string>
     <string name="compose_postponed_remains">Postponed copy is still in %1$s</string>

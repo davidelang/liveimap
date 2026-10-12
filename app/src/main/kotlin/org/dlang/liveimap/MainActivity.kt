@@ -34,7 +34,6 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
-import org.dlang.liveimap.ui.compose.ComposeBackgroundSave
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: DataStoreSettingsStore
@@ -109,15 +108,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         if (!isChangingConfigurations) {
+            // F104: no background draft save here (it raced Send and left stale drafts in Postponed).
             lifecycleScope.launch(NonCancellable) {
                 try {
-                    ComposeBackgroundSave.hook?.invoke()
+                    suspendMailSessions()
                 } finally {
-                    try {
-                        suspendMailSessions()
-                    } finally {
-                        stopExtraIdle()
-                    }
+                    stopExtraIdle()
                 }
             }
         }
