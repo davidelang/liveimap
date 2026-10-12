@@ -257,19 +257,7 @@ class AccountStore private constructor(private val context: Context) {
             cipher = cipher,
             log = { message -> Log.i(logTag, message) },
         )
-        if (outcome == MigrationOutcome.Failed) return
-        explicitNonAsciiLocked()
-        migrationSettled = true
-    }
-
-    private suspend fun explicitNonAsciiLocked() {
-        for (account in readAccounts()) {
-            val accountId = account.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: continue
-            val stored = storedPreference(accountId) ?: continue
-            val next = org.dlang.liveimap.settings.withExplicitNonAsciiDisplay(stored) ?: continue
-            writePreference(accountId, next)
-            Log.i(logTag, "look-alike highlighting set explicitly")
-        }
+        if (outcome != MigrationOutcome.Failed) migrationSettled = true
     }
 
     private fun legacyAdapter(): LegacyAccount = object : LegacyAccount {
