@@ -1,0 +1,18 @@
+diff --git a/src/data-types/mailstream_helper.c b/src/data-types/mailstream_helper.c
+index 8293e6d..2b13d60 100644
+--- a/src/data-types/mailstream_helper.c
++++ b/src/data-types/mailstream_helper.c
+@@ -102,8 +102,12 @@ char * mailstream_read_line_append(mailstream * stream, MMAPString * line)
+       if (r == -1)
+         return NULL;
+ 
+-      if (r == 0)
++      if (r == 0) {
++        /* EOF with nothing read: report it, or a caller looping until the buffer grows spins forever. */
++        if (line->len == start)
++          return NULL;
+         break;
++      }
+     }
+   }
+   while (1);

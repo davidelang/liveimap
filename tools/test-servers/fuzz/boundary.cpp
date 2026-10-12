@@ -72,6 +72,7 @@ int main() {
     check("BODYSTRUCTURE missing fields", "* 1 FETCH (BODYSTRUCTURE (\"TEXT\"))\r\n" + tag, Any);
     check("BODYSTRUCTURE empty multipart", "* 1 FETCH (BODYSTRUCTURE ( \"MIXED\"))\r\n" + tag, Any);
     check("BODY[ without section (fuzz crash)", "* 1 FETCH (UID 1 BODY[x {3}\r\nabc)\r\n" + tag, Err);
+    check("EOF inside quoted Message-ID (fuzz hang)", "* 1 FETCH (ENVELOPE (NIL NIL NIL NIL NIL NIL NIL NIL NIL \"<abc", Err);
     check("PREVIEW huge literal", "* 1 FETCH (UID 1 PREVIEW {4294967290}\r\n", Err);
     // Greetings and capabilities.
     check("greeting 20000 capabilities", "* OK [CAPABILITY " + rep("X-CAP ", 20000) + "IMAP4rev1] hi\r\n", Any, 1);
