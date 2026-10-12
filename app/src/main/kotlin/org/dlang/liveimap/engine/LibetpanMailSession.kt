@@ -1370,6 +1370,14 @@ class LibetpanMailSession : MailSession {
             System.loadLibrary("liveimap")
         }
 
+        /** IDLE is renewed (DONE + IDLE) after this many seconds; 0 restores the default (9 min). Lab hook. */
+        @JvmStatic
+        external fun nativeSetIdleRenewSeconds(seconds: Int)
+
+        /** IDLE renewals since process start (lab check). */
+        @JvmStatic
+        external fun nativeIdleRenews(): Int
+
         @JvmStatic
         private external fun nativeTakeError(): String
 

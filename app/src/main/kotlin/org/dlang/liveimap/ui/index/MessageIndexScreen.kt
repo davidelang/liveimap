@@ -159,6 +159,7 @@ import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.session.idleDroppedByServer
+import org.dlang.liveimap.session.KeepAliveSeconds
 import org.dlang.liveimap.session.idleFallbackSeconds
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
@@ -1955,6 +1956,18 @@ private fun MessageIndexLoaded(
                             postSnack(appContext.getString(R.string.index_idle_dropped, seconds))
                             pollLoop(seconds)
                         }
+                        // Keep-alive NOOP on the main connection while the watch IDLEs (see KeepAliveSeconds).
+                        while (true) {
+                            delay(KeepAliveSeconds * 1000L)
+                            try {
+                                session.noop()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: MailFailure) {
+                                // A dead connection is reconnected by the next real command; no snackbar here.
+                            }
+                        }
+                        @Suppress("UNREACHABLE_CODE")
                         awaitCancellation()
                     } catch (error: CancellationException) {
                         throw error

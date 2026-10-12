@@ -305,6 +305,33 @@ class LabSuiteTest {
                     }
                     got ?: throw IllegalStateException("no EXISTS from the watch connection within 75 s")
                 }
+                if ("IDLE" in session.capabilities) step("idleRenew") {
+                    // IDLE renewed every 3 s here (9 min in the app): after several DONE/IDLE cycles the watch
+                    // must still report a new message.
+                    LibetpanMailSession.nativeSetIdleRenewSeconds(3)
+                    try {
+                        val before = LibetpanMailSession.nativeIdleRenews()
+                        val seen = kotlinx.coroutines.CompletableDeferred<String>()
+                        session.watch("INBOX") { change -> if (change is org.dlang.liveimap.session.MailboxChange.Exists) seen.complete("exists=${change.exists}") }
+                        kotlinx.coroutines.delay(10_000)
+                        val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE renew $run\r\n" +
+                            "Message-ID: <idle-renew-$run@liveimap.lab>\r\n\r\nIDLE renew lab test.\r\n").toByteArray()
+                        val uid = session.appendReturningUid("INBOX", msg, emptySet())
+                        val got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }
+                        session.stopWatch()
+                        val renews = LibetpanMailSession.nativeIdleRenews() - before
+                        if (uid > 0) {
+                            session.select("INBOX")
+                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
+                            session.select(box)
+                        }
+                        check(renews >= 2) { "only $renews renewals in 10 s" }
+                        "${got ?: throw IllegalStateException("no EXISTS after $renews renewals")} renews=$renews"
+                    } finally {
+                        LibetpanMailSession.nativeSetIdleRenewSeconds(0)
+                    }
+                }
                 // LAB_DEEP=1 seeds <box>/Deep with 100- and 5000-level MIME messages. Walk each one the way the
                 // reader does: follow the first child; a "nested part" entry is opened with fetchStructureAt (the
                 // reader's tap), until a real leaf or libetpan's x-libetpan-too-deep placeholder.

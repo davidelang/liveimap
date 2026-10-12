@@ -1982,6 +1982,11 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data)
     }
 }
 
+// IDLE renew: DONE + IDLE well before NAT/firewall idle timeouts (often 10-15 min) and the server's 30 min
+// auto-logout; libetpan alone re-IDLEs at 28 min. Lab runs shorten it (nativeSetIdleRenewSeconds).
+std::atomic<int> gIdleRenewSec{9 * 60};
+std::atomic<int> gIdleRenews{0};
+
 void watchMain(LiveSession * session) {
     JNIEnv * attached = nullptr;
     if (gVm == nullptr || gVm->AttachCurrentThread(&attached, nullptr) != 0) {
@@ -2013,8 +2018,13 @@ void watchMain(LiveSession * session) {
     }
     int fd = mailimap_idle_get_fd(session->watch);
     bool watchLost = false;
+    auto idleSince = std::chrono::steady_clock::now();
     while (!session->watchStop.load()) {
-        if (mailimap_idle_get_done_delay(session->watch) == 0) {
+        long idleAge = (long) std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - idleSince).count();
+        if (mailimap_idle_get_done_delay(session->watch) == 0 || idleAge >= gIdleRenewSec.load()) {
+            idleSince = std::chrono::steady_clock::now();
+            gIdleRenews.fetch_add(1);
             int doneR = mailimap_idle_done(session->watch);
             int idleR = doneR == MAILIMAP_NO_ERROR ? mailimap_idle(session->watch) : doneR;
             if (doneR != MAILIMAP_NO_ERROR || idleR != MAILIMAP_NO_ERROR) {
@@ -8262,4 +8272,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(JNIEnv *, jobject
     if (gLive.find(session) == gLive.end()) return;
     int fd = session->abortFd.load();
     if (fd >= 0) shutdown(fd, SHUT_RDWR);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetIdleRenewSeconds(JNIEnv *, jclass, jint seconds) {
+    gIdleRenewSec.store(seconds > 0 ? seconds : 9 * 60);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeIdleRenews(JNIEnv *, jclass) {
+    return gIdleRenews.load();
 }
