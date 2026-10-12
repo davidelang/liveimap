@@ -262,11 +262,13 @@ fun LiveImapNavHost() {
     var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     val folderColumn = customTree == null && !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
-    val folderColumnNow = rememberUpdatedState(folderColumn)
-    LaunchedEffect(folderColumn, split) {
+    // Hidden (openable) drawer when the folder column shows, or when Auto finds no room for a drawer pane.
+    val drawerHidden = folderColumn || (multiPane == MultiPane.Auto && !autoLayout.drawerPane)
+    val folderColumnNow = rememberUpdatedState(drawerHidden)
+    LaunchedEffect(drawerHidden, split) {
         val available = availableDpState.intValue
         if (split && !userSized && available > 0) {
-            drawerWidthDp = initialDrawerDp(available, readerOpen, folderColumn).toFloat()
+            drawerWidthDp = initialDrawerDp(available, readerOpen, drawerHidden).toFloat()
         }
     }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(

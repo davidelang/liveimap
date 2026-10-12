@@ -20,6 +20,7 @@ data class LayoutPlan(
     val preview: PreviewSize,       // preview lines in list rows
     val columns: Int,               // readable characters across the window
     val lines: Int,                 // readable lines down the window
+    val drawerPane: Boolean = false, // the account drawer fits as a pane beside the rest; else hidden (openable)
 )
 
 const val CharDp = 7.0
@@ -27,6 +28,8 @@ const val LineDp = 20.0
 const val ListMinChars = 40
 const val ReaderMinChars = 60
 const val FolderMinChars = 24
+/** The account drawer as a pane needs this many characters beside everything else. */
+const val DrawerMinChars = 40
 const val GutterChars = 2
 const val ListMinLines = 8
 const val ReaderMinLines = 16
@@ -79,5 +82,8 @@ fun planLayout(widthDp: Int, heightDp: Int, fontScale: Float): LayoutPlan {
         preview = preview,
         columns = cols,
         lines = lines,
+        // Space is tight -> hidden drawer: a pane only when list + reader (+ folder column) keep their minimums.
+        drawerPane = sideBySide && cols >= bothWide + GutterChars + DrawerMinChars +
+            (if (folders == FolderPlacement.Beside) FolderMinChars + GutterChars else 0),
     )
 }

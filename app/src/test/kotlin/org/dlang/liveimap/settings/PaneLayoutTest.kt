@@ -51,3 +51,14 @@ class PaneLayoutTest {
         assertEquals("H0.3(list,message)", t.encode())
     }
 }
+
+class DrawerPlanTest {
+    @Test fun drawerPaneOnlyWhenRoomy() {
+        // Boox portrait ~1100x1467 dp: at 1.0 the folder column fits but not a drawer pane too
+        val wide = planLayout(2560, 1600, 1f)
+        assertEquals(true, wide.drawerPane || wide.folders == FolderPlacement.Beside)
+        assertEquals(false, planLayout(1100, 1467, 1.3f).drawerPane)
+        assertEquals(false, planLayout(400, 800, 1f).drawerPane)
+        assertEquals(true, planLayout(1400, 900, 1f).let { it.drawerPane == (it.columns >= 40 + 2 + 60 + 2 + 40 + (if (it.folders == FolderPlacement.Beside) 26 else 0)) })
+    }
+}
