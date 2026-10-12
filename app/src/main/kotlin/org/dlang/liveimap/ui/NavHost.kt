@@ -169,6 +169,10 @@ fun LiveImapNavHost() {
         (arrangement == ArrangementChoice.Auto && autoLayout.arrangement == PaneArrangement.Stacked)
     val customMail = customTree?.let { mailSplit(it) }
     val customMailNow = rememberUpdatedState(customMail)
+    // A drawer panel inside the list/message part shows only on the index; elsewhere the modal drawer stays.
+    val drawerOutsideMail = customTree?.let { tree ->
+        PaneContent.AccountDrawer in tree.leaves() && PaneContent.AccountDrawer !in mailNode(tree).leaves()
+    } == true
     val split = if (customTree != null) customMail != null else useMultiPane(multiPane, autoPanes)
     val splitNow = rememberUpdatedState(split)
     val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
@@ -266,7 +270,7 @@ fun LiveImapNavHost() {
         }
     }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
-        if (customTree?.leaves()?.contains(PaneContent.AccountDrawer) == true) {
+        if (drawerOutsideMail) {
             null
         } else if (!split || customTree != null) {
             { scope.launch { drawerState.open() } }
@@ -1109,7 +1113,7 @@ fun LiveImapNavHost() {
 
     @Composable
     fun CustomMailArea() {
-        if (customTree?.leaves()?.contains(PaneContent.AccountDrawer) == true) {
+        if (drawerOutsideMail) {
             NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
         } else {
             ModalNavigationDrawer(
