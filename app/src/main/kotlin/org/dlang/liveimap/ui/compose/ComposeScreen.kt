@@ -710,6 +710,10 @@ private fun ComposeLoaded(
         val out = outbound(via)
         // IDN domains go as punycode; non-ASCII local parts need SMTPUTF8 (refused natively as "smtputf8").
         val recipients = envelope.map(::asciiDomainAddress)
+        val unsafe = recipients.filterNot(::envelopeAddressOk)
+        if (unsafe.isNotEmpty()) {
+            throw MailFailure(appContext.getString(R.string.compose_bad_envelope_address, unsafe.joinToString(", ") { it.map { c -> if (c < ' ' || c == '\u007f') '?' else c }.joinToString("") }))
+        }
         val sender = (if (via.isEmpty() || via == accountId) account else store.accountById(via)?.settings ?: account)
             .let { envelopeSender(headerFromAddress(bytes), it.email, it.altAddresses + knownFroms(accountRules(it), accountDefaultRule(it))) }
         fun utf8Refused(error: MailFailure): Nothing =

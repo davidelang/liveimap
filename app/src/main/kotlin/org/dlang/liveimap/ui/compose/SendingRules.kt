@@ -403,7 +403,7 @@ fun headerFromAddress(rfc822: ByteArray): String {
  */
 fun envelopeSender(from: String, accountEmail: String, allowed: List<String>): String {
     val f = addrSpec(from).trim()
-    if (f.isEmpty() || f.equals(accountEmail.trim(), ignoreCase = true)) return ""
+    if (f.isEmpty() || !envelopeAddressOk(f) || f.equals(accountEmail.trim(), ignoreCase = true)) return ""
     val base = baseAddress(f)
     if (base == baseAddress(accountEmail)) return f
     return if (allowed.any { baseAddress(it) == base }) f else ""

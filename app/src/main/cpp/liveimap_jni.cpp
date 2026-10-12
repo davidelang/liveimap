@@ -7869,6 +7869,21 @@ bool messageHas8bitCte(const char * bytes, size_t n) {
     return false;
 }
 
+// SMTP envelope addresses go raw into MAIL FROM / RCPT TO: refuse controls (CR/LF would inject commands),
+// DEL, angle brackets, and spaces outside a quoted local part. Empty is allowed only for MAIL FROM (<>).
+static bool envelopeAddressOk(const char * a) {
+    if (a == nullptr) return false;
+    bool quoted = false;
+    for (const unsigned char * p = reinterpret_cast<const unsigned char *>(a); *p != 0; ++p) {
+        unsigned char c = *p;
+        if (c < 0x20 || c == 0x7f || c == '<' || c == '>') return false;
+        if (c == '"') quoted = !quoted;
+        else if (c == ' ' && !quoted) return false;
+        else if (c == '\\' && quoted && p[1] != 0) ++p;
+    }
+    return !quoted;
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
     jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
@@ -7882,6 +7897,23 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
     std::string mailFrom = utf8FromJava(env, envelopeFrom);
     if (mailFrom.empty()) mailFrom = session->from;
+    {
+        bool ok = envelopeAddressOk(mailFrom.c_str());
+        jsize nr = recipients != nullptr ? env->GetArrayLength(recipients) : 0;
+        for (jsize i = 0; i < nr && ok; ++i) {
+            auto js = static_cast<jstring>(env->GetObjectArrayElement(recipients, i));
+            {
+                JChars rc(env, js);
+                ok = rc.c() != nullptr && rc.c()[0] != 0 && envelopeAddressOk(rc.c());
+            }
+            if (js != nullptr) env->DeleteLocalRef(js);
+        }
+        if (!ok) {
+            throwFailure(env, "bad envelope address");
+            unlockSession(session);
+            return 0;
+        }
+    }
     const std::string & mode = session->tlsMode;
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");

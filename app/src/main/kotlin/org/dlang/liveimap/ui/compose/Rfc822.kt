@@ -637,6 +637,27 @@ fun loadEditor(bytes: ByteArray): EditorLoad {
     )
 }
 
+/**
+ * True when [address] can go raw into SMTP MAIL FROM / RCPT TO: no controls (CR/LF would inject commands),
+ * no DEL, no angle brackets, spaces only inside a quoted local part, and the quotes balanced.
+ */
+fun envelopeAddressOk(address: String): Boolean {
+    if (address.isEmpty()) return false
+    var quoted = false
+    var i = 0
+    while (i < address.length) {
+        val c = address[i]
+        if (c < ' ' || c == '\u007f' || c == '<' || c == '>') return false
+        when {
+            c == '"' -> quoted = !quoted
+            c == ' ' && !quoted -> return false
+            c == '\\' && quoted && i + 1 < address.length -> i++
+        }
+        i++
+    }
+    return !quoted
+}
+
 fun envelopeRecipients(to: List<String>, cc: List<String>, bcc: List<String>): List<String> {
     val seen = LinkedHashSet<String>()
     val out = ArrayList<String>()

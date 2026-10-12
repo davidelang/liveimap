@@ -32,3 +32,23 @@ class EnvelopeSenderTest {
         assertNull(sentStatusText(null, null))
     }
 }
+
+class EnvelopeAddressOkTest {
+    @org.junit.Test fun plainAndPlusOk() {
+        org.junit.Assert.assertTrue(envelopeAddressOk("a+b@example.org"))
+        org.junit.Assert.assertTrue(envelopeAddressOk("\"john doe\"@example.org"))
+        org.junit.Assert.assertTrue(envelopeAddressOk("\"a\\\"b c\"@example.org"))
+    }
+    @org.junit.Test fun injectionRefused() {
+        org.junit.Assert.assertFalse(envelopeAddressOk("a@x.org\r\nRCPT TO:<evil@x.org>"))
+        org.junit.Assert.assertFalse(envelopeAddressOk("a@x.org\nDATA"))
+        org.junit.Assert.assertFalse(envelopeAddressOk("a@x.org> NOTIFY=NEVER"))
+        org.junit.Assert.assertFalse(envelopeAddressOk("a b@x.org"))
+        org.junit.Assert.assertFalse(envelopeAddressOk("a\u007f@x.org"))
+        org.junit.Assert.assertFalse(envelopeAddressOk("\"open@x.org"))
+        org.junit.Assert.assertFalse(envelopeAddressOk(""))
+    }
+    @org.junit.Test fun badFromFallsBackToAccount() {
+        org.junit.Assert.assertEquals("", envelopeSender("me+x@example.org\r\nRSET", "me@example.org", emptyList()))
+    }
+}
