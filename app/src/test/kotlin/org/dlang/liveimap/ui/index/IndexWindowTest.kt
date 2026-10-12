@@ -165,6 +165,24 @@ class IndexWindowTest {
     }
 
     @Test
+    fun sortAndSearchRunInThisFolderEvenAfterAnotherScreenSelected() {
+        // F128: the reader (or anything) left "Other" selected; the index's SORT and SEARCH must run in Archive
+        val session = FakeMailSession()
+        session.sortUids = listOf(4L, 5L)
+        session.rows[4L] = row(4)
+        session.rows[5L] = row(5)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "Archive")
+        runImmediate { session.select("Other") }
+        runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = false)) }
+        assertEquals(listOf("Archive"), session.sortMailboxes)
+        runImmediate { session.select("Other") }
+        session.searchMailboxes.clear()
+        runImmediate { model.applyView(FolderView(SortKey.Subject, newestFirst = false)) }
+        assertTrue(session.sortMailboxes.all { it == "Archive" })
+        assertTrue(session.searchMailboxes.all { it == "Archive" })
+    }
+
+    @Test
     fun applyViewWritesOnlyThisMailbox() {
         val session = FakeMailSession()
         session.sortUids = listOf(4L, 5L)
@@ -2357,6 +2375,7 @@ private class FakeMailSession(
     val searchCalls = mutableListOf<String>()
     val searchKinds = mutableListOf<String>()
     val searchMailboxes = mutableListOf<String>()
+    val sortMailboxes = mutableListOf<String>()
     val searchCountCalls = mutableListOf<Pair<String, String>>()
     var searchCountResult: Int = 0
     val scopeCalls = mutableListOf<ScopeCall>()
@@ -2649,6 +2668,7 @@ private class FakeMailSession(
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> {
         sortCalls += key to newestFirst
+        sortMailboxes += selectedName
         throwIfArmed()
         return sortUids
     }

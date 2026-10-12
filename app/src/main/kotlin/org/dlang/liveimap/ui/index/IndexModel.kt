@@ -990,7 +990,7 @@ class IndexModel(
     }
 
     private suspend fun nextArrivalSequence(anchorSequence: Int): Int? {
-        val matches = session.searchStart(StartRule.FirstUnseen, false, SearchEdge.All)
+        val matches = home.searchStart(StartRule.FirstUnseen, false, SearchEdge.All)
         if (matches.isEmpty()) return null
         if (anchorSequence == 0) {
             val chosen = if (view.newestFirst) matches.maxOrNull() else matches.minOrNull()
@@ -1006,7 +1006,7 @@ class IndexModel(
     }
 
     private suspend fun nextOrderedIndex(anchorUid: Long?): Int? {
-        val found = session.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        val found = home.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
         if (found.isEmpty()) return null
         val start = if (anchorUid == null) {
             0
@@ -1021,7 +1021,7 @@ class IndexModel(
     }
 
     private suspend fun nextThreadIndex(anchorUid: Long?): Int? {
-        val found = session.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        val found = home.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
         if (found.isEmpty()) return null
         val anchorThread = if (anchorUid == null) {
             -1
@@ -1127,7 +1127,7 @@ class IndexModel(
     private suspend fun searchFilters(filters: List<AppliedFilter>): Set<Long>? {
         val (kind, argument) = combinedFilterSearch(filters) ?: return emptySet()
         return try {
-            session.searchCriterion(kind, argument).toSet()
+            home.searchCriterion(kind, argument).toSet()
         } catch (failure: MailFailure) {
             notice = failure.text
             null
@@ -1191,7 +1191,7 @@ class IndexModel(
             threadPlan
         } else {
             try {
-                collapsedThreads(session.thread(SortKey.ThreadReferences), newestFirst = false)
+                collapsedThreads(home.thread(SortKey.ThreadReferences), newestFirst = false)
             } catch (failure: MailFailure) {
                 notice = failure.text
                 return heldRows
@@ -1286,7 +1286,7 @@ class IndexModel(
         val previousOrder = order
         val previousMembers = threadMembers
         val previousSummaries = summaries
-        val existsNow = maxOf(reportedExists, session.selectedExists())
+        val existsNow = maxOf(reportedExists, home.selectedExists())
         try {
             val shown = shownUids.distinct()
             if (shown.isNotEmpty()) {
@@ -1358,6 +1358,49 @@ class IndexModel(
      * F43: every UID operation runs in this model's mailbox. select() is free when it is already selected; when
      * another screen sharing the session moved the selection, this re-selects before UIDs are used.
      */
+    /**
+     * F128: this folder's searches, sorts, threads and counts. Each runs pinned with this folder selected (never
+     * whatever another screen left selected), and its result is recorded against the epoch it was read in.
+     */
+    private val home: MailSession = HomeQueries()
+
+    private inner class HomeQueries : MailSession by session {
+        private suspend fun <T> own(block: suspend () -> T): T = session.pinned {
+            val folder = actFolder
+            if (folder != null && folder != mailbox) {
+                session.selectChecked(folder, epochOf(folder)) // a hit's folder: only in the epoch it was listed in
+            } else {
+                val selected = session.select(mailbox)
+                if (selected.uidValidity > 0) epochs[mailbox] = selected.uidValidity
+            }
+            block()
+        }
+        override suspend fun searchCriterion(kind: String, argument: String) = own { session.searchCriterion(kind, argument) }
+        override suspend fun searchCount(kind: String, argument: String) = own { session.searchCount(kind, argument) }
+        override suspend fun searchText(query: String) = own { session.searchText(query) }
+        override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge) =
+            own { session.searchStart(rule, byUid, edge) }
+        override suspend fun sort(key: SortKey, newestFirst: Boolean) = own { session.sort(key, newestFirst) }
+        override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int) =
+            own { session.sortWindow(key, newestFirst, first, last) }
+        override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int) =
+            own { session.searchWindow(kind, argument, first, last) }
+        override suspend fun thread(key: SortKey) = own { session.thread(key) }
+        override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String) =
+            own { session.sortMatching(key, newestFirst, criteria) }
+        override suspend fun sortWindowMatching(key: SortKey, newestFirst: Boolean, first: Int, last: Int, criteria: String) =
+            own { session.sortWindowMatching(key, newestFirst, first, last, criteria) }
+        override suspend fun threadMatching(key: SortKey, criteria: String) = own { session.threadMatching(key, criteria) }
+        override suspend fun clientOrder(
+            key: SortKey,
+            newestFirst: Boolean,
+            onProgress: (done: Int, total: Int) -> Unit,
+            cancelled: () -> Boolean,
+        ) = own { session.clientOrder(key, newestFirst, onProgress, cancelled) }
+        override suspend fun clientThread(key: SortKey) = own { session.clientThread(key) }
+        override suspend fun selectedExists() = own { session.selectedExists() }
+    }
+
     private suspend fun selectOwn() {
         val folder = actFolder ?: mailbox
         session.selectChecked(folder, epochOf(folder))
@@ -1492,7 +1535,7 @@ class IndexModel(
             // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
             // and undo only clears \Deleted on UIDs this action actually changed.
             val target = if (allMailbox) frozenAll() else uids
-            val before = if (allMailbox) session.searchCriterion("Deleted", "").toSet()
+            val before = if (allMailbox) home.searchCriterion("Deleted", "").toSet()
                 else heldRows.filter { it.uid in uids.toSet() && "\\Deleted" in it.flags }.map { it.uid }.toSet()
             for (part in target.chunked(MoveChunk)) session.storeFlags(part, setOf("\\Deleted"), emptySet())
             val changed = target.filter { it !in before }
@@ -1948,7 +1991,7 @@ class IndexModel(
             if (target != null) rememberStart(target, loaded.size)
             return loaded
         }
-        var exists = session.selectedExists()
+        var exists = home.selectedExists()
         if (exists <= 0) {
             exists = session.select(mailbox).exists
         }
@@ -2147,7 +2190,7 @@ class IndexModel(
             SearchEdge.All
         }
         val matches = try {
-            session.searchStart(rule, false, edge)
+            home.searchStart(rule, false, edge)
         } catch (failure: MailFailure) {
             if (pendingNotice == null) pendingNotice = failure.text
             return null
@@ -2164,7 +2207,7 @@ class IndexModel(
     private suspend fun flagIndex(rule: StartRule, count: Int): Int? {
         if (usesArrivalSequences()) return arrivalSearchedIndex(rule, count)
         val matches = try {
-            session.searchStart(rule, true, SearchEdge.All)
+            home.searchStart(rule, true, SearchEdge.All)
         } catch (failure: MailFailure) {
             if (pendingNotice == null) pendingNotice = failure.text
             return null
@@ -2249,7 +2292,7 @@ class IndexModel(
             moveStop = false
             try {
                 restrict(
-                    session.clientOrder(key, newestFirst, { done, total ->
+                    home.clientOrder(key, newestFirst, { done, total ->
                         onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
                     }, { moveStop }),
                 )
@@ -2258,7 +2301,7 @@ class IndexModel(
             }
         } else {
             // With a filter on, the criteria go with SORT; restricting to the search result is only the fallback.
-            criteria?.let { session.sortMatching(key, newestFirst, it) } ?: restrict(session.sort(key, newestFirst))
+            criteria?.let { home.sortMatching(key, newestFirst, it) } ?: restrict(home.sort(key, newestFirst))
         }
         order = uids
         arrivalTotal = 0
@@ -2279,13 +2322,13 @@ class IndexModel(
         val node = if (!serverThread && slowerClientThread(account)) {
             session.select(mailbox)
             requireClientFallbackRoom()
-            session.clientThread(key)
+            home.clientThread(key)
         } else {
             null
         }
         val criteria = chainCriteria()
-        val matched = if (node == null && criteria != null) session.threadMatching(key, criteria) else null
-        val collapsed = collapsedThreads(node ?: matched ?: session.thread(key), newestFirst)
+        val matched = if (node == null && criteria != null) home.threadMatching(key, criteria) else null
+        val collapsed = collapsedThreads(node ?: matched ?: home.thread(key), newestFirst)
         // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
         val kept = if (matched != null) collapsed else restrictThreads(collapsed)
         threading = true
@@ -2303,7 +2346,7 @@ class IndexModel(
 
     private suspend fun requireClientFallbackRoom() {
         if (allowLargeClientFallback || mailbox in account.fallbackAskSkip) return
-        if (overAskThreshold(session.selectedExists(), account.askFallback)) {
+        if (overAskThreshold(home.selectedExists(), account.askFallback)) {
             throw MailFailure("folder is large")
         }
     }
@@ -2333,7 +2376,7 @@ class IndexModel(
         val found = if (advanced != null) {
             searchMaybeLong("Advanced", advanced)
         } else {
-            session.searchCriterion(activeSearchField.name, query)
+            home.searchCriterion(activeSearchField.name, query)
         }
         val uids = sortedUids(found, view.newestFirst)
         order = uids
@@ -2353,9 +2396,9 @@ class IndexModel(
     private suspend fun windowedSort(key: SortKey, newestFirst: Boolean, criteria: String? = null): WindowedOrder? {
         val size = IndexPageSize * 2
         suspend fun window(lo: Int, hi: Int): UidWindow? = if (criteria == null) {
-            session.sortWindow(key, newestFirst, lo, hi)
+            home.sortWindow(key, newestFirst, lo, hi)
         } else {
-            session.sortWindowMatching(key, newestFirst, lo, hi, criteria)
+            home.sortWindowMatching(key, newestFirst, lo, hi, criteria)
         }
         val first = window(1, size) ?: return null
         if (first.total <= size) return null
@@ -2372,7 +2415,7 @@ class IndexModel(
      */
     private suspend fun searchMaybeLong(kind: String, argument: String): List<Long> {
         presetHits?.let { return it }
-        if (longSearchLinks == null || !isLongSearch(kind, argument)) return session.searchCriterion(kind, argument)
+        if (longSearchLinks == null || !isLongSearch(kind, argument)) return home.searchCriterion(kind, argument)
         return runLongSearch(argument)
     }
 
@@ -2425,12 +2468,12 @@ class IndexModel(
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
         val size = IndexPageSize * 2
-        val probe = session.searchWindow(kind, query, 1, 1) ?: return null
+        val probe = home.searchWindow(kind, query, 1, 1) ?: return null
         val total = probe.total
         if (total <= size) return null
         val order = WindowedOrder(total, size) { lo, hi ->
             val (a, b) = searchWindowRange(lo, hi, total, newestFirst)
-            val hits = session.searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
+            val hits = home.searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
             if (newestFirst) hits.reversed() else hits
         }
         order.ensure(0, size)
@@ -2530,7 +2573,10 @@ class IndexModel(
                     false
                 }
                 if (!opened) continue
-                val found = session.searchCriterion("Advanced", text)
+                val found = session.pinned { // F128: this box's hits, read in the epoch recorded for them
+                    session.selectChecked(box, epochs.getValue(box))
+                    session.searchCriterion("Advanced", text)
+                }
                 val ordered = if (view.newestFirst) found.sortedDescending() else found.sorted()
                 for (uid in ordered) {
                     hits.add(uid)
@@ -2587,7 +2633,7 @@ class IndexModel(
     }
 
     private suspend fun rememberExists() {
-        val exists = session.selectedExists()
+        val exists = home.selectedExists()
         if (exists > 0) knownExists = exists
     }
 
