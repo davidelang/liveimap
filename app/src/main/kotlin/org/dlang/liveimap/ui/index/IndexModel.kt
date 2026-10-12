@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.onRefs
 import org.dlang.liveimap.session.sameMailbox
@@ -1399,6 +1400,22 @@ class IndexModel(
         ) = own { session.clientOrder(key, newestFirst, onProgress, cancelled) }
         override suspend fun clientThread(key: SortKey) = own { session.clientThread(key) }
         override suspend fun selectedExists() = own { session.selectedExists() }
+    }
+
+    /** F123: the shown folder's message count (never whatever folder the shared session has selected). */
+    suspend fun shownExists(): Int = home.selectedExists()
+
+    /** F123: the poll tick: NOOP and EXISTS read with this folder selected, as one unit. */
+    suspend fun pollShownExists(): Int = session.pinned {
+        session.select(mailbox)
+        session.noop()
+        session.selectedExists()
+    }
+
+    /** F123: Folder info for the shown folder. */
+    suspend fun shownInfo(): SelectResult = session.pinned {
+        session.select(mailbox)
+        session.selectedInfo()
     }
 
     private suspend fun selectOwn() {

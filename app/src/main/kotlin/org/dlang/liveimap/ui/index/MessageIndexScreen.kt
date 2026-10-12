@@ -1106,7 +1106,7 @@ private fun MessageIndexLoaded(
                             model.reportNotice(failure.text)
                             return@launch
                         }
-                        session.selectedExists()
+                        model.shownExists() // F123
                     }
                     allMailbox = true
                     mailboxExists = exists
@@ -1714,7 +1714,7 @@ private fun MessageIndexLoaded(
             if (opening) seedExpandedFromStyle()
             if (pendingExists <= 0) {
                 pendingExists = try {
-                    session.selectedExists()
+                    model.shownExists() // F123
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {
@@ -1808,7 +1808,7 @@ private fun MessageIndexLoaded(
                 mailbox !in model.account.searchAskSkip
             ) {
                 val exists = try {
-                    gate.withLock { session.selectedExists() }
+                    gate.withLock { model.shownExists() }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1972,8 +1972,7 @@ private fun MessageIndexLoaded(
                                 }
                                 delay(seconds * 1000L)
                                 try {
-                                    session.noop()
-                                    deliverMailboxChange(MailboxChange.Exists(session.selectedExists()))
+                                    deliverMailboxChange(MailboxChange.Exists(model.pollShownExists())) // F123
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
@@ -2783,7 +2782,7 @@ private fun MessageIndexLoaded(
                                 menuOpen = false
                                 scope.launch {
                                     val info = try {
-                                        gate.withLock { session.selectedInfo() }
+                                        gate.withLock { model.shownInfo() } // F123
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {

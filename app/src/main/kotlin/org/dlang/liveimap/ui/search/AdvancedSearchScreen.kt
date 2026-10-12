@@ -361,7 +361,11 @@ private fun AdvancedSearchLoaded(
                                     }
                                     if (mailbox !in settings.searchAskSkip) {
                                         val exists = try {
-                                            session.selectedExists()
+                                            // F123: the count of the folder being searched, not the session's
+                                            session.pinned {
+                                                session.select(mailbox)
+                                                session.selectedExists()
+                                            }
                                         } catch (error: CancellationException) {
                                             throw error
                                         } catch (error: MailFailure) {

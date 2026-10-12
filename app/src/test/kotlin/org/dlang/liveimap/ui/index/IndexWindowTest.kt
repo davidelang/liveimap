@@ -183,6 +183,23 @@ class IndexWindowTest {
     }
 
     @Test
+    fun shownCountsReadTheShownFolder() {
+        // F123: "All N", the poll tick and Folder info read Archive's numbers even if INBOX was left selected
+        val session = FakeMailSession()
+        session.exists = 7
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "Archive")
+        runImmediate { session.select("INBOX") }
+        assertEquals(7, runImmediate { model.shownExists() })
+        assertEquals("Archive", session.selects.last())
+        runImmediate { session.select("INBOX") }
+        runImmediate { model.pollShownExists() }
+        assertEquals("Archive", session.selects.last())
+        runImmediate { session.select("INBOX") }
+        runImmediate { model.shownInfo() }
+        assertEquals("Archive", session.selects.last())
+    }
+
+    @Test
     fun applyViewWritesOnlyThisMailbox() {
         val session = FakeMailSession()
         session.sortUids = listOf(4L, 5L)
