@@ -288,6 +288,19 @@ class LabSuiteTest {
                             "Message-ID: <$run@liveimap.lab>\r\n\r\nLab SMTP recording test.\r\n").toByteArray()
                         session.smtpSend(msg, listOf(rcpt)); ""
                     }
+                    // Raw UTF-8 header: sent with MAIL FROM ... SMTPUTF8 when EHLO offers it, otherwise refused
+                    // before MAIL FROM with "smtputf8" (nothing reaches the server).
+                    step("smtpUtf8") {
+                        val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: LiveIMAP Gr\u00fc\u00dfe $run\r\n" +
+                            "Message-ID: <$run-u8@liveimap.lab>\r\nMIME-Version: 1.0\r\n" +
+                            "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" +
+                            "Gr\u00fc\u00dfe.\r\n").toByteArray(Charsets.UTF_8)
+                        try {
+                            session.smtpSend(msg, listOf(rcpt)); "sent-smtputf8"
+                        } catch (e: org.dlang.liveimap.session.MailFailure) {
+                            if (e.text == "smtputf8") "refused-no-smtputf8" else throw e
+                        }
+                    }
                 }
                 val sievePort = arg("labSievePort").toIntOrNull()
                 if (sievePort != null) {
