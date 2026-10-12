@@ -112,6 +112,15 @@ class AccountSetupActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // Exported because Settings starts AccountManager's KEY_INTENT from its own process (exported=false
+        // would break Settings > Add account). So only a system app or LiveIMAP itself may open it, and
+        // overlays cannot click through to the settings toggles.
+        if (!setupCallerAllowed(callingPackage)) {
+            resultSent = true
+            super.finish()
+            return
+        }
+        window.decorView.filterTouchesWhenObscured = true
         authenticatorResponse = readResponse(intent)
         authenticatorResponse?.onRequestContinued()
         setContent {
@@ -141,6 +150,13 @@ class AccountSetupActivity : ComponentActivity() {
         result.putString(AccountManager.KEY_ACCOUNT_NAME, existing.name)
         result.putString(AccountManager.KEY_ACCOUNT_TYPE, existing.type)
         response.onResult(result)
+    }
+
+    private fun setupCallerAllowed(caller: String?): Boolean {
+        if (caller == null) return false
+        if (caller == packageName) return true
+        val info = runCatching { packageManager.getApplicationInfo(caller, 0) }.getOrNull() ?: return false
+        return setupCallerIsSystem(info.flags, info.uid)
     }
 
     private fun readResponse(source: Intent): AccountAuthenticatorResponse? {
@@ -186,3 +202,8 @@ private fun AccountSetupContent() {
         SetupScreen.Contacts -> ContactCopyScreen()
     }
 }
+
+/** A Settings-style caller: a system app (FLAG_SYSTEM or updated system app) or the system uid. */
+internal fun setupCallerIsSystem(flags: Int, uid: Int): Boolean =
+    uid == android.os.Process.SYSTEM_UID ||
+        (flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
