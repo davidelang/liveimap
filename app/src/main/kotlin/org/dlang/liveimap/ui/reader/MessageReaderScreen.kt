@@ -2719,6 +2719,24 @@ internal fun attachmentCacheName(token: String, uid: Long, section: String): Str
 
 private fun attachmentUri(name: String): Uri = Uri.parse("content://org.dlang.liveimap.attachments/$name")
 
+private val staleCacheCleared = java.util.concurrent.atomic.AtomicBoolean(false)
+
+/**
+ * Once per process, before any reader opens: remove decoded attachments a crash or kill left behind (F16).
+ * Every open uses a fresh token, so no file from an earlier process can still be in use.
+ */
+fun clearStaleAttachmentCache(dir: File) {
+    if (!staleCacheCleared.compareAndSet(false, true)) return
+    deleteStaleAttachments(dir)
+}
+
+internal fun deleteStaleAttachments(dir: File) {
+    val files = dir.listFiles() ?: return
+    for (file in files) {
+        if (file.isFile && file.name.startsWith("liveimap-")) file.delete()
+    }
+}
+
 private fun deleteReaderAttachmentCache(dir: File, token: String) {
     val prefix = "liveimap-$token-"
     val files = dir.listFiles() ?: return
