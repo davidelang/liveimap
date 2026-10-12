@@ -46,11 +46,14 @@ class AccountStore private constructor(private val context: Context) {
     private val cipher = AndroidAccountCipher()
     private var migrationSettled = false
 
-    private val secretPrefs: SharedPreferences by lazy {
+    // Tink-sealed secrets (F20); the EncryptedSharedPreferences file is only read for the one-time migration.
+    private val secretPrefs: SecretBox by lazy { SecretBox(context) { legacySecretPrefs() } }
+
+    private fun legacySecretPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
             legacySecretFile,
             masterKey,
