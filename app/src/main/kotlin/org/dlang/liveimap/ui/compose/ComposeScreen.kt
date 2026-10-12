@@ -469,8 +469,8 @@ private fun ComposeLoaded(
         replyCcLine = replyRoute.second.joinToString(", ")
         offerReplyTo = replyToDiffers(replyToAddrs, fromAddrs)
         val chosen = if (useReplyTo) replyRoute else fromRoute
-        toText = chosen.first
-        ccText = chosen.second
+        toText = chosen.first.joinToString(", ")
+        ccText = chosen.second.joinToString(", ")
         val r = resolveNow(settings)
         val shown = withSignature(
             replyCursorBody(draft.body, settings.replyAboveQuote),
