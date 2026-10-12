@@ -8102,14 +8102,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return;
     }
-    if (!allow8bit && raw != nullptr &&
-        messageHas8bitCte(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg))) {
-        env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
-        mailsmtp_free(smtp);
-        throwFailure(env, "8bitmime");
-        unlockSession(session);
-        return;
-    }
+    // SMTPUTF8 before 8BITMIME: a body rewrite cannot fix raw UTF-8 headers or addresses.
     // RFC 6531: non-ASCII addresses or raw UTF-8 headers need SMTPUTF8; without it, refuse before MAIL FROM
     // ("smtputf8") so the user is told instead of the server mangling or bouncing the message.
     bool needUtf8 = has8bit(session->from.data(), session->from.size()) ||
@@ -8125,13 +8118,22 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             if (js != nullptr) env->DeleteLocalRef(js);
         }
     }
-    if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
     if (needUtf8 && !smtpUtf8) {
+        if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         mailsmtp_free(smtp);
         throwFailure(env, "smtputf8");
         unlockSession(session);
         return;
     }
+    if (!allow8bit && raw != nullptr &&
+        messageHas8bitCte(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg))) {
+        env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
+        mailsmtp_free(smtp);
+        throwFailure(env, "8bitmime");
+        unlockSession(session);
+        return;
+    }
+    if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
     if (needUtf8) {
         std::string cmd = "MAIL FROM:<" + session->from + "> SMTPUTF8\r\n";
         r = mailsmtp_send_command(smtp, const_cast<char *>(cmd.c_str()));
