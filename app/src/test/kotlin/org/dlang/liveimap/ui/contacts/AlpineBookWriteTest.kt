@@ -253,7 +253,7 @@ private class WriteBookSession(uidPlus: Boolean) : MailSession {
         return id
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>) = Unit
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = 0
 
     override fun close() = Unit
 
