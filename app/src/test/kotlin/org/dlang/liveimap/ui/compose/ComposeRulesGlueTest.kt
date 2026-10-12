@@ -117,3 +117,15 @@ class KnownFromsTest {
         assertEquals(listOf("me@x", "me+b@x"), knownFroms(rules, SendingRule(AccountDefaultRule, actions = RuleActions(fromAddress = "me@x"))))
     }
 }
+
+class SafetyNetTest {
+    @Test
+    fun plusIdentityMismatchIsFlagged() {
+        val rules = listOf(SendingRule("b", RuleConditions(recipient = listOf("@other.test")), RuleActions(fromAddress = "me+b@x", sendAccount = "B")))
+        val def = SendingRule(AccountDefaultRule, actions = RuleActions(fromAddress = "me@x"))
+        val ctx = ComposeContext(ComposeKindTag.New, recipients = listOf("y@other.test"))
+        val froms = { id: String -> if (id == "B") listOf("me+b@x") else listOf("me@x") }
+        assertTrue(fromMismatch(rules, def, "A", ctx, "me@x", "B", froms) != null)
+        assertEquals(null, fromMismatch(rules, def, "A", ctx, "me+b@x", "B", froms))
+    }
+}

@@ -341,6 +341,7 @@
     <string name="compose_send_account_failed">Could not connect to %1$s to send: %2$s</string>
     <string name="compose_from_mismatch">Sending rules expect From %1$s (rule “%2$s”). Tap Send again to send anyway.</string>
     <string name="compose_from_change">Change</string>
+    <string name="compose_from_pinned">chosen by you</string>
     <string name="compose_from_by_rule">by rule “%1$s”</string>
     <string name="compose_from_by_rules">Use sending rules</string>
     <string name="compose_to_book">To address book</string>

@@ -1440,7 +1440,8 @@ private fun ComposeLoaded(
             val rule = sending?.fromRule
             TextButton(onClick = { fromMenuOpen = true }) {
                 Text(
-                    if (rule == null || rule == AccountDefaultRule) stringResource(R.string.compose_from_change)
+                    if (pinnedFrom != null) stringResource(R.string.compose_from_pinned)
+                    else if (rule.isNullOrEmpty() || rule == AccountDefaultRule) stringResource(R.string.compose_from_change)
                     else stringResource(R.string.compose_from_by_rule, rule),
                 )
             }

@@ -186,8 +186,11 @@ fun fromMismatch(
     accountFroms: (String) -> List<String>,
 ): FromMismatch? {
     val expected = resolveSending(rules, accountDefault, accountId, ctx.copy(pinnedFrom = null))
-    val fromOk = baseAddress(expected.fromAddress) == baseAddress(from) || expected.fromRule == AccountDefaultRule
-    val accountOk = accountFroms(sendAccount).any { baseAddress(it) == baseAddress(from) }
+    // Exact (case-insensitive) on purpose: me+work@x and me@x are different identities here, although
+    // address matching in rule conditions treats a plus address as its base.
+    fun same(a: String, b: String) = addrSpec(a).trim().equals(addrSpec(b).trim(), ignoreCase = true)
+    val fromOk = same(expected.fromAddress, from) || expected.fromRule == AccountDefaultRule
+    val accountOk = accountFroms(sendAccount).any { same(it, from) }
     val serverOk = expected.sendAccount == sendAccount || expected.fromRule == AccountDefaultRule
     return if (fromOk && accountOk && serverOk) null else FromMismatch(expected.fromAddress, expected.sendAccount, expected.fromRule)
 }
