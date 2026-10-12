@@ -6,7 +6,7 @@ Short proposals only, no code. Each maps an Alpine feature (pinerc
 same criteria as Advanced search (from, to, cc, subject, header, body,
 folder, flags, size, age, keyword), so a saved search can seed a pattern.
 Patterns are per account, stored in AccountSettings, importable from pinerc
-(pattern syntax is already parsed for `patterns-other` in PinercImport.kt).
+(today PinercImport.kt only looks for `/START=` in `patterns-other`; a real pattern parser is new work).
 
 ## Roles (identities)
 

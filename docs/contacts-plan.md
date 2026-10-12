@@ -20,7 +20,7 @@ Paths under `app/src/main/kotlin/org/dlang/liveimap/ui/contacts/`.
 | Alpine book as a completion source beside Android sets | done | `completionSourcesInOrder`, `withSourceEnabled`, `moveCompletionSource` |
 | A contacts browser listing all sources | missing | only the picker (Alpine) and the copy screen |
 | Copy Alpine <-> Android | done | `CopyMap.kt` `copyContacts(intoPine=…)`, `ContactCopyScreen.kt` (route in `ui/NavHost.kt`); `CopyMapTest` |
-| Copy Android set -> other Android set | partial | `copyIntoAndroid` exists; check source/destination choice in `enabledCopySources` |
+| Copy Android set -> other Android set | done | destination is any other enabled source (`ContactCopyScreen.kt:253`), `copyIntoAndroid` |
 | Copy Alpine book of account A -> account B | missing | copy screen is bound to one account |
 | Extras kept on copy | partial | Android->Alpine: dropped, or flattened into comments as "Label: value" (`extraLines`) — not parseable back. Alpine->Android: `pine-fcc:` / `pine-plaintext:` lines in the note (`buildNote`/`parseNote`) — these do round-trip |
 
