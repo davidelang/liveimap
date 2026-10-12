@@ -373,20 +373,31 @@ Avoid:
   selection, expanded folders, cached data) is restored, and the session
   cache is never persisted.
 * No `android:configChanges` override and no orientation lock.
-* Multi-pane is Off, On (Wide) or Automatic. New accounts start on Automatic; a
-  stored account keeps whatever it had (no key = Off). On shows the drawer, the
-  index, and an open message as panes. A bar between panes resizes them, and
-  dragging a pane to the edge closes it. Automatic classifies the current window
-  by its real size in inches (dp / 160) and aspect (long / short side), and
-  re-classifies on rotation and fold/unfold:
-  | Class | Rule | Portrait | Landscape |
-  |---|---|---|---|
-  | Narrow phone (~3.5x7 in) | aspect >= 1.6, short side < 4 in | 1 pane | 1 pane |
-  | Folding phone open (~7 in, near square) | aspect < 1.3, diagonal < 9 in | list + reader | list + reader |
-  | Small page tablet / e-reader (~6 in) | diagonal < 8.5 in | 1 pane | 1 pane |
-  | Page tablet ~10 in | diagonal < 12 in | 1 pane | list + reader |
-  | Page tablet ~13 in and up | diagonal >= 12 in | list over reader | folders + list + reader |
-  Folder pane Automatic follows the three-pane rows. Explicit choices override.
+* Layout is user-configurable in Settings > Layout: multi-pane (Off = the
+  message opens full screen, Wide = split, Automatic), folder pane (Off/On/
+  Automatic), list/message arrangement (side by side, list above message,
+  Automatic), message preview in the list (none/small/large/Automatic), fold
+  posture, full screen. New accounts start on Automatic; a stored account keeps
+  what it had (missing keys read as Off / side by side / no preview). A bar
+  between panes resizes them; dragging a pane to the edge closes it.
+* Automatic picks defaults from what the user can read, not from device classes.
+  Inputs: the window in dp (Android already enlarges dp for TVs, cars and watches
+  viewed from farther away) and the effective font scale = system font scale x
+  the app text size. At scale 1 a character is ~7 dp and a line ~20 dp, giving
+  readable columns and lines. Minimums: list 40 chars / 8 lines, message 60
+  chars / 16 lines, folders 24 chars / 8 lines, 2-char gutters.
+  - Side by side when the window fits list + message (102 columns) and 16 lines.
+  - Otherwise stacked (list above message, list 40% of the height) when at least
+    60 columns and 60 lines fit; otherwise one pane, message full screen.
+  - Folders get their own column when side by side and 160 columns fit;
+    otherwise above the list in the left column when 56 lines fit (so a short,
+    wide car dash gets no folder pane while an equally wide tall screen does).
+    The above-the-list placement is planned but still renders as two panes.
+  - Side-by-side list width: its minimum plus a third of the spare columns,
+    25-50% of the span. Preview: none under 12 lines or 30 columns, large at 40+
+    lines with 50+ list columns, else small (list rows do not draw previews yet).
+  - Re-planned on every configuration change: rotation, fold/unfold, window
+    resize, font scale or text size.
 
 - Back is predictive on every Android version that has it (13+): the manifest sets
   `android:enableOnBackInvokedCallback="true"`, so 13–15 behave like 16, where it is the default; all screens use

@@ -1,51 +1,83 @@
 package org.dlang.liveimap.settings
 
 /**
- * Screen classes for the Automatic pane layout, from the window's real size in inches (dp / 160) and its
- * aspect ratio (long side / short side). Re-evaluated on every configuration change, so rotation and
- * fold/unfold pick a new class. An explicit Off/Wide/On setting always wins.
+ * Automatic layout defaults from what the user can read, not from device classes. Inputs are the window in dp
+ * (Android already enlarges dp on TVs, cars and watches for viewing distance) and the effective font scale
+ * (system font scale x app text size). Text metrics at scale 1: ~7 dp per average character, ~20 dp per line.
+ * Re-evaluated on every configuration change (rotation, fold/unfold, window resize, font change).
+ * Every output is only a default; each has its own user setting.
  */
-enum class ScreenClass {
-    /** ~3.5 x 7 in phone: tall and narrow (aspect >= 1.6), short side under 4 in. */
-    NarrowPhone,
-    /** ~7 in diagonal, near square (aspect < 1.3): an unfolded folding phone. */
-    FoldableSquare,
-    /** ~6 in page-shaped (aspect 1.3-1.6) tablet or e-reader. */
-    SmallPage,
-    /** ~10-11 in page-shaped tablet. */
-    Page10,
-    /** ~13 in and larger page-shaped tablet. */
-    Page13,
-}
+enum class PaneArrangement { SideBySide, Stacked }
+enum class FolderPlacement { None, Beside, AboveList }
+enum class PreviewSize { None, Small, Large }
 
-enum class PaneArrangement { SideBySide, TopBottom }
+data class LayoutPlan(
+    val panes: Int,                 // 1 = one pane at a time; 2 = list + reader; 3 = folders + list + reader
+    val arrangement: PaneArrangement,
+    val folders: FolderPlacement,
+    val readerFullScreen: Boolean,  // the message opens full screen instead of in a split
+    val listShare: Float,           // share of the list/reader span given to the list (side by side: width; stacked: height)
+    val preview: PreviewSize,       // preview lines in list rows
+    val columns: Int,               // readable characters across the window
+    val lines: Int,                 // readable lines down the window
+)
 
-/** Default layout of a class: 1 = single pane, 2 = list + reader, 3 = folders + list + reader. */
-data class PaneDefault(val screen: ScreenClass, val landscape: Boolean, val panes: Int, val arrangement: PaneArrangement)
+const val CharDp = 7.0
+const val LineDp = 20.0
+const val ListMinChars = 40
+const val ReaderMinChars = 60
+const val FolderMinChars = 24
+const val GutterChars = 2
+const val ListMinLines = 8
+const val ReaderMinLines = 16
+const val FolderMinLines = 8
+/** Stacked list over reader: ~20 list lines + ~40 reader lines. */
+const val StackMinLines = 60
+/** Folders above the list in the left column: ~16 folder lines + ~40 list lines. */
+const val FoldersAboveMinLines = 56
 
-fun classifyScreen(widthDp: Int, heightDp: Int): PaneDefault {
-    val w = widthDp / 160.0
-    val h = heightDp / 160.0
-    val short = minOf(w, h)
-    val long = maxOf(w, h)
-    val landscape = w > h
-    val aspect = if (short > 0) long / short else 1.0
-    val diagonal = Math.sqrt(w * w + h * h)
-    val screen = when {
-        aspect >= 1.6 && short < 4.0 -> ScreenClass.NarrowPhone
-        aspect < 1.3 && diagonal < 9.0 -> ScreenClass.FoldableSquare
-        diagonal < 8.5 -> ScreenClass.SmallPage
-        diagonal < 12.0 -> ScreenClass.Page10
-        else -> ScreenClass.Page13
+fun planLayout(widthDp: Int, heightDp: Int, fontScale: Float): LayoutPlan {
+    val scale = fontScale.coerceAtLeast(0.5f)
+    val cols = (widthDp / (CharDp * scale)).toInt()
+    val lines = (heightDp / (LineDp * scale)).toInt()
+    val bothWide = ListMinChars + GutterChars + ReaderMinChars
+    val sideBySide = cols >= bothWide && lines >= ReaderMinLines
+    val stacked = !sideBySide && cols >= ReaderMinChars && lines >= StackMinLines
+    // Folders: their own column when wide enough for three; else above the list in the left column when it is
+    // tall enough for both (short, wide screens such as a car dash cannot).
+    val folders = when {
+        !sideBySide -> FolderPlacement.None
+        cols >= FolderMinChars + bothWide + 2 * GutterChars + 30 -> FolderPlacement.Beside
+        lines >= FoldersAboveMinLines -> FolderPlacement.AboveList
+        else -> FolderPlacement.None
     }
-    val side = PaneArrangement.SideBySide
-    return when (screen) {
-        ScreenClass.NarrowPhone -> PaneDefault(screen, landscape, 1, side)
-        ScreenClass.FoldableSquare -> PaneDefault(screen, landscape, 2, side)
-        ScreenClass.SmallPage -> PaneDefault(screen, landscape, 1, side)
-        ScreenClass.Page10 -> if (landscape) PaneDefault(screen, true, 2, side)
-            else PaneDefault(screen, false, 1, side)
-        ScreenClass.Page13 -> if (landscape) PaneDefault(screen, true, 3, side)
-            else PaneDefault(screen, false, 2, PaneArrangement.TopBottom)
+    val panes = when {
+        sideBySide && folders != FolderPlacement.None -> 3
+        sideBySide || stacked -> 2
+        else -> 1
     }
+    val listShare = when {
+        sideBySide -> {
+            val span = cols - if (folders == FolderPlacement.Beside) FolderMinChars + GutterChars else 0
+            val extra = span - bothWide
+            ((ListMinChars + extra / 3.0) / span).toFloat().coerceIn(0.25f, 0.5f)
+        }
+        stacked -> 0.4f
+        else -> 1f
+    }
+    val preview = when {
+        lines < 12 || cols < 30 -> PreviewSize.None
+        lines >= 40 && (if (sideBySide) cols * listShare else cols.toFloat()) >= 50 -> PreviewSize.Large
+        else -> PreviewSize.Small
+    }
+    return LayoutPlan(
+        panes = panes,
+        arrangement = if (stacked) PaneArrangement.Stacked else PaneArrangement.SideBySide,
+        folders = folders,
+        readerFullScreen = panes == 1,
+        listShare = listShare,
+        preview = preview,
+        columns = cols,
+        lines = lines,
+    )
 }

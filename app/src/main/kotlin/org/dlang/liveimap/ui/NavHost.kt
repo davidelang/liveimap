@@ -90,8 +90,9 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.setMailCertConfirmer
 import org.dlang.liveimap.session.setMailPlaintextConfirmer
 import org.dlang.liveimap.settings.AccountChoice
-import org.dlang.liveimap.settings.classifyScreen
+import org.dlang.liveimap.settings.planLayout
 import org.dlang.liveimap.settings.PaneArrangement
+import org.dlang.liveimap.settings.ArrangementChoice
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.ExpandedFoldersScreen
@@ -132,15 +133,24 @@ fun LiveImapNavHost() {
     var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
     var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val autoLayout = classifyScreen(configuration.screenWidthDp, configuration.screenHeightDp)
-    val autoPanes = autoLayout.panes
+    var textZoom by remember { mutableStateOf(100) }
+    var arrangement by remember { mutableStateOf(ArrangementChoice.SideBySide) }
+    // Effective font: system font scale x the app's text size; re-planned on rotation, fold, resize, font change.
+    val autoLayout = planLayout(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+        configuration.fontScale * textZoom / 100f,
+    )
+    // Folders above the list (left column) is planned but not rendered yet; that plan uses two panes for now.
+    val autoPanes = if (autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.Beside) 3 else minOf(autoLayout.panes, 2)
+    val stackedNow = arrangement == ArrangementChoice.Stacked ||
+        (arrangement == ArrangementChoice.Auto && autoLayout.arrangement == PaneArrangement.Stacked)
     val split = useMultiPane(multiPane, autoPanes)
     val splitNow = rememberUpdatedState(split)
     val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
     val axis = paneAxis(
-        foldOn = useFoldPosture(foldPosture) ||
-            (multiPane == MultiPane.Auto && autoLayout.arrangement == PaneArrangement.TopBottom),
-        autoTopBottom = multiPane == MultiPane.Auto && autoLayout.arrangement == PaneArrangement.TopBottom,
+        foldOn = useFoldPosture(foldPosture),
+        autoTopBottom = stackedNow,
         hingeVertical = hinges.firstOrNull()?.isVertical == true,
         hingePresent = hinges.isNotEmpty(),
     )
@@ -245,6 +255,8 @@ fun LiveImapNavHost() {
         postponedMailbox = account.postponedMailbox
         multiPane = account.multiPane
         folderPane = account.folderPane
+        textZoom = account.readerTextZoom
+        arrangement = account.paneArrangement
         foldPosture = account.foldPosture
         accounts = store.listAccounts()
         drawerAccounts = store.listDrawerAccounts()
@@ -370,7 +382,7 @@ fun LiveImapNavHost() {
                 }
                 LaunchedEffect(useSplit, paneUid, contentSpan, userSized) {
                     if (useSplit && paneUid >= 0L && !userSized && contentSpan > 8f) {
-                        indexWidthDp = (contentSpan - 8f) / 2f
+                        indexWidthDp = (contentSpan - 8f) * autoLayout.listShare.coerceIn(0.2f, 0.8f)
                     }
                 }
                 val advancedQuery by entry.savedStateHandle

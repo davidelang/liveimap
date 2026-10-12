@@ -280,6 +280,10 @@ enum class LayoutChoice {
     Auto,
 }
 
+enum class ArrangementChoice { Auto, SideBySide, Stacked }
+
+enum class PreviewChoice { Auto, None, Small, Large }
+
 enum class DeletePolicy {
     MarkDeleted,
     MoveToTrash,
@@ -336,6 +340,8 @@ fun newAccountSettings(): AccountSettings = AccountSettings(
     tlsMode = TlsMode.Implicit,
     multiPane = MultiPane.Auto,
     folderPane = LayoutChoice.Auto,
+    paneArrangement = ArrangementChoice.Auto,
+    previewSize = PreviewChoice.Auto,
 )
 
 fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
@@ -432,6 +438,9 @@ data class AccountSettings(
     val folderPane: LayoutChoice = LayoutChoice.Off,
     val foldPosture: LayoutChoice = LayoutChoice.Off,
     val fullScreen: Boolean = false,
+    /** Auto = [planLayout]; stored accounts without the key keep SideBySide. */
+    val paneArrangement: ArrangementChoice = ArrangementChoice.SideBySide,
+    val previewSize: PreviewChoice = PreviewChoice.None,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
     val tlsMode: TlsMode = TlsMode.None,
@@ -560,6 +569,8 @@ private val fieldNames = listOf(
     "folderPane",
     "foldPosture",
     "fullScreen",
+    "paneArrangement",
+    "previewSize",
     "sieveHost",
     "sievePort",
     "tlsMode",
@@ -687,6 +698,8 @@ fun AccountSettings.encode(): String = buildString {
     if (folderPane != LayoutChoice.Off) appendLine("folderPane=${folderPane.name}")
     if (foldPosture != LayoutChoice.Off) appendLine("foldPosture=${foldPosture.name}")
     if (fullScreen) appendLine("fullScreen=true")
+    if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
+    if (previewSize != PreviewChoice.None) appendLine("previewSize=${previewSize.name}")
     if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) appendLine("sievePort=$sievePort")
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
@@ -804,6 +817,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "folderPane" ||
             key == "foldPosture" ||
             key == "fullScreen" ||
+            key == "paneArrangement" ||
+            key == "previewSize" ||
             key == "sieveHost" ||
             key == "sievePort" ||
             key == "tlsMode" ||
@@ -918,6 +933,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         folderPane = values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
         foldPosture = values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
         fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
+        paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
+        previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.None,
         sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
         sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
         tlsMode = values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None,

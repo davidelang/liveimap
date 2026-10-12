@@ -1719,6 +1719,31 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
             ) {
                 editor.persist(editor.settings.copy(foldPosture = it))
             }
+            ChoiceField(
+                stringResource(R.string.settings_pane_arrangement),
+                ArrangementChoice.entries,
+                settings.paneArrangement,
+                { stringResource(when (it) {
+                    ArrangementChoice.Auto -> R.string.settings_pane_auto
+                    ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
+                    ArrangementChoice.Stacked -> R.string.settings_pane_stacked
+                }) },
+            ) {
+                editor.persist(editor.settings.copy(paneArrangement = it))
+            }
+            ChoiceField(
+                stringResource(R.string.settings_preview_size),
+                PreviewChoice.entries,
+                settings.previewSize,
+                { stringResource(when (it) {
+                    PreviewChoice.Auto -> R.string.settings_pane_auto
+                    PreviewChoice.None -> R.string.settings_preview_none
+                    PreviewChoice.Small -> R.string.settings_preview_small
+                    PreviewChoice.Large -> R.string.settings_preview_large
+                }) },
+            ) {
+                editor.persist(editor.settings.copy(previewSize = it))
+            }
             BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
                 editor.persist(editor.settings.copy(fullScreen = it))
             }
