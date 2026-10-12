@@ -133,6 +133,39 @@ Avoid:
 * A selection check mark. The background is the selection indicator.
 * Measuring a column from the rows that happen to be loaded.
 
+## Custom panel layout
+
+David, 2026-10-12. Code: `settings/PaneLayout.kt` (model), `settings/PaneLayoutEditor.kt`
+(Settings > Layout), `ui/NavHost.kt` (`PaneTree`).
+
+* **Model:** a binary split tree. A leaf is one panel showing Folders,
+  Message list, Message or Accounts drawer; a split is side by side
+  (`H`) or top and bottom (`V`) with the first child's share. Text form, e.g.
+  `H0.2(folders,H0.4(list,message))`, stored per account as `customLayout`
+  (empty = Auto).
+* **Rules:** exactly one message list; each panel type at most once; the
+  message panel shares one split with the side that holds the list (the
+  message shows the list's selection, and the pair resizes together). The
+  editor shows a broken layout's problem and doesn't save it until fixed.
+* **Auto in the model:** `autoPaneLayout(planLayout(...))` expresses the
+  automatic arrangement as a tree: one pane = `list`; list + reader side by
+  side or stacked by the planner's arrangement and list share; folders in
+  their own column (`H` first) or above the list (`V` inside the list side).
+  The editor starts from this tree ("Start from Auto"). Auto itself still
+  renders through the existing path; it is equivalent.
+* **Account drawer:** when a folder column shows, the drawer pane starts
+  hidden (width 0) and the menu button opens it; a size the user dragged is
+  kept. In a custom layout the drawer is a panel only if the user places it;
+  otherwise it is the modal drawer. A drawer panel inside the list/message
+  part shows only on the index, so the modal drawer stays available elsewhere.
+* **Rendering:** the tree is drawn with the same draggable splits. The
+  list/message part is the app's screen area: settings, compose and the other
+  screens open there; the index draws the rest of that part (folders above the
+  list, the message panel) itself. Dragged sizes last for the session; the
+  saved ratios are the starting point.
+* **Editor:** tap a panel, then Split side by side / Split top and bottom
+  (adds an unused panel type), Remove panel, or pick what it shows.
+
 ## Reading
 
 * Opening a message fetches its `BODYSTRUCTURE`, then a `BODY.PEEK` of the
