@@ -12,36 +12,13 @@ private val metaRefresh = Regex(
 
 fun stripMetaRefresh(html: String): String = metaRefresh.replace(html, "")
 
-/** Elements that can submit, navigate, embed or re-base sender HTML; removed with their content (F05). */
-private val droppedElements = listOf(
-    "script", "noscript", "form", "input", "button", "select", "textarea", "option", "iframe", "frame",
-    "frameset", "object", "embed", "applet", "base", "meta", "link", "portal", "template", "dialog",
-)
-
-private val droppedAttributes = setOf("formaction", "action", "srcdoc", "ping", "http-equiv", "autofocus")
-
-/** Content-Security-Policy for the reader: no script, no forms, no frames; images only. */
-const val ReaderCsp =
-    "default-src 'none'; img-src http: https: data: cid:; style-src 'unsafe-inline'; font-src 'none'; " +
-        "form-action 'none'; frame-src 'none'; base-uri 'none'"
-
-/**
- * Sender HTML with every form, frame, embed, script, base, meta and link element removed, and event-handler
- * and form-target attributes stripped. Layout markup and inline styles stay, so mail still looks like mail.
+/*
+ * The reader never sends data without the user's approval (F05, reworked per David: markup, CSS and layout are
+ * left alone). JavaScript is off, so there is no fetch/XHR/beacon/WebSocket. A link tap or GET form submission
+ * is a navigation: shouldOverrideUrlLoading cancels it and only a real tap prompts. A POST form submission
+ * never reaches that hook, so every network main-frame request is answered with an empty page. Subresources
+ * load only as images, and only while "show images" is on.
  */
-fun sanitizeMailHtml(html: String): String {
-    val doc = org.jsoup.Jsoup.parse(html)
-    doc.outputSettings().prettyPrint(false)
-    for (tag in droppedElements) doc.select(tag).remove()
-    for (el in doc.getAllElements()) {
-        val names = el.attributes().asList().map { it.key }
-        for (name in names) {
-            val lower = name.lowercase()
-            if (lower.startsWith("on") || lower in droppedAttributes) el.removeAttr(name)
-        }
-    }
-    return doc.outerHtml()
-}
 
 /**
  * The message page itself is loaded from data (no scheme, data: or about:). Any network main-frame request

@@ -2619,8 +2619,7 @@ private fun QuotedReaderLine(
 }
 
 /** [dark] recolors the page to the app theme; "Original colors" passes dark = false (sender's colors, white page). */
-internal fun themedHtml(source: String, dark: Boolean, background: Int, foreground: Int): String {
-    val page = sanitizeMailHtml(source)
+internal fun themedHtml(page: String, dark: Boolean, background: Int, foreground: Int): String {
     val styled = if (!dark) {
         page
     } else {
@@ -2634,7 +2633,7 @@ internal fun themedHtml(source: String, dark: Boolean, background: Int, foregrou
             css + page
         }
     }
-    return "<meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"$ReaderCsp\">" + stripMetaRefresh(styled)
+    return "<meta charset=\"utf-8\">" + stripMetaRefresh(styled)
 }
 
 private fun cssColor(argb: Int): String = "#%06X".format(argb and 0xFFFFFF)
