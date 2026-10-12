@@ -456,6 +456,12 @@ trivial, complex things are possible, and roles are built on the same rules.
     reply, at the bottom), sig-dashes, quote prefix, reply lead-in, Fcc
     mailbox, DSN request (off / failures / failures+delay / all), reply to
     list by default, and a role label shown in the From picker.
+  * **Sending account** action (David 04:12): which account's SMTP server
+    sends it and which account's IMAP receives the Fcc APPEND (default: the
+    account the rule list belongs to). A rule on a personal account can send
+    work mail through the work account, so work mail never goes through a
+    personal server. The sending account's own credentials and TLS rules
+    apply; the Fcc mailbox is looked up in that account.
   * So a rule that only sets a signature for lists keeps the From of the
     rule that sets it (field-wise first match: each field takes the first
     matching rule that sets it). This is Alpine's "inherit" without a
@@ -471,8 +477,9 @@ trivial, complex things are possible, and roles are built on the same rules.
   2. *Reply from the address it was sent to*: one rule per alt-address/alias
      with "original sent to X" -> From X (plus addresses keep their tag).
   3. *Per recipient or domain*: "recipient matches @work.example" -> From,
-     signature; applies to new messages too.
+     signature, sending account; applies to new messages too.
   4. *Per folder*: "folder matches Work/*" -> From, Fcc, signature.
+  Every preset asks for the sending account too (default: this account).
   5. *Mailing list*: "original List-Id is <id>" -> From the subscribed
      address, reply to list by default, short or no signature.
   6. *Plus folders*: "original sent to me+tag@x" -> From me+tag@x, Fcc the
@@ -483,8 +490,10 @@ trivial, complex things are possible, and roles are built on the same rules.
   9. *Forwards keep the original's role*: forward kind uses the same
      "original sent to" matching as replies (on by default via preset 2).
   10. *Safety net*: on Send, if the From differs from what the rules pick
-      for the current recipients (e.g. personal From to a work domain), ask
-      once: "Rules expect From X for these recipients. Send anyway?"
+      for the current recipients (e.g. personal From to a work domain), or
+      the From doesn't belong to the sending account (its address,
+      alt-addresses, or a From some rule pairs with that account), ask once:
+      "Rules expect From X via account Y for these recipients. Send anyway?"
 * **Compose From picker**: the From line is a dropdown of the From addresses
   the rules know (plus the account's); it shows which rule chose the current
   one ("Rule: Work domain"). Choosing another From re-evaluates signature and
