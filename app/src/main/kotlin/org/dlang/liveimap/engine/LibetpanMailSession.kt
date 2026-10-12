@@ -396,7 +396,7 @@ class LibetpanMailSession : MailSession {
             }
         }
         val readWrite = write || (same && sequencesStale && wasReadWrite)
-        val result = nativeSelect(requireHandle(), mailbox, readWrite) ?: run {
+        val result = nativeSelect(requireHandle(), requireWireText(mailbox), readWrite) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
@@ -439,8 +439,8 @@ class LibetpanMailSession : MailSession {
     ): List<FolderEntry> = keeper.read("list") {
         val rows = nativeListLevel(
             requireHandle(),
-            prefix,
-            parentMailbox,
+            requireWireText(prefix),
+            parentMailbox?.let(::requireWireText),
             featureCaps.listKind(unreadCounts),
         ) ?: throw MailFailure("list failed")
         rows.toList()
@@ -453,7 +453,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
         if (mailboxes.isEmpty()) return emptyMap()
         return keeper.read("status") {
-            nativeStatusMessages(requireHandle(), mailboxes.toTypedArray())
+            nativeStatusMessages(requireHandle(), mailboxes.map(::requireWireText).toTypedArray())
         }
     }
 
@@ -472,7 +472,7 @@ class LibetpanMailSession : MailSession {
             return
         }
         if (mailbox == null) return
-        val result = nativeSelect(requireHandle(), mailbox, false) ?: run {
+        val result = nativeSelect(requireHandle(), requireWireText(mailbox), false) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
@@ -540,7 +540,7 @@ class LibetpanMailSession : MailSession {
         keeper.write("store") {
             forgetSelected()
             ensureReadWrite()
-            nativeStoreFlags(requireHandle(), uids.toLongArray(), add.toTypedArray(), remove.toTypedArray())
+            nativeStoreFlags(requireHandle(), uids.toLongArray(), requireFlags(add), requireFlags(remove))
         }
     }
 
@@ -548,7 +548,7 @@ class LibetpanMailSession : MailSession {
         keeper.write("store") {
             forgetSelected()
             ensureReadWrite()
-            nativeStoreFlagsAll(requireHandle(), add.toTypedArray(), remove.toTypedArray())
+            nativeStoreFlagsAll(requireHandle(), requireFlags(add), requireFlags(remove))
         }
     }
 
@@ -620,7 +620,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
         remember("SEARCH $query") {
-            val ids = nativeSearchText(h, query, featureCaps.searchKind() == "Esearch")
+            val ids = nativeSearchText(h, requireWireText(query), featureCaps.searchKind() == "Esearch")
                 ?: throw MailFailure("search failed")
             ids.asList()
         }
@@ -628,7 +628,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
-        val withCharset = searchNeedsCharset(argument)
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
         remember("CRITERION $kind $argument") {
             val ids = (if (kind == "Advanced") {
                 val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
@@ -662,7 +662,7 @@ class LibetpanMailSession : MailSession {
         }
         return keeper.read("search") {
             val h = requireHandle()
-            val withCharset = searchNeedsCharset(argument)
+            val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
             val count = if (kind == "Advanced") {
                 val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
                 if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -694,7 +694,7 @@ class LibetpanMailSession : MailSession {
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
-        val withCharset = searchNeedsCharset(argument)
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
         val rows = nativeSearchScope(
             h,
             scopeName,
@@ -720,7 +720,7 @@ class LibetpanMailSession : MailSession {
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
-        val withCharset = searchNeedsCharset(argument)
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
         val count = nativeSearchScopeCount(
             h,
             scopeName,
@@ -835,7 +835,7 @@ class LibetpanMailSession : MailSession {
         require(first != 0 && last != 0 && (first > 0) == (last > 0)) { "window $first..$last" }
         return keeper.read("search") {
             val h = requireHandle()
-            val charset = searchNeedsCharset(argument)
+            val charset = searchNeedsCharset(requireSearchArgument(kind, argument))
             fun window(lo: Int, hi: Int) = uidWindowOf(
                 nativeSearchCriterionWindow(h, kind, argument, charset, lo, hi) ?: throw MailFailure("search failed"),
             )
@@ -853,7 +853,7 @@ class LibetpanMailSession : MailSession {
     /** One search, without the keeper's reconnect-and-retry: a dropped connection is a cancel or a failure. */
     fun longSearch(kind: String, argument: String): List<Long> {
         val h = requireHandle()
-        val withCharset = searchNeedsCharset(argument)
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
         val ids = if (kind == "Advanced") {
             val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
             if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -1027,14 +1027,14 @@ class LibetpanMailSession : MailSession {
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
             forgetSelected()
-            nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
+            nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
         }
     }
 
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         keeper.write("append") {
             forgetSelected()
-            nativeAppend(requireHandle(), wire(mailbox), rfc822, flags.toTypedArray())
+            nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
         }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
@@ -1121,7 +1121,7 @@ class LibetpanMailSession : MailSession {
         override fun reselect(): SelectResult? {
             val mailbox = selectedMailbox ?: return null
             val readWrite = selectedReadWrite
-            val result = nativeSelect(requireHandle(), mailbox, readWrite) ?: throw MailFailure("select failed")
+            val result = nativeSelect(requireHandle(), requireWireText(mailbox), readWrite) ?: throw MailFailure("select failed")
             selectedMailbox = mailbox
             selectedReadWrite = readWrite
             selected = result
@@ -1235,7 +1235,7 @@ class LibetpanMailSession : MailSession {
 
     /** Saved names (Sent, Drafts, favorites…) from before the UTF-8 switch are mUTF-7; send them as UTF-8. */
     private fun wire(name: String): String =
-        if (utf8Names) org.dlang.liveimap.ui.compose.Mutf7.savedForUtf8(name) else name
+        requireWireText(if (utf8Names) org.dlang.liveimap.ui.compose.Mutf7.savedForUtf8(name) else name)
     private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
     private external fun nativeNamespaces(handle: Long): Array<Namespace>?
