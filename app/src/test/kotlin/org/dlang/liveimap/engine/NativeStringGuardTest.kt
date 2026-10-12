@@ -48,4 +48,13 @@ class NativeStringGuardTest {
         val append = src.substringAfter("int appendLiteralPlus(").substringBefore("\n}\n")
         assertTrue(append.contains("currentTagText(imap)"))
     }
+
+    /** F52: the IMAP password is reused for SMTP only for the same provider; SMTP TLS follows the SMTP port. */
+    @Test fun smtpCredentialReuseIsLimited() {
+        val src = File("src/main/cpp/liveimap_jni.cpp").readText()
+        val send = src.substringAfter("SecretWipe authPassWipe{authPass};").substringBefore("// MAIL FROM")
+        assertTrue(send.contains("if (authPass.empty() && sameHost)"))
+        assertTrue(!src.contains("if (authPass.empty()) authPass = session->password;"))
+        assertTrue(src.contains("const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);"))
+    }
 }

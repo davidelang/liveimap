@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <libetpan/libetpan.h>
 #include <libetpan/charconv.h>
 #include <libetpan/unselect.h>
@@ -7996,17 +7997,41 @@ static bool envelopeAddressOk(const char * a) {
     return !quoted;
 }
 
+/* F52: true when the IMAP login may be reused for SMTP: the same host, or siblings under the same parent domain
+ * when both names have at least three labels (imap.example.com / smtp.example.com). Never across providers. */
+bool smtpSameProvider(const std::string & imapHost, const std::string & smtpHost) {
+    if (imapHost.empty() || smtpHost.empty()) return false;
+    if (strcasecmp(imapHost.c_str(), smtpHost.c_str()) == 0) return true;
+    auto labels = [](const std::string & h) { return std::count(h.begin(), h.end(), '.') + 1; };
+    if (labels(imapHost) < 3 || labels(smtpHost) < 3) return false;
+    std::string a = imapHost.substr(imapHost.find('.') + 1);
+    std::string b = smtpHost.substr(smtpHost.find('.') + 1);
+    return strcasecmp(a.c_str(), b.c_str()) == 0;
+}
+
+std::string smtpTlsModeFor(const std::string & imapMode, int smtpPort) {
+    if (imapMode == "None") return imapMode;
+    if (imapMode != "StartTls" && imapMode != "Implicit") return imapMode;
+    return smtpPort == 465 ? "Implicit" : "StartTls";
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
     jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
     if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
+    // F52: the IMAP login is reused for SMTP only when SMTP is the same host. A separate relay without its own
+    // password gets no AUTH (it fails clearly if it needs one) instead of receiving the IMAP password.
+    const bool sameHost = smtpSameProvider(session->host, session->smtpHost);
     std::string authUser = utf8FromJava(env, smtpUsername);
-    if (authUser.empty()) authUser = session->user;
     std::string authPass = utf8FromJava(env, smtpPassword);
-    if (authPass.empty()) authPass = session->password;
     SecretWipe authPassWipe{authPass};
+    if (authPass.empty() && sameHost) {
+        authPass = session->password;
+        if (authUser.empty()) authUser = session->user;
+    }
+    if (authPass.empty()) authUser.clear();
     // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
     std::string mailFrom = utf8FromJava(env, envelopeFrom);
     if (mailFrom.empty()) mailFrom = session->from;
@@ -8027,7 +8052,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return 0;
         }
     }
-    const std::string & mode = session->tlsMode;
+    // F52: the IMAP TLS mode, adjusted to the SMTP port: 465 is implicit TLS, any other port with a TLS account
+    // uses STARTTLS (never a downgrade to plaintext). "None" stays None; the plaintext gate still applies.
+    const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
         unlockSession(session);
@@ -8240,7 +8267,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } else if (!mechanism.empty()) {
         if (authUser.empty()) {
             mailsmtp_free(smtp);
-            throwFailure(env, "no usable SMTP authentication");
+            throwFailure(env, sameHost ? "no usable SMTP authentication"
+                : "SMTP server needs its own password (the IMAP password is not sent to a different host)");
             unlockSession(session);
             return 0;
         }
