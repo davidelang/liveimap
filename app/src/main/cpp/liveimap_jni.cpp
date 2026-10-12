@@ -211,6 +211,19 @@ struct ResyncState {
 
 extern JavaVM * gVm;
 
+// Overwrite a secret before its memory is released (F21); volatile so the stores are not optimized away.
+static void wipeSecret(std::string & secret) {
+    volatile char * p = secret.empty() ? nullptr : &secret[0];
+    for (size_t i = 0; i < secret.size(); ++i) p[i] = 0;
+    secret.clear();
+    secret.shrink_to_fit();
+}
+
+struct SecretWipe {
+    std::string & secret;
+    ~SecretWipe() { wipeSecret(secret); }
+};
+
 struct LiveSession {
     std::mutex mu;
     // Long-search side connection: INPROGRESS (RFC 9585) progress, read without the session lock, and the socket
@@ -224,7 +237,7 @@ struct LiveSession {
     std::string host;
     int imapPort = 143;
     std::string user;
-    std::string password;
+    std::string password;  // kept for watch reconnects and SMTP; wiped in the destructor (F21)
     std::string tlsMode = "None";
     std::string certPin;
     bool allowPlaintextAuth = false;
@@ -246,6 +259,9 @@ struct LiveSession {
             && gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
             env->DeleteGlobalRef(keyChainKey);
         }
+        wipeSecret(password);
+        wipeSecret(clientP12Password);
+        wipeSecret(clientP12);
     }
     std::string smtpHost;
     int smtpPort = 25;
@@ -282,7 +298,9 @@ std::unordered_set<LiveSession *> gLive;
 std::mutex gErrMu;
 std::string gLastError;
 std::mutex gCertOfferMu;
-std::vector<std::string> gCertOffer;
+// Per thread (F12): the offer is recorded during a handshake and taken right after the failed open on the
+// same thread, so a watch or probe connection on another thread can never swap in its certificate.
+thread_local std::vector<std::string> gCertOffer;
 
 void clearCertOffer() {
     std::lock_guard<std::mutex> lock(gCertOfferMu);
@@ -3287,15 +3305,21 @@ bool readImapMailbox(const std::string & raw, size_t * index, std::string * box)
     }
     if (raw[i] == '{') {
         ++i;
+        // {n}\r\n then n bytes (F11): at most 9 digits, the closing brace and CRLF required, n within the rest.
         size_t n = 0;
+        size_t digits = 0;
         while (i < raw.size() && raw[i] >= '0' && raw[i] <= '9') {
+            if (++digits > 9) return false;
             n = n * 10 + static_cast<size_t>(raw[i] - '0');
             ++i;
         }
-        if (i < raw.size() && raw[i] == '}') ++i;
-        if (i < raw.size() && raw[i] == '\r') ++i;
-        if (i < raw.size() && raw[i] == '\n') ++i;
-        if (i + n > raw.size()) return false;
+        if (digits == 0) return false;
+        if (i < raw.size() && raw[i] == '+') ++i;  // LITERAL+ form
+        if (i >= raw.size() || raw[i] != '}') return false;
+        ++i;
+        if (i + 1 >= raw.size() || raw[i] != '\r' || raw[i + 1] != '\n') return false;
+        i += 2;
+        if (n > raw.size() - i) return false;
         *box = raw.substr(i, n);
         *index = i + n;
         return true;
@@ -5300,7 +5324,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * 
     std::vector<std::string> lines;
     {
         std::lock_guard<std::mutex> lock(gCertOfferMu);
-        lines = gCertOffer;
+        lines.swap(gCertOffer);
     }
     if (lines.size() != 5) return nullptr;
     jclass stringCls = env->FindClass("java/lang/String");
@@ -6469,7 +6493,8 @@ std::vector<uint32_t> uidsFromArray(JNIEnv * env, jlongArray uids) {
     jsize n = env->GetArrayLength(uids);
     std::vector<jlong> raw(static_cast<size_t>(n));
     if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
-    for (jlong value : raw) if (value > 0) values.push_back(static_cast<uint32_t>(value));
+    // IMAP UIDs are 32-bit (F15): skip anything outside 1..UINT32_MAX rather than truncating it.
+    for (jlong value : raw) if (value > 0 && value <= static_cast<jlong>(UINT32_MAX)) values.push_back(static_cast<uint32_t>(value));
     return values;
 }
 
@@ -7894,6 +7919,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (authUser.empty()) authUser = session->user;
     std::string authPass = utf8FromJava(env, smtpPassword);
     if (authPass.empty()) authPass = session->password;
+    SecretWipe authPassWipe{authPass};
     // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
     std::string mailFrom = utf8FromJava(env, envelopeFrom);
     if (mailFrom.empty()) mailFrom = session->from;
