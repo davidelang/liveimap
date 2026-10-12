@@ -1153,6 +1153,13 @@ private fun ComposeLoaded(
                         notice = fromMissing
                         return@launchLocked false
                     }
+                    if (splitAddresses(toText).isEmpty() && splitAddresses(ccText).isEmpty() &&
+                        splitAddresses(bccText).isEmpty()
+                    ) {
+                        // Without this, SMTP got MAIL and DATA with no RCPT (found on the lab sink).
+                        notice = appContext.getString(R.string.compose_no_recipients)
+                        return@launchLocked false
+                    }
                     if (account.sentMailbox.isEmpty()) {
                         notice = sentMailboxMissing
                         return@launchLocked false
