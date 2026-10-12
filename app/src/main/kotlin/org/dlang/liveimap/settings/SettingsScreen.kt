@@ -602,6 +602,17 @@ private fun AccountGroup(editor: SettingsEditor) {
         missingFolder = stringResource(R.string.pinerc_folder_missing),
         folderCheck = stringResource(R.string.pinerc_folder_check),
         favorite = stringResource(R.string.pinerc_favorite),
+        signatureFile = stringResource(R.string.pinerc_signature_file),
+        signatureLabel = stringResource(R.string.pinerc_signature),
+        quotePrefixLabel = stringResource(R.string.pinerc_quote_prefix),
+        leadInLabel = stringResource(R.string.pinerc_lead_in),
+        sigDashesLabel = stringResource(R.string.pinerc_sig_dashes),
+        sigBottomLabel = stringResource(R.string.pinerc_sig_bottom),
+        dsnLabel = stringResource(R.string.pinerc_dsn),
+        composerHeadersLabel = stringResource(R.string.pinerc_composer_headers),
+        viewerHeadersLabel = stringResource(R.string.pinerc_viewer_headers),
+        rolesLabel = stringResource(R.string.pinerc_role_rule),
+        roleSkipped = stringResource(R.string.pinerc_role_skipped),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
