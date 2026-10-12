@@ -3572,13 +3572,11 @@ int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_con
             first = last;
             last = tmp;
         }
-        if (static_cast<uint64_t>(last) - first > 1000000u) {
-            if (!appendUid(list, first) || !appendUid(list, last)) return MAILIMAP_ERROR_MEMORY;
-            total += 2;
-        } else {
-            // Many ranges of up to 1M each must not add up to billions of list nodes either.
-            total += static_cast<uint64_t>(last) - first + 1;
-            if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
+        // F49: never squeeze a wide range to its endpoints (select-all would then act on two messages). Every
+        // range is expanded; past kMaxSeqSetUids in total the answer fails clearly instead of being lossy.
+        total += static_cast<uint64_t>(last) - first + 1;
+        if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
+        {
             uint32_t n = first;
             for (;;) {
                 if (!appendUid(list, n)) return MAILIMAP_ERROR_MEMORY;

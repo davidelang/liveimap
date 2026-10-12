@@ -178,22 +178,7 @@ class ConnectionKeeper(
         } catch (error: Exception) {
             failReconnect(error)
         }
-        if (selected != null && previous != null && selected.uidValidity != previous.uidValidity) {
-            link.emit(MailboxChange.UidValidityReset)
-        } else {
-            // F28: equal EXISTS can hide arrivals plus expunges in the gap; a moved UIDNEXT still reports them.
-            val arrived = selected != null && previous != null && selected.exists == previous.exists &&
-                selected.uidNext != previous.uidNext
-            if (arrived) link.emit(MailboxChange.Exists(selected!!.exists))
-            if (selected != null && previous != null && selected.exists != previous.exists) {
-                if (selected.exists > previous.exists) {
-                    link.emit(MailboxChange.Exists(selected.exists))
-                } else {
-                    link.emit(MailboxChange.Expunge(selected.exists))
-                }
-            }
-            link.emit(MailboxChange.Reconnected)
-        }
+        for (change in reconnectChanges(previous, selected)) link.emit(change)
         if (selected != null) {
             lastSelect = selected
         }
@@ -226,4 +211,32 @@ class ConnectionKeeper(
             else -> error.message ?: "connection failed"
         }
     }
+}
+
+/**
+ * What changed across a reconnect (F28). Arrivals are judged by UIDNEXT, not by EXISTS, so arrivals hidden by an
+ * equal or larger number of expunges in the gap are still reported. Expunge comes first so the last count wins.
+ * Does not open a socket.
+ */
+internal fun reconnectChanges(
+    previous: org.dlang.liveimap.session.SelectResult?,
+    selected: org.dlang.liveimap.session.SelectResult?,
+): List<MailboxChange> {
+    if (selected != null && previous != null && selected.uidValidity != previous.uidValidity) {
+        return listOf(MailboxChange.UidValidityReset)
+    }
+    val out = ArrayList<MailboxChange>()
+    if (selected != null && previous != null) {
+        val arrived = selected.uidNext != previous.uidNext || selected.exists > previous.exists
+        // More UIDs handed out than the count grew by: something was expunged too (a skipped UIDNEXT only
+        // over-reports, which costs a reload, never a missed change).
+        val expunged = selected.exists < previous.exists ||
+            (selected.uidNext - previous.uidNext) > (selected.exists - previous.exists).toLong()
+        if (expunged) {
+            out.add(MailboxChange.Expunge(selected.exists))
+        }
+        if (arrived) out.add(MailboxChange.Exists(selected.exists))
+    }
+    out.add(MailboxChange.Reconnected)
+    return out
 }

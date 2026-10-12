@@ -23,4 +23,19 @@ class NativeStringGuardTest {
         val raw = File(dir, "liveimap_jni.cpp").readLines().count { it.contains("env->NewString(") }
         assertEquals("only newString() itself calls NewString", 1, raw)
     }
+
+    /** F41: wire strings are standard UTF-8; JNI modified UTF-8 (GetStringUTFChars) is not used. */
+    @Test fun noModifiedUtf8OnTheWire() {
+        val src = File("src/main/cpp/liveimap_jni.cpp").readText()
+        assertTrue(!src.contains("GetStringUTFChars"))
+        assertTrue(src.contains("JChars(JNIEnv * e, jstring js) : s(utf8FromJava(e, js))"))
+    }
+
+    /** F49: a wide sequence-set range is never squeezed to its two endpoints. */
+    @Test fun seqSetRangesAreNotSqueezed() {
+        val src = File("src/main/cpp/liveimap_jni.cpp").readText()
+        val body = src.substringAfter("int parseSeqSet(").substringBefore("\n}\n")
+        assertTrue(!body.contains("1000000u"))
+        assertTrue(body.contains("if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;"))
+    }
 }
