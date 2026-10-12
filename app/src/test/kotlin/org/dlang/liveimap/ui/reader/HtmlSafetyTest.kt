@@ -51,3 +51,30 @@ class HtmlSafetyTest {
         assertTrue(remoteRequestAllowed(null, null, isForMainFrame = true))             // the message page itself
     }
 }
+
+class MailHtmlSanitizeTest {
+    @org.junit.Test fun formsFramesAndHandlersGo() {
+        val out = sanitizeMailHtml(
+            "<p style=\"color:red\" onclick=\"x()\">hi</p><form action=\"https://evil.example/p\" method=\"post\">" +
+                "<input name=\"pw\"><button formaction=\"https://evil.example/q\">Go</button></form>" +
+                "<iframe src=\"https://evil.example/f\"></iframe><base href=\"https://evil.example/\">" +
+                "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example/\"><link rel=\"stylesheet\" href=\"https://evil.example/c\">" +
+                "<object data=\"x\"></object><embed src=\"x\"><img src=\"https://ok.example/i.png\" onerror=\"y()\">",
+        )
+        org.junit.Assert.assertFalse(out, out.contains("evil.example"))
+        org.junit.Assert.assertFalse(out, out.contains("onclick") || out.contains("onerror"))
+        org.junit.Assert.assertTrue(out, out.contains("style=\"color:red\"") && out.contains(">hi<"))
+        org.junit.Assert.assertTrue(out, out.contains("https://ok.example/i.png"))
+    }
+
+    @org.junit.Test fun networkMainFrameBlocked() {
+        org.junit.Assert.assertFalse(remoteRequestAllowed("https", "text/html", isForMainFrame = true))
+        org.junit.Assert.assertFalse(remoteRequestAllowed("http", "image/png", isForMainFrame = true))
+        org.junit.Assert.assertTrue(remoteRequestAllowed("data", null, isForMainFrame = true))
+    }
+
+    @org.junit.Test fun themedPageCarriesCsp() {
+        val page = themedHtml("<p>x</p>", false, 0, 0)
+        org.junit.Assert.assertTrue(page, page.contains("Content-Security-Policy") && page.contains("form-action 'none'"))
+    }
+}
