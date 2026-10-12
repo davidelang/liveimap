@@ -179,6 +179,8 @@ def smtp_args(s, tls):
         if len(f) == 4 and f[0] == s["name"] and f[1] == tls:
             out = subprocess.run(["docker", "port", "liveimap-" + f[0], f[2]], capture_output=True, text=True).stdout
             hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
+            # Unpublished submission port reached through submission-proxy.py's listener.
+            hp = hp or os.environ.get("LAB_SMTP_HOSTPORT", "")
             if hp:
                 return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{user_for(s).split('@')[0]}@{f[3]}"]
     return []

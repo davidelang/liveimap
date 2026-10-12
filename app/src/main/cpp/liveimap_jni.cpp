@@ -7704,8 +7704,25 @@ bool offeredPlainOrLogin(const std::string & offered) {
     return false;
 }
 
+// Not in libetpan's public headers, but exported: raw SMTP command and multi-line reply (returns the code).
+extern "C" int mailsmtp_send_command(mailsmtp * f, char * command);
+extern "C" int mailsmtp_read_response(mailsmtp * session);
+
+// AUTH EXTERNAL = (RFC 4954 initial response "=": empty authorization identity) on a TLS connection that
+// presented a client certificate; the server takes the identity from the certificate. Sent directly because
+// Cyrus SASL's client EXTERNAL needs an external SSF/authid set up we cannot pass through mailesmtp_auth_sasl.
+int smtpAuthExternal(mailsmtp * smtp) {
+    char command[] = "AUTH EXTERNAL =\r\n";
+    int r = mailsmtp_send_command(smtp, command);
+    if (r == -1) return MAILSMTP_ERROR_STREAM;
+    int code = mailsmtp_read_response(smtp);
+    if (code == 235) return MAILSMTP_NO_ERROR;
+    if (code == 0) return MAILSMTP_ERROR_STREAM;
+    return MAILSMTP_ERROR_AUTH_LOGIN;
+}
+
 bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool plaintextOk,
-    bool channelBinding, std::string * mechanism) {
+    bool channelBinding, bool clientCert, std::string * mechanism) {
     mechanism->clear();
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
@@ -7734,9 +7751,8 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
     args[2].z = plaintextOk ? JNI_TRUE : JNI_FALSE;
     args[3].z = channelBinding ? JNI_TRUE : JNI_FALSE;
     args[4].l = jclient;  // was missing: an uninitialized jobject aborted the VM on the first SMTP AUTH
-    // The client certificate is presented on SMTP too, but EXTERNAL is not chosen yet: Cyrus's client
-    // EXTERNAL fails locally (see IMAP authenticateExternal) and SMTP has no direct path yet (TODO.md).
-    args[5].z = JNI_FALSE;
+    // A client certificate went out on this TLS connection: EXTERNAL first (sent directly, smtpAuthExternal).
+    args[5].z = tls && clientCert ? JNI_TRUE : JNI_FALSE;
     jobject result = env->CallStaticObjectMethodA(cls, method, args);
     env->DeleteLocalRef(jline);
     if (jclient != nullptr) env->DeleteLocalRef(jclient);
@@ -7953,7 +7969,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     std::string mechanism;
     if (!chooseSmtpAuth(env, offeredAuth, smtpTls, session->allowPlaintextAuth,
-            bindingLen > 0, &mechanism)) {
+            bindingLen > 0, gClientCertLoaded, &mechanism)) {
         mailsmtp_free(smtp);
         throwFailure(env, "auth choice failed");
         unlockSession(session);
@@ -7972,7 +7988,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } else {
         mailsmtp_set_channel_binding(smtp, nullptr, nullptr, 0);
     }
-    if (!mechanism.empty()) {
+    if (mechanism == "EXTERNAL") {
+        r = smtpAuthExternal(smtp);
+        if (r != MAILSMTP_NO_ERROR) {
+            std::string why = "SMTP AUTH EXTERNAL: " + asciiSafe(smtp->response, "smtp error");
+            if (!gClientCertError.empty()) why += " (" + gClientCertError + ")";
+            mailsmtp_free(smtp);
+            throwFailure(env, why);
+            unlockSession(session);
+            return;
+        }
+    } else if (!mechanism.empty()) {
         if (authUser.empty()) {
             mailsmtp_free(smtp);
             throwFailure(env, "no usable SMTP authentication");
