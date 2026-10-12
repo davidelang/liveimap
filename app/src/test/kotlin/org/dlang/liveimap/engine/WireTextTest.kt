@@ -77,7 +77,7 @@ class WireTextPathsTest {
 
     @Test fun listPostCrLfNeverReachesRcpt() {
         val m = parsed("List-Post: <mailto:list@x.example%0D%0ARCPT%20TO:%3Cspy@evil%3E>")
-        val addr = org.dlang.liveimap.ui.compose.listPostAddress(m)!!
-        assertFalse(org.dlang.liveimap.ui.compose.envelopeAddressOk(addr))
+        // F59: rejected outright now (null), so nothing reaches RCPT TO
+        assertEquals(null, org.dlang.liveimap.ui.compose.listPostAddress(m))
     }
 }
