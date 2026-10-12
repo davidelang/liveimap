@@ -210,7 +210,7 @@ fun ComposeScreen(
     // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        if (accountId == null) accountId = store.chosenAccountId()
+        if (accountId == null) accountId = seed.accountId.ifEmpty { null } ?: store.chosenAccountId()
     }
     val id = accountId
     if (id.isNullOrEmpty()) return

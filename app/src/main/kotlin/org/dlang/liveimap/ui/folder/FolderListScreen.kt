@@ -223,7 +223,7 @@ fun FolderListScreen(
             accountId = id,
             store = remember(id) { store.forAccount(id) },
             onOpenMailbox = onOpenMailbox,
-            onCompose = onCompose,
+            onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
             onOpenUnsent = onOpenUnsent,
             onOpenHelp = onOpenHelp,
             onCustomize = onCustomize,
@@ -273,7 +273,7 @@ fun FolderListScreen(
             accountId = id,
             store = store,
             onOpenMailbox = onOpenMailbox,
-            onCompose = onCompose,
+            onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
             onOpenUnsent = onOpenUnsent,
             onOpenHelp = onOpenHelp,
             onCustomize = onCustomize,

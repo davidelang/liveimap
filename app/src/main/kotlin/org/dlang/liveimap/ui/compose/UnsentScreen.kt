@@ -30,7 +30,7 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 @Composable
 fun UnsentScreen(
-    onOpenCopy: (String, Boolean) -> Unit,
+    onOpenCopy: (String, Boolean, String) -> Unit,
     onBack: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
@@ -70,10 +70,10 @@ fun UnsentScreen(
                 Text(shortDateTime(copy.modifiedMillis))
             }
             Row(Modifier.fillMaxWidth()) {
-                TextButton(onClick = { onOpenCopy(copy.id, false) }) {
+                TextButton(onClick = { onOpenCopy(copy.id, false, id) }) {
                     Text(stringResource(R.string.unsent_open))
                 }
-                TextButton(onClick = { onOpenCopy(copy.id, true) }) {
+                TextButton(onClick = { onOpenCopy(copy.id, true, id) }) {
                     Text(stringResource(R.string.unsent_retry))
                 }
                 TextButton(onClick = { discardId = copy.id }) {

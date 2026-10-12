@@ -248,6 +248,7 @@ fun LiveImapNavHost() {
     val composeEpoch = rememberSaveable { mutableStateOf(0L) }
     val composeUnsentId = rememberSaveable { mutableStateOf("") }
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
+    val composeAccount = rememberSaveable { mutableStateOf("") } // F121: the opener's account
     val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
     val filterSeedFrom = rememberSaveable { mutableStateOf("") }
     val filterSeedTo = rememberSaveable { mutableStateOf("") }
@@ -370,6 +371,7 @@ fun LiveImapNavHost() {
                 composeMailbox.value = seed.mailbox.orEmpty()
                 composeUids.value = seed.uids.joinToString(",")
                 composeEpoch.value = seed.uidValidity
+                composeAccount.value = seed.accountId
                 composeUnsentId.value = ""
                 composeRetryOnOpen.value = false
                 navController.navigate("compose")
@@ -695,6 +697,7 @@ fun LiveImapNavHost() {
                         uidText.split(',').map { it.toLong() }
                     },
                     uidValidity = composeEpoch.value,
+                    accountId = composeAccount.value,
                 )
                 ComposeScreen(
                     seed = seed,
@@ -708,7 +711,8 @@ fun LiveImapNavHost() {
             composable("unsent") {
                 UpPage(stringResource(R.string.unsent_title), onUp = { navController.popBackStack() }) {
                     UnsentScreen(
-                        onOpenCopy = { id, retry ->
+                        onOpenCopy = { id, retry, account ->
+                            composeAccount.value = account // F121: retry in the copy's own account
                             composeKindName.value = ComposeKind.New.name
                             composeMailbox.value = ""
                             composeUids.value = ""

@@ -712,7 +712,7 @@ fun MessageIndexScreen(
         store = remember(id) { store.forAccount(id) },
         mailbox = mailbox,
         onOpen = onOpen,
-        onCompose = onCompose,
+        onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121: compose in this account
         onBack = onBack,
         onCustomize = onCustomize,
         onCustomizeSelection = onCustomizeSelection,

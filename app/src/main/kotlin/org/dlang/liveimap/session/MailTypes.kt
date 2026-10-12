@@ -217,6 +217,8 @@ data class ComposeSeed(
     val uids: List<Long> = emptyList(),
     /** F105/F116: UIDVALIDITY of [mailbox] when [uids] were listed; 0 = captured on first use. */
     val uidValidity: Long = 0L,
+    /** F121: the account the source messages (and the reply) belong to; "" = the active account at open time. */
+    val accountId: String = "",
 ) {
     /** The source messages as references (empty until the epoch is known). */
     fun refs(accountId: String): List<MessageRef> =

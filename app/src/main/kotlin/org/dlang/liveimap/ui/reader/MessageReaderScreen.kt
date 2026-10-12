@@ -344,7 +344,7 @@ fun MessageReaderScreen(
         uid = uid,
         sequence = sequence,
         uidValidity = uidValidity,
-        onCompose = onCompose,
+        onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121: compose in this account
         onAdvance = onAdvance,
         onBack = onBack,
         onFolderViewSaved = onFolderViewSaved,
