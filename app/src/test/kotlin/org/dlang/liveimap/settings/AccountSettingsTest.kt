@@ -112,7 +112,6 @@ class AccountSettingsTest {
                 "showRecentRules",
                 "openAtInIndexMenu",
                 "pinercStartDefault",
-                "readerTextLayout",
                 "nonAsciiDisplay",
                 "altAddresses",
             ),
