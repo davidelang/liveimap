@@ -185,10 +185,15 @@ class ManageSieveTest {
     fun includeLineIsAppendedOnce() {
         assertEquals("liveimap", liveimapScriptName)
         assertEquals("include :personal \"liveimap\";", liveimapIncludeLine)
-        assertEquals("$liveimapIncludeLine\n", withLiveimapInclude(""))
-        assertEquals("keep;\n$liveimapIncludeLine\n", withLiveimapInclude("keep;"))
+        val req = "require \"include\";\n" // F86
+        assertEquals("$req$liveimapIncludeLine\n", withLiveimapInclude(""))
+        assertEquals("${req}keep;\n$liveimapIncludeLine\n", withLiveimapInclude("keep;"))
         val ended = "keep; \r\n"
-        assertEquals(ended + liveimapIncludeLine + "\n", withLiveimapInclude(ended))
+        assertEquals(req + ended + liveimapIncludeLine + "\n", withLiveimapInclude(ended))
+        val declared = "require [\"fileinto\", \"include\"];\nkeep;\n"
+        assertEquals(declared + liveimapIncludeLine + "\n", withLiveimapInclude(declared))
+        val single = "require \"include\";\nkeep;\n"
+        assertEquals(single + liveimapIncludeLine + "\n", withLiveimapInclude(single))
         val present = "keep;\n  $liveimapIncludeLine  \nredirect \"a\";"
         assertEquals(present, withLiveimapInclude(present))
     }

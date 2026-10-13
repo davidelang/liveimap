@@ -19,7 +19,7 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
         if (trimmed.isEmpty() || !seen.add(trimmed)) continue
         kept.add(trimmed)
     }
-    val slots = idleBudget.coerceAtLeast(0)
+    val slots = idleBudget.coerceIn(0, MaxExtraIdle) // F81: each slot is a full logged-in connection
     return WatchPlan(kept.take(slots), kept.drop(slots))
 }
 
@@ -47,10 +47,13 @@ fun watchedFoldersFromText(text: String): List<String> {
 }
 
 /** Optional minus and digits that fit in an Int, or null. Does not open a socket. */
+/** F81: upper bound on extra IDLE connections, so a pasted list cannot open hundreds of logins. */
+const val MaxExtraIdle = 8
+
 fun extraIdleBudgetFromText(text: String): Int? {
     val trimmed = text.trim()
     if (trimmed.isEmpty() || !trimmed.matches(Regex("-?\\d+"))) return null
-    return trimmed.toIntOrNull()
+    return trimmed.toIntOrNull()?.takeIf { it in 0..MaxExtraIdle }
 }
 
 /** Exists and expunge replace the count. Every other change keeps it. Does not open a socket. */

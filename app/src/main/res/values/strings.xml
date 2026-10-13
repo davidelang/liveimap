@@ -13,6 +13,7 @@
     <string name="about_licenses">Open-source licenses</string>
     <string name="about_license_notice">LiveIMAP is licensed under the Apache License 2.0</string>
     <string name="about_no_email">No email app found</string>
+    <string name="no_browser">No app can open %1$s</string>
     <string name="help_title">Help</string>
     <string name="help_getting_started">Getting started</string>
     <string name="help_reporting">Reporting a bug</string>

@@ -42,7 +42,7 @@ fun IconHelpDialog(
         text = { Text(body) },
         confirmButton = {
             TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(manualPage(page))))
+                org.dlang.liveimap.ui.openWebPage(context, manualPage(page))
                 onDismiss()
             }) { Text(stringResource(R.string.help_open_manual)) }
         },

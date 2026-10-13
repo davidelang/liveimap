@@ -180,10 +180,17 @@ data class LiveimapActivatePlan(
 )
 
 /** Appends the liveimap include once. Does not open a socket. */
+private val requiresInclude = Regex(
+    "(?is)\\brequire\\s*(\"include\"|\\[[^\\]]*\"include\"[^\\]]*\\])",
+)
+
 fun withLiveimapInclude(script: String): String {
     if (script.lineSequence().any { it.trim() == liveimapIncludeLine }) return script
     val lead = if (script.isNotEmpty() && !script.endsWith("\n")) "\n" else ""
-    return script + lead + liveimapIncludeLine + "\n"
+    // F86: the include command needs its extension declared. A require at the very top is always valid
+    // (RFC 5228 3.2: requires come before other commands; several are allowed).
+    val require = if (requiresInclude.containsMatchIn(script)) "" else "require \"include\";\n"
+    return require + script + lead + liveimapIncludeLine + "\n"
 }
 
 /** Chooses include or SETACTIVE. Does not write and does not open a socket. */

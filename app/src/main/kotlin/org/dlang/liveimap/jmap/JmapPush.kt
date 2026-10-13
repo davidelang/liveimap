@@ -112,7 +112,7 @@ fun platformJmapEventSource(url: String, authorization: String, pin: String): Jm
         pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
-        readTimeout = 15_000
+        readTimeout = 150_000 // F82: above the ping=120 the request asks for
         requestMethod = "GET"
         setRequestProperty("Accept", "text/event-stream")
         setRequestProperty("Authorization", authorization)

@@ -16,9 +16,19 @@ import org.dlang.liveimap.settings.StartRule
 class SerialMailSession(
     private val inner: MailSession,
 ) : MailSession {
-    private val lane = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "liveimap-imap").apply { isDaemon = true }
-    }.asCoroutineDispatcher()
+    // F84: one lane thread per session, created on demand and shut down by close(); a session that is
+    // opened again after close() gets a fresh lane.
+    private val laneLock = Any()
+    private var laneDispatcher: kotlinx.coroutines.ExecutorCoroutineDispatcher? = null
+
+    private val lane: kotlinx.coroutines.ExecutorCoroutineDispatcher
+        get() = synchronized(laneLock) {
+            laneDispatcher ?: Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "liveimap-imap").apply { isDaemon = true }
+            }.asCoroutineDispatcher().also { laneDispatcher = it }
+        }
+
+    internal fun laneOpen(): Boolean = synchronized(laneLock) { laneDispatcher != null }
 
     override val capabilities: Set<String>
         get() = inner.capabilities
@@ -215,6 +225,10 @@ class SerialMailSession(
 
     override fun close() {
         inner.close()
+        synchronized(laneLock) {
+            laneDispatcher?.close()
+            laneDispatcher = null
+        }
     }
 
     private val pin = Mutex()
@@ -232,5 +246,5 @@ class SerialMailSession(
 
     /** Every command waits while another caller holds the pin (its selection must not move under it). */
     private suspend fun <T> onLane(block: suspend () -> T): T =
-        if (holdsPin()) withContext(lane) { block() } else pin.withLock { withContext(lane) { block() } }
+        if (holdsPin()) withContext(lane) { block() } else pin.withLock { val l = lane; withContext(l) { block() } }
 }

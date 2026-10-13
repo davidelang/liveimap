@@ -98,14 +98,14 @@ fun HelpScreen() {
         if (missing || (started != null && bugReport != null)) {
             Row {
                 TextButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MANUAL_URL)))
+                    org.dlang.liveimap.ui.openWebPage(context, MANUAL_URL)
                 }) { Text(stringResource(R.string.help_open_manual)) }
                 TextButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_ISSUES_URL)))
+                    org.dlang.liveimap.ui.openWebPage(context, HELP_ISSUES_URL)
                 }) { Text(reportBug) }
             }
             TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)))
+                org.dlang.liveimap.ui.openWebPage(context, PRIVACY_URL)
             }) { Text(stringResource(R.string.about_privacy)) }
             TextButton(onClick = {
                 scope.launch {

@@ -168,4 +168,21 @@ class TrafficLogTest {
         file.delete()
         return file
     }
+
+    @Test
+    fun smtpAuthIsRedacted() { // F78
+        val file = tempLog()
+        val log = TrafficLog(file, clock = { 5L })
+        log.accept("smtp", TrafficLog.LOG_SENT, "AUTH PLAIN AGFkYQBodW50ZXIy\r\n".toByteArray(Charsets.US_ASCII))
+        log.accept("smtp", TrafficLog.LOG_SENT, "AUTH LOGIN\r\n".toByteArray(Charsets.US_ASCII))
+        log.accept("smtp", TrafficLog.LOG_RECEIVED, "334 VXNlcm5hbWU6\r\n".toByteArray(Charsets.US_ASCII))
+        log.accept("smtp", TrafficLog.LOG_SENT, "YWRh\r\n".toByteArray(Charsets.US_ASCII))
+        log.accept("smtp", TrafficLog.LOG_RECEIVED, "334 UGFzc3dvcmQ6\r\n".toByteArray(Charsets.US_ASCII))
+        log.accept("smtp", TrafficLog.LOG_SENT, "aHVudGVyMg==\r\n".toByteArray(Charsets.US_ASCII))
+        val text = file.readText()
+        assertFalse(text, text.contains("AGFkYQBodW50ZXIy"))
+        assertFalse(text, text.contains("aHVudGVyMg=="))
+        assertFalse(text, text.contains("YWRh"))
+        assertTrue(text, text.contains("AUTH PLAIN <redacted"))
+    }
 }

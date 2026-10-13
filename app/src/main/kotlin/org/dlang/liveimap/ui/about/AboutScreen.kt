@@ -105,7 +105,7 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
             modifier = Modifier.clickable(onClick = onOpenLicenses),
         )
         TextButton(onClick = {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)))
+            org.dlang.liveimap.ui.openWebPage(context, PRIVACY_URL)
         }) { Text(privacy) }
         Text(
             text = supportDeveloper,
@@ -137,19 +137,15 @@ private fun sendSupport(
         putExtra(Intent.EXTRA_SUBJECT, subject)
         putExtra(Intent.EXTRA_TEXT, body)
     }
-    if (sendTo.resolveActivity(context.packageManager) != null) {
-        context.startActivity(sendTo)
-        return
-    }
+    // F70: no resolveActivity() gate (package visibility hides mail apps on API 30+); just try.
+    if (org.dlang.liveimap.ui.startExternal(context, sendTo)) return
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "message/rfc822"
         putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_ADDRESS))
         putExtra(Intent.EXTRA_SUBJECT, subject)
         putExtra(Intent.EXTRA_TEXT, body)
     }
-    if (send.resolveActivity(context.packageManager) != null) {
-        context.startActivity(Intent.createChooser(send, chooserTitle))
-    } else {
+    if (!org.dlang.liveimap.ui.startExternal(context, Intent.createChooser(send, chooserTitle))) {
         Toast.makeText(context, noEmail, Toast.LENGTH_SHORT).show()
     }
 }

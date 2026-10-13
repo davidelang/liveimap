@@ -323,8 +323,8 @@ fun LiveImapNavHost() {
         if (previous.destination.route != "index/{mailbox}") return@LaunchedEffect
         val readerArgs = reader.arguments ?: return@LaunchedEffect
         val previousArgs = previous.arguments ?: return@LaunchedEffect
-        val readerMailbox = readerArgs.getString("mailbox")?.let(Uri::decode) ?: return@LaunchedEffect
-        val indexMailbox = previousArgs.getString("mailbox")?.let(Uri::decode) ?: return@LaunchedEffect
+        val readerMailbox = readerArgs.getString("mailbox") ?: return@LaunchedEffect
+        val indexMailbox = previousArgs.getString("mailbox") ?: return@LaunchedEffect
         if (readerMailbox != indexMailbox) return@LaunchedEffect
         previous.savedStateHandle["paneUid"] = readerArgs.getLong("uid")
         previous.savedStateHandle["paneSequence"] = readerArgs.getInt("sequence")
@@ -399,7 +399,7 @@ fun LiveImapNavHost() {
                 ),
             ) { entry ->
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
-                val mailbox = Uri.decode(encoded)
+                val mailbox = encoded // F73: Navigation already percent-decoded the path argument
                 val useSplit = splitNow.value
                 val useAxis = axisNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
@@ -602,13 +602,13 @@ fun LiveImapNavHost() {
                 ),
             ) { entry ->
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
-                val mailbox = Uri.decode(encoded)
+                val mailbox = encoded // F73: Navigation already percent-decoded the path argument
                 AdvancedSearchScreen(
                     mailbox = mailbox,
                     onBack = { navController.popBackStack() },
                     onSearch = { text, scope ->
                         val previous = navController.previousBackStackEntry
-                        val indexMailbox = previous?.arguments?.getString("mailbox")?.let(Uri::decode)
+                        val indexMailbox = previous?.arguments?.getString("mailbox")
                         if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
                             previous.savedStateHandle["advancedQuery"] = text
                             previous.savedStateHandle["advancedScope"] = scope.name
@@ -656,7 +656,7 @@ fun LiveImapNavHost() {
             ) { entry ->
                 val args = entry.arguments ?: return@composable
                 val encoded = args.getString("mailbox") ?: return@composable
-                val mailbox = Uri.decode(encoded)
+                val mailbox = encoded // F73: Navigation already percent-decoded the path argument
                 MessageReaderScreen(
                     mailbox = mailbox,
                     uid = args.getLong("uid"),
@@ -673,7 +673,7 @@ fun LiveImapNavHost() {
                     onBack = { navController.popBackStack() },
                     onFolderViewSaved = {
                         val previous = navController.previousBackStackEntry
-                        val indexMailbox = previous?.arguments?.getString("mailbox")?.let(Uri::decode)
+                        val indexMailbox = previous?.arguments?.getString("mailbox")
                         if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
                             val handle = previous.savedStateHandle
                             val next = (handle.get<Int>("folderViewToken") ?: 0) + 1

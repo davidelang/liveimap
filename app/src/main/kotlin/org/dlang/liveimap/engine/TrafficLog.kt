@@ -185,8 +185,8 @@ class TrafficLog(
         raw: String,
     ) {
         val shown = printable(raw)
-        if (prefix == "S" && (shown == "+" || shown.startsWith("+ "))) {
-            conn.saslArmed = true
+        if (prefix == "S" && (shown == "+" || shown.startsWith("+ ") || shown == "334" || shown.startsWith("334 "))) {
+            conn.saslArmed = true // IMAP continuation, or SMTP AUTH challenge (F78)
         }
         val text = if (prefix == "C") redactSent(conn, shown) else shown
         if (text.isNotEmpty()) {
@@ -206,6 +206,13 @@ class TrafficLog(
     }
 
     private fun redactSent(conn: Conn, line: String): String {
+        // F78: SMTP "AUTH <mech> [initial-response]" (untagged). Redact the response; the server's 334 arms
+        // redaction of the next client line.
+        val smtp = line.trim().split(' ').filter { it.isNotEmpty() }
+        if (smtp.isNotEmpty() && smtp[0].equals("AUTH", ignoreCase = true)) {
+            conn.saslArmed = false
+            return if (smtp.size >= 3) "AUTH ${smtp[1]} <redacted ${smtp.drop(2).joinToString(" ").length} bytes>" else line
+        }
         val tokens = imapTokens(line)
         val command = tokens.size >= 2 && tokens[1].all { it.isLetter() }
         if (tokens.size >= 2 && tokens[1].equals("AUTHENTICATE", ignoreCase = true)) {
