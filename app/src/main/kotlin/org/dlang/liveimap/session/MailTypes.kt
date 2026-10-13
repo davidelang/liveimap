@@ -39,8 +39,12 @@ data class FolderEntry(
     val unseen: Int? = null,
 )
 
+/** F90: INBOX is never Trash, whatever SPECIAL-USE or a setting says (deletes there would expunge with no undo). */
+fun usableTrashName(name: String): String = if (name.equals("INBOX", ignoreCase = true)) "" else name
+
 fun mailboxMarkedTrash(entries: List<FolderEntry>): String {
     for (entry in entries) {
+        if (usableTrashName(entry.mailbox).isEmpty()) continue
         val tokens = entry.specialUse.orEmpty().split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (tokens.any { it.equals("\\Trash", ignoreCase = true) }) return entry.mailbox
     }

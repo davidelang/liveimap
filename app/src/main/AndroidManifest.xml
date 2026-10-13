@@ -64,6 +64,7 @@
 
         <activity
             android:name=".accounts.AccountSetupActivity"
+            android:excludeFromRecents="true"
             android:exported="true" />
     </application>
 </manifest>

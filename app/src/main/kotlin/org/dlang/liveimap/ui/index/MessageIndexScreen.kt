@@ -2942,6 +2942,10 @@ private fun MessageIndexLoaded(
                 if (confirmExpunge) {
                     val uidPlus = session.featureCaps.uidPlus
                     val body = buildString {
+                        // F90: say plainly when this folder is the (detected or configured) Trash.
+                        if (knownTrashName.isNotEmpty() && mailbox == knownTrashName) {
+                            append("This folder is your Trash ($knownTrashName). ")
+                        }
                         append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
                         if (!uidPlus) {
                             append(" This includes messages marked deleted by other clients.")

@@ -754,7 +754,7 @@ private fun ComposeLoaded(
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
-        when (retryDelivery(account.emailSubmission, copy.appendOnly)) {
+        when (retryDelivery(account.emailSubmission && copy.via.isEmpty(), copy.appendOnly)) { // F92
             RetryDelivery.Append -> {
                 if (copy.mailbox.isEmpty()) {
                     notice = sentMailboxMissing
@@ -1171,7 +1171,9 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     val id = saved?.id ?: UUID.randomUUID().toString()
-                    if (account.emailSubmission) {
+                    // F92: JMAP submission uses this account's credentials, so a rule that routes through another
+                    // account (via) always takes that account's SMTP path instead.
+                    if (account.emailSubmission && via.isEmpty()) {
                         val password = try {
                             store.password()
                         } catch (error: CancellationException) {

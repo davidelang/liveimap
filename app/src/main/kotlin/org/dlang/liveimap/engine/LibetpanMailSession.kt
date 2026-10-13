@@ -28,6 +28,7 @@ import org.dlang.liveimap.session.UidWindow
 import org.dlang.liveimap.session.SearchProgress
 import org.dlang.liveimap.session.clientThreads
 import org.dlang.liveimap.session.mailboxMarkedTrash
+import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
 import org.dlang.liveimap.settings.AccountSettings
@@ -1029,7 +1030,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun knownTrash(): String {
-        val named = account?.trashMailbox.orEmpty()
+        val named = usableTrashName(account?.trashMailbox.orEmpty())
         if (named.isNotEmpty()) return named
         if (!featureCaps.listExtended) return ""
         if (trashListed) return listedTrash

@@ -55,6 +55,13 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
     if (!hasPineAddrbookHeader(firstText)) {
         return AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
     }
+    if (!isBookRevision(lastText, headerSubject(firstText))) {
+        // F85: the newest message is not a revision; take the newest one that is.
+        return when (val read = readPineBook(session, mailbox)) {
+            is PineRead.NotBook -> AlpineBookLoad(read.notice, emptyList())
+            is PineRead.Ready -> AlpineBookLoad(null, read.state.entries)
+        }
+    }
     val body = rfc822BodyText(lastText)
         ?: return AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
     return AlpineBookLoad(null, parseAlpineBook(body))
@@ -140,6 +147,7 @@ data class PineBookState(
     val entries: List<AlpineEntry>,
     val uids: List<Long>,
     val uidValidity: Long = 0L,
+    val bookSubject: String = "",
 )
 
 sealed class PineRead {
@@ -170,12 +178,23 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
     if (rows.isEmpty()) return PineRead.NotBook("This mailbox is not an Alpine address book")
     val ordered = rows.sortedBy { it.sequence }
     val header = ordered.first()
-    val last = ordered.last()
     val headerMessage = session.fetchRfc822(header.uid)
     if (!hasPineAddrbookHeader(headerMessage)) {
         return PineRead.NotBook("This mailbox is not an Alpine address book")
     }
-    val lastMessage = if (last.uid == header.uid) headerMessage else session.fetchRfc822(last.uid)
+    val bookSubject = headerSubject(headerMessage)
+    // F85: the newest message that is a real revision (scan back a little past stray messages).
+    var last = header
+    var lastMessage = headerMessage
+    for (row in ordered.asReversed().take(RevisionScan)) {
+        if (row.uid == header.uid) break
+        val bytes = session.fetchRfc822(row.uid)
+        if (isBookRevision(bytes, bookSubject)) {
+            last = row
+            lastMessage = bytes
+            break
+        }
+    }
     val split = headerAndSeparator(lastMessage)
         ?: return PineRead.NotBook("This mailbox is not an Alpine address book")
     if (!looksLikeHeaders(split.header)) {
@@ -190,6 +209,7 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
             entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
             uids = ordered.map { it.uid },
             uidValidity = selected.uidValidity,
+            bookSubject = bookSubject,
         ),
     )
 }
@@ -222,7 +242,9 @@ suspend fun writePineBook(
     val listed = after.state.uids
     val uids = if (appended > 0L && appended !in listed) listed + appended else listed
     val uidPlus = session.featureCaps.uidPlus
-    val expunge = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
+    val candidates = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
+    // F85: only messages that are themselves book revisions are ever trimmed.
+    val expunge = candidates.filter { uid -> isBookRevision(session.fetchRfc822(uid), after.state.bookSubject) }
     if (expunge.isNotEmpty()) {
         session.selectChecked(mailbox, state.uidValidity)
         session.storeFlags(expunge, setOf("\\Deleted"), emptySet())
@@ -348,6 +370,25 @@ private fun logicalLines(body: String): List<String> {
     if (open) lines.add(current.toString())
     return lines
 }
+
+private fun headerSubject(rfc822: ByteArray): String {
+    val split = splitRfc822(rfc822) ?: return ""
+    val header = split.first.toString(Charsets.ISO_8859_1)
+    return Regex("(?im)^subject[ \\t]*:[ \\t]*(.*)$").find(header)?.groupValues?.get(1)?.trim().orEmpty()
+}
+
+/**
+ * F85: a message counts as a book revision only when it carries the Pine address-book header, or the same
+ * (non-empty) Subject as the book's header message. Anything else that lands in the folder is not the book
+ * and is never expunged by a trim.
+ */
+internal fun isBookRevision(rfc822: ByteArray, bookSubject: String): Boolean {
+    if (hasPineAddrbookHeader(rfc822)) return true
+    if (bookSubject.isEmpty()) return false
+    return headerSubject(rfc822) == bookSubject
+}
+
+private const val RevisionScan = 12
 
 private fun hasPineAddrbookHeader(rfc822: ByteArray): Boolean {
     val split = splitRfc822(rfc822) ?: return false

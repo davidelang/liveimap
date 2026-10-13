@@ -118,7 +118,7 @@ class AlpineBookTest {
     fun lastMessageBodyIsTheBook() {
         val session = FakeBookSession()
         session.rows = listOf(row(1), row(2), row(5))
-        session.bytes[1] = ascii("X-Pine-Addrbook: 1\r\n\r\nfirst\tFirst\tfirst@example.com\r\n")
+        session.bytes[1] = ascii("X-Pine-Addrbook: 1\r\nSubject: data\r\n\r\nfirst\tFirst\tfirst@example.com\r\n")
         session.bytes[2] = ascii("Subject: old\r\n\r\nold\tOld\told@example.com\r\n")
         session.bytes[5] = ascii(
             "Subject: data\r\n\r\n\tAda Lovelace\tada@example.com\t\tkeep [plaintext]\r\n",

@@ -714,12 +714,23 @@ fun newestAtEnd(view: FolderView): Boolean = !view.newestFirst
 internal object OpenMessageOrder {
     var mailbox: String = ""
         private set
+    /** F93: the order belongs to one account and one UIDVALIDITY epoch, not just a mailbox name. */
+    var accountId: String = ""
+        private set
+    var uidValidity: Long = 0L
+        private set
+
+    fun matches(accountId: String, mailbox: String, uidValidity: Long): Boolean =
+        this.mailbox == mailbox && this.accountId == accountId && accountId.isNotEmpty() &&
+            this.uidValidity != 0L && this.uidValidity == uidValidity
     var uids: List<Long> = emptyList()
         private set
     private var sequences = emptyMap<Long, Int>()
     private var deleted = emptySet<Long>()
 
-    fun publish(mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
+    fun publish(accountId: String, uidValidity: Long, mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
+        this.accountId = accountId
+        this.uidValidity = uidValidity
         this.mailbox = mailbox
         this.uids = uids.toList()
         sequences = rows.associate { it.uid to it.sequence }
@@ -732,6 +743,8 @@ internal object OpenMessageOrder {
 
     fun clear() {
         mailbox = ""
+        accountId = ""
+        uidValidity = 0L
         uids = emptyList()
         sequences = emptyMap()
         deleted = emptySet()
@@ -856,7 +869,7 @@ class IndexModel(
         val byUid = LinkedHashMap<Long, IndexRow>()
         for (row in threadMembers.values) byUid[row.uid] = row
         for (row in heldRows) byUid[row.uid] = row
-        OpenMessageOrder.publish(mailbox, messageOrder(openExpanded), byUid.values.toList())
+        OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, messageOrder(openExpanded), byUid.values.toList())
     }
 
     var account: AccountSettings = AccountSettings()
@@ -1429,6 +1442,8 @@ class IndexModel(
      * [MessageRef]s built from it, so a UID is only ever used in the folder and epoch it was read from.
      */
     private val epochs = HashMap<String, Long>()
+    private val orderAccountId: String
+        get() = (store as? org.dlang.liveimap.settings.DataStoreSettingsStore)?.boundAccountId.orEmpty()
 
     /** Account scope for this model's refs (one model, one account). */
     private val accountKey: String get() = refAccountKey(account)
@@ -1647,7 +1662,7 @@ class IndexModel(
             if (moved.isNotEmpty() && mailUndo == null && outcome.failure == null) {
                 notice = "Moved; undo is not available (the server did not report the new message IDs)"
             }
-            OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
+            OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1679,7 +1694,7 @@ class IndexModel(
             }
             notice = null
             mailUndo = null
-            OpenMessageOrder.publish(mailbox, publishableOrder(order), heldRows)
+            OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null

@@ -1078,11 +1078,17 @@ class IndexWindowTest {
         assertEquals(6L, followingUid(listOf(5L, 6L, 7L), 5L))
         OpenMessageOrder.clear()
         OpenMessageOrder.publish(
+            "acct-a", 77L,
             "INBOX",
             listOf(1L, 2L, 3L),
             listOf(row(1), row(2, flags = setOf("\\Deleted")), row(3)),
         )
         assertEquals(3L, OpenMessageOrder.followingAfterDelete(1L))
+        // F93: another account's INBOX, or a new UIDVALIDITY epoch, never uses this order.
+        assertTrue(OpenMessageOrder.matches("acct-a", "INBOX", 77L))
+        assertFalse(OpenMessageOrder.matches("acct-b", "INBOX", 77L))
+        assertFalse(OpenMessageOrder.matches("acct-a", "INBOX", 78L))
+        assertFalse(OpenMessageOrder.matches("acct-a", "INBOX", 0L))
         OpenMessageOrder.clear()
     }
 

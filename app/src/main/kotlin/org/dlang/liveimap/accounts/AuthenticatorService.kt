@@ -106,9 +106,14 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
     }
 }
 
+/** F77: the account created during this setup, if any; an account that was already there is not reported. */
+internal fun newSetupAccount(before: Set<String>, now: List<String>): String? = now.firstOrNull { it !in before }
+
 class AccountSetupActivity : ComponentActivity() {
     private var authenticatorResponse: AccountAuthenticatorResponse? = null
     private var resultSent = false
+    /** F77: accounts that already existed when this activity opened; they are never reported back. */
+    private var namesAtStart: Set<String> = emptySet()
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,6 +126,7 @@ class AccountSetupActivity : ComponentActivity() {
             return
         }
         window.decorView.filterTouchesWhenObscured = true
+        namesAtStart = AccountManager.get(this).getAccountsByType(liveimapAccountType).map { it.name }.toSet()
         authenticatorResponse = readResponse(intent)
         authenticatorResponse?.onRequestContinued()
         setContent {
@@ -141,7 +147,10 @@ class AccountSetupActivity : ComponentActivity() {
         if (resultSent) return
         resultSent = true
         val response = authenticatorResponse ?: return
-        val existing = AccountManager.get(this).getAccountsByType(liveimapAccountType).firstOrNull()
+        val existing = newSetupAccount(
+            namesAtStart,
+            AccountManager.get(this).getAccountsByType(liveimapAccountType).map { it.name },
+        )?.let { name -> android.accounts.Account(name, liveimapAccountType) }
         if (existing == null) {
             response.onError(AccountManager.ERROR_CODE_CANCELED, "canceled")
             return

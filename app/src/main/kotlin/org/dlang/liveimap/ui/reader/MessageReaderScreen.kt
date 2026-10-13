@@ -1187,7 +1187,7 @@ private fun MessageReaderLoaded(
     }
 
     fun nextAfterDeleteOrMove(useFollowingAfterDelete: Boolean = false): Pair<Long, Int>? {
-        if (OpenMessageOrder.mailbox != mailbox) return null
+        if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return null // F93
         val next = if (useFollowingAfterDelete) {
             OpenMessageOrder.followingAfterDelete(uid)
         } else {
