@@ -1,6 +1,18 @@
 package org.dlang.liveimap.lab
 
 import org.dlang.liveimap.ui.compose.attachmentParts
+import org.dlang.liveimap.ui.contacts.readPineBook
+import org.dlang.liveimap.ui.contacts.writePineBook
+import org.dlang.liveimap.ui.contacts.PineRead
+import org.dlang.liveimap.ui.contacts.PineWriteResult
+import org.dlang.liveimap.ui.contacts.CopyContact
+import org.dlang.liveimap.ui.contacts.CopyField
+import org.dlang.liveimap.ui.contacts.copyContacts
+import org.dlang.liveimap.ui.contacts.asCopyContact
+import org.dlang.liveimap.ui.contacts.asAlpineEntry
+import org.dlang.liveimap.ui.contacts.applyBookEdit
+import org.dlang.liveimap.ui.contacts.BookEdit
+import org.dlang.liveimap.ui.contacts.EditOutcome
 import org.dlang.liveimap.ui.reader.typeMismatch
 import org.dlang.liveimap.ui.reader.SniffBytes
 import org.dlang.liveimap.session.TooDeepSubtype
@@ -483,6 +495,36 @@ class LabSuiteTest {
                         notes.add("thread")
                     }
                     "uids $got " + notes.joinToString(",")
+                }
+                // Contacts plan phase 6: Alpine book write + copy on the seeded <box>/Addressbook (lab only).
+                val abook = session.listLevel("", box, false).firstOrNull { it.leaf == "Addressbook" }?.mailbox
+                if (abook != null) step("alpineBook") {
+                    val first = readPineBook(session, abook) as? PineRead.Ready ?: throw IllegalStateException("not a book")
+                    val base = first.state
+                    // stale write is refused
+                    val stale = writePineBook(session, abook, base.lastUid - 1, base.entries, 3, false)
+                    if (stale !is PineWriteResult.Stale) throw IllegalStateException("stale write not detected: $stale")
+                    // copy an Android-like contact into the book (extras block), then edit, then restore
+                    val droid = CopyContact(displayName = "Lab Copy", emails = listOf("copy@lab.test"),
+                        phones = listOf(CopyField("Mobile", "+1 555 0100")), organization = "Lab Inc")
+                    val copied = copyContacts(listOf(droid), base.entries.map { it.asCopyContact() }, intoPine = true)
+                    val w1 = writePineBook(session, abook, base.lastUid, copied.entries.map { it.asAlpineEntry() }, 3, false)
+                    if (w1 !is PineWriteResult.Wrote) throw IllegalStateException("write1 $w1")
+                    val after = (readPineBook(session, abook) as PineRead.Ready).state
+                    if (after.headerUid != base.headerUid) throw IllegalStateException("header changed")
+                    val hit = after.entries.firstOrNull { it.address == "copy@lab.test" } ?: throw IllegalStateException("copy missing")
+                    if (!hit.comments.contains("phone.Mobile=")) throw IllegalStateException("no extras block: ${hit.comments}")
+                    // reverse copy restores the phone and organization
+                    val back = copyContacts(listOf(hit.asCopyContact()), emptyList(), intoPine = false).entries.single()
+                    if (back.phones.singleOrNull()?.value != "+1 555 0100" || back.organization != "Lab Inc") throw IllegalStateException("reverse $back")
+                    // the editor's delete, then restore the original book
+                    val del = applyBookEdit(after.entries, BookEdit.Delete(hit.nickname)) as EditOutcome.Done
+                    val w2 = writePineBook(session, abook, after.lastUid, del.entries, 3, false)
+                    if (w2 !is PineWriteResult.Wrote) throw IllegalStateException("write2 $w2")
+                    val end = (readPineBook(session, abook) as PineRead.Ready).state
+                    if (end.entries != base.entries) throw IllegalStateException("book not restored")
+                    if (end.uids.size > 1 + 3 + 1) throw IllegalStateException("history not trimmed: ${end.uids.size}")
+                    "wrote=2 trimmed=${(w1.expunged + w2.expunged).size} revisions=${end.uids.size - 1}"
                 }
                 step("noop") { session.noop(); "" }
                 step("unselect") { session.unselect(); "" }
