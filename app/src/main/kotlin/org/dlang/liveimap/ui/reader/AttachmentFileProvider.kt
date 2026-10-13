@@ -58,16 +58,21 @@ class AttachmentFileProvider : ContentProvider() {
     }
 
     private fun cacheFile(uri: Uri): File? {
-        val name = uri.lastPathSegment ?: return null
-        if (name == "imap-traffic.log" || !ATTACHMENT_NAME.matches(name)) return null
         val dir = context?.cacheDir ?: return null
-        val file = File(dir, name)
-        val parent = file.canonicalFile.parentFile ?: return null
-        if (parent != dir.canonicalFile) return null
-        return file
+        return attachmentCacheFile(dir, uri.lastPathSegment)
     }
 
     internal companion object {
         val ATTACHMENT_NAME = Regex("^liveimap-[0-9a-f]{16}-[0-9]+-[A-Za-z0-9._-]+$")
     }
+}
+
+/** The cache file a provider URI's last segment names, or null unless it is one of ours directly in [dir]. */
+internal fun attachmentCacheFile(dir: File, name: String?): File? {
+    if (name == null) return null
+    if (name == "imap-traffic.log" || !AttachmentFileProvider.ATTACHMENT_NAME.matches(name)) return null
+    val file = File(dir, name)
+    val parent = file.canonicalFile.parentFile ?: return null
+    if (parent != dir.canonicalFile) return null
+    return file
 }
