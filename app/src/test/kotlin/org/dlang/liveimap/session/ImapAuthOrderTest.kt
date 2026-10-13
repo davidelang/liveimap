@@ -69,3 +69,27 @@ class ImapAuthSupportedListTest {
         assertTrue(imapAuthOrder("AUTH=CRAM-MD5 AUTH=PLAIN", tls = true, plaintextOk = true, channelBinding = false, clientMechanisms = "EXTERNAL").isEmpty())
     }
 }
+
+/** David, 2026-10-12: strongest first; "plaintext allowed" only adds weaker fallbacks at the end. */
+class ImapAuthStrongestFirstTest {
+    private val all = "AUTH=PLAIN AUTH=LOGIN AUTH=CRAM-MD5 AUTH=SCRAM-SHA-1 AUTH=SCRAM-SHA-256 AUTH=SCRAM-SHA-256-PLUS AUTH=EXTERNAL"
+    private val client = "SCRAM-SHA-256 SCRAM-SHA-1 PLAIN LOGIN CRAM-MD5 EXTERNAL"
+
+    @Test fun tlsWithCertAndBinding() {
+        assertEquals(
+            listOf("EXTERNAL", "SCRAM-SHA-256-PLUS", "SCRAM-SHA-256", "SCRAM-SHA-1", "PLAIN", "LOGIN", "CRAM-MD5"),
+            imapAuthOrder(all, tls = true, plaintextOk = false, channelBinding = true, clientMechanisms = client, clientCert = true),
+        )
+    }
+
+    @Test fun cleartextWithPlaintextAllowedStillStartsStrongest() {
+        assertEquals(
+            listOf("SCRAM-SHA-256", "SCRAM-SHA-1", "CRAM-MD5", "PLAIN", "LOGIN"),
+            imapAuthOrder(all, tls = false, plaintextOk = true, channelBinding = false, clientMechanisms = client),
+        )
+        assertEquals(
+            listOf("SCRAM-SHA-256", "SCRAM-SHA-1", "CRAM-MD5"),
+            imapAuthOrder(all, tls = false, plaintextOk = false, channelBinding = false, clientMechanisms = client),
+        )
+    }
+}

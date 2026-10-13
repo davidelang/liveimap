@@ -44,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import org.dlang.liveimap.ui.TextButton
@@ -1339,9 +1340,14 @@ private fun ColumnScope.DrawerSheetContent(
 ) {
     val postponedDescription = stringResource(R.string.drawer_postponed)
     if (blocks.isEmpty()) {
+        // David's drawer rule: tapping the account name opens its full folder list.
         Text(
             text = header,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onAllFolders)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("drawer-account-name"),
         )
         NavigationDrawerItem(
             label = { Text(stringResource(R.string.drawer_inbox)) },
@@ -1394,9 +1400,14 @@ private fun ColumnScope.DrawerSheetContent(
         }
     } else {
         for (account in blocks) {
+            // David's drawer rule: tapping the account name opens that account's full folder list.
             Text(
                 text = account.name,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAccountAllFolders(account) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .testTag("drawer-account-name"),
             )
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.drawer_inbox)) },
