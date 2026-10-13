@@ -137,7 +137,8 @@ import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.sameMailbox
-import org.dlang.liveimap.session.selectChecked
+import org.dlang.liveimap.session.FolderAt
+import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.ui.index.refUndo
 import org.dlang.liveimap.ui.compose.mailboxLeaf
 import org.dlang.liveimap.session.MimePart
@@ -471,17 +472,17 @@ private fun MessageReaderLoaded(
     var selectedMailbox by held.selectedMailboxState
     // F105: the folder epoch this message's UID belongs to (from its listed row; else the first one seen here)
     var readerEpoch by remember(mailbox) { mutableStateOf(uidValidity) }
-    suspend fun selectRef(): Long {
-        if (readerEpoch == 0L) readerEpoch = session.select(mailbox).uidValidity
-        session.selectChecked(mailbox, readerEpoch)
-        selectedMailbox = mailbox
-        return readerEpoch
-    }
+    /** Pass 5: one lowest-layer call selects/verifies this message's folder and epoch and runs [op] there. */
+    suspend fun <T> inRef(op: suspend (epoch: Long, s: MailSession) -> T): T =
+        session.inFolder(FolderAt(mailbox, readerEpoch)) { sel, s ->
+            if (readerEpoch == 0L) readerEpoch = sel.uidValidity
+            selectedMailbox = mailbox
+            op(readerEpoch, s)
+        }
     /** Reader body/attachment reads: always in this message's folder and epoch (select is free when current). */
     suspend fun peekRef(section: String, offset: Int, length: Int): ByteArray {
-        return session.pinned {
-            selectRef()
-            session.peekPart(uid, section, offset, length)
+        return inRef { _, s ->
+            s.peekPart(uid, section, offset, length)
         }
     }
     var choosingMove by remember { mutableStateOf(false) }
@@ -582,9 +583,8 @@ private fun MessageReaderLoaded(
         if (markSeen && !seenStored && account.markSeenOnOpen) {
             seenStored = true
             try {
-                session.pinned {  // F43: act on this folder's UID
-                    selectRef()
-                    session.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
+                inRef { _, s -> // F43: act on this folder's UID
+                    s.storeFlags(listOf(uid), setOf("\\Seen"), emptySet())
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -850,9 +850,8 @@ private fun MessageReaderLoaded(
                 if (!connected) return@withLock
                 markAttachment(row.section, 0, done = false, busy = true)
                 try {
-                    val subtree = session.pinned {
-                        selectRef()
-                        session.fetchStructureAt(uid, row.section)
+                    val subtree = inRef { _, s ->
+                        s.fetchStructureAt(uid, row.section)
                     }
                     val rows = nestedLeafParts(subtree).map { part -> attachmentRowOf(part) }
                     attachments = attachments.flatMap { if (it.section == row.section) rows else listOf(it) }
@@ -879,7 +878,6 @@ private fun MessageReaderLoaded(
                 if (current.done || current.busy) return@withLock
                 markAttachment(current.section, current.fetched, done = false, busy = true)
                 try {
-                    selectRef()
                     val offset = try {
                         streamAttachment(
                             File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section)),
@@ -927,7 +925,6 @@ private fun MessageReaderLoaded(
                     }
                 } else {
                     gate.withLock {
-                        selectRef()
                         peekRef(row.section, 0, SniffBytes)
                     }
                 }
@@ -1055,14 +1052,13 @@ private fun MessageReaderLoaded(
             }
             heading = mailboxTitleFor(session, mailbox)
             try {
-                val tree = session.pinned {
-                    selectRef()
-                    session.fetchStructure(uid)
+                val tree = inRef { _, s ->
+                    s.fetchStructure(uid)
                 }
                 structure = tree
                 attachments = attachmentParts(tree).map { part -> attachmentRowOf(part) }
                 val row = try {
-                    session.fetchIndex(
+                    inRef { _, s -> s.fetchIndex(
                         IndexRequest(
                             mailbox = mailbox,
                             mode = IndexMode.ByUid,
@@ -1071,7 +1067,7 @@ private fun MessageReaderLoaded(
                             prefetch = 0,
                             includePreview = false,
                         ),
-                    ).firstOrNull { it.uid == uid }
+                    ).firstOrNull { it.uid == uid } }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1230,9 +1226,8 @@ private fun MessageReaderLoaded(
             var failed = false
             gate.withLock {
                 try {
-                    session.pinned {  // F43: expunge these UIDs in this folder, not wherever the session is
-                        selectRef()
-                        session.uidExpunge(uids)
+                    inRef { _, s -> // F43: expunge these UIDs in this folder, not wherever the session is
+                        s.uidExpunge(uids)
                     }
                     selectedMailbox = mailbox
                 } catch (error: CancellationException) {
@@ -1293,9 +1288,8 @@ private fun MessageReaderLoaded(
         scope.launch {
             gate.withLock {
                 try {
-                    session.pinned {  // F43: act on this folder's UID
-                        selectRef()
-                        session.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
+                    inRef { _, s -> // F43: act on this folder's UID
+                        s.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
                     }
                     rowFlags = rowFlags - "\\Deleted"
                 } catch (error: CancellationException) {
@@ -1312,9 +1306,8 @@ private fun MessageReaderLoaded(
         try {
             when (policy) {
                 DeletePolicy.MarkDeleted -> {
-                    val epoch = session.pinned {  // F43: act on this folder's UID
-                        val e = selectRef()
-                        session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                    val epoch = inRef { e, s -> // F43: act on this folder's UID
+                        s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                         e
                     }
                     showActionUndo(refUndo(account, mailbox, epoch, uid), target)
@@ -1324,20 +1317,18 @@ private fun MessageReaderLoaded(
                     knownTrashName = trash
                     if (trash.isEmpty()) return
                     // F116: select, act and read the COPYUID result as one unit
-                    val (epoch, targetEpoch, dest) = session.pinned {  // F43: act on this folder's UID
-                        val e = selectRef()
-                        session.copyThenDelete(listOf(uid), trash)
-                        Triple(e, session.copiedEpoch(), session.takeCopiedUids())
+                    val (epoch, targetEpoch, dest) = inRef { e, s -> // F43: act on this folder's UID
+                        s.copyThenDelete(listOf(uid), trash)
+                        Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                     showActionUndo(refUndo(account, mailbox, epoch, uid, trash, dest, targetEpoch, usedMove), target)
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) return
-                    session.pinned {  // F43: act on this folder's UID
-                        selectRef()
-                        session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                        session.uidExpunge(listOf(uid))
+                    inRef { _, s -> // F43: act on this folder's UID
+                        s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                        s.uidExpunge(listOf(uid))
                     }
                     openNextOrIndex(target)
                 }
@@ -1395,10 +1386,9 @@ private fun MessageReaderLoaded(
                 val target = nextAfterDeleteOrMove()
                 try {
                     // F116: select, act and read the COPYUID result as one unit
-                    val (epoch, targetEpoch, dest) = session.pinned {  // F43: act on this folder's UID
-                        val e = selectRef()
-                        session.copyThenDelete(listOf(uid), spamMailbox)
-                        Triple(e, session.copiedEpoch(), session.takeCopiedUids())
+                    val (epoch, targetEpoch, dest) = inRef { e, s -> // F43: act on this folder's UID
+                        s.copyThenDelete(listOf(uid), spamMailbox)
+                        Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                     showActionUndo(
@@ -2250,10 +2240,9 @@ private fun MessageReaderLoaded(
                             val target = nextAfterDeleteOrMove()
                             try {
                                 // F116: select, act and read the COPYUID result as one unit
-                                val (epoch, targetEpoch, dest) = session.pinned {  // F43: this folder's UID
-                                    val e = selectRef()
-                                    session.copyThenDelete(listOf(uid), picked)
-                                    Triple(e, session.copiedEpoch(), session.takeCopiedUids())
+                                val (epoch, targetEpoch, dest) = inRef { e, s -> // F43: this folder's UID
+                                    s.copyThenDelete(listOf(uid), picked)
+                                    Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                                 }
                                 val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                                 showActionUndo(
@@ -2279,9 +2268,8 @@ private fun MessageReaderLoaded(
             var copied = false
             gate.withLock {
                 try {
-                    session.pinned { // F126: copy this folder's UID, not the same number wherever the session is
-                        selectRef()
-                        session.copyUids(listOf(uid), destination)
+                    inRef { _, s -> // F126: copy this folder's UID, not the same number wherever the session is
+                        s.copyUids(listOf(uid), destination)
                     }
                     postSnack(savedText)
                     copied = true
@@ -2376,13 +2364,6 @@ private fun MessageReaderLoaded(
                             }
                         }
                     }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    postSnack(error.text)
-                }
-                try {
-                    selectRef()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {

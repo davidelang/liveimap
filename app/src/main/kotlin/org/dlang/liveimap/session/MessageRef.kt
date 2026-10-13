@@ -15,15 +15,14 @@ data class MessageRef(
 }
 
 /**
- * The single gate for actions on messages. Refuses refs of another account before any I/O; per folder, selects
- * it, checks UIDVALIDITY and fails safely on a mismatch (nothing is sent); runs [block] with that folder's UIDs;
- * finally returns the session to [home] (when given). Groups run in first-appearance order.
+ * The single gate for actions on messages. Refuses refs of another account before any I/O; per (folder, epoch)
+ * group, one [MailSession.inFolder] call selects the folder, checks UIDVALIDITY (nothing is sent on a mismatch)
+ * and runs [block] with that folder's UIDs on the session it gets. Groups run in first-appearance order.
  */
 suspend fun <T> MailSession.onRefs(
     accountId: String,
     refs: List<MessageRef>,
-    home: String? = null,
-    block: suspend (mailbox: String, uids: List<Long>) -> T,
+    block: suspend (s: MailSession, mailbox: String, uids: List<Long>) -> T,
 ): List<T> {
     if (refs.isEmpty()) return emptyList()
     if (refs.any { it.accountId != accountId }) throw MailFailure("message belongs to another account")
@@ -31,32 +30,10 @@ suspend fun <T> MailSession.onRefs(
     val groups = LinkedHashMap<Pair<String, Long>, MutableList<Long>>()
     for (r in refs) groups.getOrPut(r.mailbox to r.uidValidity) { ArrayList() }.add(r.uid)
     val out = ArrayList<T>(groups.size)
-    try {
-        for ((folder, uids) in groups) {
-            out += pinned {
-                selectChecked(folder.first, folder.second)
-                block(folder.first, uids)
-            }
-        }
-    } finally {
-        if (home != null) {
-            try {
-                select(home)
-            } catch (_: MailFailure) {
-            }
-        }
+    for ((folder, uids) in groups) {
+        out += inFolder(FolderAt(folder.first, folder.second)) { _, s -> block(s, folder.first, uids) }
     }
     return out
-}
-
-/** Select [mailbox] and refuse when its UIDVALIDITY is no longer [uidValidity] (the UIDs would name other mail). */
-suspend fun MailSession.selectChecked(mailbox: String, uidValidity: Long): SelectResult {
-    if (uidValidity == 0L) throw MailFailure("message reference is incomplete; reload the list")
-    val selected = select(mailbox)
-    if (selected.uidValidity != uidValidity) {
-        throw MailFailure("folder $mailbox changed on the server (UIDVALIDITY); reload the list")
-    }
-    return selected
 }
 
 /** F103: the same folder (INBOX compares case-insensitively, RFC 3501 5.1). */

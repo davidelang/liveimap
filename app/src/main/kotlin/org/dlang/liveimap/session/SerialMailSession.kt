@@ -77,68 +77,68 @@ class SerialMailSession(
         onLane { inner.statusMessages(mailboxes) }
 
     override suspend fun select(mailbox: String): SelectResult =
-        onLane { inner.select(mailbox) }
+        unscoped("select")
 
     override suspend fun unselect() {
-        onLane { inner.unselect() }
+        unscoped("unselect")
     }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> =
-        onLane { inner.fetchIndex(request) }
+        unscoped("fetchIndex")
 
     override suspend fun fetchStructure(uid: Long): MimePart =
-        onLane { inner.fetchStructure(uid) }
+        unscoped("fetchStructure")
 
     override suspend fun fetchStructureAt(uid: Long, section: String): MimePart =
-        onLane { inner.fetchStructureAt(uid, section) }
+        unscoped("fetchStructureAt")
 
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
-        onLane { inner.peekPart(uid, section, offset, length) }
+        unscoped("peekPart")
 
     override suspend fun fetchRfc822(uid: Long): ByteArray =
-        onLane { inner.fetchRfc822(uid) }
+        unscoped("fetchRfc822")
 
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
-        onLane { inner.storeFlags(uids, add, remove) }
+        unscoped("storeFlags")
     }
 
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) {
-        onLane { inner.storeFlagsAll(add, remove) }
+        unscoped("storeFlagsAll")
     }
 
     override suspend fun uidExpungeDeleted() {
-        onLane { inner.uidExpungeDeleted() }
+        unscoped("uidExpungeDeleted")
     }
 
     override suspend fun uidExpunge(uids: List<Long>) {
-        onLane { inner.uidExpunge(uids) }
+        unscoped("uidExpunge")
     }
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
-        onLane { inner.copyThenDelete(uids, targetMailbox) }
+        unscoped("copyThenDelete")
     }
 
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
-        onLane { inner.copyUids(uids, targetMailbox) }
+        unscoped("copyUids")
     }
 
     override suspend fun copyAllThenDelete(targetMailbox: String) {
-        onLane { inner.copyAllThenDelete(targetMailbox) }
+        unscoped("copyAllThenDelete")
     }
 
-    override suspend fun selectedExists(): Int = onLane { inner.selectedExists() }
+    override suspend fun selectedExists(): Int = unscoped("selectedExists")
 
-    override suspend fun takeCopiedUids(): List<Long> = onLane { inner.takeCopiedUids() }
-    override suspend fun copiedEpoch(): Long = onLane { inner.copiedEpoch() }
+    override suspend fun takeCopiedUids(): List<Long> = unscoped("takeCopiedUids")
+    override suspend fun copiedEpoch(): Long = unscoped("copiedEpoch")
 
     override suspend fun searchText(query: String): List<Long> =
-        onLane { inner.searchText(query) }
+        unscoped("searchText")
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> =
-        onLane { inner.searchCriterion(kind, argument) }
+        unscoped("searchCriterion")
 
     override suspend fun searchCount(kind: String, argument: String): Int =
-        onLane { inner.searchCount(kind, argument) }
+        unscoped("searchCount")
 
     override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
         onLane { inner.searchScope(scopeName, home, kind, argument) }
@@ -150,24 +150,24 @@ class SerialMailSession(
         onLane { inner.subscribedMailboxes() }
 
     override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
-        onLane { inner.searchStart(rule, byUid, edge) }
+        unscoped("searchStart")
 
-    override suspend fun locateUid(uid: Long): List<Long> = onLane { inner.locateUid(uid) }
+    override suspend fun locateUid(uid: Long): List<Long> = unscoped("locateUid")
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> =
-        onLane { inner.sort(key, newestFirst) }
+        unscoped("sort")
 
     override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int): UidWindow? =
-        onLane { inner.sortWindow(key, newestFirst, first, last) }
+        unscoped("sortWindow")
 
     override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? =
-        onLane { inner.searchWindow(kind, argument, first, last) }
+        unscoped("searchWindow")
 
     override suspend fun thread(key: SortKey): ThreadNode =
-        onLane { inner.thread(key) }
+        unscoped("thread")
 
     override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? =
-        onLane { inner.sortMatching(key, newestFirst, criteria) }
+        unscoped("sortMatching")
 
     override suspend fun sortWindowMatching(
         key: SortKey,
@@ -175,20 +175,20 @@ class SerialMailSession(
         first: Int,
         last: Int,
         criteria: String,
-    ): UidWindow? = onLane { inner.sortWindowMatching(key, newestFirst, first, last, criteria) }
+    ): UidWindow? = unscoped("sortWindowMatching")
 
     override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? =
-        onLane { inner.threadMatching(key, criteria) }
+        unscoped("threadMatching")
 
     override suspend fun clientOrder(
         key: SortKey,
         newestFirst: Boolean,
         onProgress: (Int, Int) -> Unit,
         cancelled: () -> Boolean,
-    ): List<Long> = onLane { inner.clientOrder(key, newestFirst, onProgress, cancelled) }
+    ): List<Long> = unscoped("clientOrder")
 
     override suspend fun clientThread(key: SortKey): ThreadNode =
-        onLane { inner.clientThread(key) }
+        unscoped("clientThread")
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         onLane { inner.watch(mailbox, onChange) }
@@ -208,7 +208,7 @@ class SerialMailSession(
         onLane { inner.expungeOnLeave(mailbox) }
     }
 
-    override suspend fun selectedInfo(): SelectResult = onLane { inner.selectedInfo() }
+    override suspend fun selectedInfo(): SelectResult = unscoped("selectedInfo")
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         onLane { inner.append(mailbox, rfc822, flags) }
@@ -233,20 +233,29 @@ class SerialMailSession(
         }
     }
 
-    private val pin = Mutex()
+    /**
+     * Lowest-layer serialisation (internal; nobody above coordinates on it). One lane call at a time, so the
+     * select-or-verify and the command of an [inFolder] call can never be split by another caller.
+     */
+    private val laneMutex = Mutex()
 
-    private class PinHolder(val owner: SerialMailSession) : AbstractCoroutineContextElement(Key) {
-        companion object Key : CoroutineContext.Key<PinHolder>
+    private class LaneHolder(val owner: SerialMailSession) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<LaneHolder>
     }
 
-    private suspend fun holdsPin(): Boolean = coroutineContext[PinHolder]?.owner === this
+    override suspend fun <T> inFolder(folder: FolderAt, fresh: Boolean, op: suspend (SelectResult, MailSession) -> T): T =
+        onLane { op(selectFolderNow(inner, folder, fresh), inner) }
 
-    override suspend fun <T> pinned(block: suspend () -> T): T {
-        if (holdsPin()) return block()
-        return pin.withLock { withContext(PinHolder(this)) { block() } }
+    /**
+     * David, 2026-10-12: folder-dependent commands must name their folder ([inFolder], [at], [onRefs]). A bare
+     * call would act in whatever folder the connection has selected, so it is refused.
+     */
+    private fun unscoped(name: String): Nothing =
+        throw MailFailure("internal: $name without a folder; use inFolder/at")
+
+    private suspend fun <T> onLane(block: suspend () -> T): T {
+        // An op given to inFolder must use the session it is handed, never this one again (it would deadlock).
+        check(coroutineContext[LaneHolder]?.owner !== this) { "re-entrant session call inside inFolder" }
+        return laneMutex.withLock { val l = lane; withContext(l + LaneHolder(this)) { block() } }
     }
-
-    /** Every command waits while another caller holds the pin (its selection must not move under it). */
-    private suspend fun <T> onLane(block: suspend () -> T): T =
-        if (holdsPin()) withContext(lane) { block() } else pin.withLock { val l = lane; withContext(l) { block() } }
 }

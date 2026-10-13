@@ -75,7 +75,7 @@ import org.dlang.liveimap.jmap.pinnedJmapUpload
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
-import org.dlang.liveimap.session.selectChecked
+import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
@@ -332,46 +332,26 @@ private fun ComposeLoaded(
     }
 
     /**
-     * F116: select [box] before every UID use, checked against the UIDVALIDITY its UIDs came from (the seed's, or
-     * the first one seen here). No local "already selected" cache: the session's selection is shared and moves.
+     * F116 / pass 5: [box]'s UIDs are used only inside one lowest-layer [MailSession.inFolder] call, checked
+     * against the UIDVALIDITY they came from (the seed's, or the first one seen here).
      */
-    suspend fun ensureMailbox(box: String?) {
-        if (box == null) return
+    suspend fun <T> inBox(box: String, block: suspend (MailSession) -> T): T {
         val known = boxEpochs[box] ?: if (box == seed.mailbox && seed.uidValidity != 0L) seed.uidValidity else 0L
-        if (known == 0L) {
-            boxEpochs[box] = session.select(box).uidValidity
-        } else {
-            session.selectChecked(box, known)
-            boxEpochs[box] = known
+        return session.inFolder(FolderAt(box, known)) { sel, s ->
+            boxEpochs[box] = sel.uidValidity
+            block(s)
         }
-        selectedMailbox = box
-    }
-
-    /** F116: select [box] and use its UIDs as one unit; no other screen can move the selection in between. */
-    suspend fun <T> inBox(box: String, block: suspend () -> T): T = session.pinned {
-        ensureMailbox(box)
-        block()
     }
 
     suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
         if (mailbox.isEmpty()) return emptyList()
         val cached = pineBookIsLoaded(accountId, mailbox)
-        val restore = selectedMailbox
         val entries = try {
             pineEntriesOnce(session, accountId, mailbox)
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
             emptyList()
-        }
-        if (!cached && restore != null && restore != mailbox) {
-            try {
-                session.select(restore)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: MailFailure) {
-                selectedMailbox = null
-            }
         }
         return entries
     }
@@ -422,8 +402,8 @@ private fun ComposeLoaded(
                 part.encoding.equals("base64", ignoreCase = true),
             ) { offset, length ->
                 val box = seed.mailbox
-                if (box == null) session.peekPart(uid, part.section, offset, length)
-                else inBox(box) { session.peekPart(uid, part.section, offset, length) } // F116
+                if (box == null) throw MailFailure("message reference is incomplete; reload the list")
+                else inBox(box) { s -> s.peekPart(uid, part.section, offset, length) } // F116
             }
             val decoded = decodePart(bytes, part.charset, part.encoding)
             if (decoded.unknownCharset && notice.isNullOrEmpty()) notice = unknownCharsetNote
@@ -471,9 +451,9 @@ private fun ComposeLoaded(
     suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
-        val parsed = parseRfc822(inBox(box) { session.fetchRfc822(uid) })
+        val parsed = parseRfc822(inBox(box) { s -> s.fetchRfc822(uid) })
         originalParsed = parsed
-        val quote = quotedBody(inBox(box) { session.fetchStructure(uid) }, settings.bodyView, uid)
+        val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
         val rules0 = resolveNow(settings)
         val draft = replyDraft(replyAll, parsed, settings.email, quote, rules0.quotePrefix, rules0.leadIn)
         val replyToAddrs = addresses(parsed, "Reply-To")
@@ -525,7 +505,7 @@ private fun ComposeLoaded(
             else -> settings.forwardAsAttachment
         }
         if (asAttachment) {
-            val original = inBox(box) { session.fetchRfc822(uid) }
+            val original = inBox(box) { s -> s.fetchRfc822(uid) }
             if (!draftLoaded) {
                 val parsed = parseRfc822(original)
                 originalParsed = parsed
@@ -551,12 +531,12 @@ private fun ComposeLoaded(
             return
         }
         val tree = if (draftLoaded) {
-            inBox(box) { session.fetchStructure(uid) }
+            inBox(box) { s -> s.fetchStructure(uid) }
         } else {
-            val parsed = parseRfc822(inBox(box) { session.fetchRfc822(uid) })
+            val parsed = parseRfc822(inBox(box) { s -> s.fetchRfc822(uid) })
             originalParsed = parsed
             val r = resolveNow(settings)
-            val fetched = inBox(box) { session.fetchStructure(uid) }
+            val fetched = inBox(box) { s -> s.fetchStructure(uid) }
             val quote = quotedBody(fetched, settings.bodyView, uid)
             val draft = forwardDraft(parsed, quote, r.quotePrefix, r.leadIn)
             val header = appContext.getString(
@@ -623,7 +603,7 @@ private fun ComposeLoaded(
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
-        applyEditor(loadEditor(inBox(box) { session.fetchRfc822(uid) }))
+        applyEditor(loadEditor(inBox(box) { s -> s.fetchRfc822(uid) }))
     }
 
     fun composedHeaders(settings: AccountSettings): List<Pair<String, String>> {
@@ -644,7 +624,7 @@ private fun ComposeLoaded(
                 if (uid == null) throw MailFailure(fetchFailed)
                 val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
                 val fetched = peekWireBytes(row.size, 65536, true) { offset, length ->
-                    inBox(source) { session.peekPart(uid, row.section, offset, length) }
+                    inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
                 }
                 fetched to looksLikeBase64(fetched)
             }
@@ -676,7 +656,7 @@ private fun ComposeLoaded(
         val box = seed.mailbox
         if (flags.isEmpty() || box == null || uids.isEmpty()) return
         try {
-            inBox(box) { session.storeFlags(uids, flags, emptySet()) }
+            inBox(box) { s -> s.storeFlags(uids, flags, emptySet()) }
         } catch (error: CancellationException) {
             throw error
         } catch (failure: MailFailure) {
@@ -689,9 +669,9 @@ private fun ComposeLoaded(
         val uid = postponedUidToRemove(seed.kind, true, sourceUid) ?: return
         val box = seed.mailbox ?: account.postponedMailbox
         try {
-            inBox(box) {
-                session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                session.uidExpunge(listOf(uid))
+            inBox(box) { s ->
+                s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                s.uidExpunge(listOf(uid))
             }
         } catch (error: CancellationException) {
             throw error
@@ -1505,13 +1485,12 @@ private fun ComposeLoaded(
                     }
                     if (seed.uids.isEmpty()) return@launchLocked false
                     val box = seed.mailbox ?: return@launchLocked false
-                    ensureMailbox(box)
                     val recipient = addrSpec(resentTo).ifEmpty { resentTo }
                     val resentFrom = formatMailbox(account.displayName, account.email)
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
                             for (uid in seed.uids) {
-                                val original = inBox(box) { session.fetchRfc822(uid) } // F116: pinned to the source folder
+                                val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
                                 val bounced = buildBounce(
                                     original,
                                     resentFrom = resentFrom,
@@ -1559,7 +1538,7 @@ private fun ComposeLoaded(
                                 return@launchLocked false
                             }
                             for (uid in seed.uids) {
-                                val original = inBox(box) { session.fetchRfc822(uid) } // F116: pinned to the source folder
+                                val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
                                 val bounced = buildBounce(
                                     original,
                                     resentFrom = resentFrom,

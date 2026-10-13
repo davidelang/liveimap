@@ -4,7 +4,11 @@ import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.onRefs
 import org.dlang.liveimap.session.sameMailbox
-import org.dlang.liveimap.session.selectChecked
+import org.dlang.liveimap.session.FolderAt
+import org.dlang.liveimap.session.EpochChanged
+import org.dlang.liveimap.session.at
+import org.dlang.liveimap.session.copyFrom
+import org.dlang.liveimap.session.folderInfo
 
 import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.session.ComposeKind
@@ -230,7 +234,7 @@ suspend fun countHits(
     if (scope == SearchScope.Current) {
         if (cancelled()) return SearchCount(0, emptyList())
         onProgress(1, 1)
-        return SearchCount(session.searchCount("Advanced", text), emptyList())
+        return SearchCount(session.inFolder(FolderAt(home)) { _, s -> s.searchCount("Advanced", text) }, emptyList())
     }
     if (usesFastScope(session, scope)) {
         if (cancelled()) return SearchCount(0, emptyList())
@@ -240,30 +244,17 @@ suspend fun countHits(
     val boxes = mailboxesFor(scope, home, session)
     var total = 0
     val skipped = ArrayList<String>()
-    var leftHome = false
-    try {
-        for ((index, box) in boxes.withIndex()) {
-            if (cancelled()) break
-            onProgress(index + 1, boxes.size)
-            try {
-                session.select(box)
-                if (box != home) leftHome = true
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: MailFailure) {
-                skipped.add(box)
-                continue
-            }
-            total += session.searchCount("Advanced", text)
-        }
-    } finally {
-        if (leftHome) {
-            try {
-                session.select(home)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: MailFailure) {
-            }
+    for ((index, box) in boxes.withIndex()) {
+        if (cancelled()) break
+        onProgress(index + 1, boxes.size)
+        // One call per folder: the session selects it and counts in it (nothing to restore afterwards).
+        total += try {
+            session.inFolder(FolderAt(box)) { _, s -> s.searchCount("Advanced", text) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            skipped.add(box)
+            continue
         }
     }
     return SearchCount(total, skipped)
@@ -1370,72 +1361,31 @@ class IndexModel(
     }
 
     /**
-     * F43: every UID operation runs in this model's mailbox. select() is free when it is already selected; when
-     * another screen sharing the session moved the selection, this re-selects before UIDs are used.
+     * David, 2026-10-12 (F129/F142): every query and UID action names its folder and epoch; the session layer
+     * selects or verifies that folder inside the same call that runs the command. Nothing here selects or pins.
+     * The folder is the acted-on hit's folder while [actFolder] is set, else this index's folder. Its epoch is the
+     * one recorded when its rows were listed (0 for this folder before the first listing: reads only; a hit's
+     * folder with no recorded epoch is refused).
      */
-    /**
-     * F128: this folder's searches, sorts, threads and counts. Each runs pinned with this folder selected (never
-     * whatever another screen left selected), and its result is recorded against the epoch it was read in.
-     */
-    private val home: MailSession = HomeQueries()
-
-    private inner class HomeQueries : MailSession by session {
-        private suspend fun <T> own(block: suspend () -> T): T = session.pinned {
-            val folder = actFolder
-            if (folder != null && folder != mailbox) {
-                session.selectChecked(folder, epochOf(folder)) // a hit's folder: only in the epoch it was listed in
-            } else {
-                val selected = session.select(mailbox)
-                if (selected.uidValidity > 0) epochs[mailbox] = selected.uidValidity
-            }
-            block()
-        }
-        override suspend fun searchCriterion(kind: String, argument: String) = own { session.searchCriterion(kind, argument) }
-        override suspend fun searchCount(kind: String, argument: String) = own { session.searchCount(kind, argument) }
-        override suspend fun searchText(query: String) = own { session.searchText(query) }
-        override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge) =
-            own { session.searchStart(rule, byUid, edge) }
-        override suspend fun sort(key: SortKey, newestFirst: Boolean) = own { session.sort(key, newestFirst) }
-        override suspend fun sortWindow(key: SortKey, newestFirst: Boolean, first: Int, last: Int) =
-            own { session.sortWindow(key, newestFirst, first, last) }
-        override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int) =
-            own { session.searchWindow(kind, argument, first, last) }
-        override suspend fun thread(key: SortKey) = own { session.thread(key) }
-        override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String) =
-            own { session.sortMatching(key, newestFirst, criteria) }
-        override suspend fun sortWindowMatching(key: SortKey, newestFirst: Boolean, first: Int, last: Int, criteria: String) =
-            own { session.sortWindowMatching(key, newestFirst, first, last, criteria) }
-        override suspend fun threadMatching(key: SortKey, criteria: String) = own { session.threadMatching(key, criteria) }
-        override suspend fun clientOrder(
-            key: SortKey,
-            newestFirst: Boolean,
-            onProgress: (done: Int, total: Int) -> Unit,
-            cancelled: () -> Boolean,
-        ) = own { session.clientOrder(key, newestFirst, onProgress, cancelled) }
-        override suspend fun clientThread(key: SortKey) = own { session.clientThread(key) }
-        override suspend fun selectedExists() = own { session.selectedExists() }
+    private fun actAt(): FolderAt {
+        val folder = actFolder ?: mailbox
+        return FolderAt(folder, epochs[folder] ?: if (folder == mailbox) 0L else -1L)
     }
+
+    /** This index's folder (or the acted-on hit's), bound per call. */
+    private val home: MailSession get() = session.at(actAt())
 
     /** F123: the shown folder's message count (never whatever folder the shared session has selected). */
     suspend fun shownExists(): Int = home.selectedExists()
 
-    /** F123: the poll tick: NOOP and EXISTS read with this folder selected, as one unit. */
-    suspend fun pollShownExists(): Int = session.pinned {
-        session.select(mailbox)
-        session.noop()
-        session.selectedExists()
+    /** F123: the poll tick (only without IDLE): NOOP and EXISTS of this index's own folder, in one call. */
+    suspend fun pollShownExists(): Int = session.inFolder(FolderAt(mailbox)) { _, s ->
+        s.noop()
+        s.selectedExists()
     }
 
     /** F123: Folder info for the shown folder. */
-    suspend fun shownInfo(): SelectResult = session.pinned {
-        session.select(mailbox)
-        session.selectedInfo()
-    }
-
-    private suspend fun selectOwn() {
-        val folder = actFolder ?: mailbox
-        session.selectChecked(folder, epochOf(folder))
-    }
+    suspend fun shownInfo(): SelectResult = session.folderInfo(FolderAt(mailbox))
 
     /**
      * F105: UIDVALIDITY of each folder as of when its rows were listed. Every UID action goes through
@@ -1448,20 +1398,22 @@ class IndexModel(
     /** Account scope for this model's refs (one model, one account). */
     private val accountKey: String get() = refAccountKey(account)
 
-    private suspend fun epochOf(folder: String): Long {
-        epochs[folder]?.let { return it }
-        if (folder != mailbox) return 0L // a hit's folder is recorded when it is listed; unknown = refuse
-        val now = session.select(mailbox).uidValidity
-        epochs[mailbox] = now
-        return now
+    private fun epochOf(folder: String): Long = epochs[folder] ?: 0L
+
+    /**
+     * F142: the home folder's epoch is recorded only from the select that produced its rows (never from a later
+     * query), so a server-side UIDVALIDITY change is caught by the next action instead of masked.
+     */
+    private fun noteListedEpoch(folder: String, selected: SelectResult) {
+        if (selected.uidValidity > 0 && !epochs.containsKey(folder)) epochs[folder] = selected.uidValidity
     }
 
-    /** F105: the home folder's epoch as listed (loads end with it selected); first listing wins. */
-    private suspend fun noteOwnEpoch() {
-        if (epochs.containsKey(mailbox)) return
-        val info = session.selectedInfo()
-        if (info.uidValidity > 0) epochs[mailbox] = info.uidValidity
-    }
+    /** Rows of a folder (this one or a hit's), fetched in the same call as the select that dates them. */
+    private suspend fun fetchListed(request: IndexRequest): List<IndexRow> =
+        session.inFolder(FolderAt(request.mailbox, epochs[request.mailbox] ?: 0L)) { selected, s ->
+            noteListedEpoch(request.mailbox, selected)
+            s.fetchIndex(request)
+        }
 
     /** F105: [folder]'s UIDVALIDITY as recorded when its rows were listed; 0 when not known yet. */
     fun listedEpoch(folder: String): Long = epochs[folder.ifEmpty { mailbox }] ?: 0L
@@ -1471,7 +1423,7 @@ class IndexModel(
         epochs[folder] = epoch
     }
 
-    private suspend fun refsFor(uids: List<Long>, folder: String = actFolder ?: mailbox): List<MessageRef> {
+    private fun refsFor(uids: List<Long>, folder: String = actFolder ?: mailbox): List<MessageRef> {
         val epoch = epochOf(folder)
         return uids.map { MessageRef(accountKey, folder, epoch, it) }
     }
@@ -1480,11 +1432,11 @@ class IndexModel(
     private var allMailboxCeiling: Long = 0L
 
     suspend fun freezeAllMailbox() {
-        allMailboxCeiling = session.selectChecked(mailbox, epochOf(mailbox)).uidNext
+        allMailboxCeiling = session.folderInfo(FolderAt(mailbox, epochOf(mailbox).takeIf { it != 0L } ?: -1L)).uidNext
     }
 
     private suspend fun frozenAll(kind: String = "All"): List<Long> {
-        val all = allUidsInWindows(session, kind = kind)
+        val all = allUidsInWindows(home, kind = kind)
         val ceiling = allMailboxCeiling
         return if (ceiling > 0) all.filter { it < ceiling } else all
     }
@@ -1511,10 +1463,6 @@ class IndexModel(
             return block()
         } finally {
             actFolder = null
-            try {
-                session.select(mailbox)
-            } catch (_: MailFailure) {
-            }
         }
     }
 
@@ -1564,13 +1512,12 @@ class IndexModel(
     suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            selectOwn()
             // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
             // and undo only clears \Deleted on UIDs this action actually changed.
             val target = if (allMailbox) frozenAll() else uids
             val before = if (allMailbox) home.searchCriterion("Deleted", "").toSet()
                 else heldRows.filter { it.uid in uids.toSet() && "\\Deleted" in it.flags }.map { it.uid }.toSet()
-            for (part in target.chunked(MoveChunk)) session.storeFlags(part, setOf("\\Deleted"), emptySet())
+            for (part in target.chunked(MoveChunk)) home.storeFlags(part, setOf("\\Deleted"), emptySet())
             val changed = target.filter { it !in before }
             val idSet = target.toSet()
             heldRows = heldRows.map { row ->
@@ -1607,7 +1554,6 @@ class IndexModel(
         account = settings
         moveStop = false
         try {
-            selectOwn()
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
             val all = if (allMailbox) frozenAll(moveAllKind(settings)) else uids
@@ -1617,10 +1563,11 @@ class IndexModel(
             val outcome = moveInChunks(all, chunk, { moveStop }, { done, total ->
                 if (big) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
             }) { part ->
-                session.copyThenDelete(part, moveMailbox)
-                val epoch = session.copiedEpoch()
+                // One call: select/verify the source, copy, and read COPYUID before anything else can run.
+                val copied = session.copyFrom(actAt(), part, moveMailbox, delete = true)
+                val epoch = copied.targetEpoch
                 targetEpoch = if (targetEpoch == -1L || targetEpoch == epoch) epoch else 0L
-                session.takeCopiedUids()
+                copied.copiedUids
             }
             if (big) onSearchProgress?.invoke(null)
             val moved = outcome.moved
@@ -1674,20 +1621,19 @@ class IndexModel(
         if (!session.featureCaps.uidPlus) return heldRows
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            selectOwn()
             if (allMailbox) {
                 // F44: snapshot UIDs; UID EXPUNGE only those, so a message arriving now is never destroyed unseen.
                 val snapshot = frozenAll()
                 for (part in snapshot.chunked(MoveChunk)) {
-                    session.storeFlags(part, setOf("\\Deleted"), emptySet())
-                    session.uidExpunge(part)
+                    home.storeFlags(part, setOf("\\Deleted"), emptySet())
+                    home.uidExpunge(part)
                 }
                 val gone = snapshot.toSet()
                 if (actFolder == null) order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             } else {
-                session.storeFlags(uids, setOf("\\Deleted"), emptySet())
-                session.uidExpunge(uids)
+                home.storeFlags(uids, setOf("\\Deleted"), emptySet())
+                home.uidExpunge(uids)
                 val gone = uids.toSet()
                 if (actFolder == null) order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
@@ -1714,8 +1660,8 @@ class IndexModel(
         }
         try {
             if (u.delete) {
-                session.onRefs(accountKey, u.source, home = mailbox) { _, uids ->
-                    for (part in uids.chunked(MoveChunk)) session.storeFlags(part, emptySet(), setOf("\\Deleted"))
+                session.onRefs(accountKey, u.source) { s, _, uids ->
+                    for (part in uids.chunked(MoveChunk)) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
                 }
                 val keys = u.source.filter { sameMailbox(it.mailbox, mailbox) }.map { it.uid }.toSet()
                 val hits = u.source.map { it.mailbox to it.uid }.toSet()
@@ -1736,14 +1682,14 @@ class IndexModel(
                 // copies go back to each one's own source folder (a multi-folder selection has several)
                 val byHome = u.source.indices.groupBy({ u.source[it].mailbox }, { u.dest[it] })
                 for ((back, refs) in byHome) {
-                    session.onRefs(accountKey, refs, home = mailbox) { _, uids -> session.copyThenDelete(uids, back) }
+                    session.onRefs(accountKey, refs) { s, _, uids -> s.copyThenDelete(uids, back) }
                 }
             } else {
-                session.onRefs(accountKey, u.source, home = mailbox) { _, uids ->
-                    session.storeFlags(uids, emptySet(), setOf("\\Deleted"))
+                session.onRefs(accountKey, u.source) { s, _, uids ->
+                    s.storeFlags(uids, emptySet(), setOf("\\Deleted"))
                 }
-                session.onRefs(accountKey, u.dest, home = mailbox) { _, uids ->
-                    session.storeFlags(uids, setOf("\\Deleted"), emptySet())
+                session.onRefs(accountKey, u.dest) { s, _, uids ->
+                    s.storeFlags(uids, setOf("\\Deleted"), emptySet())
                 }
             }
             notice = null
@@ -1757,9 +1703,8 @@ class IndexModel(
 
     suspend fun undoDelete(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
         try {
-            selectOwn()
             // F44: undo is per recorded UID; a whole-folder clear would also undelete earlier \Deleted mail.
-            for (part in uids.chunked(MoveChunk)) session.storeFlags(part, emptySet(), setOf("\\Deleted"))
+            for (part in uids.chunked(MoveChunk)) home.storeFlags(part, emptySet(), setOf("\\Deleted"))
             val idSet = uids.toSet()
             heldRows = heldRows.map { row ->
                 if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags - "\\Deleted") else row
@@ -1786,23 +1731,13 @@ class IndexModel(
             return heldRows
         }
         try {
-            try {
-                if (usedMove) {
-                    session.select(targetMailbox)
-                    session.copyThenDelete(destUids, mailbox)
-                } else {
-                    selectOwn()
-                    if (sourceUids.isNotEmpty()) session.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
-                    if (destUids.isNotEmpty()) {
-                        session.select(targetMailbox)
-                        session.storeFlags(destUids, setOf("\\Deleted"), emptySet())
-                    }
-                }
-            } finally {
-                // F43: never leave the session in the target folder, also when the work there failed.
-                try {
-                    selectOwn()
-                } catch (_: MailFailure) {
+            // Legacy undo (no refs): the target's epoch is unknown, so it is named without one (as before).
+            if (usedMove) {
+                session.inFolder(FolderAt(targetMailbox)) { _, s -> s.copyThenDelete(destUids, mailbox) }
+            } else {
+                if (sourceUids.isNotEmpty()) home.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
+                if (destUids.isNotEmpty()) {
+                    session.inFolder(FolderAt(targetMailbox)) { _, s -> s.storeFlags(destUids, setOf("\\Deleted"), emptySet()) }
                 }
             }
             notice = null
@@ -1826,10 +1761,9 @@ class IndexModel(
             return heldRows
         }
         try {
-            selectOwn()
             // F44: snapshot UIDs, so new mail is not marked (e.g. \Seen) before it was ever shown.
             val target = if (allMailbox) frozenAll() else uids
-            for (part in target.chunked(MoveChunk)) session.storeFlags(part, add, remove)
+            for (part in target.chunked(MoveChunk)) home.storeFlags(part, add, remove)
             val idSet = target.toSet()
             heldRows = heldRows.map { row ->
                 if (row.uid in idSet && inActedFolder(row)) row.copy(flags = (row.flags + add) - remove) else row
@@ -1844,8 +1778,7 @@ class IndexModel(
     suspend fun expunge(): List<IndexRow> {
         if (!session.featureCaps.uidPlus) return heldRows
         try {
-            selectOwn()
-            session.uidExpungeDeleted()
+            home.uidExpungeDeleted()
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
@@ -1857,8 +1790,7 @@ class IndexModel(
     suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
         if (uids.isEmpty()) return heldRows
         try {
-            selectOwn()
-            session.uidExpunge(uids)
+            home.uidExpunge(uids)
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
@@ -1952,8 +1884,18 @@ class IndexModel(
         placedStart = false
         windowFailed = false
         try {
-            heldRows = load()
-            noteOwnEpoch()
+            heldRows = try {
+                load()
+            } catch (changed: EpochChanged) {
+                // F142: the folder's UIDVALIDITY moved since its rows were listed. Drop everything dated by the old
+                // epoch and list again (once); the new listing records the new epoch.
+                if (changed.mailbox != mailbox) throw changed
+                epochs.remove(mailbox)
+                allMailboxCeiling = 0L
+                mailUndo = null
+                order = emptyList()
+                load()
+            }
             loadedWindow = true
             notice = pendingNotice
             pendingNotice = null
@@ -2026,7 +1968,7 @@ class IndexModel(
         }
         var exists = home.selectedExists()
         if (exists <= 0) {
-            exists = session.select(mailbox).exists
+            exists = session.folderInfo(FolderAt(mailbox, epochs[mailbox] ?: 0L)).exists
         }
         if (exists <= 0) {
             order = emptyList()
@@ -2058,7 +2000,7 @@ class IndexModel(
             order = emptyList()
             return emptyList()
         }
-        val fetched = session.fetchIndex(
+        val fetched = fetchListed(
             IndexRequest(
                 mailbox = mailbox,
                 mode = IndexMode.ArrivalRange,
@@ -2261,7 +2203,7 @@ class IndexModel(
     private suspend fun findKeptIndex(uid: Long, count: Int): Int? {
         if (usesArrivalSequences()) {
             val sequences = try {
-                session.locateUid(uid)
+                home.locateUid(uid)
             } catch (failure: MailFailure) {
                 if (pendingNotice == null) pendingNotice = failure.text
                 return null
@@ -2319,7 +2261,6 @@ class IndexModel(
             }
         }
         val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
-            session.select(mailbox)
             requireClientFallbackRoom()
             // Chunked client sort: progress and Cancel through the same bar as long searches and big moves.
             moveStop = false
@@ -2353,7 +2294,6 @@ class IndexModel(
             else -> true
         }
         val node = if (!serverThread && slowerClientThread(account)) {
-            session.select(mailbox)
             requireClientFallbackRoom()
             home.clientThread(key)
         } else {
@@ -2532,7 +2472,7 @@ class IndexModel(
         preview: Boolean = includePreview,
         folder: String = mailbox,
     ): List<IndexRow> {
-        return session.fetchIndex(
+        return fetchListed(
             IndexRequest(
                 mailbox = folder,
                 mode = IndexMode.ByUid,
@@ -2547,15 +2487,6 @@ class IndexModel(
     private fun clearSearchScope() {
         activeScope = SearchScope.Current
         orderMailboxes = emptyList()
-    }
-
-    private suspend fun reselectHome() {
-        try {
-            session.select(mailbox)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: MailFailure) {
-        }
     }
 
     private suspend fun fetchScopedAdvanced(text: String, preserveAnchor: Int?): List<IndexRow> {
@@ -2597,18 +2528,16 @@ class IndexModel(
             for ((index, box) in boxes.withIndex()) {
                 if (cancelled()) break
                 progress(index + 1, boxes.size)
-                val opened = try {
-                    epochs[box] = session.select(box).uidValidity
-                    true
+                // F128: one call selects the box, dates its hits and searches it.
+                val found = try {
+                    session.inFolder(FolderAt(box)) { selected, s ->
+                        epochs[box] = selected.uidValidity
+                        s.searchCriterion("Advanced", text)
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {
-                    false
-                }
-                if (!opened) continue
-                val found = session.pinned { // F128: this box's hits, read in the epoch recorded for them
-                    session.selectChecked(box, epochs.getValue(box))
-                    session.searchCriterion("Advanced", text)
+                    continue
                 }
                 val ordered = if (view.newestFirst) found.sortedDescending() else found.sorted()
                 for (uid in ordered) {
@@ -2617,7 +2546,7 @@ class IndexModel(
                 }
             }
         } finally {
-            reselectHome()
+            // Nothing to restore: no folder is ever left selected for anyone else to depend on.
         }
         order = hits
         orderMailboxes = hitBoxes
@@ -2642,25 +2571,19 @@ class IndexModel(
                 var next = index + 1
                 while (next < end && mailboxes[next] == box) next += 1
                 val slice = uids.subList(index, next)
-                val opened = try {
-                    val epoch = session.select(box).uidValidity
-                    if (epochs.putIfAbsent(box, epoch).let { it != null && it != epoch }) {
-                        throw MailFailure("folder $box changed on the server (UIDVALIDITY)")
-                    }
-                    true
+                // fetchListed checks the box's recorded epoch (or records it) in the same call as the fetch.
+                val fetched = try {
+                    align(slice, fetchByUid(slice, folder = box))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {
-                    false
+                    emptyList()
                 }
-                if (opened) {
-                    val fetched = align(slice, fetchByUid(slice, folder = box))
-                    for (row in fetched) loaded.add(row.copy(mailbox = box))
-                }
+                for (row in fetched) loaded.add(row.copy(mailbox = box))
                 index = next
             }
         } finally {
-            reselectHome()
+            // Nothing to restore: no folder is ever left selected for anyone else to depend on.
         }
         return loaded
     }
@@ -2672,7 +2595,7 @@ class IndexModel(
 
     private suspend fun addNewTail(growth: Int) {
         if (growth <= 0) return
-        val fetched = session.fetchIndex(
+        val fetched = fetchListed(
             IndexRequest(
                 mailbox = mailbox,
                 mode = IndexMode.ArrivalNewest,

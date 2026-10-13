@@ -21,11 +21,16 @@ data class CertPrompt(
 
 interface MailSession {
     /**
-     * F116/F105: run [block] with the selection pinned. No other caller can select (or issue any command) until it
-     * returns, so "select folder X, check UIDVALIDITY, then act by UID" can't be split by another screen. Reentrant.
+     * The one way to work in a folder (David, 2026-10-12): this call selects [folder] (or verifies it is still
+     * selected) and checks its UIDVALIDITY, then runs [op] against the session in that same call, with nothing
+     * else able to run in between. [op] gets the folder's SELECT result and the session to issue commands on;
+     * it must use only that session. Callers never select or pin anything themselves. [fresh] re-reads the
+     * folder (UNSELECT + SELECT) so counts reflect the server now (a re-SELECT of the selected folder may not).
+     * This default is for single-threaded fakes; [SerialMailSession] makes it atomic.
      */
-    @Throws(MailFailure::class)
-    suspend fun <T> pinned(block: suspend () -> T): T = block()
+    suspend fun <T> inFolder(folder: FolderAt, fresh: Boolean = false, op: suspend (SelectResult, MailSession) -> T): T =
+        op(selectFolderNow(this, folder, fresh), this)
+
 
     val capabilities: Set<String>
     val featureCaps: Capabilities

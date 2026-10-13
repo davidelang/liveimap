@@ -1,5 +1,7 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.session.folderInfo
+import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1453,7 +1455,7 @@ private fun MessageIndexLoaded(
 
     suspend fun folderExistsNow(): Int? {
         return try {
-            gate.withLock { session.select(mailbox).exists }
+            gate.withLock { session.folderInfo(FolderAt(mailbox)).exists }
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
@@ -1653,7 +1655,7 @@ private fun MessageIndexLoaded(
             )
             if (clientFallback) {
                 val selected = try {
-                    session.select(mailbox)
+                    session.folderInfo(FolderAt(mailbox))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1674,7 +1676,7 @@ private fun MessageIndexLoaded(
                 savedView.key == SortKey.ThreadOrderedSubject)
             if (threading) {
                 val selected = try {
-                    session.select(mailbox)
+                    session.folderInfo(FolderAt(mailbox))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1695,7 +1697,7 @@ private fun MessageIndexLoaded(
                 savedView.key != SortKey.Arrival
             if (serverSort) {
                 val selected = try {
-                    session.select(mailbox)
+                    session.folderInfo(FolderAt(mailbox))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {

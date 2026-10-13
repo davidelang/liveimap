@@ -1,7 +1,10 @@
 package org.dlang.liveimap.debug.acceptance
 
 import kotlinx.coroutines.CancellationException
+import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.IndexMode
+import org.dlang.liveimap.session.at
+import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
@@ -26,6 +29,9 @@ class AcceptanceContext(
     var inboxUid: Long = 0
     var appendedUid: Long = 0
     fun has(name: String) = session.capabilities.any { it.equals(name, ignoreCase = true) }
+    /** [mailbox] as one folder-scoped view, in the epoch the server has now (pass 5: nothing runs unscoped). */
+    suspend fun folder(mailbox: String): MailSession =
+        session.at(FolderAt(mailbox, session.folderInfo(FolderAt(mailbox)).uidValidity))
 }
 
 class AcceptanceTest(val case: AcceptanceCase, val run: suspend AcceptanceContext.() -> String)
@@ -46,27 +52,27 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
     },
     t("namespaces", "folder-list") { "${session.namespaces().size} namespaces" },
     t("list top level", "folder-list") { "${session.listLevel("", null, false).size} mailboxes" },
-    t("select INBOX", "session-select-examine") { "${session.select("INBOX").exists} messages" },
+    t("select INBOX", "session-select-examine") { "${session.folderInfo(FolderAt("INBOX")).exists} messages" },
     t("index window newest 20", "index-layout-and-sort") {
-        val rows = session.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 20, prefetch = 0))
+        val rows = folder("INBOX").fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 20, prefetch = 0))
         inboxUid = rows.firstOrNull()?.uid ?: 0
         "${rows.size} rows"
     },
     t("sort from", "index-layout-and-sort") {
         if (!has("SORT")) throw AcceptanceSkip("SORT not advertised")
-        "${session.sort(SortKey.From, true).size} uids"
+        "${folder("INBOX").sort(SortKey.From, true).size} uids"
     },
     t("thread references", "index-layout-and-sort") {
         if (!has("THREAD=REFERENCES")) throw AcceptanceSkip("THREAD=REFERENCES not advertised")
-        "${session.thread(SortKey.ThreadReferences).messageCount()} messages"
+        "${folder("INBOX").thread(SortKey.ThreadReferences).messageCount()} messages"
     },
-    t("search text", "search") { "${session.searchText("liveimap").size} hits" },
+    t("search text", "search") { "${folder("INBOX").searchText("liveimap").size} hits" },
     t("structure and first part", "reader-body-decoding") {
         if (inboxUid == 0L) throw AcceptanceSkip("INBOX is empty")
-        val part = session.fetchStructure(inboxUid)
+        val part = folder("INBOX").fetchStructure(inboxUid)
         var leaf = part
         while (leaf.children.isNotEmpty()) leaf = leaf.children.first()
-        "${session.peekPart(inboxUid, leaf.section.ifEmpty { "1" }, 0, 64).size} bytes"
+        "${folder("INBOX").peekPart(inboxUid, leaf.section.ifEmpty { "1" }, 0, 64).size} bytes"
     },
     t("idle watch", "watched-folders") {
         if (!has("IDLE")) throw AcceptanceSkip("IDLE not advertised")
@@ -80,10 +86,10 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
     },
     t("flag and delete appended", "delete-and-expunge", writes = true) {
         if (appendedUid <= 0) throw AcceptanceSkip("no appended UID")
-        session.select(AcceptanceFolder)
-        session.storeFlags(listOf(appendedUid), setOf("\\Flagged"), emptySet())
-        session.storeFlags(listOf(appendedUid), setOf("\\Deleted"), emptySet())
-        session.uidExpunge(listOf(appendedUid))
+        val box = folder(AcceptanceFolder)
+        box.storeFlags(listOf(appendedUid), setOf("\\Flagged"), emptySet())
+        box.storeFlags(listOf(appendedUid), setOf("\\Deleted"), emptySet())
+        box.uidExpunge(listOf(appendedUid))
         "flagged, deleted, expunged"
     },
     t("send to self", "smtp-submission", writes = true) {
@@ -94,7 +100,7 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
     t("reconnect", "session-select-examine") {
         session.close()
         when (val o = reopen()) {
-            OpenResult.Connected -> "${session.select("INBOX").exists} messages after reconnect"
+            OpenResult.Connected -> "${session.folderInfo(FolderAt("INBOX")).exists} messages after reconnect"
             is OpenResult.Failed -> throw MailFailure(o.text)
             is OpenResult.Rejected -> throw MailFailure(o.capabilities)
         }

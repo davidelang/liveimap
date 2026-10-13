@@ -1,6 +1,6 @@
 package org.dlang.liveimap.ui.contacts
 
-import org.dlang.liveimap.session.selectChecked
+import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -28,43 +28,44 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
     if (mailbox.isEmpty()) {
         return AlpineBookLoad("Address book mailbox is not set", emptyList())
     }
-    session.select(mailbox)
-    val oldest = session.fetchIndex(
-        IndexRequest(
-            mailbox = mailbox,
-            mode = IndexMode.ArrivalOldest,
-            limit = 1,
-            prefetch = 0,
-        ),
-    )
-    val newest = session.fetchIndex(
-        IndexRequest(
-            mailbox = mailbox,
-            mode = IndexMode.ArrivalNewest,
-            limit = 1,
-            prefetch = 0,
-        ),
-    )
-    val first = earliest(oldest)
-    val last = latest(newest)
-    if (first == null || last == null) {
-        return AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
-    }
-    val firstText = session.fetchRfc822(first.uid)
-    val lastText = if (last.uid == first.uid) firstText else session.fetchRfc822(last.uid)
-    if (!hasPineAddrbookHeader(firstText)) {
-        return AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
-    }
-    if (!isBookRevision(lastText, headerSubject(firstText))) {
-        // F85: the newest message is not a revision; take the newest one that is.
-        return when (val read = readPineBook(session, mailbox)) {
-            is PineRead.NotBook -> AlpineBookLoad(read.notice, emptyList())
-            is PineRead.Ready -> AlpineBookLoad(null, read.state.entries)
+    return session.inFolder(FolderAt(mailbox)) { _, s ->
+        val oldest = s.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = IndexMode.ArrivalOldest,
+                limit = 1,
+                prefetch = 0,
+            ),
+        )
+        val newest = s.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = IndexMode.ArrivalNewest,
+                limit = 1,
+                prefetch = 0,
+            ),
+        )
+        val first = earliest(oldest)
+        val last = latest(newest)
+        if (first == null || last == null) {
+            return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
         }
+        val firstText = s.fetchRfc822(first.uid)
+        val lastText = if (last.uid == first.uid) firstText else s.fetchRfc822(last.uid)
+        if (!hasPineAddrbookHeader(firstText)) {
+            return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
+        }
+        if (!isBookRevision(lastText, headerSubject(firstText))) {
+            // F85: the newest message is not a revision; take the newest one that is.
+            return@inFolder when (val read = readPineBook(s, mailbox)) {
+                is PineRead.NotBook -> AlpineBookLoad(read.notice, emptyList())
+                is PineRead.Ready -> AlpineBookLoad(null, read.state.entries)
+            }
+        }
+        val body = rfc822BodyText(lastText)
+            ?: return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
+        return@inFolder AlpineBookLoad(null, parseAlpineBook(body))
     }
-    val body = rfc822BodyText(lastText)
-        ?: return AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
-    return AlpineBookLoad(null, parseAlpineBook(body))
 }
 
 fun parseAlpineBook(body: String): List<AlpineEntry> {
@@ -164,62 +165,57 @@ sealed class PineWriteResult {
 suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
     if (mailbox.isEmpty()) return PineRead.NotBook("Address book mailbox is not set")
     // Fresh view: SELECT of the mailbox already selected keeps the count from before our own APPEND (seen on
-    // lab dovecot-245), so the new revision was invisible and the next save could drop the previous edit.
-    try {
-        session.unselect()
-    } catch (error: kotlinx.coroutines.CancellationException) {
-        throw error
-    } catch (_: Exception) {
-    }
-    val selected = session.select(mailbox)
-    if (selected.exists <= 0) return PineRead.NotBook("This mailbox is not an Alpine address book")
-    val rows = session.fetchIndex(
-        IndexRequest(
-            mailbox = mailbox,
-            mode = IndexMode.ArrivalRange,
-            firstSequence = 1,
-            lastSequence = selected.exists,
-            limit = selected.exists,
-            prefetch = 0,
-        ),
-    )
-    if (rows.isEmpty()) return PineRead.NotBook("This mailbox is not an Alpine address book")
-    val ordered = rows.sortedBy { it.sequence }
-    val header = ordered.first()
-    val headerMessage = session.fetchRfc822(header.uid)
-    if (!hasPineAddrbookHeader(headerMessage)) {
-        return PineRead.NotBook("This mailbox is not an Alpine address book")
-    }
-    val bookSubject = headerSubject(headerMessage)
-    // F85: the newest message that is a real revision (scan back a little past stray messages).
-    var last = header
-    var lastMessage = headerMessage
-    for (row in ordered.asReversed().take(RevisionScan)) {
-        if (row.uid == header.uid) break
-        val bytes = session.fetchRfc822(row.uid)
-        if (isBookRevision(bytes, bookSubject)) {
-            last = row
-            lastMessage = bytes
-            break
+    // lab dovecot-245), so the new revision was invisible; inFolder(fresh) re-reads it in the same call.
+    return session.inFolder(FolderAt(mailbox), fresh = true) { selected, s ->
+        if (selected.exists <= 0) return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
+        val rows = s.fetchIndex(
+            IndexRequest(
+                mailbox = mailbox,
+                mode = IndexMode.ArrivalRange,
+                firstSequence = 1,
+                lastSequence = selected.exists,
+                limit = selected.exists,
+                prefetch = 0,
+            ),
+        )
+        if (rows.isEmpty()) return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
+        val ordered = rows.sortedBy { it.sequence }
+        val header = ordered.first()
+        val headerMessage = s.fetchRfc822(header.uid)
+        if (!hasPineAddrbookHeader(headerMessage)) {
+            return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         }
+        val bookSubject = headerSubject(headerMessage)
+        // F85: the newest message that is a real revision (scan back a little past stray messages).
+        var last = header
+        var lastMessage = headerMessage
+        for (row in ordered.asReversed().take(RevisionScan)) {
+            if (row.uid == header.uid) break
+            val bytes = s.fetchRfc822(row.uid)
+            if (isBookRevision(bytes, bookSubject)) {
+                last = row
+                lastMessage = bytes
+                break
+            }
+        }
+        val split = headerAndSeparator(lastMessage)
+            ?: return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
+        if (!looksLikeHeaders(split.header)) {
+            return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
+        }
+        return@inFolder PineRead.Ready(
+            PineBookState(
+                headerUid = header.uid,
+                lastUid = last.uid,
+                headerBytes = split.header,
+                separator = split.separator,
+                entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
+                uids = ordered.map { it.uid },
+                uidValidity = selected.uidValidity,
+                bookSubject = bookSubject,
+            ),
+        )
     }
-    val split = headerAndSeparator(lastMessage)
-        ?: return PineRead.NotBook("This mailbox is not an Alpine address book")
-    if (!looksLikeHeaders(split.header)) {
-        return PineRead.NotBook("This mailbox is not an Alpine address book")
-    }
-    return PineRead.Ready(
-        PineBookState(
-            headerUid = header.uid,
-            lastUid = last.uid,
-            headerBytes = split.header,
-            separator = split.separator,
-            entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
-            uids = ordered.map { it.uid },
-            uidValidity = selected.uidValidity,
-            bookSubject = bookSubject,
-        ),
-    )
 }
 
 suspend fun writePineBook(
@@ -252,11 +248,13 @@ suspend fun writePineBook(
     val uidPlus = session.featureCaps.uidPlus
     val candidates = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
     // F85: only messages that are themselves book revisions are ever trimmed.
-    val expunge = candidates.filter { uid -> isBookRevision(session.fetchRfc822(uid), after.state.bookSubject) }
-    if (expunge.isNotEmpty()) {
-        session.selectChecked(mailbox, state.uidValidity)
-        session.storeFlags(expunge, setOf("\\Deleted"), emptySet())
-        session.uidExpunge(expunge)
+    val expunge = session.inFolder(FolderAt(mailbox, state.uidValidity)) { _, s ->
+        val revisions = candidates.filter { uid -> isBookRevision(s.fetchRfc822(uid), after.state.bookSubject) }
+        if (revisions.isNotEmpty()) {
+            s.storeFlags(revisions, setOf("\\Deleted"), emptySet())
+            s.uidExpunge(revisions)
+        }
+        revisions
     }
     return PineWriteResult.Wrote(expunge)
 }

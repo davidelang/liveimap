@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.search
 
+import org.dlang.liveimap.session.folderInfo
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -364,10 +365,7 @@ private fun AdvancedSearchLoaded(
                                     if (mailbox !in settings.searchAskSkip) {
                                         val exists = try {
                                             // F123: the count of the folder being searched, not the session's
-                                            session.pinned {
-                                                session.select(mailbox)
-                                                session.selectedExists()
-                                            }
+                                            session.folderInfo(org.dlang.liveimap.session.FolderAt(mailbox)).exists
                                         } catch (error: CancellationException) {
                                             throw error
                                         } catch (error: MailFailure) {

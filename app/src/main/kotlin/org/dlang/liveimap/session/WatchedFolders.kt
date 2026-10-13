@@ -187,7 +187,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
             when (result) {
                 OpenResult.Connected -> {
                     try {
-                        session.select(name)
+                        session.inFolder(FolderAt(name)) { _, _ -> } // the watch connection stays in it
                         session.watch(name) { change ->
                             coalescer.offer(IdleFolderChange(name, change))
                         }
