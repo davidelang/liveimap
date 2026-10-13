@@ -1601,7 +1601,7 @@ internal fun sortKeyRow(key: SortKey, row: SortField): SortField = when (key) {
     SortKey.Subject -> row.copy(text = org.dlang.liveimap.session.baseSubject(
         org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
     SortKey.From, SortKey.To, SortKey.Cc -> row.copy(text = org.dlang.liveimap.session.firstAddrMailbox(
-        org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
+        row.text, org.dlang.liveimap.ui.compose::decodeHeaderWords), empty = false) // F137: parse raw, then decode
     else -> row
 }
 
