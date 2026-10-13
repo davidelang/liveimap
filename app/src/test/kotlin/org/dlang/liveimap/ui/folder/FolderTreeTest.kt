@@ -202,6 +202,24 @@ class FolderTreeTest {
         assertEquals(3, skipped.single { it.mailbox == "INBOX" }.unseen)
     }
 
+    /** #22 (sun): 1323 of 1327 STATUS re-asked counts LIST-STATUS had already returned. */
+    @Test
+    fun listStatusCountsAreNotAskedAgain() {
+        val listed = FolderRow("INBOX.a", "a", false, 1, null, false, messages = 5, delimiter = '.')
+        val uncounted = FolderRow("INBOX.b", "b", false, 1, null, false, delimiter = '.')
+        val root = FolderRow("user.", "user.", true, 0, null, false, namespaceRoot = true, delimiter = '.')
+        val rows = listOf(listed, uncounted, root)
+        assertEquals(listOf(uncounted), statusDue(rows, listStatus = true, slower = false, countedAt = emptyMap(), now = 1L))
+        // asked once: not again while fresh, again after CountFreshMillis
+        assertEquals(emptyList<FolderRow>(), statusDue(rows, true, false, mapOf("INBOX.b" to 1L), 2L))
+        assertEquals(listOf(uncounted), statusDue(rows, true, false, mapOf("INBOX.b" to 1L), 1L + CountFreshMillis))
+        // the explicit "STATUS for visible folders" fallback still asks every visible row
+        assertEquals(listOf(listed, uncounted), statusDue(rows, true, true, emptyMap(), 1L))
+        assertEquals(listOf(listed, uncounted), statusDue(rows, false, true, emptyMap(), 1L))
+        // no LIST-STATUS and no fallback: nothing
+        assertEquals(emptyList<FolderRow>(), statusDue(rows, false, false, emptyMap(), 1L))
+    }
+
     @Test
     fun folderIconKeyPrefersSettingsThenSpecialUseThenInbox() {
         assertEquals("inbox", folderIconKey("INBOX", "", "", "", "", null))

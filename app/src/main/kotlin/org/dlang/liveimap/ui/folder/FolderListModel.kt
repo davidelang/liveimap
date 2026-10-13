@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.folder
 
+import org.dlang.liveimap.settings.slowerStatusCounts
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.Namespace
@@ -232,15 +233,8 @@ class FolderListModel(
 
     suspend fun refreshVisibleCounts(visible: List<FolderRow>): List<FolderRow> {
         val settings = store.load()
-        if (!session.featureCaps.listStatus && !settings.forceSlowerFallbacks && !settings.statusVisibleCounts) {
-            return visible
-        }
+        val due = statusDue(visible, session.featureCaps.listStatus, slowerStatusCounts(settings), countedAt, nowMillis())
         val now = nowMillis()
-        val due = visible.filter { row ->
-            if (row.namespaceRoot) return@filter false
-            val at = countedAt[row.mailbox]
-            at == null || now - at >= CountFreshMillis
-        }
         if (due.isEmpty()) return visible
         val counts = session.statusMessages(due.map { it.mailbox })
         for (row in due) {
@@ -544,3 +538,24 @@ fun nextUnseenFolder(current: String, ordered: List<Pair<String, Int?>>): String
 internal fun isInboxName(name: String): Boolean = name.equals("INBOX", ignoreCase = true)
 
 internal const val UnseenListLimit = 300
+
+/**
+ * #22 (sun): which visible rows get a STATUS. With LIST-STATUS the LIST reply already carries the counts, so only a
+ * visible row the LIST gave no count for is asked (once per [CountFreshMillis]). The "STATUS for visible folders"
+ * fallback ([slower]) asks every visible row as before; without LIST-STATUS and without it, nothing is asked.
+ */
+internal fun statusDue(
+    visible: List<FolderRow>,
+    listStatus: Boolean,
+    slower: Boolean,
+    countedAt: Map<String, Long>,
+    now: Long,
+): List<FolderRow> {
+    if (!listStatus && !slower) return emptyList()
+    return visible.filter { row ->
+        if (row.namespaceRoot) return@filter false
+        if (!slower && row.messages != null) return@filter false
+        val at = countedAt[row.mailbox]
+        at == null || now - at >= CountFreshMillis
+    }
+}

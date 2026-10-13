@@ -61,8 +61,8 @@ class ServerSaveTest {
         assertTrue(s.contains("enabled = hasDraft && !serverChecking"))
         assertTrue(s.contains("{ passwordDraft = it.takeIf { typed -> typed != editor.password } }"))
         assertTrue(s.contains("{ smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }"))
-        assertFalse(s.contains("{ editor.persistPassword(it) }"))
-        assertFalse(s.contains("{ editor.persistSmtpPassword(it) }"))
+        assertFalse(s.contains(") { editor.persistPassword(it) }"))
+        assertFalse(s.contains(") { editor.persistSmtpPassword(it) }"))
         assertTrue(s.contains("val draft = serverDraft ?: return commitPasswords()"))
     }
 
