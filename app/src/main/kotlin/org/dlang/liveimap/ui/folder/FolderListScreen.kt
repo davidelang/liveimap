@@ -253,8 +253,8 @@ fun FolderListScreen(
                     session,
                     settings.username,
                     store.password(),
-                    settings.certPin,
-                    pinnedJmapPost(settings.certPin),
+                    settings.jmapCertPin,
+                    pinnedJmapPost(settings.jmapCertPin),
                     markSeenOnOpen = settings.markSeenOnOpen,
                     deletePolicy = settings.deletePolicy,
                 )

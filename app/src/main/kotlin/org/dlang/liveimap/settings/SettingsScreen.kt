@@ -961,6 +961,15 @@ private fun AccountGroup(editor: SettingsEditor) {
                         Text(stringResource(R.string.settings_cert_pin_clear))
                     }
                 }
+                // F63: JMAP (HTTPS) has its own pin, separate from the IMAP one.
+                if (settings.jmapCertPin.isBlank()) {
+                    Text(stringResource(R.string.settings_jmap_cert_pin_none))
+                } else {
+                    Text(settings.jmapCertPin)
+                    TextButton(onClick = { editor.persist(editor.settings.copy(jmapCertPin = "")) }) {
+                        Text(stringResource(R.string.settings_jmap_cert_pin_clear))
+                    }
+                }
                 LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
                     editor.persist(editor.settings.copy(sieveHost = it))
                 }

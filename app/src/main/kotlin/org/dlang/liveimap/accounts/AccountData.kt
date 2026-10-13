@@ -125,7 +125,7 @@ internal fun retargetCredentials(previous: AccountSettings?, next: AccountSettin
     val smtpMoved = moved(previous.smtpHost, next.smtpHost)
     // F87: the imported client certificate and "accept invalid certificate" were chosen for the old host too.
     val settings = if (imapMoved) {
-        next.copy(certPin = "", sieveCertPin = "", clientCertAlias = "", clientCert = "", acceptInvalidCert = false)
+        next.copy(certPin = "", sieveCertPin = "", jmapCertPin = "", clientCertAlias = "", clientCert = "", acceptInvalidCert = false)
     } else {
         next
     }

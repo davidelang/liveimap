@@ -816,9 +816,9 @@ private fun ComposeLoaded(
                         copy.recipients,
                         account.username,
                         password,
-                        account.certPin,
-                        pinnedJmapUpload(account.certPin),
-                        pinnedJmapPost(account.certPin),
+                        account.jmapCertPin,
+                        pinnedJmapUpload(account.jmapCertPin),
+                        pinnedJmapPost(account.jmapCertPin),
                     )
                 } catch (error: CancellationException) {
                     throw error
@@ -1179,9 +1179,9 @@ private fun ComposeLoaded(
                                 built.recipients,
                                 account.username,
                                 password,
-                                account.certPin,
-                                pinnedJmapUpload(account.certPin),
-                                pinnedJmapPost(account.certPin),
+                                account.jmapCertPin,
+                                pinnedJmapUpload(account.jmapCertPin),
+                                pinnedJmapPost(account.jmapCertPin),
                             )
                         } catch (error: CancellationException) {
                             throw error
@@ -1551,9 +1551,9 @@ private fun ComposeLoaded(
                                         listOf(recipient),
                                         account.username,
                                         password,
-                                        account.certPin,
-                                        pinnedJmapUpload(account.certPin),
-                                        pinnedJmapPost(account.certPin),
+                                        account.jmapCertPin,
+                                        pinnedJmapUpload(account.jmapCertPin),
+                                        pinnedJmapPost(account.jmapCertPin),
                                     )
                                     storeAcceptedFlags(listOf(uid))
                                     continue

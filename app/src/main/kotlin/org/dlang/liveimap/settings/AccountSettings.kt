@@ -485,6 +485,8 @@ data class AccountSettings(
     val tlsMode: TlsMode = TlsMode.None,
     val certPin: String = "",
     val sieveCertPin: String = "",
+    /** F63: the JMAP (HTTPS) server's own pin; never the IMAP one. */
+    val jmapCertPin: String = "",
     val allowPlaintextAuth: Boolean = false,
     /** Advanced, off by default: accept a certificate that fails validation (like pine /novalidate-cert). */
     val acceptInvalidCert: Boolean = false,
@@ -635,6 +637,7 @@ private val fieldNames = listOf(
     "tlsMode",
     "certPin",
     "sieveCertPin",
+    "jmapCertPin",
     "allowPlaintextAuth",
     "acceptInvalidCert",
     "allowOldTls",
@@ -782,6 +785,7 @@ fun AccountSettings.encode(): String = buildString {
     if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
     if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
     if (sieveCertPin.isNotBlank()) appendLine("sieveCertPin=${percentEncode(sieveCertPin)}")
+    if (jmapCertPin.isNotBlank()) appendLine("jmapCertPin=${percentEncode(jmapCertPin)}")
     if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
     if (acceptInvalidCert) appendLine("acceptInvalidCert=true")
     if (allowOldTls) appendLine("allowOldTls=true")
@@ -923,6 +927,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "tlsMode" ||
             key == "certPin" ||
             key == "sieveCertPin" ||
+            key == "jmapCertPin" ||
             key == "allowPlaintextAuth" ||
             key == "acceptInvalidCert" ||
             key == "allowOldTls" ||
@@ -1065,6 +1070,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         tlsMode = field(d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
         certPin = field(d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
         sieveCertPin = field(d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },
+        jmapCertPin = field(d.jmapCertPin) { values["jmapCertPin"]?.let { percentDecode(it) } ?: "" },
         allowPlaintextAuth = field(d.allowPlaintextAuth) { values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false },
         acceptInvalidCert = field(d.acceptInvalidCert) { values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false },
         allowOldTls = field(d.allowOldTls) { values["allowOldTls"]?.let { parseBoolean(it) } ?: false },

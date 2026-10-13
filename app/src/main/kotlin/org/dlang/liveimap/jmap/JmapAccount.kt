@@ -9,6 +9,6 @@ fun offerForAccount(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ): JmapOffer {
     if (account.imapHost.isBlank()) return JmapOffer.None
-    val fetch = JmapHttpsFetch(account.certPin, open, trust)
+    val fetch = JmapHttpsFetch(account.jmapCertPin, open, trust)  // F63: the JMAP server's own pin
     return discoverAt(account.imapHost, 443, fetch)
 }

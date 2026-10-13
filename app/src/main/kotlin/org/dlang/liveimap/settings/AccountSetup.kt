@@ -101,7 +101,7 @@ internal fun testAccountProbes(
             withContext(Dispatchers.IO) {
                 val offer = offerForAccount(candidate, ::platformJmapExchange)
                 if (offer !is JmapOffer.Mail) throw IllegalStateException("no JMAP service found at ${candidate.imapHost}")
-                jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.certPin, pinnedJmapPost(candidate.certPin))
+                jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin))
             }
         },
     )
