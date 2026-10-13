@@ -163,6 +163,14 @@ sealed class PineWriteResult {
 
 suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
     if (mailbox.isEmpty()) return PineRead.NotBook("Address book mailbox is not set")
+    // Fresh view: SELECT of the mailbox already selected keeps the count from before our own APPEND (seen on
+    // lab dovecot-245), so the new revision was invisible and the next save could drop the previous edit.
+    try {
+        session.unselect()
+    } catch (error: kotlinx.coroutines.CancellationException) {
+        throw error
+    } catch (_: Exception) {
+    }
     val selected = session.select(mailbox)
     if (selected.exists <= 0) return PineRead.NotBook("This mailbox is not an Alpine address book")
     val rows = session.fetchIndex(

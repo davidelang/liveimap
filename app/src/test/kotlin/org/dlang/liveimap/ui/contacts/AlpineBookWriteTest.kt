@@ -167,6 +167,21 @@ class AlpineBookWriteTest {
     }
 }
 
+class BookFreshViewTest {
+    @Test
+    fun readAfterWriteSeesTheNewRevision() = kotlinx.coroutines.runBlocking {
+        // Lab dovecot-245: after APPEND the re-read must see the new last message, or the next save would
+        // pass the stale check against the old revision and drop the previous edit.
+        val session = WriteBookSession(uidPlus = true)
+        val first = (readPineBook(session, "book") as PineRead.Ready).state
+        val w = writePineBook(session, "book", first.lastUid, first.entries + AlpineEntry("n", "", "n@x", "", ""), 100, true)
+        org.junit.Assert.assertTrue(w is PineWriteResult.Wrote)
+        val after = (readPineBook(session, "book") as PineRead.Ready).state
+        org.junit.Assert.assertEquals(session.uids.last(), after.lastUid)
+        org.junit.Assert.assertTrue(after.entries.any { it.nickname == "n" })
+    }
+}
+
 private class WriteBookSession(uidPlus: Boolean) : MailSession {
     override var capabilities: Set<String> = if (uidPlus) setOf("UIDPLUS") else emptySet()
     val uids = (1L..6L).toMutableList()
@@ -176,6 +191,8 @@ private class WriteBookSession(uidPlus: Boolean) : MailSession {
     val stored = ArrayList<Pair<List<Long>, Set<String>>>()
     var expunged: List<Long>? = null
     var deletedExpunges = 0
+    /** Like the engine: SELECT of the mailbox already selected keeps the old count until UNSELECT. */
+    var visible: Int? = null
 
     init {
         for (uid in uids) {
@@ -190,13 +207,18 @@ private class WriteBookSession(uidPlus: Boolean) : MailSession {
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
         unused()
 
-    override suspend fun select(mailbox: String): SelectResult =
-        SelectResult(1L, uids.size.toLong() + 1L, uids.size)
+    override suspend fun select(mailbox: String): SelectResult {
+        val n = visible ?: uids.size
+        visible = n
+        return SelectResult(1L, n.toLong() + 1L, n)
+    }
 
-    override suspend fun unselect() = Unit
+    override suspend fun unselect() {
+        visible = null
+    }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> =
-        uids.map { uid ->
+        uids.take(visible ?: uids.size).map { uid ->
             IndexRow(
                 uid = uid,
                 sequence = uid.toInt(),
