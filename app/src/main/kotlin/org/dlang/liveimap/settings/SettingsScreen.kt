@@ -854,6 +854,8 @@ private fun AccountGroup(editor: SettingsEditor) {
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
+                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
+                    onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },
                 ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
             }
         } else {
@@ -882,6 +884,8 @@ private fun AccountGroup(editor: SettingsEditor) {
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
+                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
+                    onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },
                 ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
                 if (serverChecking) {
                     androidx.compose.foundation.layout.Row(
@@ -1035,6 +1039,8 @@ private fun AccountGroup(editor: SettingsEditor) {
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
+                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
+                    onDraft = { typed -> smtpPasswordDraft = typed.takeIf { it != editor.smtpPassword } },
                 ) { smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }
             }
             sendingProblem(settings)?.let { res ->

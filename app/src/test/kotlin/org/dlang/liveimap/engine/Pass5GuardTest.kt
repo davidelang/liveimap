@@ -61,4 +61,18 @@ class Pass5GuardTest {
         assertTrue(serial.contains("watchMutex.withLock { withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) } }"))
         assertFalse(serial.contains("onLane { inner.watch("))
     }
+
+    /** F27: the extra-IDLE close (reached from onStop on Main) runs on IO. */
+    @Test fun watchedFolderCloseIsOffMain() {
+        val w = listOf("src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt", "app/src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt")
+            .map(::File).first { it.exists() }.readText()
+        assertTrue(w.contains("withContext(Dispatchers.IO) { session.close() }"))
+    }
+
+    /** Device test 2026-10-13: a typed password must count as an unsaved edit before the field loses focus. */
+    @Test fun typedPasswordIsADraftAtOnce() {
+        val w = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
+            .map(::File).first { it.exists() }.readText()
+        assertTrue(w.contains("onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },"))
+    }
 }

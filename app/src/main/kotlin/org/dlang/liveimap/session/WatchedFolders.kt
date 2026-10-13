@@ -1,8 +1,10 @@
 package org.dlang.liveimap.session
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 
 data class WatchPlan(
@@ -222,7 +224,8 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
         try {
             session.stopWatch()
         } finally {
-            session.close()
+            // F27: close waits out any native call still in flight on this session; never on the main thread.
+            withContext(Dispatchers.IO) { session.close() }
         }
     }
 
