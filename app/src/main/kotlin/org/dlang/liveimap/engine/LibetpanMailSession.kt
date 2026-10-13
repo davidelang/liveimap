@@ -1004,13 +1004,13 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         if (!featureCaps.idle) return
-        keeper.read("watch") {
-            watchMailbox = mailbox
-            watchCallback = onChange
-            nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-            nativeWatch(requireHandle(), wire(mailbox))
-            noteTraffic("Idling")
-        }
+        // F136: not through the keeper. The watch is its own connection and runs beside the main one (off the
+        // session lane); a reconnect of the main connection from here would race the lane's commands.
+        watchMailbox = mailbox
+        watchCallback = onChange
+        nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
+        nativeWatch(requireHandle(), wire(mailbox))
+        noteTraffic("Idling")
     }
 
     override suspend fun stopWatch() {

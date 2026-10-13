@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -190,12 +191,19 @@ class SerialMailSession(
     override suspend fun clientThread(key: SortKey): ThreadNode =
         unscoped("clientThread")
 
+    /**
+     * F13/F136/F27: watch setup (a whole connect, TLS and login of the separate IDLE connection) and stop (DONE and
+     * its reply) do not take the lane, so the account's other commands are not queued behind them. Watch and stop
+     * stay ordered among themselves; the native side holds its session lock only to install or remove the watch.
+     */
+    private val watchMutex = Mutex()
+
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
-        onLane { inner.watch(mailbox, onChange) }
+        watchMutex.withLock { withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) } }
     }
 
     override suspend fun stopWatch() {
-        onLane { inner.stopWatch() }
+        watchMutex.withLock { withContext(Dispatchers.IO) { inner.stopWatch() } }
     }
 
     override suspend fun noop() {

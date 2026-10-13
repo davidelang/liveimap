@@ -46,4 +46,19 @@ class Pass5GuardTest {
         val send = compose.indexOf("jmapSend(", jmap)
         assertTrue(jmap > 0 && copy in jmap until send)
     }
+
+    /** F13/F136: the watch connection is opened without the session lock, and installs only if not superseded. */
+    @Test fun watchSetupConnectsWithoutTheLock() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val unlock = body.indexOf("session->mu.unlock();")
+        val open = body.indexOf("openTls(")
+        val relock = body.indexOf("session->mu.lock();")
+        assertTrue(unlock in 0 until open && open < relock)
+        assertTrue(body.contains("watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)"))
+        val serial = listOf("src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt", "app/src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt")
+            .map(::File).first { it.exists() }.readText()
+        assertTrue(serial.contains("watchMutex.withLock { withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) } }"))
+        assertFalse(serial.contains("onLane { inner.watch("))
+    }
 }

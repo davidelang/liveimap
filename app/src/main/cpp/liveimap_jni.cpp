@@ -297,6 +297,7 @@ struct LiveSession {
     bool deleteAfterWatch = false;
     // F27: callers between the gLiveMu lookup and their own unlock; freeSession waits for them.
     std::atomic<int> users{0};
+    uint64_t watchGeneration = 0;  // F136: guarded by mu; bumped by every watch setup and stop
     bool closed = false;  // under mu
     std::vector<uint32_t> copiedUids;
     uint32_t copiedUidValidity = 0; // COPYUID's destination UIDVALIDITY (F105 refs for undo)
@@ -1980,7 +1981,13 @@ int appendLiteralPlus(mailimap * imap, const char * mailbox, const char * bytes,
     return MAILIMAP_ERROR_APPEND;
 }
 
+/* F136: a watch setup that connected without the lock installs itself only if nothing superseded it. */
+bool watchSetupSuperseded(bool closed, uint64_t currentGeneration, uint64_t setupGeneration, bool watchInstalled) {
+    return closed || currentGeneration != setupGeneration || watchInstalled;
+}
+
 void stopWatchLocked(LiveSession * session, JNIEnv * env) {
+    session->watchGeneration++;
     signalWatchStop(session);
     if (session->watchThread.joinable()) {
         session->watchThread.join();
@@ -7922,10 +7929,28 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     TrafficIdScope idScope("watch");
     std::string error;
     mailimap * watch = nullptr;
-    if (session->tlsMode == "None") {
-        watch = openPlain(env, session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr);
+    // F13/F136: the watch is its own connection; connect, TLS and login run without the session lock so the
+    // account's other commands are not queued behind a slow or unreachable network. The use count taken by
+    // lockSession stays held, so the session cannot be deleted meanwhile (freeSession waits for it).
+    const std::string host = session->host;
+    const std::string user = session->user;
+    const std::string password = session->password;
+    const std::string tlsMode = session->tlsMode;
+    const std::string certPin = session->certPin;
+    const int port = session->imapPort;
+    const uint64_t generation = ++session->watchGeneration;
+    session->mu.unlock();
+    if (tlsMode == "None") {
+        watch = openPlain(env, host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr);
     } else {
-        watch = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort, session->user.c_str(), session->password.c_str(), session, &error, nullptr, session->certPin.c_str(), false);
+        watch = openTls(env, tlsMode.c_str(), host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr, certPin.c_str(), false);
+    }
+    session->mu.lock();
+    if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
+        // closed, or a newer watch/stop ran while this one connected: drop this connection quietly.
+        if (watch != nullptr) mailimap_free(watch);
+        unlockSession(session);
+        return;
     }
     if (watch == nullptr) {
         throwFailure(env, error);
