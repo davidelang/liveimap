@@ -49,9 +49,11 @@ class WireTextPathsTest {
         val name = org.dlang.liveimap.ui.reader.saveFolderName(
             org.dlang.liveimap.settings.SaveNameRule.ByFrom, "saved", "", from, "", "", "",
         )
-        // The derived name carries the decoded CR/LF; COPY goes through wire(), which refuses it.
-        assertFalse(name, wireTextOk(name))
-        assertTrue(runCatching { requireWireText(name) }.isFailure)
+        // F60: the derived name is reduced to [a-z0-9._-] before it gets anywhere near the wire.
+        assertEquals("xa9deleteinbox", name)
+        assertTrue(wireTextOk(name))
+        // wire() still refuses CR/LF underneath.
+        assertTrue(runCatching { requireWireText("x\r\nA9 DELETE INBOX") }.isFailure)
     }
 
     @Test fun keywordsMustBeAtoms() {
