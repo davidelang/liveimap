@@ -887,4 +887,10 @@
     <string name="layout_problem_message">The message panel must share a split with the message list. Not saved yet.</string>
     <string name="compose_bad_envelope_address">Not sent: these addresses contain characters SMTP cannot carry: %1$s</string>
     <string name="settings_idle_wake">IDLE wake interval</string>
+    <plurals name="copy_merge_conflicts">
+        <item quantity="one">%1$d existing contact has a different name, nickname or note. Addresses are only ever added. Overwrite the different values, or keep the existing ones and fill only empty fields?</item>
+        <item quantity="other">%1$d existing contacts have a different name, nickname or note. Addresses are only ever added. Overwrite the different values, or keep the existing ones and fill only empty fields?</item>
+    </plurals>
+    <string name="copy_merge_overwrite">Overwrite</string>
+    <string name="copy_merge_keep">Keep existing</string>
 </resources>

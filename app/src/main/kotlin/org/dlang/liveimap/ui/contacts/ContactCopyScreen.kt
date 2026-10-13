@@ -1,5 +1,7 @@
 package org.dlang.liveimap.ui.contacts
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material3.AlertDialog
 import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentUris
@@ -53,6 +55,8 @@ private data class AndroidWrite(
     val accountType: String,
     val accountName: String,
     val entries: List<CopyContact>,
+    /** F120: null = not asked yet; true/false = the user's answer about overwriting different values. */
+    val overwrite: Boolean? = null,
 )
 
 @Composable
@@ -93,6 +97,7 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
     var writing by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
     var pendingAndroid by remember { mutableStateOf<AndroidWrite?>(null) }
+    var confirmOverwrite by remember { mutableStateOf<Pair<AndroidWrite, Int>?>(null) }
 
     fun selectedContacts(): List<CopyContact> = selected.sorted().mapNotNull { contacts.getOrNull(it) }
 
@@ -144,16 +149,48 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
     }
 
     fun writeAndroidNow(write: AndroidWrite) {
+        if (write.overwrite == null) {
+            val conflicts = mergeConflicts(appContext.contentResolver, write.entries)
+            if (conflicts > 0) {
+                confirmOverwrite = write to conflicts // F120: ask before replacing a different name/nickname/note
+                return
+            }
+        }
         writeAndroidContacts(
             appContext.contentResolver,
             write.accountType,
             write.accountName,
             write.entries,
+            write.overwrite == true,
         )
         notice = context.getString(R.string.copy_done)
         finished = true
     }
 
+    confirmOverwrite?.let { (write, count) ->
+        fun answer(overwrite: Boolean) {
+            confirmOverwrite = null
+            writing = true
+            scope.launch {
+                try {
+                    writeAndroidNow(write.copy(overwrite = overwrite))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    notice = error.message ?: context.getString(R.string.copy_write_failed)
+                } finally {
+                    writing = false
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { confirmOverwrite = null },
+            title = { Text(stringResource(R.string.copy_merge)) },
+            text = { Text(pluralStringResource(R.plurals.copy_merge_conflicts, count, count)) },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.copy_merge_overwrite)) } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.copy_merge_keep)) } },
+        )
+    }
     val requestWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val write = pendingAndroid
         if (!granted || write == null) {
@@ -751,6 +788,7 @@ private fun writeAndroidContacts(
     accountType: String,
     accountName: String,
     entries: List<CopyContact>,
+    overwrite: Boolean = false,
 ) {
     val emailToRaw = HashMap<String, Long>()
     for (entry in entries) {
@@ -760,7 +798,7 @@ private fun writeAndroidContacts(
     for (entry in entries) {
         if (entry.group || !entry.changed) continue
         val rawId = if (entry.rawId > 0L) {
-            updateMappedRows(resolver, entry.rawId, entry)
+            updateMappedRows(resolver, entry.rawId, entry, overwrite)
             entry.rawId
         } else {
             insertRawContact(resolver, accountType, accountName, entry)
@@ -822,14 +860,65 @@ private fun mappedRows(resolver: ContentResolver, rawId: Long): List<Triple<Long
     return out
 }
 
+/** F120: an existing contact's name/nickname/email/note rows, keyed as [mergeContactPlan] expects. */
+private fun existingFields(resolver: ContentResolver, rawId: Long): Map<String, List<ExistingField>> {
+    val key = mapOf(
+        ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE to "name",
+        ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE to "nickname",
+        ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE to "email",
+        ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE to "note",
+    )
+    return mappedRows(resolver, rawId).groupBy({ key.getValue(it.second) }, { ExistingField(it.first, it.third) })
+}
+
+/** F120: contacts whose merge would overwrite a different name, nickname or note (asked before writing). */
+private fun mergeConflicts(resolver: ContentResolver, entries: List<CopyContact>): Int =
+    entries.count { e ->
+        !e.group && e.changed && e.rawId > 0L &&
+            mergeContactPlan(e, existingFields(resolver, e.rawId), overwrite = false).conflicts.isNotEmpty()
+    }
+
 /**
- * F26: update an existing contact in place, in one atomic batch. Name, nickname and note rows are updated
- * (so fields the copy does not model, such as prefix or phonetic names, stay); emails the copy keeps are left
- * untouched (type and label stay), new ones are added, and only emails the copy dropped are removed.
+ * F120 (was F26): merge into an existing contact in one atomic batch: add new addresses (never delete any), fill
+ * empty name/nickname/note, and overwrite a different value only when the user confirmed ([overwrite]).
  */
-private fun updateMappedRows(resolver: ContentResolver, rawId: Long, entry: CopyContact) {
-    val ops = mappedRowOps(entry, mappedRows(resolver, rawId), rawId)
-    if (ops.isNotEmpty()) resolver.applyBatch(ContactsContract.AUTHORITY, ArrayList(ops))
+private fun updateMappedRows(resolver: ContentResolver, rawId: Long, entry: CopyContact, overwrite: Boolean) {
+    val plan = mergeContactPlan(entry, existingFields(resolver, rawId), overwrite)
+    val ops = ArrayList<android.content.ContentProviderOperation>()
+    for (c in plan.changes) {
+        val values = ContentValues()
+        val mime = when (c.field) {
+            "name" -> {
+                values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, c.value)
+                if (entry.givenName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, entry.givenName)
+                if (entry.familyName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, entry.familyName)
+                ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE
+            }
+            "nickname" -> {
+                values.put(ContactsContract.CommonDataKinds.Nickname.NAME, c.value)
+                ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE
+            }
+            "email" -> {
+                values.put(ContactsContract.CommonDataKinds.Email.ADDRESS, c.value)
+                values.put(ContactsContract.CommonDataKinds.Email.TYPE, ContactsContract.CommonDataKinds.Email.TYPE_OTHER)
+                ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE
+            }
+            else -> {
+                values.put(ContactsContract.CommonDataKinds.Note.NOTE, c.value)
+                ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE
+            }
+        }
+        ops += if (c.rowId == null) {
+            values.put(ContactsContract.Data.MIMETYPE, mime)
+            values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+            android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValues(values).build()
+        } else {
+            android.content.ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                .withSelection("${ContactsContract.Data._ID}=?", arrayOf(c.rowId.toString()))
+                .withValues(values).build()
+        }
+    }
+    if (ops.isNotEmpty()) resolver.applyBatch(ContactsContract.AUTHORITY, ops)
 }
 
 private fun mappedRowOps(

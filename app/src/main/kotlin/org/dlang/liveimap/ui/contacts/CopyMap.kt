@@ -466,3 +466,45 @@ private fun expandPieces(
         }
     }
 }
+
+/** F120: one row of an existing contact the merge can touch. */
+data class ExistingField(val rowId: Long, val value: String)
+
+/** F120: what merging one copied contact into an existing one does. rowId null = insert a new row. */
+data class MergeChange(val field: String, val rowId: Long?, val value: String)
+
+data class MergePlan(val changes: List<MergeChange>, val conflicts: List<String>)
+
+/**
+ * F120: "merge into existing". Addresses are added (case-insensitively new ones only) and never removed. Name,
+ * nickname and note fill a missing or empty field; a different non-empty value is a conflict and is overwritten
+ * only when [overwrite] (the user confirmed). Fields keyed "name", "nickname", "email", "note".
+ */
+fun mergeContactPlan(entry: CopyContact, existing: Map<String, List<ExistingField>>, overwrite: Boolean): MergePlan {
+    val changes = ArrayList<MergeChange>()
+    val conflicts = ArrayList<String>()
+    fun single(field: String, wanted: String) {
+        if (wanted.isEmpty()) return
+        val rows = existing[field].orEmpty()
+        if (rows.any { it.value == wanted }) return
+        val row = rows.firstOrNull()
+        when {
+            row == null -> changes += MergeChange(field, null, wanted)
+            row.value.isBlank() -> changes += MergeChange(field, row.rowId, wanted)
+            else -> {
+                conflicts += field
+                if (overwrite) changes += MergeChange(field, row.rowId, wanted)
+            }
+        }
+    }
+    val name = entry.displayName.ifEmpty { listOf(entry.givenName, entry.familyName).filter { it.isNotEmpty() }.joinToString(" ") }
+    single("name", name)
+    single("nickname", entry.nickname)
+    val have = existing["email"].orEmpty().map { it.value.lowercase() }.toMutableSet()
+    for (email in entry.emails) {
+        if (email.isEmpty() || !have.add(email.lowercase())) continue
+        changes += MergeChange("email", null, email)
+    }
+    single("note", entry.note)
+    return MergePlan(changes, conflicts)
+}
