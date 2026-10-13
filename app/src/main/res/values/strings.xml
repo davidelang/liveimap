@@ -801,6 +801,7 @@
     <string name="settings_tls_implicit">Implicit TLS</string>
     <string name="cert_changed_title">This certificate changed</string>
     <string name="cert_changed_body">The certificate is not the one pinned for this account.</string>
+    <string name="cert_reason">Problem: %1$s</string>
     <string name="cert_trust_title">Trust this certificate?</string>
     <string name="cert_trust_confirm">Trust this certificate for %1$s</string>
     <string name="cert_trust_decline">Don\'t trust</string>

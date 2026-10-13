@@ -139,6 +139,25 @@ private class PendingCert(
     val resume: (Boolean) -> Unit,
 )
 
+/**
+ * F76: certificate fields are chosen by whoever presents the certificate. Show them on one line, without
+ * control or bidi characters, and cut long values so they cannot push the fingerprint off the dialog.
+ */
+internal fun certDisplayText(text: String, limit: Int = 160): String {
+    val cleaned = buildString {
+        for (c in text) {
+            when {
+                c == '\n' || c == '\r' || c == '\t' -> append(' ')
+                c.code < 0x20 || c.code == 0x7F || c.code in 0x80..0x9F -> Unit
+                c.code == 0x061C || c.code in 0x200B..0x200F || c.code in 0x202A..0x202E ||
+                    c.code in 0x2066..0x2069 || c.code == 0xFEFF -> Unit
+                else -> append(c)
+            }
+        }
+    }.trim().replace(Regex(" {2,}"), " ")
+    return if (cleaned.length <= limit) cleaned else cleaned.take(limit) + "…"
+}
+
 @Composable
 fun LiveImapNavHost() {
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
@@ -186,8 +205,11 @@ fun LiveImapNavHost() {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
+    // F74: one prompt at a time; a second caller waits its turn instead of replacing (and stranding) the first.
+    val certGate = remember { kotlinx.coroutines.sync.Mutex() }
+    val plaintextGate = remember { kotlinx.coroutines.sync.Mutex() }
     DisposableEffect(Unit) {
-        setMailCertConfirmer { prompt ->
+        setMailCertConfirmer { prompt -> certGate.withLock {
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     certPrompt.value = PendingCert(prompt) { accepted ->
@@ -197,7 +219,7 @@ fun LiveImapNavHost() {
                     cont.invokeOnCancellation { certPrompt.value = null }
                 }
             }
-        }
+        } }
         onDispose {
             val pending = certPrompt.value
             certPrompt.value = null
@@ -207,7 +229,7 @@ fun LiveImapNavHost() {
     }
     val plaintextPrompt = remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
     DisposableEffect(Unit) {
-        setMailPlaintextConfirmer {
+        setMailPlaintextConfirmer { plaintextGate.withLock {
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     plaintextPrompt.value = { accepted ->
@@ -217,7 +239,7 @@ fun LiveImapNavHost() {
                     cont.invokeOnCancellation { plaintextPrompt.value = null }
                 }
             }
-        }
+        } }
         onDispose {
             val pending = plaintextPrompt.value
             plaintextPrompt.value = null
@@ -1231,13 +1253,18 @@ fun LiveImapNavHost() {
                     )
                 },
                 text = {
-                    Column {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
                         if (changed) Text(stringResource(R.string.cert_changed_body))
-                        Text(pendingCert.prompt.subject)
-                        Text(pendingCert.prompt.issuer)
-                        Text(pendingCert.prompt.notBefore)
-                        Text(pendingCert.prompt.notAfter)
-                        Text(pendingCert.prompt.fingerprint)
+                        // F76: the reason and the fingerprint first; sender-chosen names after, cleaned and cut.
+                        Text(
+                            stringResource(R.string.cert_reason, certDisplayText(pendingCert.prompt.reason)),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(certDisplayText(pendingCert.prompt.fingerprint, 200))
+                        Text(certDisplayText(pendingCert.prompt.subject))
+                        Text(certDisplayText(pendingCert.prompt.issuer))
+                        Text(certDisplayText(pendingCert.prompt.notBefore, 40))
+                        Text(certDisplayText(pendingCert.prompt.notAfter, 40))
                     }
                 },
                 confirmButton = {
