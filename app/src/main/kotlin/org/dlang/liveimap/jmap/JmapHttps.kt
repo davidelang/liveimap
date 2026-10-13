@@ -16,6 +16,35 @@ interface JmapHttpExchange {
     fun close()
 }
 
+/** F58: the largest JMAP response body read into memory. */
+const val JmapMaxBody = 16 * 1024 * 1024
+
+/** Reads at most [JmapMaxBody] bytes; a longer body is a JmapFailure, not an OutOfMemoryError. */
+fun readJmapBody(stream: java.io.InputStream): String {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val n = stream.read(buf)
+        if (n < 0) break
+        total += n
+        if (total > JmapMaxBody) throw JmapFailure("jmap response is too large")
+        out.write(buf, 0, n)
+    }
+    return out.toString(Charsets.UTF_8.name())
+}
+
+/** F68: a network failure (IOException/SSLException) becomes a JmapFailure that every caller handles. */
+inline fun <T> jmapNet(block: () -> T): T = try {
+    block()
+} catch (error: java.io.IOException) {
+    throw JmapFailure("jmap network error: ${error.message ?: error.javaClass.simpleName}")
+}
+
+/** The host of an https URL or URL template (templates may hold {accountId} etc., which URI() rejects). */
+fun jmapUrlHost(url: String): String? =
+    Regex("^https://(\\[[^\\]]+\\]|[^/:?#{}]+)", RegexOption.IGNORE_CASE).find(url.trim())?.groupValues?.get(1)?.lowercase()
+
 class JmapHttpsFetch(
     private val pin: String,
     private val open: (String) -> JmapHttpExchange,
@@ -27,13 +56,13 @@ class JmapHttpsFetch(
         var followed = 0
         while (true) {
             val host = jmapTrustHost(current)
-            val exchange = open(current)
+            val exchange = jmapNet { open(current) }
             try {
-                val verdict = trust(host, exchange.peerDer(), pin)
+                val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
                 if (verdict.isNotEmpty()) throw JmapFailure(verdict)
-                val status = exchange.status
+                val status = jmapNet { exchange.status }
                 if (status !in jmapRedirectStatuses) {
-                    return JmapHttpResult(status, exchange.body(), current)
+                    return JmapHttpResult(status, jmapNet { exchange.body() }, current)
                 }
                 if (followed == 5) throw JmapFailure("jmap redirect limit")
                 val location = exchange.header("Location")
@@ -73,7 +102,7 @@ fun platformJmapExchange(url: String): JmapHttpExchange {
                 connection.errorStream
             }
             if (stream == null) return ""
-            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+            return stream.use { readJmapBody(it) }
         }
 
         override fun close() {

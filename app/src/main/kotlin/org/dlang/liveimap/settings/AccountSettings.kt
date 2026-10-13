@@ -495,6 +495,8 @@ data class AccountSettings(
     val savedSearches: List<SavedSearch> = emptyList(),
     val savedAdvanced: List<SavedAdvanced> = emptyList(),
     val emailSubmission: Boolean = false,
+    /** F68: browse folders over JMAP only when the user turned it on (discovery alone never switches routes). */
+    val jmapFolders: Boolean = false,
     val askSort: Int = DefaultAskLimit,
     val askThread: Int = DefaultAskLimit,
     val askSearch: Int = DefaultAskLimit,
@@ -629,6 +631,7 @@ private val fieldNames = listOf(
     "savedSearches",
     "savedAdvanced",
     "emailSubmission",
+    "jmapFolders",
     "askSort",
     "askThread",
     "askSearch",
@@ -779,6 +782,7 @@ fun AccountSettings.encode(): String = buildString {
         appendLine("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
     }
     if (emailSubmission) appendLine("emailSubmission=true")
+    if (jmapFolders) appendLine("jmapFolders=true")
     if (askSort != DefaultAskLimit) appendLine("askSort=$askSort")
     if (askThread != DefaultAskLimit) appendLine("askThread=$askThread")
     if (askSearch != DefaultAskLimit) appendLine("askSearch=$askSearch")
@@ -911,6 +915,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "savedSearches" ||
             key == "savedAdvanced" ||
             key == "emailSubmission" ||
+            key == "jmapFolders" ||
             key == "askSort" ||
             key == "askThread" ||
             key == "askSearch" ||
@@ -1048,6 +1053,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         savedSearches = field(d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
         savedAdvanced = field(d.savedAdvanced) { values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList() },
         emailSubmission = field(d.emailSubmission) { values["emailSubmission"]?.let { parseBoolean(it) } ?: false },
+        jmapFolders = field(d.jmapFolders) { values["jmapFolders"]?.let { parseBoolean(it) } ?: false },
         askSort = field(d.askSort) { values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
         askThread = field(d.askThread) { values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
         askSearch = field(d.askSearch) { values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },

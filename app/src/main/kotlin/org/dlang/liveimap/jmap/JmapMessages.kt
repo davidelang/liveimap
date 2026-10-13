@@ -340,12 +340,41 @@ fun jmapEmailChanges(
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     if (sinceState.isBlank()) throw JmapFailure("jmap changes state is empty")
-    val request = jmapEmailChangesRequest(accountId, sinceState)
     val authorization = jmapBasicAuthorization(username, password)
-    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
-    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
-    return parseJmapEmailChanges(result.body)
+    // F63: follow hasMoreChanges, so a later batch is never skipped by recording an intermediate state.
+    var state = sinceState
+    val created = LinkedHashSet<String>()
+    val updated = LinkedHashSet<String>()
+    val destroyed = LinkedHashSet<String>()
+    var rounds = 0
+    while (true) {
+        val request = jmapEmailChangesRequest(accountId, state)
+        val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+        if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+        val batch = parseJmapEmailChanges(result.body)
+        created += batch.created
+        updated += batch.updated
+        destroyed += batch.destroyed
+        rounds++
+        val stuck = batch.newState == state || batch.newState.isBlank()
+        if (!batch.hasMoreChanges || stuck || rounds >= JmapChangesRounds) {
+            created.removeAll(destroyed)
+            updated.removeAll(destroyed)
+            return JmapEmailChanges(
+                oldState = sinceState,
+                newState = batch.newState,
+                // Still more after the cap: report it, so the caller reloads instead of trusting a partial set.
+                hasMoreChanges = batch.hasMoreChanges && !stuck,
+                created = created.toList(),
+                updated = updated.toList(),
+                destroyed = destroyed.toList(),
+            )
+        }
+        state = batch.newState
+    }
 }
+
+internal const val JmapChangesRounds = 20
 
 fun parseJmapEmailChanges(text: String): JmapEmailChanges {
     if (text.isBlank()) throw JmapFailure("jmap changes response is empty")

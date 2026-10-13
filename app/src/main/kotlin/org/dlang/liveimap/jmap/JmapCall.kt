@@ -24,13 +24,13 @@ fun jmapCall(
     if (apiUrl.isBlank()) throw JmapFailure("jmap api url is empty")
     if (!httpsApi(apiUrl)) throw JmapFailure("jmap api url is not https")
     val host = apiHost(apiUrl)
-    val exchange = post(apiUrl, body, authorization)
+    val exchange = jmapNet { post(apiUrl, body, authorization) }
     try {
-        val verdict = trust(host, exchange.peerDer(), pin)
+        val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
-        val status = exchange.status
+        val status = jmapNet { exchange.status }
         if (status in apiRedirectStatuses) throw JmapFailure("jmap api redirect")
-        return JmapHttpResult(status, exchange.body(), apiUrl)
+        return JmapHttpResult(status, jmapNet { exchange.body() }, apiUrl)
     } finally {
         exchange.close()
     }
@@ -104,7 +104,7 @@ fun platformJmapPost(url: String, body: String, authorization: String, pin: Stri
                 connection.errorStream
             }
             if (stream == null) return ""
-            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+            return stream.use { readJmapBody(it) }
         }
 
         override fun close() {
@@ -150,7 +150,7 @@ fun platformJmapUpload(
                 connection.errorStream
             }
             if (stream == null) return ""
-            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+            return stream.use { readJmapBody(it) }
         }
 
         override fun close() {

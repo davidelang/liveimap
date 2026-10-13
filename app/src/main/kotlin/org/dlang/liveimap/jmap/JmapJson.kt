@@ -11,8 +11,12 @@ internal sealed class Json {
 
 internal class JsonBroken : Exception()
 
+/** F58: nesting deeper than this is refused (JsonBroken) instead of recursing into a StackOverflowError. */
+internal const val JsonMaxDepth = 64
+
 internal class JsonParser(private val text: String) {
     private var i = 0
+    private var depth = 0
 
     fun parseDocument(): Json {
         skipWs()
@@ -60,14 +64,23 @@ internal class JsonParser(private val text: String) {
         }
     }
 
+    private inline fun nested(block: () -> Json): Json {
+        if (++depth > JsonMaxDepth) broken()
+        try {
+            return block()
+        } finally {
+            depth--
+        }
+    }
+
     private fun parseValue(): Json {
         skipWs()
         if (i >= text.length) broken()
         val c = text[i]
         return when {
             c == '"' -> Json.Str(parseString())
-            c == '{' -> Json.Obj(parseObject())
-            c == '[' -> Json.Arr(parseArray())
+            c == '{' -> nested { Json.Obj(parseObject()) }
+            c == '[' -> nested { Json.Arr(parseArray()) }
             c == 't' -> {
                 literal("true")
                 Json.Bool(true)

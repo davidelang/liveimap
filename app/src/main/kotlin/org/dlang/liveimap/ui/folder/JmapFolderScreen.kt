@@ -146,7 +146,8 @@ fun JmapFolderRoute(
                         val listed = page ?: return@LaunchedEffect
                         val box = mailboxId
                         try {
-                            val next = gate.withLock {
+                            // F68: the long-poll waits outside the gate, so other actions are not blocked by it.
+                            val next = run {
                                 withContext(Dispatchers.IO) {
                                     jmapReadMessageListPush(
                                         listed,
@@ -271,29 +272,47 @@ fun JmapFolderRoute(
                 }) {
                     Text(jmapMessageLine(shown))
                 }
-                Button(onClick = {
-                    val emailId = shown.id
-                    val fromMailboxId = mailboxId.orEmpty()
-                    scope.launch {
-                        try {
-                            gate.withLock {
-                                withContext(Dispatchers.IO) {
-                                    model.deleteMessage(emailId, fromMailboxId)
+                var confirmDelete by remember(shown.id) { mutableStateOf(false) }
+                var deleteNotice by remember(shown.id) { mutableStateOf<String?>(null) }
+                deleteNotice?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+                if (confirmDelete) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { confirmDelete = false },
+                        text = { Text(stringResource(R.string.jmap_delete_confirm)) },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                confirmDelete = false
+                                val emailId = shown.id
+                                val fromMailboxId = mailboxId.orEmpty()
+                                scope.launch {
+                                    try {
+                                        gate.withLock {
+                                            withContext(Dispatchers.IO) {
+                                                model.deleteMessage(emailId, fromMailboxId)
+                                            }
+                                        }
+                                        val current = page ?: return@launch
+                                        opened = null
+                                        body = null
+                                        page = current.copy(
+                                            messages = current.messages.filter { it.id != emailId },
+                                        )
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (failure: JmapFailure) {
+                                        deleteNotice = failure.text // F68: failures are shown, not swallowed
+                                    }
                                 }
+                            }) { Text(stringResource(R.string.index_delete)) }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) {
+                                Text(stringResource(android.R.string.cancel))
                             }
-                            val current = page
-                            if (current == null) return@launch
-                            opened = null
-                            body = null
-                            page = current.copy(
-                                messages = current.messages.filter { it.id != emailId },
-                            )
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: JmapFailure) {
-                        }
-                    }
-                }) {
+                        },
+                    )
+                }
+                Button(onClick = { confirmDelete = true }) {
                     Text(stringResource(R.string.index_delete))
                 }
                 Text(text)

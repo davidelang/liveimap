@@ -39,6 +39,8 @@ fun discoverJmap(status: Int, body: String, finalUrl: String): JmapOffer {
         return JmapOffer.None
     }
     if (!session.offersMail()) return JmapOffer.None
+    // F53/F79: credentials go to the session's URLs, so they must stay on the host that was discovered.
+    if (!jmapSameOrigin(finalUrl, session)) return JmapOffer.None
     return JmapOffer.Mail(session)
 }
 
@@ -77,3 +79,10 @@ private fun ipv6Host(host: String): String {
 
 private fun ipv6Char(c: Char): Boolean =
     c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F' || c == ':'
+
+/** True when every URL in [session] is on the host [finalUrl] was served from. */
+fun jmapSameOrigin(finalUrl: String, session: JmapSession): Boolean {
+    val origin = jmapUrlHost(finalUrl) ?: return false
+    return listOf(session.apiUrl, session.uploadUrl, session.downloadUrl, session.eventSourceUrl)
+        .all { it.isBlank() || jmapUrlHost(it) == origin }
+}

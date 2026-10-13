@@ -133,7 +133,7 @@ fun platformJmapEventSource(url: String, authorization: String, pin: String): Jm
                 connection.errorStream
             }
             if (stream == null) return ""
-            return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+            return stream.use { readJmapBody(it) }
         }
 
         override fun close() {

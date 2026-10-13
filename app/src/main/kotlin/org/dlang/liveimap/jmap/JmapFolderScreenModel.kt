@@ -182,7 +182,7 @@ class JmapListPush {
         reloaded: JmapMessagePage? = null,
     ): JmapMessagePage {
         if (changes == null) return page
-        if (changes.created.isNotEmpty() || changes.updated.isNotEmpty()) {
+        if (changes.created.isNotEmpty() || changes.updated.isNotEmpty() || changes.hasMoreChanges) {
             val loaded = reloaded ?: return page
             val next = loaded.emailState
             if (!next.isNullOrBlank()) recorded = next
@@ -213,7 +213,7 @@ fun jmapReadMessageListPush(
         throw error
     }
     if (!stillOpen()) return page
-    if (result == null || (result.created.isEmpty() && result.updated.isEmpty())) {
+    if (result == null || (result.created.isEmpty() && result.updated.isEmpty() && !result.hasMoreChanges)) {
         return push.after(page, result)
     }
     if (mailboxId.isNullOrBlank()) return page

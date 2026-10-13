@@ -1013,6 +1013,13 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { enabled ->
                 editor.persist(editor.settings.copy(emailSubmission = enabled))
             }
+            BoolField(
+                stringResource(R.string.settings_jmap_folders),
+                settings.jmapFolders,
+                note = stringResource(R.string.settings_jmap_folders_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(jmapFolders = enabled))
+            }
         }
         SettingsSection(
             title = stringResource(R.string.settings_sending_rules),

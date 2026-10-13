@@ -38,14 +38,14 @@ fun jmapUpload(
     val url = jmapUploadUrl(session.uploadUrl, accountId)
     if (!uploadHttps(url)) throw JmapFailure("jmap upload url is not https")
     val authorization = jmapBasicAuthorization(username, password)
-    val exchange = post(url, bytes, "message/rfc822", authorization)
+    val exchange = jmapNet { post(url, bytes, "message/rfc822", authorization) }
     try {
         val host = uploadHost(url)
-        val verdict = trust(host, exchange.peerDer(), pin)
+        val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
-        val code = exchange.status
+        val code = jmapNet { exchange.status }
         if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")
-        if (code == 201) return jmapBlobId(exchange.body())
+        if (code == 201) return jmapBlobId(jmapNet { exchange.body() })
         throw JmapFailure("jmap upload status $code")
     } finally {
         exchange.close()

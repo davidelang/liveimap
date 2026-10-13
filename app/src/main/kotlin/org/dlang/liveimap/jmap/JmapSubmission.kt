@@ -88,17 +88,27 @@ fun jmapDeliver(
     val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (imported.status != 200) throw JmapFailure("jmap api status ${imported.status}")
     val emailId = jmapImportedEmailId(imported.body)
-    return jmapSubmit(
-        session,
-        emailId,
-        mailFrom,
-        rcptTo,
-        username,
-        password,
-        pin,
-        post,
-        trust,
-    )
+    return try {
+        jmapSubmit(
+            session,
+            emailId,
+            mailFrom,
+            rcptTo,
+            username,
+            password,
+            pin,
+            post,
+            trust,
+        )
+    } catch (failure: JmapFailure) {
+        // F63: the copy in Sent was imported for a send that did not happen; remove it (best effort) so it
+        // does not look sent and a retry does not leave a duplicate.
+        try {
+            jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust)
+        } catch (_: JmapFailure) {
+        }
+        throw failure
+    }
 }
 
 sealed class JmapSendChoice {
