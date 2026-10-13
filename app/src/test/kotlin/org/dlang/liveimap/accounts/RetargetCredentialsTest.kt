@@ -38,10 +38,23 @@ class RetargetCredentialsTest {
     }
 
     @Test
+    fun savePlanAppliesIt() {
+        val moved = planAccountSave("id", old, old.copy(imapHost = "evil.example"), "", "slot")
+        assertEquals("", moved.passwordSlot)
+        assertEquals("", moved.settings.certPin)
+        assertEquals("evil.example", moved.userData[userImapHost])
+        val kept = planAccountSave("id", old, old.copy(displayName = "David"), "", "slot")
+        assertEquals("slot", kept.passwordSlot)
+        assertFalse(kept.dropSmtpPassword)
+        assertTrue(planAccountSave("id", old, old.copy(smtpHost = "relay.example"), "", "slot").dropSmtpPassword)
+    }
+
+    @Test
     fun storeAndSettingsApplyIt() {
         val store = File("src/main/kotlin/org/dlang/liveimap/accounts/AccountStore.kt").readText()
-        assertTrue(store.contains("val slot = if (retarget.dropImapPassword) \"\" else existing?.passwordSlot ?: \"\""))
-        assertTrue(store.contains("if (retarget.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()"))
+        assertTrue(store.contains("planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: \"\")"))
+        assertTrue(store.contains("writeAccount(name, plan.userData, plan.passwordSlot)"))
+        assertTrue(store.contains("if (plan.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()"))
         assertTrue(File("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt").readText().contains("retargetCredentials(settings, next)"))
     }
 }
