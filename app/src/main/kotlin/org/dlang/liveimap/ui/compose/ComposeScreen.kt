@@ -1163,6 +1163,13 @@ private fun ComposeLoaded(
                             status = notSentNotice
                             return@launchLocked false
                         }
+                        // F50: as on the SMTP path, the device copy exists before the upload/submission starts,
+                        // marked "may be sent", so a process death mid-submission keeps the message.
+                        writeCopy(
+                            appContext,
+                            DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true),
+                            accountId,
+                        )
                         try {
                             val offer = offerForAccount(account, ::platformJmapExchange)
                             jmapSend(

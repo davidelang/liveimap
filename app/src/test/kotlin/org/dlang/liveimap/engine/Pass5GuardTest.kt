@@ -36,4 +36,14 @@ class Pass5GuardTest {
         assertTrue(kt.contains("if (sortChunkDrift(exists, selectedExists(), sequencesStale)) { drift = true; break }"))
         assertFalse(kt.contains("nativeFetchSortFieldsRange(requireHandle(), wireField, first, last) ?: throw"))
     }
+
+    /** F50: JMAP sends write the "may be sent" device copy before submitting, like SMTP. */
+    @Test fun jmapSendKeepsADeviceCopyFirst() {
+        val compose = listOf("src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt")
+            .map(::File).first { it.exists() }.readText()
+        val jmap = compose.indexOf("if (account.emailSubmission && via.isEmpty()) {")
+        val copy = compose.indexOf("uncertain = true", jmap)
+        val send = compose.indexOf("jmapSend(", jmap)
+        assertTrue(jmap > 0 && copy in jmap until send)
+    }
 }
