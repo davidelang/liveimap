@@ -762,9 +762,10 @@ private fun AccountGroup(editor: SettingsEditor) {
                         .clickable { editor.selectAccount(account.id) },
                 )
             }
-            TextButton(onClick = { editor.addAccount() }) {
-                Text(stringResource(R.string.settings_add_account))
-            }
+        }
+        // Always visible (not only inside the expanded Accounts section): the in-app way to create an account.
+        TextButton(onClick = { editor.addAccount() }) {
+            Text(stringResource(R.string.settings_add_account))
         }
         SettingsSection(
             title = stringResource(R.string.settings_server),
