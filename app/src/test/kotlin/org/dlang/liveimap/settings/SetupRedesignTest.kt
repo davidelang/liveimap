@@ -49,7 +49,7 @@ class SetupRedesignTest {
     @Test fun smtpFieldsHiddenWhenSendingOverJmap() {
         val g = group("AccountGroup")
         val gate = g.indexOf("if (!settings.emailSubmission) {")
-        assertTrue(gate > 0 && g.indexOf("R.string.settings_smtp_host") > gate)
+        assertTrue(gate > 0 && g.indexOf("LineField(stringResource(R.string.settings_smtp_host)") > gate)
     }
 
     @Test fun everyAccountCanSend() {
