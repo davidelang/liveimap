@@ -57,7 +57,7 @@ class FolderView(internal val base: MailSession, val folder: FolderAt) : MailSes
     }
     override suspend fun unselect() {}
     override suspend fun selectedInfo(): SelectResult = base.inFolder(folder, fresh = true) { sel, _ -> sel }
-    override suspend fun selectedExists(): Int = base.inFolder(folder, fresh = true) { sel, _ -> sel.exists }
+    override suspend fun selectedExists(): Int = base.inFolder(folder, fresh = true) { _, s -> s.selectedExists() }
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
         if (!sameMailbox(request.mailbox, folder.mailbox)) throw MailFailure("this view is for ${folder.mailbox}")
         return run { it.fetchIndex(request) }

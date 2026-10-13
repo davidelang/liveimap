@@ -4,32 +4,19 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.lang.reflect.Proxy
 
 class MessageRefTest {
     /** A MailSession whose select() answers from [validity]; every other call is recorded and fails. */
     private class Recorder(val validity: Map<String, Long>) {
         val selects = ArrayList<String>()
-        val session: MailSession = Proxy.newProxyInstance(
-            MailSession::class.java.classLoader, arrayOf(MailSession::class.java),
-        ) { _, method, args ->
-            if (method.name == "select") {
-                val name = args!![0] as String
-                selects += name
-                val v = validity[name] ?: throw MailFailure("no such folder")
-                SelectResult(v, 1, 0)
-            } else if (method.name == "pinned") {
-                // the suspend block: (Continuation) -> result; no lock needed in this single-caller test
-                @Suppress("UNCHECKED_CAST")
-                try {
-                    (args!![0] as Function1<Any?, Any?>).invoke(args[1])
-                } catch (e: MailFailure) {
-                    throw e // rethrown as is; pinned is declared @Throws so the proxy passes it unwrapped
-                }
-            } else {
-                throw UnsupportedOperationException(method.name)
+        val session: MailSession = object : MailSession by DisconnectedMailSession() {
+            override suspend fun select(mailbox: String): SelectResult {
+                selects += mailbox
+                val v = validity[mailbox] ?: throw MailFailure("no such folder")
+                return SelectResult(v, 1, 0)
             }
-        } as MailSession
+            override suspend fun unselect() {}
+        }
     }
 
     private fun <T> run(block: suspend () -> T): T = runBlocking { block() }

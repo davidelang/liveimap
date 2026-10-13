@@ -100,7 +100,7 @@ private class FakeLab(override val capabilities: Set<String>) : MailSession {
 
     override suspend fun select(mailbox: String): SelectResult { calls += "select $mailbox"; return SelectResult(3, 0, 0) }
 
-    override suspend fun unselect() = unused()
+    override suspend fun unselect() { calls += "unselect" }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = unused()
 
