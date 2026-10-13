@@ -47,10 +47,14 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.androidAccountOf
 import org.dlang.liveimap.settings.pineSourceId
+import org.dlang.liveimap.settings.alpineBookOf
+import org.dlang.liveimap.settings.alpineBookSourceId
+import org.dlang.liveimap.settings.alpineBooks
 
 private enum class CopyStep { Source, Contacts, Destination, Preview }
 
-private data class CopySource(val id: String, val label: String)
+/** A contact set; Alpine books of every account are listed (ids from [alpineBookSourceId]); global books are read only. */
+private data class CopySource(val id: String, val label: String, val readOnly: Boolean = false)
 
 private data class AndroidWrite(
     val accountType: String,
@@ -89,7 +93,8 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
     var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var destinationContacts by remember { mutableStateOf<List<CopyContact>>(emptyList()) }
     var pineState by remember { mutableStateOf<PineBookState?>(null) }
-    var pineMailbox by remember { mutableStateOf("") }
+    /** Other accounts whose session this screen opened for their Alpine books. */
+    val openedOthers = remember { HashSet<String>() }
     var options by remember { mutableStateOf(CopyOptions()) }
     var preview by remember { mutableStateOf<List<String>>(emptyList()) }
     var pending by remember { mutableStateOf<List<CopyContact>>(emptyList()) }
@@ -104,24 +109,39 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
 
     fun applyPreview(nextOptions: CopyOptions = options) {
         val chosen = selectedContacts()
-        val intoPine = destinationId == pineSourceId
+        val intoPine = alpineBookOf(destinationId) != null
         val outcome = copyContacts(chosen, destinationContacts, intoPine, nextOptions)
         options = nextOptions
         preview = outcome.preview
         pending = outcome.entries
     }
 
+    /** The session of [owner]: this screen's own, or another account's, connected once on first use. */
+    suspend fun sessionFor(owner: String): MailSession {
+        if (owner == accountId) return session
+        val other = mailSession(owner)
+        if (owner !in openedOthers) {
+            when (val result = connectAccount(store.forAccount(owner), other, context.getString(R.string.reader_not_connected))) {
+                is ConnectedAccount.Failed -> throw IllegalStateException(result.notice)
+                is ConnectedAccount.Ready -> openedOthers.add(owner)
+            }
+        }
+        return other
+    }
+
     suspend fun writePineNow() {
         val state = pineState
-        if (state == null) {
+        val target = alpineBookOf(destinationId)
+        if (state == null || target == null) {
             notice = context.getString(R.string.copy_not_alpine)
             return
         }
-        val settings = store.load()
+        val (owner, mailbox) = target
+        val settings = (if (owner == accountId) store else store.forAccount(owner)).load()
         val chosen = selectedContacts()
         val result = writePineBook(
-            session,
-            pineMailbox,
+            sessionFor(owner),
+            mailbox,
             state.lastUid,
             pending.map { it.asAlpineEntry() },
             settings.addressBookHistory,
@@ -230,7 +250,16 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                         emptyList()
                     }
                 }
-                sources = enabledCopySources(opened.settings, sets, context)
+                val others = store.listAccounts().filter { it.id != accountId }.mapNotNull { choice ->
+                    try {
+                        choice to store.forAccount(choice.id).load()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                sources = copySources(accountId, opened.settings, others, sets, context)
             }
         }
     }
@@ -254,7 +283,7 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(source.id, account, session, appContext.contentResolver, context)
+                                val loaded = loadCopyContacts(source.id, { sessionFor(it) }, appContext.contentResolver, context)
                                 contacts = loaded.contacts
                                 sourceId = source.id
                                 selected = emptySet()
@@ -290,7 +319,7 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                 ) { Text(stringResource(R.string.copy_to)) }
             }
             CopyStep.Destination -> {
-                val choices = sources.filter { it.id != sourceId }
+                val choices = sources.filter { it.id != sourceId && !it.readOnly }
                 if (choices.isEmpty()) Text(stringResource(R.string.copy_no_destination))
                 for (choice in choices) {
                     TextButton(onClick = {
@@ -299,11 +328,10 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(choice.id, account, session, appContext.contentResolver, context)
+                                val loaded = loadCopyContacts(choice.id, { sessionFor(it) }, appContext.contentResolver, context)
                                 destinationId = choice.id
                                 destinationContacts = loaded.contacts
                                 pineState = loaded.state
-                                pineMailbox = if (choice.id == pineSourceId) account.addressBookMailbox else ""
                                 finished = false
                                 options = CopyOptions()
                                 applyPreview(CopyOptions())
@@ -321,7 +349,7 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                 TextButton(onClick = { step = CopyStep.Contacts }, enabled = !writing) { Text(stringResource(R.string.reader_back)) }
             }
             CopyStep.Preview -> {
-                val intoPine = destinationId == pineSourceId
+                val intoPine = alpineBookOf(destinationId) != null
                 TickRow(stringResource(R.string.copy_merge), options.mergeIntoExisting, enabled = !writing && !finished) { on ->
                     applyPreview(options.copy(mergeIntoExisting = on))
                 }
@@ -360,7 +388,7 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                             if (writing) return@TextButton
                             writing = true
                             notice = null
-                            if (destinationId == pineSourceId) {
+                            if (alpineBookOf(destinationId) != null) {
                                 scope.launch {
                                     try {
                                         writePineNow()
@@ -434,17 +462,34 @@ private fun contactLabel(contact: CopyContact, context: Context): String {
     }
 }
 
-private fun enabledCopySources(settings: AccountSettings, sets: List<AndroidContactSet>, context: Context): List<CopySource> {
+/**
+ * Copy sources (contacts plan phases 3 and 5): this account's Alpine books (its book, extra books, read-only global
+ * books), its enabled Android sets in completion order, then every other account's Alpine books.
+ */
+private fun copySources(
+    accountId: String,
+    settings: AccountSettings,
+    others: List<Pair<org.dlang.liveimap.settings.AccountChoice, AccountSettings>>,
+    sets: List<AndroidContactSet>,
+    context: Context,
+): List<CopySource> {
     val setById = sets.associateBy { it.id }
     val out = ArrayList<CopySource>()
-    for (id in settings.completionSources) {
-        if (id == pineSourceId) {
-            if (settings.addressBookMailbox.isNotEmpty()) out.add(CopySource(id, context.getString(R.string.settings_pine)))
-        } else {
-            val set = setById[id] ?: continue
-            out.add(CopySource(id, set.label))
+    fun books(owner: String, ownerName: String?, s: AccountSettings) {
+        for ((mailbox, readOnly) in s.alpineBooks()) {
+            val base = if (ownerName == null) context.getString(R.string.copy_alpine_book, mailbox)
+                else context.getString(R.string.copy_alpine_book_of, mailbox, ownerName)
+            val label = if (readOnly) context.getString(R.string.copy_read_only, base) else base
+            out.add(CopySource(alpineBookSourceId(owner, mailbox), label, readOnly))
         }
     }
+    books(accountId, null, settings)
+    for (id in settings.completionSources) {
+        if (id == pineSourceId) continue
+        val set = setById[id] ?: continue
+        out.add(CopySource(id, set.label))
+    }
+    for ((choice, other) in others) books(choice.id, choice.name, other)
     return out
 }
 
@@ -486,13 +531,13 @@ private data class LoadedContacts(val contacts: List<CopyContact>, val state: Pi
 
 private suspend fun loadCopyContacts(
     id: String,
-    settings: AccountSettings,
-    session: MailSession,
+    sessionFor: suspend (String) -> MailSession,
     resolver: ContentResolver,
     context: Context,
 ): LoadedContacts {
-    if (id == pineSourceId) {
-        return when (val read = readPineBook(session, settings.addressBookMailbox)) {
+    val book = alpineBookOf(id)
+    if (book != null) {
+        return when (val read = readPineBook(sessionFor(book.first), book.second)) {
             is PineRead.NotBook -> throw IllegalStateException(read.notice)
             is PineRead.Ready -> LoadedContacts(read.state.entries.map { it.asCopyContact() }, read.state)
         }

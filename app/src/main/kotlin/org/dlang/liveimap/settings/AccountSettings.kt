@@ -418,6 +418,10 @@ data class AccountSettings(
     val idleWakeSeconds: Int = 5,
     val altAddresses: List<String> = emptyList(),
     val completionSources: List<String> = listOf(pineSourceId),
+    /** Further Alpine address books on this server (pinerc's later `address-book` entries); read and written. */
+    val extraAddressBooks: List<String> = emptyList(),
+    /** Alpine global address books on this server (`global-address-book`); read only. */
+    val globalAddressBooks: List<String> = emptyList(),
     val clientSort: Boolean = false,
     val clientThread: Boolean = false,
     val pollForNewMail: Boolean = false,
@@ -569,6 +573,8 @@ private val fieldNames = listOf(
     "idleWakeSeconds",
     "altAddresses",
     "completionSources",
+    "extraAddressBooks",
+    "globalAddressBooks",
     "addressBookHistory",
     "addressBookNeverTrim",
     "clientSort",
@@ -701,6 +707,8 @@ fun AccountSettings.encode(): String = buildString {
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
+    if (extraAddressBooks.isNotEmpty()) appendLine("extraAddressBooks=${encodeCompletionSources(extraAddressBooks)}")
+    if (globalAddressBooks.isNotEmpty()) appendLine("globalAddressBooks=${encodeCompletionSources(globalAddressBooks)}")
     if (addressBookHistory != 3) appendLine("addressBookHistory=$addressBookHistory")
     if (addressBookNeverTrim) appendLine("addressBookNeverTrim=true")
     if (clientSort) appendLine("clientSort=true")
@@ -853,6 +861,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "idleWakeSeconds" ||
             key == "altAddresses" ||
             key == "completionSources" ||
+            key == "extraAddressBooks" ||
+            key == "globalAddressBooks" ||
             key == "addressBookHistory" ||
             key == "addressBookNeverTrim" ||
             key == "clientSort" ||
@@ -989,6 +999,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         idleWakeSeconds = field(d.idleWakeSeconds) { values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5 },
         altAddresses = field(d.altAddresses) { values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList() },
         completionSources = field(d.completionSources) { decodeCompletionSources(values["completionSources"]) },
+        extraAddressBooks = field(d.extraAddressBooks) { values["extraAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
+        globalAddressBooks = field(d.globalAddressBooks) { values["globalAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
         addressBookHistory = field(d.addressBookHistory) { values["addressBookHistory"]?.let { parseIntField(it) } ?: 3 },
         addressBookNeverTrim = field(d.addressBookNeverTrim) { values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false },
         clientSort = field(d.clientSort) { values["clientSort"]?.let { parseBoolean(it) } ?: false },
@@ -1281,6 +1293,33 @@ private fun decodeCompletionSources(value: String?): List<String> {
     if (value == null) return listOf(pineSourceId)
     if (value.isEmpty()) return emptyList()
     return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
+}
+
+/** Every Alpine address book of this account: (mailbox, read-only), primary first, without duplicates. */
+fun AccountSettings.alpineBooks(): List<Pair<String, Boolean>> {
+    val out = ArrayList<Pair<String, Boolean>>()
+    fun add(name: String, readOnly: Boolean) {
+        if (name.isNotEmpty() && out.none { it.first == name }) out += name to readOnly
+    }
+    add(addressBookMailbox, false)
+    for (b in extraAddressBooks) add(b, false)
+    for (b in globalAddressBooks) add(b, true)
+    return out
+}
+
+/** Copy-screen id of one account's Alpine book (any account, not only the open one). */
+fun alpineBookSourceId(accountId: String, mailbox: String): String =
+    "alpine|${percentEncode(accountId)}|${percentEncode(mailbox)}"
+
+fun alpineBookOf(id: String): Pair<String, String>? {
+    if (!id.startsWith("alpine|")) return null
+    val parts = id.removePrefix("alpine|").split('|', limit = 2)
+    if (parts.size != 2) return null
+    return try {
+        percentDecode(parts[0]) to percentDecode(parts[1])
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }
 
 fun androidSourceId(accountType: String, accountName: String): String =

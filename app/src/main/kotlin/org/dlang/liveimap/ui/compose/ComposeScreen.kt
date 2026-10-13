@@ -83,6 +83,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
@@ -380,12 +381,15 @@ private fun ComposeLoaded(
         val pine = if (pineSourceId !in ids) {
             emptyList()
         } else {
-            try {
-                pineEntriesOnce(session, accountId, settings.addressBookMailbox)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: MailFailure) {
-                emptyList()
+            // The account's book, then its extra and global books (contacts plan phase 5).
+            settings.alpineBooks().flatMap { (book, _) ->
+                try {
+                    pineEntriesOnce(session, accountId, book)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    emptyList()
+                }
             }
         }
         val wantAndroid = ids.any { it.startsWith("android|") }

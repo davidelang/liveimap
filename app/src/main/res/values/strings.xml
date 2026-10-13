@@ -448,6 +448,13 @@
     <string name="settings_sent_mailbox">Sent mailbox</string>
     <string name="settings_postponed_mailbox">Postponed mailbox</string>
     <string name="settings_address_book_mailbox">Address book mailbox</string>
+    <string name="copy_alpine_book">Alpine book %1$s</string>
+    <string name="copy_alpine_book_of">Alpine book %1$s (%2$s)</string>
+    <string name="copy_read_only">%1$s, read only</string>
+    <string name="settings_extra_books">Extra address books</string>
+    <string name="settings_global_books">Global address books (read only)</string>
+    <string name="settings_book_add">Add address book…</string>
+    <string name="settings_book_remove">Remove</string>
     <string name="settings_spam_mailbox">Spam mailbox</string>
     <string name="settings_folder_list">Folder list</string>
     <string name="settings_expanded_folders">Expanded folders</string>

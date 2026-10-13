@@ -624,6 +624,8 @@ private fun AccountGroup(editor: SettingsEditor) {
         postponedMailbox = stringResource(R.string.settings_postponed_mailbox),
         addressBookMailbox = stringResource(R.string.settings_address_book_mailbox),
         historyLabel = stringResource(R.string.settings_history_label),
+        extraAddressBooks = stringResource(R.string.settings_extra_books),
+        globalAddressBooks = stringResource(R.string.settings_global_books),
         defaultView = stringResource(R.string.settings_default_view),
         newest = stringResource(R.string.reader_newest),
         askExpunge = stringResource(R.string.settings_ask_expunge),
@@ -1221,6 +1223,12 @@ private fun MailboxesGroup(editor: SettingsEditor) {
             }
             MailboxLine(stringResource(R.string.settings_address_book_mailbox), settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
                 editor.persist(editor.settings.copy(addressBookMailbox = it))
+            }
+            BookList(stringResource(R.string.settings_extra_books), settings.extraAddressBooks, { picking = MailboxPick.ExtraBook }) { gone ->
+                editor.persist(editor.settings.copy(extraAddressBooks = editor.settings.extraAddressBooks - gone))
+            }
+            BookList(stringResource(R.string.settings_global_books), settings.globalAddressBooks, { picking = MailboxPick.GlobalBook }) { gone ->
+                editor.persist(editor.settings.copy(globalAddressBooks = editor.settings.globalAddressBooks - gone))
             }
             MailboxLine(stringResource(R.string.settings_spam_mailbox), settings.spamMailbox, { picking = MailboxPick.Spam }) {
                 editor.persist(editor.settings.copy(spamMailbox = it))
@@ -2933,10 +2941,25 @@ private fun MailboxLine(
     }
 }
 
+/** Extra or global Alpine address books: one row per book with Remove, and Add (mailbox picker). */
+@Composable
+private fun BookList(label: String, books: List<String>, onAdd: () -> Unit, onRemove: (String) -> Unit) {
+    Text(label)
+    for (book in books) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(book, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onRemove(book) }) { Text(stringResource(R.string.settings_book_remove)) }
+        }
+    }
+    TextButton(onClick = onAdd) { Text(stringResource(R.string.settings_book_add)) }
+}
+
 private enum class MailboxPick {
     Sent,
     Postponed,
     AddressBook,
+    ExtraBook,
+    GlobalBook,
     Spam,
     Trash,
     Saved,
@@ -2949,6 +2972,10 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         MailboxPick.Sent -> base.copy(sentMailbox = mailbox)
         MailboxPick.Postponed -> base.copy(postponedMailbox = mailbox)
         MailboxPick.AddressBook -> base.copy(addressBookMailbox = mailbox)
+        MailboxPick.ExtraBook -> if (mailbox in base.extraAddressBooks || mailbox == base.addressBookMailbox) base
+            else base.copy(extraAddressBooks = base.extraAddressBooks + mailbox, globalAddressBooks = base.globalAddressBooks - mailbox)
+        MailboxPick.GlobalBook -> if (mailbox in base.globalAddressBooks || mailbox == base.addressBookMailbox) base
+            else base.copy(globalAddressBooks = base.globalAddressBooks + mailbox, extraAddressBooks = base.extraAddressBooks - mailbox)
         MailboxPick.Spam -> base.copy(spamMailbox = mailbox)
         MailboxPick.Trash -> base.copy(trashMailbox = mailbox)
         MailboxPick.Saved -> base.copy(savedMailbox = mailbox)

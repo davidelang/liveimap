@@ -47,6 +47,8 @@ data class PinercPhrases(
     val postponedMailbox: String,
     val addressBookMailbox: String,
     val historyLabel: String,
+    val extraAddressBooks: String = "Extra address books",
+    val globalAddressBooks: String = "Global address books",
     val defaultView: String,
     val newest: String,
     val askExpunge: String,
@@ -182,20 +184,29 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
         }
     }
 
-    val book = entries["address-book"]
-    if (book != null && book.raw.isNotEmpty()) {
-        var chosen: String? = null
-        for (item in splitList(book.raw)) {
+    // The first address-book on this server is the account's book; the others become extra books, and
+    // global-address-book entries become read-only books (with the contacts work).
+    fun bookMailboxes(key: String): List<String>? {
+        val raw = entries[key]?.raw ?: return null
+        if (raw.isEmpty()) return null
+        val out = ArrayList<String>()
+        for (item in splitList(raw)) {
             if (item.isEmpty()) continue
             when (val folder = classifyFolder(item, allowPlain = false, comparisonHost, collectionRaw)) {
                 FolderKind.Local -> skipped.add(phrases.local)
-                is FolderKind.Mailbox -> if (chosen == null) chosen = folder.name
+                is FolderKind.Mailbox -> if (folder.name !in out) out.add(folder.name)
                 is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
                 FolderKind.Empty -> Unit
             }
         }
-        if (chosen != null) next = next.copy(addressBookMailbox = chosen)
+        return out
     }
+    val books = bookMailboxes("address-book")
+    if (books != null && books.isNotEmpty()) {
+        next = next.copy(addressBookMailbox = books.first(), extraAddressBooks = books.drop(1))
+    }
+    val globals = bookMailboxes("global-address-book")
+    if (globals != null) next = next.copy(globalAddressBooks = globals.filter { it !in (books ?: emptyList()) })
 
     val incoming = entries["incoming-folders"]
     if (incoming != null && incoming.raw.isNotEmpty()) {
@@ -429,7 +440,11 @@ fun encodePinerc(settings: AccountSettings): String {
     add("default-fcc", pinercQuoted(settings.sentMailbox))
     add("postponed-folder", pinercQuoted(settings.postponedMailbox))
     if (settings.addressBookMailbox.isNotEmpty()) {
-        add("address-book", pinercQuoted("{${settings.imapHost}}${settings.addressBookMailbox}"))
+        val books = listOf(settings.addressBookMailbox) + settings.extraAddressBooks.filter { it != settings.addressBookMailbox }
+        add("address-book", books.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
+    }
+    if (settings.globalAddressBooks.isNotEmpty()) {
+        add("global-address-book", settings.globalAddressBooks.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
     }
     add("incoming-folders", pinercIncoming(settings))
     if (!settings.addressBookNeverTrim) {
@@ -601,6 +616,7 @@ private val appliedNames = setOf(
     "default-fcc",
     "postponed-folder",
     "address-book",
+    "global-address-book",
     "incoming-folders",
     "remote-abook-history",
     "sort-key",
@@ -1244,6 +1260,8 @@ private fun diffRows(
     add(phrases.sentMailbox, current.sentMailbox, next.sentMailbox)
     add(phrases.postponedMailbox, current.postponedMailbox, next.postponedMailbox)
     add(phrases.addressBookMailbox, current.addressBookMailbox, next.addressBookMailbox)
+    add(phrases.extraAddressBooks, current.extraAddressBooks.joinToString(", "), next.extraAddressBooks.joinToString(", "))
+    add(phrases.globalAddressBooks, current.globalAddressBooks.joinToString(", "), next.globalAddressBooks.joinToString(", "))
     add(phrases.historyLabel, current.addressBookHistory, next.addressBookHistory)
     add(
         phrases.defaultView,
