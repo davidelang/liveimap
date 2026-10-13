@@ -164,8 +164,13 @@ private fun copyIntoPine(
             plaintext = fields.plaintext,
             changed = true,
         )
-        if (match >= 0) result[match] = mapped.copy(rawId = result[match].rawId)
-        else result.add(mapped)
+        if (match >= 0) {
+            val (merged, kept) = fillOnlyMerge(result[match], mapped)
+            if (kept) preview.add("Kept the existing name/comment; only empty fields are filled.") // F120
+            result[match] = merged
+        } else {
+            result.add(mapped)
+        }
     }
 }
 
@@ -507,4 +512,26 @@ fun mergeContactPlan(entry: CopyContact, existing: Map<String, List<ExistingFiel
     }
     single("note", entry.note)
     return MergePlan(changes, conflicts)
+}
+
+/**
+ * F120: merge a copied Alpine entry into an existing one without losing anything: addresses are unioned (the
+ * existing ones first), and full name, Fcc and comments fill only when empty. Second = an existing value was kept.
+ */
+fun fillOnlyMerge(existing: CopyContact, copied: CopyContact): Pair<CopyContact, Boolean> {
+    val emails = (existing.emails + copied.emails).filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+    fun pick(old: String, new: String) = if (old.isNotEmpty()) old else new
+    val kept = (existing.displayName.isNotEmpty() && copied.displayName.isNotEmpty() && existing.displayName != copied.displayName) ||
+        (existing.comments.isNotEmpty() && copied.comments.isNotEmpty() && existing.comments != copied.comments) ||
+        (existing.fcc.isNotEmpty() && copied.fcc.isNotEmpty() && existing.fcc != copied.fcc)
+    val merged = existing.copy(
+        nickname = pick(existing.nickname, copied.nickname),
+        displayName = pick(existing.displayName, copied.displayName),
+        emails = emails,
+        fcc = pick(existing.fcc, copied.fcc),
+        comments = pick(existing.comments, copied.comments),
+        plaintext = existing.plaintext || copied.plaintext,
+        changed = true,
+    )
+    return merged to kept
 }

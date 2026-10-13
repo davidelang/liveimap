@@ -43,4 +43,17 @@ class MergeIntoExistingTest {
         assertTrue(plan.conflicts.isEmpty())
         assertEquals(setOf("name", "nickname", "email", "note"), plan.changes.map { it.field }.toSet())
     }
+
+    @Test
+    fun alpineMergeKeepsAddressesAndExistingValues() {
+        val old = CopyContact(nickname = "bob", displayName = "Robert Smith", emails = listOf("bob@work.example", "bob@home.example"), comments = "LISA")
+        val new = CopyContact(nickname = "bob2", displayName = "Bob Smith", emails = listOf("BOB@home.example", "bob@new.example"), fcc = "sent-bob")
+        val (merged, kept) = fillOnlyMerge(old, new)
+        assertEquals(listOf("bob@work.example", "bob@home.example", "bob@new.example"), merged.emails)
+        assertEquals("Robert Smith", merged.displayName)
+        assertEquals("bob", merged.nickname)
+        assertEquals("LISA", merged.comments)
+        assertEquals("sent-bob", merged.fcc)
+        assertTrue(kept)
+    }
 }
