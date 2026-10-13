@@ -64,8 +64,9 @@ class WireTextPathsTest {
         val q = org.dlang.liveimap.ui.index.encodeAdvancedQuery(
             org.dlang.liveimap.ui.index.AdvancedCombiner.And,
             listOf(org.dlang.liveimap.ui.index.AdvancedStep(false, "Subject", "a\rA9 LOGOUT")),
-        )!!
-        assertTrue(runCatching { requireSearchArgument("Advanced", q) }.isFailure)
+        )
+        assertEquals(null, q) // F118: the builder itself refuses a bare CR now
+        assertTrue(runCatching { requireSearchArgument("Advanced", "And\nYes\tSubject\ta\rA9 LOGOUT") }.isFailure)
         assertTrue(runCatching { requireSearchArgument("Subject", "a\rb") }.isFailure)
         assertTrue(runCatching { requireCriteria("SUBJECT \"a\rb\"") }.isFailure)
         val ok = org.dlang.liveimap.ui.index.encodeAdvancedQuery(
