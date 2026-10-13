@@ -378,22 +378,18 @@ class AccountSettingsTest {
     }
 
     @Test
-    fun garbageThrows() {
-        assertThrowsIae { decodeAccountSettings("garbage") }
-        assertThrowsIae { decodeAccountSettings("notAKey=1") }
-        assertThrowsIae { decodeAccountSettings(AccountSettings().encode() + "password=secret\n") }
-        val brokenPort = AccountSettings().encode().replace("imapPort=143", "imapPort=nope")
-        assertThrowsIae { decodeAccountSettings(brokenPort) }
-        val brokenEnum = AccountSettings().encode().replace("density=Compact", "density=Huge")
-        assertThrowsIae { decodeAccountSettings(brokenEnum) }
-        val brokenFormat = AccountSettings().encode().replace("dateFormat=Short", "dateFormat=Huge")
-        assertThrowsIae { decodeAccountSettings(brokenFormat) }
-        val brokenView = AccountSettings().encode().replace("bodyView=PlainOrError", "bodyView=Nope")
-        assertThrowsIae { decodeAccountSettings(brokenView) }
-        val missing = AccountSettings().encode().lineSequence()
-            .filterNot { it.startsWith("bounceFcc=") }
-            .joinToString("\n")
-        assertThrowsIae { decodeAccountSettings(missing) }
+    fun garbageIsToleratedFieldByField() {
+        // F69: nothing here bricks the account any more; each bad field takes its default
+        val d = AccountSettings()
+        assertEquals(d, decodeAccountSettings("garbage"))
+        assertEquals(listOf("notAKey=1"), decodeAccountSettings("notAKey=1").unknownSettings)
+        assertTrue(decodeAccountSettings(d.encode() + "password=secret\n").unknownSettings.isEmpty())
+        assertEquals(d.imapPort, decodeAccountSettings(d.encode().replace("imapPort=143", "imapPort=nope")).imapPort)
+        assertEquals(d.density, decodeAccountSettings(d.encode().replace("density=Compact", "density=Huge")).density)
+        assertEquals(d.dateFormat, decodeAccountSettings(d.encode().replace("dateFormat=Short", "dateFormat=Huge")).dateFormat)
+        assertEquals(d.bodyView, decodeAccountSettings(d.encode().replace("bodyView=PlainOrError", "bodyView=Nope")).bodyView)
+        val missing = d.encode().lineSequence().filterNot { it.startsWith("bounceFcc=") }.joinToString("\n")
+        assertEquals(d.bounceFcc, decodeAccountSettings(missing).bounceFcc)
     }
 
     @Test
@@ -738,12 +734,7 @@ class AccountSettingsTest {
         )
         for (value in badValues) {
             val bad = text.trimEnd() + "\nindexBar=$value\n"
-            try {
-                decodeAccountSettings(bad)
-                fail(value)
-            } catch (error: IllegalArgumentException) {
-                assertEquals(value, "bad indexBar", error.message)
-            }
+            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
         }
     }
 
@@ -781,12 +772,7 @@ class AccountSettingsTest {
         )
         for (value in badValues) {
             val bad = text.trimEnd() + "\nselectionBar=$value\n"
-            try {
-                decodeAccountSettings(bad)
-                fail(value)
-            } catch (error: IllegalArgumentException) {
-                assertEquals(value, "bad selectionBar", error.message)
-            }
+            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
         }
     }
 
@@ -871,12 +857,7 @@ class AccountSettingsTest {
         )
         for (value in badValues) {
             val bad = text.trimEnd() + "\ncomposeBar=$value\n"
-            try {
-                decodeAccountSettings(bad)
-                fail(value)
-            } catch (error: IllegalArgumentException) {
-                assertEquals("bad composeBar", error.message)
-            }
+            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
         }
     }
 
@@ -929,12 +910,7 @@ class AccountSettingsTest {
         assertEquals(encoded, decodeAccountSettings(encoded).encode())
         for (value in listOf("0", "5")) {
             val bad = text.trimEnd() + "\ntoolbarRows=$value\n"
-            try {
-                decodeAccountSettings(bad)
-                fail(value)
-            } catch (error: IllegalArgumentException) {
-                assertEquals("bad toolbarRows", error.message)
-            }
+            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
         }
     }
 

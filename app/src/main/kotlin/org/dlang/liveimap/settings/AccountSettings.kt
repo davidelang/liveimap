@@ -806,7 +806,10 @@ fun decodeAccountSettings(text: String): AccountSettings {
         } else if (openKey == "inboundRules" && line.contains('\t')) {
             values[openKey] = values.getValue(openKey) + "\n" + line // rule lines always carry a TAB
         } else if (eq > 0) {
-            unknown += line // F69: a newer build's key: kept for round-tripping, not an error
+            // F69: a newer build's key: kept for round-tripping, not an error. Never keep anything credential-like
+            // (secrets live in the keystore; a stray one here must not be carried along and re-saved).
+            val lower = key.lowercase()
+            if ("password" !in lower && "secret" !in lower && "token" !in lower) unknown += line
             openKey = null
         } else {
             openKey = null // F69: a malformed line is skipped
