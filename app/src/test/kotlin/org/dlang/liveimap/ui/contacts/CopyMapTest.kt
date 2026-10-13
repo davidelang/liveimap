@@ -182,8 +182,8 @@ class CopyMapTest {
             emptyList(),
             intoPine = false,
         )
-        assertTrue(intoAndroid.entries.single().note.contains("pine-fcc: Sent"))
-        assertTrue(intoAndroid.preview.contains("Fcc kept as pine-fcc: Sent"))
+        assertTrue(intoAndroid.entries.single().note.contains("fcc=Sent"))
+        assertTrue(intoAndroid.preview.contains("Fcc kept in the extras block: Sent"))
 
         val dropped = copyContacts(
             listOf(
@@ -198,7 +198,7 @@ class CopyMapTest {
             intoPine = false,
             options = CopyOptions(destinationKeepsNotes = false),
         )
-        assertFalse(dropped.entries.single().note.contains("pine-fcc"))
+        assertFalse(dropped.entries.single().note.contains("fcc"))
         assertTrue(dropped.preview.contains("Fcc is dropped. This set has no notes."))
 
         val intoPine = copyContacts(
@@ -258,8 +258,8 @@ class CopyMapTest {
             emptyList(),
             intoPine = false,
         )
-        assertTrue(intoAndroid.entries.single().note.contains("pine-plaintext: yes"))
-        assertTrue(intoAndroid.preview.contains("Plaintext kept as pine-plaintext: yes"))
+        assertTrue(intoAndroid.entries.single().note.contains("plaintext=yes"))
+        assertTrue(intoAndroid.preview.contains("Plaintext kept in the extras block."))
         assertFalse(intoAndroid.entries.single().note.contains("[plaintext]"))
 
         val intoPine = copyContacts(
@@ -312,7 +312,7 @@ class CopyMapTest {
             ringtone = "bell",
             linked = true,
         )
-        val dropped = copyContacts(listOf(contact), emptyList(), intoPine = true)
+        val dropped = copyContacts(listOf(contact), emptyList(), intoPine = true, options = CopyOptions(appendDroppedToComments = false))
         val preview = dropped.preview
         assertTrue(preview.contains("Phone is dropped."))
         assertTrue(preview.contains("Postal address is dropped."))
@@ -335,15 +335,17 @@ class CopyMapTest {
             options = CopyOptions(appendDroppedToComments = true),
         )
         val comments = appended.entries.single().comments
-        assertTrue(comments.contains("Mobile: 555"))
-        assertTrue(comments.contains("Home: 1 Road"))
-        assertTrue(comments.contains("Organization: Analytical"))
-        assertTrue(comments.contains("Birthday: 1815-12-10"))
-        assertTrue(comments.contains("Photo: present"))
-        assertTrue(comments.contains("Home: https://example.com"))
-        assertTrue(comments.contains("Home: ada"))
-        assertTrue(comments.contains("Shoe: 12"))
+        assertTrue(comments.contains("[liveimap-extra v1]"))
+        assertTrue(comments.contains("phone.Mobile=555"))
+        assertTrue(comments.contains("postal.Home=1%20Road"))
+        assertTrue(comments.contains("org=Analytical"))
+        assertTrue(comments.contains("birthday=1815-12-10"))
+        assertTrue(comments.contains("photo=present"))
+        assertTrue(comments.contains("website.Home=https://example.com"))
+        assertTrue(comments.contains("im.Home=ada"))
+        assertTrue(comments.contains("custom.Shoe=12"))
         assertFalse(comments.contains("bell"))
-        assertTrue(appended.preview.contains("Phone appended to comments."))
+        assertFalse(comments.contains("\n"))
+        assertTrue(appended.preview.contains("Phone kept in the extras block."))
     }
 }

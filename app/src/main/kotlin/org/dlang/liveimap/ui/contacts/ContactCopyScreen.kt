@@ -920,6 +920,14 @@ private fun updateMappedRows(resolver: ContentResolver, rawId: Long, entry: Copy
                 .withValues(values).build()
         }
     }
+    // Merge adds restored extra rows (phone, postal, ...) that are not there yet; it never removes any.
+    val have = extraRowValues(resolver, rawId)
+    for ((mime, values) in extraRows(entry)) {
+        if ((mime to values.getAsString(ContactsContract.Data.DATA1)) in have) continue
+        values.put(ContactsContract.Data.MIMETYPE, mime)
+        values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+        ops += android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValues(values).build()
+    }
     if (ops.isNotEmpty()) resolver.applyBatch(ContactsContract.AUTHORITY, ops)
 }
 
@@ -981,7 +989,66 @@ private fun mappedRowOps(
         val values = ContentValues().apply { put(ContactsContract.CommonDataKinds.Note.NOTE, entry.note) }
         if (row != null) update(row.first, values) else insert(noteMime) { putAll(values) }
     }
+    for ((mime, values) in extraRows(entry)) {
+        val v = values.getAsString(ContactsContract.Data.DATA1)
+        if (existing.none { it.second == mime && it.third == v }) insert(mime) { putAll(values) }
+    }
     return ops
+}
+
+/** Phone, postal, organization, birthday, website and IM rows restored from the extras block (or carried). */
+private fun extraRows(entry: CopyContact): List<Pair<String, ContentValues>> {
+    val out = ArrayList<Pair<String, ContentValues>>()
+    fun row(mime: String, value: String, type: Int, typeKey: String, label: String, labelKey: String?) {
+        val values = ContentValues()
+        values.put(ContactsContract.Data.DATA1, value)
+        values.put(typeKey, type)
+        if (labelKey != null && type == ContactsContract.CommonDataKinds.BaseTypes.TYPE_CUSTOM) values.put(labelKey, label)
+        out += mime to values
+    }
+    val custom = ContactsContract.CommonDataKinds.BaseTypes.TYPE_CUSTOM
+    for (p in entry.phones) {
+        if (p.value.isEmpty()) continue
+        row(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE, p.value, custom,
+            ContactsContract.CommonDataKinds.Phone.TYPE, p.label.ifEmpty { "Phone" }, ContactsContract.CommonDataKinds.Phone.LABEL)
+    }
+    for (p in entry.postal) {
+        if (p.value.isEmpty()) continue
+        row(ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE, p.value,
+            ContactsContract.CommonDataKinds.StructuredPostal.TYPE_OTHER, ContactsContract.CommonDataKinds.StructuredPostal.TYPE, "", null)
+    }
+    if (entry.organization.isNotEmpty()) {
+        row(ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE, entry.organization,
+            ContactsContract.CommonDataKinds.Organization.TYPE_WORK, ContactsContract.CommonDataKinds.Organization.TYPE, "", null)
+    }
+    if (entry.birthday.isNotEmpty()) {
+        row(ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE, entry.birthday,
+            ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY, ContactsContract.CommonDataKinds.Event.TYPE, "", null)
+    }
+    for (p in entry.websites) {
+        if (p.value.isEmpty()) continue
+        row(ContactsContract.CommonDataKinds.Website.CONTENT_ITEM_TYPE, p.value,
+            ContactsContract.CommonDataKinds.Website.TYPE_OTHER, ContactsContract.CommonDataKinds.Website.TYPE, "", null)
+    }
+    for (p in entry.im) {
+        if (p.value.isEmpty()) continue
+        row(ContactsContract.CommonDataKinds.Im.CONTENT_ITEM_TYPE, p.value,
+            ContactsContract.CommonDataKinds.Im.TYPE_OTHER, ContactsContract.CommonDataKinds.Im.TYPE, "", null)
+    }
+    return out
+}
+
+/** Existing values of the extra-row mimetypes of one raw contact: (mimetype, data1). */
+private fun extraRowValues(resolver: ContentResolver, rawId: Long): Set<Pair<String, String>> {
+    val out = HashSet<Pair<String, String>>()
+    resolver.query(
+        ContactsContract.Data.CONTENT_URI,
+        arrayOf(ContactsContract.Data.MIMETYPE, ContactsContract.Data.DATA1),
+        "${ContactsContract.Data.RAW_CONTACT_ID}=?",
+        arrayOf(rawId.toString()),
+        null,
+    )?.use { c -> while (c.moveToNext()) out += c.getString(0).orEmpty() to c.getString(1).orEmpty() }
+    return out
 }
 
 private fun insertGroup(

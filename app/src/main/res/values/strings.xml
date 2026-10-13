@@ -624,7 +624,7 @@
     <string name="copy_no_destination">No other contact set is enabled.</string>
     <string name="copy_merge">Merge into existing</string>
     <string name="copy_one_email">One entry per email</string>
-    <string name="copy_append_comments">Append dropped fields to comments</string>
+    <string name="copy_append_comments">Keep other fields in the comment (extras block)</string>
     <string name="copy_no_notes">This set has no notes</string>
     <string name="copy_no_groups">This set has no groups</string>
     <string name="copy_no_nicknames">This set does not keep nicknames</string>

@@ -8,7 +8,8 @@ data class CopyField(val label: String, val value: String)
 data class CopyOptions(
     val mergeIntoExisting: Boolean = false,
     val oneEntryPerEmail: Boolean = false,
-    val appendDroppedToComments: Boolean = false,
+    /** Keep fields Alpine has no place for in the extras block of the comment (default on: nothing is dropped). */
+    val appendDroppedToComments: Boolean = true,
     val destinationKeepsNotes: Boolean = true,
     val destinationHasGroups: Boolean = true,
     val destinationKeepsNickname: Boolean = true,
@@ -43,6 +44,8 @@ data class CopyContact(
     val rawId: Long = 0,
     val groupId: Long = 0,
     val changed: Boolean = false,
+    /** Extras-block entries that have no field here; carried so the next copy keeps them. */
+    val extras: List<Pair<String, String>> = emptyList(),
 )
 
 data class CopyOutcome(
@@ -244,21 +247,31 @@ private fun pineFields(contact: CopyContact, options: CopyOptions): PineFields {
     var plaintext = contact.plaintext || comments.contains("[plaintext]")
     if (contact.note.isNotEmpty()) {
         val parsed = parseNote(contact.note)
-        fcc = parsed.fcc
+        if (parsed.fcc.isNotEmpty()) fcc = parsed.fcc
         comments = parsed.comments
         plaintext = parsed.plaintext
+    }
+    val block = parseExtraBlock(comments)
+    comments = block.text
+    val carried = ArrayList<Pair<String, String>>()
+    for ((k, v) in block.entries) {
+        when (k) {
+            "fcc" -> if (fcc.isEmpty()) fcc = v
+            "plaintext" -> if (v.equals("yes", ignoreCase = true)) plaintext = true
+            else -> carried += k to v
+        }
     }
     comments = comments.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim()
     if (plaintext && !comments.contains("[plaintext]")) {
         comments = if (comments.isEmpty()) "[plaintext]" else "$comments [plaintext]"
     }
-    if (options.appendDroppedToComments) {
-        val extra = extraLines(contact)
-        if (extra.isNotEmpty()) {
-            comments = if (comments.isEmpty()) extra.joinToString(" ") else comments + " " + extra.joinToString(" ")
-        }
-    }
     if (comments.length > 1000) comments = comments.substring(0, 1000)
+    val entries = ArrayList<Pair<String, String>>()
+    if (options.appendDroppedToComments) entries += nativeExtraEntries(contact)
+    for (e in contact.extras + carried) if (e !in entries) entries += e
+    val tail = (listOf(encodeExtraBlock(entries, oneLine = true)) + block.foreign.map { it.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ') })
+        .filter { it.isNotEmpty() }
+    if (tail.isNotEmpty()) comments = (listOf(comments).filter { it.isNotEmpty() } + tail).joinToString(" ")
     return PineFields(fcc, comments, plaintext)
 }
 
@@ -325,18 +338,47 @@ private fun androidContact(
     }
     if (emails.size == 1) preview.add("Email: ${emails[0]}")
     else if (emails.size > 1) preview.add("Email: ${emails.joinToString(", ")}")
-    val plain = contact.plaintext || contact.comments.contains("[plaintext]")
-    val body = contact.comments.replace("[plaintext]", "").trim()
+    // Source text: an Alpine comment, or an Android note (old pine-fcc lines are still read).
+    var fcc = contact.fcc
+    var plain = contact.plaintext || contact.comments.contains("[plaintext]")
+    var text = contact.comments
+    if (contact.note.isNotEmpty()) {
+        val parsed = parseNote(contact.note)
+        if (parsed.fcc.isNotEmpty()) fcc = parsed.fcc
+        if (parsed.plaintext) plain = true
+        text = listOf(text, parsed.comments).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+    val block = parseExtraBlock(text)
+    val restored = restoreExtras(contact, block.entries)
+    if (restored.fcc.isNotEmpty() && fcc.isEmpty()) fcc = restored.fcc
+    if (restored.plaintext) plain = true
+    val body = block.text.replace("[plaintext]", "").replace(Regex("\\s+"), " ").trim()
+    val r = restored.contact
+    fun restoredNote(present: Boolean, name: String) { if (present) preview.add("$name restored.") }
+    restoredNote(r.phones.size > contact.phones.size, "Phone")
+    restoredNote(r.postal.size > contact.postal.size, "Postal address")
+    restoredNote(r.organization.isNotEmpty() && contact.organization.isEmpty(), "Organization")
+    restoredNote(r.birthday.isNotEmpty() && contact.birthday.isEmpty(), "Birthday")
+    restoredNote(r.websites.size > contact.websites.size, "Website")
+    restoredNote(r.im.size > contact.im.size, "IM")
+    val blockEntries = ArrayList<Pair<String, String>>()
+    if (fcc.isNotEmpty()) blockEntries += "fcc" to fcc
+    if (plain) blockEntries += "plaintext" to "yes"
+    for (p in contact.custom) if (p.value.isNotEmpty()) blockEntries += "custom.${p.label}" to p.value
+    for (e in contact.extras + restored.leftovers) if (e !in blockEntries) blockEntries += e
+    if (contact.photo.isNotEmpty()) preview.add("Photo is not copied.")
     val note = if (!options.destinationKeepsNotes) {
-        if (contact.fcc.isNotEmpty()) preview.add("Fcc is dropped. This set has no notes.")
+        if (fcc.isNotEmpty()) preview.add("Fcc is dropped. This set has no notes.")
         if (body.isNotEmpty()) preview.add("Comments are dropped. This set has no notes.")
         if (plain) preview.add("Plaintext is dropped. This set has no notes.")
+        if (blockEntries.any { it.first != "fcc" && it.first != "plaintext" }) preview.add("Other fields are dropped. This set has no notes.")
         ""
     } else {
-        if (contact.fcc.isNotEmpty()) preview.add("Fcc kept as pine-fcc: ${contact.fcc}")
+        if (fcc.isNotEmpty()) preview.add("Fcc kept in the extras block: $fcc")
         if (body.isNotEmpty()) preview.add("Comments kept in the note.")
-        if (plain) preview.add("Plaintext kept as pine-plaintext: yes")
-        buildNote(contact.fcc, body, plain)
+        if (plain) preview.add("Plaintext kept in the extras block.")
+        if (contact.custom.any { it.value.isNotEmpty() }) preview.add("Custom label kept in the extras block.")
+        buildNote(body, blockEntries + block.foreign.map { "" to it })
     }
     return CopyContact(
         nickname = keptNick,
@@ -348,20 +390,27 @@ private fun androidContact(
         emailType = "Other",
         note = note,
         plaintext = plain && options.destinationKeepsNotes,
+        phones = r.phones,
+        postal = r.postal,
+        organization = r.organization,
+        birthday = r.birthday,
+        websites = r.websites,
+        im = r.im,
         changed = true,
     )
 }
 
-private fun buildNote(fcc: String, comments: String, plaintext: Boolean): String = buildString {
-    if (fcc.isNotEmpty()) appendLine("pine-fcc: $fcc")
-    if (plaintext) appendLine("pine-plaintext: yes")
-    if (comments.isNotEmpty()) append(comments)
-}.trim()
+/** Note text: the user's text, then one extras block; entries keyed "" are foreign blocks kept verbatim. */
+private fun buildNote(text: String, entries: List<Pair<String, String>>): String {
+    val own = entries.filter { it.first.isNotEmpty() }
+    val foreign = entries.filter { it.first.isEmpty() }.map { it.second }
+    return (listOf(text, encodeExtraBlock(own, oneLine = false)) + foreign).filter { it.isNotEmpty() }.joinToString("\n")
+}
 
 private fun previewDropped(contact: CopyContact, options: CopyOptions, preview: MutableList<String>) {
     fun drop(present: Boolean, name: String) {
         if (!present) return
-        if (options.appendDroppedToComments) preview.add("$name appended to comments.")
+        if (options.appendDroppedToComments) preview.add("$name kept in the extras block.")
         else preview.add("$name is dropped.")
     }
     drop(contact.phones.any { it.value.isNotEmpty() }, "Phone")
@@ -375,29 +424,6 @@ private fun previewDropped(contact: CopyContact, options: CopyOptions, preview: 
     if (contact.starred) preview.add("Starred is not copied.")
     if (contact.ringtone.isNotEmpty()) preview.add("Ringtone is not copied.")
     if (contact.linked) preview.add("Linked contacts are not copied.")
-}
-
-private fun extraLines(contact: CopyContact): List<String> {
-    val lines = ArrayList<String>()
-    for (phone in contact.phones) {
-        if (phone.value.isNotEmpty()) lines.add("${phone.label.ifEmpty { "Phone" }}: ${phone.value}")
-    }
-    for (postal in contact.postal) {
-        if (postal.value.isNotEmpty()) lines.add("${postal.label.ifEmpty { "Postal address" }}: ${postal.value}")
-    }
-    if (contact.organization.isNotEmpty()) lines.add("Organization: ${contact.organization}")
-    if (contact.birthday.isNotEmpty()) lines.add("Birthday: ${contact.birthday}")
-    if (contact.photo.isNotEmpty()) lines.add("Photo: present")
-    for (site in contact.websites) {
-        if (site.value.isNotEmpty()) lines.add("${site.label.ifEmpty { "Website" }}: ${site.value}")
-    }
-    for (im in contact.im) {
-        if (im.value.isNotEmpty()) lines.add("${im.label.ifEmpty { "IM" }}: ${im.value}")
-    }
-    for (custom in contact.custom) {
-        if (custom.value.isNotEmpty()) lines.add("${custom.label.ifEmpty { "Custom" }}: ${custom.value}")
-    }
-    return lines
 }
 
 private fun ownEmails(contact: CopyContact): List<String> {
