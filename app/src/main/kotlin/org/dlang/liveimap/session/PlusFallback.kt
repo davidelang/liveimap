@@ -3,7 +3,7 @@ package org.dlang.liveimap.session
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.TlsMode
 
-private val plusFailure = Regex("SASL (SCRAM-SHA-[0-9]+)-PLUS failed")
+private val plusFailure = Regex("SASL (SCRAM-SHA-[0-9]+)-PLUS( failed|\\))")
 
 /**
  * The account for a second login attempt after an automatically chosen SCRAM -PLUS mechanism failed:

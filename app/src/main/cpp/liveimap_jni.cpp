@@ -2864,7 +2864,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "auth choice failed";
         return false;
     }
-    jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
+    jmethodID method = env->GetStaticMethodID(cls, "imapAuthOrderLine",
         "(Ljava/lang/String;ZZZLjava/lang/String;Z)Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -2898,11 +2898,20 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "auth choice failed";
         return false;
     }
-    std::string mechanism;
+    // Mechanisms best first (imapAuthOrder); the first is tried, the rest only after a local failure.
+    std::vector<std::string> order;
     if (result != nullptr) {
-        mechanism = utf8FromJava(env, static_cast<jstring>(result));
+        std::string joined = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
+        size_t at = 0;
+        while (at < joined.size()) {
+            size_t sp = joined.find(' ', at);
+            if (sp == std::string::npos) sp = joined.size();
+            if (sp > at) order.push_back(joined.substr(at, sp - at));
+            at = sp + 1;
+        }
     }
+    std::string mechanism = order.empty() ? std::string() : order.front();
     const char * name = user != nullptr ? user : "";
     if (!forced.empty()) {
         // A forced method is used as is, but only when the server advertises it; clear-text methods on a
@@ -2947,42 +2956,63 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "plaintext login needs confirmation";
         return false;
     }
-    bool plus = mechanism.size() >= 5
-        && mechanism.compare(mechanism.size() - 5, 5, "-PLUS") == 0;
-    if (plus && bindingLen > 0) {
-        int br = mailimap_set_channel_binding(imap, bindingName, binding, bindingLen);
-        if (br != 0) {
-            *error = "channel binding failed";
-            return false;
-        }
-    } else {
-        mailimap_set_channel_binding(imap, nullptr, nullptr, 0);
-    }
     std::string capsUpper = " " + line + " ";
     for (auto & ch : capsUpper) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-    if (mechanism == "EXTERNAL" && capsUpper.find(" SASL-IR ") != std::string::npos) {
-        // Sent directly: Cyrus's client EXTERNAL fails locally here. Empty authzid ("="): the server takes
-        // the identity from the verified client certificate.
-        r = authenticateExternal(imap);
-    } else if (mechanism.empty()) {
-        r = mailimap_login(imap, user, password);
-    } else {
-        // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
-        // client omits an authzid equal to the user but sends an empty one (authzid=""), which Dovecot rejects.
-        r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr,
-            mechanism == "DIGEST-MD5" ? user : "", user, password, nullptr);
+    if (!forced.empty()) {
+        order.clear();
+        if (!mechanism.empty()) order.push_back(mechanism);
     }
-    if (!cmdOk(r)) {
-        *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
-            + ": login failed: " + imapText(imap, "login failed");
-        if (!gClientCertError.empty()) *error += " (" + gClientCertError + ")";
-        if (r == MAILIMAP_ERROR_LOGIN && !mechanism.empty() && mechanism != "EXTERNAL") {
-            *error += " (SASL " + mechanism + " failed locally; client mechanisms: " + saslClientMechs()
-                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
+    std::string localFailures;
+    for (size_t attempt = 0;; attempt++) {
+        if (!order.empty()) mechanism = order[attempt];
+        bool plus = mechanism.size() >= 5
+            && mechanism.compare(mechanism.size() - 5, 5, "-PLUS") == 0;
+        if (plus && bindingLen > 0) {
+            int br = mailimap_set_channel_binding(imap, bindingName, binding, bindingLen);
+            if (br != 0) {
+                *error = "channel binding failed";
+                return false;
+            }
+        } else {
+            mailimap_set_channel_binding(imap, nullptr, nullptr, 0);
         }
+        // libetpan sends the tag only after sasl_client_start succeeded: an unchanged tag means nothing was sent.
+        uint32_t tagBefore = imap->imap_tag;
+        if (mechanism == "EXTERNAL" && capsUpper.find(" SASL-IR ") != std::string::npos) {
+            // Sent directly: Cyrus's client EXTERNAL fails locally here. Empty authzid ("="): the server takes
+            // the identity from the verified client certificate.
+            r = authenticateExternal(imap);
+        } else if (mechanism.empty()) {
+            r = mailimap_login(imap, user, password);
+        } else {
+            // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
+            // client omits an authzid equal to the user but sends an empty one (authzid=""), which Dovecot rejects.
+            r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr,
+                mechanism == "DIGEST-MD5" ? user : "", user, password, nullptr);
+        }
+        if (cmdOk(r)) return true;
+        bool local = r == MAILIMAP_ERROR_LOGIN && !mechanism.empty() && mechanism != "EXTERNAL"
+            && imap->imap_tag == tagBefore;
+        if (local && attempt + 1 < order.size()) {
+            // Nothing reached the server: try the next mechanism on the same connection.
+            localFailures += (localFailures.empty() ? "" : ", ") + mechanism;
+            continue;
+        }
+        if (local) {
+            localFailures += (localFailures.empty() ? "" : ", ") + mechanism;
+            *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
+                + ": login failed before contacting the server: SASL " + localFailures
+                + " failed locally (client mechanisms: " + saslClientMechs()
+                + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
+            return false;
+        }
+        *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
+            + ": login failed: " + imapText(imap, "login failed")
+            + (mechanism.empty() ? std::string(" (server rejected LOGIN)") : " (server rejected SASL " + mechanism + ")");
+        if (!localFailures.empty()) *error += " (failed locally first: " + localFailures + ")";
+        if (!gClientCertError.empty()) *error += " (" + gClientCertError + ")";
         return false;
     }
-    return true;
 }
 
 mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * user, const char * password,
