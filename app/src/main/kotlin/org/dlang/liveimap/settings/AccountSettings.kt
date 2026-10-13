@@ -503,6 +503,8 @@ data class AccountSettings(
     val threadAskSkip: Set<String> = emptySet(),
     val searchAskSkip: Set<String> = emptySet(),
     val fallbackAskSkip: Set<String> = emptySet(),
+    /** F69: lines with keys this version does not know (newer builds), kept verbatim so saving keeps them. */
+    val unknownSettings: List<String> = emptyList(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
@@ -787,25 +789,27 @@ fun AccountSettings.encode(): String = buildString {
     if (fallbackAskSkip.isNotEmpty()) {
         appendLine("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
     }
+    for (line in unknownSettings) appendLine(line)
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {
     val values = linkedMapOf<String, String>()
+    val unknown = ArrayList<String>()
     var openKey: String? = null
     for (line in text.lines()) {
         if (line.isEmpty()) continue
         val eq = line.indexOf('=')
         val key = if (eq > 0) line.substring(0, eq) else ""
         if (eq > 0 && key in fieldNames) {
-            if (values.containsKey(key)) throw IllegalArgumentException("duplicate key")
-            values[key] = line.substring(eq + 1)
+            values[key] = line.substring(eq + 1) // F69: a duplicate key: the last one wins
             openKey = key
-        } else if (openKey == "inboundRules") {
-            values[openKey] = values.getValue(openKey) + "\n" + line
-        } else if (eq <= 0) {
-            throw IllegalArgumentException("bad line")
+        } else if (openKey == "inboundRules" && line.contains('\t')) {
+            values[openKey] = values.getValue(openKey) + "\n" + line // rule lines always carry a TAB
+        } else if (eq > 0) {
+            unknown += line // F69: a newer build's key: kept for round-tripping, not an error
+            openKey = null
         } else {
-            throw IllegalArgumentException("unknown key")
+            openKey = null // F69: a malformed line is skipped
         }
     }
     for (key in fieldNames) {
@@ -915,133 +919,141 @@ fun decodeAccountSettings(text: String): AccountSettings {
         ) {
             continue
         }
-        if (key !in values) throw IllegalArgumentException("missing key")
+        // F69: a missing key takes its default (below) instead of failing the whole account
+    }
+    val d = AccountSettings()
+    // F69: each field falls back to its default when its stored value can't be read (version skew, hand edits)
+    fun <T> field(default: T, read: () -> T): T = try {
+        read()
+    } catch (_: Exception) {
+        default
     }
     return AccountSettings(
-        imapHost = percentDecode(values.getValue("imapHost")),
-        imapPort = parseIntField(values.getValue("imapPort")),
-        smtpHost = percentDecode(values.getValue("smtpHost")),
-        smtpPort = parseIntField(values.getValue("smtpPort")),
-        smtpUsername = values["smtpUsername"]?.let { percentDecode(it) } ?: "",
-        smtpSameAsImap = values["smtpSameAsImap"] == "true",
-        username = percentDecode(values.getValue("username")),
-        displayName = percentDecode(values.getValue("displayName")),
-        email = percentDecode(values.getValue("email")),
-        sentMailbox = percentDecode(values.getValue("sentMailbox")),
-        postponedMailbox = percentDecode(values.getValue("postponedMailbox")),
-        addressBookMailbox = percentDecode(values.getValue("addressBookMailbox")),
-        spamMailbox = values["spamMailbox"]?.let { percentDecode(it) } ?: "",
-        markSeenOnOpen = parseBoolean(values.getValue("markSeenOnOpen")),
-        showDeleted = parseBoolean(values.getValue("showDeleted")),
-        bodyView = decodeBodyView(values),
-        density = enumValueOf(values.getValue("density")),
-        defaultView = parseView(values.getValue("defaultView")),
-        folderViews = parseFolderViews(values.getValue("folderViews")),
-        expandedFolders = parseExpanded(values.getValue("expandedFolders")),
-        swipeTrailing = parseSwipe(values.getValue("swipeTrailing")),
-        swipeLeading = parseSwipe(values.getValue("swipeLeading")),
-        bounceFcc = parseBoolean(values.getValue("bounceFcc")),
-        friendlyName = values["friendlyName"]?.let { percentDecode(it) } ?: "",
-        theme = values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem,
-        showUnreadCounts = values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false,
-        dateFormat = values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short,
-        datePattern = values["datePattern"]?.let { percentDecode(it) } ?: "",
-        favorites = values["favorites"]?.let { parseFavorites(it) } ?: emptyList(),
-        includeForwardAttachments = values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true,
-        forwardAsAttachment = values["forwardAsAttachment"]?.let { parseBoolean(it) } ?: false,
-        replyAboveQuote = values["replyAboveQuote"]?.let { parseBoolean(it) } ?: false,
-        askBeforeExpunge = values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true,
-        pipelineCommands = values["pipelineCommands"]?.let { parseBoolean(it) } ?: true,
-        logImapTraffic = values["logImapTraffic"]?.let { parseBoolean(it) } ?: false,
-        showUserInDebugReport = values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false,
-        readerBar = values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar,
-        dynamicColor = values["dynamicColor"]?.let { parseBoolean(it) } ?: true,
-        inboxStart = values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest,
-        folderStart = values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest,
-        folderStarts = values["folderStarts"]?.let { parseFolderStarts(it) } ?: emptyMap(),
-        startAfterChange = values["startAfterChange"]?.let { enumValueOf<StartAfterChange>(it) }
-            ?: StartAfterChange.RerunRule,
-        showRecentRules = values["showRecentRules"]?.let { parseBoolean(it) } ?: true,
-        openAtInIndexMenu = values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false,
-        pinercStartDefault = values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
-            ?: PinercStartDefault.LeaveUnchanged,
-        plainTextMonospace = values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false,
-        readerTextZoom = values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100,
-        idleWakeSeconds = values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5,
-        altAddresses = values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList(),
-        completionSources = decodeCompletionSources(values["completionSources"]),
-        addressBookHistory = values["addressBookHistory"]?.let { parseIntField(it) } ?: 3,
-        addressBookNeverTrim = values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false,
-        clientSort = values["clientSort"]?.let { parseBoolean(it) } ?: false,
-        clientThread = values["clientThread"]?.let { parseBoolean(it) } ?: false,
-        pollForNewMail = values["pollForNewMail"]?.let { parseBoolean(it) } ?: false,
-        pollSeconds = values["pollSeconds"]?.let { clampPollSeconds(parseIntField(it)) } ?: 60,
-        statusVisibleCounts = values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false,
-        forceSlowerFallbacks = values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false,
-        hiddenCapabilities = values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet(),
-        autoExpunge = values["autoExpunge"]?.let { parseBoolean(it) } ?: false,
-        deletePolicy = values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted,
-        moveMethod = values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted,
-        compression = values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
-            ?: Compression.On,
-        moveAllIncludesDeleted = values["moveAllIncludesDeleted"]?.let { parseBoolean(it) } ?: false,
-        trashMailbox = values["trashMailbox"]?.let { percentDecode(it) } ?: "",
-        savedMailbox = values["savedMailbox"]?.let { percentDecode(it) } ?: "",
-        saveNameRule = values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder,
-        lastSaveMailbox = values["lastSaveMailbox"]?.let { percentDecode(it) } ?: "",
-        threadIndexStyle = values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
-            ?: ThreadIndexStyle.Expanded,
-        indexBar = values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar(),
-        selectionBar = values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar(),
-        folderBar = values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar(),
-        readerToolbar = values["readerToolbar"]?.let { parseReaderToolbar(it) },
-        composeBar = values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar(),
-        toolbarRows = values["toolbarRows"]?.let { parseIntField(it) } ?: 2,
-        composerWrapColumn = values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74,
-        quellFlowed = values["quellFlowed"]?.let { parseBoolean(it) } ?: false,
-        multiPane = values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off,
-        folderPane = values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
-        foldPosture = values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off,
-        fullScreen = values["fullScreen"]?.let { parseBoolean(it) } ?: false,
-        paneArrangement = values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide,
-        folderPosition = values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside,
-        customLayout = values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty(),
-        sendingRules = values["sendingRules"]?.let { percentDecode(it) } ?: "",
-        signature = values["signature"]?.let { percentDecode(it) } ?: "",
-        sigDashes = values["sigDashes"]?.let { it == "true" } ?: true,
-        sigAtBottom = values["sigAtBottom"]?.let { it == "true" } ?: false,
-        quotePrefix = values["quotePrefix"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultQuotePrefix,
-        replyLeadIn = values["replyLeadIn"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultLeadIn,
-        dsnMode = values["dsnMode"]?.let { runCatching { enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(it) }.getOrNull() } ?: org.dlang.liveimap.ui.compose.DsnMode.Off,
-        composerHeaders = values["composerHeaders"]?.let { percentDecode(it) } ?: "",
-        viewerHeaders = values["viewerHeaders"]?.let { percentDecode(it) } ?: "",
-        nonAsciiDisplay = values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious,
-        previewSize = values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density,
-        sieveHost = values["sieveHost"]?.let { percentDecode(it) } ?: "",
-        sievePort = values["sievePort"]?.let { parseSievePort(it) } ?: 4190,
-        tlsMode = values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None,
-        certPin = values["certPin"]?.let { percentDecode(it) } ?: "",
-        sieveCertPin = values["sieveCertPin"]?.let { percentDecode(it) } ?: "",
-        allowPlaintextAuth = values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false,
-        acceptInvalidCert = values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false,
-        allowOldTls = values["allowOldTls"]?.let { parseBoolean(it) } ?: false,
-        authMechanism = values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "",
-        clientCert = values["clientCert"]?.let { percentDecode(it) } ?: "",
-        clientCertAlias = values["clientCertAlias"]?.let { percentDecode(it) } ?: "",
-        inboundRules = values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList(),
-        watchedFolders = values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList(),
-        extraIdleBudget = values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2,
-        savedSearches = values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList(),
-        savedAdvanced = values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList(),
-        emailSubmission = values["emailSubmission"]?.let { parseBoolean(it) } ?: false,
-        askSort = values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
-        askThread = values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
-        askSearch = values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
-        askFallback = values["askFallback"]?.let { parseAskLimit(it) } ?: DefaultAskLimit,
-        sortAskSkip = values["sortAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
-        threadAskSkip = values["threadAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
-        searchAskSkip = values["searchAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
-        fallbackAskSkip = values["fallbackAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet(),
+        imapHost = field(d.imapHost) { percentDecode(values.getValue("imapHost")) },
+        imapPort = field(d.imapPort) { parseIntField(values.getValue("imapPort")) },
+        smtpHost = field(d.smtpHost) { percentDecode(values.getValue("smtpHost")) },
+        smtpPort = field(d.smtpPort) { parseIntField(values.getValue("smtpPort")) },
+        smtpUsername = field(d.smtpUsername) { values["smtpUsername"]?.let { percentDecode(it) } ?: "" },
+        smtpSameAsImap = field(d.smtpSameAsImap) { values["smtpSameAsImap"] == "true" },
+        username = field(d.username) { percentDecode(values.getValue("username")) },
+        displayName = field(d.displayName) { percentDecode(values.getValue("displayName")) },
+        email = field(d.email) { percentDecode(values.getValue("email")) },
+        sentMailbox = field(d.sentMailbox) { percentDecode(values.getValue("sentMailbox")) },
+        postponedMailbox = field(d.postponedMailbox) { percentDecode(values.getValue("postponedMailbox")) },
+        addressBookMailbox = field(d.addressBookMailbox) { percentDecode(values.getValue("addressBookMailbox")) },
+        spamMailbox = field(d.spamMailbox) { values["spamMailbox"]?.let { percentDecode(it) } ?: "" },
+        markSeenOnOpen = field(d.markSeenOnOpen) { parseBoolean(values.getValue("markSeenOnOpen")) },
+        showDeleted = field(d.showDeleted) { parseBoolean(values.getValue("showDeleted")) },
+        bodyView = field(d.bodyView) { decodeBodyView(values) },
+        density = field(d.density) { enumValueOf(values.getValue("density")) },
+        defaultView = field(d.defaultView) { parseView(values.getValue("defaultView")) },
+        folderViews = field(d.folderViews) { parseFolderViews(values.getValue("folderViews")) },
+        expandedFolders = field(d.expandedFolders) { parseExpanded(values.getValue("expandedFolders")) },
+        swipeTrailing = field(d.swipeTrailing) { parseSwipe(values.getValue("swipeTrailing")) },
+        swipeLeading = field(d.swipeLeading) { parseSwipe(values.getValue("swipeLeading")) },
+        bounceFcc = field(d.bounceFcc) { parseBoolean(values.getValue("bounceFcc")) },
+        friendlyName = field(d.friendlyName) { values["friendlyName"]?.let { percentDecode(it) } ?: "" },
+        theme = field(d.theme) { values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem },
+        showUnreadCounts = field(d.showUnreadCounts) { values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false },
+        dateFormat = field(d.dateFormat) { values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short },
+        datePattern = field(d.datePattern) { values["datePattern"]?.let { percentDecode(it) } ?: "" },
+        favorites = field(d.favorites) { values["favorites"]?.let { parseFavorites(it) } ?: emptyList() },
+        includeForwardAttachments = field(d.includeForwardAttachments) { values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true },
+        forwardAsAttachment = field(d.forwardAsAttachment) { values["forwardAsAttachment"]?.let { parseBoolean(it) } ?: false },
+        replyAboveQuote = field(d.replyAboveQuote) { values["replyAboveQuote"]?.let { parseBoolean(it) } ?: false },
+        askBeforeExpunge = field(d.askBeforeExpunge) { values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true },
+        pipelineCommands = field(d.pipelineCommands) { values["pipelineCommands"]?.let { parseBoolean(it) } ?: true },
+        logImapTraffic = field(d.logImapTraffic) { values["logImapTraffic"]?.let { parseBoolean(it) } ?: false },
+        showUserInDebugReport = field(d.showUserInDebugReport) { values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false },
+        readerBar = field(d.readerBar) { values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar },
+        dynamicColor = field(d.dynamicColor) { values["dynamicColor"]?.let { parseBoolean(it) } ?: true },
+        inboxStart = field(d.inboxStart) { values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
+        folderStart = field(d.folderStart) { values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
+        folderStarts = field(d.folderStarts) { values["folderStarts"]?.let { parseFolderStarts(it) } ?: emptyMap() },
+        startAfterChange = field(d.startAfterChange) { values["startAfterChange"]?.let { enumValueOf<StartAfterChange>(it) }
+            ?: StartAfterChange.RerunRule },
+        showRecentRules = field(d.showRecentRules) { values["showRecentRules"]?.let { parseBoolean(it) } ?: true },
+        openAtInIndexMenu = field(d.openAtInIndexMenu) { values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false },
+        pinercStartDefault = field(d.pinercStartDefault) { values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
+            ?: PinercStartDefault.LeaveUnchanged },
+        plainTextMonospace = field(d.plainTextMonospace) { values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false },
+        readerTextZoom = field(d.readerTextZoom) { values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100 },
+        idleWakeSeconds = field(d.idleWakeSeconds) { values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5 },
+        altAddresses = field(d.altAddresses) { values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList() },
+        completionSources = field(d.completionSources) { decodeCompletionSources(values["completionSources"]) },
+        addressBookHistory = field(d.addressBookHistory) { values["addressBookHistory"]?.let { parseIntField(it) } ?: 3 },
+        addressBookNeverTrim = field(d.addressBookNeverTrim) { values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false },
+        clientSort = field(d.clientSort) { values["clientSort"]?.let { parseBoolean(it) } ?: false },
+        clientThread = field(d.clientThread) { values["clientThread"]?.let { parseBoolean(it) } ?: false },
+        pollForNewMail = field(d.pollForNewMail) { values["pollForNewMail"]?.let { parseBoolean(it) } ?: false },
+        pollSeconds = field(d.pollSeconds) { values["pollSeconds"]?.let { clampPollSeconds(parseIntField(it)) } ?: 60 },
+        statusVisibleCounts = field(d.statusVisibleCounts) { values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false },
+        forceSlowerFallbacks = field(d.forceSlowerFallbacks) { values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false },
+        hiddenCapabilities = field(d.hiddenCapabilities) { values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet() },
+        autoExpunge = field(d.autoExpunge) { values["autoExpunge"]?.let { parseBoolean(it) } ?: false },
+        deletePolicy = field(d.deletePolicy) { values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted },
+        moveMethod = field(d.moveMethod) { values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted },
+        compression = field(d.compression) { values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
+            ?: Compression.On },
+        moveAllIncludesDeleted = field(d.moveAllIncludesDeleted) { values["moveAllIncludesDeleted"]?.let { parseBoolean(it) } ?: false },
+        trashMailbox = field(d.trashMailbox) { values["trashMailbox"]?.let { percentDecode(it) } ?: "" },
+        savedMailbox = field(d.savedMailbox) { values["savedMailbox"]?.let { percentDecode(it) } ?: "" },
+        saveNameRule = field(d.saveNameRule) { values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder },
+        lastSaveMailbox = field(d.lastSaveMailbox) { values["lastSaveMailbox"]?.let { percentDecode(it) } ?: "" },
+        threadIndexStyle = field(d.threadIndexStyle) { values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
+            ?: ThreadIndexStyle.Expanded },
+        indexBar = field(d.indexBar) { values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar() },
+        selectionBar = field(d.selectionBar) { values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar() },
+        folderBar = field(d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
+        readerToolbar = field(d.readerToolbar) { values["readerToolbar"]?.let { parseReaderToolbar(it) } },
+        composeBar = field(d.composeBar) { values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar() },
+        toolbarRows = field(d.toolbarRows) { values["toolbarRows"]?.let { parseIntField(it) } ?: 2 },
+        composerWrapColumn = field(d.composerWrapColumn) { values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74 },
+        quellFlowed = field(d.quellFlowed) { values["quellFlowed"]?.let { parseBoolean(it) } ?: false },
+        multiPane = field(d.multiPane) { values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off },
+        folderPane = field(d.folderPane) { values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
+        foldPosture = field(d.foldPosture) { values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
+        fullScreen = field(d.fullScreen) { values["fullScreen"]?.let { parseBoolean(it) } ?: false },
+        paneArrangement = field(d.paneArrangement) { values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide },
+        folderPosition = field(d.folderPosition) { values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside },
+        customLayout = field(d.customLayout) { values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty() },
+        sendingRules = field(d.sendingRules) { values["sendingRules"]?.let { percentDecode(it) } ?: "" },
+        signature = field(d.signature) { values["signature"]?.let { percentDecode(it) } ?: "" },
+        sigDashes = field(d.sigDashes) { values["sigDashes"]?.let { it == "true" } ?: true },
+        sigAtBottom = field(d.sigAtBottom) { values["sigAtBottom"]?.let { it == "true" } ?: false },
+        quotePrefix = field(d.quotePrefix) { values["quotePrefix"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultQuotePrefix },
+        replyLeadIn = field(d.replyLeadIn) { values["replyLeadIn"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultLeadIn },
+        dsnMode = field(d.dsnMode) { values["dsnMode"]?.let { runCatching { enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(it) }.getOrNull() } ?: org.dlang.liveimap.ui.compose.DsnMode.Off },
+        composerHeaders = field(d.composerHeaders) { values["composerHeaders"]?.let { percentDecode(it) } ?: "" },
+        viewerHeaders = field(d.viewerHeaders) { values["viewerHeaders"]?.let { percentDecode(it) } ?: "" },
+        nonAsciiDisplay = field(d.nonAsciiDisplay) { values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious },
+        previewSize = field(d.previewSize) { values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density },
+        sieveHost = field(d.sieveHost) { values["sieveHost"]?.let { percentDecode(it) } ?: "" },
+        sievePort = field(d.sievePort) { values["sievePort"]?.let { parseSievePort(it) } ?: 4190 },
+        tlsMode = field(d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
+        certPin = field(d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
+        sieveCertPin = field(d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },
+        allowPlaintextAuth = field(d.allowPlaintextAuth) { values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false },
+        acceptInvalidCert = field(d.acceptInvalidCert) { values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false },
+        allowOldTls = field(d.allowOldTls) { values["allowOldTls"]?.let { parseBoolean(it) } ?: false },
+        authMechanism = field(d.authMechanism) { values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "" },
+        clientCert = field(d.clientCert) { values["clientCert"]?.let { percentDecode(it) } ?: "" },
+        clientCertAlias = field(d.clientCertAlias) { values["clientCertAlias"]?.let { percentDecode(it) } ?: "" },
+        inboundRules = field(d.inboundRules) { values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList() },
+        watchedFolders = field(d.watchedFolders) { values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList() },
+        extraIdleBudget = field(d.extraIdleBudget) { values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2 },
+        savedSearches = field(d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
+        savedAdvanced = field(d.savedAdvanced) { values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList() },
+        emailSubmission = field(d.emailSubmission) { values["emailSubmission"]?.let { parseBoolean(it) } ?: false },
+        askSort = field(d.askSort) { values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askThread = field(d.askThread) { values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askSearch = field(d.askSearch) { values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askFallback = field(d.askFallback) { values["askFallback"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        sortAskSkip = field(d.sortAskSkip) { values["sortAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        threadAskSkip = field(d.threadAskSkip) { values["threadAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        searchAskSkip = field(d.searchAskSkip) { values["searchAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        fallbackAskSkip = field(d.fallbackAskSkip) { values["fallbackAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        unknownSettings = unknown,
     )
 }
 

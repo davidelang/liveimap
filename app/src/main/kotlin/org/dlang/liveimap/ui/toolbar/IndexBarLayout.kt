@@ -158,11 +158,18 @@ fun parseIndexBar(value: String): IndexBarLayout {
     val toolbar = parseIndexNames(match.groupValues[1])
     val overflow = parseIndexNames(match.groupValues[2])
     val hidden = parseIndexNames(match.groupValues[3])
-    val all = toolbar + overflow + hidden
-    if (all.toSet() != IndexBarAction.entries.toSet() || all.size != all.toSet().size) {
-        throw IllegalArgumentException("bad indexBar")
-    }
-    return IndexBarLayout(toolbar, overflow, hidden)
+    // F69: tolerant: duplicates keep their first place; actions this build added go where the default puts them
+    val seen = HashSet<IndexBarAction>()
+    val t = toolbar.filter { seen.add(it) }
+    val o = overflow.filter { seen.add(it) }
+    val h = hidden.filter { seen.add(it) }
+    val base = defaultIndexBar()
+    val missing = IndexBarAction.entries.filter { it !in seen }
+    return IndexBarLayout(
+        t + missing.filter { it in base.toolbar },
+        o + missing.filter { it in base.overflow || (it !in base.toolbar && it !in base.hidden) },
+        h + missing.filter { it in base.hidden },
+    )
 }
 
 private val indexBarShape = Regex(
@@ -171,12 +178,8 @@ private val indexBarShape = Regex(
 
 private fun parseIndexNames(text: String): List<IndexBarAction> {
     if (text.isEmpty()) return emptyList()
-    return text.split(',').map { name ->
-        try {
-            enumValueOf<IndexBarAction>(name)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad indexBar")
-        }
+    return text.split(',').mapNotNull { name ->
+        IndexBarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
 }
 
@@ -286,11 +289,18 @@ fun parseSelectionBar(value: String): SelectionBarLayout {
     val toolbar = parseSelectionNames(match.groupValues[1])
     val overflow = parseSelectionNames(match.groupValues[2])
     val hidden = parseSelectionNames(match.groupValues[3])
-    val all = toolbar + overflow + hidden
-    if (all.toSet() != SelectionBarAction.entries.toSet() || all.size != all.toSet().size) {
-        throw IllegalArgumentException("bad selectionBar")
-    }
-    return SelectionBarLayout(toolbar, overflow, hidden)
+    // F69: tolerant: duplicates keep their first place; actions this build added go where the default puts them
+    val seen = HashSet<SelectionBarAction>()
+    val t = toolbar.filter { seen.add(it) }
+    val o = overflow.filter { seen.add(it) }
+    val h = hidden.filter { seen.add(it) }
+    val base = defaultSelectionBar()
+    val missing = SelectionBarAction.entries.filter { it !in seen }
+    return SelectionBarLayout(
+        t + missing.filter { it in base.toolbar },
+        o + missing.filter { it in base.overflow || (it !in base.toolbar && it !in base.hidden) },
+        h + missing.filter { it in base.hidden },
+    )
 }
 
 private val selectionBarShape = Regex(
@@ -299,12 +309,8 @@ private val selectionBarShape = Regex(
 
 private fun parseSelectionNames(text: String): List<SelectionBarAction> {
     if (text.isEmpty()) return emptyList()
-    return text.split(',').map { name ->
-        try {
-            enumValueOf<SelectionBarAction>(name)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad selectionBar")
-        }
+    return text.split(',').mapNotNull { name ->
+        SelectionBarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
 }
 
@@ -415,11 +421,18 @@ fun parseFolderBar(value: String): FolderBarLayout {
     val toolbar = parseFolderNames(match.groupValues[1])
     val overflow = parseFolderNames(match.groupValues[2])
     val hidden = parseFolderNames(match.groupValues[3])
-    val all = toolbar + overflow + hidden
-    if (all.toSet() != FolderBarAction.entries.toSet() || all.size != all.toSet().size) {
-        throw IllegalArgumentException("bad folderBar")
-    }
-    return FolderBarLayout(toolbar, overflow, hidden)
+    // F69: tolerant: duplicates keep their first place; actions this build added go where the default puts them
+    val seen = HashSet<FolderBarAction>()
+    val t = toolbar.filter { seen.add(it) }
+    val o = overflow.filter { seen.add(it) }
+    val h = hidden.filter { seen.add(it) }
+    val base = defaultFolderBar()
+    val missing = FolderBarAction.entries.filter { it !in seen }
+    return FolderBarLayout(
+        t + missing.filter { it in base.toolbar },
+        o + missing.filter { it in base.overflow || (it !in base.toolbar && it !in base.hidden) },
+        h + missing.filter { it in base.hidden },
+    )
 }
 
 private val folderBarShape = Regex(
@@ -428,12 +441,8 @@ private val folderBarShape = Regex(
 
 private fun parseFolderNames(text: String): List<FolderBarAction> {
     if (text.isEmpty()) return emptyList()
-    return text.split(',').map { name ->
-        try {
-            enumValueOf<FolderBarAction>(name)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad folderBar")
-        }
+    return text.split(',').mapNotNull { name ->
+        FolderBarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
 }
 
@@ -570,11 +579,18 @@ fun parseReaderToolbar(value: String): ReaderToolbarLayout {
     val toolbar = parseReaderToolbarNames(match.groupValues[1])
     val overflow = parseReaderToolbarNames(match.groupValues[2])
     val hidden = parseReaderToolbarNames(match.groupValues[3])
-    val all = toolbar + overflow + hidden
-    if (all.toSet() != ReaderToolbarAction.entries.toSet() || all.size != all.toSet().size) {
-        throw IllegalArgumentException("bad readerToolbar")
-    }
-    return ReaderToolbarLayout(toolbar, overflow, hidden)
+    // F69: tolerant: duplicates keep their first place; actions this build added go where the default puts them
+    val seen = HashSet<ReaderToolbarAction>()
+    val t = toolbar.filter { seen.add(it) }
+    val o = overflow.filter { seen.add(it) }
+    val h = hidden.filter { seen.add(it) }
+    val base = defaultReaderToolbar()
+    val missing = ReaderToolbarAction.entries.filter { it !in seen }
+    return ReaderToolbarLayout(
+        t + missing.filter { it in base.toolbar },
+        o + missing.filter { it in base.overflow || (it !in base.toolbar && it !in base.hidden) },
+        h + missing.filter { it in base.hidden },
+    )
 }
 
 private val readerToolbarShape = Regex(
@@ -583,12 +599,8 @@ private val readerToolbarShape = Regex(
 
 private fun parseReaderToolbarNames(text: String): List<ReaderToolbarAction> {
     if (text.isEmpty()) return emptyList()
-    return text.split(',').map { name ->
-        try {
-            enumValueOf<ReaderToolbarAction>(name)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad readerToolbar")
-        }
+    return text.split(',').mapNotNull { name ->
+        ReaderToolbarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
 }
 
@@ -705,11 +717,18 @@ fun parseComposeBar(value: String): ComposeBarLayout {
     val toolbar = parseComposeNames(match.groupValues[1])
     val overflow = parseComposeNames(match.groupValues[2])
     val hidden = parseComposeNames(match.groupValues[3])
-    val all = toolbar + overflow + hidden
-    if (all.toSet() != ComposeBarAction.entries.toSet() || all.size != all.toSet().size) {
-        throw IllegalArgumentException("bad composeBar")
-    }
-    return ComposeBarLayout(toolbar, overflow, hidden)
+    // F69: tolerant: duplicates keep their first place; actions this build added go where the default puts them
+    val seen = HashSet<ComposeBarAction>()
+    val t = toolbar.filter { seen.add(it) }
+    val o = overflow.filter { seen.add(it) }
+    val h = hidden.filter { seen.add(it) }
+    val base = defaultComposeBar()
+    val missing = ComposeBarAction.entries.filter { it !in seen }
+    return ComposeBarLayout(
+        t + missing.filter { it in base.toolbar },
+        o + missing.filter { it in base.overflow || (it !in base.toolbar && it !in base.hidden) },
+        h + missing.filter { it in base.hidden },
+    )
 }
 
 private val composeBarShape = Regex(
@@ -718,12 +737,8 @@ private val composeBarShape = Regex(
 
 private fun parseComposeNames(text: String): List<ComposeBarAction> {
     if (text.isEmpty()) return emptyList()
-    return text.split(',').map { name ->
-        try {
-            enumValueOf<ComposeBarAction>(name)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad composeBar")
-        }
+    return text.split(',').mapNotNull { name ->
+        ComposeBarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
 }
 
