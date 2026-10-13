@@ -282,7 +282,7 @@ fun JmapFolderRoute(
                 var deleteNotice by remember(shown.id) { mutableStateOf<String?>(null) }
                 deleteNotice?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
                 if (confirmDelete) {
-                    androidx.compose.material3.AlertDialog(
+                    org.dlang.liveimap.ui.AlertDialog(
                         onDismissRequest = { confirmDelete = false },
                         text = { Text(stringResource(R.string.jmap_delete_confirm)) },
                         confirmButton = {

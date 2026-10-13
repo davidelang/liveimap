@@ -522,11 +522,22 @@ class IndexWindowTest {
         val inTrash = FakeMailSession(capabilities = setOf("UIDPLUS"))
         inTrash.knownTrashName = "Trash"
         inTrash.arrivalRows = listOf(row(6))
-        val inTrashModel = IndexModel(inTrash, MemorySettingsStore(AccountSettings()), "Trash")
+        // F90: permanent only in a Trash the user named.
+        val inTrashModel = IndexModel(inTrash, MemorySettingsStore(AccountSettings(trashMailbox = "Trash")), "Trash")
         runImmediate { inTrashModel.loadWindow() }
         runImmediate { inTrashModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
         assertEquals(listOf(listOf(6L)), inTrash.uidExpunges)
         assertNull(inTrashModel.mailUndo)
+
+        // F90: a folder only the server flags \Trash keeps the user's policy (mark deleted, no expunge).
+        val flagged = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        flagged.knownTrashName = "Trash"
+        flagged.arrivalRows = listOf(row(6))
+        val flaggedModel = IndexModel(flagged, MemorySettingsStore(AccountSettings()), "Trash")
+        runImmediate { flaggedModel.loadWindow() }
+        runImmediate { flaggedModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertTrue(flagged.uidExpunges.isEmpty())
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), flagged.stores)
 
         val trashNoPlus = FakeMailSession()
         trashNoPlus.knownTrashName = "Trash"

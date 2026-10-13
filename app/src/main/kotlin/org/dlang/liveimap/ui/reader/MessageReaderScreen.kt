@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.session.usableTrashName
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedButton
@@ -65,7 +66,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
+import org.dlang.liveimap.ui.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -1377,6 +1378,7 @@ private fun MessageReaderLoaded(
                 trash.isNotEmpty() && mailbox == trash,
                 session.featureCaps.uidPlus,
                 trash.isNotEmpty(),
+                trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
             )
             if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
                 confirmPermanent = true
@@ -1503,6 +1505,7 @@ private fun MessageReaderLoaded(
         trashKnown && mailbox == knownTrashName,
         readerUidPlus,
         trashKnown,
+        trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
     )
     Scaffold(
         modifier = Modifier.fillMaxSize().testTag("smoke-reader"),

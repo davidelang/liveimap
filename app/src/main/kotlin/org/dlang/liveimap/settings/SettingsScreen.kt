@@ -38,7 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
+import org.dlang.liveimap.ui.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -200,6 +200,7 @@ private class SettingsEditor(
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
             settingsMutex.withLock { target.save(settingsState.value) }
+            SettingsRevision.bump()
         }
     }
 
@@ -270,6 +271,13 @@ private class SettingsEditor(
     }
 }
 
+/** Bumped after every settings save, so another editor on screen (the two-pane group list) reloads. */
+internal object SettingsRevision {
+    private val state = androidx.compose.runtime.mutableIntStateOf(0)
+    val value: Int get() = state.intValue
+    fun bump() { state.intValue = state.intValue + 1 }
+}
+
 @Composable
 private fun rememberSettingsEditor(): SettingsEditor {
     val appContext = LocalContext.current.applicationContext
@@ -298,6 +306,9 @@ private fun rememberSectionOpen(first: String): SectionOpen {
 @Composable
 fun SettingsGroupList(selected: SettingsGroup? = null, onOpen: (SettingsGroup) -> Unit) {
     val editor = rememberSettingsEditor()
+    // The list's summaries ("Traffic log on" and the rest) follow saves made by the detail pane's own editor.
+    val revision = SettingsRevision.value
+    LaunchedEffect(revision) { if (revision > 0) editor.load() }
     if (!editor.ready) return
     val settings = editor.settings
     Column(

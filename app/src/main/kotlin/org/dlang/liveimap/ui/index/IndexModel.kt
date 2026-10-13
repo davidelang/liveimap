@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.index
 
 import org.dlang.liveimap.session.SelectResult
+import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.onRefs
 import org.dlang.liveimap.session.sameMailbox
@@ -459,7 +460,13 @@ fun effectiveDeletePolicy(
     inTrash: Boolean,
     uidPlus: Boolean,
     trashKnown: Boolean,
+    trashNamedByUser: Boolean = true,
 ): DeletePolicy {
+    // F90: a folder is "Trash" for permanent deletion only when the user named it; one the server merely flags
+    // \Trash gets the user's own policy (never an escalation to an undo-less UID EXPUNGE).
+    if (inTrash && !trashNamedByUser) {
+        return if (policy == DeletePolicy.DeletePermanently && uidPlus) policy else DeletePolicy.MarkDeleted
+    }
     if (inTrash) return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
     if (policy == DeletePolicy.DeletePermanently && !uidPlus) return DeletePolicy.MarkDeleted
     if (policy == DeletePolicy.MoveToTrash && !trashKnown) return DeletePolicy.MarkDeleted
@@ -1828,6 +1835,7 @@ class IndexModel(
                     trash.isNotEmpty() && (actFolder ?: mailbox) == trash,
                     session.featureCaps.uidPlus,
                     trash.isNotEmpty(),
+                    trashNamedByUser = usableTrashName(settings.trashMailbox).isNotEmpty(),
                 )
                 when (policy) {
                     DeletePolicy.MarkDeleted -> deleteMessages(listOf(uid))
@@ -2531,11 +2539,18 @@ class IndexModel(
                 // F128: one call selects the box, dates its hits and searches it.
                 val found = try {
                     session.inFolder(FolderAt(box)) { selected, s ->
+                        // F142: a search must not re-date this index's own listed rows; a moved epoch there is a
+                        // reset (the next load re-lists), and its hits are dropped rather than mixed with old rows.
+                        if (searchEpochMasks(box == mailbox, epochs[box], selected.uidValidity)) {
+                            throw EpochChanged(box)
+                        }
                         epochs[box] = selected.uidValidity
                         s.searchCriterion("Advanced", text)
                     }
                 } catch (error: CancellationException) {
                     throw error
+                } catch (_: EpochChanged) {
+                    continue
                 } catch (_: MailFailure) {
                     continue
                 }
@@ -2761,3 +2776,7 @@ suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000, kind: S
     }
     return out.copyOf(n).asList()
 }
+
+/** F142: true when a search's select would overwrite the home folder's listed epoch with a different one. */
+internal fun searchEpochMasks(homeFolder: Boolean, listed: Long?, selected: Long): Boolean =
+    homeFolder && listed != null && listed > 0 && selected > 0 && listed != selected

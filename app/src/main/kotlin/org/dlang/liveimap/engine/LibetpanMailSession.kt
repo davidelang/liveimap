@@ -87,6 +87,10 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
 
+    /** F64: true once this session logged in by the no-channel-binding retry after a failed SCRAM -PLUS. */
+    @Volatile var channelBindingDropped: Boolean = false
+        private set
+
     @Volatile
     private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
@@ -187,6 +191,8 @@ class LibetpanMailSession : MailSession {
             close()
         }
         var opened = login(account, password)
+        // F64: the account as trusted so far in this open (a pin confirmed below carries into later retries).
+        var trustedAccount = account
         if (opened is OpenResult.Failed && promptableCert(opened.text)) {
             val parts = nativeTakeCertOffer()
             val confirm = certConfirmer
@@ -203,6 +209,7 @@ class LibetpanMailSession : MailSession {
                 )
                 if (credentials == null && confirm(prompt)) {
                     val pinned = account.copy(certPin = prompt.fingerprint)
+                    trustedAccount = pinned
                     val text = opened.text
                     try {
                         // F75: field-level update of this session's own account, not a snapshot save.
@@ -223,7 +230,7 @@ class LibetpanMailSession : MailSession {
             if (!accepted) {
                 opened = OpenResult.Failed(stopped)
             } else {
-                val allowed = account.copy(allowPlaintextAuth = true)
+                val allowed = trustedAccount.copy(allowPlaintextAuth = true)
                 try {
                     ownStore(context).update { it.copy(allowPlaintextAuth = true) }
                     opened = login(allowed, password)
@@ -265,7 +272,14 @@ class LibetpanMailSession : MailSession {
         if (first !is OpenResult.Failed) return first
         val retry = plusFallback(account, first.text) ?: return first
         TrafficRecorder.event("main", "fallback", retry.authMechanism)
-        return loginOnce(retry, knownPassword)
+        // F64: not silent. The downgrade is noted for the status line and kept for the Test account report.
+        android.util.Log.w("LiveImap", "SCRAM -PLUS failed; logged in with ${retry.authMechanism} (no channel binding)")
+        val opened = loginOnce(retry, knownPassword)
+        if (opened !is OpenResult.Failed) {
+            channelBindingDropped = true
+            noteTraffic("Logged in without channel binding (${retry.authMechanism})")
+        }
+        return opened
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {

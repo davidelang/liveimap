@@ -37,6 +37,7 @@
 #include <strings.h>
 #include <map>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <unordered_set>
@@ -222,6 +223,19 @@ static void wipeSecret(std::string & secret) {
     secret.shrink_to_fit();
 }
 
+/* F21: XOR [text] with [mask] (same length) in place; masking and unmasking are the same operation. */
+static void xorMask(std::string & text, const std::string & mask) {
+    for (size_t i = 0; i < text.size() && i < mask.size(); ++i) text[i] = static_cast<char>(text[i] ^ mask[i]);
+}
+
+/* F21: a fresh random mask of [n] bytes. */
+static std::string randomMask(size_t n) {
+    std::random_device rd;
+    std::string mask(n, '\0');
+    for (size_t i = 0; i < n; ++i) mask[i] = static_cast<char>(rd() & 0xff);
+    return mask;
+}
+
 struct SecretWipe {
     std::string & secret;
     ~SecretWipe() { wipeSecret(secret); }
@@ -240,7 +254,10 @@ struct LiveSession {
     std::string host;
     int imapPort = 143;
     std::string user;
-    std::string password;  // kept for watch reconnects and SMTP; wiped in the destructor (F21)
+    // F21: kept for watch logins, but never in clear: XOR-masked with a per-session random key (passwordMask),
+    // unmasked only into a temporary that the caller wipes. Both wiped in the destructor.
+    std::string password;
+    std::string passwordMask;
     std::string tlsMode = "None";
     std::string certPin;
     bool allowPlaintextAuth = false;
@@ -263,6 +280,7 @@ struct LiveSession {
             env->DeleteGlobalRef(keyChainKey);
         }
         wipeSecret(password);
+        wipeSecret(passwordMask);
         wipeSecret(clientP12Password);
         wipeSecret(clientP12);
     }
@@ -2101,6 +2119,17 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data)
 std::atomic<int> gIdleRenewSec{9 * 60};
 // F38: IDLE poll backstop in ms (stop requests wake it through watchWakeFd). Configurable; default 5 s.
 std::atomic<int> gWatchWakeMs{5000};
+
+/* F38: poll timeout for the watch loop. With a wake fd, wait until the renew or the DONE delay is due (at least 1 s,
+   at most 30 min); without one, the configured short wake so a stop is noticed. */
+int watchPollMs(bool hasWakeFd, long renewLeftSec, long doneDelaySec, int wakeMs) {
+    if (!hasWakeFd) return wakeMs;
+    long left = renewLeftSec;
+    if (doneDelaySec > 0 && doneDelaySec < left) left = doneDelaySec;
+    if (left < 1) left = 1;
+    if (left > 1800) left = 1800;
+    return (int) (left * 1000);
+}
 std::atomic<int> gIdleRenews{0};
 
 void watchMain(LiveSession * session) {
@@ -2166,7 +2195,13 @@ void watchMain(LiveSession * session) {
             pfd[0].events = POLLIN;
             pfd[1].fd = session->watchWakeFd;
             pfd[1].events = POLLIN;
-            int pr = poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, gWatchWakeMs.load());
+            // F38: with the eventfd a stop wakes poll at once, and buffered data is drained above, so sleep until
+            // the next renew is due rather than every idleWakeSeconds. Without the eventfd keep the short wake.
+            long renewLeft = gIdleRenewSec.load() - (long) std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - idleSince).count();
+            int pollMs = watchPollMs(session->watchWakeFd >= 0, renewLeft,
+                (long) mailimap_idle_get_done_delay(session->watch), gWatchWakeMs.load());
+            int pr = poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, pollMs);
             if (session->watchStop.load()) break;
             if (pr <= 0 || (pfd[0].revents == 0)) continue;
         }
@@ -5633,6 +5668,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->imapPort = port;
     session->user = u.c();
     session->password = p.c();
+    session->passwordMask = randomMask(session->password.size());
+    xorMask(session->password, session->passwordMask);
     session->smtpHost = sh.c();
     session->smtpPort = smtpPort;
     session->from = fr.c()[0] != 0 ? fr.c() : u.c();
@@ -5886,6 +5923,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv *
             if (item == nullptr) continue;
             {
                 JChars chars(env, item);
+                if (!wireOk(chars.c())) { env->DeleteLocalRef(item); continue; }  // F42 native backstop
                 names.emplace_back(chars.c());
             }
             env->DeleteLocalRef(item);
@@ -5951,6 +5989,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
     JChars pref(env, prefix);
     JChars par(env, parent);
     JChars kindChars(env, kind);
+    if (!wireOk(pref.c()) || !wireOk(par.c())) {  // F42 native backstop
+        throwFailure(env, "refused: CR or LF in a mailbox name");
+        unlockSession(session);
+        return nullptr;
+    }
     bool extended = strcmp(kindChars.c(), "Plain") != 0;
     bool withMessages = strcmp(kindChars.c(), "ExtendedWithMessages") == 0
         || strcmp(kindChars.c(), "ExtendedWithStatus") == 0;
@@ -6029,6 +6072,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeMailboxListed(JNIEnv * 
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return JNI_FALSE;
     JChars name(env, mailbox);
+    if (!wireOk(name.c())) {  // F42 native backstop
+        unlockSession(session);
+        return JNI_FALSE;
+    }
     clist * list = nullptr;
     int r = mailimap_list(session->imap, "", name.c(), &list);
     if (!cmdOk(r)) {
@@ -6847,6 +6894,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv *
     }
     JChars dest(env, target);
     JChars kindChars(env, moveKind);
+    if (!wireOk(dest.c())) {  // F42 native backstop
+        throwFailure(env, "refused: CR or LF in a mailbox name");
+        unlockSession(session);
+        return;
+    }
     struct mailimap_set * set = setFromUids(values);
     if (set == nullptr) {
         throwFailure(env, "copy failed");
@@ -6872,6 +6924,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEn
     }
     JChars dest(env, target);
     JChars kindChars(env, moveKind);
+    if (!wireOk(dest.c())) {  // F42 native backstop
+        throwFailure(env, "refused: CR or LF in a mailbox name");
+        mailimap_set_free(set);
+        unlockSession(session);
+        return;
+    }
     copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
     mailimap_set_free(set);
     unlockSession(session);
@@ -6984,6 +7042,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
         return 0;
     }
     JChars mb(env, mailbox);
+    if (!wireOk(mb.c())) {  // F42 native backstop
+        if (flagList != nullptr) mailimap_flag_list_free(flagList);
+        throwFailure(env, "refused: CR or LF in a mailbox name");
+        unlockSession(session);
+        return 0;
+    }
     jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
     jbyte * bytes = n > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
     int r = appendLiteralPlus(session->imap, mb.c(),
@@ -7926,6 +7990,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     }
     stopWatchLocked(session, env);
     JChars mb(env, mailbox);
+    if (!wireOk(mb.c())) {  // F42 native backstop
+        throwFailure(env, "refused: CR or LF in a mailbox name");
+        unlockSession(session);
+        return;
+    }
     TrafficIdScope idScope("watch");
     std::string error;
     mailimap * watch = nullptr;
@@ -7934,7 +8003,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     // lockSession stays held, so the session cannot be deleted meanwhile (freeSession waits for it).
     const std::string host = session->host;
     const std::string user = session->user;
-    const std::string password = session->password;
+    std::string password = session->password;
+    xorMask(password, session->passwordMask);  // F21: clear only for this login; wiped below
     const std::string tlsMode = session->tlsMode;
     const std::string certPin = session->certPin;
     const int port = session->imapPort;
@@ -7945,6 +8015,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     } else {
         watch = openTls(env, tlsMode.c_str(), host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr, certPin.c_str(), false);
     }
+    wipeSecret(password);
     session->mu.lock();
     if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
         // closed, or a newer watch/stop ran while this one connected: drop this connection quietly.

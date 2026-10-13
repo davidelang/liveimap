@@ -385,7 +385,7 @@ fun formatMailbox(name: String, email: String): String {
     val box = cleanHeader(email.trim())
     val display = cleanHeader(name.trim())
     if (display.isEmpty()) return box
-    if (display.any { it.code > 126 }) return "${encodedWord(display)} <$box>"
+    if (display.any { it.code > 126 }) return "${encodedWord(display, fold = false)} <$box>"
     val rendered = if (isAtom(display)) {
         display
     } else {
@@ -588,16 +588,17 @@ fun buildPlain(message: PlainMessage): BuiltMail {
             payload,
         )
         for (part in message.attachments) {
-            val encoded = if (part.wireBase64) part.bytes else mimeBase64(part.bytes)
+            // F80(d): base64 already on the wire is re-wrapped at 76, never copied as it came.
+            val encoded = if (part.wireBase64) rewrapBase64(part.bytes) else mimeBase64(part.bytes)
             val type = cleanHeader(part.mediaType).ifEmpty { "application/octet-stream" }
             val file = cleanHeader(part.filename).ifEmpty { "attachment" }
-            val quoted = escapeQuotes(file)
+            val (nameParam, dispositionParam) = filenameParams(file)
             writePart(
                 out,
                 boundary,
-                "$type; name=\"$quoted\"",
+                "$type; $nameParam",
                 "base64",
-                "attachment; filename=\"$quoted\"",
+                "attachment; $dispositionParam",
                 encoded,
             )
         }
@@ -1020,8 +1021,56 @@ private fun mimeBase64(bytes: ByteArray): ByteArray {
 private fun escapeQuotes(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
 
-private fun cleanHeader(value: String): String =
-    value.replace("\r", "").replace("\n", "")
+/** F80(b): no CR/LF, NUL, other C0 controls, DEL or bidi/format controls reach a header; a tab becomes a space. */
+internal fun cleanHeader(value: String): String {
+    val out = StringBuilder(value.length)
+    for (ch in value) {
+        when {
+            ch == '\t' -> out.append(' ')
+            ch.code < 32 || ch.code == 127 -> Unit
+            ch in '\u0080'..'\u009F' -> Unit
+            ch == '\u200E' || ch == '\u200F' || ch in '\u202A'..'\u202E' || ch in '\u2066'..'\u2069' -> Unit
+            ch == '\u061C' || ch == '\uFEFF' -> Unit
+            else -> out.append(ch)
+        }
+    }
+    return out.toString()
+}
+
+/** F80(d): decode leniently and re-encode in 76-column lines; when it does not decode, keep only the base64 alphabet. */
+internal fun rewrapBase64(wire: ByteArray): ByteArray {
+    val decoded = try {
+        Base64.getMimeDecoder().decode(wire)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+    if (decoded != null) return mimeBase64(decoded)
+    val alphabet = wire.filter { b ->
+        val c = b.toInt().toChar()
+        c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '+' || c == '/' || c == '='
+    }.toByteArray()
+    return alphabet.toList().chunked(76).joinToString("") { line -> String(line.toByteArray(), Charsets.US_ASCII) + "\r\n" }
+        .toByteArray(Charsets.US_ASCII)
+}
+
+/**
+ * F80(c): Content-Type `name` and Content-Disposition `filename` for an attachment. ASCII names are quoted as is;
+ * others get RFC 2231 `filename*=UTF-8''…` plus an encoded-word `name` for older readers.
+ */
+internal fun filenameParams(file: String): Pair<String, String> {
+    if (file.all { it.code in 32..126 }) {
+        val quoted = escapeQuotes(file)
+        return "name=\"$quoted\"" to "filename=\"$quoted\""
+    }
+    val pct = StringBuilder()
+    for (b in file.toByteArray(Charsets.UTF_8)) {
+        val c = b.toInt() and 0xff
+        val ch = c.toChar()
+        if (ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch in "!#$&+-.^_`|~") pct.append(ch)
+        else pct.append('%').append("0123456789ABCDEF"[c shr 4]).append("0123456789ABCDEF"[c and 15])
+    }
+    return "name=\"${encodedWord(file, fold = false)}\"" to "filename*=UTF-8''$pct"
+}
 
 private fun headerText(value: String): String {
     val clean = cleanHeader(value)
@@ -1029,9 +1078,28 @@ private fun headerText(value: String): String {
     return encodedWord(clean)
 }
 
-private fun encodedWord(value: String): String {
-    val b64 = Base64.getEncoder().encodeToString(value.toByteArray(Charsets.UTF_8))
-    return "=?UTF-8?B?$b64?="
+/**
+ * F80(c): RFC 2047 words of at most 75 characters (45 UTF-8 bytes each, never splitting a character), folded
+ * onto continuation lines.
+ */
+internal fun encodedWord(value: String, fold: Boolean = true): String {
+    val words = ArrayList<String>()
+    val chunk = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < value.length) {
+        val cp = value.codePointAt(i)
+        val bytes = String(Character.toChars(cp)).toByteArray(Charsets.UTF_8)
+        if (chunk.size() + bytes.size > 45) {
+            words.add("=?UTF-8?B?" + Base64.getEncoder().encodeToString(chunk.toByteArray()) + "?=")
+            chunk.reset()
+        }
+        chunk.write(bytes)
+        i += Character.charCount(cp)
+    }
+    if (chunk.size() > 0 || words.isEmpty()) {
+        words.add("=?UTF-8?B?" + Base64.getEncoder().encodeToString(chunk.toByteArray()) + "?=")
+    }
+    return words.joinToString(if (fold) "\r\n " else " ")
 }
 
 private fun isAtom(value: String): Boolean =

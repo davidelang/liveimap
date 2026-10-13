@@ -57,7 +57,7 @@ object PeerTrust {
         }
         val trust = managers.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
             ?: return "certificate rejected"
-        val auth = leaf.publicKey.algorithm.ifBlank { "RSA" }
+        val auth = tlsAuthType(leaf.publicKey.algorithm)
         return try {
             trust.checkServerTrusted(chain, auth)
             ""
@@ -85,6 +85,18 @@ object PeerTrust {
             null
         }
     }
+}
+
+/**
+ * F18: checkServerTrusted wants the key-exchange name (as a TLS stack reports it), not the key algorithm; the
+ * key usage the JDK manager checks depends on it. The handshake ran in native code, so name the ECDHE form
+ * that matches the leaf key (what every server negotiates today).
+ */
+internal fun tlsAuthType(keyAlgorithm: String): String = when (keyAlgorithm.uppercase()) {
+    "RSA" -> "ECDHE_RSA"
+    "EC", "ECDSA" -> "ECDHE_ECDSA"
+    "RSASSA-PSS" -> "ECDHE_RSA"
+    else -> "UNKNOWN"
 }
 
 private const val FINGERPRINT_HEX = "0123456789abcdef"

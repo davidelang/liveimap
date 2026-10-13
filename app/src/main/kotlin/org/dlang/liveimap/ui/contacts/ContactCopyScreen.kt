@@ -2,7 +2,7 @@ package org.dlang.liveimap.ui.contacts
 
 import org.dlang.liveimap.settings.openBound
 import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.material3.AlertDialog
+import org.dlang.liveimap.ui.AlertDialog
 import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentUris
