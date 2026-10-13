@@ -54,7 +54,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -509,82 +509,82 @@ private fun AccountGroup(editor: SettingsEditor) {
     var checkingSieve by remember { mutableStateOf(false) }
     var sieveReport by remember { mutableStateOf("") }
     // Capability sanity check when the server is saved: baseline is the last accepted server settings.
-    var serverBaseline by remember { mutableStateOf<AccountSettings?>(null) }
-    var serverCheck by remember { mutableStateOf<ServerCheck?>(null) }
-    var baselineAccount by remember { mutableStateOf<String?>(null) }
-    var serverUserSaved by remember { mutableStateOf(false) }
-    var serverFieldFocus by remember { mutableStateOf(0) }
     var serverChecking by remember { mutableStateOf(false) }
     val chosenAccount = editor.accounts.firstOrNull { it.chosen }?.id
+    // David, 2026-10-12: server fields edit a draft; nothing is stored or checked until Save. The check (and the
+    // TLS-off warning) is shown once, at Save, and never changes or reverts what he typed.
+    var serverDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<AccountSettings?>(null) }
+    var serverReview by remember { mutableStateOf<ServerSaveReview?>(null) }
+    var discardAsk by remember { mutableStateOf(false) }
+    val server = serverDraft ?: settings
     fun userServerSave(next: AccountSettings) {
-        serverUserSaved = true
-        editor.persist(next)
+        serverDraft = if (sameServer(next, settings)) null else next
     }
-    val serverKey = listOf(
-        chosenAccount,
-        serverFieldFocus > 0,
-        settings.imapHost,
-        settings.imapPort,
-        settings.tlsMode,
-        settings.acceptInvalidCert,
-        settings.allowOldTls,
-        settings.allowPlaintextAuth,
-    )
-    LaunchedEffect(editor.ready, serverKey) {
-        if (!editor.ready) return@LaunchedEffect
-        val current = editor.settings
-        val step = serverCheckStep(serverBaseline, baselineAccount, current, chosenAccount, serverUserSaved, serverFieldFocus > 0)
-        when (step) {
-            ServerCheckStep.Rebase -> {
-                serverBaseline = current
-                baselineAccount = chosenAccount
-                serverUserSaved = false
-                return@LaunchedEffect
+    DisposableEffect(serverDraft != null) {
+        UnsavedEdits.pending = serverDraft != null
+        onDispose { UnsavedEdits.pending = false }
+    }
+    BackHandler(enabled = serverDraft != null) { discardAsk = true }
+    fun saveServer() {
+        val draft = serverDraft ?: return
+        editor.ui.launch {
+            serverChecking = true
+            val result = try {
+                withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(draft) }
+            } catch (_: Exception) {
+                null
+            } finally {
+                serverChecking = false
             }
-            ServerCheckStep.Nothing -> { serverUserSaved = false; return@LaunchedEffect }
-            ServerCheckStep.Wait -> return@LaunchedEffect
-            ServerCheckStep.Check -> Unit
-        }
-        delay(1500)
-        serverUserSaved = false
-        // Leaving the screen cancels this effect: the check is dropped, no deferred re-check.
-        serverChecking = true
-        val result = try {
-            withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(current) }
-        } finally {
-            serverChecking = false
-        }
-        if (result.reachable && result.conflicts.isEmpty()) {
-            serverBaseline = current
-            serverCheck = if (result.notes.isEmpty()) null else result
-        } else {
-            serverCheck = result
+            val review = serverSaveReview(draft, result)
+            if (review.quiet) {
+                editor.persist(editor.settings.withServerOf(draft))
+                serverDraft = null
+            } else {
+                serverReview = review
+            }
         }
     }
-    serverCheck?.let { check ->
+    serverReview?.let { review ->
         AlertDialog(
-            onDismissRequest = { serverCheck = null },
-            title = {
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
+            title = { Text(stringResource(R.string.settings_save_server_title)) },
+            text = {
                 Text(
-                    stringResource(
-                        if (check.reachable) R.string.settings_check_conflicts else R.string.settings_check_unreachable,
-                    ),
+                    (listOfNotNull(review.tlsWarning?.let { stringResource(it) }) +
+                        (if (review.unreachable) listOf(stringResource(R.string.settings_check_unreachable)) else emptyList()) +
+                        review.lines).joinToString("\n"),
                 )
             },
-            text = { Text((check.conflicts + check.notes).joinToString("\n")) },
             confirmButton = {
-                TextButton(onClick = {
-                    serverBaseline = editor.settings
-                    serverCheck = null
+                androidx.compose.material3.Button(onClick = {
+                    serverReview = null
+                    serverDraft?.let { editor.persist(editor.settings.withServerOf(it)) }
+                    serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
             dismissButton = {
-                val base = serverBaseline
-                if (base != null && check.conflicts.isNotEmpty()) {
-                    TextButton(onClick = {
-                        serverCheck = null
-                        editor.persist(editor.settings.withServerOf(base))
-                    }) { Text(stringResource(R.string.settings_check_revert)) }
+                TextButton(onClick = { serverReview = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+            },
+        )
+    }
+    if (discardAsk) {
+        AlertDialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
+            title = { Text(stringResource(R.string.settings_unsaved_title)) },
+            confirmButton = {
+                androidx.compose.material3.Button(onClick = { discardAsk = false; saveServer() }) {
+                    Text(stringResource(R.string.settings_save))
+                }
+            },
+            dismissButton = {
+                androidx.compose.foundation.layout.Row {
+                    TextButton(onClick = { discardAsk = false }) { Text(stringResource(R.string.settings_keep_editing)) }
+                    TextButton(onClick = { discardAsk = false; serverDraft = null }) {
+                        Text(stringResource(R.string.settings_discard))
+                    }
                 }
             },
         )
@@ -790,50 +790,52 @@ private fun AccountGroup(editor: SettingsEditor) {
                     Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
                 }
             }
-            val focusCount: (Boolean) -> Unit = { focused -> serverFieldFocus = (serverFieldFocus + if (focused) 1 else -1).coerceAtLeast(0) }
-            LineField(stringResource(R.string.settings_imap_host), settings.imapHost, ready = editor.ready, onFocus = focusCount) {
-                userServerSave(editor.settings.copy(imapHost = it))
+            LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
+                userServerSave(server.copy(imapHost = it))
             }
-            PortField(stringResource(R.string.settings_imap_port), settings.imapPort, ready = editor.ready, onFocus = focusCount) {
-                userServerSave(editor.settings.copy(imapPort = it))
+            PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
+                userServerSave(server.copy(imapPort = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_tls),
                 TlsMode.entries,
-                settings.tlsMode,
+                server.tlsMode,
                 { tlsName(it) },
             ) { mode ->
-                userServerSave(editor.settings.withTlsMode(mode))
-            }
-            // Warning only: the setting itself is never changed for the user.
-            noTlsWarning(settings)?.let { res ->
-                Text(
-                    stringResource(res),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-tls-warning"),
-                )
+                userServerSave(server.withTlsMode(mode))
             }
             BoolField(
                 stringResource(R.string.settings_allow_plaintext),
-                settings.allowPlaintextAuth,
+                server.allowPlaintextAuth,
                 note = stringResource(R.string.settings_allow_plaintext_note),
             ) { enabled ->
-                userServerSave(editor.settings.copy(allowPlaintextAuth = enabled))
+                userServerSave(server.copy(allowPlaintextAuth = enabled))
             }
             BoolField(
                 stringResource(R.string.settings_accept_invalid_cert),
-                settings.acceptInvalidCert,
+                server.acceptInvalidCert,
                 note = stringResource(R.string.settings_accept_invalid_cert_note),
             ) { enabled ->
-                userServerSave(editor.settings.copy(acceptInvalidCert = enabled))
+                userServerSave(server.copy(acceptInvalidCert = enabled))
             }
             BoolField(
                 stringResource(R.string.settings_allow_old_tls),
-                settings.allowOldTls,
+                server.allowOldTls,
                 note = stringResource(R.string.settings_allow_old_tls_note),
             ) { enabled ->
-                userServerSave(editor.settings.copy(allowOldTls = enabled))
+                userServerSave(server.copy(allowOldTls = enabled))
+            }
+            if (serverDraft != null) {
+                androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    androidx.compose.material3.Button(
+                        onClick = { saveServer() },
+                        enabled = !serverChecking,
+                        modifier = Modifier.testTag("server-save"),
+                    ) { Text(stringResource(R.string.settings_save)) }
+                    TextButton(onClick = { serverDraft = null }, modifier = Modifier.padding(start = 8.dp)) {
+                        Text(stringResource(R.string.settings_discard))
+                    }
+                }
             }
             LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
                 editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))

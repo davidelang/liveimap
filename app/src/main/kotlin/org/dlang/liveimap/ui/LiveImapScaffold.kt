@@ -41,10 +41,15 @@ internal fun mailBarInsets(): WindowInsets =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
+    // Unsaved edits: Up goes through Back so the screen's BackHandler can ask instead of dropping them.
+    val back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val up: () -> Unit = {
+        if (org.dlang.liveimap.settings.UnsavedEdits.pending && back != null) back.onBackPressed() else onUp()
+    }
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
-            IconButton(onClick = onUp) {
+            IconButton(onClick = up) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.scaffold_up),

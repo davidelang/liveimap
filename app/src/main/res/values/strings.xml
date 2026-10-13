@@ -930,4 +930,9 @@ Your version: %2$s</string>
     </plurals>
     <string name="copy_merge_overwrite">Overwrite</string>
     <string name="copy_merge_keep">Keep existing</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_discard">Discard changes</string>
+    <string name="settings_keep_editing">Keep editing</string>
+    <string name="settings_save_server_title">Save server settings?</string>
+    <string name="settings_unsaved_title">Unsaved server changes</string>
 </resources>

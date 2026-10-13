@@ -280,7 +280,7 @@ fun JmapFolderRoute(
                         onDismissRequest = { confirmDelete = false },
                         text = { Text(stringResource(R.string.jmap_delete_confirm)) },
                         confirmButton = {
-                            androidx.compose.material3.TextButton(onClick = {
+                            org.dlang.liveimap.ui.TextButton(onClick = {
                                 confirmDelete = false
                                 val emailId = shown.id
                                 val fromMailboxId = mailboxId.orEmpty()
@@ -306,7 +306,7 @@ fun JmapFolderRoute(
                             }) { Text(stringResource(R.string.index_delete)) }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) {
+                            org.dlang.liveimap.ui.TextButton(onClick = { confirmDelete = false }) {
                                 Text(stringResource(android.R.string.cancel))
                             }
                         },
