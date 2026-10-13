@@ -137,7 +137,7 @@ private fun sendSupport(
         putExtra(Intent.EXTRA_SUBJECT, subject)
         putExtra(Intent.EXTRA_TEXT, body)
     }
-    // F70: no resolveActivity() gate (package visibility hides mail apps on API 30+); just try.
+    // F70: no resolve-activity gate (package visibility hides mail apps on API 30+); just try.
     if (org.dlang.liveimap.ui.startExternal(context, sendTo)) return
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "message/rfc822"

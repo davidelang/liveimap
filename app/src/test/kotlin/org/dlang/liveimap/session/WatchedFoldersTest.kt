@@ -144,7 +144,7 @@ class WatchedFoldersTest {
     fun extraIdleBudgetParsesIntsAndRejectsOtherText() {
         assertEquals(2, extraIdleBudgetFromText("2"))
         assertEquals(0, extraIdleBudgetFromText("0"))
-        assertEquals(-1, extraIdleBudgetFromText("-1"))
+        assertEquals(null, extraIdleBudgetFromText("-1")) // F81: 0..MaxExtraIdle only
         assertEquals(null, extraIdleBudgetFromText(""))
         assertEquals(null, extraIdleBudgetFromText("x"))
     }

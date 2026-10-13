@@ -230,7 +230,7 @@ class ManageSieveTest {
         val missing = planLiveimapActivation(listOf("fileinto", "Include"), listOf(vacation), "keep;")
         assertEquals(LiveimapActivateAction.Include, missing.action)
         assertEquals("vacation", missing.activeName)
-        assertEquals("keep;\n$liveimapIncludeLine\n", missing.rewritten)
+        assertEquals("require \"include\";\nkeep;\n$liveimapIncludeLine\n", missing.rewritten)
 
         val noInclude = planLiveimapActivation(
             listOf("fileinto include", "included"),
