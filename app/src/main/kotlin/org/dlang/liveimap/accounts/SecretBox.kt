@@ -16,20 +16,33 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager
  * F96: an entry that cannot be opened (Keystore key lost after restore, corrupt value) reads as unset, so the
  * user is asked for the password again instead of every account failing to open.
  */
+/** F96: secrets may be stored only when the keyset is wrapped by the Android Keystore. */
+internal fun secretStoreUsable(usingKeystore: Boolean): Boolean = usingKeystore
+
 internal class SecretBox(
     private val context: Context,
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(secretBoxFile, Context.MODE_PRIVATE)
 
-    private val aead: Aead by lazy {
+    private val manager: AndroidKeysetManager by lazy {
         AeadConfig.register()
         AndroidKeysetManager.Builder()
             .withSharedPref(context, keysetName, keysetFile)
             .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
             .withMasterKeyUri(masterKeyUri)
             .build()
-            .keysetHandle
-            .getPrimitive(Aead::class.java)
+    }
+
+    private val aead: Aead by lazy { manager.keysetHandle.getPrimitive(Aead::class.java) }
+
+    /**
+     * F96: Tink falls back to an unwrapped keyset when the Android Keystore key is unusable. Secrets are then
+     * refused rather than stored under a key sitting in plain SharedPreferences.
+     */
+    private fun requireKeystore() {
+        if (!secretStoreUsable(manager.isUsingKeystore)) {
+            throw java.security.GeneralSecurityException("Android Keystore is unavailable; the password was not stored")
+        }
     }
 
     fun getString(key: String, default: String?): String? {
@@ -39,6 +52,10 @@ internal class SecretBox(
         } catch (_: java.security.GeneralSecurityException) {
             default
         } catch (_: IllegalArgumentException) {
+            default
+        } catch (_: java.io.IOException) {
+            default // F96: keyset unreadable; treat as unset
+        } catch (_: java.security.ProviderException) {
             default
         }
     }
@@ -63,8 +80,10 @@ internal class SecretBox(
         fun commit(): Boolean = edit.commit()
     }
 
-    private fun seal(key: String, value: String): String =
-        Base64.encodeToString(aead.encrypt(value.toByteArray(Charsets.UTF_8), key.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    private fun seal(key: String, value: String): String {
+        requireKeystore()
+        return Base64.encodeToString(aead.encrypt(value.toByteArray(Charsets.UTF_8), key.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    }
 
     private fun open(key: String, stored: String): String =
         String(aead.decrypt(Base64.decode(stored, Base64.NO_WRAP), key.toByteArray(Charsets.UTF_8)), Charsets.UTF_8)

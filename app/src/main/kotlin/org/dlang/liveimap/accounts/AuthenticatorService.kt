@@ -126,6 +126,9 @@ class AccountSetupActivity : ComponentActivity() {
             return
         }
         window.decorView.filterTouchesWhenObscured = true
+        // F03 addendum: dialogs are separate windows the decorView flag does not cover; on API 31+ hide every
+        // non-system overlay while this activity is shown, which protects its dialogs as well.
+        if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         namesAtStart = AccountManager.get(this).getAccountsByType(liveimapAccountType).map { it.name }.toSet()
         authenticatorResponse = readResponse(intent)
         authenticatorResponse?.onRequestContinued()

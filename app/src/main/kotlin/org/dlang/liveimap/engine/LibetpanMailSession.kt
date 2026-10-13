@@ -1526,7 +1526,7 @@ private fun finishTraffic(account: AccountSettings) {
     }
 }
 
-private fun currentApplication(): Context? {
+internal fun currentApplication(): Context? {
     return try {
         val thread = Class.forName("android.app.ActivityThread")
         val method = thread.getMethod("currentApplication")

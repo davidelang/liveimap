@@ -3620,9 +3620,13 @@ uint32_t starUid() {
 
 constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jelly has 200k
 
+// F99: set when a '*' was read; '*' means the selected mailbox's highest UID, which is wrong for another mailbox.
+thread_local bool tlsSeqSawStar = false;
+
 int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx, uint32_t * out) {
     if (peekChar(buffer, *indx) == '*') {
         *indx += 1;
+        tlsSeqSawStar = true;
         *out = starUid();
         return MAILIMAP_NO_ERROR;
     }
@@ -3664,17 +3668,20 @@ int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_con
     return MAILIMAP_NO_ERROR;
 }
 
-int parseTagValue(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx) {
+int parseTagValue(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
+    std::string * out = nullptr) {
     char c = peekChar(buffer, *indx);
     if (c == '"' || c == '{') {
         char * text = nullptr;
         size_t len = 0;
         int r = mailimap_nstring_parse(fd, buffer, ctx, indx, &text, &len, 0, nullptr);
+        if (r == MAILIMAP_NO_ERROR && out != nullptr && text != nullptr) out->assign(text, len);
         imapStrFree(text);
         return r;
     }
     char * atom = nullptr;
     int r = mailimap_atom_parse(fd, buffer, ctx, indx, &atom, 0, nullptr);
+    if (r == MAILIMAP_NO_ERROR && out != nullptr && atom != nullptr) out->assign(atom);
     imapStrFree(atom);
     return r;
 }
@@ -3703,7 +3710,7 @@ int failEsearch(clist * uids, char * mailbox, int r) {
 }
 
 int parseCorrelatorGroup(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
-    char ** mailbox, bool * sawMailbox) {
+    char ** mailbox, bool * sawMailbox, std::string * tagOut, bool * tagSeen) {
     size_t cur = *indx;
     int r = mailimap_oparenth_parse(fd, buffer, ctx, &cur);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -3741,11 +3748,12 @@ int parseCorrelatorGroup(mailstream * fd, MMAPString * buffer, struct mailimap_p
                 imapStrFree(box);
                 return r;
             }
-            r = parseTagValue(fd, buffer, ctx, &cur);
+            r = parseTagValue(fd, buffer, ctx, &cur, tagOut);
             if (r != MAILIMAP_NO_ERROR) {
                 imapStrFree(box);
                 return r;
             }
+            *tagSeen = true;
             continue;
         }
         if (strcasecmp(name.c_str(), "MAILBOX") == 0) {
@@ -3825,6 +3833,9 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
     bool hasAll = false;
     bool sawCount = false;
     int64_t countValue = 0;
+    std::string tag;
+    bool tagSeen = false;
+    tlsSeqSawStar = false;
     for (;;) {
         size_t save = cur;
         r = mailimap_space_parse(fd, buffer, &cur);
@@ -3833,7 +3844,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             break;
         }
         if (peekChar(buffer, cur) == '(') {
-            r = parseCorrelatorGroup(fd, buffer, ctx, &cur, &mailbox, &sawMailbox);
+            r = parseCorrelatorGroup(fd, buffer, ctx, &cur, &mailbox, &sawMailbox, &tag, &tagSeen);
             if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             continue;
         }
@@ -3897,8 +3908,34 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         }
         return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
     }
+    // F99: an ESEARCH tagged for another command (left over from an aborted or pipelined one) is not this
+    // command's result. It is parsed (so the stream stays in step) and then dropped.
+    if (tagSeen && tlsImap != nullptr && tag != currentTagText(tlsImap)) {
+        freeUidList(uids);
+        imapStrFree(mailbox);
+        struct mailimap_extension_data * ignored =
+            mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, nullptr);
+        if (ignored == nullptr) return MAILIMAP_ERROR_MEMORY;
+        ignored->ext_type = -1;
+        *result = ignored;
+        *indx = cur;
+        return MAILIMAP_NO_ERROR;
+    }
     if (!sawMailbox && sawCount && tlsImap != nullptr && tlsLive != nullptr && tlsLive->imap == tlsImap) {
         tlsLive->esearchCount = countValue;
+    }
+    if (sawMailbox && tlsSeqSawStar) {
+        // F99: a MAILBOX-correlated result using '*' cannot be resolved here; drop that mailbox's hit rather
+        // than guess (the stream stays in step, the rest of the search still answers).
+        freeUidList(uids);
+        imapStrFree(mailbox);
+        struct mailimap_extension_data * ignored =
+            mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, nullptr);
+        if (ignored == nullptr) return MAILIMAP_ERROR_MEMORY;
+        ignored->ext_type = -1;
+        *result = ignored;
+        *indx = cur;
+        return MAILIMAP_NO_ERROR;
     }
     if (sawMailbox) {
         auto * hit = static_cast<LiveScopeHit *>(calloc(1, sizeof(LiveScopeHit)));

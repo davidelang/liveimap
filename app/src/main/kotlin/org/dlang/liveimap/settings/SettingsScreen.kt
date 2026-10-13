@@ -134,7 +134,20 @@ import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.folder.MailboxChooser
 
-private val settingsIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+/**
+ * F96: a failed save (e.g. Keystore unavailable, so a password is refused) is shown, never an uncaught
+ * exception that ends the process.
+ */
+private val settingsIo = CoroutineScope(
+    SupervisorJob() + Dispatchers.Main.immediate +
+        kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
+            val app = org.dlang.liveimap.engine.currentApplication()
+            android.util.Log.w("liveimap", "settings save failed", error)
+            if (app != null) {
+                android.widget.Toast.makeText(app, error.message ?: error.toString(), android.widget.Toast.LENGTH_LONG).show()
+            }
+        },
+)
 private val settingsMutex = Mutex()
 
 enum class SettingsGroup(val route: String, private val titleRes: Int) {
