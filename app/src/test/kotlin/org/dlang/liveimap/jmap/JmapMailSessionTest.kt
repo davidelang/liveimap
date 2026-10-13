@@ -6,6 +6,7 @@ import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.AccountSettings
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -13,7 +14,7 @@ import org.junit.Test
 import java.io.IOException
 
 class JmapMailSessionTest {
-    private val session = JmapSession("u", "https://mail.example/api", "", "", "", "s", setOf(JMAP_MAIL), "A1")
+    private val session = JmapSession("u", "https://mail.example/api", "https://mail.example/dl/{accountId}/{blobId}?type={type}", "https://mail.example/up/{accountId}", "https://mail.example/events", "s", setOf(JMAP_MAIL), "A1")
 
     private class Fake(val replies: ArrayDeque<String>, val status: Int = 200) {
         val bodies = mutableListOf<String>()
@@ -109,5 +110,191 @@ class JmapMailSessionTest {
     @Test
     fun quotingEscapesControlAndQuotes() {
         assertEquals("\"a\\\"b\\\\c\\u000a\"", JmapMailSession.q("a\"b\\c\n"))
+    }
+
+    private class Blobs(val status: Int = 200, val data: ByteArray = "RAW".toByteArray()) {
+        val urls = mutableListOf<String>()
+        val pins = mutableListOf<String>()
+        fun getFor(pin: String): (String, String) -> JmapBlobExchange = { url, _ ->
+            pins += pin; urls += url
+            object : JmapBlobExchange {
+                override val status = this@Blobs.status
+                override fun peerDer() = listOf(byteArrayOf(1))
+                override fun bytes() = data
+                override fun close() {}
+            }
+        }
+    }
+
+    private fun ready(replies: List<String>, blobs: Blobs = Blobs(), upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { error("no upload") }): Pair<JmapMailSession, Fake> {
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
+        val s = JmapMailSession({ JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 }, blobs::getFor, upload)
+        runBlocking {
+            s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm"))
+            s.listLevel("", null, false); s.select("INBOX")
+            s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        }
+        return s to fake
+    }
+
+    private val structure = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyStructure":{"type":"multipart/mixed","subParts":[{"partId":"1","blobId":"b1","type":"text/plain","size":5},{"type":"multipart/alternative","subParts":[{"partId":"2","blobId":"b2","type":"text/html"}]},{"partId":"3","blobId":"b3","type":"image/png","disposition":"attachment","name":"p.png","size":9}]}}]},"0"]]}"""
+
+    @Test
+    fun structureNumbersSectionsLikeImapAndTextComesFromBodyValues() = runBlocking {
+        val values = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"héllo","isTruncated":false}}}]},"0"]]}"""
+        val (s, fake) = ready(listOf(structure, values))
+        val tree = s.fetchStructure(1L)
+        assertEquals(listOf("1", "2", "3"), tree.children.map { it.section })
+        assertEquals("2.1", tree.children[1].children[0].section)
+        assertEquals("p.png", tree.children[2].filename)
+        assertEquals("utf-8", tree.children[0].charset)
+        assertArrayEquals("éllo".toByteArray(), s.peekPart(1L, "1", 1, 100))
+        assertTrue(fake.bodies.last().contains("\"fetchAllBodyValues\":true"))
+        try { s.peekPart(1L, "9", 0, 1); fail() } catch (_: MailFailure) {}
+    }
+
+    @Test
+    fun attachmentsAndRawMessagesDownloadOnTheApiHostWithTheJmapPin() = runBlocking {
+        val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw 1"}]},"0"]]}"""
+        val blobs = Blobs(data = "0123456789".toByteArray())
+        val (s, _) = ready(listOf(structure, blobId), blobs)
+        s.fetchStructure(1L)
+        assertArrayEquals("2345".toByteArray(), s.peekPart(1L, "3", 2, 4))
+        assertArrayEquals("0123456789".toByteArray(), s.fetchRfc822(1L))
+        assertEquals("https://mail.example/dl/A1/raw%201?type=message%2Frfc822", blobs.urls.last())
+        assertEquals(listOf("jm", "jm"), blobs.pins)
+    }
+
+    @Test
+    fun downloadOffHostOrRedirectedFails() = runBlocking {
+        val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"r"}]},"0"]]}"""
+        val (s, _) = ready(listOf(blobId), Blobs(status = 302))
+        try { s.fetchRfc822(1L); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("redirect")) }
+        val off = session.copy(downloadUrl = "https://evil.example/{blobId}")
+        try { jmapDownload(off, "r", "x/y", "a", "", { _, _ -> error("fetched") }, { _, _, _ -> "" }); fail() } catch (_: JmapFailure) {}
+        val http = session.copy(downloadUrl = "http://mail.example/{blobId}")
+        try { jmapDownload(http, "r", "x/y", "a", "", { _, _ -> error("fetched") }, { _, _, _ -> "" }); fail() } catch (_: JmapFailure) {}
+    }
+
+    @Test
+    fun threadsGroupByThreadIdOldestFirst() = runBlocking {
+        val reply = """{"methodResponses":[["Email/query",{"ids":["e2","e3","e1"]},"0"],["Email/get",{"list":[{"id":"e1","threadId":"T"},{"id":"e2","threadId":"T"},{"id":"e3","threadId":"U"}]},"1"]]}"""
+        val (s, _) = ready(listOf(reply))
+        val tree = s.thread(org.dlang.liveimap.settings.SortKey.ThreadReferences)
+        assertEquals(listOf(2L, 3L), tree.children.map { it.uid })
+        assertEquals(listOf(1L), tree.children[0].children.map { it.uid })
+    }
+
+    @Test
+    fun saveUploadsThenImportsWithKeywords() = runBlocking {
+        val imported = """{"methodResponses":[["Email/import",{"created":{"k1":{"id":"e9"}}},"0"]]}"""
+        val uploads = mutableListOf<String>()
+        val upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { pin ->
+            { url, _, _, _ ->
+                uploads += "$pin $url"
+                object : JmapHttpExchange {
+                    override val status = 201
+                    override fun peerDer() = listOf(byteArrayOf(1))
+                    override fun header(name: String): String? = null
+                    override fun body() = """{"blobId":"B9"}"""
+                    override fun close() {}
+                }
+            }
+        }
+        val (s, fake) = ready(listOf(imported), upload = upload)
+        assertEquals(1L, s.appendReturningUid("Trash", "x".toByteArray(), setOf("\\Seen")))
+        assertEquals(listOf("jm https://mail.example/up/A1"), uploads)
+        assertTrue(fake.bodies.last().contains("\"blobId\":\"B9\",\"mailboxIds\":{\"m2\":true},\"keywords\":{\"${'$'}seen\":true}"))
+        try { s.append("INBOX", ByteArray(0)); fail() } catch (_: MailFailure) {}
+        try { s.append("INBOX", "x".toByteArray(), setOf("\\Deleted")); fail() } catch (_: MailFailure) {}
+    }
+
+    @Test
+    fun saveRefusedByServerFails() = runBlocking {
+        val refused = """{"methodResponses":[["Email/import",{"notCreated":{"k1":{"type":"overQuota"}}},"0"]]}"""
+        val upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { _ -> { _, _, _, _ ->
+            object : JmapHttpExchange {
+                override val status = 201
+                override fun peerDer() = listOf(byteArrayOf(1))
+                override fun header(name: String): String? = null
+                override fun body() = """{"blobId":"B"}"""
+                override fun close() {}
+            }
+        } }
+        val (s, _) = ready(listOf(refused), upload = upload)
+        try { s.append("INBOX", "x".toByteArray()); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("overQuota")) }
+    }
+
+    private class Stream(val responses: ArrayDeque<Pair<Int, String>>) {
+        val urls = mutableListOf<String>()
+        val blocked = java.util.concurrent.CountDownLatch(1)
+        fun streamFor(pin: String): (String, String) -> JmapHttpExchange = { url, _ ->
+            urls += "$pin $url"
+            val next = synchronized(responses) { responses.removeFirstOrNull() }
+            val released = java.util.concurrent.CountDownLatch(1)
+            object : JmapHttpExchange {
+                override val status = next?.first ?: 200
+                override fun peerDer() = listOf(byteArrayOf(1))
+                override fun header(name: String): String? = null
+                override fun body(): String {
+                    if (next != null) return next.second
+                    blocked.countDown()
+                    released.await(5, java.util.concurrent.TimeUnit.SECONDS) // a long-poll that only close() ends
+                    throw IOException("closed")
+                }
+                override fun close() { released.countDown() }
+            }
+        }
+    }
+
+    private fun watching(replies: List<String>, stream: Stream, events: String = "https://mail.example/events"): JmapMailSession {
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
+        val s = JmapMailSession({ JmapOffer.Mail(session.copy(eventSourceUrl = events)) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 },
+            Blobs()::getFor, { error("no upload") }, stream::streamFor)
+        runBlocking {
+            s.open(AccountSettings(username = "u", jmapCertPin = "jm"))
+            s.listLevel("", null, false); s.select("INBOX")
+            s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        }
+        return s
+    }
+
+    private val state0 = """{"methodResponses":[["Email/get",{"state":"S0","list":[]},"0"]]}"""
+    private fun totalOf(n: Int) = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":$n}]},"0"]]}"""
+    private val pushS1 = "event: state\ndata: {\"@type\":\"StateChange\",\"changed\":{\"A1\":{\"Email\":\"S1\"}}}\n\n"
+
+    @Test
+    fun pushTurnsAStateChangeIntoFlagsAndExists() = runBlocking {
+        val changes = """{"methodResponses":[["Email/changes",{"oldState":"S0","newState":"S1","hasMoreChanges":false,"created":["e7"],"updated":["e1"],"destroyed":[]},"0"]]}"""
+        val got = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","keywords":{"${'$'}flagged":true},"mailboxIds":{"m1":true}}]},"0"]]}"""
+        val stream = Stream(ArrayDeque(listOf(200 to ": ping\n\n", 200 to pushS1)))
+        val s = watching(listOf(state0, totalOf(2), changes, got, totalOf(3)), stream)
+        val seen = java.util.Collections.synchronizedList(mutableListOf<org.dlang.liveimap.session.MailboxChange>())
+        s.watch("INBOX") { seen += it }
+        assertTrue(stream.blocked.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(listOf(org.dlang.liveimap.session.MailboxChange.Flags(1L, setOf("\\Flagged")), org.dlang.liveimap.session.MailboxChange.Exists(3)), seen.toList())
+        assertTrue(stream.urls.all { it.startsWith("jm https://mail.example/events?types=Email") })
+        s.stopWatch() // closes the blocked long-poll and joins
+        assertEquals(seen.toList().toString(), 2, seen.size)
+    }
+
+    @Test
+    fun pushFailureEndsTheWatchWithWatchLost() = runBlocking {
+        val stream = Stream(ArrayDeque(listOf(302 to "")))
+        val s = watching(listOf(state0, totalOf(2)), stream)
+        val lost = java.util.concurrent.CountDownLatch(1)
+        s.watch("INBOX") { if (it == org.dlang.liveimap.session.MailboxChange.WatchLost) lost.countDown() }
+        assertTrue(lost.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        s.stopWatch()
+    }
+
+    @Test
+    fun pushOffHostOrPlainHttpIsRefusedBeforeConnecting() = runBlocking {
+        for (url in listOf("https://evil.example/events", "http://mail.example/events")) {
+            val stream = Stream(ArrayDeque())
+            val s = watching(listOf(state0, totalOf(2)), stream, url)
+            try { s.watch("INBOX") {}; fail(url) } catch (_: MailFailure) {}
+            assertTrue(stream.urls.isEmpty())
+        }
     }
 }

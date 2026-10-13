@@ -5,8 +5,9 @@ import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.settings.AccountSettings
 
+// JMAP accounts (jmapFolders on) get a JmapMailSession at open; everything else, and all sending, stays libetpan.
 private val accountSessions = SessionTable {
-    SerialMailSession(LibetpanMailSession())
+    SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
 }
 
 private val extraIdleSessions = ExtraIdleSessions {
