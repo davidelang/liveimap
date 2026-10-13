@@ -120,7 +120,7 @@ class AccountSetupActivity : ComponentActivity() {
         // Exported because Settings starts AccountManager's KEY_INTENT from its own process (exported=false
         // would break Settings > Add account). So only a system app or LiveIMAP itself may open it, and
         // overlays cannot click through to the settings toggles.
-        if (!setupCallerAllowed(callingPackage)) {
+        if (!setupCallerAllowed(callingPackage, readResponse(intent) != null)) {
             resultSent = true
             super.finish()
             return
@@ -164,8 +164,8 @@ class AccountSetupActivity : ComponentActivity() {
         response.onResult(result)
     }
 
-    private fun setupCallerAllowed(caller: String?): Boolean =
-        setupCallerDecision(caller, packageName) { name ->
+    private fun setupCallerAllowed(caller: String?, hasResponse: Boolean): Boolean =
+        setupCallerDecision(caller, packageName, hasResponse) { name ->
             val info = runCatching { packageManager.getApplicationInfo(name, 0) }.getOrNull()
             info != null && setupCallerIsSystem(info.flags, info.uid)
         }
@@ -223,8 +223,18 @@ internal fun setupCallerIsSystem(flags: Int, uid: Int): Boolean =
  * F03: who may open the setup activity. A plain startActivity has no calling package (null): refused, and the
  * activity finishes before sendResult can hand the account name to any AccountAuthenticatorResponse.
  */
-internal fun setupCallerDecision(caller: String?, ownPackage: String, isSystem: (String) -> Boolean): Boolean {
-    if (caller == null) return false
+/**
+ * Settings > Add account starts AccountManager's KEY_INTENT with a plain startActivity, so the calling package is
+ * null there (seen on the emulator, API 35). A null caller is therefore let in only when it carries the
+ * AccountManager authenticator response that addAccount put in the intent; a plain launch without it is refused.
+ */
+internal fun setupCallerDecision(
+    caller: String?,
+    ownPackage: String,
+    hasResponse: Boolean,
+    isSystem: (String) -> Boolean,
+): Boolean {
+    if (caller == null) return hasResponse
     if (caller == ownPackage) return true
     return isSystem(caller)
 }
