@@ -27,9 +27,6 @@ android {
         }.standardOutput.asText.orNull?.trim().orEmpty()
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
     androidResources {
         localeFilters += listOf("en")
@@ -47,9 +44,16 @@ android {
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
+            // The emulator is x86_64; the Pixels are arm64.
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
-            isMinifyEnabled = false
+            // F20: R8 shrinking and resource shrinking; JNI and reflection entry points in proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Size work: every release device is arm64, so ship only that native library.
+            ndk { abiFilters += listOf("arm64-v8a") }
         }
     }
     compileOptions {
