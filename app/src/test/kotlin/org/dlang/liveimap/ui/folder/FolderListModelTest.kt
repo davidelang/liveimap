@@ -318,9 +318,9 @@ class FolderListModelTest {
         val rebuilt = runModel { model.loadLevel() }
         assertTrue(rebuilt.any { it.mailbox == "user.jelly" })
         assertEquals(25649, rebuilt.single { it.mailbox == "INBOX" }.messages)
-        // still fresh: no second STATUS, and the count is still there
+        // INBOX is still fresh: not asked again, and its count is still there
         assertEquals(25649, runModel { model.refreshVisibleCounts(rebuilt) }.single { it.mailbox == "INBOX" }.messages)
-        assertEquals(1, session.statusCalls.size)
+        assertTrue(session.statusCalls.drop(1).none { "INBOX" in it }) // only the newly shown rows are asked
     }
 
     @Test
