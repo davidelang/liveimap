@@ -29,7 +29,7 @@ class JmapAccountTest {
         val ders = listOf(byteArrayOf(9, 8), byteArrayOf(7))
         val script = AccountOpen(url, 200, mailBody, ders)
         val offer = offerForAccount(
-            AccountSettings(imapHost = "example.com", imapPort = 993, certPin = "ab"),
+            AccountSettings(imapHost = "example.com", imapPort = 993, jmapCertPin = "ab"),
             script::open,
             script::trust,
         )
@@ -47,7 +47,7 @@ class JmapAccountTest {
         val url = "https://example.com/.well-known/jmap"
         val script = AccountOpen(url, 404, "missing", listOf(byteArrayOf(1)))
         val offer = offerForAccount(
-            AccountSettings(imapHost = "example.com", imapPort = 993, certPin = "ab"),
+            AccountSettings(imapHost = "example.com", imapPort = 993, jmapCertPin = "ab"),
             script::open,
             script::trust,
         )
@@ -61,7 +61,7 @@ class JmapAccountTest {
         val script = AccountOpen(url, 200, "secret", listOf(byteArrayOf(1)))
         try {
             offerForAccount(
-                AccountSettings(imapHost = "example.com", certPin = "ab"),
+                AccountSettings(imapHost = "example.com", jmapCertPin = "ab"),
                 script::open,
             ) { _, _, _ -> "certificate changed" }
             throw AssertionError("expected JmapFailure")
@@ -78,7 +78,7 @@ class JmapAccountTest {
         var trusted = false
         try {
             offerForAccount(
-                AccountSettings(imapHost = "example.com", certPin = "ab"),
+                AccountSettings(imapHost = "example.com", jmapCertPin = "ab"),
                 open = { throw failure },
             ) { _, _, _ ->
                 trusted = true
