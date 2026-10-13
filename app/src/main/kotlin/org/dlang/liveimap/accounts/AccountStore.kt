@@ -265,10 +265,18 @@ class AccountStore private constructor(private val context: Context) {
         val existing = pick(readAccounts())
         val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
             ?: java.util.UUID.randomUUID().toString()
-        val name = nameFor(existing, settings, accountId)
-        val slot = existing?.passwordSlot ?: ""
-        writeAccount(name, accountUserData(accountId, settings, null), slot)
-        return { writePreference(accountId, encoded) }
+        // F32/F87: a moved server never inherits the old server's password, pin or client certificate
+        val previous = if (existing == null) null else storedPreference(accountId)?.let {
+            runCatching { overlayAccountFields(decodeAccountSettings(it), existing.userData) }.getOrNull()
+        }
+        val retarget = retargetCredentials(previous, settings)
+        val saved = retarget.settings
+        val text = if (saved == settings) encoded else saved.encode()
+        val name = nameFor(existing, saved, accountId)
+        val slot = if (retarget.dropImapPassword) "" else existing?.passwordSlot ?: ""
+        writeAccount(name, accountUserData(accountId, saved, null), slot)
+        if (retarget.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
+        return { writePreference(accountId, text) }
     }
 
     private suspend fun passwordLocked(): String {

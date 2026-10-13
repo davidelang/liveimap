@@ -108,3 +108,21 @@ internal fun overlayAccountFields(base: AccountSettings, userData: Map<String, S
         email = userData.getValue(userEmail),
     )
 }
+
+
+/** F32/F87: what saving [next] over [previous] must forget because a server moved. */
+internal data class Retarget(val settings: AccountSettings, val dropImapPassword: Boolean, val dropSmtpPassword: Boolean)
+
+/**
+ * F32/F87 (and the F32 addendum): a stored password or certificate pin belongs to the host it was entered for.
+ * When the IMAP host changes, the IMAP password, the IMAP/Sieve pins and the client-certificate choice are dropped;
+ * when the SMTP host changes, the SMTP password is dropped. The user re-enters them for the new server.
+ */
+internal fun retargetCredentials(previous: AccountSettings?, next: AccountSettings): Retarget {
+    if (previous == null) return Retarget(next, dropImapPassword = false, dropSmtpPassword = false)
+    fun moved(a: String, b: String) = a.isNotBlank() && !a.trim().equals(b.trim(), ignoreCase = true)
+    val imapMoved = moved(previous.imapHost, next.imapHost)
+    val smtpMoved = moved(previous.smtpHost, next.smtpHost)
+    val settings = if (imapMoved) next.copy(certPin = "", sieveCertPin = "", clientCertAlias = "") else next
+    return Retarget(settings, dropImapPassword = imapMoved, dropSmtpPassword = smtpMoved || (imapMoved && next.smtpSameAsImap))
+}

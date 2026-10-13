@@ -179,7 +179,11 @@ private class SettingsEditor(
 
     fun persist(next: AccountSettings) {
         if (!ready) return
-        settings = next
+        // F32: the store drops passwords/pins when a server moves; show that here instead of a stale password
+        val retarget = org.dlang.liveimap.accounts.retargetCredentials(settings, next)
+        if (retarget.dropImapPassword) password = ""
+        if (retarget.dropSmtpPassword) smtpPassword = ""
+        settings = retarget.settings
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
             settingsMutex.withLock { target.save(settingsState.value) }
