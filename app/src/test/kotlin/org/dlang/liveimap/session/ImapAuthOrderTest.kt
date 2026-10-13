@@ -43,3 +43,29 @@ class ImapAuthOrderTest {
         assertTrue(jni.contains("login failed before contacting the server"))
     }
 }
+
+class ImapAuthSupportedListTest {
+    private val jni = listOf("src/main/cpp/liveimap_jni.cpp", "app/src/main/cpp/liveimap_jni.cpp").map(::File).first { it.exists() }.readText()
+
+    @Test fun onlySupportedMechanismsAreListed() {
+        val list = Regex("kSupportedSasl\\[\\] = \\{([^}]*)\\}").find(jni)!!.groupValues[1]
+        for (never in listOf("ANONYMOUS", "OTP", "DIGEST-MD5", "SCRAM-SHA-224", "SCRAM-SHA-384", "SCRAM-SHA-512")) {
+            assertTrue(never, !list.contains("\"$never\""))
+        }
+        assertTrue(jni.contains("saslClientMechs(havePassword)"))
+    }
+
+    @Test fun localFailuresEndInImapLogin() {
+        assertTrue(jni.contains("order.push_back(std::string());"))
+    }
+
+    @Test fun tlsOffWithPlaintextAllowedKeepsPlainAndLogin() {
+        val order = imapAuthOrder("AUTH=CRAM-MD5 AUTH=PLAIN AUTH=LOGIN", tls = false, plaintextOk = true, channelBinding = false,
+            clientMechanisms = "SCRAM-SHA-256 SCRAM-SHA-1 PLAIN LOGIN CRAM-MD5 EXTERNAL")
+        assertEquals(listOf("CRAM-MD5", "PLAIN", "LOGIN"), order)
+    }
+
+    @Test fun noPasswordMeansNoPasswordMechanisms() {
+        assertTrue(imapAuthOrder("AUTH=CRAM-MD5 AUTH=PLAIN", tls = true, plaintextOk = true, channelBinding = false, clientMechanisms = "EXTERNAL").isEmpty())
+    }
+}

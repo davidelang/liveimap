@@ -2817,15 +2817,28 @@ void setupSaslClient() {
     }
 }
 
-// Client mechanisms the linked SASL library registered, for a local SASL failure.
-std::string saslClientMechs() {
+// David, 2026-10-12: only mechanisms this client really supports (and has the credentials for) are ever offered
+// to the choice or named in an error. The linked library also registers ANONYMOUS, OTP, DIGEST-MD5 and more
+// SCRAM variants; those are never used. EXTERNAL is sent directly (authenticateExternal), not through SASL.
+static const char * const kSupportedSasl[] = {"SCRAM-SHA-256", "SCRAM-SHA-1", "PLAIN", "LOGIN", "CRAM-MD5"};
+
+std::string saslClientMechs(bool havePassword = true) {
     const char ** list = sasl_global_listmech();
     std::string out;
-    for (int i = 0; list != nullptr && list[i] != nullptr; i++) {
-        if (!out.empty()) out += ' ';
-        out += list[i];
+    if (havePassword) {
+        for (const char * want : kSupportedSasl) {
+            for (int i = 0; list != nullptr && list[i] != nullptr; i++) {
+                if (strcmp(list[i], want) != 0) continue;
+                if (!out.empty()) out += ' ';
+                out += want;
+                break;
+            }
+        }
     }
-    return out.empty() ? "none" : out;
+    // EXTERNAL needs no password and no SASL plugin.
+    if (!out.empty()) out += ' ';
+    out += "EXTERNAL";
+    return out;
 }
 
 /* F42 native backstop: text sent as an IMAP quoted string / atom must not carry CR or LF (NUL ends a C string). */
@@ -2880,7 +2893,8 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         *error = "auth choice failed";
         return false;
     }
-    jstring jclient = newString(env, saslClientMechs().c_str());
+    bool havePassword = password != nullptr && password[0] != 0;
+    jstring jclient = newString(env, saslClientMechs(havePassword).c_str());
     jvalue args[6];
     args[0].l = jline;
     args[1].z = tls ? JNI_TRUE : JNI_FALSE;
@@ -2961,6 +2975,10 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (!forced.empty()) {
         order.clear();
         if (!mechanism.empty()) order.push_back(mechanism);
+    } else if (havePassword && (tls || plaintextOk) && capsUpper.find(" LOGINDISABLED ") == std::string::npos
+        && !order.empty()) {
+        // After every SASL mechanism failed locally, the plain IMAP LOGIN command is the last resort.
+        order.push_back(std::string());
     }
     std::string localFailures;
     for (size_t attempt = 0;; attempt++) {
@@ -3002,7 +3020,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
             localFailures += (localFailures.empty() ? "" : ", ") + mechanism;
             *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
                 + ": login failed before contacting the server: SASL " + localFailures
-                + " failed locally (client mechanisms: " + saslClientMechs()
+                + " failed locally (supported: " + saslClientMechs(havePassword)
                 + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
             return false;
         }
