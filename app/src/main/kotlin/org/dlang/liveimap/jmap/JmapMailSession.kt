@@ -96,7 +96,7 @@ class JmapMailSession(
                 val shown = describe(pinOffer.ders)
                 val confirm = certConfirmer
                 if (shown == null || shown.size != 5 || confirm == null) throw pinOffer
-                val prompt = CertPrompt(pinOffer.text, shown[0], shown[1], shown[2], shown[3], shown[4], pinOffer.host, 443)
+                val prompt = CertPrompt(pinOffer.text, shown[0], shown[1], shown[2], shown[3], shown[4], pinOffer.host, runCatching { jmapServerTarget(account.imapHost).port }.getOrDefault(443))
                 if (!confirm(prompt)) throw pinOffer
                 savePin(prompt.fingerprint)
                 trusted = account.copy(jmapCertPin = prompt.fingerprint)

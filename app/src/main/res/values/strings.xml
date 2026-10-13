@@ -943,7 +943,7 @@ Your version: %2$s</string>
     <string name="settings_access_imap">IMAP</string>
     <string name="settings_access_jmap">JMAP</string>
     <string name="settings_jmap_server">JMAP server</string>
-    <string name="settings_jmap_server_note">The JMAP service is found at https://HOST/.well-known/jmap.</string>
+    <string name="settings_jmap_server_note">Host, host:port, or an https URL. The JMAP service is found at https://HOST[:PORT]/.well-known/jmap; the port is 443 unless given.</string>
     <string name="settings_jmap_host">JMAP host</string>
     <string name="settings_send_over_jmap">Send over JMAP</string>
     <string name="settings_no_way_to_send">This account cannot send: set an SMTP server or turn on Send over JMAP.</string>

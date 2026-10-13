@@ -24,6 +24,64 @@ fun jmapDiscoveryUrl(host: String, port: Int): String {
     return "https://$authority/.well-known/jmap"
 }
 
+/** Where the JMAP server field points: a host, its port (default 443), and the URL discovery fetches. */
+data class JmapServerTarget(val host: String, val port: Int, val discoveryUrl: String)
+
+/**
+ * Reads the JMAP server field. Accepted: "host", "host:port", "[v6]" / "[v6]:port" / a bare IPv6 address, or a
+ * full https URL ("https://host[:port]" discovers at /.well-known/jmap; with a path, that URL is the session
+ * resource). Port defaults to 443. http, user info, queries and fragments are refused (credentials follow).
+ */
+fun jmapServerTarget(field: String): JmapServerTarget {
+    val text = field.trim()
+    if (text.isEmpty()) throw JmapFailure("jmap host is empty")
+    if (text.contains("://")) {
+        val uri = try { URI(text) } catch (_: Exception) { throw JmapFailure("jmap server url is not valid") }
+        if (!uri.scheme.equals("https", ignoreCase = true)) throw JmapFailure("jmap server url is not https")
+        if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) {
+            throw JmapFailure("jmap server url has extra parts")
+        }
+        val rawHost = uri.host ?: throw JmapFailure("jmap server url has no host")
+        val host = jmapHost(rawHost.removePrefix("[").removeSuffix("]").let { if (it.contains(':')) "[$it]" else it })
+        val port = if (uri.port == -1) 443 else uri.port
+        if (port !in 1..65535) throw JmapFailure("jmap port is invalid")
+        val path = uri.rawPath.orEmpty()
+        val url = if (path.isEmpty() || path == "/") jmapDiscoveryUrl(host, port) else {
+            val authority = if (port == 443) host else "$host:$port"
+            "https://$authority$path"
+        }
+        return JmapServerTarget(host, port, url)
+    }
+    // "[v6]:port" / "[v6]"
+    if (text.startsWith('[')) {
+        val close = text.indexOf(']')
+        if (close < 0) throw JmapFailure("jmap host is not a name")
+        val host = jmapHost(text.substring(0, close + 1))
+        val rest = text.substring(close + 1)
+        val port = when {
+            rest.isEmpty() -> 443
+            rest.startsWith(':') -> parsePort(rest.substring(1))
+            else -> throw JmapFailure("jmap host is not a name")
+        }
+        return JmapServerTarget(host, port, jmapDiscoveryUrl(host, port))
+    }
+    val colons = text.count { it == ':' }
+    if (colons == 1) {
+        val host = jmapHost(text.substringBefore(':'))
+        val port = parsePort(text.substringAfter(':'))
+        return JmapServerTarget(host, port, jmapDiscoveryUrl(host, port))
+    }
+    val host = jmapHost(text) // a name, or a bare IPv6 address (several colons, no port)
+    return JmapServerTarget(host, 443, jmapDiscoveryUrl(host, 443))
+}
+
+private fun parsePort(text: String): Int {
+    if (text.isEmpty() || text.length > 5 || !text.all { it in '0'..'9' }) throw JmapFailure("jmap port is invalid")
+    val port = text.toInt()
+    if (port !in 1..65535) throw JmapFailure("jmap port is invalid")
+    return port
+}
+
 fun discoverJmap(status: Int, body: String, finalUrl: String): JmapOffer {
     if (finalUrl.isBlank()) return JmapOffer.None
     val scheme = try {
