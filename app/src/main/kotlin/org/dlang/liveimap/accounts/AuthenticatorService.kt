@@ -38,7 +38,7 @@ class AuthenticatorService : Service() {
 
 private class LiveImapAuthenticator(private val context: Context) : AbstractAccountAuthenticator(context) {
     override fun editProperties(response: AccountAuthenticatorResponse?, accountType: String?): Bundle {
-        return settingsIntent(response)
+        return settingsIntent(response, null)
     }
 
     override fun addAccount(
@@ -49,7 +49,7 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
         options: Bundle?,
     ): Bundle {
         // A second add opens settings. It does not create another account.
-        return settingsIntent(response)
+        return settingsIntent(response, options)
     }
 
     override fun confirmCredentials(
@@ -72,7 +72,7 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
         account: Account?,
         authTokenType: String?,
         options: Bundle?,
-    ): Bundle = settingsIntent(response)
+    ): Bundle = settingsIntent(response, options)
 
     override fun hasFeatures(
         response: AccountAuthenticatorResponse?,
@@ -92,9 +92,22 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
         return Bundle().apply { putBoolean(AccountManager.KEY_BOOLEAN_RESULT, true) }
     }
 
-    private fun settingsIntent(response: AccountAuthenticatorResponse?): Bundle {
+    /**
+     * F03 (David, 2026-10-12): the setup intent carries a one-time token only when AccountManager says the request
+     * came from LiveIMAP itself or from a system app (Settings). KEY_CALLER_UID is set by the system, not by the
+     * caller. A third-party addAccount gets an intent without a token, and the activity refuses it.
+     */
+    private fun settingsIntent(response: AccountAuthenticatorResponse?, options: Bundle?): Bundle {
         val intent = Intent(context, AccountSetupActivity::class.java)
         intent.putExtra(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, response)
+        val callerUid = options?.getInt(AccountManager.KEY_CALLER_UID, -1) ?: -1
+        val system = callerUid >= 0 && context.packageManager.getPackagesForUid(callerUid).orEmpty().any { name ->
+            val info = runCatching { context.packageManager.getApplicationInfo(name, 0) }.getOrNull()
+            info != null && setupCallerIsSystem(info.flags, info.uid)
+        }
+        if (setupTokenAllowed(callerUid, android.os.Process.myUid(), system)) {
+            intent.putExtra(SetupTokens.EXTRA, SetupTokens.issue())
+        }
         return Bundle().apply { putParcelable(AccountManager.KEY_INTENT, intent) }
     }
 
@@ -120,7 +133,10 @@ class AccountSetupActivity : ComponentActivity() {
         // Exported because Settings starts AccountManager's KEY_INTENT from its own process (exported=false
         // would break Settings > Add account). So only a system app or LiveIMAP itself may open it, and
         // overlays cannot click through to the settings toggles.
-        if (!setupCallerAllowed(callingPackage, readResponse(intent) != null)) {
+        val token = intent.getStringExtra(SetupTokens.EXTRA)
+        // Recreated after a configuration change: it was verified when first opened (the token is spent).
+        val verified = savedInstanceState != null || token?.let { SetupTokens.consume(it) } == true
+        if (!setupCallerDecision(callingPackage, packageName, verified)) {
             resultSent = true
             super.finish()
             return
@@ -163,12 +179,6 @@ class AccountSetupActivity : ComponentActivity() {
         result.putString(AccountManager.KEY_ACCOUNT_TYPE, existing.type)
         response.onResult(result)
     }
-
-    private fun setupCallerAllowed(caller: String?, hasResponse: Boolean): Boolean =
-        setupCallerDecision(caller, packageName, hasResponse) { name ->
-            val info = runCatching { packageManager.getApplicationInfo(name, 0) }.getOrNull()
-            info != null && setupCallerIsSystem(info.flags, info.uid)
-        }
 
     private fun readResponse(source: Intent): AccountAuthenticatorResponse? {
         val key = AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE
@@ -219,22 +229,37 @@ internal fun setupCallerIsSystem(flags: Int, uid: Int): Boolean =
     uid == android.os.Process.SYSTEM_UID ||
         (flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
 
+/** F03: a token is issued only for a request from LiveIMAP itself or a system app (system-set caller uid). */
+internal fun setupTokenAllowed(callerUid: Int, ownUid: Int, callerIsSystem: Boolean): Boolean =
+    callerUid >= 0 && (callerUid == ownUid || callerIsSystem)
+
 /**
- * F03: who may open the setup activity. A plain startActivity has no calling package (null): refused, and the
- * activity finishes before sendResult can hand the account name to any AccountAuthenticatorResponse.
+ * F03 (David, 2026-10-12): setup opens only from our own app (in-app Settings: caller is our package) or from the
+ * system AccountManager flow we verified (a valid one-time token from [SetupTokens]). The authenticator response
+ * extra alone, or a system calling package without a token, is never enough.
  */
-/**
- * Settings > Add account starts AccountManager's KEY_INTENT with a plain startActivity, so the calling package is
- * null there (seen on the emulator, API 35). A null caller is therefore let in only when it carries the
- * AccountManager authenticator response that addAccount put in the intent; a plain launch without it is refused.
- */
-internal fun setupCallerDecision(
-    caller: String?,
-    ownPackage: String,
-    hasResponse: Boolean,
-    isSystem: (String) -> Boolean,
-): Boolean {
-    if (caller == null) return hasResponse
-    if (caller == ownPackage) return true
-    return isSystem(caller)
+internal fun setupCallerDecision(caller: String?, ownPackage: String, verifiedToken: Boolean): Boolean =
+    caller == ownPackage || verifiedToken
+
+/** One-time, short-lived setup tokens, held only in this process. */
+internal object SetupTokens {
+    const val EXTRA = "org.dlang.liveimap.SETUP_TOKEN"
+    private const val LIFE_MS = 10 * 60 * 1000L
+    private val issued = HashMap<String, Long>()
+    private val random = java.security.SecureRandom()
+    internal var clock: () -> Long = { System.currentTimeMillis() }
+
+    @Synchronized fun issue(): String {
+        val bytes = ByteArray(24).also { random.nextBytes(it) }
+        val token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        val now = clock()
+        issued.entries.removeAll { now - it.value > LIFE_MS }
+        issued[token] = now
+        return token
+    }
+
+    @Synchronized fun consume(token: String): Boolean {
+        val at = issued.remove(token) ?: return false
+        return clock() - at <= LIFE_MS
+    }
 }
