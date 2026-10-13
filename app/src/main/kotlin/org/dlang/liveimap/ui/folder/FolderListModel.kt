@@ -31,9 +31,22 @@ class FolderListModel(
     private val countedAt = mutableMapOf<String, Long>()
     private var sessionExpandedFolders: MutableSet<String>? = null
     private val levelCache = mutableMapOf<LevelKey, List<FolderEntry>>()
+    /** Last known message count per mailbox from STATUS (or a watched folder); survives tree rebuilds. */
+    private val knownMessages = mutableMapOf<String, Int>()
+    /** Settings read once per tree build (not once per node). */
+    private var buildUnread: Boolean = false
 
-    suspend fun loadLevel(): List<FolderRow> {
+    /**
+     * The visible tree. Session calls suspend on their own lane; the tree walk runs off the main thread, and
+     * counts learned by STATUS are kept across rebuilds (an expand never drops a count already shown).
+     */
+    suspend fun loadLevel(): List<FolderRow> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        loadLevelNow()
+    }
+
+    private suspend fun loadLevelNow(): List<FolderRow> {
         val settings = store.load()
+        buildUnread = settings.showUnreadCounts
         val expanded = sessionExpanded()
         val namespaces = session.namespaces()
         val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
@@ -122,6 +135,7 @@ class FolderListModel(
         }
         return rows
     }
+
 
     /** F66: LIST round trips one "next unseen" walk may spend (big shared namespaces); past it, deeper levels are skipped. */
     private var unseenListBudget = 0
@@ -232,6 +246,7 @@ class FolderListModel(
         for (row in due) {
             countedAt[row.mailbox] = now
         }
+        for ((name, count) in counts) knownMessages[name] = count
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
@@ -251,10 +266,16 @@ class FolderListModel(
         for (name in due) {
             countedAt[name] = now
         }
+        for ((name, count) in counts) knownMessages[name] = count
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
         }
+    }
+
+    /** A count the screen learned another way (IDLE on a watched folder). */
+    fun noteMessages(mailbox: String, count: Int?) {
+        if (count != null) knownMessages[mailbox] = count
     }
 
     fun refreshLevels() {
@@ -341,7 +362,7 @@ class FolderListModel(
             parentMailbox = parentMailbox,
             expanded = showChildren,
             specialUse = node.specialUse,
-            messages = node.messages,
+            messages = node.messages ?: knownMessages[node.mailbox],
             unseen = node.unseen,
             namespaceRoot = node.namespaceRoot,
             delimiter = node.delimiter,
@@ -357,7 +378,7 @@ class FolderListModel(
     }
 
     private suspend fun childrenOf(node: LevelNode): List<LevelNode> {
-        val unreadCounts = store.load().showUnreadCounts
+        val unreadCounts = buildUnread
         if (node.namespaceRoot) {
             return listLevelCached(node.namespacePrefix, null, unreadCounts)
                 .map { entryNode(it, node.namespacePrefix) }

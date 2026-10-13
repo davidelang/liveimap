@@ -295,6 +295,43 @@ class FolderListModelTest {
         assertEquals(emptyList<List<String>>(), emptySession.statusCalls)
         assertEquals(visible, kept)
     }
+
+    /** #22 (sun): a STATUS count shown for INBOX must survive the rebuild that an expand does. */
+    @Test
+    fun statusCountSurvivesExpandRebuild() {
+        val session = ModelMailSession(
+            namespaces = listOf(Namespace("", '.', NamespaceKind.Personal)),
+            levels = mapOf(
+                ModelListCall("", null) to listOf(
+                    FolderEntry("INBOX", "INBOX", false, '.'),
+                    FolderEntry("user", "user", true, '.'),
+                ),
+                ModelListCall("", "user") to listOf(FolderEntry("user.jelly", "jelly", false, '.')),
+            ),
+        )
+        session.statusCounts = mapOf("INBOX" to 25649)
+        val model = FolderListModel(session, ModelSettingsStore(AccountSettings(statusVisibleCounts = true))) { 10L }
+        val first = runModel { model.loadLevel() }
+        val counted = runModel { model.refreshVisibleCounts(first) }
+        assertEquals(25649, counted.single { it.mailbox == "INBOX" }.messages)
+        runModel { model.toggleExpanded("user") }
+        val rebuilt = runModel { model.loadLevel() }
+        assertTrue(rebuilt.any { it.mailbox == "user.jelly" })
+        assertEquals(25649, rebuilt.single { it.mailbox == "INBOX" }.messages)
+        // still fresh: no second STATUS, and the count is still there
+        assertEquals(25649, runModel { model.refreshVisibleCounts(rebuilt) }.single { it.mailbox == "INBOX" }.messages)
+        assertEquals(1, session.statusCalls.size)
+    }
+
+    @Test
+    fun rowKeysAreStableAcrossAnExpand() {
+        val model = FolderListModel(treeSession(), ModelSettingsStore(AccountSettings())) { 10L }
+        val before = runModel { model.loadLevel() }.map { folderRowKey(it) }
+        runModel { model.toggleExpanded("Archive") }
+        val after = runModel { model.loadLevel() }.map { folderRowKey(it) }
+        assertTrue(after.containsAll(before))
+        assertEquals(after.size, after.toSet().size)
+    }
 }
 
 private fun treeSession(): ModelMailSession = ModelMailSession(
@@ -406,7 +443,5 @@ private class ModelMailSession(
 }
 
 private fun <T> runModel(block: suspend () -> T): T {
-    var result: Result<T>? = null
-    block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
-    return result!!.getOrThrow()
+    return kotlinx.coroutines.runBlocking { block() } // loadLevel builds the tree off the main thread
 }

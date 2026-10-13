@@ -326,7 +326,5 @@ private class FakeMailSession(
 }
 
 private fun <T> runImmediate(block: suspend () -> T): T {
-    var result: Result<T>? = null
-    block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
-    return result!!.getOrThrow()
+    return kotlinx.coroutines.runBlocking { block() }
 }

@@ -393,7 +393,7 @@ private fun FolderListLoaded(
                 if (row.mailbox != event.mailbox) {
                     row
                 } else {
-                    row.copy(messages = folderMessageCount(row.messages, event.change))
+                    row.copy(messages = folderMessageCount(row.messages, event.change)).also { model.noteMessages(it.mailbox, it.messages) }
                 }
             }
         }
@@ -868,7 +868,7 @@ private fun FolderListLoaded(
         }
         if (!stopped) {
             // Names already loaded. Does not send LIST.
-            val shown = folderRowsMatchingName(rows, folderQuery, emptyPrefixLabel)
+            val shown = folderRowsMatchingName(rows, folderQuery, emptyPrefixLabel).distinctBy { folderRowKey(it) }
             val countStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
             val countMeasurer = rememberTextMeasurer()
             val density = LocalDensity.current
@@ -929,7 +929,8 @@ private fun FolderListLoaded(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(shown) { row ->
+                // Stable keys: an expand inserts rows without re-laying-out (or re-keying) the ones already shown.
+                items(shown, key = { folderRowKey(it) }, contentType = { if (it.namespaceRoot) 1 else 0 }) { row ->
                     val starNode = folderFavoriteNode(row)
                     FolderListRow(
                         row = row,
@@ -1346,3 +1347,7 @@ private fun NoAccountYet(
         }
     }
 }
+
+/** A LazyColumn key for a folder row: unique per tree position (a mailbox appears once under one parent). */
+internal fun folderRowKey(row: FolderRow): String =
+    (if (row.namespaceRoot) "ns\u0000" else "mb\u0000") + row.depth + "\u0000" + row.parentMailbox.orEmpty() + "\u0000" + row.mailbox
