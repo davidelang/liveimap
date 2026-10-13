@@ -16,6 +16,8 @@ class MessageRefTest {
                 return SelectResult(v, 1, 0)
             }
             override suspend fun unselect() {}
+            override suspend fun <T> inFolder(folder: FolderAt, fresh: Boolean, op: suspend (SelectResult, MailSession) -> T): T =
+                op(selectFolderNow(this, folder, fresh), this)
         }
     }
 

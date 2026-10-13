@@ -590,17 +590,25 @@ class IndexWindowTest {
 
     @Test
     fun uidOperationsReselectOwnMailbox() {
+        // Pass 5: the action names its folder; whatever another screen selected does not matter.
         val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        session.arrivalRows = listOf(row(4, sequence = 1))
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
-        runImmediate { session.select("Archive") }  // another screen moved the shared selection (F43)
+        runImmediate { model.loadWindow() }
+        runImmediate { session.select("Archive") }
         runImmediate { model.deleteMessages(listOf(4L)) }
-        assertEquals("INBOX", session.selectedName)
+        assertEquals("INBOX", session.storeFolders.last())
         runImmediate { session.select("Archive") }
         runImmediate { model.changeFlags(listOf(4L), setOf("\\Seen"), emptySet()) }
-        assertEquals("INBOX", session.selectedName)
-        runImmediate { session.select("Archive") }
-        runImmediate { model.deletePermanently(listOf(4L)) }
-        assertEquals("INBOX", session.selectedName)
+        assertEquals("INBOX", session.storeFolders.last())
+    }
+
+    @Test
+    fun uidActionBeforeAnyListingIsRefused() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.deleteMessages(listOf(4L)) }
+        assertTrue(session.stores.isEmpty())
     }
 
     @Test
@@ -613,7 +621,6 @@ class IndexWindowTest {
         runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Flagged"), "Archive/2019") }
         assertEquals(listOf(FlagWrite(listOf(4711L), setOf("\\Flagged"), emptySet())), session.stores)
         assertEquals("Archive/2019", session.selects.first())
-        assertEquals("INBOX", session.selectedName)
         assertNull(model.mailUndo) // flags offer no undo
         val reply = runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.Reply), "Archive/2019") }
         assertEquals("Archive/2019", (reply as IndexCommand.Compose).seed.mailbox)
@@ -627,7 +634,6 @@ class IndexWindowTest {
         runImmediate { model.performSwipe(4711L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Flagged"), "Elsewhere") }
         assertTrue(session.stores.isEmpty())
         assertTrue(model.notice!!.contains("reload"))
-        assertEquals("INBOX", session.selectedName)
     }
 
     @Test
@@ -639,7 +645,6 @@ class IndexWindowTest {
         runImmediate { model.performSwipe(9L, SwipeBinding(SwipeAction.SetFlag, flag = "\\Seen"), "Archive") }
         assertTrue(session.stores.isEmpty())
         assertTrue(model.notice!!.contains("UIDVALIDITY"))
-        assertEquals("INBOX", session.selectedName)
     }
 
     @Test
@@ -655,7 +660,6 @@ class IndexWindowTest {
         runImmediate { model.undo(undo) }
         assertEquals(listOf(FlagWrite(listOf(9L), emptySet(), setOf("\\Deleted"))), session.stores)
         assertEquals("Archive", session.selects.first())
-        assertEquals("INBOX", session.selectedName)
     }
 
     @Test
@@ -670,7 +674,6 @@ class IndexWindowTest {
         runImmediate { model.acrossFolders(listOf(4L), hits, false) { u, e, _ -> model.deleteMessages(u, e) } }
         assertEquals(3, session.stores.size)
         assertEquals(listOf("INBOX", "Archive", "Old"), session.storeFolders)
-        assertEquals("INBOX", session.selectedName)
         val undo = model.mailUndo!!
         assertEquals(setOf("INBOX", "Archive", "Old"), undo.source.map { it.mailbox }.toSet())
         session.stores.clear()
@@ -738,7 +741,6 @@ class IndexWindowTest {
         session.stores.clear()
         runImmediate { model.undo(undo) }
         assertTrue(model.notice!!.contains("UIDVALIDITY"))
-        assertEquals("INBOX", session.selectedName)
     }
 
     @Test
@@ -748,6 +750,7 @@ class IndexWindowTest {
         session.searchUids = listOf(1L, 2L, 3L)
         session.uidNext = 3L // UID 3 arrives after the freeze
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
         runImmediate { model.freezeAllMailbox() }
         runImmediate { model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true) }
         assertEquals(listOf(FlagWrite(listOf(1L, 2L), setOf("\\Seen"), emptySet())), session.stores)
@@ -759,7 +762,6 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         session.failure = MailFailure("copy failed")
         runImmediate { model.undoMove(listOf(1L), "Trash", listOf(9L), usedMove = true) }
-        assertEquals("INBOX", session.selectedName)
         assertEquals("copy failed", model.notice)
     }
 
@@ -778,6 +780,8 @@ class IndexWindowTest {
         session.deletedUids.add(2L)  // already \Deleted before the action
         session.searchUids = listOf(1L, 2L, 3L)
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        session.stores.clear()
         runImmediate { model.deleteMessages(emptyList(), allMailbox = true) }
         assertEquals(listOf(FlagWrite(listOf(1L, 2L, 3L), setOf("\\Deleted"), emptySet())), session.stores)
         val undo = model.mailUndo!!
@@ -817,6 +821,7 @@ class IndexWindowTest {
     fun postponedMailboxOpensResumeInsteadOfReader() {
         val session = FakeMailSession()
         val store = MemorySettingsStore(AccountSettings(postponedMailbox = "Drafts"))
+        session.arrivalRows = listOf(row(8, sequence = 1))
         val drafts = IndexModel(session, store, "Drafts")
         runImmediate { drafts.loadWindow() }
         assertEquals(ComposeSeed(ComposeKind.ResumePostpone, "Drafts", listOf(8L), 1L), drafts.openSeed(8L))
@@ -1878,7 +1883,7 @@ class IndexWindowTest {
         assertTrue(session.fetchRequests.isEmpty())
         assertTrue(session.listCalls.isEmpty())
         assertTrue(session.searchKinds.isEmpty())
-        assertTrue(session.selects.isEmpty())
+        assertEquals(listOf("INBOX"), session.selects) // pass 5: counted in its own folder, one call
     }
 
     @Test
@@ -1975,7 +1980,7 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         val searched = runImmediate { model.applyAdvanced(text, SearchScope.Subtree) }
-        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text, listOf("INBOX", "INBOX"))), session.scopeCalls) // F128: own-folder reselects only
+        assertEquals(listOf(scopeCall("Subtree", "INBOX", "Advanced", text, listOf("INBOX", "INBOX", "INBOX"))), session.scopeCalls) // F128: own-folder selects only
         assertTrue(session.searchKinds.isEmpty())
         assertTrue(session.listCalls.isEmpty())
         assertTrue(searched.any { it.mailbox == "INBOX" })
