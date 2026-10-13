@@ -493,11 +493,12 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun unselect() {
         val mailbox = selectedMailbox
+        // Nothing selected: UNSELECT would be a BAD ("unselect failed" on opening a folder fresh after login).
+        if (mailbox == null) return
         if (featureCaps.unselect) {
             unselectSelectedMailbox()
             return
         }
-        if (mailbox == null) return
         val result = nativeSelect(requireHandle(), requireWireText(mailbox), false) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
