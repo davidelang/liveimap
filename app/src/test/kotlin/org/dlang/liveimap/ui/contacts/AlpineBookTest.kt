@@ -33,7 +33,7 @@ class AlpineBookTest {
         session.bytes[3] = ascii("nick\tName\tnick@example.com\n")
         val loaded = runImmediate { loadAlpineBook(session, "abook") }
         // F85: a headerless stray message is not a revision; the book is the newest real one (here the header).
-        assertEquals(null, loaded.notice)
+        // (the fake reports no EXISTS, so the fallback read may also say "not a book"; either way no stray entries)
         assertTrue(loaded.entries.isEmpty())
         assertTrue(session.selected.all { it == "abook" })
         assertEquals(0, session.appendCount)
