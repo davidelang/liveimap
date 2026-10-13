@@ -4541,6 +4541,8 @@ struct mailimap_search_key * keyOr(struct mailimap_search_key * left, struct mai
     return key;
 }
 
+bool lineSafeArgument(const char * text); // F118, defined before criterionKey
+
 enum class TextSlot { From, To, Cc, Subject, Text, Body, Keyword, Unkeyword };
 
 struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
