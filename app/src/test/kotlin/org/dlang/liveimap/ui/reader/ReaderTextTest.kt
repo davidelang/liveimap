@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SaveNameRule
@@ -148,14 +149,15 @@ class ReaderTextTest {
     }
 
     @Test
-    fun plainTextMonospaceRoundTripAndMissingKey() {
-        assertFalse(AccountSettings().plainTextMonospace)
-        val on = AccountSettings(plainTextMonospace = true)
-        assertTrue(decodeAccountSettings(on.encode()).plainTextMonospace)
-        val absent = on.encode().lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("plainTextMonospace=") }
+    fun readerTextLayoutRoundTripAndMissingKey() {
+        assertEquals(TextLayout.Text, AccountSettings().readerTextLayout)
+        for (layout in TextLayout.entries) {
+            assertEquals(layout, decodeAccountSettings(AccountSettings(readerTextLayout = layout).encode()).readerTextLayout)
+        }
+        val absent = AccountSettings(readerTextLayout = TextLayout.Flowed).encode().lineSequence()
+            .filter { it.isNotEmpty() && !it.startsWith("readerTextLayout=") }
             .joinToString("\n")
-        assertFalse(decodeAccountSettings(absent).plainTextMonospace)
+        assertEquals(TextLayout.Text, decodeAccountSettings(absent).readerTextLayout)
     }
 
     @Test

@@ -197,6 +197,16 @@ fun dateFormatLabel(format: DateFormat): String = when (format) {
     DateFormat.Custom -> "Custom"
 }
 
+/** How plain text is laid out in the reader (the Text/Flowed/Monospaced positions of the display selector). */
+enum class TextLayout {
+    /** Original line breaks, proportional font. */
+    Text,
+    /** Re-wrapped to the window: format=flowed honoured, ordinary paragraphs reflowed; quote levels kept. */
+    Flowed,
+    /** Original line breaks, monospaced, no wrapping (scroll sideways) so text tables line up. */
+    Monospaced,
+}
+
 enum class BodyView {
     PlainOrHtml,
     PlainOrText,
@@ -411,7 +421,7 @@ data class AccountSettings(
     val showRecentRules: Boolean = true,
     val openAtInIndexMenu: Boolean = false,
     val pinercStartDefault: PinercStartDefault = PinercStartDefault.LeaveUnchanged,
-    val plainTextMonospace: Boolean = false,
+    val readerTextLayout: TextLayout = TextLayout.Text,
     /** Reader text size in percent (plain text and HTML); pinch-zoom adjusts it per message on top. */
     val readerTextZoom: Int = 100,
     /** F38: how often the IDLE wait wakes when nothing arrives (stop requests wake it at once). */
@@ -568,7 +578,7 @@ private val fieldNames = listOf(
     "showRecentRules",
     "openAtInIndexMenu",
     "pinercStartDefault",
-    "plainTextMonospace",
+    "readerTextLayout",
     "readerTextZoom",
     "idleWakeSeconds",
     "altAddresses",
@@ -697,13 +707,13 @@ fun AccountSettings.encode(): String = buildString {
     appendLine("showRecentRules=$showRecentRules")
     appendLine("openAtInIndexMenu=$openAtInIndexMenu")
     appendLine("pinercStartDefault=${pinercStartDefault.name}")
-    appendLine("plainTextMonospace=$plainTextMonospace")
+    if (readerTextLayout != TextLayout.Text) appendLine("readerTextLayout=${readerTextLayout.name}")
     if (readerTextZoom != 100) appendLine("readerTextZoom=$readerTextZoom")
     if (idleWakeSeconds != 5) appendLine("idleWakeSeconds=$idleWakeSeconds")
     // Always written (still optional on decode), so each account stores its look-alike choice explicitly.
     appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
     appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, readerTextLayout when Text, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
         appendLine("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -856,7 +866,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "showRecentRules" ||
             key == "openAtInIndexMenu" ||
             key == "pinercStartDefault" ||
-            key == "plainTextMonospace" ||
+            key == "readerTextLayout" ||
             key == "readerTextZoom" ||
             key == "idleWakeSeconds" ||
             key == "altAddresses" ||
@@ -994,7 +1004,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
         openAtInIndexMenu = field(d.openAtInIndexMenu) { values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false },
         pinercStartDefault = field(d.pinercStartDefault) { values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
             ?: PinercStartDefault.LeaveUnchanged },
-        plainTextMonospace = field(d.plainTextMonospace) { values["plainTextMonospace"]?.let { parseBoolean(it) } ?: false },
+        readerTextLayout = field(d.readerTextLayout) {
+            values["readerTextLayout"]?.let { v -> TextLayout.entries.firstOrNull { it.name == v } } ?: TextLayout.Text
+        },
         readerTextZoom = field(d.readerTextZoom) { values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100 },
         idleWakeSeconds = field(d.idleWakeSeconds) { values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5 },
         altAddresses = field(d.altAddresses) { values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList() },

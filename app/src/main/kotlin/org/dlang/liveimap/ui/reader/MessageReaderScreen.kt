@@ -1,5 +1,9 @@
 package org.dlang.liveimap.ui.reader
 
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.foundation.horizontalScroll
 import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.layout.heightIn
 import org.dlang.liveimap.session.LibetpanTooDeepSubtype
@@ -149,6 +153,7 @@ import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
+import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.FolderView
@@ -433,6 +438,10 @@ private fun MessageReaderLoaded(
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var structure by held.structureState
     var selectedView by held.selectedViewState
+    var textLayout by remember(uid) { mutableStateOf(TextLayout.Text) }
+    // RFC 3676 parameters of the plain part shown (format=flowed, DelSp=yes)
+    var plainFlowed by remember(uid) { mutableStateOf(false) }
+    var plainDelSp by remember(uid) { mutableStateOf(false) }
     var rawTruncated by remember { mutableStateOf(false) }
     var allHeadersOpen by remember(uid) { mutableStateOf(false) }
     var allHeaderText by remember(uid) { mutableStateOf<String?>(null) }
@@ -766,6 +775,8 @@ private fun MessageReaderLoaded(
                 noTextPart = false
                 missing = null
                 renderedHtml = false
+                plainFlowed = plain.format.equals("flowed", ignoreCase = true)
+                plainDelSp = plain.delSp
                 pullBody(plain, reset = true, markSeen = !seenStored)
             }
             BodyView.PlainOrHtml -> {
@@ -1023,6 +1034,7 @@ private fun MessageReaderLoaded(
             account = settings
             selectedView = settings.bodyView
             initialView = settings.bodyView
+            textLayout = settings.readerTextLayout
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -1471,11 +1483,12 @@ private fun MessageReaderLoaded(
     val quoteBorder = MaterialTheme.colorScheme.outlineVariant
     val htmlBackground = MaterialTheme.colorScheme.background.toArgb()
     val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
-    val plainFont = if (account.plainTextMonospace) FontFamily.Monospace else null
+    val plainFont = if (textLayout == TextLayout.Monospaced) FontFamily.Monospace else null
+    val noWrap = textLayout == TextLayout.Monospaced
     val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
-    val plainLines = remember(bodyText, quoteTint, linkColor, linkBridge) {
-        readerLines(bodyText).map { line ->
+    val plainLines = remember(bodyText, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+        displayLines(readerLines(bodyText), textLayout, plainFlowed, plainDelSp).map { line ->
             val quoted = quotedReaderLine(line)
             quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
         }
@@ -1801,7 +1814,8 @@ private fun MessageReaderLoaded(
                         onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
                     },
                 )
-                BodyView.entries.forEach { view ->
+                // HTML and plain text are positions of the display selector; the menu keeps the other views.
+                BodyView.entries.filter { it != BodyView.PlainOrHtml && it != BodyView.PlainOrError }.forEach { view ->
                     DropdownMenuItem(
                         text = { Text(bodyViewName(view)) },
                         onClick = {
@@ -1904,6 +1918,16 @@ private fun MessageReaderLoaded(
                             )
                         }
                     }
+                }
+                if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
+                    ReaderDisplaySelector(
+                        selected = readerDisplayOf(selectedView, textLayout),
+                        onSelect = { display ->
+                            textLayout = textLayoutOf(display, textLayout)
+                            val view = bodyViewOf(display, selectedView)
+                            if (view != selectedView) requestView(view)
+                        },
+                    )
                 }
                 when {
                     noTextPart -> {
@@ -2057,11 +2081,17 @@ private fun MessageReaderLoaded(
                           CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = base.fontSize * (textZoom / 100f))) {
                             val note = charsetNote
                             if (note != null) Text(note)
-                            for ((quoted, line) in plainLines) {
-                                if (quoted) {
-                                    QuotedReaderLine(line, quoteTint, quoteBorder, plainFont)
-                                } else {
-                                    Text(text = line, fontFamily = plainFont, modifier = Modifier.fillMaxWidth())
+                            // Monospaced: original breaks, no wrapping; the whole body scrolls sideways together.
+                            val hscroll = rememberScrollState()
+                            Column(if (noWrap) Modifier.horizontalScroll(hscroll).testTag("reader-nowrap") else Modifier) {
+                                for ((quoted, line) in plainLines) {
+                                    if (quoted && !noWrap) {
+                                        QuotedReaderLine(line, quoteTint, quoteBorder, plainFont)
+                                    } else if (noWrap) {
+                                        Text(text = line, fontFamily = plainFont, softWrap = false)
+                                    } else {
+                                        Text(text = line, fontFamily = plainFont, modifier = Modifier.fillMaxWidth())
+                                    }
                                 }
                             }
                           }
@@ -2998,3 +3028,29 @@ internal fun TypeMismatchDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) } },
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderDisplaySelector(selected: ReaderDisplay, onSelect: (ReaderDisplay) -> Unit) {
+    val entries = ReaderDisplay.entries
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp).testTag("reader-display")) {
+        entries.forEachIndexed { index, display ->
+            SegmentedButton(
+                selected = display == selected,
+                onClick = { onSelect(display) },
+                shape = SegmentedButtonDefaults.itemShape(index, entries.size),
+                modifier = Modifier.testTag("reader-display-${display.name}"),
+            ) { Text(readerDisplayName(display)) }
+        }
+    }
+}
+
+@Composable
+internal fun readerDisplayName(display: ReaderDisplay): String = stringResource(
+    when (display) {
+        ReaderDisplay.Html -> R.string.display_html
+        ReaderDisplay.Text -> R.string.display_text
+        ReaderDisplay.Flowed -> R.string.display_flowed
+        ReaderDisplay.Monospaced -> R.string.display_monospaced
+    },
+)

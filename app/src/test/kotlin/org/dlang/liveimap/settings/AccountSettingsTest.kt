@@ -112,7 +112,7 @@ class AccountSettingsTest {
                 "showRecentRules",
                 "openAtInIndexMenu",
                 "pinercStartDefault",
-                "plainTextMonospace",
+                "readerTextLayout",
                 "nonAsciiDisplay",
                 "altAddresses",
             ),
@@ -144,7 +144,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("showRecentRules=true"))
         assertTrue(text.lines().contains("openAtInIndexMenu=false"))
         assertTrue(text.lines().contains("pinercStartDefault=LeaveUnchanged"))
-        assertTrue(text.lines().contains("plainTextMonospace=false"))
+        assertFalse(keys.contains("readerTextLayout")) // omitted while Text
         assertTrue(text.lines().contains("altAddresses="))
         assertFalse(keys.contains("completionSources"))
         assertFalse(keys.contains("addressBookHistory"))

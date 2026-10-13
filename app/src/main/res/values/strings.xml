@@ -945,4 +945,9 @@ Your version: %2$s</string>
     <string name="settings_jmap_host">JMAP host</string>
     <string name="settings_send_over_jmap">Send over JMAP</string>
     <string name="settings_no_way_to_send">This account cannot send: set an SMTP server or turn on Send over JMAP.</string>
+    <string name="settings_reader_display">Reader display</string>
+    <string name="display_html">HTML</string>
+    <string name="display_text">Text</string>
+    <string name="display_flowed">Flowed</string>
+    <string name="display_monospaced">Mono</string>
 </resources>

@@ -119,6 +119,10 @@ data class MimePart(
     val children: List<MimePart>,
     val charset: String = "",
     val encoding: String = "",
+    /** Content-Type format parameter ("flowed" for RFC 3676 text). */
+    val format: String = "",
+    /** RFC 3676 DelSp=yes. */
+    val delSp: Boolean = false,
 )
 
 sealed class MailboxChange {

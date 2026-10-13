@@ -571,7 +571,7 @@ bool ensureJni(JNIEnv * env) {
         "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V");
     gJni.selectInit = env->GetMethodID(gJni.selectResult, "<init>", "(JJI)V");
     gJni.mimeInit = env->GetMethodID(gJni.mimePart, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;)V");
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
     gJni.threadInit = env->GetMethodID(gJni.threadNode, "<init>",
         "(Ljava/lang/Long;Ljava/util/List;)V");
     gJni.listInit = env->GetMethodID(gJni.arrayList, "<init>", "()V");
@@ -1123,7 +1123,7 @@ jobject tooDeepPart(JNIEnv * env, const std::string & section) {
     jstring jFile = newString(env, "nested part");
     jstring jEmpty = newString(env, "");
     jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
-        jEmpty, jEmpty);
+        jEmpty, jEmpty, jEmpty, JNI_FALSE);
     env->DeleteLocalRef(jSection);
     env->DeleteLocalRef(jType);
     env->DeleteLocalRef(jSubtype);
@@ -1164,8 +1164,14 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
     jstring jFile = filename != nullptr ? newString(env, filename) : nullptr;
     jstring jCharset = newString(env, partCharset(fields).c_str());
     jstring jEncoding = newString(env, partEncoding(fields).c_str());
+    // RFC 3676: format=flowed and DelSp=yes, so the reader can unwrap flowed text.
+    const char * format = fields != nullptr ? paramValue(fields->bd_parameter, "format") : nullptr;
+    const char * delsp = fields != nullptr ? paramValue(fields->bd_parameter, "delsp") : nullptr;
+    jstring jFormat = newString(env, format != nullptr ? format : "");
+    jboolean jDelSp = delsp != nullptr && strcasecmp(delsp, "yes") == 0 ? JNI_TRUE : JNI_FALSE;
     jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, size, children,
-        jCharset, jEncoding);
+        jCharset, jEncoding, jFormat, jDelSp);
+    env->DeleteLocalRef(jFormat);
     env->DeleteLocalRef(jSection);
     env->DeleteLocalRef(jType);
     env->DeleteLocalRef(jSubtype);
@@ -1209,7 +1215,7 @@ jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::strin
         jstring jCharset = newString(env, "");
         jstring jEncoding = newString(env, "");
         jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
-            jCharset, jEncoding);
+            jCharset, jEncoding, jCharset, JNI_FALSE);
         env->DeleteLocalRef(jSection);
         env->DeleteLocalRef(jType);
         env->DeleteLocalRef(jSubtype);

@@ -1406,8 +1406,18 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ) { view ->
                 editor.persist(editor.settings.copy(bodyView = view))
             }
-            BoolField(stringResource(R.string.settings_monospace), settings.plainTextMonospace) {
-                editor.persist(editor.settings.copy(plainTextMonospace = it))
+            ChoiceField(
+                stringResource(R.string.settings_reader_display),
+                org.dlang.liveimap.ui.reader.ReaderDisplay.entries,
+                org.dlang.liveimap.ui.reader.readerDisplayOf(settings.bodyView, settings.readerTextLayout),
+                { org.dlang.liveimap.ui.reader.readerDisplayName(it) },
+            ) { display ->
+                editor.persist(
+                    editor.settings.copy(
+                        bodyView = org.dlang.liveimap.ui.reader.bodyViewOf(display, editor.settings.bodyView),
+                        readerTextLayout = org.dlang.liveimap.ui.reader.textLayoutOf(display, editor.settings.readerTextLayout),
+                    ),
+                )
             }
             ChoiceField(
                 stringResource(R.string.settings_text_size),
