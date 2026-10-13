@@ -657,7 +657,8 @@ trivial, complex things are possible, and roles are built on the same rules.
   TLS mode; DIGEST-MD5 is an expected skip) and degraded behaviour: capabilities hidden by a debug override,
   real older servers, and slower fallbacks forced on.
 * Each run writes a JSON report and a text summary to
-  `/sdcard/Android/data/org.dlang.liveimap/files/acceptance/` for `adb pull`,
+  the app-private `files/acceptance/` directory (F46; read it with
+  `adb exec-out run-as org.dlang.liveimap cat files/acceptance/<name>` on a debug build),
   with build, device, servers, seed profiles, capabilities and per-test
   results, so runs and builds can be compared.
 

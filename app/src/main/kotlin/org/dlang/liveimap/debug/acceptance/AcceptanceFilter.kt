@@ -93,6 +93,19 @@ fun allowHost(hosts: Set<String>, host: String, port: Int): Boolean {
     return hosts.contains("$host:$port")
 }
 
+/**
+ * F46: servers where mail-changing acceptance cases (APPEND, flags/expunge, a real SMTP send) may run: the
+ * emulator lab and sun (the disposable copy). asgard (authoritative) and moon (replica) are never written to.
+ */
+fun allowWriteHost(host: String): Boolean {
+    val h = host.trim().lowercase()
+    if (h in setOf("lab.test", "10.0.2.2", "localhost", "127.0.0.1")) return true
+    return h.substringBefore('.') == "sun"
+}
+
+/** Writes need both a lab user name and a lab host; a real account whose name happens to match is safe. */
+fun allowWriter(user: String, host: String): Boolean = allowUser(user) && allowWriteHost(host)
+
 fun allowUser(user: String): Boolean {
     return user in allowUsers
 }

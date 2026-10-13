@@ -1081,7 +1081,8 @@ private fun AccountGroup(editor: SettingsEditor) {
             for (line in serverReport) {
                 Text(text = line, fontFamily = FontFamily.Monospace)
             }
-            org.dlang.liveimap.debug.acceptance.AcceptanceSection()
+            // F46: the acceptance runner is a developer tool; release builds do not show it.
+            if (org.dlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
         }
     }
     val removing = removingId

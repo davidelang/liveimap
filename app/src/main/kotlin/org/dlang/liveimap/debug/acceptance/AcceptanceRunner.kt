@@ -112,7 +112,8 @@ suspend fun runAcceptance(
     progress: (Int, Int, String) -> Unit = { _, _, _ -> },
     clock: () -> Long = System::currentTimeMillis,
 ): List<ReportRow> {
-    val writer = allowUser(context.account.username)
+    val writer = allowWriter(context.account.username, context.account.imapHost) &&
+        allowWriteHost(context.account.smtpHost.ifBlank { context.account.imapHost })
     val rows = ArrayList<ReportRow>()
     tests.forEachIndexed { index, test ->
         val c = test.case

@@ -51,23 +51,25 @@ fun AcceptanceSection() {
                 val session = org.dlang.liveimap.session.SerialMailSession(LibetpanMailSession())
                 session.setCertConfirmer(::confirmMailCertificate)
                 session.setPlaintextConfirmer(::confirmMailPlaintext)
-                val opened = session.openWith(credentials)
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val selected = selectCases(acceptanceTests.map { it.case }, suite, acceptanceTests.flatMap { it.case.plans }, 3, "")
                     .map { it.name }.toSet()
                 val tests = acceptanceTests.filter { it.case.name in selected }
-                var caps = session.capabilities.joinToString(" ")
-                val rows = if (opened == OpenResult.Connected) {
-                    try {
+                var caps = ""
+                // F46: the session is closed whether or not the open succeeded.
+                val rows = try {
+                    val opened = session.openWith(credentials)
+                    caps = session.capabilities.joinToString(" ")
+                    if (opened == OpenResult.Connected) {
                         runAcceptance(AcceptanceContext(session, account) { session.openWith(credentials) }, tests, readOnly = false,
                             progress = { done, total, name -> line = "$done/$total $name" })
-                    } finally {
-                        caps = session.capabilities.joinToString(" ").ifEmpty { caps }
-                        session.close()
+                    } else {
+                        val why = (opened as? OpenResult.Failed)?.text ?: (opened as? OpenResult.Rejected)?.capabilities ?: "open failed"
+                        listOf(ReportRow("login", "tls-auth", listOf(RunnerPlan), "fail", why))
                     }
-                } else {
-                    val why = (opened as? OpenResult.Failed)?.text ?: (opened as? OpenResult.Rejected)?.capabilities ?: "open failed"
-                    listOf(ReportRow("login", "tls-auth", listOf(RunnerPlan), "fail", why))
+                } finally {
+                    caps = session.capabilities.joinToString(" ").ifEmpty { caps }
+                    session.close()
                 }
                 val header = listOf(
                     "build" to BuildConfig.VERSION_NAME,
@@ -79,7 +81,8 @@ fun AcceptanceSection() {
                     "capability" to caps,
                     "summary" to summaryLine(rows),
                 )
-                val dir = File(appContext.getExternalFilesDir(null), "acceptance")
+                // F46: app-private storage (external files are readable by storage-permission apps on API 26-28).
+                val dir = File(appContext.filesDir, "acceptance")
                 withContext(Dispatchers.IO) { writeReport(dir, AcceptanceReport(suite, rows, header), stamp) }
                 line = summaryLine(rows)
                 lastFile = "acceptance-$stamp-${suite.name}.txt"
