@@ -1010,7 +1010,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         folderBar = field(d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
         readerToolbar = field(d.readerToolbar) { values["readerToolbar"]?.let { parseReaderToolbar(it) } },
         composeBar = field(d.composeBar) { values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar() },
-        toolbarRows = field(d.toolbarRows) { values["toolbarRows"]?.let { parseIntField(it) } ?: 2 },
+        toolbarRows = field(d.toolbarRows) { (values["toolbarRows"]?.let { parseIntField(it) } ?: 2).takeIf { it in 1..4 } ?: d.toolbarRows },
         composerWrapColumn = field(d.composerWrapColumn) { values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74 },
         quellFlowed = field(d.quellFlowed) { values["quellFlowed"]?.let { parseBoolean(it) } ?: false },
         multiPane = field(d.multiPane) { values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off },

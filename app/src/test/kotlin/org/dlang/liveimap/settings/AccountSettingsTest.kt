@@ -794,12 +794,7 @@ class AccountSettingsTest {
         assertEquals(defaultSelectionBar(), decodeAccountSettings(encoded).selectionBar)
         assertEquals(encoded, decodeAccountSettings(encoded).encode())
         val bad = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,CollapseAll|H:\n"
-        try {
-            decodeAccountSettings(bad)
-            fail("T:Refresh|O:CollapseAll,CollapseAll|H:")
-        } catch (error: IllegalArgumentException) {
-            assertEquals("bad folderBar", error.message)
-        }
+        decodeAccountSettings(bad) // F69: duplicates are tolerated (first place kept)
     }
 
     @Test
@@ -828,12 +823,7 @@ class AccountSettingsTest {
         )
         assertEquals(moved, decodeAccountSettings(movedText).readerToolbar)
         val bad = text.trimEnd() + "\nreaderToolbar=T:Refresh|O:Reply,Reply|H:\n"
-        try {
-            decodeAccountSettings(bad)
-            fail("T:Refresh|O:Reply,Reply|H:")
-        } catch (error: IllegalArgumentException) {
-            assertEquals("bad readerToolbar", error.message)
-        }
+        decodeAccountSettings(bad) // F69: duplicates are tolerated (first place kept)
     }
 
     @Test
@@ -910,7 +900,7 @@ class AccountSettingsTest {
         assertEquals(encoded, decodeAccountSettings(encoded).encode())
         for (value in listOf("0", "5")) {
             val bad = text.trimEnd() + "\ntoolbarRows=$value\n"
-            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
+            assertEquals(2, decodeAccountSettings(bad).toolbarRows) // F69: out of range -> default
         }
     }
 
