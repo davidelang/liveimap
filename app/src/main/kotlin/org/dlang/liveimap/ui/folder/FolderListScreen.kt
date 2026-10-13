@@ -868,22 +868,25 @@ private fun FolderListLoaded(
         }
         if (!stopped) {
             // Names already loaded. Does not send LIST.
-            val shown = folderRowsMatchingName(rows, folderQuery, emptyPrefixLabel).distinctBy { folderRowKey(it) }
+            // Jank (#22): filtering ~1000 rows and measuring every count label ran on each recomposition (every
+            // expand, every snackbar). Both are remembered on their inputs, and widths measure one label per length.
+            val shown = remember(rows, folderQuery, emptyPrefixLabel) {
+                folderRowsMatchingName(rows, folderQuery, emptyPrefixLabel).distinctBy { folderRowKey(it) }
+            }
             val countStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
             val countMeasurer = rememberTextMeasurer()
             val density = LocalDensity.current
-            val totalWidth = folderCountColumnWidth(
-                countMeasurer,
-                countStyle,
-                shown.mapNotNull { it.messages?.toString() },
-                density,
-            )
-            val unreadWidth = folderCountColumnWidth(
-                countMeasurer,
-                countStyle,
-                shown.mapNotNull { folderUnreadLabel(showUnreadCounts, it.unseen) },
-                density,
-            )
+            val totalWidth = remember(shown, countStyle, density) {
+                folderCountColumnWidth(countMeasurer, countStyle, shown.mapNotNull { it.messages?.toString() }, density)
+            }
+            val unreadWidth = remember(shown, countStyle, density, showUnreadCounts) {
+                folderCountColumnWidth(
+                    countMeasurer,
+                    countStyle,
+                    shown.mapNotNull { folderUnreadLabel(showUnreadCounts, it.unseen) },
+                    density,
+                )
+            }
             PullToRefreshBox(
                 isRefreshing = loading,
                 onRefresh = {
@@ -1086,12 +1089,18 @@ internal fun folderCountColumnWidth(
     density: Density,
 ): Dp {
     var widest = measurer.measure(text = "0", style = style).size.width
-    for (label in labels) {
+    for (label in widthCandidates(labels)) {
         val width = measurer.measure(text = label, style = style).size.width
         if (width > widest) widest = width
     }
     return with(density) { widest.toDp() }
 }
+
+/**
+ * The labels whose widths can differ: counts use tabular figures, so labels of one length (same digits and
+ * separators) are the same width; one per length, the first seen.
+ */
+internal fun widthCandidates(labels: List<String>): List<String> = labels.distinctBy { it.length }
 
 internal fun folderRowDescription(
     shownLeaf: String,
