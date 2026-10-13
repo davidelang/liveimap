@@ -126,3 +126,30 @@ internal fun retargetCredentials(previous: AccountSettings?, next: AccountSettin
     val settings = if (imapMoved) next.copy(certPin = "", sieveCertPin = "", clientCertAlias = "") else next
     return Retarget(settings, dropImapPassword = imapMoved, dropSmtpPassword = smtpMoved || (imapMoved && next.smtpSameAsImap))
 }
+
+/** One settings save: the settings-file text and the AccountManager record written with it, always together. */
+internal data class AccountSavePlan(
+    val settings: AccountSettings,
+    val text: String,
+    val userData: Map<String, String>,
+    val passwordSlot: String,
+    val dropSmtpPassword: Boolean,
+)
+
+internal fun planAccountSave(
+    accountId: String,
+    previous: AccountSettings?,
+    settings: AccountSettings,
+    encoded: String,
+    passwordSlot: String,
+): AccountSavePlan {
+    val retarget = retargetCredentials(previous, settings)
+    val saved = retarget.settings
+    return AccountSavePlan(
+        settings = saved,
+        text = if (saved == settings) encoded else saved.encode(),
+        userData = accountUserData(accountId, saved, null),
+        passwordSlot = if (retarget.dropImapPassword) "" else passwordSlot,
+        dropSmtpPassword = retarget.dropSmtpPassword,
+    )
+}

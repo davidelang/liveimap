@@ -269,14 +269,12 @@ class AccountStore private constructor(private val context: Context) {
         val previous = if (existing == null) null else storedPreference(accountId)?.let {
             runCatching { overlayAccountFields(decodeAccountSettings(it), existing.userData) }.getOrNull()
         }
-        val retarget = retargetCredentials(previous, settings)
-        val saved = retarget.settings
-        val text = if (saved == settings) encoded else saved.encode()
-        val name = nameFor(existing, saved, accountId)
-        val slot = if (retarget.dropImapPassword) "" else existing?.passwordSlot ?: ""
-        writeAccount(name, accountUserData(accountId, saved, null), slot)
-        if (retarget.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
-        return { writePreference(accountId, text) }
+        val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
+        val name = nameFor(existing, plan.settings, accountId)
+        // Every settings-file save rewrites the AccountManager record first: the engine connects from it.
+        writeAccount(name, plan.userData, plan.passwordSlot)
+        if (plan.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
+        return { writePreference(accountId, plan.text) }
     }
 
     private suspend fun passwordLocked(): String {

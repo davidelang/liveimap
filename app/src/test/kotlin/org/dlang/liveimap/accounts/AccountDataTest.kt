@@ -75,6 +75,41 @@ class AccountDataTest {
         assertEquals("@", accountVisibleName(loaded))
     }
 
+    @Test
+    fun everySaveRewritesTheAccountRecordFromTheSavedSettings() {
+        val before = sampleSettings()
+        val moved = before.copy(
+            imapHost = "10.0.0.1",
+            imapPort = 143,
+            smtpHost = "smtp.moved.example",
+            smtpPort = 25,
+            username = "bea",
+            email = "bea@example.com",
+        )
+        val plan = planAccountSave("id1", before, moved, moved.encode(), "slot")
+        assertEquals("10.0.0.1", plan.userData[userImapHost])
+        assertEquals("143", plan.userData[userImapPort])
+        assertEquals("smtp.moved.example", plan.userData[userSmtpHost])
+        assertEquals("25", plan.userData[userSmtpPort])
+        assertEquals("bea", plan.userData[userUsername])
+        assertEquals("bea@example.com", plan.userData[userEmail])
+        assertEquals("id1", plan.userData[userAccountId])
+        // the engine's view (file overlaid with the record) is exactly what was saved
+        assertEquals(plan.settings, overlayAccountFields(decodeAccountSettings(plan.text), plan.userData))
+        // a moved IMAP server does not keep the old password slot (F32)
+        assertEquals("", plan.passwordSlot)
+
+        // an unchanged save still writes the record (not skipped), and keeps the slot
+        val same = planAccountSave("id1", before, before, before.encode(), "slot")
+        assertEquals(accountUserData("id1", before, null), same.userData)
+        assertEquals("slot", same.passwordSlot)
+        assertEquals(before, overlayAccountFields(decodeAccountSettings(same.text), same.userData))
+
+        // every record field except bookkeeping keys comes from the settings
+        val bookkeeping = setOf(userAccountId, userSchema, userMigratedFrom)
+        assertEquals(accountUserKeys.toSet() - bookkeeping, plan.userData.keys - bookkeeping)
+    }
+
     private fun sampleSettings(): AccountSettings = AccountSettings(
         imapHost = "imap.example.com",
         imapPort = 993,
