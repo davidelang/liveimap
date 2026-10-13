@@ -833,8 +833,7 @@ fun LiveImapNavHost() {
         favorites = next
         scope.launch {
             favoriteMutex.withLock {
-                val loaded = store.load()
-                store.save(loaded.copy(favorites = next))
+                store.update { it.copy(favorites = next) }
             }
         }
     }
@@ -863,8 +862,7 @@ fun LiveImapNavHost() {
             val active = store.chosenAccountId()
             if (id == active) favorites = next
             favoriteMutex.withLock {
-                val bound = store.forAccount(id)
-                bound.save(bound.load().copy(favorites = next))
+                store.forAccount(id).update { it.copy(favorites = next) }
             }
             drawerAccounts = store.listDrawerAccounts()
         }

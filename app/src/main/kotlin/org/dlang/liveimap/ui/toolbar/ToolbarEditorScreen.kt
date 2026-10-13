@@ -110,7 +110,17 @@ private class ToolbarSettings(val store: DataStoreSettingsStore) {
         toolbarIo.launch {
             gate.withLock {
                 val latest = settings ?: return@withLock
-                store.save(latest)
+                // F55: write only the toolbar fields; everything else stays as currently stored
+                store.update {
+                    it.copy(
+                        indexBar = latest.indexBar,
+                        selectionBar = latest.selectionBar,
+                        folderBar = latest.folderBar,
+                        readerToolbar = latest.readerToolbar,
+                        composeBar = latest.composeBar,
+                        toolbarRows = latest.toolbarRows,
+                    )
+                }
             }
         }
     }

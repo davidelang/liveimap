@@ -259,8 +259,7 @@ class FolderListModel(
 
     suspend fun saveDefaultView() {
         val expanded = sessionExpanded().toSet()
-        val settings = store.load()
-        store.save(settings.copy(expandedFolders = expanded))
+        store.update { it.copy(expandedFolders = expanded) } // F66
     }
 
     suspend fun resetToDefault() {
@@ -269,18 +268,12 @@ class FolderListModel(
     }
 
     suspend fun alwaysExpand(mailbox: String) {
-        val settings = store.load()
-        if (mailbox !in settings.expandedFolders) {
-            store.save(settings.copy(expandedFolders = settings.expandedFolders + mailbox))
-        }
+        store.update { if (mailbox in it.expandedFolders) it else it.copy(expandedFolders = it.expandedFolders + mailbox) } // F66
         sessionExpanded().add(mailbox)
     }
 
     suspend fun dontAlwaysExpand(mailbox: String) {
-        val settings = store.load()
-        if (mailbox in settings.expandedFolders) {
-            store.save(settings.copy(expandedFolders = settings.expandedFolders - mailbox))
-        }
+        store.update { if (mailbox in it.expandedFolders) it.copy(expandedFolders = it.expandedFolders - mailbox) else it } // F66
     }
 
     fun collapseAll() {

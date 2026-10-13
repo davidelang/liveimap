@@ -1447,12 +1447,10 @@ private fun MessageReaderLoaded(
         scope.launch {
             try {
                 saveMutex.withLock {
-                    val loaded = store.load()
-                    val current = loaded.folderViews[mailbox] ?: loaded.defaultView
-                    val updated = loaded.copy(
-                        folderViews = loaded.folderViews + (mailbox to transform(current)),
-                    )
-                    store.save(updated)
+                    val updated = store.update { loaded ->
+                        val current = loaded.folderViews[mailbox] ?: loaded.defaultView
+                        loaded.copy(folderViews = loaded.folderViews + (mailbox to transform(current)))
+                    }
                     account = updated
                 }
                 onFolderViewSaved()
@@ -2288,9 +2286,7 @@ private fun MessageReaderLoaded(
             if (!copied) return@launch
             try {
                 saveMutex.withLock {
-                    val loaded = store.load()
-                    val updated = loaded.copy(lastSaveMailbox = destination)
-                    store.save(updated)
+                    val updated = store.update { it.copy(lastSaveMailbox = destination) }
                     account = updated
                 }
             } catch (error: CancellationException) {

@@ -59,6 +59,20 @@ class AccountStore private constructor(private val context: Context) {
         writePreferences()
     }
 
+    /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
+    suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
+        var next: AccountSettings? = null
+        val writePreferences = gate.withLock {
+            withContext(Dispatchers.IO) {
+                val updated = edit(loadLocked())
+                next = updated
+                stageSave(updated, updated.encode())
+            }
+        }
+        writePreferences()
+        return next!!
+    }
+
     suspend fun password(): String {
         return gate.withLock { withContext(Dispatchers.IO) { passwordLocked() } }
     }

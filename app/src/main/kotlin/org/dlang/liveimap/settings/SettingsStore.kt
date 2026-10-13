@@ -39,6 +39,12 @@ interface SettingsStore {
     suspend fun load(): AccountSettings
     suspend fun save(settings: AccountSettings)
     suspend fun password(): String
+    /** F55/F66: change some fields without writing back a stale snapshot of the others. */
+    suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
+        val next = edit(load())
+        save(next)
+        return next
+    }
     suspend fun setPassword(value: String)
     suspend fun smtpPassword(): String = ""
     suspend fun setSmtpPassword(value: String) {}
@@ -68,6 +74,8 @@ class DataStoreSettingsStore(
     override suspend fun load(): AccountSettings = bound { store.load() }
 
     override suspend fun save(settings: AccountSettings) = bound { store.save(settings) }
+
+    override suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings = bound { store.update(edit) }
 
     override suspend fun password(): String = bound { store.password() }
 

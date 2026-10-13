@@ -1281,7 +1281,7 @@ private fun MessageIndexLoaded(
             return false
         }
         try {
-            store.save(edit(loaded))
+            store.update(edit) // F55: edit the current settings, not the snapshot
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -3171,7 +3171,7 @@ private fun MessageIndexLoaded(
                                                 val next = deleteSavedSearch(stored.savedSearches, item.name)
                                                 if (next != stored.savedSearches) {
                                                     try {
-                                                        store.save(stored.copy(savedSearches = next))
+                                                        store.update { it.copy(savedSearches = next) }
                                                     } catch (error: CancellationException) {
                                                         throw error
                                                     } catch (_: Exception) {
@@ -3573,7 +3573,7 @@ private fun MessageIndexLoaded(
                         val next = saveSearch(stored.savedSearches, name, query, held.searchField)
                         if (next != stored.savedSearches) {
                             try {
-                                store.save(stored.copy(savedSearches = next))
+                                store.update { it.copy(savedSearches = next) }
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (_: Exception) {

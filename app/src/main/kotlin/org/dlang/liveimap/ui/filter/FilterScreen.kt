@@ -148,7 +148,7 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                                 account.sieveCertPin,
                                 ::confirmMailCertificate,
                                 { fingerprint ->
-                                    store.save(account.copy(sieveCertPin = fingerprint))
+                                    store.update { it.copy(sieveCertPin = fingerprint) } // F55: only the pin; no stale snapshot
                                 },
                                 account.username,
                                 password,
@@ -262,7 +262,7 @@ fun FilterEditorScreen(
                     return@withLock
                 }
                 try {
-                    store.save(loaded.copy(inboundRules = next))
+                    store.update { it.copy(inboundRules = next) }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {

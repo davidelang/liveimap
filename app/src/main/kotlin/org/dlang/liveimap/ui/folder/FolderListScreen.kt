@@ -551,7 +551,7 @@ private fun FolderListLoaded(
                 } else {
                     settings.favorites + favorite
                 }
-                store.save(settings.copy(favorites = nextFavorites))
+                store.update { it.copy(favorites = nextFavorites) }
                 favorites = nextFavorites
             }
         }

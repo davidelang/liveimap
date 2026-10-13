@@ -869,8 +869,7 @@ class IndexModel(
     var allowLargeClientFallback: Boolean = false
 
     suspend fun setFolderStart(rule: StartRule?) {
-        val saved = withFolderStart(store.load(), mailbox, rule)
-        store.save(saved)
+        val saved = store.update { withFolderStart(it, mailbox, rule) }
         account = saved
     }
 

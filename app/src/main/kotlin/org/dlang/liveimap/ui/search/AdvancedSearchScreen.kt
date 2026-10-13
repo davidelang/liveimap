@@ -381,10 +381,7 @@ private fun AdvancedSearchLoaded(
                                             if (answer == BodyAsk.Cancel) return@launch
                                             if (answer == BodyAsk.Always) {
                                                 try {
-                                                    val fresh = store.load()
-                                                    store.save(
-                                                        fresh.copy(searchAskSkip = fresh.searchAskSkip + mailbox),
-                                                    )
+                                                    store.update { it.copy(searchAskSkip = it.searchAskSkip + mailbox) }
                                                 } catch (error: CancellationException) {
                                                     throw error
                                                 } catch (error: Exception) {
@@ -482,7 +479,7 @@ private fun AdvancedSearchLoaded(
                                                 val next = deleteAdvanced(stored.savedAdvanced, item.name)
                                                 if (next != stored.savedAdvanced) {
                                                     try {
-                                                        store.save(stored.copy(savedAdvanced = next))
+                                                        store.update { it.copy(savedAdvanced = next) }
                                                     } catch (error: CancellationException) {
                                                         throw error
                                                     } catch (_: Exception) {
@@ -551,7 +548,7 @@ private fun AdvancedSearchLoaded(
                             val next = saveAdvanced(stored.savedAdvanced, name, text, chosen)
                             if (next != stored.savedAdvanced) {
                                 try {
-                                    store.save(stored.copy(savedAdvanced = next))
+                                    store.update { it.copy(savedAdvanced = next) }
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (_: Exception) {
