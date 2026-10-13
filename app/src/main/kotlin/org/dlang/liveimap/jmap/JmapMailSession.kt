@@ -406,7 +406,7 @@ class JmapMailSession(
         }
         openStream = exchange
         try {
-            val verdict = jmapNet { trust(host, exchange.peerDer(), streamPin) }
+            val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
@@ -680,7 +680,7 @@ class JmapMailSession(
 
         internal fun hostOf(url: String): String? = try {
             val uri = java.net.URI(url)
-            if (uri.scheme.equals("https", ignoreCase = true)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
+            if (jmapUrlAllowed(url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
         } catch (_: Exception) {
             null
         }

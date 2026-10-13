@@ -14,7 +14,7 @@ fun jmapEventSourceUrl(eventSourceUrl: String): String {
     if (eventSourceUrl.contains('#')) throw JmapFailure("jmap event source url has a fragment")
     // RFC 8620 §7.3: eventSourceUrl is an RFC 6570 level-1 template with {types}, {closeafter} and {ping}.
     if (eventSourceUrl.contains('{') || eventSourceUrl.contains('}')) return expandEventSourceTemplate(eventSourceUrl)
-    if (!eventSourceIsHttps(eventSourceUrl)) {
+    if (!jmapUrlAllowed(eventSourceUrl)) {
         throw JmapFailure("jmap event source url is not https")
     }
     val joiner = if (eventSourceUrl.contains('?')) "&" else "?"
@@ -50,7 +50,7 @@ internal fun expandEventSourceTemplate(template: String): String {
     val url = out.toString()
     val host = try { java.net.URI(url).host } catch (_: Exception) { null }
     val templateHost = try { java.net.URI(template.substringBefore('{')).host } catch (_: Exception) { null }
-    if (host == null || !eventSourceIsHttps(url)) throw JmapFailure("jmap event source url is not https")
+    if (host == null || !jmapUrlAllowed(url)) throw JmapFailure("jmap event source url is not https")
     if (templateHost == null || !host.equals(templateHost, ignoreCase = true)) {
         throw JmapFailure("jmap event source url template moves the host")
     }
@@ -146,8 +146,8 @@ fun jmapApplyPush(
 }
 
 fun platformJmapEventSource(url: String, authorization: String, pin: String): JmapHttpExchange {
-    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
-        pinJmapTls(this, pin)
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 150_000 // F82: above the ping=120 the request asks for
@@ -160,7 +160,7 @@ fun platformJmapEventSource(url: String, authorization: String, pin: String): Jm
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            connection.serverCertificates.map { it.encoded }
+            ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 

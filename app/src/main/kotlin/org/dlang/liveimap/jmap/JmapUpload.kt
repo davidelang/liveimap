@@ -36,12 +36,12 @@ fun jmapUpload(
     if (session.uploadUrl.isBlank()) throw JmapFailure("jmap upload url is empty")
     if (bytes.isEmpty()) throw JmapFailure("jmap upload is empty")
     val url = jmapUploadUrl(session.uploadUrl, accountId)
-    if (!uploadHttps(url)) throw JmapFailure("jmap upload url is not https")
+    if (!jmapUrlAllowed(url)) throw JmapFailure("jmap upload url is not https")
     val authorization = jmapBasicAuthorization(username, password)
     val exchange = jmapNet { post(url, bytes, "message/rfc822", authorization) }
     try {
         val host = uploadHost(url)
-        val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
+        val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val code = jmapNet { exchange.status }
         if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")

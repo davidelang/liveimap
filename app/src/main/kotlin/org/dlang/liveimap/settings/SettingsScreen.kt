@@ -851,6 +851,10 @@ private fun AccountGroup(editor: SettingsEditor) {
                 LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
                     userServerSave(server.copy(imapHost = it))
                 }
+                if (server.imapHost.trim().startsWith("http://", ignoreCase = true)) {
+                    // David: never refuse what the user configured; say what it means instead.
+                    Text(stringResource(R.string.settings_jmap_plain_http_warning), color = MaterialTheme.colorScheme.error)
+                }
                 LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
                     editor.persist(
                         editor.settings.copy(

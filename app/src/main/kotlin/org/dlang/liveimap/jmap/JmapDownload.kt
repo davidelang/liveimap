@@ -43,7 +43,7 @@ fun jmapDownload(
     if (!host.equals(httpsHost(session.apiUrl), ignoreCase = true)) throw JmapFailure("jmap download url is on another host")
     val exchange = jmapNet { get(url, authorization) }
     try {
-        val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
+        val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val status = jmapNet { exchange.status }
         if (status in 300..399) throw JmapFailure("jmap download redirect")
@@ -56,7 +56,7 @@ fun jmapDownload(
 
 private fun httpsHost(url: String): String? = try {
     val uri = URI(url)
-    if (uri.scheme.equals("https", ignoreCase = true)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
+    if (jmapUrlAllowed(url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
 } catch (_: Exception) {
     null
 }
@@ -77,8 +77,8 @@ fun readJmapBytes(stream: java.io.InputStream): ByteArray {
 }
 
 fun platformJmapGet(url: String, authorization: String, pin: String): JmapBlobExchange {
-    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
-        pinJmapTls(this, pin)
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 30_000
@@ -87,7 +87,7 @@ fun platformJmapGet(url: String, authorization: String, pin: String): JmapBlobEx
     }
     return object : JmapBlobExchange {
         override val status: Int get() = connection.responseCode
-        override fun peerDer(): List<ByteArray> = connection.serverCertificates.map { it.encoded }
+        override fun peerDer(): List<ByteArray> = ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
         override fun bytes(): ByteArray = connection.inputStream.use { readJmapBytes(it) }
         override fun close() = connection.disconnect()
     }

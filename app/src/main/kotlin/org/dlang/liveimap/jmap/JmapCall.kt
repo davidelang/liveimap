@@ -22,11 +22,11 @@ fun jmapCall(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ): JmapHttpResult {
     if (apiUrl.isBlank()) throw JmapFailure("jmap api url is empty")
-    if (!httpsApi(apiUrl)) throw JmapFailure("jmap api url is not https")
+    if (!jmapUrlAllowed(apiUrl)) throw JmapFailure("jmap api url is not https")
     val host = apiHost(apiUrl)
     val exchange = jmapNet { post(apiUrl, body, authorization) }
     try {
-        val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
+        val verdict = jmapVerdict(apiUrl) { jmapNet { trust(host, exchange.peerDer(), pin) } }
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val status = jmapNet { exchange.status }
         if (status in apiRedirectStatuses) throw JmapFailure("jmap api redirect")
@@ -74,8 +74,8 @@ fun jmapMailboxChildren(
 }
 
 fun platformJmapPost(url: String, body: String, authorization: String, pin: String): JmapHttpExchange {
-    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
-        pinJmapTls(this, pin)
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -93,7 +93,7 @@ fun platformJmapPost(url: String, body: String, authorization: String, pin: Stri
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            connection.serverCertificates.map { it.encoded }
+            ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 
@@ -120,8 +120,8 @@ fun platformJmapUpload(
     authorization: String,
     pin: String,
 ): JmapHttpExchange {
-    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
-        pinJmapTls(this, pin)
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -139,7 +139,7 @@ fun platformJmapUpload(
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            connection.serverCertificates.map { it.encoded }
+            ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 

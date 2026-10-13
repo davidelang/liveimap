@@ -11,6 +11,8 @@ fun offerForAccount(
     if (account.imapHost.isBlank()) return JmapOffer.None
     val fetch = JmapHttpsFetch(account.jmapCertPin, open, trust)  // F63: the JMAP server's own pin
     // The JMAP server field takes host, host:port or an https URL (port 443 unless given).
-    val result = fetch.get(jmapServerTarget(account.imapHost).discoveryUrl)
+    val target = jmapServerTarget(account.imapHost)
+    if (target.plainHttp) JmapPlainHttp.allow(target.discoveryUrl)
+    val result = fetch.get(target.discoveryUrl)
     return discoverJmap(result.status, result.body, result.finalUrl)
 }

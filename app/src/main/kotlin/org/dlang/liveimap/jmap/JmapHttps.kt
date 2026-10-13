@@ -43,7 +43,7 @@ inline fun <T> jmapNet(block: () -> T): T = try {
 
 /** The host of an https URL or URL template (templates may hold {accountId} etc., which URI() rejects). */
 fun jmapUrlHost(url: String): String? =
-    Regex("^https://(\\[[^\\]]+\\]|[^/:?#{}]+)", RegexOption.IGNORE_CASE).find(url.trim())?.groupValues?.get(1)?.lowercase()
+    Regex("^https?://(\\[[^\\]]+\\]|[^/:?#{}]+)", RegexOption.IGNORE_CASE).find(url.trim())?.groupValues?.get(1)?.lowercase()
 
 class JmapHttpsFetch(
     private val pin: String,
@@ -51,7 +51,7 @@ class JmapHttpsFetch(
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ) : JmapFetch {
     override fun get(url: String): JmapHttpResult {
-        if (!httpsUrl(url)) throw JmapFailure("jmap fetch is not https")
+        if (!jmapUrlAllowed(url)) throw JmapFailure("jmap fetch is not https")
         var current = url
         var followed = 0
         while (true) {
@@ -59,7 +59,7 @@ class JmapHttpsFetch(
             val exchange = jmapNet { open(current) }
             try {
                 val ders = jmapNet { exchange.peerDer() }
-                val verdict = jmapNet { trust(host, ders, pin) }
+                val verdict = jmapVerdict(current) { jmapNet { trust(host, ders, pin) } }
                 if (verdict.isNotEmpty()) {
                     // Discovery is unauthenticated, so a pinnable failure can be offered (nothing was sent).
                     if (jmapPinnable(verdict)) throw JmapPinOffer(verdict, host, ders)
@@ -73,7 +73,7 @@ class JmapHttpsFetch(
                 val location = exchange.header("Location")
                 if (location.isNullOrBlank()) throw JmapFailure("jmap redirect lacks location")
                 val next = URI(current).resolve(location).toString()
-                if (!httpsUrl(next)) throw JmapFailure("jmap redirect is not https")
+                if (!jmapUrlAllowed(next)) throw JmapFailure("jmap redirect is not https")
                 current = next
                 followed += 1
             } finally {
@@ -84,7 +84,7 @@ class JmapHttpsFetch(
 }
 
 fun platformJmapExchange(url: String): JmapHttpExchange {
-    val connection = (URI(url).toURL().openConnection() as HttpsURLConnection).apply {
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -96,7 +96,7 @@ fun platformJmapExchange(url: String): JmapHttpExchange {
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            connection.serverCertificates.map { it.encoded }
+            ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 
