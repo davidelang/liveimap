@@ -1101,7 +1101,7 @@ private fun ComposeLoaded(
                     }
                     val account = base.withSending(r).let { s ->
                         if (viaSettings == null) s
-                        else s.copy(sentMailbox = if (r.fcc == base.sentMailbox) viaSettings.sentMailbox else r.fcc)
+                        else s.copy(sentMailbox = viaFccMailbox(base.sentMailbox, r.fcc, viaSettings.sentMailbox))
                     }
                     val mismatch = fromMismatch(
                         accountRules(base), accountDefaultRule(base), accountId,
@@ -1934,3 +1934,10 @@ private fun commitSuggestion(stored: String, suggestion: AddressSuggestion): Str
     }
     return next
 }
+
+/**
+ * F92(c)/F135: the Fcc folder for mail routed through another account. That account's server gets its own Sent
+ * folder, never this account's Sent name; a folder the rule names explicitly (or none) is used as given.
+ */
+internal fun viaFccMailbox(ownSent: String, ruleFcc: String, viaSent: String): String =
+    if (ruleFcc == ownSent) viaSent else ruleFcc

@@ -153,10 +153,16 @@ fun JmapFolderRoute(
                                         listed,
                                         box,
                                         listPush,
+                                        // F140: only the wait is outside the gate; model updates take it
+                                        // (these run on the IO thread doing the long-poll).
                                         apply = { state ->
-                                            model.applyPush(state, model.pushOpen())
+                                            kotlinx.coroutines.runBlocking {
+                                                gate.withLock { model.applyPush(state, model.pushOpen()) }
+                                            }
                                         },
-                                        reload = { id -> model.messages(id) },
+                                        reload = { id ->
+                                            kotlinx.coroutines.runBlocking { gate.withLock { model.messages(id) } }
+                                        },
                                         stillOpen = {
                                             listEpoch == epoch && !openingMessage && page != null
                                         },

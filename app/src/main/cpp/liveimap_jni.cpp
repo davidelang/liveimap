@@ -8354,12 +8354,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     if (secured) {
         const char * pin = "";
-        if (!session->host.empty() && !session->smtpHost.empty() &&
-            strcmp(session->host.c_str(), host) == 0) {
-            pin = session->certPin.c_str();
-        }
+        // F52/F139: the IMAP pin and the IMAP "accept invalid certificate" belong to the IMAP host; a separately
+        // configured SMTP host is verified on its own.
+        const bool imapHostToo = !session->host.empty() && !session->smtpHost.empty() &&
+            strcasecmp(session->host.c_str(), host) == 0;
+        if (imapHostToo) pin = session->certPin.c_str();
         std::string trust = peerTrustCheck(env, host, capture.ders, pin, false);
-        if (!trust.empty() && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();
+        if (!trust.empty() && imapHostToo && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();
         if (!trust.empty()) {
             mailsmtp_free(smtp);
             throwFailure(env, trust);
