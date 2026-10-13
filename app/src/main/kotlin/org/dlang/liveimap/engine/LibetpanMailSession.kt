@@ -1105,7 +1105,7 @@ class LibetpanMailSession : MailSession {
      * Test account: log in to SMTP without sending anything (connect, TLS, EHLO, AUTH, QUIT). Returns
      * [SmtpLoginCheck]; failures throw [MailFailure] with the server's text.
      */
-    override suspend fun smtpLoginCheck(): SmtpLoginCheck {
+    override suspend fun smtpLoginCheck(): org.dlang.liveimap.session.SmtpLoginCheck {
         val context = currentApplication()
         val ownSmtpPassword = credentials?.smtpPassword
             ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
@@ -1116,9 +1116,9 @@ class LibetpanMailSession : MailSession {
             nativeSmtp(requireHandle(), null, emptyArray(), smtpUser, smtpPassword, 0, "")
         }
         return when (code) {
-            2 -> SmtpLoginCheck.LoggedIn
-            3 -> SmtpLoginCheck.NoAuthOffered
-            else -> SmtpLoginCheck.NoPassword
+            2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
+            3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
+            else -> org.dlang.liveimap.session.SmtpLoginCheck.NoPassword
         }
     }
 
