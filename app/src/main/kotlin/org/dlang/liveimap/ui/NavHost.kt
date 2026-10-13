@@ -792,9 +792,15 @@ fun LiveImapNavHost() {
                             onOpenViews = { navController.navigate("settings/folders/views") },
                             onOpenStarts = { navController.navigate("settings/folders/starts") },
                             onCopyContacts = { navController.navigate("contacts") },
+                            onEditBook = { navController.navigate("addressbook") },
                             onOpenPanel = { name -> navController.navigate("toolbar/$name") },
                         )
                     }
+                }
+            }
+            composable("addressbook") {
+                UpPage(stringResource(R.string.settings_edit_book), onUp = { navController.popBackStack() }) {
+                    org.dlang.liveimap.ui.contacts.AddressBookScreen()
                 }
             }
             composable("contacts") {

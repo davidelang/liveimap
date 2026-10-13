@@ -325,6 +325,7 @@ fun SettingsGroupScreen(
     onOpenViews: () -> Unit,
     onOpenStarts: () -> Unit,
     onCopyContacts: () -> Unit,
+    onEditBook: () -> Unit = {},
     onOpenPanel: (String) -> Unit = {},
 ) {
     val editor = rememberSettingsEditor()
@@ -334,7 +335,7 @@ fun SettingsGroupScreen(
         SettingsGroup.Mailboxes -> MailboxesGroup(editor)
         SettingsGroup.Folders -> FoldersGroup(editor, onOpenExpanded, onOpenViews, onOpenStarts)
         SettingsGroup.Reading -> ReadingGroup(editor)
-        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts)
+        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
         SettingsGroup.Appearance -> AppearanceGroup(editor)
         SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
         SettingsGroup.Slower -> SlowerGroup(editor)
@@ -1556,7 +1557,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit) {
+private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit) {
     val sections = rememberSectionOpen("replying")
     val settings = editor.settings
     SettingsPage {
@@ -1648,6 +1649,7 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit) {
                 editor.persist(editor.settings.copy(addressBookNeverTrim = it))
             }
             OpenRow(stringResource(R.string.settings_copy_contacts), onCopyContacts)
+            OpenRow(stringResource(R.string.settings_edit_book), onEditBook)
         }
     }
 }

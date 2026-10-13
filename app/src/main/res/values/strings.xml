@@ -451,6 +451,31 @@
     <string name="copy_alpine_book">Alpine book %1$s</string>
     <string name="copy_alpine_book_of">Alpine book %1$s (%2$s)</string>
     <string name="copy_read_only">%1$s, read only</string>
+    <string name="settings_edit_book">Edit address book</string>
+    <string name="book_saved">Address book saved.</string>
+    <string name="book_reapplied">The book was changed elsewhere; your change was re-applied to the latest copy.</string>
+    <string name="book_entry_gone">(removed)</string>
+    <string name="book_conflict_title">Changed by another client</string>
+    <string name="book_conflict_text">This entry was changed elsewhere.
+
+Now in the book: %1$s
+
+Your version: %2$s</string>
+    <string name="book_keep_mine">Keep mine</string>
+    <string name="book_use_theirs">Use theirs</string>
+    <string name="book_delete_title">Delete %1$s?</string>
+    <string name="book_delete_text">The entry is removed in a new copy of the book; earlier copies stay until the history trim.</string>
+    <string name="book_delete">Delete</string>
+    <string name="book_cancel">Cancel</string>
+    <string name="book_none">No address book is set for this account.</string>
+    <string name="book_nickname">Nickname</string>
+    <string name="book_fullname">Full name</string>
+    <string name="book_address">Address, or a list as (a@x, b@y, nickname)</string>
+    <string name="book_fcc">Fcc</string>
+    <string name="book_comments">Comments</string>
+    <string name="book_save">Save</string>
+    <string name="book_add">Add entry</string>
+    <string name="book_edit">Edit</string>
     <string name="settings_extra_books">Extra address books</string>
     <string name="settings_global_books">Global address books (read only)</string>
     <string name="settings_book_add">Add address book…</string>
