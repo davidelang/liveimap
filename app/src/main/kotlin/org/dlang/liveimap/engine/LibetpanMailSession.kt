@@ -962,7 +962,13 @@ class LibetpanMailSession : MailSession {
                 if (cancelled()) throw MailFailure("sort cancelled")
                 val last = minOf(exists, first + ClientSortChunk - 1)
                 val rows = keeper.read("client-sort") {
-                    nativeFetchSortFieldsRange(requireHandle(), wireField, first, last) ?: throw MailFailure("sort failed")
+                    nativeFetchSortFieldsRange(requireHandle(), wireField, first, last)
+                }
+                if (rows == null) {
+                    // F141: a chunk past a shrunken EXISTS (another client expunged ahead of the walk) is drift:
+                    // re-select and restart instead of failing.
+                    if (sortChunkDrift(exists, selectedExists(), sequencesStale)) { drift = true; break }
+                    throw MailFailure("sort failed")
                 }
                 for (row in rows) {
                     if (!seen.add(row.uid)) drift = true
@@ -1601,9 +1607,12 @@ internal fun sortKeyRow(key: SortKey, row: SortField): SortField = when (key) {
     SortKey.Subject -> row.copy(text = org.dlang.liveimap.session.baseSubject(
         org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
     SortKey.From, SortKey.To, SortKey.Cc -> row.copy(text = org.dlang.liveimap.session.firstAddrMailbox(
-        row.text, org.dlang.liveimap.ui.compose::decodeHeaderWords), empty = false) // F137: parse raw, then decode
+        row.text) { org.dlang.liveimap.ui.compose.decodeHeaderWords(it) }, empty = false) // F137: parse raw, then decode
     else -> row
 }
+
+/** F141: a failed sort chunk is drift (restart the walk) when the folder shrank or sequence numbers went stale. */
+internal fun sortChunkDrift(existsAtStart: Int, existsNow: Int, stale: Boolean): Boolean = stale || existsNow < existsAtStart
 
 internal class ClientSortKeys(capacity: Int, private val numeric: Boolean) {
     private var uids = LongArray(capacity.coerceAtLeast(16))
