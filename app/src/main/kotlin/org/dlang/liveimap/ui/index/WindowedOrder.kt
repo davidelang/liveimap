@@ -40,8 +40,14 @@ class WindowedOrder(
         }
     }
 
-    /** Known UIDs, in order, skipping unloaded positions. */
-    fun known(): List<Long> = filter { it != Unknown }
+    /**
+     * Known UIDs, in order, skipping unloaded positions. F81: walks the loaded windows only, so a huge server COUNT
+     * (e.g. 2147483647) costs nothing here.
+     */
+    fun known(): List<Long> = windows.keys.sorted().flatMap { w ->
+        val start = w * windowSize
+        windows.getValue(w).take((total - start).coerceAtLeast(0)).filter { it != Unknown }
+    }
 
     /** After removing [gone], positions shift: keep the total right and reload windows lazily. */
     fun without(gone: Set<Long>): WindowedOrder {

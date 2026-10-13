@@ -63,15 +63,16 @@ fun saveFolderName(
     sender: String,
     to: String,
     resentTo: String,
+    delimiter: Char = '\u0000',
 ): String = when (rule) {
     SaveNameRule.DefaultFolder -> savedMailbox
     SaveNameRule.LastFolderUsed -> lastSaveMailbox.ifEmpty { savedMailbox }
-    SaveNameRule.ByFrom -> saveNameLocal(from).ifEmpty { saveNameLocal(sender) }.ifEmpty { savedMailbox }
-    SaveNameRule.BySender -> saveNameLocal(sender).ifEmpty { saveNameLocal(from) }.ifEmpty { savedMailbox }
-    SaveNameRule.ByRecipient -> saveNameLocal(resentTo).ifEmpty { saveNameLocal(to) }.ifEmpty { savedMailbox }
+    SaveNameRule.ByFrom -> saveNameLocal(from, delimiter).ifEmpty { saveNameLocal(sender, delimiter) }.ifEmpty { savedMailbox }
+    SaveNameRule.BySender -> saveNameLocal(sender, delimiter).ifEmpty { saveNameLocal(from, delimiter) }.ifEmpty { savedMailbox }
+    SaveNameRule.ByRecipient -> saveNameLocal(resentTo, delimiter).ifEmpty { saveNameLocal(to, delimiter) }.ifEmpty { savedMailbox }
 }
 
-private fun saveNameLocal(header: String): String {
+private fun saveNameLocal(header: String, delimiter: Char = '\u0000'): String {
     val open = header.indexOf('<')
     val close = if (open >= 0) header.indexOf('>', open + 1) else -1
     val extracted = if (open >= 0 && close >= 0) {
@@ -89,7 +90,9 @@ private fun saveNameLocal(header: String): String {
     // (no delimiter, CR/LF, wildcards or leading dots) so it can never steer the destination.
     val safe = slice.lowercase().filter { it in 'a'..'z' || it in '0'..'9' || it == '.' || it == '-' || it == '_' }
         .trimStart('.').replace(Regex("\\.{2,}"), ".")
-    return safe
+    // F60: on a server whose hierarchy delimiter is in that class ('.' on Courier/older Dovecot), "a.b" would name
+    // a nested folder; the delimiter becomes '_' so the name stays one level.
+    return if (delimiter != '\u0000' && delimiter in safe) safe.replace(delimiter, '_') else safe
 }
 
 fun quotedReaderLine(line: String): Boolean = line.startsWith(">")

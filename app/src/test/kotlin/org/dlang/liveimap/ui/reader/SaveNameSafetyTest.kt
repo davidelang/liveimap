@@ -15,4 +15,12 @@ class SaveNameSafetyTest {
         assertEquals("saved-messages", byFrom("<\r\n@evil>"))
         assertEquals("david.lang", byFrom("David <David.Lang@lang.hm>"))
     }
+
+    /** F60: the server's hierarchy delimiter never survives in a sender-derived name. */
+    @org.junit.Test
+    fun delimiterBecomesUnderscore() {
+        org.junit.Assert.assertEquals("a_b", saveFolderName(SaveNameRule.ByFrom, "saved", "", "a.b@x", "", "", "", '.'))
+        org.junit.Assert.assertEquals("a.b", saveFolderName(SaveNameRule.ByFrom, "saved", "", "a.b@x", "", "", "", '/'))
+        org.junit.Assert.assertEquals("a-b", saveFolderName(SaveNameRule.ByFrom, "saved", "", "a-b@x", "", "", "", '.'))
+    }
 }

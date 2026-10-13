@@ -75,4 +75,15 @@ class WindowedOrderTest {
         assertEquals(listOf(1L, 3L), orderWithout(listOf(1L, 2L, 3L), setOf(2L)))
         assertEquals(false, orderWithout(listOf(1L, 2L), setOf(2L)) is java.util.ArrayList<*>)
     }
+
+    /** F81: a hostile COUNT does not make known() walk every position. */
+    @Test
+    fun knownIgnoresTheUnloadedCount() {
+        val order = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> emptyList() }
+        order.seed(0, listOf(5L, 6L, 7L, 8L))
+        order.seed(3, listOf(20L, 21L))
+        val started = System.nanoTime()
+        org.junit.Assert.assertEquals(listOf(5L, 6L, 7L, 8L, 20L, 21L), order.known())
+        org.junit.Assert.assertTrue(System.nanoTime() - started < 1_000_000_000L)
+    }
 }

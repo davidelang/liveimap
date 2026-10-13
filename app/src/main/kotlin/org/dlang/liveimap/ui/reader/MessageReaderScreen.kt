@@ -1703,20 +1703,31 @@ private fun MessageReaderLoaded(
                     text = { Text(stringResource(R.string.reader_save)) },
                     onClick = {
                         moreMenu = false
-                        val offered = saveFolderName(
-                            account.saveNameRule,
-                            account.savedMailbox,
-                            account.lastSaveMailbox,
-                            headerFrom,
-                            headerSender,
-                            headerTo,
-                            headerResentTo,
-                        )
-                        if (offered.isNotEmpty()) {
-                            saveOffer = offered
-                            confirmSave = true
-                        } else {
-                            choosingSave = true
+                        scope.launch {
+                            // F60: the personal namespace's delimiter, so a sender's "a.b" stays one folder name.
+                            val delimiter = try {
+                                session.namespaces().firstOrNull { it.kind == org.dlang.liveimap.session.NamespaceKind.Personal }?.delimiter ?: '.'
+                            } catch (error: kotlinx.coroutines.CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                '.' // unknown: be conservative
+                            }
+                            val offered = saveFolderName(
+                                account.saveNameRule,
+                                account.savedMailbox,
+                                account.lastSaveMailbox,
+                                headerFrom,
+                                headerSender,
+                                headerTo,
+                                headerResentTo,
+                                delimiter,
+                            )
+                            if (offered.isNotEmpty()) {
+                                saveOffer = offered
+                                confirmSave = true
+                            } else {
+                                choosingSave = true
+                            }
                         }
                     },
                 )
