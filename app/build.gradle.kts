@@ -28,6 +28,19 @@ android {
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // One APK per device ABI (as VehicleExpenses): app-arm64-<type>.apk for the Pixels, app-x86_64-<type>.apk
+    // for the emulator. versionCode stays 1 for every ABI, as there.
+    flavorDimensions += "abi"
+    productFlavors {
+        create("arm64") {
+            dimension = "abi"
+            ndk { abiFilters += "arm64-v8a" }
+        }
+        create("x86_64") {
+            dimension = "abi"
+            ndk { abiFilters += "x86_64" }
+        }
+    }
     androidResources {
         localeFilters += listOf("en")
     }
@@ -44,16 +57,12 @@ android {
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
-            // The emulator is x86_64; the Pixels are arm64.
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
             // F20: R8 shrinking and resource shrinking; JNI and reflection entry points in proguard-rules.pro.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Size work: every release device is arm64, so ship only that native library.
-            ndk { abiFilters += listOf("arm64-v8a") }
         }
     }
     compileOptions {

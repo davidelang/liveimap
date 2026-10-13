@@ -4,7 +4,14 @@
 
 set -euo pipefail
 
-APK="app/build/outputs/apk/debug/app-debug.apk"
+# One debug APK per ABI flavor (app/build.gradle.kts productFlavors); each device gets its own.
+apk_for_abi() {
+  case "$1" in
+    arm64-v8a) echo "app/build/outputs/apk/arm64/debug/app-arm64-debug.apk" ;;
+    x86_64) echo "app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk" ;;
+  esac
+}
+APK="$(apk_for_abi x86_64)"
 PKG="org.dlang.liveimap"
 
 usage() {
@@ -96,8 +103,8 @@ if [ "$rebuild" -eq 1 ]; then
   fi
 fi
 
-if [ ! -f "$APK" ]; then
-  echo "ERROR: missing $APK" >&2
+if [ ! -f "$APK" ] && [ ! -f "$(apk_for_abi arm64-v8a)" ]; then
+  echo "ERROR: missing $APK and $(apk_for_abi arm64-v8a)" >&2
   echo "Run ./build_app to produce it." >&2
   exit 1
 fi
@@ -177,6 +184,13 @@ for serial in "${selected[@]}"; do
       continue
       ;;
   esac
+
+  APK="$(apk_for_abi "$abi")"
+  if [ ! -f "$APK" ]; then
+    echo "ERROR: missing $APK for $serial ($abi); run ./build_app" >&2
+    failed=1
+    continue
+  fi
 
   if [ "$uninstall_first" -eq 1 ]; then
     adb -s "$serial" uninstall "$PKG" || true

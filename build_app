@@ -176,8 +176,9 @@ if [ $RET_VAL -ne 0 ]; then
     exit 1
 fi
 
-APK="app/build/outputs/apk/debug/app-debug.apk"
-if [ ! -f "$APK" ]; then
+# Per-ABI flavors: assembleDebug makes app-arm64-debug.apk and app-x86_64-debug.apk.
+APK="app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk"
+if [ ! -f "$APK" ] || [ ! -f "app/build/outputs/apk/arm64/debug/app-arm64-debug.apk" ]; then
     echo "ERROR: Gradle succeeded but expected APK missing: $APK" >&2
     exit 1
 fi
