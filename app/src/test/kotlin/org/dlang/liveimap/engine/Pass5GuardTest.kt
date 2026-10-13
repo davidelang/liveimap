@@ -75,4 +75,15 @@ class Pass5GuardTest {
             .map(::File).first { it.exists() }.readText()
         assertTrue(w.contains("onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },"))
     }
+
+    /** F27: a watch stop joins the watch thread without the session lock; other stops wait for it. */
+    @Test fun watchStopJoinsOutsideTheLock() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val unlock = body.indexOf("session->mu.unlock();")
+        val join = body.indexOf("thread.join();")
+        val relock = body.indexOf("session->mu.lock();")
+        assertTrue(unlock in 0 until join && join < relock)
+        assertTrue(jni.contains("while (session->watchStopping) session->stopCv.wait(session->mu);"))
+    }
 }

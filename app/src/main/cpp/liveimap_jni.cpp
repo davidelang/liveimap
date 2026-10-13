@@ -243,6 +243,9 @@ struct SecretWipe {
 
 struct LiveSession {
     std::mutex mu;
+    // F27: a stop joining the watch thread outside mu sets this; any other stop/free/setup waits on stopCv.
+    bool watchStopping = false;
+    std::condition_variable_any stopCv;
     // Long-search side connection: INPROGRESS (RFC 9585) progress, read without the session lock, and the socket
     // that Cancel shuts down from another thread.
     std::atomic<int64_t> progressDone{-1};
@@ -2004,12 +2007,21 @@ bool watchSetupSuperseded(bool closed, uint64_t currentGeneration, uint64_t setu
     return closed || currentGeneration != setupGeneration || watchInstalled;
 }
 
+/* F27: the part of a stop that runs under mu once the thread is gone: free the connection and the callback ref. */
+void finishWatchStopLocked(LiveSession * session, JNIEnv * env);
+
 void stopWatchLocked(LiveSession * session, JNIEnv * env) {
+    // F27: another stop is joining outside the lock; let it finish (mu is released while waiting).
+    while (session->watchStopping) session->stopCv.wait(session->mu);
     session->watchGeneration++;
     signalWatchStop(session);
     if (session->watchThread.joinable()) {
         session->watchThread.join();
     }
+    finishWatchStopLocked(session, env);
+}
+
+void finishWatchStopLocked(LiveSession * session, JNIEnv * env) {
     if (session->watchWakeFd >= 0) {
         close(session->watchWakeFd);
         session->watchWakeFd = -1;
@@ -8087,7 +8099,22 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv * env,
     }
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
-    stopWatchLocked(session, env);
+    // F27: DONE and its tagged reply can take up to the 60 s read timeout. Join the watch thread without mu so
+    // the account's other commands are not held for it; watchStopping keeps every other stop, free or setup
+    // from touching the watch connection meanwhile. The use count from lockSession keeps the session alive.
+    while (session->watchStopping) session->stopCv.wait(session->mu);
+    session->watchGeneration++;
+    signalWatchStop(session);
+    if (session->watchThread.joinable()) {
+        std::thread thread = std::move(session->watchThread);
+        session->watchStopping = true;
+        session->mu.unlock();
+        thread.join();
+        session->mu.lock();
+        session->watchStopping = false;
+        session->stopCv.notify_all();
+    }
+    finishWatchStopLocked(session, env);
     unlockSession(session);
 }
 
