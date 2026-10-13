@@ -947,9 +947,59 @@ private fun splitList(value: String): List<String> {
     return items
 }
 
+/** F57: index of the `}` closing a `{host/...}` spec, skipping quoted flag values. */
+internal fun specEnd(value: String): Int {
+    var quoted = false
+    var i = 1
+    while (i < value.length) {
+        val c = value[i]
+        when {
+            quoted && c == '\\' -> i++
+            c == '"' -> quoted = !quoted
+            !quoted && c == '}' -> return i
+        }
+        i++
+    }
+    return -1
+}
+
+internal fun splitSpecFlags(text: String): List<String> {
+    val out = mutableListOf<String>()
+    val sb = StringBuilder()
+    var quoted = false
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (quoted && c == '\\' && i + 1 < text.length) {
+            sb.append(c).append(text[i + 1]); i += 2; continue
+        }
+        if (c == '"') quoted = !quoted
+        if (!quoted && c == '/') { out.add(sb.toString()); sb.clear() } else sb.append(c)
+        i++
+    }
+    out.add(sb.toString())
+    return out
+}
+
+internal fun unquoteSpecValue(v: String): String {
+    if (v.length < 2 || !v.startsWith("\"") || !v.endsWith("\"")) return v
+    val sb = StringBuilder()
+    var i = 1
+    while (i < v.length - 1) {
+        if (v[i] == '\\' && i + 1 < v.length - 1) i++
+        sb.append(v[i]); i++
+    }
+    return sb.toString()
+}
+
+/** c-client quoting for a /user= value that contains spec syntax. */
+internal fun quoteSpecValue(v: String): String =
+    if (v.none { it == '/' || it == '}' || it == '{' || it == '"' || it == '\\' || it.isWhitespace() }) v
+    else "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 private fun parseRemoteSpec(value: String): RemoteSpec? {
     val body = if (value.startsWith("{")) {
-        val end = value.indexOf('}')
+        val end = specEnd(value)
         if (end < 1) return null
         value.substring(1, end)
     } else {
@@ -958,7 +1008,7 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
     if (body.isEmpty()) return null
     val slash = body.indexOf('/')
     val hostPort = if (slash < 0) body else body.substring(0, slash)
-    val flags = if (slash < 0) emptyList() else body.substring(slash + 1).split('/')
+    val flags = if (slash < 0) emptyList() else splitSpecFlags(body.substring(slash + 1))
     if (hostPort.isEmpty()) return null
     val colon = hostPort.lastIndexOf(':')
     var host = hostPort
@@ -978,7 +1028,7 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
         if (flag.isEmpty()) continue
         when {
             flag.equals("submit", ignoreCase = true) -> submit = true
-            flag.startsWith("user=", ignoreCase = true) -> user = flag.substring(5)
+            flag.startsWith("user=", ignoreCase = true) -> user = unquoteSpecValue(flag.substring(5))
             mode != null -> Unit
             flag.equals("notls", ignoreCase = true) ||
                 flag.equals("nostarttls", ignoreCase = true) -> mode = TlsMode.None
@@ -1056,7 +1106,7 @@ private fun pinercTls(mode: TlsMode): String = when (mode) {
 
 private fun pinercInbox(settings: AccountSettings): String {
     if (settings.imapHost.isEmpty()) return ""
-    val user = if (settings.username.isEmpty()) "" else "/user=${settings.username}"
+    val user = if (settings.username.isEmpty()) "" else "/user=${quoteSpecValue(settings.username)}"
     return "{${settings.imapHost}:${settings.imapPort}/${pinercTls(settings.tlsMode)}$user}INBOX"
 }
 
@@ -1064,7 +1114,7 @@ private fun pinercSmtp(settings: AccountSettings): String {
     if (settings.smtpHost.isEmpty()) return ""
     val submit = if (settings.smtpPort == 587 && settings.tlsMode == TlsMode.StartTls) "/submit" else ""
     val user = if (settings.smtpUsername.isNotEmpty() && settings.smtpUsername != settings.username) {
-        "/user=${settings.smtpUsername}"
+        "/user=${quoteSpecValue(settings.smtpUsername)}"
     } else {
         ""
     }

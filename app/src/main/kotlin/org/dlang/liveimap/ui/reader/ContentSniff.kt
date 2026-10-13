@@ -32,13 +32,28 @@ private fun leadingText(head: ByteArray): String {
     return text.trimStart().lowercase()
 }
 
-fun sniffContent(head: ByteArray): Sniffed? {
+const val SniffTailBytes = 65536
+
+/** F54: a real PE file has "PE\0\0" at e_lfanew; text that merely starts with "MZ" does not. */
+private fun looksLikePe(head: ByteArray): Boolean {
+    if (head.size < 64) return false
+    val off = (head[0x3C].toInt() and 0xFF) or ((head[0x3D].toInt() and 0xFF) shl 8) or
+        ((head[0x3E].toInt() and 0xFF) shl 16) or ((head[0x3F].toInt() and 0xFF) shl 24)
+    if (off < 64) return false
+    if (off + 4 <= head.size) return head.startsWith(0x50, 0x45, 0x00, 0x00, at = off)
+    // Header beyond the sniffed bytes: accept only a binary-looking DOS header.
+    return off < 0x100000 && (2 until 64).any { val b = head[it].toInt() and 0xFF; b < 0x09 || b == 0x0B || b == 0x0C || (b in 0x0E..0x1F) }
+}
+
+fun sniffContent(head: ByteArray, tail: ByteArray = ByteArray(0)): Sniffed? {
     if (head.isEmpty()) return null
+    // The ZIP central directory sits at the end of the part, so check the tail too (F54).
+    fun zipHas(name: String) = head.containsAscii(name) || tail.containsAscii(name)
     when {
         head.startsWith(0x50, 0x4B, 0x03, 0x04) -> return when {
-            head.containsAscii("AndroidManifest.xml") || head.containsAscii("classes.dex") ->
+            zipHas("AndroidManifest.xml") || zipHas("classes.dex") ->
                 Sniffed("application/vnd.android.package-archive", "Android app (APK)", dangerous = true)
-            head.containsAscii("META-INF/MANIFEST.MF") -> Sniffed("application/java-archive", "Java archive (JAR)", dangerous = true)
+            zipHas("META-INF/MANIFEST.MF") -> Sniffed("application/java-archive", "Java archive (JAR)", dangerous = true)
             head.containsAscii("word/") -> Sniffed("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Word document")
             head.containsAscii("xl/") -> Sniffed("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Excel workbook")
             head.containsAscii("ppt/") -> Sniffed("application/vnd.openxmlformats-officedocument.presentationml.presentation", "PowerPoint presentation")
@@ -47,7 +62,7 @@ fun sniffContent(head: ByteArray): Sniffed? {
             else -> Sniffed("application/zip", "ZIP archive")
         }
         head.startsWith(0x7F, 0x45, 0x4C, 0x46) -> return Sniffed("application/x-executable", "Linux/Android program (ELF)", dangerous = true)
-        head.startsWithAscii("MZ") && head.size >= 64 -> return Sniffed("application/vnd.microsoft.portable-executable", "Windows program (EXE)", dangerous = true)
+        head.startsWithAscii("MZ") && looksLikePe(head) -> return Sniffed("application/vnd.microsoft.portable-executable", "Windows program (EXE)", dangerous = true)
         head.startsWithAscii("dex\n") -> return Sniffed("application/x-dex", "Android bytecode (DEX)", dangerous = true)
         head.startsWithAscii("%PDF-") -> return Sniffed("application/pdf", "PDF document")
         head.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> return Sniffed("image/png", "PNG image")
@@ -102,6 +117,24 @@ private val extensionTypes = mapOf(
     "wav" to "audio/wav",
 )
 
+/**
+ * F54: extensions that run code or mount/launch something when opened. A warning is shown for these even
+ * when the content and the claimed type agree.
+ */
+private val dangerousExtensions = setOf(
+    "apk", "apks", "xapk", "jar", "exe", "dll", "scr", "com", "pif", "cpl", "msi", "msp", "msix", "appx",
+    "bat", "cmd", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "lnk", "url", "reg",
+    "iso", "img", "vhd", "vhdx", "dex", "so", "sh", "py", "html", "htm", "xhtml", "svg", "chm", "jnlp",
+)
+
+fun dangerousExtension(filename: String?): String? {
+    val name = filename?.trim()?.lowercase()?.trimEnd('.', ' ') ?: return null
+    val dot = name.lastIndexOf('.')
+    if (dot < 0 || dot == name.length - 1) return null
+    val ext = name.substring(dot + 1)
+    return ext.takeIf { it in dangerousExtensions }
+}
+
 fun extensionMime(filename: String?): String? {
     val name = filename?.trim()?.lowercase() ?: return null
     val dot = name.lastIndexOf('.')
@@ -155,14 +188,19 @@ data class TypeMismatch(val claimed: String, val extension: String?, val detecte
  * Compares the sniffed type with the claimed MIME type and the filename's extension. Returns null when they
  * agree (or nothing was recognised and nothing dangerous is claimed by the extension).
  */
-fun typeMismatch(claimedMime: String, filename: String?, head: ByteArray): TypeMismatch? {
-    val detected = sniffContent(head) ?: return null
+fun typeMismatch(claimedMime: String, filename: String?, head: ByteArray, tail: ByteArray = ByteArray(0)): TypeMismatch? {
+    val risky = dangerousExtension(filename)
+    val detected = sniffContent(head, tail)
+        ?: return risky?.let { TypeMismatch(claimedMime.lowercase(), extensionMime(filename), Sniffed(claimedMime.lowercase(), ".$it file (can run code)", dangerous = true)) }
+    if (risky != null && !detected.dangerous) {
+        return TypeMismatch(claimedMime.lowercase(), extensionMime(filename), detected.copy(label = "${detected.label}, named .$risky (can run code)", dangerous = true))
+    }
     val claimed = canonical(claimedMime)
     val ext = extensionMime(filename)
     val claimedDisagrees = !uninformative(claimed) && !agrees(detected.mime, claimed)
     val extDisagrees = ext != null && !agrees(detected.mime, ext)
     // A dangerous payload behind an uninformative type and no telling extension is still worth a warning.
     val hiddenDanger = detected.dangerous && (uninformative(claimed) || claimed != detected.mime) && ext != detected.mime
-    if (!claimedDisagrees && !extDisagrees && !hiddenDanger) return null
+    if (!claimedDisagrees && !extDisagrees && !hiddenDanger && risky == null) return null
     return TypeMismatch(claimedMime.lowercase(), ext, detected)
 }

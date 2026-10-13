@@ -85,8 +85,11 @@ private fun saveNameLocal(header: String): String {
     val fromBang = if (bang >= 0) trimmed.substring(bang + 1) else trimmed
     val end = fromBang.indexOfAny(charArrayOf('%', ':', '@'))
     val slice = if (end >= 0) fromBang.substring(0, end) else fromBang
-    if (slice.isEmpty()) return ""
-    return slice.lowercase()
+    // F60: the sender controls this text; keep only a conservative character class
+    // (no delimiter, CR/LF, wildcards or leading dots) so it can never steer the destination.
+    val safe = slice.lowercase().filter { it in 'a'..'z' || it in '0'..'9' || it == '.' || it == '-' || it == '_' }
+        .trimStart('.').replace(Regex("\\.{2,}"), ".")
+    return safe
 }
 
 fun quotedReaderLine(line: String): Boolean = line.startsWith(">")

@@ -15,7 +15,7 @@ class ContentSniffTest {
     private val jpeg = bytes(0xFF, 0xD8, 0xFF, 0xE0, 0, 16)
     private val apk = zipWith("AndroidManifest.xml")
     private val elf = bytes(0x7F, 0x45, 0x4C, 0x46, 2, 1, 1)
-    private val exe = ascii("MZ") + ByteArray(62)
+    private val exe = ascii("MZ") + ByteArray(58) + bytes(64, 0, 0, 0) + ascii("PE") + ByteArray(2)
     private val html = bytes(0xEF, 0xBB, 0xBF) + ascii("  <!DOCTYPE html><html><body onload=x()>")
     private val svg = ascii("<?xml version=\"1.0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"><script>")
 

@@ -95,9 +95,12 @@ fun DebugReportReview(
 
 private fun copyDebugReport(context: Context, lines: List<String>) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
-    clipboard.setPrimaryClip(
-        ClipData.newPlainText(context.getString(R.string.debug_clipboard), lines.joinToString("\n")),
-    )
+    val clip = ClipData.newPlainText(context.getString(R.string.debug_clipboard), lines.joinToString("\n"))
+    // F56: keep the report out of clipboard previews and keyboard suggestions.
+    clip.description.extras = android.os.PersistableBundle().apply {
+        putBoolean(if (android.os.Build.VERSION.SDK_INT >= 33) android.content.ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
+    }
+    clipboard.setPrimaryClip(clip)
 }
 
 private fun shareDebugReport(context: Context, lines: List<String>) {

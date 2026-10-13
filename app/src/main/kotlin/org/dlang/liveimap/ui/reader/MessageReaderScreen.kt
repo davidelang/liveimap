@@ -910,8 +910,15 @@ private fun MessageReaderLoaded(
     fun checkTypeThen(row: AttachmentRow, action: AttachmentAction, proceed: () -> Unit) {
         scope.launch {
             val cached = File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, row.section))
+            var tail = ByteArray(0)
             val head = try {
                 if (cached.isFile && cached.length() > 0) {
+                    // F54: the cached copy is decoded, so the ZIP central directory at its end can be read too.
+                    java.io.RandomAccessFile(cached, "r").use { f ->
+                        val len = f.length()
+                        val from = maxOf(0L, len - SniffTailBytes)
+                        tail = ByteArray((len - from).toInt()).also { f.seek(from); f.readFully(it) }
+                    }
                     cached.inputStream().use { input ->
                         val buf = ByteArray(SniffBytes)
                         val n = input.read(buf)
@@ -928,7 +935,7 @@ private fun MessageReaderLoaded(
             } catch (error: Exception) {
                 ByteArray(0)
             }
-            val mismatch = typeMismatch("${row.type}/${row.subtype}", row.filename, head)
+            val mismatch = typeMismatch("${row.type}/${row.subtype}", row.filename, head, tail)
             if (mismatch == null) proceed() else typeWarning = TypeWarning(row, mismatch, action)
         }
     }
