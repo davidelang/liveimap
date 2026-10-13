@@ -202,6 +202,7 @@ suspend fun writePineBook(
     history: Int,
     neverTrim: Boolean,
 ): PineWriteResult {
+    forgetCompletionCaches() // F62: the next completion reads the new revision
     val state = when (val read = readPineBook(session, mailbox)) {
         is PineRead.NotBook -> return PineWriteResult.NotBook(read.notice)
         is PineRead.Ready -> read.state

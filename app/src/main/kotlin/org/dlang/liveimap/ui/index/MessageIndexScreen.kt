@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -1616,7 +1617,7 @@ private fun MessageIndexLoaded(
                 return@withLock false
             }
             val opened = try {
-                session.open(settings)
+                session.openBound(store, settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {

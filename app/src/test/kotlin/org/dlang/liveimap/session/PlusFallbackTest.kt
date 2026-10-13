@@ -27,3 +27,14 @@ class PlusFallbackTest {
         assertNull(plusFallback(tls, "login failed (SASL SCRAM-SHA-256 failed locally)"))
     }
 }
+
+class PlusFallbackTrustTest {
+    private val base = org.dlang.liveimap.settings.AccountSettings(imapHost = "h", tlsMode = org.dlang.liveimap.settings.TlsMode.Implicit)
+
+    @org.junit.Test fun noFallbackWhenTrustCameFromTheUser() {
+        val f = "SASL SCRAM-SHA-256-PLUS failed"
+        org.junit.Assert.assertNotNull(plusFallback(base, f))
+        org.junit.Assert.assertNull(plusFallback(base.copy(acceptInvalidCert = true), f))
+        org.junit.Assert.assertNull(plusFallback(base.copy(certPin = "AB:CD"), f))
+    }
+}

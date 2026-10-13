@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.folder
 
+import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -438,7 +439,7 @@ private fun FolderListLoaded(
                 return@withLock
             }
             val opened = try {
-                session.open(settings)
+                session.openBound(store, settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {

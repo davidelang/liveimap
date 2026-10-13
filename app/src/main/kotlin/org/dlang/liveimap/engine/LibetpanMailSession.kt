@@ -132,10 +132,29 @@ class LibetpanMailSession : MailSession {
         return open(credentials.settings)
     }
 
+    /**
+     * F75: the account this session belongs to, fixed when it opens (openWith's id, else the caller's
+     * AccountTarget, else the account active at that moment). Every later password read, reconnect, SMTP login
+     * and pin save uses this id, never "whatever the drawer shows now".
+     */
+    @Volatile
+    private var ownerId: String? = null
+
+    private fun ownStore(context: android.content.Context): DataStoreSettingsStore {
+        val id = ownerId ?: throw MailFailure("session has no account")
+        return DataStoreSettingsStore(context, id)
+    }
+
     override suspend fun open(account: AccountSettings): OpenResult {
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
+        val owner = credentials?.accountId
+            ?: kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
+            ?: try { DataStoreSettingsStore(context).chosenAccountId() } catch (error: Exception) { null }
+            ?: return OpenResult.Failed("no account")
+        if (ownerId != null && ownerId != owner && handle != 0L) close()
+        ownerId = owner
         val password = LabTestHooks.passwordFor(account.imapHost) ?: credentials?.password ?: try {
-            DataStoreSettingsStore(context).password()
+            ownStore(context).password()
         } catch (error: Exception) {
             return OpenResult.Failed(error.message ?: "keystore unavailable")
         }
@@ -185,7 +204,8 @@ class LibetpanMailSession : MailSession {
                     val pinned = account.copy(certPin = prompt.fingerprint)
                     val text = opened.text
                     try {
-                        DataStoreSettingsStore(context).save(pinned)
+                        // F75: field-level update of this session's own account, not a snapshot save.
+                        ownStore(context).update { it.copy(certPin = prompt.fingerprint) }
                         opened = login(pinned, password)
                     } catch (error: kotlinx.coroutines.CancellationException) {
                         throw error
@@ -204,7 +224,7 @@ class LibetpanMailSession : MailSession {
             } else {
                 val allowed = account.copy(allowPlaintextAuth = true)
                 try {
-                    DataStoreSettingsStore(context).save(allowed)
+                    ownStore(context).update { it.copy(allowPlaintextAuth = true) }
                     opened = login(allowed, password)
                 } catch (error: kotlinx.coroutines.CancellationException) {
                     throw error
@@ -256,7 +276,7 @@ class LibetpanMailSession : MailSession {
             try {
                 // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
                 credentials?.password ?: runBlocking {
-                    DataStoreSettingsStore(context).password()
+                    ownStore(context).password()
                 }
             } catch (error: Exception) {
                 return OpenResult.Failed(error.message ?: "keystore unavailable")
@@ -1060,7 +1080,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
         val context = currentApplication()
         val ownSmtpPassword = credentials?.smtpPassword
-            ?: if (context != null) DataStoreSettingsStore(context).smtpPassword() else ""
+            ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
         // F52 (David): the IMAP password is used for SMTP only when "Same as IMAP password" is ticked; it is never
         // assumed. No SMTP password = send without AUTH (native adds a prompt if the server then demands AUTH).
         val acct = account

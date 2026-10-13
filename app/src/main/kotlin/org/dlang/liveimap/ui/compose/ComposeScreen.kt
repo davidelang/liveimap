@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -353,10 +354,10 @@ private fun ComposeLoaded(
 
     suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
         if (mailbox.isEmpty()) return emptyList()
-        val cached = pineBookIsLoaded()
+        val cached = pineBookIsLoaded(accountId, mailbox)
         val restore = selectedMailbox
         val entries = try {
-            pineEntriesOnce(session, mailbox)
+            pineEntriesOnce(session, accountId, mailbox)
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
@@ -380,7 +381,7 @@ private fun ComposeLoaded(
             emptyList()
         } else {
             try {
-                pineEntriesOnce(session, settings.addressBookMailbox)
+                pineEntriesOnce(session, accountId, settings.addressBookMailbox)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: MailFailure) {
@@ -1036,7 +1037,7 @@ private fun ComposeLoaded(
                 return@withLock
             }
             val opened = try {
-                session.open(settings)
+                session.openBound(store, settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {

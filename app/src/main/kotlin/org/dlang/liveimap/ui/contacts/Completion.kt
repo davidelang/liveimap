@@ -134,28 +134,39 @@ fun completionSourcesInOrder(
     return out
 }
 
-@Volatile
-private var pineEntries: List<AlpineEntry>? = null
+/** F62: one cached book per (account, mailbox); failures and notices are not cached. */
+private val pineEntries = java.util.concurrent.ConcurrentHashMap<String, List<AlpineEntry>>()
 private val pineMutex = Mutex()
 
-fun pineBookIsLoaded(): Boolean = pineEntries != null
+private fun pineKey(accountId: String, mailbox: String) = "$accountId\u0000$mailbox"
 
-suspend fun pineEntriesOnce(session: MailSession, mailbox: String): List<AlpineEntry> {
-    pineEntries?.let { return it }
+fun pineBookIsLoaded(accountId: String, mailbox: String): Boolean = pineEntries.containsKey(pineKey(accountId, mailbox))
+
+/** Drop cached completion data (after an address-book write or Take Address, or a settings change). */
+fun forgetCompletionCaches() {
+    pineEntries.clear()
+    synchronized(contactMemory) {
+        androidEntries = null
+        androidSets = null
+    }
+}
+
+suspend fun pineEntriesOnce(session: MailSession, accountId: String, mailbox: String): List<AlpineEntry> {
     if (mailbox.isEmpty()) return emptyList()
+    val key = pineKey(accountId, mailbox)
+    pineEntries[key]?.let { return it }
     return pineMutex.withLock {
-        pineEntries?.let { return@withLock it }
-        if (mailbox.isEmpty()) return@withLock emptyList()
-        val entries = try {
-            val loaded = loadAlpineBook(session, mailbox)
-            if (loaded.notice != null) emptyList() else loaded.entries
+        pineEntries[key]?.let { return@withLock it }
+        val loaded = try {
+            loadAlpineBook(session, mailbox)
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
-            emptyList()
+            return@withLock emptyList()
         }
-        pineEntries = entries
-        entries
+        if (loaded.notice != null) return@withLock emptyList()
+        pineEntries[key] = loaded.entries
+        loaded.entries
     }
 }
 
@@ -167,6 +178,8 @@ data class AndroidContactSet(
 private val contactMemory = Any()
 private var androidSets: List<AndroidContactSet>? = null
 private var androidEntries: Map<String, List<CompletionEntry>>? = null
+private var androidLoadedAt = 0L
+private const val AndroidCacheMs = 5 * 60 * 1000L
 
 fun hasReadContacts(context: Context): Boolean =
     context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
@@ -186,13 +199,15 @@ fun androidContactSetsOnce(resolver: ContentResolver, packageManager: PackageMan
 
 fun androidEntriesOnce(resolver: ContentResolver): Map<String, List<CompletionEntry>> {
     synchronized(contactMemory) {
-        androidEntries?.let { return it }
+        // F62: contacts added later show up after a few minutes (or at once after forgetCompletionCaches).
+        if (System.currentTimeMillis() - androidLoadedAt < AndroidCacheMs) androidEntries?.let { return it }
         val loaded = try {
             queryAndroidEntries(resolver)
         } catch (_: SecurityException) {
             return emptyMap()
         }
         androidEntries = loaded
+        androidLoadedAt = System.currentTimeMillis()
         return loaded
     }
 }

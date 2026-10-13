@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.contacts
 
+import org.dlang.liveimap.settings.openBound
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.material3.AlertDialog
 import android.Manifest
@@ -468,7 +469,7 @@ private suspend fun connectAccount(store: DataStoreSettingsStore, session: MailS
         return ConnectedAccount.Failed(error.message ?: notConnected)
     }
     val opened = try {
-        session.open(settings)
+        session.openBound(store, settings)
     } catch (error: CancellationException) {
         throw error
     } catch (error: MailFailure) {
@@ -790,6 +791,7 @@ private fun writeAndroidContacts(
     entries: List<CopyContact>,
     overwrite: Boolean = false,
 ) {
+    forgetCompletionCaches() // F62
     val emailToRaw = HashMap<String, Long>()
     for (entry in entries) {
         if (entry.group || entry.rawId <= 0L) continue

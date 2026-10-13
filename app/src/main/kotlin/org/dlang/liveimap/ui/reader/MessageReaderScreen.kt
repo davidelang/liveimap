@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.layout.heightIn
 import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
@@ -1034,7 +1035,7 @@ private fun MessageReaderLoaded(
                 return@withLock
             }
             val opened = try {
-                session.open(settings)
+                session.openBound(store, settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
