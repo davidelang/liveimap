@@ -520,6 +520,7 @@ Your version: %2$s</string>
     <string name="settings_unread_warn">Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.</string>
     <string name="settings_confirm">Confirm</string>
     <string name="settings_dismiss">Dismiss</string>
+    <string name="settings_composing">Composing</string>
     <string name="settings_replying">Replying</string>
     <string name="settings_reply_above">Reply above the quote</string>
     <string name="settings_reply_below">Reply below the quote</string>

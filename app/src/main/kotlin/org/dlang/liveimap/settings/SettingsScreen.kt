@@ -997,27 +997,6 @@ private fun AccountGroup(editor: SettingsEditor) {
                 password = true,
                 ready = editor.ready,
             ) { editor.persistSmtpPassword(it) }
-            LineField(
-                stringResource(R.string.settings_wrap_column),
-                settings.composerWrapColumn.toString(),
-                keyboardType = KeyboardType.Number,
-                ready = editor.ready,
-                interpret = { draft, _ ->
-                    val text = draft.trim()
-                    if (text.isEmpty() || text.any { !it.isDigit() }) {
-                        null
-                    } else {
-                        val number = text.toIntOrNull()
-                        if (number == null || number !in 0..998) null else number.toString()
-                    }
-                },
-                onCommit = { text ->
-                    val number = text.toIntOrNull()
-                    if (number != null && number in 0..998) {
-                        editor.persist(editor.settings.copy(composerWrapColumn = number))
-                    }
-                },
-            )
             BoolField(
                 stringResource(R.string.settings_flowed_text),
                 !settings.quellFlowed,
@@ -1563,6 +1542,35 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
     val sections = rememberSectionOpen("replying")
     val settings = editor.settings
     SettingsPage {
+        // David, 2026-10-12: the wrap column is a Compose setting (it was under Sending/SMTP). Same stored value.
+        SettingsSection(
+            title = stringResource(R.string.settings_composing),
+            summary = settings.composerWrapColumn.toString(),
+            expanded = "composing" in sections.open,
+            onToggle = { sections.toggle("composing") },
+        ) {
+            LineField(
+                stringResource(R.string.settings_wrap_column),
+                settings.composerWrapColumn.toString(),
+                keyboardType = KeyboardType.Number,
+                ready = editor.ready,
+                interpret = { draft, _ ->
+                    val text = draft.trim()
+                    if (text.isEmpty() || text.any { !it.isDigit() }) {
+                        null
+                    } else {
+                        val number = text.toIntOrNull()
+                        if (number == null || number !in 0..998) null else number.toString()
+                    }
+                },
+                onCommit = { text ->
+                    val number = text.toIntOrNull()
+                    if (number != null && number in 0..998) {
+                        editor.persist(editor.settings.copy(composerWrapColumn = number))
+                    }
+                },
+            )
+        }
         SettingsSection(
             title = stringResource(R.string.settings_replying),
             summary = stringResource(
