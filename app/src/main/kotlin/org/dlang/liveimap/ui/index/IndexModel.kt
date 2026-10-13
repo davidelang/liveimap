@@ -90,6 +90,8 @@ fun encodeAdvancedQuery(
     for (step in steps) {
         if (step.kind.contains('\t') || step.kind.contains('\n')) return null
         if (step.argument.contains('\t') || step.argument.contains('\n')) return null
+        // F118: a bare CR (or NUL) is never a valid search argument; the native side refuses it as well
+        if (step.kind.contains('\r') || step.argument.contains('\r') || step.argument.contains('\u0000')) return null
         val mark = if (step.negated) "Not" else "Yes"
         lines.add(mark + "\t" + step.kind + "\t" + step.argument)
     }

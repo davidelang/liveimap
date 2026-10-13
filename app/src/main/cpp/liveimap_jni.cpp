@@ -4544,6 +4544,7 @@ struct mailimap_search_key * keyOr(struct mailimap_search_key * left, struct mai
 enum class TextSlot { From, To, Cc, Subject, Text, Body, Keyword, Unkeyword };
 
 struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
+    if (!lineSafeArgument(argument)) return nullptr; // F118: also checked here for every direct caller
     char * copy = strdup(argument);
     if (copy == nullptr) return nullptr;
     struct mailimap_search_key * key = nullptr;
@@ -4759,7 +4760,23 @@ static struct mailimap_search_key * groupKey(JNIEnv * env, const char * text, in
     return groupKeySep(env, text, depth, 0x1e, 0x1f);
 }
 
+// F118: a search argument goes on the wire inside a quoted string or literal; CR, LF or NUL there would end the
+// command or smuggle a new one. JNI hands NUL over as modified UTF-8 (C0 80), so that is refused too.
+bool lineSafeArgument(const char * text) {
+    if (text == nullptr) return true;
+    for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text); *p != 0; ++p) {
+        if (*p == '\r' || *p == '\n') return false;
+        if (*p == 0xC0 && p[1] == 0x80) return false;
+    }
+    return true;
+}
+
 struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument) {
+    // Group / Advanced carry their own RS/US or LF/TAB structure; their leaves come back through here.
+    if (!sameKind(kind, "Group") && !sameKind(kind, "Advanced") && !lineSafeArgument(argument)) {
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
     if (sameKind(kind, "Uid")) {
         struct mailimap_search_key * key = uidSetKey(argument);
         if (key == nullptr) throwFailure(env, "bad search");
@@ -6890,6 +6907,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars q(env, query);
+    if (!lineSafeArgument(q.c())) { // F118
+        unlockSession(session);
+        throwFailure(env, "bad search");
+        return nullptr;
+    }
     struct mailimap_search_key * key = mailimap_search_key_new_text(strdup(q.c()));
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
