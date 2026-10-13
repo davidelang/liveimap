@@ -1101,6 +1101,27 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    /**
+     * Test account: log in to SMTP without sending anything (connect, TLS, EHLO, AUTH, QUIT). Returns
+     * [SmtpLoginCheck]; failures throw [MailFailure] with the server's text.
+     */
+    override suspend fun smtpLoginCheck(): SmtpLoginCheck {
+        val context = currentApplication()
+        val ownSmtpPassword = credentials?.smtpPassword
+            ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
+        val acct = account
+        val smtpPassword = smtpPasswordFor(acct?.smtpSameAsImap == true, ownSmtpPassword, loggedInPassword.orEmpty())
+        val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
+        val code = keeper.write("send") {
+            nativeSmtp(requireHandle(), null, emptyArray(), smtpUser, smtpPassword, 0, "")
+        }
+        return when (code) {
+            2 -> SmtpLoginCheck.LoggedIn
+            3 -> SmtpLoginCheck.NoAuthOffered
+            else -> SmtpLoginCheck.NoPassword
+        }
+    }
+
     override fun close() {
         if (handle != 0L) TrafficRecorder.event("main", "close")
         closeLiveSession()
@@ -1432,7 +1453,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeStopWatch(handle: Long)
     private external fun nativeSmtp(
         handle: Long,
-        message: ByteArray,
+        message: ByteArray?,
         recipients: Array<String>,
         smtpUsername: String,
         smtpPassword: String,

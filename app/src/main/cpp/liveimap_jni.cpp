@@ -8462,6 +8462,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         unlockSession(session);
         return 0;
     }
+    if (message == nullptr) {
+        // Test account (David, 2026-10-12): connect, TLS, EHLO and AUTH only; nothing is sent. QUIT.
+        bool authed = !authUser.empty();
+        mailsmtp_quit(smtp);
+        mailsmtp_free(smtp);
+        unlockSession(session);
+        return authed ? 2 : (offeredAuth.empty() ? 3 : 4);
+    }
     jsize nmsg = message != nullptr ? env->GetArrayLength(message) : 0;
     jbyte * raw = nmsg > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
     if (env->ExceptionCheck()) {

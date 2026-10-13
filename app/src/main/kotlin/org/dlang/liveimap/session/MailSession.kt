@@ -146,5 +146,9 @@ interface MailSession {
     /** As [smtpSend] with MAIL FROM [envelopeFrom]; empty = the account address. Sessions without SMTP ignore it. */
     suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         smtpSend(rfc822, recipients, dsnNotify)
+    /** SMTP login only, nothing sent (Test account). */
+    suspend fun smtpLoginCheck(): SmtpLoginCheck = throw MailFailure("not supported")
     fun close()
 }
+
+enum class SmtpLoginCheck { LoggedIn, NoAuthOffered, NoPassword }

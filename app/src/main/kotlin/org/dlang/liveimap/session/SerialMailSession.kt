@@ -223,6 +223,8 @@ class SerialMailSession(
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         onLane { inner.smtpSendFrom(rfc822, recipients, dsnNotify, envelopeFrom) }
 
+    override suspend fun smtpLoginCheck(): SmtpLoginCheck = onLane { inner.smtpLoginCheck() }
+
     override fun close() {
         inner.close()
         synchronized(laneLock) {

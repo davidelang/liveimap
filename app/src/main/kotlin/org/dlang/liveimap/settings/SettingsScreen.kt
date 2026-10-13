@@ -770,195 +770,16 @@ private fun AccountGroup(editor: SettingsEditor) {
         TextButton(onClick = { editor.addAccount() }) {
             Text(stringResource(R.string.settings_add_account))
         }
-        SettingsSection(
-            title = stringResource(R.string.settings_server),
-            summary = hostAndPort(
-                settings.imapHost,
-                settings.imapPort,
-                stringResource(R.string.settings_no_server),
-            ),
-            expanded = "server" in sections.open,
-            onToggle = { sections.toggle("server") },
-        ) {
-            Text(stringResource(R.string.settings_plaintext_ports))
-            if (serverChecking) {
-                androidx.compose.foundation.layout.Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
-                }
-            }
-            LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
-                userServerSave(server.copy(imapHost = it))
-            }
-            PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
-                userServerSave(server.copy(imapPort = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_tls),
-                TlsMode.entries,
-                server.tlsMode,
-                { tlsName(it) },
-            ) { mode ->
-                userServerSave(server.withTlsMode(mode))
-            }
-            BoolField(
-                stringResource(R.string.settings_allow_plaintext),
-                server.allowPlaintextAuth,
-                note = stringResource(R.string.settings_allow_plaintext_note),
-            ) { enabled ->
-                userServerSave(server.copy(allowPlaintextAuth = enabled))
-            }
-            BoolField(
-                stringResource(R.string.settings_accept_invalid_cert),
-                server.acceptInvalidCert,
-                note = stringResource(R.string.settings_accept_invalid_cert_note),
-            ) { enabled ->
-                userServerSave(server.copy(acceptInvalidCert = enabled))
-            }
-            BoolField(
-                stringResource(R.string.settings_allow_old_tls),
-                server.allowOldTls,
-                note = stringResource(R.string.settings_allow_old_tls_note),
-            ) { enabled ->
-                userServerSave(server.copy(allowOldTls = enabled))
-            }
-            if (serverDraft != null) {
-                androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    androidx.compose.material3.Button(
-                        onClick = { saveServer() },
-                        enabled = !serverChecking,
-                        modifier = Modifier.testTag("server-save"),
-                    ) { Text(stringResource(R.string.settings_save)) }
-                    TextButton(onClick = { serverDraft = null }, modifier = Modifier.padding(start = 8.dp)) {
-                        Text(stringResource(R.string.settings_discard))
-                    }
-                }
-            }
-            LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
-                editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
-            }
-            ClientCertField(editor)
-            if (settings.certPin.isBlank()) {
-                Text(stringResource(R.string.settings_cert_pin_none))
-            } else {
-                Text(settings.certPin)
-                TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
-                    Text(stringResource(R.string.settings_cert_pin_clear))
-                }
-            }
-            LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
-                editor.persist(editor.settings.copy(sieveHost = it))
-            }
-            PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
-                editor.persist(editor.settings.copy(sievePort = it))
-            }
-            if (settings.sieveCertPin.isBlank()) {
-                Text(stringResource(R.string.settings_sieve_cert_pin_none))
-            } else {
-                Text(settings.sieveCertPin)
-                TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
-                    Text(stringResource(R.string.settings_sieve_cert_pin_clear))
-                }
-            }
-            val noSieveHost = stringResource(R.string.settings_sieve_no_host)
-            TextButton(
-                onClick = {
-                    if (checkingSieve) return@TextButton
-                    val (host, port) = sieveEndpoint(editor.settings)
-                    if (host.isBlank()) {
-                        sieveReport = noSieveHost
-                        return@TextButton
-                    }
-                    val mode = editor.settings.tlsMode
-                    val pin = editor.settings.sieveCertPin
-                    checkingSieve = true
-                    sieveReport = ""
-                    editor.ui.launch {
-                        try {
-                            sieveReport = sieveCheckText(
-                                withContext(editor.settings.tlsPolicy()) {
-                                    greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
-                                        editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
-                                    }
-                                },
-                            )
-                        } catch (failure: SieveFailure) {
-                            sieveReport = failure.text
-                        } finally {
-                            checkingSieve = false
-                        }
-                    }
-                },
-                enabled = !checkingSieve,
-            ) {
-                Text(stringResource(R.string.settings_sieve_check))
-            }
-            if (sieveReport.isNotEmpty()) Text(sieveReport)
-        }
-        val watchedNames = settings.watchedFolders
-        SettingsSection(
-            title = stringResource(R.string.settings_watched_folders),
-            summary = if (watchedNames.isEmpty()) {
-                stringResource(R.string.settings_watched_none)
-            } else {
-                watchedNames.size.toString()
-            },
-            expanded = "watched" in sections.open,
-            onToggle = { sections.toggle("watched") },
-        ) {
-            Text(stringResource(R.string.settings_watched_folder_note))
-            LineField(
-                label = stringResource(R.string.settings_extra_folders),
-                value = watchedFolderText(watchedNames),
-                singleLine = false,
-                ready = editor.ready,
-                interpret = { draft, stored ->
-                    val next = watchedFolderText(watchedFoldersFromText(draft))
-                    if (next == stored) null else next
-                },
-                onCommit = { text ->
-                    editor.persist(editor.settings.copy(watchedFolders = watchedFoldersFromText(text)))
-                },
-            )
-            LineField(
-                label = stringResource(R.string.settings_extra_idle_budget),
-                value = settings.extraIdleBudget.toString(),
-                ready = editor.ready,
-                interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
-                onCommit = { text ->
-                    val budget = extraIdleBudgetFromText(text) ?: return@LineField
-                    editor.persist(editor.settings.copy(extraIdleBudget = budget))
-                },
-            )
-        }
         val noUser = stringResource(R.string.settings_no_user)
         SettingsSection(
             title = stringResource(R.string.settings_identity),
-            summary = settings.username.ifBlank { noUser },
+            summary = settings.email.ifBlank { settings.displayName.ifBlank { noUser } },
             expanded = "identity" in sections.open,
             onToggle = { sections.toggle("identity") },
         ) {
             LineField(stringResource(R.string.settings_friendly_name), settings.friendlyName, ready = editor.ready) {
                 editor.persist(editor.settings.copy(friendlyName = it))
             }
-            LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
-                editor.persist(
-                    editor.settings.copy(
-                        username = draft,
-                        email = emailDefaultedFromUsername(draft, editor.settings.email),
-                    ),
-                )
-            }
-            LineField(
-                stringResource(R.string.settings_password),
-                editor.password,
-                KeyboardType.Password,
-                password = true,
-                ready = editor.ready,
-            ) { editor.persistPassword(it) }
             LineField(stringResource(R.string.settings_email), settings.email, KeyboardType.Email, ready = editor.ready) {
                 editor.persist(editor.settings.copy(email = it))
             }
@@ -966,57 +787,272 @@ private fun AccountGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(displayName = it))
             }
         }
+        // David, 2026-10-12: identity first, then IMAP or JMAP, then that protocol's server questions.
+        SettingsSection(
+            title = stringResource(R.string.settings_mail_access),
+            summary = stringResource(if (settings.jmapFolders) R.string.settings_access_jmap else R.string.settings_access_imap),
+            expanded = "access" in sections.open,
+            onToggle = { sections.toggle("access") },
+        ) {
+            ChoiceField(
+                stringResource(R.string.settings_mail_access),
+                listOf(false, true),
+                settings.jmapFolders,
+                { stringResource(if (it) R.string.settings_access_jmap else R.string.settings_access_imap) },
+            ) { jmap -> editor.persist(withMailAccess(editor.settings, jmap)) }
+        }
+        if (settings.jmapFolders) {
+            SettingsSection(
+                title = stringResource(R.string.settings_jmap_server),
+                summary = server.imapHost.ifBlank { stringResource(R.string.settings_no_server) },
+                expanded = "server" in sections.open,
+                onToggle = { sections.toggle("server") },
+            ) {
+                Text(stringResource(R.string.settings_jmap_server_note))
+                LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
+                    userServerSave(server.copy(imapHost = it))
+                }
+                LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
+                    editor.persist(
+                        editor.settings.copy(
+                            username = draft,
+                            email = emailDefaultedFromUsername(draft, editor.settings.email),
+                        ),
+                    )
+                }
+                LineField(
+                    stringResource(R.string.settings_password),
+                    editor.password,
+                    KeyboardType.Password,
+                    password = true,
+                    ready = editor.ready,
+                ) { editor.persistPassword(it) }
+            }
+        } else {
+            SettingsSection(
+                title = stringResource(R.string.settings_server),
+                summary = hostAndPort(
+                    settings.imapHost,
+                    settings.imapPort,
+                    stringResource(R.string.settings_no_server),
+                ),
+                expanded = "server" in sections.open,
+                onToggle = { sections.toggle("server") },
+            ) {
+                Text(stringResource(R.string.settings_plaintext_ports))
+                LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
+                    editor.persist(
+                        editor.settings.copy(
+                            username = draft,
+                            email = emailDefaultedFromUsername(draft, editor.settings.email),
+                        ),
+                    )
+                }
+                LineField(
+                    stringResource(R.string.settings_password),
+                    editor.password,
+                    KeyboardType.Password,
+                    password = true,
+                    ready = editor.ready,
+                ) { editor.persistPassword(it) }
+                if (serverChecking) {
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
+                    }
+                }
+                LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
+                    userServerSave(server.copy(imapHost = it))
+                }
+                PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
+                    userServerSave(server.copy(imapPort = it))
+                }
+                ChoiceField(
+                    stringResource(R.string.settings_tls),
+                    TlsMode.entries,
+                    server.tlsMode,
+                    { tlsName(it) },
+                ) { mode ->
+                    userServerSave(server.withTlsMode(mode))
+                }
+                BoolField(
+                    stringResource(R.string.settings_allow_plaintext),
+                    server.allowPlaintextAuth,
+                    note = stringResource(R.string.settings_allow_plaintext_note),
+                ) { enabled ->
+                    userServerSave(server.copy(allowPlaintextAuth = enabled))
+                }
+                BoolField(
+                    stringResource(R.string.settings_accept_invalid_cert),
+                    server.acceptInvalidCert,
+                    note = stringResource(R.string.settings_accept_invalid_cert_note),
+                ) { enabled ->
+                    userServerSave(server.copy(acceptInvalidCert = enabled))
+                }
+                BoolField(
+                    stringResource(R.string.settings_allow_old_tls),
+                    server.allowOldTls,
+                    note = stringResource(R.string.settings_allow_old_tls_note),
+                ) { enabled ->
+                    userServerSave(server.copy(allowOldTls = enabled))
+                }
+                if (serverDraft != null) {
+                    androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        TextButton(onClick = { serverDraft = null }) {
+                            Text(stringResource(R.string.settings_discard))
+                        }
+                    }
+                }
+                LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
+                }
+                ClientCertField(editor)
+                if (settings.certPin.isBlank()) {
+                    Text(stringResource(R.string.settings_cert_pin_none))
+                } else {
+                    Text(settings.certPin)
+                    TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
+                        Text(stringResource(R.string.settings_cert_pin_clear))
+                    }
+                }
+                LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(sieveHost = it))
+                }
+                PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(sievePort = it))
+                }
+                if (settings.sieveCertPin.isBlank()) {
+                    Text(stringResource(R.string.settings_sieve_cert_pin_none))
+                } else {
+                    Text(settings.sieveCertPin)
+                    TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
+                        Text(stringResource(R.string.settings_sieve_cert_pin_clear))
+                    }
+                }
+                val noSieveHost = stringResource(R.string.settings_sieve_no_host)
+                TextButton(
+                    onClick = {
+                        if (checkingSieve) return@TextButton
+                        val (host, port) = sieveEndpoint(editor.settings)
+                        if (host.isBlank()) {
+                            sieveReport = noSieveHost
+                            return@TextButton
+                        }
+                        val mode = editor.settings.tlsMode
+                        val pin = editor.settings.sieveCertPin
+                        checkingSieve = true
+                        sieveReport = ""
+                        editor.ui.launch {
+                            try {
+                                sieveReport = sieveCheckText(
+                                    withContext(editor.settings.tlsPolicy()) {
+                                        greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
+                                            editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
+                                        }
+                                    },
+                                )
+                            } catch (failure: SieveFailure) {
+                                sieveReport = failure.text
+                            } finally {
+                                checkingSieve = false
+                            }
+                        }
+                    },
+                    enabled = !checkingSieve,
+                ) {
+                    Text(stringResource(R.string.settings_sieve_check))
+                }
+                if (sieveReport.isNotEmpty()) Text(sieveReport)
+            }
+        }
         SettingsSection(
             title = stringResource(R.string.settings_sending),
-            summary = hostAndPort(
-                settings.smtpHost,
-                settings.smtpPort,
-                stringResource(R.string.settings_no_smtp),
-            ),
+            summary = if (settings.emailSubmission) {
+                stringResource(R.string.settings_send_over_jmap)
+            } else {
+                hostAndPort(settings.smtpHost, settings.smtpPort, stringResource(R.string.settings_no_smtp))
+            },
             expanded = "sending" in sections.open,
             onToggle = { sections.toggle("sending") },
         ) {
-            LineField(stringResource(R.string.settings_smtp_host), settings.smtpHost, ready = editor.ready) {
-                editor.persist(editor.settings.copy(smtpHost = it))
-            }
-            PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
-                editor.persist(editor.settings.copy(smtpPort = it))
-            }
-            Text(stringResource(R.string.settings_smtp_username_hint))
-            LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
-                editor.persist(editor.settings.copy(smtpUsername = it))
-            }
-            Text(stringResource(R.string.settings_smtp_password_hint))
-            BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
-                editor.persist(editor.settings.copy(smtpSameAsImap = it))
-            }
-            LineField(
-                stringResource(R.string.settings_smtp_password),
-                editor.smtpPassword,
-                KeyboardType.Password,
-                password = true,
-                ready = editor.ready,
-            ) { editor.persistSmtpPassword(it) }
             BoolField(
-                stringResource(R.string.settings_flowed_text),
-                !settings.quellFlowed,
-                note = stringResource(R.string.settings_flowed_text_note),
-            ) { enabled ->
-                editor.persist(editor.settings.copy(quellFlowed = !enabled))
-            }
-            BoolField(
-                stringResource(R.string.settings_email_submission),
+                stringResource(R.string.settings_send_over_jmap),
                 settings.emailSubmission,
                 note = stringResource(R.string.settings_email_submission_note),
             ) { enabled ->
                 editor.persist(editor.settings.copy(emailSubmission = enabled))
             }
-            BoolField(
-                stringResource(R.string.settings_jmap_folders),
-                settings.jmapFolders,
-                note = stringResource(R.string.settings_jmap_folders_note),
-            ) { enabled ->
-                editor.persist(editor.settings.copy(jmapFolders = enabled))
+            // David, 2026-10-12: no SMTP questions when sending goes over JMAP.
+            if (!settings.emailSubmission) {
+                LineField(stringResource(R.string.settings_smtp_host), settings.smtpHost, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(smtpHost = it))
+                }
+                PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(smtpPort = it))
+                }
+                Text(stringResource(R.string.settings_smtp_username_hint))
+                LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
+                    editor.persist(editor.settings.copy(smtpUsername = it))
+                }
+                Text(stringResource(R.string.settings_smtp_password_hint))
+                BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
+                    editor.persist(editor.settings.copy(smtpSameAsImap = it))
+                }
+                LineField(
+                    stringResource(R.string.settings_smtp_password),
+                    editor.smtpPassword,
+                    KeyboardType.Password,
+                    password = true,
+                    ready = editor.ready,
+                ) { editor.persistSmtpPassword(it) }
+            }
+            sendingProblem(settings)?.let { res ->
+                Text(
+                    stringResource(res),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-way-to-send"),
+                )
+            }
+        }
+        if (!settings.jmapFolders) {
+            val watchedNames = settings.watchedFolders
+            SettingsSection(
+                title = stringResource(R.string.settings_watched_folders),
+                summary = if (watchedNames.isEmpty()) {
+                    stringResource(R.string.settings_watched_none)
+                } else {
+                    watchedNames.size.toString()
+                },
+                expanded = "watched" in sections.open,
+                onToggle = { sections.toggle("watched") },
+            ) {
+                Text(stringResource(R.string.settings_watched_folder_note))
+                LineField(
+                    label = stringResource(R.string.settings_extra_folders),
+                    value = watchedFolderText(watchedNames),
+                    singleLine = false,
+                    ready = editor.ready,
+                    interpret = { draft, stored ->
+                        val next = watchedFolderText(watchedFoldersFromText(draft))
+                        if (next == stored) null else next
+                    },
+                    onCommit = { text ->
+                        editor.persist(editor.settings.copy(watchedFolders = watchedFoldersFromText(text)))
+                    },
+                )
+                LineField(
+                    label = stringResource(R.string.settings_extra_idle_budget),
+                    value = settings.extraIdleBudget.toString(),
+                    ready = editor.ready,
+                    interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
+                    onCommit = { text ->
+                        val budget = extraIdleBudgetFromText(text) ?: return@LineField
+                        editor.persist(editor.settings.copy(extraIdleBudget = budget))
+                    },
+                )
             }
         }
         SettingsSection(
@@ -1042,46 +1078,43 @@ private fun AccountGroup(editor: SettingsEditor) {
                 Text(stringResource(R.string.settings_export_pinerc))
             }
         }
-        SettingsSection(
-            title = stringResource(R.string.settings_advanced),
-            summary = stringResource(R.string.settings_test_server),
-            expanded = "advanced" in sections.open,
-            onToggle = { sections.toggle("advanced") },
+        // David, 2026-10-12: Save and Test account side by side; Test account logs in (IMAP or JMAP, and SMTP).
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            androidx.compose.material3.Button(
+                onClick = { saveServer() },
+                enabled = serverDraft != null && !serverChecking,
+                modifier = Modifier.testTag("account-save"),
+            ) { Text(stringResource(R.string.settings_save)) }
             TextButton(
                 onClick = {
                     if (!probing) {
-                        val account = editor.settings
+                        val candidate = editor.settings.withServerOf(server)
                         probing = true
+                        serverReport = emptyList()
                         editor.ui.launch {
                             val id = editor.bound.chosenAccountId()
-                            if (id == null) {
+                            try {
+                                serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, editor.password, editor.smtpPassword))
+                            } finally {
                                 probing = false
-                            } else {
-                                val session = mailSession(id)
-                                try {
-                                    serverReport = probeServer(session, account)
-                                } finally {
-                                    probing = false
-                                }
                             }
                         }
                     }
                 },
                 enabled = !probing,
+                modifier = Modifier.testTag("account-test"),
             ) {
-                Text(
-                    stringResource(
-                        if (probing) R.string.settings_testing else R.string.settings_test_server,
-                    ),
-                )
+                Text(stringResource(if (probing) R.string.settings_testing else R.string.settings_test_account))
             }
-            for (line in serverReport) {
-                Text(text = line, fontFamily = FontFamily.Monospace)
-            }
-            // F46: the acceptance runner is a developer tool; release builds do not show it.
-            if (org.dlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
         }
+        for (line in serverReport) {
+            Text(text = line, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        // F46: the acceptance runner is a developer tool; release builds do not show it.
+        if (org.dlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
     }
     val removing = removingId
     if (removing != null) {
@@ -1570,6 +1603,13 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
                     }
                 },
             )
+            BoolField(
+                stringResource(R.string.settings_flowed_text),
+                !settings.quellFlowed,
+                note = stringResource(R.string.settings_flowed_text_note),
+            ) { enabled ->
+                editor.persist(editor.settings.copy(quellFlowed = !enabled))
+            }
         }
         SettingsSection(
             title = stringResource(R.string.settings_replying),
