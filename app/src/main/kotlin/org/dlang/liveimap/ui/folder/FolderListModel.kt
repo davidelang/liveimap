@@ -58,7 +58,7 @@ class FolderListModel(
                 sawInboxPrefixLevel = true
                 if (inboxPrefix == null) inboxPrefix = ns.prefix
                 for (entry in level) {
-                    if (entry.mailbox == "INBOX") {
+                    if (isInboxName(entry.mailbox)) {
                         if (inbox == null) {
                             inbox = entryNode(entry, ns.prefix)
                             inboxPrefix = ns.prefix
@@ -70,11 +70,11 @@ class FolderListModel(
             } else {
                 for (entry in level) {
                     val underInbox = mark != null &&
-                        entry.mailbox != "INBOX" &&
+                        !isInboxName(entry.mailbox) &&
                         entry.mailbox.startsWith(mark)
                     if (underInbox) {
                         addChild(inboxChildren, entryNode(entry, ns.prefix))
-                    } else if (entry.mailbox == "INBOX") {
+                    } else if (isInboxName(entry.mailbox)) {
                         if (inbox == null) {
                             inbox = entryNode(entry, ns.prefix)
                             inboxPrefix = ns.prefix
@@ -123,7 +123,11 @@ class FolderListModel(
         return rows
     }
 
+    /** F66: LIST round trips one "next unseen" walk may spend (big shared namespaces); past it, deeper levels are skipped. */
+    private var unseenListBudget = 0
+
     suspend fun unseenFolderOrder(): List<Pair<String, Int?>> {
+        unseenListBudget = UnseenListLimit
         val namespaces = session.namespaces()
         val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
         val other = namespaces.filter { it.kind == NamespaceKind.Other }
@@ -146,7 +150,7 @@ class FolderListModel(
                 sawInboxPrefixLevel = true
                 if (inboxPrefix == null) inboxPrefix = ns.prefix
                 for (entry in level) {
-                    if (entry.mailbox == "INBOX") {
+                    if (isInboxName(entry.mailbox)) {
                         if (inbox == null) {
                             inbox = entryNode(entry, ns.prefix)
                             inboxPrefix = ns.prefix
@@ -158,11 +162,11 @@ class FolderListModel(
             } else {
                 for (entry in level) {
                     val underInbox = mark != null &&
-                        entry.mailbox != "INBOX" &&
+                        !isInboxName(entry.mailbox) &&
                         entry.mailbox.startsWith(mark)
                     if (underInbox) {
                         addChild(inboxChildren, entryNode(entry, ns.prefix))
-                    } else if (entry.mailbox == "INBOX") {
+                    } else if (isInboxName(entry.mailbox)) {
                         if (inbox == null) {
                             inbox = entryNode(entry, ns.prefix)
                             inboxPrefix = ns.prefix
@@ -387,6 +391,9 @@ class FolderListModel(
     }
 
     private suspend fun unseenChildren(node: LevelNode): List<LevelNode> {
+        if (!node.namespaceRoot && node.childrenComplete) return node.cachedChildren.orEmpty()
+        if (unseenListBudget <= 0) return emptyList() // F66
+        unseenListBudget--
         if (node.namespaceRoot) {
             return session.listLevel(node.namespacePrefix, null, true)
                 .map { entryNode(it, node.namespacePrefix) }
@@ -445,7 +452,7 @@ class FolderListModel(
         val inboxMark = inboxChildPrefix(ns.delimiter)
         val inboxNamespace = inboxMark != null && ns.prefix == inboxMark
         if (inboxNamespace) {
-            if (mailbox != "INBOX") ancestors += "INBOX"
+            if (!isInboxName(mailbox)) ancestors += "INBOX"
         } else if (ns.prefix.isNotEmpty()) {
             ancestors += ns.prefix
         }
@@ -511,3 +518,8 @@ fun nextUnseenFolder(current: String, ordered: List<Pair<String, Int?>>): String
     }
     return null
 }
+
+/** F66: INBOX is case-insensitive (RFC 3501 5.1); a server may list it as "Inbox". */
+internal fun isInboxName(name: String): Boolean = name.equals("INBOX", ignoreCase = true)
+
+internal const val UnseenListLimit = 300
