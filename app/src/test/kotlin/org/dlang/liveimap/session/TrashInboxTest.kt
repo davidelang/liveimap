@@ -10,8 +10,8 @@ class TrashInboxTest {
         assertEquals("", usableTrashName("Inbox"))
         assertEquals("Trash", usableTrashName("Trash"))
         val entries = listOf(
-            FolderEntry("INBOX", '/', specialUse = "\\Trash"),
-            FolderEntry("Deleted", '/', specialUse = "\\Trash"),
+            FolderEntry("INBOX", "INBOX", false, '/', specialUse = "\\Trash"),
+            FolderEntry("Deleted", "Deleted", false, '/', specialUse = "\\Trash"),
         )
         assertEquals("Deleted", mailboxMarkedTrash(entries))
     }
