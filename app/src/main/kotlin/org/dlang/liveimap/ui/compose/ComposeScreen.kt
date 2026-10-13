@@ -66,8 +66,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.jmap.JmapFailure
-import org.dlang.liveimap.jmap.JmapSendChoice
-import org.dlang.liveimap.jmap.jmapSendChosen
+import org.dlang.liveimap.jmap.jmapSend
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.platformJmapExchange
 import org.dlang.liveimap.jmap.pinnedJmapPost
@@ -810,23 +809,17 @@ private fun ComposeLoaded(
                 }
                 try {
                     val offer = offerForAccount(account, ::platformJmapExchange)
-                    when (
-                        jmapSendChosen(
-                            true,
-                            offer,
-                            copy.bytes,
-                            account.email,
-                            copy.recipients,
-                            account.username,
-                            password,
-                            account.certPin,
-                            pinnedJmapUpload(account.certPin),
-                            pinnedJmapPost(account.certPin),
-                        )
-                    ) {
-                        is JmapSendChoice.Submitted -> Unit
-                        JmapSendChoice.Smtp -> return false
-                    }
+                    jmapSend(
+                        offer,
+                        copy.bytes,
+                        account.email,
+                        copy.recipients,
+                        account.username,
+                        password,
+                        account.certPin,
+                        pinnedJmapUpload(account.certPin),
+                        pinnedJmapPost(account.certPin),
+                    )
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: JmapFailure) {
@@ -1172,23 +1165,17 @@ private fun ComposeLoaded(
                         }
                         try {
                             val offer = offerForAccount(account, ::platformJmapExchange)
-                            when (
-                                jmapSendChosen(
-                                    true,
-                                    offer,
-                                    built.rfc822,
-                                    account.email,
-                                    built.recipients,
-                                    account.username,
-                                    password,
-                                    account.certPin,
-                                    pinnedJmapUpload(account.certPin),
-                                    pinnedJmapPost(account.certPin),
-                                )
-                            ) {
-                                is JmapSendChoice.Submitted -> Unit
-                                JmapSendChoice.Smtp -> return@launchLocked false
-                            }
+                            jmapSend(
+                                offer,
+                                built.rfc822,
+                                account.email,
+                                built.recipients,
+                                account.username,
+                                password,
+                                account.certPin,
+                                pinnedJmapUpload(account.certPin),
+                                pinnedJmapPost(account.certPin),
+                            )
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: JmapFailure) {
@@ -1550,26 +1537,19 @@ private fun ComposeLoaded(
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 try {
                                     val offer = offerForAccount(account, ::platformJmapExchange)
-                                    when (
-                                        jmapSendChosen(
-                                            true,
-                                            offer,
-                                            bounced,
-                                            account.email,
-                                            listOf(recipient),
-                                            account.username,
-                                            password,
-                                            account.certPin,
-                                            pinnedJmapUpload(account.certPin),
-                                            pinnedJmapPost(account.certPin),
-                                        )
-                                    ) {
-                                        is JmapSendChoice.Submitted -> {
-                                            storeAcceptedFlags(listOf(uid))
-                                            continue
-                                        }
-                                        JmapSendChoice.Smtp -> return@launchLocked false
-                                    }
+                                    jmapSend(
+                                        offer,
+                                        bounced,
+                                        account.email,
+                                        listOf(recipient),
+                                        account.username,
+                                        password,
+                                        account.certPin,
+                                        pinnedJmapUpload(account.certPin),
+                                        pinnedJmapPost(account.certPin),
+                                    )
+                                    storeAcceptedFlags(listOf(uid))
+                                    continue
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: JmapFailure) {

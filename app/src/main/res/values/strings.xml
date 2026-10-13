@@ -50,7 +50,6 @@
     <string name="licenses_unreadable">The license text could not be read.</string>
     <string name="drawer_inbox">INBOX</string>
     <string name="drawer_postponed">Postponed</string>
-    <string name="drawer_all_folders">All folders</string>
     <string name="filter_add">Add filter</string>
     <string name="filter_edit_list">Edit filters</string>
     <string name="filter_edit">Edit filter</string>
@@ -587,6 +586,7 @@ Your version: %2$s</string>
     <string name="settings_move_mailbox">Move mailbox</string>
     <string name="settings_flag">Flag</string>
     <string name="settings_choose">Choose</string>
+    <string name="settings_pick_group">Choose a settings group on the left.</string>
     <string name="settings_inbox_line">INBOX %1$s</string>
     <string name="settings_mailbox_rule">%1$s: %2$s</string>
     <string name="settings_view_line">%1$s %2$s %3$s</string>

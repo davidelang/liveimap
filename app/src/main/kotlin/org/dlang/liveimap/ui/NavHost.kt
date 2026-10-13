@@ -50,6 +50,7 @@ import androidx.compose.material3.Scaffold
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import org.dlang.liveimap.settings.UnsavedEdits
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberDrawerState
@@ -258,6 +259,11 @@ fun LiveImapNavHost() {
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
     val drawerGestures = route == "folders"
+    // David, 2026-10-12: in two-pane layouts Settings shows its group list on the left and the opened group on the
+    // right, with no drawer.
+    val settingsSplit = split && settingsSplitRoute(route)
+    val settingsSplitNow = rememberUpdatedState(settingsSplit)
+    var settingsListDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var header by remember { mutableStateOf("") }
     var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
     var drawerAccounts by remember { mutableStateOf<List<DrawerAccount>>(emptyList()) }
@@ -749,9 +755,17 @@ fun LiveImapNavHost() {
             }
             composable("settings") {
                 UpPage("Settings", onUp = { navController.navigateUp() }) {
-                    SettingsGroupList(onOpen = { group ->
-                        navController.navigate("settings/${group.route}")
-                    })
+                    if (settingsSplitNow.value) {
+                        // The list is in the left pane; this pane waits for a group.
+                        Text(
+                            stringResource(R.string.settings_pick_group),
+                            modifier = Modifier.padding(16.dp).testTag("settings-pick-group"),
+                        )
+                    } else {
+                        SettingsGroupList(onOpen = { group ->
+                            navController.navigate("settings/${group.route}")
+                        })
+                    }
                 }
             }
             composable("settings/folders/expanded") {
@@ -1203,7 +1217,35 @@ fun LiveImapNavHost() {
     }
     LiveImapScaffold {
         val tree = customTree
-        if (tree != null) {
+        if (settingsSplit) {
+            val openGroup = currentEntry?.arguments?.getString("group")?.let(SettingsGroup::fromRoute)
+            AxisSplit(
+                axis = axis,
+                leadingDp = settingsListDp,
+                fallback = { span -> minOf(360f, span / 2f) },
+                onSpan = { _ -> },
+                onDrag = { delta, span ->
+                    val max = (span - 8f).coerceAtLeast(0f)
+                    val base = if (settingsListDp < 0f) minOf(360f, span / 2f) else settingsListDp
+                    settingsListDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
+                },
+                leading = {
+                    UpPage("Settings", onUp = { UnsavedEdits.guard { navController.popBackStack("settings", inclusive = true) } }) {
+                        SettingsGroupList(selected = openGroup, onOpen = { group ->
+                            UnsavedEdits.guard {
+                                navController.navigate("settings/${group.route}") {
+                                    popUpTo("settings")
+                                    launchSingleTop = true
+                                }
+                            }
+                        })
+                    }
+                },
+                trailing = {
+                    NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
+                },
+            )
+        } else if (tree != null) {
             PaneTree(tree, "T", treeDp, mailNode(tree), { CustomMailArea() }) { content ->
                 when (content) {
                     PaneContent.Folders -> folderListPane()
@@ -1345,14 +1387,14 @@ private fun ColumnScope.DrawerSheetContent(
             text = header,
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onAllFolders)
+                .clickable { UnsavedEdits.guard(onAllFolders) }
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .testTag("drawer-account-name"),
         )
         NavigationDrawerItem(
             label = { Text(stringResource(R.string.drawer_inbox)) },
             selected = false,
-            onClick = onInbox,
+            onClick = { UnsavedEdits.guard(onInbox) },
         )
         val postponedRow = postponedDrawerMailbox(postponedMailbox)
         if (postponedRow != null) {
@@ -1360,23 +1402,18 @@ private fun ColumnScope.DrawerSheetContent(
                 label = { Text(postponedRow) },
                 selected = false,
                 modifier = Modifier.semantics { contentDescription = postponedDescription },
-                onClick = { onPostponed(postponedRow) },
+                onClick = { UnsavedEdits.guard { onPostponed(postponedRow) } },
             )
         }
         NavigationDrawerItem(
-            label = { Text(stringResource(R.string.drawer_all_folders)) },
-            selected = false,
-            onClick = onAllFolders,
-        )
-        NavigationDrawerItem(
             label = { Text(stringResource(R.string.filter_add)) },
             selected = false,
-            onClick = onAddFilter,
+            onClick = { UnsavedEdits.guard(onAddFilter) },
         )
         NavigationDrawerItem(
             label = { Text(stringResource(R.string.filter_edit_list)) },
             selected = false,
-            onClick = onEditFilters,
+            onClick = { UnsavedEdits.guard(onEditFilters) },
         )
         for (favorite in favorites) {
             val shown = favoriteDrawerLabel(favorite)
@@ -1391,8 +1428,8 @@ private fun ColumnScope.DrawerSheetContent(
                     Modifier
                         .matchParentSize()
                         .combinedClickable(
-                            onClick = { onFavorite(favorite) },
-                            onLongClick = { onEditFavorite(favorite) },
+                            onClick = { UnsavedEdits.guard { onFavorite(favorite) } },
+                            onLongClick = { UnsavedEdits.guard { onEditFavorite(favorite) } },
                         )
                         .semantics { contentDescription = shown },
                 )
@@ -1405,14 +1442,14 @@ private fun ColumnScope.DrawerSheetContent(
                 text = account.name,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onAccountAllFolders(account) }
+                    .clickable { UnsavedEdits.guard { onAccountAllFolders(account) } }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .testTag("drawer-account-name"),
             )
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.drawer_inbox)) },
                 selected = false,
-                onClick = { onAccountInbox(account) },
+                onClick = { UnsavedEdits.guard { onAccountInbox(account) } },
             )
             val postponedRow = postponedDrawerMailbox(account.postponedMailbox)
             if (postponedRow != null) {
@@ -1420,14 +1457,9 @@ private fun ColumnScope.DrawerSheetContent(
                     label = { Text(postponedRow) },
                     selected = false,
                     modifier = Modifier.semantics { contentDescription = postponedDescription },
-                    onClick = { onAccountPostponed(account) },
+                    onClick = { UnsavedEdits.guard { onAccountPostponed(account) } },
                 )
             }
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.drawer_all_folders)) },
-                selected = false,
-                onClick = { onAccountAllFolders(account) },
-            )
             for (favorite in account.favorites) {
                 val shown = favoriteDrawerLabel(favorite)
                 Box(Modifier.fillMaxWidth()) {
@@ -1441,8 +1473,8 @@ private fun ColumnScope.DrawerSheetContent(
                         Modifier
                             .matchParentSize()
                             .combinedClickable(
-                                onClick = { onAccountFavorite(account, favorite) },
-                                onLongClick = { onAccountEditFavorite(account, favorite) },
+                                onClick = { UnsavedEdits.guard { onAccountFavorite(account, favorite) } },
+                                onLongClick = { UnsavedEdits.guard { onAccountEditFavorite(account, favorite) } },
                             )
                             .semantics { contentDescription = shown },
                     )
@@ -1452,29 +1484,29 @@ private fun ColumnScope.DrawerSheetContent(
         NavigationDrawerItem(
             label = { Text(stringResource(R.string.filter_add)) },
             selected = false,
-            onClick = onAddFilter,
+            onClick = { UnsavedEdits.guard(onAddFilter) },
         )
         NavigationDrawerItem(
             label = { Text(stringResource(R.string.filter_edit_list)) },
             selected = false,
-            onClick = onEditFilters,
+            onClick = { UnsavedEdits.guard(onEditFilters) },
         )
     }
     HorizontalDivider()
     NavigationDrawerItem(
         label = { Text(stringResource(R.string.drawer_settings)) },
         selected = false,
-        onClick = onSettings,
+        onClick = { UnsavedEdits.guard(onSettings) },
     )
     NavigationDrawerItem(
         label = { Text(stringResource(R.string.help_title)) },
         selected = false,
-        onClick = onHelp,
+        onClick = { UnsavedEdits.guard(onHelp) },
     )
     NavigationDrawerItem(
         label = { Text(stringResource(R.string.about_title)) },
         selected = false,
-        onClick = onAbout,
+        onClick = { UnsavedEdits.guard(onAbout) },
     )
 }
 
@@ -1559,6 +1591,10 @@ internal enum class PaneAxis {
  * room for it. In Auto the folder list screen counts as folders shown: the app starts there before it opens
  * the start folder, and a drawer pane beside the folder list flashed on the Boox before the list appeared.
  */
+/** Settings routes, which get the list/detail split (no drawer) in two-pane layouts. */
+internal fun settingsSplitRoute(route: String?): Boolean =
+    route == "settings" || route?.startsWith("settings/") == true
+
 internal fun drawerHiddenFor(folderColumn: Boolean, route: String?, multiPane: MultiPane, autoDrawerPane: Boolean): Boolean =
     folderColumn || (multiPane == MultiPane.Auto && (!autoDrawerPane || route == "folders"))
 

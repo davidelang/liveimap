@@ -22,7 +22,17 @@ fun serverSaveReview(draft: AccountSettings, check: ServerCheck?): ServerSaveRev
 /** True when [a] and [b] have the same server fields (a draft equal to the saved settings is not a draft). */
 fun sameServer(a: AccountSettings, b: AccountSettings): Boolean = a.withServerOf(b) == a
 
-/** Set while a screen holds unsaved edits; the top-bar Up arrow then goes through Back so the screen can ask. */
+/**
+ * Set while a screen holds unsaved edits; the top-bar Up arrow then goes through Back so the screen can ask.
+ * Drawer navigation goes through [guard]: with edits pending, the holding screen's [ask] decides (Save, Keep editing
+ * or Discard) and runs the navigation only after Save or Discard.
+ */
 object UnsavedEdits {
     @Volatile var pending: Boolean = false
+    @Volatile var ask: ((go: () -> Unit) -> Unit)? = null
+
+    fun guard(go: () -> Unit) {
+        val holder = ask
+        if (pending && holder != null) holder(go) else go()
+    }
 }

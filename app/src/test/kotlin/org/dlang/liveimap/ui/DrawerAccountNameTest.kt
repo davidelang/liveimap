@@ -12,8 +12,13 @@ class DrawerAccountNameTest {
 
     @Test fun accountNamesAreTappableAndOpenAllFolders() {
         assertEquals(2, Regex("testTag\\(\"drawer-account-name\"\\)").findAll(nav).count())
-        assertTrue(nav.contains(".clickable { onAccountAllFolders(account) }"))
-        assertTrue(nav.contains(".clickable(onClick = onAllFolders)"))
+        assertTrue(nav.contains(".clickable { UnsavedEdits.guard { onAccountAllFolders(account) } }"))
+        assertTrue(nav.contains(".clickable { UnsavedEdits.guard(onAllFolders) }"))
         assertTrue(nav.contains("onAccountAllFolders = { account -> openFoldersRow(account) }"))
+    }
+
+    /** David, 2026-10-12: no separate "All folders" row; the account name is the way in. */
+    @Test fun noAllFoldersRowUnderAccounts() {
+        assertTrue(!nav.contains("R.string.drawer_all_folders"))
     }
 }

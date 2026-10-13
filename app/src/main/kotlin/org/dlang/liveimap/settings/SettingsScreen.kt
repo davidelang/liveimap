@@ -296,7 +296,7 @@ private fun rememberSectionOpen(first: String): SectionOpen {
 }
 
 @Composable
-fun SettingsGroupList(onOpen: (SettingsGroup) -> Unit) {
+fun SettingsGroupList(selected: SettingsGroup? = null, onOpen: (SettingsGroup) -> Unit) {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
     val settings = editor.settings
@@ -310,6 +310,13 @@ fun SettingsGroupList(onOpen: (SettingsGroup) -> Unit) {
             ListItem(
                 headlineContent = { Text(group.title) },
                 supportingContent = { Text(groupSummary(group, settings)) },
+                colors = if (group == selected) {
+                    androidx.compose.material3.ListItemDefaults.colors(
+                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+                    )
+                } else {
+                    androidx.compose.material3.ListItemDefaults.colors()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onOpen(group) },
@@ -514,19 +521,38 @@ private fun AccountGroup(editor: SettingsEditor) {
     // David, 2026-10-12: server fields edit a draft; nothing is stored or checked until Save. The check (and the
     // TLS-off warning) is shown once, at Save, and never changes or reverts what he typed.
     var serverDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<AccountSettings?>(null) }
+    // Password edits are part of the draft too (David): nothing is stored per keystroke; Save commits them.
+    var passwordDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<String?>(null) }
+    var smtpPasswordDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<String?>(null) }
+    val hasDraft = serverDraft != null || passwordDraft != null || smtpPasswordDraft != null
+    fun discardDrafts() { serverDraft = null; passwordDraft = null; smtpPasswordDraft = null }
+    fun commitPasswords() {
+        passwordDraft?.let { editor.persistPassword(it) }
+        smtpPasswordDraft?.let { editor.persistSmtpPassword(it) }
+        passwordDraft = null
+        smtpPasswordDraft = null
+    }
     var serverReview by remember { mutableStateOf<ServerSaveReview?>(null) }
     var discardAsk by remember { mutableStateOf(false) }
     val server = serverDraft ?: settings
     fun userServerSave(next: AccountSettings) {
         serverDraft = if (sameServer(next, settings)) null else next
     }
-    DisposableEffect(serverDraft != null) {
-        UnsavedEdits.pending = serverDraft != null
-        onDispose { UnsavedEdits.pending = false }
+    // Navigation waiting on the unsaved-edits answer (drawer); runs after Save or Discard, dropped on Keep editing.
+    var leaveAfter by remember { mutableStateOf<(() -> Unit)?>(null) }
+    DisposableEffect(hasDraft) {
+        UnsavedEdits.pending = hasDraft
+        UnsavedEdits.ask = { go -> leaveAfter = go; discardAsk = true }
+        onDispose { UnsavedEdits.pending = false; UnsavedEdits.ask = null }
     }
-    BackHandler(enabled = serverDraft != null) { discardAsk = true }
+    LaunchedEffect(hasDraft, serverReview == null, serverChecking) {
+        if (!hasDraft && serverReview == null && !serverChecking) {
+            leaveAfter?.let { leaveAfter = null; it() }
+        }
+    }
+    BackHandler(enabled = hasDraft) { discardAsk = true }
     fun saveServer() {
-        val draft = serverDraft ?: return
+        val draft = serverDraft ?: return commitPasswords()
         editor.ui.launch {
             serverChecking = true
             val result = try {
@@ -539,6 +565,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             val review = serverSaveReview(draft, result)
             if (review.quiet) {
                 editor.persist(editor.settings.withServerOf(draft))
+                commitPasswords() // after the server: a moved host clears the old password, then the typed one is stored
                 serverDraft = null
             } else {
                 serverReview = review
@@ -561,11 +588,12 @@ private fun AccountGroup(editor: SettingsEditor) {
                 androidx.compose.material3.Button(onClick = {
                     serverReview = null
                     serverDraft?.let { editor.persist(editor.settings.withServerOf(it)) }
+                    commitPasswords()
                     serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
             dismissButton = {
-                TextButton(onClick = { serverReview = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                TextButton(onClick = { serverReview = null; leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
             },
         )
     }
@@ -581,8 +609,8 @@ private fun AccountGroup(editor: SettingsEditor) {
             },
             dismissButton = {
                 androidx.compose.foundation.layout.Row {
-                    TextButton(onClick = { discardAsk = false }) { Text(stringResource(R.string.settings_keep_editing)) }
-                    TextButton(onClick = { discardAsk = false; serverDraft = null }) {
+                    TextButton(onClick = { discardAsk = false; leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                    TextButton(onClick = { discardAsk = false; discardDrafts() }) {
                         Text(stringResource(R.string.settings_discard))
                     }
                 }
@@ -822,11 +850,11 @@ private fun AccountGroup(editor: SettingsEditor) {
                 }
                 LineField(
                     stringResource(R.string.settings_password),
-                    editor.password,
+                    passwordDraft ?: editor.password,
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
-                ) { editor.persistPassword(it) }
+                ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
             }
         } else {
             SettingsSection(
@@ -850,11 +878,11 @@ private fun AccountGroup(editor: SettingsEditor) {
                 }
                 LineField(
                     stringResource(R.string.settings_password),
-                    editor.password,
+                    passwordDraft ?: editor.password,
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
-                ) { editor.persistPassword(it) }
+                ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
                 if (serverChecking) {
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
@@ -899,9 +927,9 @@ private fun AccountGroup(editor: SettingsEditor) {
                 ) { enabled ->
                     userServerSave(server.copy(allowOldTls = enabled))
                 }
-                if (serverDraft != null) {
+                if (hasDraft) {
                     androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        TextButton(onClick = { serverDraft = null }) {
+                        TextButton(onClick = { discardDrafts() }) {
                             Text(stringResource(R.string.settings_discard))
                         }
                     }
@@ -1003,11 +1031,11 @@ private fun AccountGroup(editor: SettingsEditor) {
                 }
                 LineField(
                     stringResource(R.string.settings_smtp_password),
-                    editor.smtpPassword,
+                    smtpPasswordDraft ?: editor.smtpPassword,
                     KeyboardType.Password,
                     password = true,
                     ready = editor.ready,
-                ) { editor.persistSmtpPassword(it) }
+                ) { smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }
             }
             sendingProblem(settings)?.let { res ->
                 Text(
@@ -1085,7 +1113,7 @@ private fun AccountGroup(editor: SettingsEditor) {
         ) {
             androidx.compose.material3.Button(
                 onClick = { saveServer() },
-                enabled = serverDraft != null && !serverChecking,
+                enabled = hasDraft && !serverChecking,
                 modifier = Modifier.testTag("account-save"),
             ) { Text(stringResource(R.string.settings_save)) }
             TextButton(
@@ -1097,7 +1125,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                         editor.ui.launch {
                             val id = editor.bound.chosenAccountId()
                             try {
-                                serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, editor.password, editor.smtpPassword))
+                                serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, passwordDraft ?: editor.password, smtpPasswordDraft ?: editor.smtpPassword))
                             } finally {
                                 probing = false
                             }

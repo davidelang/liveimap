@@ -6,34 +6,11 @@ import org.junit.Test
 
 class JmapSendChosenTest {
     @Test
-    fun offReturnsSmtpAndCallsNothing() {
-        val upload = SendUpload(201, uploadCreated)
-        val post = SendPost(listOf(200 to sentResponse))
-        val choice = jmapSendChosen(
-            false,
-            JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION)),
-            byteArrayOf(1, 2, 3),
-            "me@example.com",
-            listOf("ada@example.com"),
-            "user",
-            "secret",
-            "ab",
-            upload::send,
-            post::post,
-            post::trust,
-        )
-        assertEquals(JmapSendChoice.Smtp, choice)
-        assertEquals(emptyList<String>(), upload.urls)
-        assertEquals(emptyList<String>(), post.urls)
-    }
-
-    @Test
     fun noneThrowsAndCallsNothing() {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(listOf(200 to sentResponse))
         assertFails("jmap submission is not offered") {
-            jmapSendChosen(
-                true,
+            jmapSend(
                 JmapOffer.None,
                 byteArrayOf(1, 2, 3),
                 "me@example.com",
@@ -55,8 +32,7 @@ class JmapSendChosenTest {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(listOf(200 to sentResponse))
         assertFails("jmap submission is not offered") {
-            jmapSendChosen(
-                true,
+            jmapSend(
                 JmapOffer.Mail(session(JMAP_MAIL)),
                 byteArrayOf(1, 2, 3),
                 "me@example.com",
@@ -78,8 +54,7 @@ class JmapSendChosenTest {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(listOf(200 to sentResponse))
         assertFails("jmap account id is empty") {
-            jmapSendChosen(
-                true,
+            jmapSend(
                 JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION, account = null)),
                 byteArrayOf(1, 2, 3),
                 "me@example.com",
@@ -107,8 +82,7 @@ class JmapSendChosenTest {
                 200 to submissionCreated,
             ),
         )
-        val choice = jmapSendChosen(
-            true,
+        val choice = jmapSend(
             JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION)),
             bytes,
             "me@example.com",
@@ -121,7 +95,7 @@ class JmapSendChosenTest {
             post::trust,
         )
         val authorization = jmapBasicAuthorization("user", "secret")
-        assertEquals(JmapSendChoice.Submitted("S1"), choice)
+        assertEquals("S1", choice)
         assertEquals(listOf("https://example.com/upload/A1/"), upload.urls)
         assertEquals(listOf("message/rfc822"), upload.types)
         assertTrue(bytes.contentEquals(upload.bodies[0]))
@@ -150,8 +124,7 @@ class JmapSendChosenTest {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(listOf(500 to "no"))
         assertFails("jmap api status 500") {
-            jmapSendChosen(
-                true,
+            jmapSend(
                 JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION)),
                 byteArrayOf(1, 2, 3),
                 "me@example.com",

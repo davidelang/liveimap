@@ -111,13 +111,8 @@ fun jmapDeliver(
     }
 }
 
-sealed class JmapSendChoice {
-    data object Smtp : JmapSendChoice()
-    data class Submitted(val submissionId: String) : JmapSendChoice()
-}
-
-fun jmapSendChosen(
-    chosen: Boolean,
+/** Submits through JMAP; returns the EmailSubmission id. The caller has already chosen JMAP (F92b: no SMTP branch). */
+fun jmapSend(
     offer: JmapOffer,
     bytes: ByteArray,
     mailFrom: String,
@@ -128,8 +123,7 @@ fun jmapSendChosen(
     upload: (String, ByteArray, String, String) -> JmapHttpExchange,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-): JmapSendChoice {
-    if (!chosen) return JmapSendChoice.Smtp
+): String {
     val session = when (offer) {
         JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
         is JmapOffer.Mail -> offer.session
@@ -149,7 +143,7 @@ fun jmapSendChosen(
         post,
         trust,
     )
-    return JmapSendChoice.Submitted(submissionId)
+    return submissionId
 }
 
 private fun createdId(created: Json?): String? {
