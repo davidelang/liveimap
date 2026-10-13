@@ -103,7 +103,7 @@ class JmapMailSessionTest {
     fun noJmapOfferFailsOpenAndUnlistedFolderFails() = runBlocking {
         val s = JmapMailSession({ JmapOffer.None }, { "pw" })
         assertTrue(s.open(AccountSettings(username = "u")) is OpenResult.Failed)
-        val t = open(Fake(ArrayDeque()))
+        val t = open(Fake(ArrayDeque(listOf(level, noKids))))
         try { t.select("Nope"); fail() } catch (_: MailFailure) {}
     }
 
@@ -296,5 +296,66 @@ class JmapMailSessionTest {
             try { s.watch("INBOX") {}; fail(url) } catch (_: MailFailure) {}
             assertTrue(stream.urls.isEmpty())
         }
+    }
+
+    @Test
+    fun eventSourceTemplateExpandsLevelOneAndStaysOnHost() {
+        assertEquals("https://mail.example/ev?types=Email&closeafter=state&ping=120",
+            jmapEventSourceUrl("https://mail.example/ev?types={types}&closeafter={closeafter}&ping={ping}"))
+        assertEquals("https://mail.example/ev/Email/state?x=", jmapEventSourceUrl("https://mail.example/ev/{types}/{closeafter}?x={other}"))
+        for (bad in listOf("https://mail.example/ev?t={+types}", "https://mail.example/ev?t={types", "https://mail.example/ev}",
+                "https://{types}.example/ev", "http://mail.example/ev?t={types}")) {
+            try { jmapEventSourceUrl(bad); fail(bad) } catch (_: JmapFailure) {}
+        }
+        assertEquals("https://mail.example/ev?types=Email&closeafter=state&ping=120", jmapEventSourceUrl("https://mail.example/ev"))
+    }
+
+    private fun pinSession(confirm: Boolean?, saved: MutableList<String>, seenPins: MutableList<String>, offerTwice: Boolean = false): JmapMailSession {
+        var calls = 0
+        val s = JmapMailSession(
+            discover = { account ->
+                seenPins += account.jmapCertPin
+                calls++
+                if (calls == 1 || offerTwice) throw JmapPinOffer("certificate changed", "mail.example", listOf(byteArrayOf(1)))
+                JmapOffer.Mail(session)
+            },
+            passwordOf = { "pw" },
+            savePin = { saved += it },
+            describe = { arrayOf("CN=s", "CN=i", "a", "b", "FP") },
+        )
+        if (confirm != null) s.setCertConfirmer { prompt -> assertEquals("FP", prompt.fingerprint); assertEquals("certificate changed", prompt.reason); confirm }
+        return s
+    }
+
+    @Test
+    fun changedCertificateIsOfferedAndPinnedAsTheJmapPin() = runBlocking {
+        val saved = mutableListOf<String>(); val pins = mutableListOf<String>()
+        val s = pinSession(true, saved, pins)
+        assertEquals(OpenResult.Connected, s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "old")))
+        assertEquals(listOf("FP"), saved)
+        assertEquals(listOf("old", "FP"), pins)
+    }
+
+    @Test
+    fun declinedMissingOrRepeatedOfferFailsWithoutSaving() = runBlocking {
+        for (case in listOf<Pair<Boolean?, Boolean>>(false to false, null to false, true to true)) {
+            val saved = mutableListOf<String>(); val pins = mutableListOf<String>()
+            val s = pinSession(case.first, saved, pins, offerTwice = case.second)
+            val r = s.open(AccountSettings(username = "u"))
+            assertEquals(case.toString(), OpenResult.Failed("certificate changed"), r)
+            if (case.second) assertEquals(listOf("FP"), saved) else assertTrue(saved.isEmpty())
+        }
+    }
+
+    @Test
+    fun selectOnAFreshSessionListsDownToANestedFolder() = runBlocking {
+        val root = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","name":"INBOX","role":"inbox","totalEmails":0,"unreadEmails":0},{"id":"w","name":"Work","totalEmails":0,"unreadEmails":0}]},"0"]]}"""
+        val kidsOfW = """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":"w"}]},"0"]]}"""
+        val work = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"w26","name":"2026","parentId":"w","totalEmails":4,"unreadEmails":0}]},"0"]]}"""
+        val tot = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"w26","totalEmails":4}]},"0"]]}"""
+        val fake = Fake(ArrayDeque(listOf(root, kidsOfW, work, noKids, tot)))
+        val s = open(fake)
+        assertEquals(4, s.select("Work/2026").exists)
+        assertTrue(fake.bodies.last().contains("\"w26\""))
     }
 }

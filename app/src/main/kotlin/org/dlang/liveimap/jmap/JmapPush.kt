@@ -12,11 +12,49 @@ data class JmapPushEvent(
 fun jmapEventSourceUrl(eventSourceUrl: String): String {
     if (eventSourceUrl.isBlank()) throw JmapFailure("jmap event source url is empty")
     if (eventSourceUrl.contains('#')) throw JmapFailure("jmap event source url has a fragment")
+    // RFC 8620 §7.3: eventSourceUrl is an RFC 6570 level-1 template with {types}, {closeafter} and {ping}.
+    if (eventSourceUrl.contains('{') || eventSourceUrl.contains('}')) return expandEventSourceTemplate(eventSourceUrl)
     if (!eventSourceIsHttps(eventSourceUrl)) {
         throw JmapFailure("jmap event source url is not https")
     }
     val joiner = if (eventSourceUrl.contains('?')) "&" else "?"
     return eventSourceUrl + joiner + "types=Email&closeafter=state&ping=120"
+}
+
+private val eventSourceValues = mapOf("types" to "Email", "closeafter" to "state", "ping" to "120")
+
+/**
+ * Level-1 expansion (simple string, unreserved characters kept, everything else percent-encoded). Unknown
+ * variables expand to "" as RFC 6570 says for undefined ones; any operator or malformed brace is refused, so a
+ * template cannot smuggle in a different host or path.
+ */
+internal fun expandEventSourceTemplate(template: String): String {
+    val out = StringBuilder()
+    var i = 0
+    while (i < template.length) {
+        val c = template[i]
+        if (c == '}') throw JmapFailure("jmap event source url template is malformed")
+        if (c != '{') { out.append(c); i++; continue }
+        val end = template.indexOf('}', i)
+        if (end < 0) throw JmapFailure("jmap event source url template is malformed")
+        val name = template.substring(i + 1, end)
+        if (name.isEmpty() || !name.all { it.isLetterOrDigit() || it == '_' }) {
+            throw JmapFailure("jmap event source url template is not level 1")
+        }
+        for (b in (eventSourceValues[name] ?: "").toByteArray(Charsets.UTF_8)) {
+            val ch = b.toInt().toChar()
+            if (ch.isLetterOrDigit() && b >= 0 || ch in "-._~") out.append(ch) else out.append("%%%02X".format(b.toInt() and 0xff))
+        }
+        i = end + 1
+    }
+    val url = out.toString()
+    val host = try { java.net.URI(url).host } catch (_: Exception) { null }
+    val templateHost = try { java.net.URI(template.substringBefore('{')).host } catch (_: Exception) { null }
+    if (host == null || !eventSourceIsHttps(url)) throw JmapFailure("jmap event source url is not https")
+    if (templateHost == null || !host.equals(templateHost, ignoreCase = true)) {
+        throw JmapFailure("jmap event source url template moves the host")
+    }
+    return url
 }
 
 fun parseJmapPushEvents(body: String): List<JmapPushEvent> {

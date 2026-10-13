@@ -3,7 +3,16 @@ package org.dlang.liveimap.jmap
 const val JMAP_MAIL = "urn:ietf:params:jmap:mail"
 const val JMAP_SUBMISSION = "urn:ietf:params:jmap:submission"
 
-class JmapFailure(val text: String) : Exception(text)
+open class JmapFailure(val text: String) : Exception(text)
+
+/**
+ * The server's certificate failed with a reason the user may override ("certificate untrusted" or "certificate
+ * changed"); [ders] is the chain it presented, so the leaf can be shown and pinned (as IMAP does, F64).
+ */
+class JmapPinOffer(text: String, val host: String, val ders: List<ByteArray>) : JmapFailure(text)
+
+internal fun jmapPinnable(verdict: String): Boolean =
+    verdict == "certificate untrusted" || verdict == "certificate changed"
 
 data class JmapSession(
     val username: String,

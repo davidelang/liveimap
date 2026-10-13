@@ -7,6 +7,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
@@ -47,7 +48,16 @@ class JmapMailSession(
     private val uploadFor: (pin: String) -> (String, ByteArray, String, String) -> JmapHttpExchange = ::pinnedJmapUpload,
     private val streamFor: (pin: String) -> (String, String) -> JmapHttpExchange =
         { p -> { url, auth -> platformJmapEventSource(url, auth, p) } },
+    /** Stores a confirmed JMAP pin on the account (field-level update, F75). */
+    private val savePin: suspend (String) -> Unit = {},
+    private val describe: (List<ByteArray>) -> Array<String>? = PeerTrust::offer,
 ) : MailSession {
+    @Volatile private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
+
+    override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
+        certConfirmer = confirm
+    }
+
     private val lock = Mutex()
     private var account: AccountSettings? = null
     private var session: JmapSession? = null
@@ -78,12 +88,29 @@ class JmapMailSession(
 
     override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
         try {
-            val offer = io { discover(account) }
+            var trusted = account
+            val offer = try {
+                io { discover(account) }
+            } catch (pinOffer: JmapPinOffer) {
+                // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
+                val shown = describe(pinOffer.ders)
+                val confirm = certConfirmer
+                if (shown == null || shown.size != 5 || confirm == null) throw pinOffer
+                val prompt = CertPrompt(pinOffer.text, shown[0], shown[1], shown[2], shown[3], shown[4], pinOffer.host, 443)
+                if (!confirm(prompt)) throw pinOffer
+                savePin(prompt.fingerprint)
+                trusted = account.copy(jmapCertPin = prompt.fingerprint)
+                try {
+                    io { discover(trusted) }
+                } catch (again: JmapPinOffer) {
+                    throw JmapFailure(again.text)
+                }
+            }
             val mail = offer as? JmapOffer.Mail ?: return@withLock OpenResult.Failed("server offers no JMAP mail")
             if (mail.session.primaryMailAccountId.isNullOrBlank()) return@withLock OpenResult.Failed("jmap account id is empty")
-            this.account = account
+            this.account = trusted
             session = mail.session
-            pin = account.jmapCertPin
+            pin = trusted.jmapCertPin
             password = passwordOf(account)
             authorization = jmapBasicAuthorization(account.username, password)
             epoch = epochClock().coerceAtLeast(1L) and 0x7fffffffL
@@ -97,11 +124,33 @@ class JmapMailSession(
     override suspend fun namespaces(): List<Namespace> = listOf(Namespace("", DELIMITER, NamespaceKind.Personal))
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
-        lock.withLock {
+        lock.withLock { levelLocked(parentMailbox, unreadCounts) }
+
+    /**
+     * A session that never listed (a watched-folder session, a sending rule) learns a path's id by listing the
+     * levels down to it, so "Work/2026" works without the folder screen having run first.
+     */
+    private suspend fun ensureListedLocked(path: String) {
+        if (ids.containsKey(path)) return
+        if (path.equals("INBOX", ignoreCase = true) && roles.containsValue("inbox")) return
+        val segments = path.split(DELIMITER)
+        var parent: String? = null
+        for (segment in segments) {
+            val here = if (parent == null) segment else parent + DELIMITER + segment
+            if (!ids.containsKey(here)) {
+                if (parent != null && !ids.containsKey(parent)) break
+                levelLocked(parent, unreadCounts = false)
+                if (!ids.containsKey(here)) break
+            }
+            parent = here
+        }
+    }
+
+    private suspend fun levelLocked(parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
             val s = need()
             val parentId = if (parentMailbox == null) null else idOfLocked(parentMailbox)
             val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, postFor(pin), trust) }
-            rows.map { row ->
+            return rows.map { row ->
                 val path = if (parentMailbox == null) row.name else parentMailbox + DELIMITER + row.name
                 ids[path] = row.id
                 row.role?.let { roles[path] = it }
@@ -115,9 +164,10 @@ class JmapMailSession(
                     unseen = if (unreadCounts) row.unread.toInt() else null,
                 )
             }
-        }
+    }
 
     override suspend fun select(mailbox: String): SelectResult = lock.withLock {
+        ensureListedLocked(mailbox)
         val id = idOfLocked(mailbox)
         val total = call(mailboxGetRequest(accountId(), id)) { root -> mailboxTotal(root, id) }
         selectedPath = mailbox
@@ -175,6 +225,7 @@ class JmapMailSession(
         lock.withLock {
             val (path, table) = selectedTable()
             val from = idOfLocked(path)
+            ensureListedLocked(targetMailbox)
             val to = idOfLocked(targetMailbox)
             val emailIds = uids.map { table.byUid[it] ?: throw MailFailure("unknown message in $path") }
             setEmails(emailIds.associateWith { mapOf("mailboxIds/$from" to null, "mailboxIds/$to" to true) })
@@ -184,6 +235,7 @@ class JmapMailSession(
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
         lock.withLock {
             val (path, table) = selectedTable()
+            ensureListedLocked(targetMailbox)
             val to = idOfLocked(targetMailbox)
             val emailIds = uids.map { table.byUid[it] ?: throw MailFailure("unknown message in $path") }
             setEmails(emailIds.associateWith { mapOf("mailboxIds/$to" to true) })
@@ -273,6 +325,7 @@ class JmapMailSession(
     /** Upload the message as a blob, then Email/import it into [mailbox] with [flags] as keywords. */
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long = lock.withLock {
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
+        ensureListedLocked(mailbox)
         val mailboxId = idOfLocked(mailbox)
         val keywords = flags.map { keywordOf(it) }.distinct().joinToString(",", "{", "}") { q(it) + ":true" }
         val s = need()
@@ -300,6 +353,7 @@ class JmapMailSession(
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         stopWatch()
         val (mailboxId, startState, startTotal) = lock.withLock {
+            ensureListedLocked(mailbox)
             val id = idOfLocked(mailbox)
             val state = call(emailStateRequest(accountId())) { root -> emailState(root) }
             val total = call(mailboxGetRequest(accountId(), id)) { root -> mailboxTotal(root, id) }
@@ -731,5 +785,12 @@ fun platformJmapMailSession(): JmapMailSession = JmapMailSession(
             ?: org.dlang.liveimap.settings.DataStoreSettingsStore(context).chosenAccountId()
             ?: throw JmapFailure("no account")
         org.dlang.liveimap.settings.DataStoreSettingsStore(context, owner).password()
+    },
+    savePin = { pin ->
+        val context = org.dlang.liveimap.engine.currentApplication() ?: throw JmapFailure("keystore unavailable")
+        val owner = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
+            ?: org.dlang.liveimap.settings.DataStoreSettingsStore(context).chosenAccountId()
+            ?: throw JmapFailure("no account")
+        org.dlang.liveimap.settings.DataStoreSettingsStore(context, owner).update { it.copy(jmapCertPin = pin) }
     },
 )

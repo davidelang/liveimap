@@ -58,8 +58,13 @@ class JmapHttpsFetch(
             val host = jmapTrustHost(current)
             val exchange = jmapNet { open(current) }
             try {
-                val verdict = jmapNet { trust(host, exchange.peerDer(), pin) }
-                if (verdict.isNotEmpty()) throw JmapFailure(verdict)
+                val ders = jmapNet { exchange.peerDer() }
+                val verdict = jmapNet { trust(host, ders, pin) }
+                if (verdict.isNotEmpty()) {
+                    // Discovery is unauthenticated, so a pinnable failure can be offered (nothing was sent).
+                    if (jmapPinnable(verdict)) throw JmapPinOffer(verdict, host, ders)
+                    throw JmapFailure(verdict)
+                }
                 val status = jmapNet { exchange.status }
                 if (status !in jmapRedirectStatuses) {
                     return JmapHttpResult(status, jmapNet { exchange.body() }, current)

@@ -10,8 +10,9 @@ private val accountSessions = SessionTable {
     SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
 }
 
+// Watched folders follow the account's kind too: a JMAP account watches them over its event source.
 private val extraIdleSessions = ExtraIdleSessions {
-    SerialMailSession(LibetpanMailSession())
+    SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
 }
 
 private val extraIdleLock = Mutex()
