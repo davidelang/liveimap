@@ -11,7 +11,7 @@ import org.junit.Test
 class AcceptanceRunnerTest {
     private fun run(user: String, caps: Set<String>, email: String = "liveimap@lab.test", host: String = "lab.test"): Pair<List<ReportRow>, FakeLab> {
         val fake = FakeLab(caps)
-        val account = AccountSettings(username = user, email = email, imapHost = host)
+        val account = AccountSettings(username = user, email = email, imapHost = host, smtpHost = host)
         val rows = runBlocking {
             runAcceptance(AcceptanceContext(fake, account) { OpenResult.Connected }, acceptanceTests, readOnly = false, clock = { 0L }, readMarker = { SeedMarker(SeedVersion, false) })
         }
