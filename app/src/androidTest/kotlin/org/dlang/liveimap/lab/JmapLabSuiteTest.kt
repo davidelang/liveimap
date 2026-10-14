@@ -111,7 +111,7 @@ class JmapLabSuiteTest {
         if (arg("jmapRcpt").isNotEmpty()) step("submit") {
             val rcpt = arg("jmapRcpt")
             val sender = session()
-            val jmapAccount = account.copy(email = rcpt, emailSubmission = true)
+            val jmapAccount = account.copy(email = rcpt, emailSubmission = true, sentMailbox = "Sent")
             if (sender.open(jmapAccount) != OpenResult.Connected) throw IllegalStateException("open for submit failed")
             try {
                 val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: LiveIMAP JMAP submission ${System.currentTimeMillis()}\r\n" +

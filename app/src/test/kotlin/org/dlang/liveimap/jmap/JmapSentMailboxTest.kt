@@ -58,8 +58,11 @@ class JmapSentMailboxTest {
         }
         assertEquals("t2", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }, sentName = "Sent"))
         assertEquals(2, bodies.size)
-        // Without a configured name the role lookup alone decides, as before.
-        replies.addAll(listOf(noRole))
+        // Without a configured name the common names are tried in order.
+        val items = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m","name":"Sent Messages","parentId":null},{"id":"i","name":"Sent Items","parentId":null}]},"0"]]}"""
+        replies.addAll(listOf(noRole, items))
+        assertEquals("i", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }))
+        replies.addAll(listOf(noRole, """{"methodResponses":[["Mailbox/get",{"list":[{"id":"o","name":"Outbox","parentId":null},{"id":"c","name":"Sent","parentId":"p"}]},"0"]]}"""))
         try { jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }); org.junit.Assert.fail() } catch (_: JmapFailure) {}
         assertEquals(null, jmapTopLevelMailboxId(all, "Drafts"))
     }

@@ -42,14 +42,17 @@ fun jmapFindSentMailbox(
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     val byRole = try { jmapSentMailboxId(result.body) } catch (missing: JmapFailure) {
-        if (sentName.isBlank()) throw missing
         null
     }
     if (byRole != null) return byRole
     val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), authorization, pin, post, trust)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
-    return jmapTopLevelMailboxId(named.body, sentName) ?: throw JmapFailure("jmap sent mailbox is missing")
+    // No role=sent: the configured name, else the common names, top level and exact.
+    val names = if (sentName.isNotBlank()) listOf(sentName) else JMAP_COMMON_SENT_NAMES
+    return names.firstNotNullOfOrNull { jmapTopLevelMailboxId(named.body, it) } ?: throw JmapFailure("jmap sent mailbox is missing")
 }
+
+val JMAP_COMMON_SENT_NAMES = listOf("Sent", "Sent Items", "Sent Messages")
 
 fun jmapMailboxNamesRequest(accountId: String): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
