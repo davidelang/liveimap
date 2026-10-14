@@ -95,22 +95,23 @@ class BoxPass5IndexTest {
 
     /** A removed hit drops the same position from order and orderMailboxes; page fetches use that position. */
     @Test fun removedHitLeavesOrderAndItsMailboxTogether() {
-        val order = listOf(1L, 2L, 3L, 4L)
-        val boxes = listOf("INBOX", "Sent", "Archive", "INBOX")
-        val home = dropOrderedHits(order, boxes, setOf(2L), actedFolder = null)
-        assertEquals(listOf(1L, 3L, 4L), home.first)
-        assertEquals(listOf("INBOX", "Archive", "INBOX"), home.second)
-        assertEquals(home.first.size, home.second.size)
-        assertEquals(
-            listOf("Archive" to listOf(3L), "INBOX" to listOf(4L)),
-            pageMailboxGroups(home.first, home.second, 1, 3),
+        val home = dropOrderedHits(
+            listOf(7L, 7L, 8L),
+            listOf("INBOX", "Sent", "Sent"),
+            setOf(7L),
+            actedFolder = null,
+            indexMailbox = "INBOX",
         )
+        assertEquals(listOf(7L, 8L), home.first)
+        assertEquals(listOf("Sent", "Sent"), home.second)
+        assertEquals(home.first.size, home.second.size)
 
         val sent = dropOrderedHits(
             listOf(7L, 7L, 8L),
             listOf("INBOX", "Sent", "Sent"),
             setOf(7L),
             actedFolder = "Sent",
+            indexMailbox = "INBOX",
         )
         assertEquals(listOf(7L, 8L), sent.first)
         assertEquals(listOf("INBOX", "Sent"), sent.second)
@@ -119,12 +120,34 @@ class BoxPass5IndexTest {
             pageMailboxGroups(sent.first, sent.second, 0, sent.first.size),
         )
 
-        val folded = dropOrderedHits(listOf(1L), listOf("INBOX"), setOf(1L), actedFolder = "inbox")
+        val folded = dropOrderedHits(
+            listOf(1L),
+            listOf("INBOX"),
+            setOf(1L),
+            actedFolder = "inbox",
+            indexMailbox = "INBOX",
+        )
         assertEquals(emptyList<Long>(), folded.first)
         assertEquals(emptyList<String>(), folded.second)
 
-        val plain = dropOrderedHits(listOf(1L, 2L, 3L), emptyList(), setOf(2L), actedFolder = null)
+        val plain = dropOrderedHits(
+            listOf(1L, 2L, 3L),
+            emptyList(),
+            setOf(2L),
+            actedFolder = null,
+            indexMailbox = "INBOX",
+        )
         assertEquals(listOf(1L, 3L), plain.first)
         assertTrue(plain.second.isEmpty())
+
+        val foreign = dropOrderedHits(
+            listOf(1L, 2L, 3L),
+            emptyList(),
+            setOf(2L),
+            actedFolder = "Sent",
+            indexMailbox = "INBOX",
+        )
+        assertEquals(listOf(1L, 2L, 3L), foreign.first)
+        assertTrue(foreign.second.isEmpty())
     }
 }

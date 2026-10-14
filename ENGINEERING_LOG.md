@@ -2887,3 +2887,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: the stop job closes only while the generation it recorded is still current and does not bump again; a dropped account stays in the set until closeAccount and accountSessions.drop have returned, so an apply that read the new stamp opens nothing
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A removed search hit leaves only that folder's row
+
+- Approved plan: sandbox/plans/search-order-folder-20261014-1518-plan.md. dropOrderedHits drops the acted folder, or this index mailbox when none is set; the same UID in another folder stays. No new mutex. No install

@@ -1484,7 +1484,7 @@ class IndexModel(
 
     /** A removed hit leaves [order] and [orderMailboxes] at the same positions, so the lists stay one length. */
     private fun dropGoneFromOrder(gone: Set<Long>) {
-        val kept = dropOrderedHits(order, orderMailboxes, gone, actFolder)
+        val kept = dropOrderedHits(order, orderMailboxes, gone, actFolder, mailbox)
         order = kept.first
         orderMailboxes = kept.second
     }
@@ -2822,17 +2822,20 @@ internal fun searchEpochMasks(homeFolder: Boolean, listed: Long?, selected: Long
 
 /**
  * Drops [gone] from a search order and the mailbox recorded at that same position.
- * [actedFolder] null drops every matching UID (the home-folder action). A named folder drops only its own hits,
- * including while that folder is the acted-on one, so the hit does not stay and show up again.
+ * The folder that loses rows is [actedFolder] when one is set, and [indexMailbox] when it is not.
+ * An empty mailbox list is that one folder: UIDs drop only when the action is on [indexMailbox].
+ * A listed row drops only where [sameMailbox] says its mailbox is that folder. Null does not drop every match.
  */
 internal fun dropOrderedHits(
     order: List<Long>,
     mailboxes: List<String>,
     gone: Set<Long>,
     actedFolder: String?,
+    indexMailbox: String,
 ): Pair<List<Long>, List<String>> {
+    val folder = actedFolder ?: indexMailbox
     if (mailboxes.isEmpty()) {
-        val next = if (actedFolder == null) orderWithout(order, gone) else order
+        val next = if (sameMailbox(folder, indexMailbox)) orderWithout(order, gone) else order
         return next to mailboxes
     }
     val uids = ArrayList<Long>(order.size)
@@ -2841,7 +2844,7 @@ internal fun dropOrderedHits(
     for (i in 0 until n) {
         val uid = order[i]
         val box = mailboxes[i]
-        val drop = uid in gone && (actedFolder == null || sameMailbox(box, actedFolder))
+        val drop = uid in gone && sameMailbox(box, folder)
         if (!drop) {
             uids.add(uid)
             boxes.add(box)
