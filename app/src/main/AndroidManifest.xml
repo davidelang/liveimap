@@ -24,7 +24,9 @@
         </intent>
     </queries>
 
+    <!-- usesCleartextTraffic: JMAP over http only to the origin the user typed (JmapPlainHttp gates every URL; David: never refuse the user). -->
     <application
+        android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/backup_rules"
