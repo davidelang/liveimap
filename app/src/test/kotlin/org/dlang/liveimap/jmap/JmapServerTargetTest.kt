@@ -128,4 +128,48 @@ class JmapServerTargetTest {
         assertEquals(0, trusted)
         try { jmapCall("http://h.example:8080/jmap/", "{}", "Basic x", "", { _, _, _ -> exchange(200) }); fail() } catch (_: JmapFailure) {}
     }
+
+    private val labSession = """{"capabilities":{"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{}},"accounts":{"a":{}},"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},"username":"u","apiUrl":"http://h.example:31923/jmap/","downloadUrl":"http://h.example:31923/jmap/download/{accountId}/{blobId}/{name}?accept={type}","uploadUrl":"http://h.example:31923/jmap/upload/{accountId}/","eventSourceUrl":"http://h.example:31923/jmap/eventsource/","state":"0"}"""
+
+    private fun blob(status: Int, body: String) = object : JmapBlobExchange {
+        override val status = status
+        override fun peerDer(): List<ByteArray> = emptyList()
+        override fun bytes() = body.toByteArray()
+        override fun close() {}
+    }
+
+    @Test
+    fun sessionNeedingLoginIsFetchedOnceWithCredentialsAtTheDiscoveredUrl() {
+        val gets = mutableListOf<Pair<String, String>>()
+        val offer = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { u ->
+            if (u.endsWith("/.well-known/jmap")) exchange(301, location = "http://h.example:31923/jmap") else exchange(401)
+        }, trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { u, a -> gets += u to a; blob(200, labSession) })
+        assertTrue(offer.toString(), offer is JmapOffer.Mail)
+        assertEquals(listOf("http://h.example:31923/jmap" to "Basic eA=="), gets)
+    }
+
+    @Test
+    fun credentialsAreNeverSentWhenTheSessionIsOpenOrNoPasswordIsGiven() {
+        var gets = 0
+        val open = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(200, labSession) },
+            trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> gets++; blob(200, labSession) })
+        assertTrue(open is JmapOffer.Mail)
+        val none = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(401) },
+            trust = { _, _, _ -> "" }, get = { _, _ -> gets++; blob(200, labSession) })
+        assertEquals(JmapOffer.None, none)
+        assertEquals(0, gets)
+    }
+
+    @Test
+    fun refusedLoginAndUntrustedCertificateFail() {
+        val refused = runCatching {
+            offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(401) },
+                trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> blob(401, "") })
+        }.exceptionOrNull()
+        assertTrue(refused is JmapFailure)
+        val untrusted = runCatching {
+            jmapAuthenticatedSession("https://h.example/jmap", "Basic eA==", "", { _, _ -> blob(200, labSession) }, { _, _, _ -> "certificate untrusted" })
+        }.exceptionOrNull()
+        assertEquals("certificate untrusted", (untrusted as JmapFailure).text)
+    }
 }

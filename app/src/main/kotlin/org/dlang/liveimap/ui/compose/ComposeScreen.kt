@@ -68,6 +68,7 @@ import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.jmapSend
 import org.dlang.liveimap.jmap.offerForAccount
+import org.dlang.liveimap.jmap.jmapBasicAuthorization
 import org.dlang.liveimap.jmap.platformJmapExchange
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.pinnedJmapUpload
@@ -808,7 +809,7 @@ private fun ComposeLoaded(
                     return false
                 }
                 try {
-                    val offer = offerForAccount(account, ::platformJmapExchange)
+                    val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
                     jmapSend(
                         offer,
                         copy.bytes,
@@ -1171,7 +1172,7 @@ private fun ComposeLoaded(
                             accountId,
                         )
                         try {
-                            val offer = offerForAccount(account, ::platformJmapExchange)
+                            val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
                             jmapSend(
                                 offer,
                                 built.rfc822,
@@ -1543,7 +1544,7 @@ private fun ComposeLoaded(
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 try {
-                                    val offer = offerForAccount(account, ::platformJmapExchange)
+                                    val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
                                     jmapSend(
                                         offer,
                                         bounced,

@@ -99,7 +99,7 @@ internal fun testAccountProbes(
         },
         jmapLogin = {
             withContext(Dispatchers.IO) {
-                val offer = offerForAccount(candidate, ::platformJmapExchange)
+                val offer = offerForAccount(candidate, ::platformJmapExchange, authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
                 if (offer !is JmapOffer.Mail) throw IllegalStateException("no JMAP service found at ${candidate.imapHost}")
                 jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin))
             }

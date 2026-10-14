@@ -40,7 +40,7 @@ class JmapLabSuiteTest {
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true)
-        fun session() = JmapMailSession(discover = { a -> offerForAccount(a, ::platformJmapExchange) }, passwordOf = { pass })
+        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, ::platformJmapExchange, authorization = auth) }, passwordOf = { pass })
             .also { it.setCertConfirmer { false } } // only the lab CA is trusted
         val s = session()
         val steps = StringBuilder("step\tresult\tdetail\n")

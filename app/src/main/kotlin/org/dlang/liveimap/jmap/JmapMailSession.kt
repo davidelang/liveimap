@@ -39,7 +39,8 @@ import org.dlang.liveimap.settings.SortKey
  * UIDVALIDITY and every list re-reads. JMAP has no \Deleted: [storeFlags] refuses it and deletes are destroy/move.
  */
 class JmapMailSession(
-    private val discover: (AccountSettings) -> JmapOffer,
+    /** account, authorization (sent only if the session resource needs it) */
+    private val discover: (AccountSettings, String) -> JmapOffer,
     private val passwordOf: suspend (AccountSettings) -> String,
     private val postFor: (pin: String) -> (String, String, String) -> JmapHttpExchange = ::pinnedJmapPost,
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
@@ -89,8 +90,10 @@ class JmapMailSession(
     override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
         try {
             var trusted = account
+            val loginPassword = passwordOf(account)
+            val loginAuthorization = jmapBasicAuthorization(account.username, loginPassword)
             val offer = try {
-                io { discover(account) }
+                io { discover(account, loginAuthorization) }
             } catch (pinOffer: JmapPinOffer) {
                 // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
                 val shown = describe(pinOffer.ders)
@@ -101,7 +104,7 @@ class JmapMailSession(
                 savePin(prompt.fingerprint)
                 trusted = account.copy(jmapCertPin = prompt.fingerprint)
                 try {
-                    io { discover(trusted) }
+                    io { discover(trusted, loginAuthorization) }
                 } catch (again: JmapPinOffer) {
                     throw JmapFailure(again.text)
                 }
@@ -111,8 +114,8 @@ class JmapMailSession(
             this.account = trusted
             session = mail.session
             pin = trusted.jmapCertPin
-            password = passwordOf(account)
-            authorization = jmapBasicAuthorization(account.username, password)
+            password = loginPassword
+            authorization = loginAuthorization
             epoch = epochClock().coerceAtLeast(1L) and 0x7fffffffL
             ids.clear(); roles.clear(); uids.clear(); parts.clear(); selectedPath = null
             OpenResult.Connected
@@ -778,7 +781,7 @@ class JmapMailSession(
 
 /** The app's JMAP session: platform discovery and HTTPS, the account's password from its own store. */
 fun platformJmapMailSession(): JmapMailSession = JmapMailSession(
-    discover = { account -> offerForAccount(account, ::platformJmapExchange) },
+    discover = { account, auth -> offerForAccount(account, ::platformJmapExchange, authorization = auth) },
     passwordOf = { _ ->
         val context = org.dlang.liveimap.engine.currentApplication() ?: throw JmapFailure("keystore unavailable")
         val owner = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId

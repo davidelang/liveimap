@@ -34,7 +34,7 @@ class JmapMailSessionTest {
     }
 
     private fun open(fake: Fake, account: AccountSettings = AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm")): JmapMailSession {
-        val s = JmapMailSession({ JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 })
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 })
         assertEquals(OpenResult.Connected, runBlocking { s.open(account) })
         return s
     }
@@ -94,14 +94,14 @@ class JmapMailSessionTest {
             s.listLevel("", null, false)
             try { s.select("INBOX"); fail(reply) } catch (_: MailFailure) {}
         }
-        val s = JmapMailSession({ JmapOffer.Mail(session) }, { "pw" }, { { _, _, _ -> throw IOException("reset") } }, { _, _, _ -> "" })
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, { { _, _, _ -> throw IOException("reset") } }, { _, _, _ -> "" })
         s.open(AccountSettings(username = "u"))
         try { s.listLevel("", null, false); fail() } catch (_: MailFailure) {}
     }
 
     @Test
     fun noJmapOfferFailsOpenAndUnlistedFolderFails() = runBlocking {
-        val s = JmapMailSession({ JmapOffer.None }, { "pw" })
+        val s = JmapMailSession({ _, _ -> JmapOffer.None }, { "pw" })
         assertTrue(s.open(AccountSettings(username = "u")) is OpenResult.Failed)
         val t = open(Fake(ArrayDeque(listOf(level, noKids))))
         try { t.select("Nope"); fail() } catch (_: MailFailure) {}
@@ -128,7 +128,7 @@ class JmapMailSessionTest {
 
     private fun ready(replies: List<String>, blobs: Blobs = Blobs(), upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { error("no upload") }): Pair<JmapMailSession, Fake> {
         val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
-        val s = JmapMailSession({ JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 }, blobs::getFor, upload)
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 }, blobs::getFor, upload)
         runBlocking {
             s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm"))
             s.listLevel("", null, false); s.select("INBOX")
@@ -249,7 +249,7 @@ class JmapMailSessionTest {
 
     private fun watching(replies: List<String>, stream: Stream, events: String = "https://mail.example/events"): JmapMailSession {
         val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
-        val s = JmapMailSession({ JmapOffer.Mail(session.copy(eventSourceUrl = events)) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 },
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session.copy(eventSourceUrl = events)) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 },
             Blobs()::getFor, { error("no upload") }, stream::streamFor)
         runBlocking {
             s.open(AccountSettings(username = "u", jmapCertPin = "jm"))
@@ -313,7 +313,7 @@ class JmapMailSessionTest {
     private fun pinSession(confirm: Boolean?, saved: MutableList<String>, seenPins: MutableList<String>, offerTwice: Boolean = false): JmapMailSession {
         var calls = 0
         val s = JmapMailSession(
-            discover = { account ->
+            discover = { account, _ ->
                 seenPins += account.jmapCertPin
                 calls++
                 if (calls == 1 || offerTwice) throw JmapPinOffer("certificate changed", "mail.example", listOf(byteArrayOf(1)))

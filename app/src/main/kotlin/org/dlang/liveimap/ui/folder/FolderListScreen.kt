@@ -245,7 +245,7 @@ fun FolderListScreen(
             val settings = store.load()
             // F68: JMAP browsing is opt-in; without it, never probe and never switch away from IMAP.
             val offer = if (!settings.jmapFolders) JmapOffer.None else withContext(Dispatchers.IO) {
-                folderOfferOrImap { offerForAccount(settings, ::platformJmapExchange) }
+                folderOfferOrImap { offerForAccount(settings, ::platformJmapExchange, authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(settings.username, store.password())) }
             }
             if (offer is JmapOffer.Mail && jmapFolderRoute(offer, settings.username)) {
                 val session = offer.session
