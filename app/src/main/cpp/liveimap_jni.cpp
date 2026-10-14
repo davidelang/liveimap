@@ -254,6 +254,8 @@ struct LiveSession {
     std::atomic<int> abortFd{-1};
     // In-flight SMTP socket, beside abortFd, so a close or abort can shut it down without waiting for QUIT.
     std::atomic<int> smtpFd{-1};
+    // Credentials are stored and the watch connection is the only login. imap stays null.
+    bool stagedWatch = false;
     bool watchProgress = false;
     mailimap * imap = nullptr;
     std::string host;
@@ -2643,6 +2645,17 @@ void smtpTrafficLogger(mailsmtp *, int log_type, const char * str, size_t size, 
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
     logImapBuffer(live, log_type, str, size, "smtp");
+}
+
+// SMTP copied the log flag before dropping the session mutex. This logger must not read the live session.
+void smtpTrafficLoggerCopied(mailsmtp *, int log_type, const char * str, size_t size, void *) {
+    if (str == nullptr || size == 0) return;
+    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
+        return;
+    }
+    postTrafficBytes("smtp", log_type, str, size);
 }
 
 // "* OK [INPROGRESS ("tag" done total)]": done/total may be NIL. A line split across reads is simply missed.
@@ -5787,6 +5800,74 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * 
     return arr;
 }
 
+// Stores the account on a session and does not connect. nativeWatch is the one login.
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, jobject,
+    jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
+    jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
+    jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
+    registerExtensions();
+    if (!ensureJni(env)) return 0;
+    clearCertOffer();
+    setLastError("");
+    JChars h(env, host);
+    JChars u(env, user);
+    JChars p(env, password);
+    JChars sh(env, smtpHost);
+    JChars fr(env, from);
+    JChars path(env, logPath);
+    JChars mode(env, tlsMode);
+    JChars pin(env, certPin);
+    auto * session = new LiveSession();
+    session->stagedWatch = true;
+    session->host = h.c();
+    session->imapPort = port;
+    session->user = u.c();
+    session->password = p.c();
+    session->passwordMask = randomMask(session->password.size());
+    xorMask(session->password, session->passwordMask);
+    session->smtpHost = sh.c();
+    session->smtpPort = smtpPort;
+    session->from = fr.c()[0] != 0 ? fr.c() : u.c();
+    session->pipelineCommands = pipelineFlag == JNI_TRUE;
+    session->logImapTraffic = logFlag == JNI_TRUE;
+    session->trafficLogPath = path.c();
+    session->tlsMode = mode.c();
+    session->certPin = pin.c();
+    session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
+    session->acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
+    session->allowOldTls = allowOldTls == JNI_TRUE;
+    {
+        JChars mech(env, authMechanism);
+        session->authMechanism = mech.c();
+        for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    }
+    if (clientP12 != nullptr) {
+        jsize n = env->GetArrayLength(clientP12);
+        session->clientP12.resize(static_cast<size_t>(n));
+        if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
+        JChars cpw(env, clientP12Password);
+        session->clientP12Password = cpw.c();
+    }
+    if (keyChainKey != nullptr && keyChainChain != nullptr) {
+        keyChainInit(env);
+        jsize n = env->GetArrayLength(keyChainChain);
+        for (jsize i = 0; i < n; ++i) {
+            auto der = static_cast<jbyteArray>(env->GetObjectArrayElement(keyChainChain, i));
+            if (der == nullptr) continue;
+            std::string bytes(static_cast<size_t>(env->GetArrayLength(der)), '\0');
+            if (!bytes.empty()) env->GetByteArrayRegion(der, 0, static_cast<jsize>(bytes.size()), reinterpret_cast<jbyte *>(&bytes[0]));
+            session->keyChainChain.push_back(std::move(bytes));
+            env->DeleteLocalRef(der);
+        }
+        session->keyChainKey = env->NewGlobalRef(keyChainKey);
+    }
+    std::lock_guard<std::mutex> lock(gLiveMu);
+    gLive.insert(session);
+    return reinterpret_cast<jlong>(session);
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
@@ -8157,8 +8238,13 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject thiz, jlong handle, jstring mailbox,
     jobject callback) {
     if (!ensureJni(env)) return 0;
-    LiveSession * session = lockImapSession(env, handle);
+    LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
+    if (session->imap == nullptr && !session->stagedWatch) {
+        unlockSession(session);
+        throwConnectionLost(env, "IMAP connection lost");
+        return 0;
+    }
     if (tlsWatch == session) {
         signalWatchStop(session);
         unlockSession(session);
@@ -8519,10 +8605,34 @@ std::string smtpTlsModeFor(const std::string & imapMode, int smtpPort) {
     return smtpPort == 465 ? "Implicit" : "StartTls";
 }
 
-void rememberSmtpSocket(LiveSession * session, mailsmtp * smtp) {
+// False when the session already closed: the fd is shut so the rest of the conversation cannot proceed.
+bool rememberSmtpSocket(LiveSession * session, mailsmtp * smtp) {
     int fd = smtp != nullptr ? streamFd(smtp->stream) : -1;
-    if (fd >= 0) session->smtpFd.store(fd);
+    if (session == nullptr) return false;
+    session->mu.lock();
+    bool closed = session->closed;
+    if (!closed && fd >= 0) session->smtpFd.store(fd);
+    session->mu.unlock();
+    if (closed && fd >= 0) shutdown(fd, SHUT_RDWR);
+    return !closed;
 }
+
+// Drops the session mutex for the SMTP conversation and puts it back before releasing the use count.
+struct SmtpHold {
+    LiveSession * session = nullptr;
+    bool muHeld = true;
+    SmtpHold() = default;
+    SmtpHold(const SmtpHold &) = delete;
+    SmtpHold & operator=(const SmtpHold &) = delete;
+    void release() {
+        if (session == nullptr) return;
+        LiveSession * held = session;
+        session = nullptr;
+        if (!muHeld) held->mu.lock();
+        unlockSession(held);
+    }
+    ~SmtpHold() { release(); }
+};
 
 void freeSmtp(LiveSession * session, mailsmtp * smtp) {
     session->smtpFd.store(-1);
@@ -8535,6 +8645,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
+    SmtpHold hold;
+    hold.session = session;
     // F52: no silent fallback to the IMAP login here. Kotlin passes the IMAP login explicitly only when the SMTP
     // host is the same host or registrable domain (Public Suffix List, smtpMayReuseImapLogin).
     std::string authUser = utf8FromJava(env, smtpUsername);
@@ -8557,8 +8669,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
         if (!ok) {
             throwFailure(env, "bad envelope address");
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     }
     // F52: the IMAP TLS mode, adjusted to the SMTP port: 465 is implicit TLS, any other port with a TLS account
@@ -8566,36 +8677,56 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
-        unlockSession(session);
         return 0;
     }
+    // Owning copies. The conversation below must not read these from the live session or keep pointers into it.
+    const std::string smtpHost = session->smtpHost;
+    const int port = session->smtpPort;
+    const bool logTraffic = session->logImapTraffic;
+    const bool allowOldTls = session->allowOldTls;
+    const bool allowPlaintextAuth = session->allowPlaintextAuth;
+    const bool acceptInvalidCert = session->acceptInvalidCert;
+    const std::string certPin = session->certPin;
+    const std::string imapHost = session->host;
+    std::string clientP12 = session->clientP12;
+    std::string clientP12Password = session->clientP12Password;
+    SecretWipe wipeP12{clientP12};
+    SecretWipe wipeP12Password{clientP12Password};
+    std::vector<std::string> keyChainChain = session->keyChainChain;
+    jobject keyChainKey = session->keyChainKey != nullptr ? env->NewGlobalRef(session->keyChainKey) : nullptr;
+    struct KeyRef {
+        JNIEnv * env;
+        jobject ref;
+        ~KeyRef() { if (ref != nullptr && env != nullptr) env->DeleteGlobalRef(ref); }
+    } keyRef{env, keyChainKey};
     mailsmtp * smtp = mailsmtp_new(0, nullptr);
     if (smtp == nullptr) {
         throwFailure(env, "smtp error");
-        unlockSession(session);
         return 0;
     }
     // Same traffic log and recording as IMAP, connection id "smtp"; AUTH goes out as private data.
-    if (session->logImapTraffic) mailsmtp_set_logger(smtp, smtpTrafficLogger, session);
+    if (logTraffic) mailsmtp_set_logger(smtp, smtpTrafficLoggerCopied, nullptr);
     mailsmtp_set_timeout(smtp, kReadTimeoutSec);
-    const char * host = session->smtpHost.c_str();
-    int port = session->smtpPort;
+    const char * host = smtpHost.c_str();
     std::string address;
     std::string where;
     TlsCapture capture;
-    capture.allowOldTls = session->allowOldTls;
-    capture.clientP12 = &session->clientP12;
-    capture.clientP12Password = &session->clientP12Password;
-    capture.keyChainChain = &session->keyChainChain;
-    capture.keyChainKey = session->keyChainKey;
+    capture.allowOldTls = allowOldTls;
+    capture.clientP12 = &clientP12;
+    capture.clientP12Password = &clientP12Password;
+    capture.keyChainChain = &keyChainChain;
+    capture.keyChainKey = keyChainKey;
     bool secured = false;
+    // Network waits (connect, TLS, AUTH, DATA) run without the session mutex. The use count stays held,
+    // so close can shut smtpFd down and cannot delete the session until this call returns.
+    hold.muHeld = false;
+    session->mu.unlock();
     if (mode == "Implicit") {
-        address = session->smtpHost;
+        address = smtpHost;
         if (port < 1 || port > 65535) {
             freeSmtp(session, smtp);
             throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
-            unlockSession(session);
-            return 0;
+                return 0;
         }
         tlsCapture = &capture;
         int r = mailsmtp_ssl_connect_with_callback(
@@ -8605,15 +8736,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             freeSmtp(session, smtp);
             throwFailure(env, connectFailure("SMTP", host, port, address,
                 asciiSafe(smtp->response, "connection failed")));
-            unlockSession(session);
+                return 0;
+        }
+        if (!rememberSmtpSocket(session, smtp)) {
+            freeSmtp(session, smtp);
+            throwFailure(env, "not connected");
             return 0;
         }
-        rememberSmtpSocket(session, smtp);
         if (capture.ders.empty()) {
             freeSmtp(session, smtp);
             throwFailure(env, "certificate rejected");
-            unlockSession(session);
-            return 0;
+                return 0;
         }
         secured = true;
         where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
@@ -8623,16 +8756,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         if (fd < 0) {
             freeSmtp(session, smtp);
             throwFailure(env, dialError);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
         mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
         if (stream == nullptr) {
             close(fd);
             freeSmtp(session, smtp);
             throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
-            unlockSession(session);
-            return 0;
+                return 0;
         }
         where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
         int r = mailsmtp_connect(smtp, stream);
@@ -8640,32 +8771,32 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             std::string why = where + asciiSafe(smtp->response, "connection failed");
             freeSmtp(session, smtp);
             throwFailure(env, why);
-            unlockSession(session);
+                return 0;
+        }
+        if (!rememberSmtpSocket(session, smtp)) {
+            freeSmtp(session, smtp);
+            throwFailure(env, "not connected");
             return 0;
         }
-        rememberSmtpSocket(session, smtp);
         if (mode == "StartTls") {
             r = mailesmtp_ehlo(smtp);
             if (r == MAILSMTP_NO_ERROR) {
                 if ((smtp->esmtp & MAILSMTP_ESMTP_STARTTLS) == 0) {
                     freeSmtp(session, smtp);
                     throwFailure(env, "server does not offer STARTTLS");
-                    unlockSession(session);
-                    return 0;
+                                return 0;
                 }
             } else if (r == MAILSMTP_ERROR_NOT_IMPLEMENTED ||
                 r == MAILSMTP_ERROR_UNEXPECTED_CODE ||
                 r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
                 freeSmtp(session, smtp);
                 throwFailure(env, "server does not offer STARTTLS");
-                unlockSession(session);
-                return 0;
+                        return 0;
             } else {
                 std::string why = where + asciiSafe(smtp->response, "smtp error");
                 freeSmtp(session, smtp);
                 throwFailure(env, why);
-                unlockSession(session);
-                return 0;
+                        return 0;
             }
             tlsCapture = &capture;
             r = mailsmtp_socket_starttls_with_server_name_callback(smtp, sniName(host), prepareTls, nullptr);
@@ -8673,8 +8804,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             if (r == MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED) {
                 freeSmtp(session, smtp);
                 throwFailure(env, "server does not offer STARTTLS");
-                unlockSession(session);
-                return 0;
+                        return 0;
             }
             if (r != MAILSMTP_NO_ERROR) {
                 std::string response = asciiSafe(smtp->response, "");
@@ -8682,15 +8812,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                     : std::string("STARTTLS failed: ") + response;
                 freeSmtp(session, smtp);
                 throwFailure(env, why);
-                unlockSession(session);
+                        return 0;
+            }
+            if (!rememberSmtpSocket(session, smtp)) {
+                freeSmtp(session, smtp);
+                throwFailure(env, "not connected");
                 return 0;
             }
-            rememberSmtpSocket(session, smtp);
             if (capture.ders.empty()) {
                 freeSmtp(session, smtp);
                 throwFailure(env, "certificate rejected");
-                unlockSession(session);
-                return 0;
+                        return 0;
             }
             secured = true;
         }
@@ -8699,16 +8831,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         const char * pin = "";
         // F52/F139: the IMAP pin and the IMAP "accept invalid certificate" belong to the IMAP host; a separately
         // configured SMTP host is verified on its own.
-        const bool imapHostToo = !session->host.empty() && !session->smtpHost.empty() &&
-            strcasecmp(session->host.c_str(), host) == 0;
-        if (imapHostToo) pin = session->certPin.c_str();
+        const bool imapHostToo = !imapHost.empty() && !smtpHost.empty() &&
+            strcasecmp(imapHost.c_str(), host) == 0;
+        if (imapHostToo) pin = certPin.c_str();
         std::string trust = peerTrustCheck(env, host, capture.ders, pin, false);
-        if (!trust.empty() && imapHostToo && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();
+        if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust)) trust.clear();
         if (!trust.empty()) {
             freeSmtp(session, smtp);
             throwFailure(env, trust);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     }
     bool allow8bit = false;
@@ -8729,14 +8860,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             std::string why = where + asciiSafe(smtp->response, "smtp error");
             freeSmtp(session, smtp);
             throwFailure(env, why);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     } else {
         std::string why = where + asciiSafe(smtp->response, "smtp error");
         freeSmtp(session, smtp);
         throwFailure(env, why);
-        unlockSession(session);
         return 0;
     }
     const bool smtpTls = mode == "StartTls" || mode == "Implicit";
@@ -8747,11 +8876,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         fillTlsChannelBinding(smtp->stream, binding, &bindingLen, &bindingName);
     }
     std::string mechanism;
-    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, session->allowPlaintextAuth,
+    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, allowPlaintextAuth,
             bindingLen > 0, gClientCertLoaded, &mechanism)) {
         freeSmtp(session, smtp);
         throwFailure(env, "auth choice failed");
-        unlockSession(session);
         return 0;
     }
     // F52 (David): no SMTP password configured = send without AUTH (existing accounts work this way). If the
@@ -8765,8 +8893,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         if (br != 0) {
             freeSmtp(session, smtp);
             throwFailure(env, "channel binding failed");
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     } else {
         mailsmtp_set_channel_binding(smtp, nullptr, nullptr, 0);
@@ -8778,17 +8905,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             if (!gClientCertError.empty()) why += " (" + gClientCertError + ")";
             freeSmtp(session, smtp);
             throwFailure(env, why);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     } else if (!mechanism.empty()) {
         if (authUser.empty()) {
             freeSmtp(session, smtp);
             throwFailure(env, "SMTP server needs a password (the IMAP password is only reused for the same provider)");
-            unlockSession(session);
-            return 0;
+                return 0;
         }
-        r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), session->smtpHost.c_str(), nullptr,
+        r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), smtpHost.c_str(), nullptr,
             nullptr, mechanism == "DIGEST-MD5" ? authUser.c_str() : "",  // authzid, as for IMAP
             authUser.c_str(), authPass.c_str(),
             nullptr);
@@ -8796,20 +8921,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             std::string why = asciiSafe(smtp->response, "smtp error");
             freeSmtp(session, smtp);
             throwFailure(env, why);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     } else if (!offeredAuth.empty() && !noCredentials) {
-        if (!authUser.empty() && !smtpTls && !session->allowPlaintextAuth &&
+        if (!authUser.empty() && !smtpTls && !allowPlaintextAuth &&
             offeredPlainOrLogin(offeredAuth)) {
             freeSmtp(session, smtp);
             throwFailure(env, "The password was not sent.");
-            unlockSession(session);
-            return 0;
+                return 0;
         }
         freeSmtp(session, smtp);
         throwFailure(env, "no usable SMTP authentication");
-        unlockSession(session);
         return 0;
     }
     if (message == nullptr) {
@@ -8817,7 +8939,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         bool authed = !authUser.empty();
         mailsmtp_quit(smtp);
         freeSmtp(session, smtp);
-        unlockSession(session);
         return authed ? 2 : (offeredAuth.empty() ? 3 : 4);
     }
     jsize nmsg = message != nullptr ? env->GetArrayLength(message) : 0;
@@ -8825,7 +8946,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (env->ExceptionCheck()) {
         if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         freeSmtp(session, smtp);
-        unlockSession(session);
         return 0;
     }
     // SMTPUTF8 before 8BITMIME: a body rewrite cannot fix raw UTF-8 headers or addresses.
@@ -8848,7 +8968,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         freeSmtp(session, smtp);
         throwFailure(env, "smtputf8");
-        unlockSession(session);
         return 0;
     }
     if (!allow8bit && raw != nullptr &&
@@ -8856,7 +8975,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         freeSmtp(session, smtp);
         throwFailure(env, "8bitmime");
-        unlockSession(session);
         return 0;
     }
     if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
@@ -8879,7 +8997,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
         freeSmtp(session, smtp);
         throwFailure(env, why);
-        unlockSession(session);
         return 0;
     }
     jsize nrcpt = recipients != nullptr ? env->GetArrayLength(recipients) : 0;
@@ -8895,8 +9012,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             std::string why = where + asciiSafe(smtp->response, "smtp error");
             freeSmtp(session, smtp);
             throwFailure(env, why);
-            unlockSession(session);
-            return 0;
+                return 0;
         }
     }
     r = mailsmtp_data(smtp);
@@ -8915,12 +9031,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         std::string why = std::string(uncertain ? "smtp-uncertain: " : "") + where + asciiSafe(smtp->response, "smtp error");
         freeSmtp(session, smtp);
         throwFailure(env, why);
-        unlockSession(session);
         return 0;
     }
     mailsmtp_quit(smtp);
     freeSmtp(session, smtp);
-    unlockSession(session);
     // 0 = no DSN asked, 1 = DSN requested, -1 = asked but the server doesn't offer DSN.
     return dsnNotify == 0 ? 0 : (dsnOffered ? 1 : -1);
 }

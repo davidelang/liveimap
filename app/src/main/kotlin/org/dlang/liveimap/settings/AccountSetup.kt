@@ -1,7 +1,10 @@
 package org.dlang.liveimap.settings
 
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.accounts.AccountCredentials
@@ -11,6 +14,8 @@ import org.dlang.liveimap.jmap.jmapMailboxLevel
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.platformJmapExchange
+import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SerialMailSession
 import org.dlang.liveimap.session.SmtpLoginCheck
 import org.dlang.liveimap.session.confirmMailCertificate
@@ -31,7 +36,16 @@ class AccountProbes(
     val imapLogin: suspend () -> Unit,
     val smtpLogin: suspend () -> SmtpLoginCheck,
     val jmapLogin: suspend () -> Unit,
+    /** The SMTP password is the IMAP password (the tick, or the same text). */
+    val smtpUsesImapPassword: Boolean = false,
 )
+
+/** Server rejected the IMAP login. A connection failure is not this, and is still allowed to try SMTP. */
+internal fun imapAuthenticationFailure(message: String?): Boolean {
+    val lower = message?.lowercase() ?: return false
+    if ("connection failed" in lower || "connection lost" in lower || "connection refused" in lower) return false
+    return "login failed" in lower || "authentication failed" in lower || "authenticationfailed" in lower
+}
 
 /**
  * Test account: real logins, not reachability. IMAP access logs in over IMAP; JMAP access (or sending over JMAP)
@@ -39,6 +53,7 @@ class AccountProbes(
  */
 suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes): List<String> {
     val lines = ArrayList<String>()
+    var imapAuthFailed = false
     suspend fun step(name: String, block: suspend () -> String) {
         lines += try {
             "ok   $name: ${block()}"
@@ -49,10 +64,24 @@ suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes):
         }
     }
     if (settings.jmapFolders || settings.emailSubmission) step("JMAP login") { probes.jmapLogin(); "logged in" }
-    if (!settings.jmapFolders) step("IMAP login") { probes.imapLogin(); "logged in" }
+    if (!settings.jmapFolders) {
+        step("IMAP login") {
+            try {
+                probes.imapLogin()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (probes.smtpUsesImapPassword && imapAuthenticationFailure(error.message)) imapAuthFailed = true
+                throw error
+            }
+            "logged in"
+        }
+    }
     if (!settings.emailSubmission) {
         if (settings.smtpHost.isBlank()) {
             lines += "FAIL sending: no SMTP server and sending over JMAP is off"
+        } else if (imapAuthFailed) {
+            lines += "FAIL SMTP login: not tried; IMAP rejected this password"
         } else {
             step("SMTP login") {
                 when (probes.smtpLogin()) {
@@ -72,29 +101,53 @@ internal fun testAccountProbes(
     candidate: AccountSettings,
     password: String,
     smtpPassword: String,
+    session: MailSession? = null,
 ): AccountProbes {
     val credentials = AccountCredentials(accountId, candidate, password, smtpPassword)
-    val session = SerialMailSession(LibetpanMailSession()).apply {
+    val live = session ?: SerialMailSession(LibetpanMailSession()).apply {
         setCertConfirmer { confirmMailCertificate(it) }
         setPlaintextConfirmer { confirmMailPlaintext() }
     }
+    val closed = AtomicBoolean(false)
+    fun closeProbe() {
+        if (!closed.compareAndSet(false, true)) return
+        live.close()
+    }
     var opened = false
+    var armed = false
     suspend fun ensureOpen() {
-        if (!opened) {
-            session.openWith(credentials)
-            opened = true
+        if (!armed) {
+            armed = true
+            // The caller's completion closes too, including a cancel that leaves this function.
+            coroutineContext[Job]?.invokeOnCompletion { closeProbe() }
+        }
+        if (opened) return
+        try {
+            when (val result = live.openWith(credentials)) {
+                OpenResult.Connected -> opened = true
+                is OpenResult.Failed -> throw IllegalStateException(result.text)
+                is OpenResult.Rejected -> throw IllegalStateException("server rejected: ${result.capabilities}")
+            }
+        } finally {
+            // Cancel during openWith, and a failed login, both leave no probe connected.
+            if (!opened) closeProbe()
         }
     }
+    val smtpWillRun = !candidate.emailSubmission && candidate.smtpHost.isNotBlank()
     return AccountProbes(
         imapLogin = {
-            try { ensureOpen() } finally { if (candidate.emailSubmission) session.close() }
+            try {
+                ensureOpen()
+            } finally {
+                if (!smtpWillRun) closeProbe()
+            }
         },
         smtpLogin = {
             try {
                 ensureOpen()
-                session.smtpLoginCheck()
+                live.smtpLoginCheck()
             } finally {
-                session.close()
+                closeProbe()
             }
         },
         jmapLogin = {
@@ -104,5 +157,6 @@ internal fun testAccountProbes(
                 jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin))
             }
         },
+        smtpUsesImapPassword = candidate.smtpSameAsImap || smtpPassword == password,
     )
 }

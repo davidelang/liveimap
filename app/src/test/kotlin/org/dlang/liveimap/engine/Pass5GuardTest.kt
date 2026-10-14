@@ -13,8 +13,37 @@ class Pass5GuardTest {
     /** F139: accept-invalid from the IMAP settings never relaxes a different SMTP host. */
     @Test fun smtpAcceptInvalidOnlyForTheImapHost() {
         assertFalse(jni.contains("if (!trust.empty() && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
-        assertTrue(jni.contains("if (!trust.empty() && imapHostToo && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
-        assertTrue(jni.contains("if (imapHostToo) pin = session->certPin.c_str();"))
+        assertFalse(jni.contains("if (!trust.empty() && imapHostToo && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
+        assertTrue(jni.contains("if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
+        assertFalse(jni.contains("if (imapHostToo) pin = session->certPin.c_str();"))
+        assertTrue(jni.contains("if (imapHostToo) pin = certPin.c_str();"))
+    }
+
+    /** SMTP copies the fields it needs, then drops the session mutex before the connect and the send. */
+    @Test fun smtpConnectsWithoutTheSessionMutex() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val unlock = body.indexOf("session->mu.unlock();")
+        val ssl = body.indexOf("mailsmtp_ssl_connect_with_callback(")
+        val tcp = body.indexOf("tcpConnect(")
+        val send = body.indexOf("mailsmtp_data_message(")
+        assertTrue(unlock in 0 until ssl && unlock < tcp && unlock < send)
+        val after = body.substring(unlock)
+        assertFalse(after.contains("session->smtpHost"))
+        assertFalse(after.contains("session->tlsMode"))
+        assertFalse(after.contains("session->certPin"))
+        assertFalse(after.contains("session->clientP12"))
+        assertFalse(after.contains("session->logImapTraffic"))
+        assertFalse(after.contains("session->from"))
+        assertFalse(after.contains("session->acceptInvalidCert"))
+        assertFalse(after.contains("session->allowPlaintextAuth"))
+        assertFalse(after.contains("session->allowOldTls"))
+        assertFalse(after.contains("session->host"))
+        assertFalse(after.contains("session->keyChain"))
+        assertTrue(jni.contains("shutdownFd(session->smtpFd.load());"))
+        val abort = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(")
+        val abortBody = jni.substring(abort, jni.indexOf("\n}\n", abort))
+        assertTrue(abortBody.contains("shutdownFd(session->smtpFd.load());"))
     }
 
     /** F140: the JMAP long-poll's model callbacks run under the screen gate. */

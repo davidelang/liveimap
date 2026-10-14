@@ -11,7 +11,7 @@ class ConnectionLimitsTest {
     @Test
     fun defaultLeavesRoomForSearchAndTwoExtraIdleFolders() {
         val limits = connectionLimits(AccountSettings())
-        assertEquals(ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 2), limits)
+        assertEquals(ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 5), limits)
         assertEquals(true, limits.total <= 10) // under Dovecot's default per-user/IP limit
     }
 
@@ -32,7 +32,7 @@ class ConnectionLimitsTest {
     fun smallLimitsDropSearchThenIdle() {
         assertEquals(ConnectionLimits(2, false, 0), connectionLimits(2, 8))
         assertEquals(ConnectionLimits(3, true, 0), connectionLimits(3, 8))
-        assertEquals(ConnectionLimits(5, true, 1), connectionLimits(5, 8))
+        assertEquals(ConnectionLimits(5, true, 2), connectionLimits(5, 8))
         assertEquals(ConnectionLimits(20, true, 8), connectionLimits(20, 8))
         assertEquals(ConnectionLimits(20, true, 3), connectionLimits(20, 3)) // the IDLE budget still caps
     }
@@ -41,8 +41,8 @@ class ConnectionLimitsTest {
     fun foldersBeyondTheLimitFallBackToStatus() {
         val settings = AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), maxConnections = 5, extraIdleBudget = 8)
         val plan = extraWatchPlan(settings)
-        assertEquals(listOf("A"), plan.idle)
-        assertEquals(listOf("B", "C", "D"), plan.status)
+        assertEquals(listOf("A", "B"), plan.idle)
+        assertEquals(listOf("C", "D"), plan.status)
     }
 
     @Test

@@ -186,6 +186,12 @@ class RoutedMailSession(
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit): Unit = current().watch(mailbox, onChange)
 
+    /** IMAP extra IDLE is the one-login watch. JMAP extra IDLE stays on that account's event source. */
+    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+        val side = if (account.jmapFolders) jmapSession() else imapSession()
+        side.watchOnly(account, mailbox, onChange)
+    }
+
     override suspend fun stopWatch(): Unit = current().stopWatch()
 
     override suspend fun noop(): Unit = current().noop()

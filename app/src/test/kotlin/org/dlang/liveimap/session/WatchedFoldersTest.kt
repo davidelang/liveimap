@@ -236,6 +236,32 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun twoAccountsWatchingTheSameFolderAreTwoSessions() = runBlocking {
+        val records = ArrayList<IdleRecord>()
+        val sessions = ExtraIdleSessions {
+            IdleRecord().also {
+                it.deliverOnWatch = null
+                records.add(it)
+            }
+        }
+        val accountA = AccountSettings(friendlyName = "A")
+        val accountB = AccountSettings(friendlyName = "B")
+        sessions.apply(accountA, listOf("INBOX"), "acct-a")
+        sessions.apply(accountB, listOf("INBOX"), "acct-b")
+        assertEquals(2, records.size)
+        assertEquals(listOf("INBOX", "INBOX"), sessions.openNames())
+        assertSame(accountA, records[0].opened)
+        assertSame(accountB, records[1].opened)
+        val waiting = async { sessions.changes.first() }
+        yield()
+        records[0].callback?.invoke(MailboxChange.Exists(3))
+        val emitted = waiting.await()
+        assertEquals("acct-a", emitted.accountId)
+        assertEquals("INBOX", emitted.mailbox)
+        assertEquals(MailboxChange.Exists(3), emitted.change)
+    }
+
+    @Test
     fun watchOfBEmitsExistsNine() = runBlocking {
         val record = IdleRecord()
         record.deliverOnWatch = null
@@ -446,6 +472,21 @@ class WatchedFoldersTest {
             c.drain(),
         )
         assertEquals(emptyList<IdleFolderChange>(), c.drain())
+    }
+
+    @Test
+    fun coalescerKeepsTheSameFolderOnTwoAccounts() {
+        val c = IdleChangeCoalescer()
+        c.offer(IdleFolderChange("INBOX", MailboxChange.Exists(1), "a"))
+        c.offer(IdleFolderChange("INBOX", MailboxChange.Exists(2), "b"))
+        c.offer(IdleFolderChange("INBOX", MailboxChange.Exists(4), "a"))
+        assertEquals(
+            listOf(
+                IdleFolderChange("INBOX", MailboxChange.Exists(2), "b"),
+                IdleFolderChange("INBOX", MailboxChange.Exists(4), "a"),
+            ),
+            c.drain(),
+        )
     }
 
     @Test

@@ -232,6 +232,11 @@ class SerialMailSession(
         withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) }
     }
 
+    /** Extra IDLE setup is the inner session's one login. Not the lane: that lock is for folder commands. */
+    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+        withContext(Dispatchers.IO) { inner.watchOnly(account, mailbox, onChange) }
+    }
+
     override suspend fun stopWatch() {
         withContext(Dispatchers.IO) { inner.stopWatch() }
     }

@@ -135,6 +135,22 @@ interface MailSession {
         throw MailFailure("THREAD=REFERENCES was not advertised")
 
     suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit)
+
+    /**
+     * One extra IDLE folder: open this account, select [mailbox], and watch it. [LibetpanMailSession] logs in once
+     * on the watch connection instead. The default is what a single-threaded fake already did.
+     */
+    suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+        when (val result = open(account)) {
+            OpenResult.Connected -> {
+                inFolder(FolderAt(mailbox)) { _, _ -> }
+                watch(mailbox, onChange)
+            }
+            is OpenResult.Failed -> throw MailFailure(result.text)
+            is OpenResult.Rejected -> throw MailFailure("watch rejected")
+        }
+    }
+
     suspend fun stopWatch()
     suspend fun noop() {}
     suspend fun knownTrash(): String = ""

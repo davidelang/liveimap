@@ -2757,3 +2757,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - watch lifecycle epoch close
 
 - A moved watch epoch closes and stops before connect, sleep, reselect, Connected, and rewatch. Reconnect events use one published watch snapshot.
+
+## 2026-10-14 - SMTP leaves the lock, extra IDLE is one connection
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-and-extra-idle-20261014-0827-plan.md
+- Work: SMTP copies what it needs and unlocks before the connect; an extra IDLE folder is one watch login keyed by account and folder; probes close on cancel and an IMAP authentication failure does not reuse that password for SMTP
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -31,13 +31,13 @@ fun extraWatchPlan(settings: AccountSettings): WatchPlan =
 
 /** The main connection plus the index's watch connection: an account cannot work with fewer. */
 const val MinConnections = 2
-/** Default per-account limit: room for the search connection and two extra IDLE folders (below Dovecot's
+/** Default per-account limit: main, watch, search, and five extra IDLE connections (below Dovecot's
  *  default mail_max_userip_connections of 10). */
 const val DefaultMaxConnections = 8
 /** Hard ceiling; the limit is never unlimited. */
 const val MaxConnectionsCeiling = 20
-/** F158: today each extra IDLE folder is a whole session (main + watch login), so it costs two connections. */
-const val ExtraIdleConnectionCost = 2
+/** F158: an extra IDLE folder is one watch connection. */
+const val ExtraIdleConnectionCost = 1
 
 fun clampMaxConnections(n: Int): Int = n.coerceIn(MinConnections, MaxConnectionsCeiling)
 
@@ -65,8 +65,8 @@ fun maxConnectionsFromText(text: String): Int? =
     text.trim().takeIf { it.matches(Regex("\\d{1,3}")) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
 /** Applies only the stored extra IDLE names. STATUS names are not opened. */
-suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings) {
-    sessions.apply(account, extraWatchPlan(account).idle)
+suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings, accountId: String = "") {
+    sessions.apply(account, extraWatchPlan(account).idle, accountId)
 }
 
 /** One stored name on each line. Does not open a socket. */
@@ -104,10 +104,11 @@ fun folderMessageCount(current: Int?, change: MailboxChange): Int? = when (chang
     -> current
 }
 
-/** One extra IDLE change for a mailbox. Does not open a socket. */
+/** One extra IDLE change for a mailbox on one account. Does not open a socket. */
 data class IdleFolderChange(
     val mailbox: String,
     val change: MailboxChange,
+    val accountId: String = "",
 )
 
 /** Opens extra IDLE names and checks STATUS names. Does not open a socket. */
@@ -164,7 +165,7 @@ class ExtraWatchApply {
  * (the only consumer uses counts). One consumer drains it. Does not open a socket.
  */
 class IdleChangeCoalescer {
-    private val pending = LinkedHashMap<Pair<String, String>, IdleFolderChange>()
+    private val pending = LinkedHashMap<Triple<String, String, String>, IdleFolderChange>()
     private val signal = Channel<Unit>(Channel.CONFLATED)
 
     fun offer(change: IdleFolderChange) {
@@ -174,7 +175,7 @@ class IdleChangeCoalescer {
             else -> change.change.toString()
         }
         synchronized(pending) {
-            val key = change.mailbox to kind
+            val key = Triple(change.accountId, change.mailbox, kind)
             pending.remove(key)
             pending[key] = change
         }
@@ -204,47 +205,32 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
 
     fun openNames(): List<String> = open.map { it.name }
 
-    suspend fun apply(account: AccountSettings, names: List<String>) {
-        val keep = names.toHashSet()
+    /** [names] is this account's extra IDLE set. Another account's sessions stay open. */
+    suspend fun apply(account: AccountSettings, names: List<String>, accountId: String = "") {
+        val keep = HashSet<Pair<String, String>>()
+        for (name in names) keep.add(accountId to name)
         for (held in open.toList()) {
-            if (held.name in keep) continue
+            if (held.accountId != accountId) continue
+            if ((held.accountId to held.name) in keep) continue
             closeHeld(held.session)
             open.remove(held)
         }
-        val seen = open.mapTo(HashSet()) { it.name }
+        val seen = HashSet<Pair<String, String>>()
+        for (held in open) {
+            if (held.accountId == accountId) seen.add(held.accountId to held.name)
+        }
         for (name in names) {
-            if (!seen.add(name)) continue
+            if (!seen.add(accountId to name)) continue
             val session = factory()
-            val result = try {
-                session.open(account)
+            try {
+                session.watchOnly(account, name) { change ->
+                    coalescer.offer(IdleFolderChange(name, change, accountId))
+                }
             } catch (failure: Throwable) {
                 suppressClose(session, failure)
                 throw failure
             }
-            when (result) {
-                OpenResult.Connected -> {
-                    try {
-                        session.inFolder(FolderAt(name)) { _, _ -> } // the watch connection stays in it
-                        session.watch(name) { change ->
-                            coalescer.offer(IdleFolderChange(name, change))
-                        }
-                    } catch (failure: Throwable) {
-                        suppressClose(session, failure)
-                        throw failure
-                    }
-                    open.add(Held(name, session))
-                }
-                is OpenResult.Failed -> {
-                    val failure = MailFailure(result.text)
-                    suppressClose(session, failure)
-                    throw failure
-                }
-                is OpenResult.Rejected -> {
-                    val failure = MailFailure("watch rejected")
-                    suppressClose(session, failure)
-                    throw failure
-                }
-            }
+            open.add(Held(accountId, name, session))
         }
     }
 
@@ -272,5 +258,5 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
         }
     }
 
-    private class Held(val name: String, val session: MailSession)
+    private class Held(val accountId: String, val name: String, val session: MailSession)
 }

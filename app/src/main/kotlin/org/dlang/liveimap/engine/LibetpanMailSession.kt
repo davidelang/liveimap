@@ -164,6 +164,10 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var ownerId: String? = null
 
+    /** Next [loginOnce] stores credentials and does not open a command connection. */
+    @Volatile
+    private var stageCommand = false
+
     private fun ownStore(context: android.content.Context): DataStoreSettingsStore {
         val id = ownerId ?: throw MailFailure("session has no account")
         return DataStoreSettingsStore(context, id)
@@ -329,28 +333,53 @@ class LibetpanMailSession : MailSession {
         }
         // The other per-account choice: an Android KeyChain certificate, signed through the keystore.
         val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
-        val opened = nativeOpen(
-            account.imapHost,
-            account.imapPort,
-            account.username,
-            password,
-            account.smtpHost,
-            account.smtpPort,
-            from,
-            account.pipelineCommands,
-            account.logImapTraffic,
-            trafficPath,
-            account.tlsMode.name,
-            account.certPin,
-            account.allowPlaintextAuth,
-            account.acceptInvalidCert,
-            account.allowOldTls,
-            account.authMechanism,
-            clientCert?.p12,
-            clientCert?.password ?: "",
-            keyChain?.chain,
-            keyChain?.key,
-        )
+        val opened = if (stageCommand) {
+            nativeStage(
+                account.imapHost,
+                account.imapPort,
+                account.username,
+                password,
+                account.smtpHost,
+                account.smtpPort,
+                from,
+                account.pipelineCommands,
+                account.logImapTraffic,
+                trafficPath,
+                account.tlsMode.name,
+                account.certPin,
+                account.allowPlaintextAuth,
+                account.acceptInvalidCert,
+                account.allowOldTls,
+                account.authMechanism,
+                clientCert?.p12,
+                clientCert?.password ?: "",
+                keyChain?.chain,
+                keyChain?.key,
+            )
+        } else {
+            nativeOpen(
+                account.imapHost,
+                account.imapPort,
+                account.username,
+                password,
+                account.smtpHost,
+                account.smtpPort,
+                from,
+                account.pipelineCommands,
+                account.logImapTraffic,
+                trafficPath,
+                account.tlsMode.name,
+                account.certPin,
+                account.allowPlaintextAuth,
+                account.acceptInvalidCert,
+                account.allowOldTls,
+                account.authMechanism,
+                clientCert?.p12,
+                clientCert?.password ?: "",
+                keyChain?.chain,
+                keyChain?.key,
+            )
+        }
         nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
             val text = nativeTakeError()
@@ -358,6 +387,16 @@ class LibetpanMailSession : MailSession {
             TrafficRecorder.event("main", "error", text)
             finishTraffic(account)
             return OpenResult.Failed(text)
+        }
+        if (stageCommand) {
+            handle = opened
+            this.account = account
+            loggedInPassword = password
+            capabilityLine = ""
+            cache.clear()
+            compressed = false
+            finishTraffic(account)
+            return OpenResult.Connected
         }
         val line = nativeCapabilityLine(opened)
         val gate = capabilityGate(line)
@@ -1036,6 +1075,33 @@ class LibetpanMailSession : MailSession {
         }
     }
 
+    /**
+     * Extra IDLE: the watch connection is the only login (connect, log in, EXAMINE, IDLE). The command
+     * connection is never opened.
+     */
+    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+        stageCommand = true
+        val opened = try {
+            open(account)
+        } finally {
+            stageCommand = false
+        }
+        when (opened) {
+            OpenResult.Connected -> {
+                try {
+                    nativeSetWatchWakeMillis((account.idleWakeSeconds) * 1000)
+                    nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
+                    noteTraffic("Idling")
+                } catch (failure: Throwable) {
+                    close()
+                    throw failure
+                }
+            }
+            is OpenResult.Failed -> throw MailFailure(opened.text)
+            is OpenResult.Rejected -> throw MailFailure("watch rejected")
+        }
+    }
+
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         if (!featureCaps.idle) return
         // F136: not through the keeper. The watch is its own connection and runs beside the main one (off the
@@ -1353,6 +1419,29 @@ class LibetpanMailSession : MailSession {
         SortKey.Size -> "SIZE"
         else -> throw MailFailure("use an arrival IndexMode")
     }
+
+    private external fun nativeStage(
+        host: String,
+        port: Int,
+        user: String,
+        password: String,
+        smtpHost: String,
+        smtpPort: Int,
+        from: String,
+        pipeline: Boolean,
+        log: Boolean,
+        logPath: String,
+        tlsMode: String,
+        certPin: String,
+        allowPlaintextAuth: Boolean,
+        acceptInvalidCert: Boolean,
+        allowOldTls: Boolean,
+        authMechanism: String,
+        clientP12: ByteArray?,
+        clientP12Password: String,
+        keyChainChain: Array<ByteArray>?,
+        keyChainKey: Any?,
+    ): Long
 
     private external fun nativeOpen(
         host: String,
