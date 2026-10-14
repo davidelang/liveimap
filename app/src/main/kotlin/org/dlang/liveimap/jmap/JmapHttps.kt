@@ -96,7 +96,7 @@ fun platformJmapExchange(url: String): JmapHttpExchange {
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
+            connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 

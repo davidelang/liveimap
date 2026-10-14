@@ -87,7 +87,7 @@ fun platformJmapGet(url: String, authorization: String, pin: String): JmapBlobEx
     }
     return object : JmapBlobExchange {
         override val status: Int get() = connection.responseCode
-        override fun peerDer(): List<ByteArray> = ((connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList())
+        override fun peerDer(): List<ByteArray> = connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
         override fun bytes(): ByteArray = connection.inputStream.use { readJmapBytes(it) }
         override fun close() = connection.disconnect()
     }
