@@ -11,8 +11,13 @@ class ConnectionLimitsTest {
     @Test
     fun defaultLeavesRoomForSearchAndTwoExtraIdleFolders() {
         val limits = connectionLimits(AccountSettings())
-        assertEquals(ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 5), limits)
+        assertEquals(ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 2), limits)
         assertEquals(true, limits.total <= 10) // under Dovecot's default per-user/IP limit
+        // A limit of 8 with the IDLE ceiling yields five slots. The stored budget still caps a new account at two.
+        assertEquals(
+            ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 5),
+            connectionLimits(DefaultMaxConnections, MaxExtraIdle),
+        )
     }
 
     @Test
