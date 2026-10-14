@@ -6,10 +6,10 @@ import org.dlang.liveimap.settings.AccountSettings
 fun offerForAccount(
     account: AccountSettings,
     open: (String) -> JmapHttpExchange,
-    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     /** Basic authorization; sent only when the unauthenticated session request answers 401 (RFC 8620 needs auth). */
     authorization: String = "",
     get: (String, String) -> JmapBlobExchange = pinnedJmapGet(account.jmapCertPin),
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check, // last: tests pass it as a trailing lambda
 ): JmapOffer {
     if (account.imapHost.isBlank()) return JmapOffer.None
     val fetch = JmapHttpsFetch(account.jmapCertPin, open, trust)  // F63: the JMAP server's own pin
