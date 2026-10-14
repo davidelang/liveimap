@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
@@ -199,7 +199,6 @@ private fun MailboxChooserLoaded(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 480.dp)
-                    .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -215,45 +214,52 @@ private fun MailboxChooserLoaded(
                             Text(stringResource(R.string.chooser_server_marked, suggested))
                         }
                     }
-                    for (row in chooserRows(rows, exclude) { it.mailbox }) {
-                        MailboxPickRow(
-                            row = row,
-                            onPick = { onPick(row.mailbox) },
-                            onToggle = {
-                                scope.launch {
-                                    gate.withLock {
-                                        if (stopped) return@withLock
-                                        try {
-                                            saveMutex.withLock {
-                                                model.toggleExpanded(row.mailbox)
-                                                onStored(store.load())
+                    val pickRows = chooserRows(rows, exclude) { it.mailbox }
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp),
+                    ) {
+                        items(pickRows, key = { it.mailbox }) { row ->
+                            MailboxPickRow(
+                                row = row,
+                                onPick = { onPick(row.mailbox) },
+                                onToggle = {
+                                    scope.launch {
+                                        gate.withLock {
+                                            if (stopped) return@withLock
+                                            try {
+                                                saveMutex.withLock {
+                                                    model.toggleExpanded(row.mailbox)
+                                                    onStored(store.load())
+                                                }
+                                            } catch (error: CancellationException) {
+                                                throw error
+                                            } catch (error: MailFailure) {
+                                                notice = error.text
+                                                stopped = true
+                                                rows = emptyList()
+                                                return@withLock
                                             }
-                                        } catch (error: CancellationException) {
-                                            throw error
-                                        } catch (error: MailFailure) {
-                                            notice = error.text
-                                            stopped = true
-                                            rows = emptyList()
-                                            return@withLock
-                                        }
-                                        val listed = try {
-                                            model.loadLevel()
-                                        } catch (error: CancellationException) {
-                                            throw error
-                                        } catch (error: MailFailure) {
-                                            notice = error.text
-                                            stopped = true
-                                            rows = emptyList()
-                                            null
-                                        }
-                                        if (listed != null) {
-                                            rows = listed
-                                            notice = null
+                                            val listed = try {
+                                                model.loadLevel()
+                                            } catch (error: CancellationException) {
+                                                throw error
+                                            } catch (error: MailFailure) {
+                                                notice = error.text
+                                                stopped = true
+                                                rows = emptyList()
+                                                null
+                                            }
+                                            if (listed != null) {
+                                                rows = listed
+                                                notice = null
+                                            }
                                         }
                                     }
-                                }
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                 }
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
@@ -303,6 +309,6 @@ internal fun <T> chooserRows(rows: List<T>, exclude: String, name: (T) -> String
 internal fun <T> markedMailbox(rows: List<T>, use: String, name: (T) -> String, specialUse: (T) -> String?): String? {
     if (use.isBlank()) return null
     return rows.firstOrNull { row ->
-        specialUse(row).orEmpty().split(Regex("\\s+")).any { it.equals(use, ignoreCase = true) }
+        specialUse(row).orEmpty().split(' ').any { it.isNotEmpty() && it.equals(use, ignoreCase = true) }
     }?.let(name)
 }

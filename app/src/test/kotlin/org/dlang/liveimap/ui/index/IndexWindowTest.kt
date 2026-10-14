@@ -1318,6 +1318,37 @@ class IndexWindowTest {
     }
 
     @Test
+    fun unchangedExistsCountDoesNotRaiseNewMailPill() {
+        val session = folder(10)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applyChange(MailboxChange.Exists(10)) }
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+        session.exists = 10
+        runImmediate { model.applyChange(MailboxChange.Exists(10)) }
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun refreshShownDoesNotInsertIntoNonArrivalView() {
+        val session = folder(10)
+        session.sortUids = (1L..10L).toList()
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = true)) }
+        val before = model.rows.map { it.uid }
+        val fetches = session.fetchRequests.size
+        session.exists = 11
+        session.rows[11L] = row(11L)
+        runImmediate { model.refreshShown(model.rows.map { it.uid }, 11) }
+        assertEquals(before, model.rows.map { it.uid })
+        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(0, model.pendingNew)
+        assertTrue(model.newMailUnnumbered)
+    }
+
+    @Test
     fun searchFollowsDirection() {
         val session = FakeMailSession()
         session.searchUids = listOf(1L, 5L, 3L)

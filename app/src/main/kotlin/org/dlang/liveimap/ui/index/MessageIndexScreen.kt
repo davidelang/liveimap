@@ -622,7 +622,6 @@ internal class IndexScreenHeld : ViewModel() {
     val allMailboxState = mutableStateOf(false)
     var anchorUid: Long? = null
     var anchorOffset: Int = 0
-    var anchorSummary: Boolean = false
     var windowReady: Boolean = false
     var recordAnchor: Boolean = true
     var headingLeaf: String = ""
@@ -645,7 +644,6 @@ internal class IndexScreenHeld : ViewModel() {
         allMailboxState.value = false
         anchorUid = null
         anchorOffset = 0
-        anchorSummary = false
         windowReady = false
         recordAnchor = true
         headingLeaf = ""
@@ -664,7 +662,6 @@ internal class IndexScreenHeld : ViewModel() {
         allMailboxState.value = false
         anchorUid = null
         anchorOffset = 0
-        anchorSummary = false
         windowReady = false
         recordAnchor = true
         headingLeaf = ""
@@ -1600,11 +1597,7 @@ private fun MessageIndexLoaded(
                     model.threadDepth,
                 )
                 val index = entries.indexOfFirst { entry ->
-                    if (held.anchorSummary) {
-                        entry is IndexEntry.Summary && entry.rootUid == uid
-                    } else {
-                        entry is IndexEntry.Message && entry.row.uid == uid
-                    }
+                    entry is IndexEntry.Message && entry.row.uid == uid
                 }
                 if (index >= 0) listState.scrollToItem(index, held.anchorOffset)
             }
@@ -1848,7 +1841,8 @@ private fun MessageIndexLoaded(
             if (runAdvanced && model.isLongAdvanced(pendingAdvanced, pendingScope)) {
                 // Long search: runs on its own connection without the list gate, so the list stays usable.
                 val text: String = pendingAdvanced
-                val before = model.rows
+                val orderAtStart = model.order
+                val orderMailboxesAtStart = model.orderMailboxes
                 onAdvancedConsumed()
                 // On the screen scope, not this effect: the effect restarts when the query is consumed.
                 scope.launch {
@@ -1861,7 +1855,7 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        if (model.rows === before) {
+                        if (model.order == orderAtStart && model.orderMailboxes == orderMailboxesAtStart) {
                             // Still waiting on the same list: show the results in place.
                             gate.withLock {
                                 noteVisibleTop()
@@ -1929,14 +1923,34 @@ private fun MessageIndexLoaded(
                     }
                     val anchorOffset = listState.firstVisibleItemScrollOffset
                     val anchorIndex = listState.firstVisibleItemIndex
-                    val anchorUid = model.rows.getOrNull(anchorIndex)?.uid
+                    val anchorEntries = buildIndexEntries(
+                        model.rows,
+                        expandedThreads,
+                        model.threadMembers,
+                        model.threadHidden,
+                        model.threadDepth,
+                        model.anchorPage,
+                    )
+                    val anchorEntry = anchorEntries.getOrNull(anchorIndex)
                     gate.withLock {
                         model.applyChange(change)
                         pull()
                     }
-                    if (change is MailboxChange.Exists && anchorUid != null && model.view.newestFirst) {
-                        val after = model.rows.indexOfFirst { it.uid == anchorUid }
-                        if (after > anchorIndex) {
+                    if (change is MailboxChange.Exists && anchorEntry is IndexEntry.Message) {
+                        val afterEntries = buildIndexEntries(
+                            model.rows,
+                            expandedThreads,
+                            model.threadMembers,
+                            model.threadHidden,
+                            model.threadDepth,
+                            model.anchorPage,
+                        )
+                        val after = afterEntries.indexOfFirst { entry ->
+                            entry is IndexEntry.Message &&
+                                entry.row.uid == anchorEntry.row.uid &&
+                                entry.row.mailbox == anchorEntry.row.mailbox
+                        }
+                        if (after >= 0 && after != anchorIndex) {
                             listState.requestScrollToItem(after, anchorOffset)
                         }
                     }
@@ -1974,19 +1988,14 @@ private fun MessageIndexLoaded(
                         } catch (_: Exception) {
                             null
                         }
-                        val poll = loaded != null &&
-                            !session.featureCaps.idle &&
-                            (loaded.forceSlowerFallbacks || loaded.pollForNewMail)
-                        suspend fun pollLoop(fixedSeconds: Int?) {
+                        val settings = loaded ?: AccountSettings()
+                        val pollSeconds = idleFallbackSeconds(
+                            settings.pollForNewMail,
+                            pollIntervalSeconds(settings),
+                        )
+                        suspend fun pollLoop(fixedSeconds: Int) {
                             while (true) {
-                                val seconds = try {
-                                    fixedSeconds ?: pollIntervalSeconds(store.load())
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (_: Exception) {
-                                    fixedSeconds ?: pollIntervalSeconds(loaded ?: AccountSettings())
-                                }
-                                delay(seconds * 1000L)
+                                delay(fixedSeconds * 1000L)
                                 try {
                                     deliverMailboxChange(MailboxChange.Exists(model.pollShownExists())) // F123
                                 } catch (error: CancellationException) {
@@ -1995,34 +2004,32 @@ private fun MessageIndexLoaded(
                                     postSnack(error.text)
                                 }
                             }
-                                                }
-                        if (poll) pollLoop(null)
-                        try {
-                            model.watch { change ->
-                                deliverMailboxChange(change)
-                            }
-                        } catch (error: MailFailure) {
-                            if (!idleDroppedByServer(error.text)) throw error
-                            // The server closed the connection on IDLE (a server bug): say so, then poll instead.
-                            val seconds = idleFallbackSeconds(
-                                loaded?.pollForNewMail == true, pollIntervalSeconds(loaded ?: AccountSettings()),
-                            )
-                            postSnack(appContext.getString(R.string.index_idle_dropped, seconds))
-                            pollLoop(seconds)
                         }
-                        // Keep-alive NOOP on the main connection while the watch IDLEs (see KeepAliveSeconds).
-                        while (true) {
-                            delay(KeepAliveSeconds * 1000L)
+                        if (!session.featureCaps.idle) {
+                            pollLoop(pollSeconds)
+                        } else {
                             try {
-                                session.noop()
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (_: MailFailure) {
-                                // A dead connection is reconnected by the next real command; no snackbar here.
+                                model.watch { change ->
+                                    deliverMailboxChange(change)
+                                }
+                            } catch (error: MailFailure) {
+                                if (!idleDroppedByServer(error.text)) throw error
+                                // The server closed the connection on IDLE (a server bug): say so, then poll instead.
+                                postSnack(appContext.getString(R.string.index_idle_dropped, pollSeconds))
+                                pollLoop(pollSeconds)
+                            }
+                            // Keep-alive NOOP on the main connection while the watch IDLEs (see KeepAliveSeconds).
+                            while (true) {
+                                delay(KeepAliveSeconds * 1000L)
+                                try {
+                                    session.noop()
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: MailFailure) {
+                                    // A dead connection is reconnected by the next real command; no snackbar here.
+                                }
                             }
                         }
-                        @Suppress("UNREACHABLE_CODE")
-                        awaitCancellation()
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
@@ -2070,13 +2077,9 @@ private fun MessageIndexLoaded(
         }.collect { (index, offset) ->
             if (!held.recordAnchor) return@collect
             val entry = indexEntryState.value.getOrNull(index) ?: return@collect
-            val uid = when (entry) {
-                is IndexEntry.Message -> entry.row.uid
-                is IndexEntry.Summary -> entry.rootUid
-            }
-            held.anchorUid = uid
+            if (entry !is IndexEntry.Message) return@collect
+            held.anchorUid = entry.row.uid
             held.anchorOffset = offset
-            held.anchorSummary = entry is IndexEntry.Summary
         }
     }
     noteVisibleTop = {
@@ -3413,12 +3416,6 @@ private fun MessageIndexLoaded(
                                 },
                             )
                         }
-                        is IndexEntry.Summary -> IndexSummaryRow(
-                            text = entry.text,
-                            sequenceWidth = sequenceWidth,
-                            expanded = entry.rootUid in expandedThreads,
-                            onClick = { toggleThread(entry.rootUid) },
-                        )
                     }
                 }
             }
@@ -3576,7 +3573,7 @@ private fun MessageIndexLoaded(
                         if (found) scrollToStart()
                         else postSnack(appContext.getString(R.string.index_jump_missing, sequence))
                     }
-                }) { Text("Jump") }
+                }) { Text(stringResource(R.string.index_jump_go)) }
             },
             dismissButton = {
                 TextButton(onClick = { jumpOpen = false }) {
@@ -4258,11 +4255,13 @@ private class WatchBackoff {
         attempt = 0
         job = scope.launch {
             val delays = longArrayOf(2_000L, 10_000L, 60_000L)
-            while (attempt < delays.size) {
-                delay(delays[attempt])
+            while (true) {
+                val delayMs = delays[attempt.coerceAtMost(delays.size - 1)]
+                delay(delayMs)
                 try {
                     session.resume()
                     attempt = 0
+                    onRefresh()
                     return@launch
                 } catch (error: CancellationException) {
                     throw error
@@ -4353,32 +4352,6 @@ private fun BoxScope.NewMailPill(
     }
 }
 
-@Composable
-private fun IndexSummaryRow(
-    text: String,
-    sequenceWidth: Dp,
-    expanded: Boolean,
-    onClick: () -> Unit,
-) {
-    val description = if (expanded) "Hide messages" else "Show messages"
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.width(sequenceWidth))
-        Text(
-            text = text,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 private sealed class IndexEntry {
     abstract val key: String
 
@@ -4392,9 +4365,6 @@ private sealed class IndexEntry {
         }
     }
 
-    data class Summary(val rootUid: Long, val text: String) : IndexEntry() {
-        override val key: String = "s$rootUid"
-    }
 }
 
 private fun buildIndexEntries(

@@ -2896,3 +2896,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-stop-dead-20261014-1613-plan.md
 - Work: deleted stopExtraIdle; launchExtraIdleStop is the only stop path. No new mutex. No install
+
+## 2026-10-14 - New mail pill and IDLE-first poll fallback share one EXISTS rule across watch, poll, and refresh.

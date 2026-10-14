@@ -683,17 +683,6 @@ private fun flattenNullParents(nodes: List<ThreadNode>): List<ThreadNode> {
 
 fun threadCountMark(messageCount: Int, unread: Int): String = "$messageCount · $unread unread"
 
-fun threadSummaryLine(summary: ThreadSummary): String {
-    var line = "${summary.hidden} more · ${summary.unread} unread"
-    if (summary.froms.isNotEmpty()) {
-        line = line + " · " + summary.froms.joinToString(", ")
-    }
-    if (summary.extraFroms != 0) {
-        line = line + " +" + summary.extraFroms
-    }
-    return line
-}
-
 fun threadMessageOrder(
     roots: List<Long>,
     hidden: Map<Long, List<Long>>,
@@ -1349,11 +1338,7 @@ class IndexModel(
                 }
                 refreshSummaryUnread()
             }
-            val baseline = knownExists
-            if (baseline > 0 && existsNow > baseline) {
-                addNewTail(existsNow - baseline)
-            }
-            if (existsNow > 0) knownExists = existsNow
+            applyExistsCount(existsNow)
             notice = null
             publishMessageOrder()
         } catch (failure: MailFailure) {
@@ -1373,15 +1358,7 @@ class IndexModel(
                     if (row.uid == change.uid && inListedFolder(row, mailbox)) row.copy(flags = change.flags) else row
                 }
             }
-            is MailboxChange.Exists -> {
-                if (activeSearch != null || filterUids != null || view.key != SortKey.Arrival) {
-                    if (change.exists > 0) knownExists = change.exists
-                    pendingNew = 0
-                    newMailUnnumbered = true
-                } else {
-                    applyArrivalGrowth(change.exists)
-                }
-            }
+            is MailboxChange.Exists -> applyExistsCount(change.exists)
             is MailboxChange.Expunge -> {
                 if (loadedWindow) reloadKeepingAnchor()
             }
@@ -2068,6 +2045,27 @@ class IndexModel(
         }
         order = rows.map { it.uid }
         return rows
+    }
+
+    private fun listInsertsNewMail(): Boolean =
+        activeSearch == null &&
+            activeAdvanced == null &&
+            filterUids == null &&
+            !blocksFolderSelection(orderMailboxes, mailbox) &&
+            view.key == SortKey.Arrival &&
+            !threading
+
+    private suspend fun applyExistsCount(existsNow: Int) {
+        if (existsNow <= 0) return
+        val baseline = knownExists
+        if (baseline > 0 && existsNow <= baseline) return
+        if (!listInsertsNewMail()) {
+            knownExists = existsNow
+            pendingNew = 0
+            newMailUnnumbered = true
+            return
+        }
+        applyArrivalGrowth(existsNow)
     }
 
     private suspend fun applyArrivalGrowth(existsNow: Int) {

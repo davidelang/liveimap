@@ -41,9 +41,7 @@ class FolderListModel(
      * The visible tree. Session calls suspend on their own lane; the tree walk runs off the main thread, and
      * counts learned by STATUS are kept across rebuilds (an expand never drops a count already shown).
      */
-    suspend fun loadLevel(): List<FolderRow> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-        loadLevelNow()
-    }
+    suspend fun loadLevel(): List<FolderRow> = loadLevelNow()
 
     private suspend fun loadLevelNow(): List<FolderRow> {
         val settings = store.load()
@@ -240,7 +238,7 @@ class FolderListModel(
         for (row in due) {
             countedAt[row.mailbox] = now
         }
-        for ((name, count) in counts) knownMessages[name] = count
+        for ((name, count) in counts) rememberMessages(name, count)
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
@@ -260,7 +258,7 @@ class FolderListModel(
         for (name in due) {
             countedAt[name] = now
         }
-        for ((name, count) in counts) knownMessages[name] = count
+        for ((name, count) in counts) rememberMessages(name, count)
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
@@ -269,7 +267,12 @@ class FolderListModel(
 
     /** A count the screen learned another way (IDLE on a watched folder). */
     fun noteMessages(mailbox: String, count: Int?) {
-        if (count != null) knownMessages[mailbox] = count
+        if (count != null) rememberMessages(mailbox, count)
+    }
+
+    private fun rememberMessages(mailbox: String, count: Int) {
+        val previous = knownMessages[mailbox]
+        if (previous == null || count > previous) knownMessages[mailbox] = count
     }
 
     fun refreshLevels() {

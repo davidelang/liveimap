@@ -8288,6 +8288,47 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     return obj;
 }
 
+static bool capabilityLineOffersCondstore(const std::string & line) {
+    if (line.empty()) return false;
+    size_t pos = 0;
+    while (pos < line.size()) {
+        while (pos < line.size() && line[pos] == ' ') pos++;
+        if (pos >= line.size()) break;
+        size_t end = pos;
+        while (end < line.size() && line[end] != ' ') end++;
+        const std::string token = line.substr(pos, end - pos);
+        if (strcasecmp(token.c_str(), "CONDSTORE") == 0 || strcasecmp(token.c_str(), "QRESYNC") == 0) return true;
+        pos = end;
+    }
+    return false;
+}
+
+// ENABLE CONDSTORE on a watch connection. Does not touch the session or enable QRESYNC.
+void enableCondstoreOn(mailimap * imap) {
+    if (imap == nullptr) return;
+    clist * list = clist_new();
+    if (list == nullptr) return;
+    char * owned = strdup("CONDSTORE");
+    struct mailimap_capability * cap = owned != nullptr
+        ? mailimap_capability_new(MAILIMAP_CAPABILITY_NAME, nullptr, owned) : nullptr;
+    if (cap == nullptr || clist_append(list, cap) != 0) {
+        if (cap != nullptr) mailimap_capability_free(cap);
+        else free(owned);
+        clist_free(list);
+        return;
+    }
+    struct mailimap_capability_data * data = mailimap_capability_data_new(list);
+    if (data == nullptr) {
+        mailimap_capability_free(cap);
+        clist_free(list);
+        return;
+    }
+    struct mailimap_capability_data * result = nullptr;
+    mailimap_enable(imap, data, &result);
+    mailimap_capability_data_free(data);
+    if (result != nullptr) mailimap_capability_data_free(result);
+}
+
 // ENABLE UTF8=ACCEPT on a watch connection. Does not touch the session: the main imap and its utf8 flag stay put.
 void enableUtf8On(mailimap * imap) {
     if (imap == nullptr) return;
@@ -8436,6 +8477,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     const std::string certPin = session->certPin;
     const int port = session->imapPort;
     const bool utf8 = session->utf8;
+    const std::string watchCapabilityLine = session->capabilityLine;
     const std::string mailboxName = mb.c();
     ImapOpenMaterial owned;
     owned.env = env;
@@ -8485,6 +8527,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         return 0;
     }
     session->mu.unlock();
+    std::string capsForCondstore = watchCapabilityLine;
+    if (prepared == nullptr) {
+        struct mailimap_capability_data * caps = nullptr;
+        int capR = mailimap_capability(watch, &caps);
+        if (cmdOk(capR) && caps != nullptr) {
+            capsForCondstore = joinCapabilities(caps);
+            mailimap_capability_data_free(caps);
+        }
+    }
+    if (capabilityLineOffersCondstore(capsForCondstore)) enableCondstoreOn(watch);
     if (utf8) enableUtf8On(watch);
     int r = mailimap_examine(watch, mailboxName.c_str());
     session->mu.lock();
