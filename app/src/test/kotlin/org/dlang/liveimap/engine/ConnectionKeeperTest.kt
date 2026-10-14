@@ -173,15 +173,18 @@ class ConnectionKeeperTest {
         val connectsWhileOwned = link.connects
         val loserValue = arrayOfNulls<String>(1)
         val loserError = arrayOfNulls<Throwable>(1)
+        val loserDone = CountDownLatch(1)
         val loser = Thread {
             try {
                 loserValue[0] = keeper.read("fetch") { "ok" }
             } catch (error: Throwable) {
                 loserError[0] = error
+            } finally {
+                loserDone.countDown()
             }
         }
         loser.start()
-        assertFalse(loser.join(300))
+        assertFalse(loserDone.await(300, TimeUnit.MILLISECONDS))
         assertEquals(connectsWhileOwned, link.connects)
         assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
         keeper.resume()
@@ -189,7 +192,7 @@ class ConnectionKeeperTest {
         assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
         release.countDown()
         owner.join()
-        assertTrue(loser.join(5_000))
+        assertTrue(loserDone.await(5, TimeUnit.SECONDS))
         assertEquals(null, ownerError[0])
         assertEquals(null, loserError[0])
         assertEquals("ok", loserValue[0])
@@ -220,18 +223,21 @@ class ConnectionKeeperTest {
         owner.start()
         inSleep.await()
         val loserError = arrayOfNulls<Throwable>(1)
+        val loserDone = CountDownLatch(1)
         val loser = Thread {
             try {
                 keeper.read("fetch") { "no" }
             } catch (error: Throwable) {
                 loserError[0] = error
+            } finally {
+                loserDone.countDown()
             }
         }
         loser.start()
-        assertFalse(loser.join(300))
+        assertFalse(loserDone.await(300, TimeUnit.MILLISECONDS))
         release.countDown()
         owner.join()
-        assertTrue(loser.join(5_000))
+        assertTrue(loserDone.await(5, TimeUnit.SECONDS))
         assertTrue(ownerError[0] is ConnectionLost)
         assertEquals("still down", (ownerError[0] as ConnectionLost).text)
         assertTrue(loserError[0] is ConnectionLost)
