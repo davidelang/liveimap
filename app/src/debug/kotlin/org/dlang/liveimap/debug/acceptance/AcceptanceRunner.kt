@@ -94,6 +94,7 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
     },
     t("send to self", "smtp-submission", writes = true) {
         if (account.email.isBlank()) throw AcceptanceSkip("no test recipient (account email empty)")
+        if (account.smtpHost.isBlank()) throw AcceptanceSkip("no SMTP server configured")
         val r = session.smtpSend(testMessage(account, "Acceptance send"), listOf(account.email))
         "sent" + if (r < 0) " (no DSN)" else ""
     },
