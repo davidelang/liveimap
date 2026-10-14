@@ -2817,3 +2817,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: queue watch events until the generation is published or cleared; a dead IDLE returns 0; a superseded owner does not fail the newer resume
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Superseded owner result is not success or ConnectionLost
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-publish-gap-20261014-1002-plan.md
+- Fixup: before the owner result is stored, a suspend after that owner is LifecycleStop or SupersededOwner, not success or ConnectionLost; the waiting resume reconnects
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -45,6 +45,8 @@ class ConnectionKeeper(
     // A resume older than that owner returns without waiting. A newer resume waits, and reconnects
     // if the owner stopped for a suspend or was superseded by one. The slot is an atomic, not a mutex.
     private val ownerResult = AtomicReference<ReconnectOwner?>(null)
+    // One-shot pause after this owner's work and before its result is stored. Tests only.
+    internal var beforeOwnerComplete: (() -> Unit)? = null
     private var lifecycle: LifecycleClock? = null
     private val rewatchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -216,8 +218,28 @@ class ConnectionKeeper(
             outcome = kotlin.Result.failure(error)
             rethrow = error
         } finally {
-            ownerResult.compareAndSet(slot, null)
-            if (!owned.isDone) owned.complete(outcome)
+            try {
+                val hook = beforeOwnerComplete
+                beforeOwnerComplete = null
+                hook?.invoke()
+                // The last stop check already ran. A suspend or a newer resume may have landed since.
+                // The stored result is that outcome, not success and not ConnectionLost.
+                if (ownerSuperseded(life, started)) {
+                    outcome = kotlin.Result.failure(SupersededOwner())
+                    rethrow = if (fromResume) null else SupersededOwner()
+                } else if (ownerMustStop(life, started)) {
+                    if (!link.dead()) link.close()
+                    if (state.value !is ConnectionState.Suspended) {
+                        state.value = ConnectionState.Suspended
+                        TrafficLog.noteStatus("Closed (background)")
+                    }
+                    outcome = kotlin.Result.failure(LifecycleStop())
+                    rethrow = if (fromResume) null else ConnectionLost("Closed (background)")
+                }
+            } finally {
+                ownerResult.compareAndSet(slot, null)
+                if (!owned.isDone) owned.complete(outcome)
+            }
         }
         if (rethrow != null) throw rethrow
     }
@@ -244,6 +266,7 @@ class ConnectionKeeper(
         }
         if (!connected) {
             if (ownerSuperseded(life, epoch)) throw SupersededOwner()
+            if (ownerMustStop(life, epoch)) stopForSuspend()
             val text = failureText(failure)
             state.value = ConnectionState.Lost(text)
             TrafficLog.noteStatus("Error $text")

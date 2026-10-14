@@ -340,14 +340,13 @@ class ConnectionKeeperTest {
         val clock = LifecycleClock()
         val link = FakeLink()
         link.deadFlag = true
-        val inReselect = CountDownLatch(1)
-        val releaseReselect = CountDownLatch(1)
-        link.beforeReselect = {
-            inReselect.countDown()
-            releaseReselect.await()
-            if (link.deadFlag) throw MailFailure("closed under the owner")
-        }
         val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        val inFinish = CountDownLatch(1)
+        val releaseFinish = CountDownLatch(1)
+        keeper.beforeOwnerComplete = {
+            inFinish.countDown()
+            releaseFinish.await()
+        }
         val epochA = clock.takeResume()
         val ownerError = arrayOfNulls<Throwable>(1)
         val owner = Thread {
@@ -358,8 +357,10 @@ class ConnectionKeeperTest {
             }
         }
         owner.start()
-        assertTrue(inReselect.await(5, TimeUnit.SECONDS))
+        assertTrue(inFinish.await(5, TimeUnit.SECONDS))
         assertEquals(1, link.connects)
+        assertEquals(1, link.reselects)
+        val connectsAtHandoff = link.connects
         val suspendEpoch = clock.takeSuspend()
         keeper.suspendConnections(clock, suspendEpoch)
         val epochB = clock.takeResume()
@@ -376,13 +377,71 @@ class ConnectionKeeperTest {
         }
         resumeB.start()
         assertFalse(resumed.await(300, TimeUnit.MILLISECONDS))
-        releaseReselect.countDown()
+        releaseFinish.countDown()
         owner.join()
         assertTrue(resumed.await(5, TimeUnit.SECONDS))
         assertEquals(null, ownerError[0])
         assertEquals(null, resumeError[0])
         assertEquals(ConnectionState.Connected, keeper.connectionState.value)
-        assertTrue(link.connects >= 2)
+        assertTrue(link.connects > connectsAtHandoff)
+        assertTrue(link.awaitRewatches(1))
+    }
+
+    @Test
+    fun connectFailureFromSuspendDoesNotFailTheWaitingResume() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        link.connectFailures.add(MailFailure("first boom"))
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        var connectCalls = 0
+        link.beforeConnect = {
+            connectCalls += 1
+            if (connectCalls == 2) {
+                val suspendEpoch = clock.takeSuspend()
+                keeper.suspendConnections(clock, suspendEpoch)
+                throw MailFailure("closed under the owner")
+            }
+        }
+        val inFinish = CountDownLatch(1)
+        val releaseFinish = CountDownLatch(1)
+        keeper.beforeOwnerComplete = {
+            inFinish.countDown()
+            releaseFinish.await()
+        }
+        val epochA = clock.takeResume()
+        val ownerError = arrayOfNulls<Throwable>(1)
+        val owner = Thread {
+            try {
+                keeper.resume(clock, epochA)
+            } catch (error: Throwable) {
+                ownerError[0] = error
+            }
+        }
+        owner.start()
+        assertTrue(inFinish.await(5, TimeUnit.SECONDS))
+        val connectsAtHandoff = link.connects
+        val epochB = clock.takeResume()
+        val resumeError = arrayOfNulls<Throwable>(1)
+        val resumed = CountDownLatch(1)
+        val resumeB = Thread {
+            try {
+                keeper.resume(clock, epochB)
+            } catch (error: Throwable) {
+                resumeError[0] = error
+            } finally {
+                resumed.countDown()
+            }
+        }
+        resumeB.start()
+        assertFalse(resumed.await(300, TimeUnit.MILLISECONDS))
+        releaseFinish.countDown()
+        owner.join()
+        assertTrue(resumed.await(5, TimeUnit.SECONDS))
+        assertEquals(null, ownerError[0])
+        assertEquals(null, resumeError[0])
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+        assertTrue(link.connects > connectsAtHandoff)
         assertTrue(link.awaitRewatches(1))
     }
 
