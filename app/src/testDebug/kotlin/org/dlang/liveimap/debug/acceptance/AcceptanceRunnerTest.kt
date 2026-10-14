@@ -13,7 +13,7 @@ class AcceptanceRunnerTest {
         val fake = FakeLab(caps)
         val account = AccountSettings(username = user, email = email, imapHost = host)
         val rows = runBlocking {
-            runAcceptance(AcceptanceContext(fake, account) { OpenResult.Connected }, acceptanceTests, readOnly = false, clock = { 0L })
+            runAcceptance(AcceptanceContext(fake, account) { OpenResult.Connected }, acceptanceTests, readOnly = false, clock = { 0L }, readMarker = { SeedMarker(SeedVersion, false) })
         }
         return rows to fake
     }
@@ -69,7 +69,7 @@ class AcceptanceRunnerTest {
     }
 }
 
-private class FakeLab(override val capabilities: Set<String>) : MailSession {
+internal class FakeLab(override val capabilities: Set<String>) : MailSession {
     val calls = ArrayList<String>()
     var cert: (suspend (CertPrompt) -> Boolean)? = null
     var plain: (suspend () -> Boolean)? = null

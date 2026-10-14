@@ -117,14 +117,25 @@ suspend fun runAcceptance(
     readOnly: Boolean,
     progress: (Int, Int, String) -> Unit = { _, _, _ -> },
     clock: () -> Long = System::currentTimeMillis,
+    /** Lab servers must carry the seed marker; real servers are prepared by the user and not checked. */
+    checkSeed: Boolean = allowWriteHost(context.account.imapHost),
+    readMarker: suspend () -> SeedMarker? = { readSeedMarker(context) },
 ): List<ReportRow> {
     val writer = allowWriter(context.account.username, context.account.imapHost) &&
         allowWriteHost(context.account.smtpHost.ifBlank { context.account.imapHost })
     val rows = ArrayList<ReportRow>()
+    val marker = if (checkSeed) try { readMarker() } catch (e: CancellationException) { throw e } catch (_: Exception) { null } else null
+    val notReset = if (checkSeed) seedGate(marker) else null
+    if (notReset != null) {
+        tests.forEach { rows += ReportRow(it.case.name, it.case.feature, it.case.plans, "skip", notReset) }
+        progress(tests.size, tests.size, "")
+        return rows
+    }
+    val scaleSeeded = marker?.scale == true
     tests.forEachIndexed { index, test ->
         val c = test.case
         progress(index, tests.size, c.name)
-        val outcome = caseOutcome(readOnly, scaleSeeded = false, c)
+        val outcome = caseOutcome(readOnly, scaleSeeded, c)
         if (outcome.step == CaseStep.Skip) {
             rows += ReportRow(c.name, c.feature, c.plans, "skip", outcome.reason); return@forEachIndexed
         }
@@ -144,6 +155,16 @@ suspend fun runAcceptance(
     }
     progress(tests.size, tests.size, "")
     return rows
+}
+
+/** The INBOX marker message "LiveIMAP seed corpus-v1 <profile>" (newest match), header only. */
+suspend fun readSeedMarker(context: AcceptanceContext): SeedMarker? {
+    val inbox = context.folder("INBOX")
+    val uid = inbox.searchCriterion("SUBJECT", "LiveIMAP seed").maxOrNull() ?: return null
+    val raw = inbox.fetchRfc822(uid)
+    val text = raw.toString(Charsets.ISO_8859_1)
+    val end = text.indexOf("\r\n\r\n").takeIf { it >= 0 } ?: text.indexOf("\n\n").takeIf { it >= 0 } ?: text.length
+    return parseSeedMarker(text.substring(0, end))
 }
 
 fun summaryLine(rows: List<ReportRow>): String =

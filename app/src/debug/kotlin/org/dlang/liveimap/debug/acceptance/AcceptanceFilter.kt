@@ -124,6 +124,26 @@ fun allowEntry(
     return null
 }
 
+/** Seed version the lab corpus carries (test-servers.md "Seed markers"). */
+const val SeedVersion = "corpus-v1"
+
+data class SeedMarker(val version: String, val scale: Boolean)
+
+/** The marker from the INBOX marker message's header block, or null when it has none. */
+fun parseSeedMarker(header: String): SeedMarker? {
+    fun field(name: String) = Regex("(?im)^" + name + "[ \t]*:[ \t]*([^\r\n]*)").find(header)?.groupValues?.get(1)?.trim()
+    val version = field("X-LiveIMAP-Seed")?.takeIf { it.isNotEmpty() } ?: return null
+    val profile = field("X-LiveIMAP-Seed-Profile").orEmpty().lowercase()
+    return SeedMarker(version, profile.contains("scale"))
+}
+
+/** Null when the server is seeded with [SeedVersion]; otherwise the "not reset" reason every test is skipped with. */
+fun seedGate(marker: SeedMarker?): String? = when {
+    marker == null -> "not reset: no seed marker"
+    marker.version != SeedVersion -> "not reset: seed ${marker.version}, want $SeedVersion"
+    else -> null
+}
+
 fun caseOutcome(readOnly: Boolean, scaleSeeded: Boolean, item: AcceptanceCase): CaseOutcome {
     if (item.scale && !scaleSeeded) {
         return CaseOutcome(CaseStep.Skip, "scale content not seeded")
