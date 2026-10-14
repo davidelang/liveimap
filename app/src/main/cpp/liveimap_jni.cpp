@@ -309,6 +309,7 @@ struct LiveSession {
     std::atomic<bool> watchStop{false};
     std::mutex startMu;
     std::condition_variable startCv;
+    // Under startMu: 0 waiting, 1 IDLE started, -1 failed. A stop does not write it back to 0.
     int startState = 0;
     std::string startError;
     jobject selfGlobal = nullptr;
@@ -320,8 +321,9 @@ struct LiveSession {
     bool deleteAfterWatch = false;
     // F27: callers between the gLiveMu lookup and their own unlock; freeSession waits for them.
     std::atomic<int> users{0};
-    uint64_t watchGeneration = 0;  // F136: guarded by mu; bumped by every watch setup and stop
-    bool closed = false;  // under mu
+    // F136: under mu. Every bump also takes startMu so the IDLE-start wait can read it.
+    uint64_t watchGeneration = 0;
+    bool closed = false;  // under mu; close takes startMu too so the IDLE-start wait can read it
     std::vector<uint32_t> copiedUids;
     uint32_t copiedUidValidity = 0; // COPYUID's destination UIDVALIDITY (F105 refs for undo)
     int64_t esearchCount = -1;
@@ -413,7 +415,11 @@ void shutdownMainSocket(LiveSession * session) {
 }
 
 void signalWatchStop(LiveSession * session) {
-    session->watchStop.store(true);
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        session->watchStop.store(true);
+        session->startCv.notify_all();
+    }
     int fd = session->watchWakeFd;
     if (fd >= 0) {
         uint64_t one = 1;
@@ -2031,13 +2037,21 @@ bool watchSetupSuperseded(bool closed, uint64_t currentGeneration, uint64_t setu
     return closed || currentGeneration != setupGeneration || watchInstalled;
 }
 
+// Caller holds session->mu. The IDLE-start wait reads the generation under startMu.
+uint64_t bumpWatchGeneration(LiveSession * session) {
+    std::lock_guard<std::mutex> lock(session->startMu);
+    uint64_t next = ++session->watchGeneration;
+    session->startCv.notify_all();
+    return next;
+}
+
 /* F27: the part of a stop that runs under mu once the thread is gone: free the connection and the callback ref. */
 void finishWatchStopLocked(LiveSession * session, JNIEnv * env);
 
 void stopWatchLocked(LiveSession * session, JNIEnv * env) {
     // F27: another stop is joining outside the lock; let it finish (mu is released while waiting).
     while (session->watchStopping) session->stopCv.wait(session->mu);
-    session->watchGeneration++;
+    bumpWatchGeneration(session);
     signalWatchStop(session);
     shutdownWatchSocket(session);
     if (session->watchThread.joinable()) {
@@ -2059,8 +2073,13 @@ void finishWatchStopLocked(LiveSession * session, JNIEnv * env) {
         env->DeleteGlobalRef(session->selfGlobal);
         session->selfGlobal = nullptr;
     }
-    session->watchStop.store(false);
-    session->startState = 0;
+    // Leave a published startState. Zeroing it here raced the waiter: it could sample 0 after watchMain's
+    // notify and sleep forever. The next nativeWatch zeros startState under startMu.
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        session->watchStop.store(false);
+        session->startCv.notify_all();
+    }
 }
 
 void emitWatch(LiveSession * session, int kind, int exists, jlong uid, jobjectArray flags) {
@@ -3249,7 +3268,11 @@ void freeSession(LiveSession * session, JNIEnv * env) {
         if (gLive.erase(session) == 0) return;  // already freed by a concurrent close
     }
     session->mu.lock();
-    session->closed = true;
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        session->closed = true;
+        session->startCv.notify_all();
+    }
     shutdownMainSocket(session);
     shutdownWatchSocket(session);
     shutdownFd(session->smtpFd.load());
@@ -8085,7 +8108,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     const int port = session->imapPort;
     const bool utf8 = session->utf8;
     const std::string mailboxName = mb.c();
-    const uint64_t generation = ++session->watchGeneration;
+    const uint64_t generation = bumpWatchGeneration(session);
     session->mu.unlock();
     if (tlsMode == "None") {
         watch = openPlain(env, host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr);
@@ -8129,9 +8152,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         return;
     }
     session->watch = watch;
-    session->watchStop.store(false);
-    session->startState = 0;
-    session->startError.clear();
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        session->watchStop.store(false);
+        session->startState = 0;
+        session->startError.clear();
+    }
     if (watch->imap_selection_info != nullptr) {
         session->watchUidValidity = watch->imap_selection_info->sel_uidvalidity;
         session->watchExists = static_cast<int>(watch->imap_selection_info->sel_exists);
@@ -8141,9 +8167,18 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (session->watchWakeFd < 0) session->watchWakeFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     session->watchThread = std::thread(watchMain, session);
     session->mu.unlock();
+    int started = 0;
     {
         std::unique_lock<std::mutex> lock(session->startMu);
-        session->startCv.wait(lock, [&] { return session->startState != 0; });
+        // IDLE started or failed, or this setup is no longer current. A stop that wins before watchMain
+        // publishes startState must not leave this wait blocked.
+        session->startCv.wait(lock, [&] {
+            return session->startState != 0
+                || session->watchStop.load()
+                || session->closed
+                || session->watchGeneration != generation;
+        });
+        started = session->startState;
     }
     session->mu.lock();
     // This watch is already published, so the installed flag would match it. A stop bumps the generation.
@@ -8151,7 +8186,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         unlockSession(session);
         return;
     }
-    if (session->startState < 0) {
+    if (started < 0) {
         std::string why = session->startError;
         if (session->watchThread.joinable()) session->watchThread.join();
         mailimap_free(session->watch);
@@ -8174,7 +8209,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv * env,
     // the account's other commands are not held for it; watchStopping keeps every other stop, free or setup
     // from touching the watch connection meanwhile. The use count from lockSession keeps the session alive.
     while (session->watchStopping) session->stopCv.wait(session->mu);
-    session->watchGeneration++;
+    bumpWatchGeneration(session);
     signalWatchStop(session);
     shutdownWatchSocket(session);
     if (session->watchThread.joinable()) {
