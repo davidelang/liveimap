@@ -2747,3 +2747,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-20261014-0703-plan.md
 - Work: watch connect copies auth, certificate, and log fields; the published generation owns the callback; a reconnect loser waits; rewatch is off the caller; a lifecycle epoch orders suspend and resume
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Watch logger, epoch publish, no new mutex
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-20261014-0703-plan.md
+- Fixup: the watch open does not pass the live session into the unlocked logger; Connected is not published over a suspend that already closed, and a stale epoch does not start rewatch; the reconnect future and the one live watch callback are atomic references, not new mutexes
+- First action per standard-plan-compliance-block.md; commits stay on master

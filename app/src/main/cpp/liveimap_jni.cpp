@@ -2617,6 +2617,28 @@ void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_
     logImapBuffer(live, log_type, str, size, trafficConnectionId(live, session, nullptr));
 }
 
+// Watch connect already copied the log flag. This logger must not hold a LiveSession or read its fields:
+// the handshake runs after the session mutex is released.
+void imapTrafficLoggerCopied(mailimap *, int log_type, const char * str, size_t size, void * context) {
+    auto * id = static_cast<const char *>(context);
+    if (id == nullptr || str == nullptr || size == 0) return;
+    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
+        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
+        return;
+    }
+    postTrafficBytes(id, log_type, str, size);
+}
+
+void attachOpenedTrafficLogger(mailimap * imap, bool logTraffic, LiveSession * live, const char * copiedLogId) {
+    if (imap == nullptr || !logTraffic) return;
+    if (copiedLogId != nullptr) {
+        mailimap_set_logger(imap, imapTrafficLoggerCopied, const_cast<char *>(copiedLogId));
+        return;
+    }
+    if (live != nullptr) mailimap_set_logger(imap, imapTrafficLogger, live);
+}
+
 void smtpTrafficLogger(mailsmtp *, int log_type, const char * str, size_t size, void * context) {
     auto * live = static_cast<LiveSession *>(context);
     if (live == nullptr || !live->logImapTraffic) return;
@@ -2860,7 +2882,7 @@ void rejectImap(mailimap * imap) {
 }
 
 mailimap * openTcp(const char * host, int port, LiveSession * live, std::string * error, std::string * address,
-    bool logTraffic) {
+    bool logTraffic, const char * copiedLogId = nullptr) {
     mailimap * imap = mailimap_new(0, nullptr);
     if (imap == nullptr) {
         *error = "imap error";
@@ -2879,8 +2901,10 @@ mailimap * openTcp(const char * host, int port, LiveSession * live, std::string 
         mailimap_free(imap);
         return nullptr;
     }
-    if (logTraffic && live != nullptr) {
-        mailimap_set_logger(imap, imapTrafficLogger, live);
+    if (copiedLogId != nullptr) {
+        attachOpenedTrafficLogger(imap, logTraffic, nullptr, copiedLogId);
+    } else {
+        attachOpenedTrafficLogger(imap, logTraffic, live, nullptr);
     }
     int r = mailimap_connect(imap, stream);
     if (!connectOk(r)) {
@@ -3177,7 +3201,9 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
     bool logTraffic = owned != nullptr ? owned->logImapTraffic : (live != nullptr && live->logImapTraffic);
     bool plaintextOk = owned != nullptr ? owned->allowPlaintextAuth : (live != nullptr && live->allowPlaintextAuth);
     std::string mechanism = owned != nullptr ? owned->authMechanism : (live != nullptr ? live->authMechanism : std::string());
-    mailimap * imap = openTcp(host, port, live, error, &address, logTraffic);
+    mailimap * imap = owned != nullptr
+        ? openTcp(host, port, nullptr, error, &address, logTraffic, "watch")
+        : openTcp(host, port, live, error, &address, logTraffic, nullptr);
     if (imap == nullptr) return nullptr;
     if (!loginImap(env, imap, host, port, user, password, address, error, false, plaintextOk, mechanism)) {
         mailimap_free(imap);
@@ -3218,7 +3244,9 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     mailimap * imap = nullptr;
     bool tlsOk = false;
     if (strcmp(mode, "StartTls") == 0) {
-        imap = openTcp(host, port, live, error, &address, logTraffic);
+        imap = owned != nullptr
+            ? openTcp(host, port, nullptr, error, &address, logTraffic, "watch")
+            : openTcp(host, port, live, error, &address, logTraffic, nullptr);
         if (imap == nullptr) {
             tlsCapture = nullptr;
             return nullptr;
@@ -3254,8 +3282,10 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             return nullptr;
         }
         mailimap_set_timeout(imap, kReadTimeoutSec);
-        if (logTraffic && live != nullptr) {
-            mailimap_set_logger(imap, imapTrafficLogger, live);
+        if (owned != nullptr) {
+            attachOpenedTrafficLogger(imap, logTraffic, nullptr, "watch");
+        } else {
+            attachOpenedTrafficLogger(imap, logTraffic, live, nullptr);
         }
         address = host != nullptr ? host : "";
         if (port < 0 || port > 65535) {
@@ -8172,9 +8202,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     const uint64_t generation = bumpWatchGeneration(session);
     session->mu.unlock();
     if (tlsMode == "None") {
-        watch = openPlain(env, host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr, &owned);
+        watch = openPlain(env, host.c_str(), port, user.c_str(), password.c_str(), nullptr, &error, nullptr, &owned);
     } else {
-        watch = openTls(env, tlsMode.c_str(), host.c_str(), port, user.c_str(), password.c_str(), session, &error, nullptr, certPin.c_str(), false, &owned);
+        watch = openTls(env, tlsMode.c_str(), host.c_str(), port, user.c_str(), password.c_str(), nullptr, &error, nullptr, certPin.c_str(), false, &owned);
     }
     wipeSecret(password);
     session->mu.lock();

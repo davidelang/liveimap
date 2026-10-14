@@ -2,6 +2,7 @@ package org.dlang.liveimap.engine
 
 import android.content.Context
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
@@ -88,13 +89,16 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var watchMailbox: String? = null
 
-    private val watchGate = Any()
-    private val publishedByGeneration = HashMap<Long, WatchOffer>()
-    private var liveWatchGeneration = 0L
+    private val publishedWatch = AtomicReference<PublishedWatch?>(null)
 
     private class WatchOffer(
         val mailbox: String,
         val onChange: (MailboxChange) -> Unit,
+    )
+
+    private class PublishedWatch(
+        val generation: Long,
+        val offer: WatchOffer?,
     )
 
     @Volatile
@@ -1045,13 +1049,25 @@ class LibetpanMailSession : MailSession {
     fun publishWatch(generation: Long, offer: Any?) {
         val pending = offer as? WatchOffer ?: return
         if (generation == 0L) return
-        synchronized(watchGate) {
-            if (generation < liveWatchGeneration) return
-            liveWatchGeneration = generation
-            publishedByGeneration.keys.retainAll { it >= generation }
-            publishedByGeneration[generation] = pending
+        val next = PublishedWatch(generation, pending)
+        while (true) {
+            val cur = publishedWatch.get()
+            if (cur != null && generation < cur.generation) return
+            if (!publishedWatch.compareAndSet(cur, next)) continue
             watchMailbox = pending.mailbox
             watchCallback = pending.onChange
+            val now = publishedWatch.get()
+            if (now !== next) {
+                val kept = now?.offer
+                if (kept == null) {
+                    watchCallback = null
+                    watchMailbox = null
+                } else {
+                    watchMailbox = kept.mailbox
+                    watchCallback = kept.onChange
+                }
+            }
+            return
         }
     }
 
@@ -1063,12 +1079,19 @@ class LibetpanMailSession : MailSession {
 
     private fun clearPublishedWatch(stoppedGeneration: Long) {
         if (stoppedGeneration == 0L) return
-        synchronized(watchGate) {
-            if (liveWatchGeneration > stoppedGeneration) return
-            publishedByGeneration.clear()
+        val floor = PublishedWatch(stoppedGeneration, null)
+        while (true) {
+            val cur = publishedWatch.get()
+            if (cur != null && cur.generation > stoppedGeneration) return
+            if (!publishedWatch.compareAndSet(cur, floor)) continue
             watchCallback = null
             watchMailbox = null
-            if (stoppedGeneration > liveWatchGeneration) liveWatchGeneration = stoppedGeneration
+            val kept = publishedWatch.get()?.offer
+            if (kept != null) {
+                watchMailbox = kept.mailbox
+                watchCallback = kept.onChange
+            }
+            return
         }
     }
 
@@ -1189,20 +1212,19 @@ class LibetpanMailSession : MailSession {
         selectedMailbox = null
         selectedReadWrite = false
         sequencesStale = false
-        synchronized(watchGate) {
-            publishedByGeneration.clear()
-            watchCallback = null
-            watchMailbox = null
-            liveWatchGeneration = 0
-        }
+        publishedWatch.set(null)
+        watchCallback = null
+        watchMailbox = null
         cache.clear()
         keeper.onSessionClosed()
     }
 
     fun onNativeWatch(generation: Long, kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
-        val target = synchronized(watchGate) { publishedByGeneration[generation] } ?: return
-        val mailbox = target.mailbox
-        val callback = target.onChange
+        val target = publishedWatch.get() ?: return
+        val pending = target.offer ?: return
+        if (target.generation != generation) return
+        val mailbox = pending.mailbox
+        val callback = pending.onChange
         val change: MailboxChange = when (kind) {
             0 -> MailboxChange.Exists(exists)
             1 -> MailboxChange.Expunge(exists)
@@ -1260,11 +1282,7 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun rewatch() {
-            val offer = synchronized(watchGate) {
-                val mailbox = watchMailbox ?: return
-                val callback = watchCallback ?: return
-                WatchOffer(mailbox, callback)
-            }
+            val offer = publishedWatch.get()?.offer ?: return
             nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
             nativeWatch(requireHandle(), wire(offer.mailbox), offer)
             noteTraffic("Idling")
