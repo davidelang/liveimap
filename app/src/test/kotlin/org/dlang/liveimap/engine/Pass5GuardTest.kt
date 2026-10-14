@@ -262,9 +262,20 @@ class Pass5GuardTest {
         assertTrue(watch.contains("if (started == 0L)"))
         assertTrue(watch.contains("cur.offer === offer"))
         assertTrue(watch.contains("clearPublishedWatch("))
-        assertTrue(rewatch.contains("if (started == 0L)"))
+        assertTrue(watch.contains("requestedWatch"))
+        assertTrue(rewatch.contains("nativeWatch("))
+        assertTrue(rewatch.contains("runRewatch("))
+        assertTrue(rewatch.contains("requestedWatch"))
         assertTrue(rewatch.contains("cur.offer === offer"))
         assertTrue(rewatch.contains("clearPublishedWatch("))
+        val runAt = kt.indexOf("internal fun runRewatch(")
+        val runBody = kt.substring(runAt, kt.indexOf("\n}\n", runAt))
+        assertTrue(runBody.contains("published ?: requested ?: return false"))
+        assertTrue(runBody.contains("start(target)"))
+        val zero = runBody.indexOf("if (started == 0L)")
+        assertTrue(zero > runBody.indexOf("start(target)"))
+        assertTrue(runBody.contains("throw ConnectionLost("))
+        assertFalse(runBody.contains("noteTraffic"))
     }
 
     /** The watch thread queues until nativeWatch publishes that generation or clears it. */

@@ -2845,3 +2845,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the IDLE thread reads watchWakeFd when poll reports it, so a publish wake does not spin; an early WatchLost or ended thread is joined and freed and returns 0 without throwFailure; watch and rewatch call markWatchLost on that 0 and do not note Idling
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A 0 from rewatch keeps the watch lost so resume starts it again
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-wake-20261014-1236-plan.md
+- Fixup: the last watch target survives a cleared publish; rewatch calls nativeWatch when that offer is null; a 0 throws ConnectionLost so resume and scheduleRewatch leave watchLost set
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

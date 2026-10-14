@@ -626,23 +626,21 @@ class ConnectionKeeperTest {
         )
     }
 
-    /** A 0 from watch or rewatch marks the watch lost, so a later resume starts it again. */
+    /** A 0 from watch marks the watch lost, so a later resume starts it again. */
     @Test fun earlyLossLeavesTheWatchLostSoResumeRewatches() {
-        val kt = listOf(
-            "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
-        ).map(::File).first { it.exists() }.readText()
+        val kt = sessionSource()
         val watchAt = kt.indexOf("override suspend fun watch(")
         val watch = kt.substring(watchAt, kt.indexOf("override suspend fun stopWatch(", watchAt))
-        val rewatchAt = kt.indexOf("override fun rewatch(")
-        val rewatch = kt.substring(rewatchAt, kt.indexOf("override fun close()", rewatchAt))
-        for (body in listOf(watch, rewatch)) {
-            val zero = body.indexOf("if (started == 0L)")
-            val lost = body.indexOf("keeper.markWatchLost()", zero)
-            val idling = body.indexOf("noteTraffic(\"Idling\")")
-            assertTrue(zero in 0 until lost && lost < idling)
-            assertTrue(body.substring(zero, idling).contains("return"))
-        }
+        val zero = watch.indexOf("if (started == 0L)")
+        val lost = watch.indexOf("keeper.markWatchLost()", zero)
+        val idling = watch.indexOf("noteTraffic(\"Idling\")")
+        assertTrue(zero in 0 until lost && lost < idling)
+        assertTrue(watch.substring(zero, idling).contains("return"))
+        val remembered = watch.indexOf("requestedWatch")
+        assertTrue(remembered in 0 until watch.indexOf("nativeWatch("))
+        val clearAt = kt.indexOf("private fun clearPublishedWatch(")
+        val clearBody = kt.substring(clearAt, kt.indexOf("override suspend fun noop()", clearAt))
+        assertFalse(clearBody.contains("requestedWatch"))
         val link = FakeLink()
         val kept = keeper(link)
         kept.markWatchLost()
@@ -651,6 +649,75 @@ class ConnectionKeeperTest {
         kept.resume()
         assertEquals(1, link.rewatches)
     }
+
+    /** An empty published offer still starts the last requested watch. A 0 does not clear watchLost. */
+    @Test fun emptyOfferRewatchStartsAndZeroLeavesWatchLost() {
+        val kt = sessionSource()
+        val rewatchAt = kt.indexOf("override fun rewatch(")
+        val rewatch = kt.substring(rewatchAt, kt.indexOf("override fun close()", rewatchAt))
+        val native = rewatch.indexOf("nativeWatch(")
+        val idling = rewatch.indexOf("noteTraffic(\"Idling\")")
+        assertTrue(rewatch.indexOf("runRewatch(") in 0 until native && native < idling)
+        assertFalse(rewatch.substring(0, native).contains("return"))
+        val starts = java.util.concurrent.atomic.AtomicInteger(0)
+        assertFalse(runRewatch(null, null, { _ -> starts.incrementAndGet().toLong() }, {}, {}))
+        assertEquals(0, starts.get())
+        var order = ""
+        try {
+            runRewatch(
+                published = null,
+                requested = WatchTarget("INBOX") {},
+                start = {
+                    order += "start:${it.mailbox};"
+                    0L
+                },
+                markLost = { order += "lost;" },
+                clearOffer = { order += "clear;" },
+            )
+            org.junit.Assert.fail("expected ConnectionLost")
+        } catch (lost: ConnectionLost) {
+            assertEquals("watch lost", lost.text)
+        }
+        assertEquals("start:INBOX;lost;clear;", order)
+        assertTrue(runRewatch(null, WatchTarget("INBOX") {}, { _ -> 4L }, { org.junit.Assert.fail("lost") }, { org.junit.Assert.fail("clear") }))
+        val link = FakeLink()
+        val kept = keeper(link)
+        link.rewatchGate = {
+            runRewatch(
+                published = null,
+                requested = WatchTarget("INBOX") {},
+                start = { _ ->
+                    starts.incrementAndGet()
+                    0L
+                },
+                markLost = { kept.markWatchLost() },
+                clearOffer = {},
+            )
+        }
+        kept.markWatchLost()
+        kept.resume()
+        assertTrue(link.awaitRewatches(2))
+        assertTrue(starts.get() >= 2)
+        var again = false
+        val deadline = System.currentTimeMillis() + 3_000
+        while (System.currentTimeMillis() < deadline) {
+            val before = link.rewatches
+            kept.resume()
+            if (link.rewatches > before) {
+                again = true
+                break
+            }
+            Thread.sleep(15)
+        }
+        assertTrue(again)
+    }
+}
+
+private fun sessionSource(): String {
+    return listOf(
+        "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+        "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+    ).map(::File).first { it.exists() }.readText()
 }
 
 private class Clock {

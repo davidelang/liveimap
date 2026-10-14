@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.CertPrompt
+import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -86,6 +87,34 @@ internal class SmtpProbeMaterial(
     val smtpPassword: String,
 )
 
+/** Mailbox and callback from the last watch request. [clearPublishedWatch] does not drop this. */
+internal class WatchTarget(
+    val mailbox: String,
+    val onChange: (MailboxChange) -> Unit,
+)
+
+/**
+ * Published offer wins. A cleared publish still starts [requested].
+ * A 0 throws [ConnectionLost] after [markLost] and [clearOffer], so resume does not clear watchLost.
+ * No idle note. Returns false when no watch was requested (start is not called).
+ */
+internal fun runRewatch(
+    published: WatchTarget?,
+    requested: WatchTarget?,
+    start: (WatchTarget) -> Long,
+    markLost: () -> Unit,
+    clearOffer: () -> Unit,
+): Boolean {
+    val target = published ?: requested ?: return false
+    val started = start(target)
+    if (started == 0L) {
+        markLost()
+        clearOffer()
+        throw ConnectionLost("watch lost")
+    }
+    return true
+}
+
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
 
@@ -111,6 +140,10 @@ class LibetpanMailSession : MailSession {
     private var watchMailbox: String? = null
 
     private val publishedWatch = AtomicReference<PublishedWatch?>(null)
+
+    /** Last watch or rewatch target. Survives a cleared publish so rewatch can start it. */
+    @Volatile
+    private var requestedWatch: WatchTarget? = null
 
     private class WatchOffer(
         val mailbox: String,
@@ -1142,6 +1175,7 @@ class LibetpanMailSession : MailSession {
         // The callback is stored only for the generation nativeWatch publishes, not before it returns.
         nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
         val offer = WatchOffer(mailbox, onChange)
+        requestedWatch = WatchTarget(mailbox, onChange)
         val started = nativeWatch(requireHandle(), wire(mailbox), offer)
         if (started == 0L) {
             keeper.markWatchLost()
@@ -1181,6 +1215,7 @@ class LibetpanMailSession : MailSession {
         val h = handle
         val stopped = if (h != 0L) nativeStopWatch(h) else 0L
         clearPublishedWatch(stopped)
+        requestedWatch = null
     }
 
     private fun clearPublishedWatch(stoppedGeneration: Long) {
@@ -1356,6 +1391,7 @@ class LibetpanMailSession : MailSession {
         publishedWatch.set(null)
         watchCallback = null
         watchMailbox = null
+        requestedWatch = null
         cache.clear()
         keeper.onSessionClosed()
     }
@@ -1423,16 +1459,26 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun rewatch() {
-            val current = publishedWatch.get()?.offer ?: return
-            val offer = WatchOffer(current.mailbox, current.onChange)
-            nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-            val started = nativeWatch(requireHandle(), wire(offer.mailbox), offer)
-            if (started == 0L) {
-                keeper.markWatchLost()
-                val cur = publishedWatch.get()
-                if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
-                return
-            }
+            val publishedOffer = publishedWatch.get()?.offer
+            val published = publishedOffer?.let { WatchTarget(it.mailbox, it.onChange) }
+            var offer: WatchOffer? = null
+            val running = runRewatch(
+                published,
+                requestedWatch,
+                start = { target ->
+                    requestedWatch = WatchTarget(target.mailbox, target.onChange)
+                    val next = WatchOffer(target.mailbox, target.onChange)
+                    offer = next
+                    nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
+                    nativeWatch(requireHandle(), wire(next.mailbox), next)
+                },
+                markLost = { keeper.markWatchLost() },
+                clearOffer = {
+                    val cur = publishedWatch.get()
+                    if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+                },
+            )
+            if (!running) return
             noteTraffic("Idling")
         }
 
