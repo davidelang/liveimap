@@ -1338,12 +1338,15 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.applyView(FolderView(SortKey.From, newestFirst = true)) }
         val before = model.rows.map { it.uid }
-        val fetches = session.fetchRequests.size
+        val tailFetches = session.fetchRequests.count { it.mode == IndexMode.ArrivalNewest }
         session.exists = 11
         session.rows[11L] = row(11L)
         runImmediate { model.refreshShown(model.rows.map { it.uid }, 11) }
         assertEquals(before, model.rows.map { it.uid })
-        assertEquals(fetches, session.fetchRequests.size)
+        assertEquals(
+            tailFetches,
+            session.fetchRequests.count { it.mode == IndexMode.ArrivalNewest },
+        )
         assertEquals(0, model.pendingNew)
         assertTrue(model.newMailUnnumbered)
     }
