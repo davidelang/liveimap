@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.yield
 import org.dlang.liveimap.engine.ImapServerAuthenticationRejected
+import org.dlang.liveimap.engine.openResultAfterPlusFallback
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -58,6 +59,50 @@ class AccountSetupProbeTest {
         )
         testAccountLogins(AccountSettings(smtpHost = "smtp.x"), probes)
         assertEquals(1, smtp)
+    }
+
+    @Test fun plusServerRejectionSurvivesALocalFallbackAndSkipsSmtp() = runBlocking {
+        val first = OpenResult.AuthRejected(
+            "login failed: no (server rejected SASL SCRAM-SHA-256-PLUS)",
+        )
+        val local = OpenResult.Failed(
+            "login failed before contacting the server: SASL SCRAM-SHA-256 failed locally",
+        )
+        val kept = openResultAfterPlusFallback(first, local)
+        assertTrue(kept is OpenResult.AuthRejected)
+        assertEquals(first, kept)
+        val settings = AccountSettings(smtpHost = "smtp.x", smtpSameAsImap = true)
+        val probes = testAccountProbes("acct", settings, "pw", "pw", ResultProbe(kept))
+        val lines = testAccountLogins(settings, probes)
+        assertTrue(lines[0].startsWith("FAIL IMAP login:"))
+        assertTrue(lines[1].startsWith("FAIL SMTP login: not tried"))
+    }
+
+    @Test fun localSaslFailureIsNotAuthRejected() {
+        val local = OpenResult.Failed(
+            "login failed before contacting the server: SASL PLAIN failed locally",
+        )
+        val kept = openResultAfterPlusFallback(local, local)
+        assertTrue(kept is OpenResult.Failed)
+        assertTrue(kept !is OpenResult.AuthRejected)
+        val other = OpenResult.AuthRejected("other session")
+        assertEquals("other session", other.text)
+        assertTrue(other != kept)
+    }
+
+    @Test fun authRejectionIsNotAProcessWideFlag() {
+        val session = listOf(
+            "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+        ).map(::File).first { it.exists() }.readText()
+        val setup = listOf(
+            "src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
+        ).map(::File).first { it.exists() }.readText()
+        assertFalse(session.contains("pendingAuthenticationRejection"))
+        assertFalse(setup.contains("pendingAuthenticationRejection"))
+        assertTrue(session.contains("OpenResult.AuthRejected"))
+        assertTrue(setup.contains("is OpenResult.AuthRejected"))
     }
 
     @Test fun localSaslFailureStillTriesSmtp() = runBlocking {
@@ -115,6 +160,36 @@ class AccountSetupProbeTest {
         assertFalse(check.contains("openWith"))
         assertTrue(check.contains("nativeStage("))
     }
+}
+
+/** openWith returns [result]. Does not open a socket. */
+private class ResultProbe(private val result: OpenResult) : MailSession {
+    override val capabilities: Set<String> = emptySet()
+
+    override suspend fun open(account: AccountSettings): OpenResult = result
+
+    override suspend fun namespaces(): List<Namespace> = unused()
+    override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> = unused()
+    override suspend fun select(mailbox: String): SelectResult = unused()
+    override suspend fun unselect() = unused()
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = unused()
+    override suspend fun fetchStructure(uid: Long): MimePart = unused()
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
+    override suspend fun fetchRfc822(uid: Long): ByteArray = unused()
+    override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) = unused()
+    override suspend fun uidExpungeDeleted() = unused()
+    override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) = unused()
+    override suspend fun searchText(query: String): List<Long> = unused()
+    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = unused()
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = unused()
+    override suspend fun thread(key: SortKey): ThreadNode = unused()
+    override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) = unused()
+    override suspend fun stopWatch() = unused()
+    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
+    override fun close() {}
+
+    private fun unused(): Nothing = throw MailFailure("not used")
 }
 
 /** openWith hangs until the caller is cancelled. Does not open a socket. */

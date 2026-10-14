@@ -130,12 +130,8 @@ internal fun testAccountProbes(
         try {
             when (val result = live.openWith(credentials)) {
                 OpenResult.Connected -> opened = true
-                is OpenResult.Failed -> {
-                    val rejected = LibetpanMailSession.pendingAuthenticationRejection
-                    LibetpanMailSession.pendingAuthenticationRejection = null
-                    if (rejected != null) throw rejected
-                    throw IllegalStateException(result.text)
-                }
+                is OpenResult.AuthRejected -> throw ImapServerAuthenticationRejected(result.text)
+                is OpenResult.Failed -> throw IllegalStateException(result.text)
                 is OpenResult.Rejected -> throw IllegalStateException("server rejected: ${result.capabilities}")
             }
         } finally {

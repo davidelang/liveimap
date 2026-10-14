@@ -14,7 +14,23 @@ sealed interface ConnectionState {
 sealed class OpenResult {
     data object Connected : OpenResult()
     data class Rejected(val capabilities: String) : OpenResult()
-    data class Failed(val text: String) : OpenResult()
+    open class Failed(val text: String) : OpenResult() {
+        override fun equals(other: Any?): Boolean =
+            other is Failed && other::class == this::class && other.text == text
+
+        override fun hashCode(): Int = text.hashCode()
+
+        override fun toString(): String = "Failed(text=$text)"
+    }
+
+    /** The server rejected AUTH or LOGIN. A local SASL failure is [Failed], not this. */
+    class AuthRejected(text: String) : Failed(text) {
+        override fun equals(other: Any?): Boolean = other is AuthRejected && other.text == text
+
+        override fun hashCode(): Int = text.hashCode()
+
+        override fun toString(): String = "AuthRejected(text=$text)"
+    }
 }
 
 enum class NamespaceKind {

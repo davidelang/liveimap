@@ -26,16 +26,22 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
     return WatchPlan(kept.take(slots), kept.drop(slots))
 }
 
-/** Host, user, and port are enough to tell accounts apart. A mailbox stays here after IDLE was missing. */
+/** Host, user, and port are enough to tell accounts apart. The next apply decides this mailbox again. */
 private data class NoIdleMailbox(val host: String, val user: String, val port: Int, val mailbox: String)
 
-/** Concurrent set. Not a lock. */
+/** Concurrent set. Not a lock. An entry does not outlive the next apply of that mailbox. */
 private val noIdleMailboxes = ConcurrentHashMap.newKeySet<NoIdleMailbox>()
 
 private fun noIdleKey(settings: AccountSettings, mailbox: String): NoIdleMailbox =
     NoIdleMailbox(settings.imapHost, settings.username, settings.imapPort, mailbox)
 
-/** Feeds the stored extra folders into the splitter. A recorded no-IDLE mailbox is status, not idle, and only while it is still watched. Does not open a socket. */
+/** IDLE is usable only when this session advertises it and the account has not hidden it. */
+private fun idleUsable(account: AccountSettings, session: MailSession): Boolean {
+    if (account.hiddenCapabilities.any { it.equals("IDLE", ignoreCase = true) }) return false
+    return session.featureCaps.idle
+}
+
+/** Feeds the stored extra folders into the splitter. A mailbox the last apply left without IDLE is status, not idle, and only while it is still watched. Does not open a socket. */
 fun extraWatchPlan(settings: AccountSettings): WatchPlan {
     val planned = planWatchedFolders(settings.watchedFolders, connectionLimits(settings).idleSlots)
     val idle = ArrayList<String>(planned.idle.size)
@@ -85,9 +91,10 @@ fun connectionLimits(settings: AccountSettings): ConnectionLimits =
 fun maxConnectionsFromText(text: String): Int? =
     text.trim().takeIf { it.matches(Regex("\\d{1,3}")) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
-/** Applies only the stored extra IDLE names. STATUS names are not opened. */
+/** Retries each extra IDLE slot, including a folder the last apply left on STATUS. Over-budget names are not opened. */
 suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings, accountId: String = "") {
-    sessions.apply(account, extraWatchPlan(account).idle, accountId)
+    val names = planWatchedFolders(account.watchedFolders, connectionLimits(account).idleSlots).idle
+    sessions.apply(account, names, accountId)
 }
 
 /** One stored name on each line. Does not open a socket. */
@@ -243,6 +250,8 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
         }
         for (name in names) {
             if (!seen.add(accountId to name)) continue
+            val key = noIdleKey(account, name.trim())
+            noIdleMailboxes.remove(key)
             val session = factory()
             try {
                 session.watchOnly(account, name) { change ->
@@ -254,8 +263,8 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
             }
             // IMAP with no IDLE (or IDLE hidden): watchOnly already returned. Do not STATUS this session.
             // A JMAP watchOnly that returns is the event source. featureCaps.idle is the unused IMAP session.
-            if (!account.jmapFolders && !session.featureCaps.idle) {
-                noIdleMailboxes.add(noIdleKey(account, name.trim()))
+            if (!account.jmapFolders && !idleUsable(account, session)) {
+                noIdleMailboxes.add(key)
                 closeHeld(session)
                 continue
             }

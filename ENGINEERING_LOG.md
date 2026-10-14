@@ -2824,3 +2824,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: before the owner result is stored, a suspend after that owner is LifecycleStop or SupersededOwner, not success or ConnectionLost; the waiting resume reconnects
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - IDLE usability and auth rejection stay with the account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/probe-state-scope-20261014-1142-plan.md
+- Work: the next apply decides each extra folder from capability and hidden IDLE; a server authentication rejection is OpenResult.AuthRejected, not a process-wide flag; a local SCRAM-PLUS fallback does not erase that rejection
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

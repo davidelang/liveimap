@@ -419,6 +419,56 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun unhidingIdleReturnsTheFolderToTheIdlePlan() = runBlocking {
+        val hidden = AccountSettings(
+            imapHost = "hide.example",
+            username = "u",
+            imapPort = 993,
+            hiddenCapabilities = setOf("IDLE"),
+            watchedFolders = listOf("A"),
+            extraIdleBudget = 1,
+        )
+        val first = IdleHolder()
+        applyStoredIdle(first.sessions, hidden, "acct")
+        assertEquals(emptyList<String>(), first.sessions.openNames())
+        assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
+        assertEquals(listOf("A"), extraWatchPlan(hidden).status)
+
+        val shown = hidden.copy(hiddenCapabilities = emptySet())
+        val second = IdleHolder()
+        applyStoredIdle(second.sessions, shown, "acct")
+        assertEquals(listOf("A"), second.sessions.openNames())
+        assertEquals(listOf("open", "select A", "watch A"), second.records[0].calls)
+        assertEquals(listOf("A"), extraWatchPlan(shown).idle)
+        assertEquals(emptyList<String>(), extraWatchPlan(shown).status)
+    }
+
+    @Test
+    fun laterIdleCapabilityReturnsTheFolderToTheIdlePlan() = runBlocking {
+        val account = AccountSettings(
+            imapHost = "later.example",
+            username = "u",
+            imapPort = 993,
+            watchedFolders = listOf("A"),
+            extraIdleBudget = 1,
+        )
+        val missing = IdleRecord()
+        missing.capabilities = setOf("IMAP4REV1")
+        val first = ExtraIdleSessions { missing }
+        applyStoredIdle(first, account, "acct")
+        assertEquals(emptyList<String>(), first.openNames())
+        assertEquals(listOf("A"), extraWatchPlan(account).status)
+
+        val gained = IdleRecord()
+        val second = ExtraIdleSessions { gained }
+        applyStoredIdle(second, account, "acct")
+        assertEquals(listOf("open", "select A", "watch A"), gained.calls)
+        assertEquals(listOf("A"), second.openNames())
+        assertEquals(listOf("A"), extraWatchPlan(account).idle)
+        assertEquals(emptyList<String>(), extraWatchPlan(account).status)
+    }
+
+    @Test
     fun watchFailureClosesThatSessionAndKeepsTheEarlierName() = runBlocking {
         val boom = MailFailure("idle down")
         val first = IdleRecord()

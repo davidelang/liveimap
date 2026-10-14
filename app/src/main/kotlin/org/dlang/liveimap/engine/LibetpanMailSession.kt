@@ -68,6 +68,17 @@ fun capabilityGate(serverList: String): OpenResult {
 /** The server rejected AUTH or LOGIN. A local SASL failure is not this. */
 class ImapServerAuthenticationRejected(text: String) : MailFailure(text)
 
+/**
+ * A server rejection of the first attempt stays when the SCRAM-PLUS fallback fails locally.
+ * A later server rejection, or a fallback that connects, is the result. A local failure is not an auth rejection.
+ */
+internal fun openResultAfterPlusFallback(first: OpenResult, opened: OpenResult): OpenResult {
+    if (first is OpenResult.AuthRejected && opened is OpenResult.Failed && opened !is OpenResult.AuthRejected) {
+        return first
+    }
+    return opened
+}
+
 /** Settings for an SMTP probe that has not opened IMAP. */
 internal class SmtpProbeMaterial(
     val settings: AccountSettings,
@@ -226,7 +237,7 @@ class LibetpanMailSession : MailSession {
         var opened = login(account, password)
         // F64: the account as trusted so far in this open (a pin confirmed below carries into later retries).
         var trustedAccount = account
-        if (opened is OpenResult.Failed && promptableCert(opened.text)) {
+        if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && promptableCert(opened.text)) {
             val parts = nativeTakeCertOffer()
             val confirm = certConfirmer
             if (parts != null && parts.size == 5 && confirm != null) {
@@ -256,7 +267,7 @@ class LibetpanMailSession : MailSession {
                 }
             }
         }
-        if (opened is OpenResult.Failed && opened.text == "plaintext login needs confirmation") {
+        if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && opened.text == "plaintext login needs confirmation") {
             val confirm = plaintextConfirmer
             val accepted = credentials == null && confirm != null && confirm()
             val stopped = context.getString(R.string.plaintext_auth_stopped)
@@ -312,11 +323,10 @@ class LibetpanMailSession : MailSession {
             channelBindingDropped = true
             noteTraffic("Logged in without channel binding (${retry.authMechanism})")
         }
-        return opened
+        return openResultAfterPlusFallback(first, opened)
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
-        pendingAuthenticationRejection = null
         namespaceList = null
         val password = if (knownPassword != null) {
             knownPassword
@@ -394,12 +404,11 @@ class LibetpanMailSession : MailSession {
         nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
             val text = nativeTakeError()
-            if (!stageCommand && nativeTakeAuthRejected()) {
-                pendingAuthenticationRejection = ImapServerAuthenticationRejected(text)
-            }
+            val serverRejected = !stageCommand && nativeTakeAuthRejected()
             if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
             TrafficRecorder.event("main", "error", text)
             finishTraffic(account)
+            if (serverRejected) return OpenResult.AuthRejected(text)
             return OpenResult.Failed(text)
         }
         if (stageCommand) {
@@ -1733,9 +1742,6 @@ class LibetpanMailSession : MailSession {
 
         @JvmStatic
         private external fun nativeTakeAuthRejected(): Boolean
-
-        @Volatile
-        var pendingAuthenticationRejection: ImapServerAuthenticationRejected? = null
 
         @Volatile
         internal var smtpProbe: SmtpProbeMaterial? = null
