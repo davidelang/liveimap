@@ -93,12 +93,17 @@ fun discoverJmap(status: Int, body: String, finalUrl: String): JmapOffer {
     }
     if (scheme == null || !jmapUrlAllowed(finalUrl)) return JmapOffer.None
     if (status != 200) return JmapOffer.None
-    val session = try {
+    var session = try {
         parseJmapSession(body)
     } catch (unreadable: Exception) {
         return JmapOffer.None
     }
     if (!session.offersMail()) return JmapOffer.None
+    // Cyrus sends path-only session URLs ("/jmap/"); they are relative to the session resource.
+    val origin = Regex("^(https?://[^/?#]+)", RegexOption.IGNORE_CASE).find(finalUrl)?.groupValues?.get(1) ?: return JmapOffer.None
+    fun abs(u: String) = if (u.startsWith("/") && !u.startsWith("//")) origin + u else u
+    session = session.copy(apiUrl = abs(session.apiUrl), downloadUrl = abs(session.downloadUrl),
+        uploadUrl = abs(session.uploadUrl), eventSourceUrl = abs(session.eventSourceUrl))
     // F53/F79: credentials go to the session's URLs, so they must stay on the host that was discovered.
     if (!jmapSameOrigin(finalUrl, session)) return JmapOffer.None
     return JmapOffer.Mail(session)

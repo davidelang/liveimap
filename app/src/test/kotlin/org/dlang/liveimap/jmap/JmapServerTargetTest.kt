@@ -172,4 +172,14 @@ class JmapServerTargetTest {
         }.exceptionOrNull()
         assertEquals("certificate untrusted", (untrusted as JmapFailure).text)
     }
+
+    @Test
+    fun pathOnlySessionUrlsResolveAgainstTheSessionOrigin() {
+        JmapPlainHttp.allow("http://h.example:31923/")
+        val body = """{"capabilities":{"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{}},"accounts":{"a":{}},"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},"username":"u","apiUrl":"/jmap/","downloadUrl":"/jmap/download/{accountId}/{blobId}/{name}?accept={type}","uploadUrl":"/jmap/upload/{accountId}/","eventSourceUrl":"/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}","state":"0"}"""
+        val offer = discoverJmap(200, body, "http://h.example:31923/jmap") as JmapOffer.Mail
+        assertEquals("http://h.example:31923/jmap/", offer.session.apiUrl)
+        assertEquals("http://h.example:31923/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}", offer.session.eventSourceUrl)
+        assertEquals(JmapOffer.None, discoverJmap(200, body.replace("\"/jmap/\"", "\"//evil.example/jmap/\""), "http://h.example:31923/jmap"))
+    }
 }
