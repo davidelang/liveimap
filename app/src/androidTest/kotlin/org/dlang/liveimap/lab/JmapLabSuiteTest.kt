@@ -97,7 +97,8 @@ class JmapLabSuiteTest {
             s.select(inbox)
             val mid = s.selectedExists()
             s.select(other)
-            val there = s.fetchIndex(IndexRequest(other, IndexMode.ArrivalNewest, limit = 50)).firstOrNull { it.subject == subject }
+            // a moved message keeps its arrival date, so look through the whole folder
+            val there = s.fetchIndex(IndexRequest(other, IndexMode.ArrivalNewest, limit = 2000)).firstOrNull { it.subject == subject }
                 ?: throw IllegalStateException("not found in $other")
             s.copyThenDelete(listOf(there.uid), inbox)
             s.select(inbox)
@@ -108,14 +109,20 @@ class JmapLabSuiteTest {
         step("push") {
             s.select(inbox)
             val got = CompletableDeferred<MailboxChange>()
+            var stage = "watch"
+            try {
             s.watch(inbox) { c -> if (c is MailboxChange.Exists || c is MailboxChange.WatchLost) got.complete(c) }
             Thread.sleep(2000)
+            stage = "second open"
             val writer = session()
             if (writer.open(account) != OpenResult.Connected) throw IllegalStateException("second session")
             writer.listLevel("", null, false)
             val msg = "From: liveimap@lab.test\r\nTo: liveimap@lab.test\r\nSubject: jmap push ${System.currentTimeMillis()}\r\n\r\npush\r\n".toByteArray()
+            stage = "append"
             val newUid = writer.appendReturningUid(inbox, msg, emptySet())
+            stage = "wait"
             val change = withTimeoutOrNull(45_000) { got.await() }
+            stage = "cleanup"
             s.stopWatch()
             writer.select(inbox)
             if (newUid > 0) writer.uidExpunge(listOf(newUid))
@@ -125,6 +132,7 @@ class JmapLabSuiteTest {
                 null -> throw IllegalStateException("no push within 45 s")
                 else -> throw IllegalStateException("watch: $change")
             }
+            } catch (e: IllegalStateException) { throw e } catch (e: Exception) { throw IllegalStateException("$stage: ${e.message}") }
         }
         s.close()
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
