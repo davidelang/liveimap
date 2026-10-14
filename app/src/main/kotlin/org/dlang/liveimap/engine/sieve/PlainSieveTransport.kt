@@ -16,8 +16,12 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
@@ -284,18 +288,27 @@ private fun closeQuiet(socket: Socket) {
     }
 }
 
-private suspend fun closeWhenCancelled(transport: PlainSieveTransport) {
-    coroutineContext[Job]?.invokeOnCompletion(onCancelling = true) { transport.close() }
+// The caller's job does not finish while this child is waiting, so callers cancel it from their finally.
+private suspend fun closeWhenCancelled(transport: PlainSieveTransport): Job? {
+    val parent = coroutineContext[Job] ?: return null
+    return CoroutineScope(parent).launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            awaitCancellation()
+        } finally {
+            transport.close()
+        }
+    }
 }
 
 suspend fun greetPlain(host: String, port: Int): SieveCapabilities {
     val transport = openPlainSieve(host, port)
-    closeWhenCancelled(transport)
+    val closer = closeWhenCancelled(transport)
     try {
         val caps = readGreeting(transport)
         logout(transport)
         return caps
     } finally {
+        closer?.cancel()
         transport.close()
     }
 }
@@ -367,7 +380,7 @@ suspend fun openAndDeliverLiveimap(
             TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
             TlsMode.Implicit -> openImplicitSieve(host, port, activePin)
         }
-        closeWhenCancelled(transport)
+        val closer = closeWhenCancelled(transport)
         try {
             val caps = when (mode) {
                 TlsMode.None -> readGreeting(transport)
@@ -387,6 +400,7 @@ suspend fun openAndDeliverLiveimap(
                 consent,
             )
         } finally {
+            closer?.cancel()
             transport.close()
         }
     }
@@ -409,24 +423,26 @@ suspend fun greetSieve(
             TlsMode.None -> greetPlain(host, port)
             TlsMode.StartTls -> {
                 val transport = openPlainSieve(host, port)
-                closeWhenCancelled(transport)
+                val closer = closeWhenCancelled(transport)
                 try {
                     requireAdvertisedStartTls(readGreeting(transport))
                     val caps = completeStartTls(transport, host, activePin)
                     logout(transport)
                     caps
                 } finally {
+                    closer?.cancel()
                     transport.close()
                 }
             }
             TlsMode.Implicit -> {
                 val transport = openImplicitSieve(host, port, activePin)
-                closeWhenCancelled(transport)
+                val closer = closeWhenCancelled(transport)
                 try {
                     val caps = readGreeting(transport)
                     logout(transport)
                     caps
                 } finally {
+                    closer?.cancel()
                     transport.close()
                 }
             }
