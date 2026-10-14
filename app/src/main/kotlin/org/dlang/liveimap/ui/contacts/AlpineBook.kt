@@ -303,16 +303,16 @@ private fun headerAndSeparator(bytes: ByteArray): SplitMessage? {
     return null
 }
 
-fun pickedAddresses(entry: AlpineEntry): List<SelectedAddress> {
+/**
+ * The recipients a picked or completed entry stands for. F189: list members that are nicknames are expanded
+ * against [book] (recursively, like CopyMap.expandPieces); an unknown nickname is dropped, never sent as a bare
+ * local name. Each member keeps its own name ("Bo" <bo@x>, or the nickname entry's full name), not the list's.
+ */
+fun pickedAddresses(entry: AlpineEntry, book: List<AlpineEntry> = emptyList()): List<SelectedAddress> {
     val address = entry.address.trim()
     if (isDistributionList(address)) {
-        val inner = address.substring(1, address.length - 1)
         val out = ArrayList<SelectedAddress>()
-        for (piece in splitAddresses(inner)) {
-            val email = emailOf(piece)
-            if (email.isEmpty()) continue
-            out.add(SelectedAddress(entry.fullname, email))
-        }
+        expandListMembers(address, book, hashSetOf(entry.nickname.lowercase()), out)
         return out
     }
     val email = emailOf(address)
@@ -344,6 +344,35 @@ private fun emailsOf(entry: AlpineEntry): List<String> {
     val direct = emailOf(entry.address)
     if (direct.isEmpty()) return emptyList()
     return listOf(direct)
+}
+
+private fun expandListMembers(list: String, book: List<AlpineEntry>, seen: MutableSet<String>, out: MutableList<SelectedAddress>) {
+    for (piece in splitAddresses(list.substring(1, list.length - 1))) {
+        val email = emailOf(piece)
+        if (email.isEmpty()) continue
+        if ('@' in email) {
+            if (out.none { it.email.equals(email, ignoreCase = true) }) out.add(SelectedAddress(memberName(piece), email))
+            continue
+        }
+        if (!seen.add(email.lowercase())) continue
+        val target = book.firstOrNull { it.nickname.equals(email, ignoreCase = true) } ?: continue
+        val inner = target.address.trim()
+        if (isDistributionList(inner)) {
+            expandListMembers(inner, book, seen, out)
+        } else {
+            val spec = emailOf(inner)
+            if ('@' in spec && out.none { it.email.equals(spec, ignoreCase = true) }) {
+                out.add(SelectedAddress(memberName(inner).ifEmpty { target.fullname }, spec))
+            }
+        }
+    }
+}
+
+/** The display name written in a member ("Bo" <bo@x> gives Bo); empty for a bare address. */
+private fun memberName(piece: String): String {
+    val lt = piece.indexOf('<')
+    if (lt <= 0) return ""
+    return piece.substring(0, lt).trim().removeSurrounding("\"").trim()
 }
 
 private fun emailOf(value: String): String =

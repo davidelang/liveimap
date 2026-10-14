@@ -234,6 +234,9 @@ fun FolderListScreen(
         )
         return
     }
+    // F181: everything below (routing probe and the folder screen) reads and writes this account, never the
+    // drawer's active one.
+    val bound = remember(id) { store.forAccount(id) }
     var routeReady by remember(id) { mutableStateOf(false) }
     var jmapModel by remember(id) { mutableStateOf<JmapFolderScreenModel?>(null) }
     var gaveUp by remember(id) { mutableStateOf(false) }
@@ -242,9 +245,9 @@ fun FolderListScreen(
         jmapModel = null
         gaveUp = false
         try {
-            val settings = store.load()
+            val settings = bound.load()
             // F68: JMAP browsing is opt-in; without it, never probe and never switch away from IMAP.
-            val jmapAuth = if (settings.jmapFolders) org.dlang.liveimap.jmap.jmapBasicAuthorization(settings.username, store.password()) else ""
+            val jmapAuth = if (settings.jmapFolders) org.dlang.liveimap.jmap.jmapBasicAuthorization(settings.username, bound.password()) else ""
             val offer = if (!settings.jmapFolders) JmapOffer.None else withContext(Dispatchers.IO) {
                 folderOfferOrImap { offerForAccount(settings, ::platformJmapExchange, authorization = jmapAuth) }
             }
@@ -253,7 +256,7 @@ fun FolderListScreen(
                 jmapModel = JmapFolderScreenModel(
                     session,
                     settings.username,
-                    store.password(),
+                    bound.password(),
                     settings.jmapCertPin,
                     pinnedJmapPost(settings.jmapCertPin),
                     markSeenOnOpen = settings.markSeenOnOpen,
@@ -274,7 +277,7 @@ fun FolderListScreen(
     } else {
         FolderListLoaded(
             accountId = id,
-            store = store,
+            store = bound,
             onOpenMailbox = onOpenMailbox,
             onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
             onOpenUnsent = onOpenUnsent,

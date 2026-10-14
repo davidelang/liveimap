@@ -105,8 +105,9 @@ class AlpineBookTest {
         assertEquals("Sent", entry.fcc)
         assertEquals(
             listOf(
-                SelectedAddress("Team", "ada@example.com"),
-                SelectedAddress("Team", "bo@example.com"),
+                // F189: each member keeps its own name, never the list's.
+                SelectedAddress("", "ada@example.com"),
+                SelectedAddress("Bo", "bo@example.com"),
             ),
             pickedAddresses(entry),
         )
@@ -286,4 +287,23 @@ private fun <T> runImmediate(block: suspend () -> T): T {
     var result: Result<T>? = null
     block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
     return result!!.getOrThrow()
+
+    @Test
+    fun listNicknamesExpandAgainstTheBookAndUnknownOnesAreDropped() {
+        val book = parseAlpineBook(
+            "team\tTeam\t(alice@x.example, bob, team2, ghost)\t\t\n" +
+                "bob\tBob Builder\tbob@y.example\t\t\n" +
+                "team2\tTeam Two\t(carol@z.example, team)\t\t\n",
+        )
+        assertEquals(
+            listOf(
+                SelectedAddress("", "alice@x.example"),
+                SelectedAddress("Bob Builder", "bob@y.example"),
+                SelectedAddress("", "carol@z.example"),
+            ),
+            pickedAddresses(book[0], book),
+        )
+        // Without the book, bare nicknames are never sent as local names.
+        assertEquals(listOf(SelectedAddress("", "alice@x.example")), pickedAddresses(book[0]))
+    }
 }

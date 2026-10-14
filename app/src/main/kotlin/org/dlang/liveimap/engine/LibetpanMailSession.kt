@@ -1238,7 +1238,9 @@ class LibetpanMailSession : MailSession {
                 }
                 sequencesStale = true
             }
-            watchCallback?.invoke(change)
+            // F144: these changes describe the main connection's selected folder; the index's watcher gets them
+            // only when that is the folder it watches, never another folder's counts or epoch.
+            if (reconnectChangeReachesWatcher(selectedMailbox, watchMailbox)) watchCallback?.invoke(change)
         }
     }
 
@@ -1681,3 +1683,10 @@ internal fun enableForResync(kind: String): String = when (kind) {
 /** F52: SMTP password choice; "" = none configured (sent without AUTH, never the IMAP password). */
 internal fun smtpPasswordFor(sameAsImap: Boolean, smtpPassword: String, imapPassword: String): String =
     if (sameAsImap) imapPassword else smtpPassword
+
+/** F144: a reconnect's re-SELECT changes go to the watcher only for the very folder it watches. */
+internal fun reconnectChangeReachesWatcher(selected: String?, watched: String?): Boolean =
+    selected != null && watched != null && sameWireMailbox(selected, watched)
+
+private fun sameWireMailbox(a: String, b: String): Boolean =
+    a == b || (a.equals("INBOX", ignoreCase = true) && b.equals("INBOX", ignoreCase = true))

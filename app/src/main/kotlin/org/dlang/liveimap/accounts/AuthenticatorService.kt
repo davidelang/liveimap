@@ -37,9 +37,19 @@ class AuthenticatorService : Service() {
 }
 
 private class LiveImapAuthenticator(private val context: Context) : AbstractAccountAuthenticator(context) {
-    override fun editProperties(response: AccountAuthenticatorResponse?, accountType: String?): Bundle {
-        return settingsIntent(response, null)
-    }
+    /**
+     * F143: AccountManager stamps KEY_CALLER_UID only for addAccount, so no other entry point can tell who asked and
+     * none issues a setup token. Settings › Accounts › "Account settings" opens the app's normal launcher activity
+     * (which any app may start anyway), not the token-guarded setup screen.
+     */
+    override fun editProperties(response: AccountAuthenticatorResponse?, accountType: String?): Bundle =
+        Bundle().apply {
+            putParcelable(
+                AccountManager.KEY_INTENT,
+                context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
 
     override fun addAccount(
         response: AccountAuthenticatorResponse?,
@@ -72,7 +82,7 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
         account: Account?,
         authTokenType: String?,
         options: Bundle?,
-    ): Bundle = settingsIntent(response, options)
+    ): Bundle = unsupported() // F143: options come from the caller unchanged here; KEY_CALLER_UID could be forged
 
     override fun hasFeatures(
         response: AccountAuthenticatorResponse?,
@@ -97,6 +107,7 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
      * came from LiveIMAP itself or from a system app (Settings). KEY_CALLER_UID is set by the system, not by the
      * caller. A third-party addAccount gets an intent without a token, and the activity refuses it.
      */
+    // F143: only addAccount calls this; it is the one call where the system (not the caller) sets KEY_CALLER_UID.
     private fun settingsIntent(response: AccountAuthenticatorResponse?, options: Bundle?): Bundle {
         val intent = Intent(context, AccountSetupActivity::class.java)
         intent.putExtra(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, response)

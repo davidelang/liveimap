@@ -128,7 +128,7 @@ private fun AddressBookPickerLoaded(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        for (picked in pickedAddresses(entry)) {
+                        for (picked in pickedAddresses(entry, entries)) {
                             onPicked(picked)
                         }
                     }

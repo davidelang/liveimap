@@ -41,7 +41,7 @@ fun completeAddress(typed: String, sources: List<CompletionSource>): List<Addres
     val contains = ArrayList<AddressSuggestion>()
     for (source in sources) {
         for (entry in source.entries) {
-            val suggestion = suggestionFor(source.label, entry)
+            val suggestion = suggestionFor(source.label, entry, source.entries)
             if (entry.nickname.equals(needle, ignoreCase = true)) {
                 exact.add(suggestion)
                 continue
@@ -58,7 +58,7 @@ fun completeAddress(typed: String, sources: List<CompletionSource>): List<Addres
     return exact
 }
 
-private fun suggestionFor(label: String, entry: CompletionEntry): AddressSuggestion {
+private fun suggestionFor(label: String, entry: CompletionEntry, all: List<CompletionEntry>): AddressSuggestion {
     val distribution = isDistributionAddress(entry.email)
     val members = if (distribution) {
         pickedAddresses(
@@ -69,6 +69,8 @@ private fun suggestionFor(label: String, entry: CompletionEntry): AddressSuggest
                 fcc = "",
                 comments = "",
             ),
+            // F189: nicknames in the list resolve against the same source's entries.
+            all.map { AlpineEntry(it.nickname, it.displayName, it.email.trim(), "", "") },
         )
     } else {
         emptyList()
