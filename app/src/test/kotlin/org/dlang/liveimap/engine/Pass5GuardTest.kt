@@ -216,4 +216,33 @@ class Pass5GuardTest {
         assertTrue(sigBody.contains("shutdownWatchSocket(session);"))
         assertTrue(sigBody.contains("write(fd,"))
     }
+
+    /** Publish the watch callback only after IDLE has started. A 0 return clears that generation. */
+    @Test fun watchPublishesAfterIdleStartsAndClearsOnFailure() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val wait = body.indexOf("session->startCv.wait(")
+        val beforeWait = body.substring(0, wait)
+        assertFalse(beforeWait.contains("publishWatch"))
+        val tail = body.substring(wait)
+        val started = tail.indexOf("started > 0")
+        val publish = tail.indexOf("gJni.publishWatch")
+        assertTrue(started in 0 until publish)
+        val firstReturn = tail.indexOf("return 0;")
+        val clearBeforeReturn = tail.lastIndexOf("clearThisWatch();", firstReturn)
+        assertTrue(clearBeforeReturn in 0 until firstReturn)
+        assertTrue(body.contains("gJni.clearPublishedWatch"))
+        val kt = listOf(
+            "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+        ).map(::File).first { it.exists() }.readText()
+        val watchAt = kt.indexOf("override suspend fun watch(")
+        val watch = kt.substring(watchAt, kt.indexOf("override suspend fun stopWatch(", watchAt))
+        val rewatchAt = kt.indexOf("override fun rewatch(")
+        val rewatch = kt.substring(rewatchAt, kt.indexOf("override fun close()", rewatchAt))
+        assertTrue(watch.contains("if (started == 0L)"))
+        assertTrue(watch.contains("clearPublishedWatch("))
+        assertTrue(rewatch.contains("if (started == 0L)"))
+        assertTrue(rewatch.contains("clearPublishedWatch("))
+    }
 }

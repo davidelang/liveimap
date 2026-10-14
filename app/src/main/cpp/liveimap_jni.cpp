@@ -383,6 +383,7 @@ struct JniCache {
     jmethodID integerValueOf = nullptr;
     jmethodID onWatch = nullptr;
     jmethodID publishWatch = nullptr;
+    jmethodID clearPublishedWatch = nullptr;
     jclass trafficLog = nullptr;
     jmethodID trafficAccept = nullptr;
     jmethodID trafficFlush = nullptr;
@@ -644,6 +645,7 @@ bool ensureJni(JNIEnv * env) {
     jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
     gJni.onWatch = env->GetMethodID(sessionCls, "onNativeWatch", "(JIIJ[Ljava/lang/String;)V");
     gJni.publishWatch = env->GetMethodID(sessionCls, "publishWatch", "(JLjava/lang/Object;)V");
+    gJni.clearPublishedWatch = env->GetMethodID(sessionCls, "clearPublishedWatch", "(J)V");
     env->DeleteLocalRef(sessionCls);
     local = env->FindClass("org/dlang/liveimap/engine/TrafficLog");
     if (local != nullptr) {
@@ -8286,6 +8288,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
     owned.logImapTraffic = session->logImapTraffic;
     const uint64_t generation = bumpWatchGeneration(session);
+    // A 0 return must not leave this generation's callback published. Older publishes are cleared too,
+    // unless a newer generation has already replaced them.
+    auto clearThisWatch = [&]() {
+        if (gJni.clearPublishedWatch == nullptr || env->ExceptionCheck()) return;
+        env->CallVoidMethod(thiz, gJni.clearPublishedWatch, static_cast<jlong>(generation));
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    };
     session->mu.unlock();
     if (tlsMode == "None") {
         watch = openPlain(env, host.c_str(), port, user.c_str(), password.c_str(), nullptr, &error, nullptr, &owned);
@@ -8297,10 +8306,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
         // closed, or a newer watch/stop ran while this one connected: drop this connection quietly.
         if (watch != nullptr) mailimap_free(watch);
+        clearThisWatch();
         unlockSession(session);
         return 0;
     }
     if (watch == nullptr) {
+        clearThisWatch();
         throwFailure(env, error);
         unlockSession(session);
         return 0;
@@ -8311,10 +8322,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     session->mu.lock();
     if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
         if (watch != nullptr) mailimap_free(watch);
+        clearThisWatch();
         unlockSession(session);
         return 0;
     }
     if (!cmdOk(r)) {
+        clearThisWatch();
         if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
             mailimap_free(watch);
             throwImap(env, session, r, "select failed");
@@ -8342,11 +8355,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (session->selfGlobal != nullptr) env->DeleteGlobalRef(session->selfGlobal);
     session->selfGlobal = env->NewGlobalRef(thiz);
     if (session->watchWakeFd < 0) session->watchWakeFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    // Publish this generation's callback before the watch thread can emit. A newer publish wins in Kotlin.
-    if (gJni.publishWatch != nullptr && callback != nullptr) {
-        env->CallVoidMethod(thiz, gJni.publishWatch, static_cast<jlong>(generation), callback);
-        if (env->ExceptionCheck()) env->ExceptionClear();
-    }
     session->watchThread = std::thread(watchMain, session);
     session->mu.unlock();
     int started = 0;
@@ -8363,8 +8371,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         started = session->startState;
     }
     session->mu.lock();
-    // This watch is already published, so the installed flag would match it. A stop bumps the generation.
+    // Publish only after IDLE has started. A newer publish wins in Kotlin.
+    if (started > 0 && !watchSetupSuperseded(session->closed, session->watchGeneration, generation, false)) {
+        if (gJni.publishWatch != nullptr && callback != nullptr) {
+            env->CallVoidMethod(thiz, gJni.publishWatch, static_cast<jlong>(generation), callback);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+        }
+    }
+    // This generation is not a live IDLE. Clear it. A stop bumps the generation, so a newer publish stays.
     if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, false)) {
+        clearThisWatch();
         unlockSession(session);
         return 0;
     }
@@ -8373,6 +8389,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         if (session->watchThread.joinable()) session->watchThread.join();
         mailimap_free(session->watch);
         session->watch = nullptr;
+        clearThisWatch();
         throwFailure(env, why);
         unlockSession(session);
         return 0;

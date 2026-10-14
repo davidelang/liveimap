@@ -1108,7 +1108,12 @@ class LibetpanMailSession : MailSession {
         // session lane); a reconnect of the main connection from here would race the lane's commands.
         // The callback is stored only for the generation nativeWatch publishes, not before it returns.
         nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-        nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
+        val offer = WatchOffer(mailbox, onChange)
+        val started = nativeWatch(requireHandle(), wire(mailbox), offer)
+        if (started == 0L) {
+            val cur = publishedWatch.get()
+            if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+        }
         noteTraffic("Idling")
     }
 
@@ -1348,9 +1353,14 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun rewatch() {
-            val offer = publishedWatch.get()?.offer ?: return
+            val current = publishedWatch.get()?.offer ?: return
+            val offer = WatchOffer(current.mailbox, current.onChange)
             nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-            nativeWatch(requireHandle(), wire(offer.mailbox), offer)
+            val started = nativeWatch(requireHandle(), wire(offer.mailbox), offer)
+            if (started == 0L) {
+                val cur = publishedWatch.get()
+                if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+            }
             noteTraffic("Idling")
         }
 

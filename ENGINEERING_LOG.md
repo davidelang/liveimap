@@ -2775,3 +2775,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-account-id-20261014-0906-plan.md
 - Work: applyExtraIdle calls applyStoredIdle inside AccountTarget so a non-selected account uses its own password and pins; a blank id still returns before the lock
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A newer resume does not close a watch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-followup-20261014-0842-plan.md
+- Work: close only when a suspend is the latest move; a newer resume waits and reconnects if that owner stopped for a suspend; publish the watch callback only after IDLE starts and clear that generation when nativeWatch returns 0
+- First action per standard-plan-compliance-block.md; commits stay on master

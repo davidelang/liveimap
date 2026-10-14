@@ -42,8 +42,9 @@ class ConnectionKeeper(
     @Volatile private var broken = false
     @Volatile private var watchLost = false
     // One reconnect owner. A loser does not connect or sleep; it waits for the owner's result.
-    // A resume that loses returns without waiting. The future is published with an atomic, not a mutex.
-    private val ownerResult = AtomicReference<CompletableFuture<kotlin.Result<Unit>>?>(null)
+    // A resume older than that owner returns without waiting. A newer resume waits, and reconnects
+    // if the owner stopped for a suspend. The slot is an atomic, not a mutex.
+    private val ownerResult = AtomicReference<ReconnectOwner?>(null)
     private var lifecycle: LifecycleClock? = null
     private val rewatchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -176,32 +177,46 @@ class ConnectionKeeper(
         }
     }
 
+    private class ReconnectOwner(
+        val epoch: Long,
+        val result: CompletableFuture<kotlin.Result<Unit>>,
+    )
+
     private fun reconnect(fromResume: Boolean = false, epoch: Long? = null, life: LifecycleClock? = lifecycle) {
         val started = epoch ?: life?.current?.get() ?: 0L
         val owned = CompletableFuture<kotlin.Result<Unit>>()
+        val slot = ReconnectOwner(started, owned)
         while (true) {
             val pending = ownerResult.get()
             if (pending != null) {
-                if (fromResume) return
-                val error = pending.get().exceptionOrNull() ?: return
+                if (fromResume && started <= pending.epoch) return
+                val error = pending.result.get().exceptionOrNull()
+                if (fromResume && started > pending.epoch) {
+                    if (error is LifecycleStop) continue
+                    if (error != null) throw error
+                    return
+                }
+                if (error == null) return
                 if (error is LifecycleStop) throw ConnectionLost("Closed (background)")
                 throw error
             }
-            if (ownerResult.compareAndSet(null, owned)) break
+            if (ownerResult.compareAndSet(null, slot)) break
         }
+        var outcome = kotlin.Result.success(Unit)
+        var rethrow: Throwable? = null
         try {
             driveReconnect(life, started)
-            owned.complete(kotlin.Result.success(Unit))
         } catch (stop: LifecycleStop) {
-            if (!owned.isDone) owned.complete(kotlin.Result.failure(stop))
-            if (!fromResume) throw ConnectionLost("Closed (background)")
+            outcome = kotlin.Result.failure(stop)
+            if (!fromResume) rethrow = ConnectionLost("Closed (background)")
         } catch (error: Throwable) {
-            if (!owned.isDone) owned.complete(kotlin.Result.failure(error))
-            throw error
+            outcome = kotlin.Result.failure(error)
+            rethrow = error
         } finally {
-            if (!owned.isDone) owned.complete(kotlin.Result.success(Unit))
-            ownerResult.compareAndSet(owned, null)
+            ownerResult.compareAndSet(slot, null)
+            if (!owned.isDone) owned.complete(outcome)
         }
+        if (rethrow != null) throw rethrow
     }
 
     private fun driveReconnect(life: LifecycleClock?, epoch: Long) {
@@ -251,18 +266,13 @@ class ConnectionKeeper(
         scheduleRewatch(life, epoch)
     }
 
-    // A moved epoch, including a newer resume, is not Connected. update retries if a suspend lands first.
+    // A winning suspend is not Connected. The update retries if that suspend lands first.
     private fun publishConnected(life: LifecycleClock?, epoch: Long) {
         if (ownerMustStop(life, epoch)) stopForSuspend()
         state.update { cur ->
-            if (cur is ConnectionState.Suspended || ownerMustStop(life, epoch)) cur else ConnectionState.Connected
+            if (ownerMustStop(life, epoch)) cur else ConnectionState.Connected
         }
-        if (state.value is ConnectionState.Suspended || ownerMustStop(life, epoch)) stopForSuspend()
-    }
-
-    private fun epochCurrent(life: LifecycleClock?, epoch: Long): Boolean {
-        if (life == null) return true
-        return life.current.get() == epoch
+        if (ownerMustStop(life, epoch)) stopForSuspend()
     }
 
     private fun suspendWins(life: LifecycleClock?, epoch: Long): Boolean {
@@ -273,9 +283,9 @@ class ConnectionKeeper(
         return true
     }
 
-    // True when this owner's epoch is no longer current, including a newer resume, not only a winning suspend.
+    // Close only when a suspend is the latest move. A newer resume is not a close.
     private fun ownerMustStop(life: LifecycleClock?, epoch: Long): Boolean {
-        return !epochCurrent(life, epoch) || suspendWins(life, epoch)
+        return suspendWins(life, epoch)
     }
 
     private fun stopForSuspend(): Nothing {
@@ -300,7 +310,7 @@ class ConnectionKeeper(
             }
             if (ownerMustStop(life, epoch) || state.value is ConnectionState.Suspended) {
                 watchLost = true
-                stopIdle()
+                if (ownerMustStop(life, epoch)) stopIdle()
                 return@launch
             }
             watchLost = false

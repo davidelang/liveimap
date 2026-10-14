@@ -288,6 +288,78 @@ class ConnectionKeeperTest {
     }
 
     @Test
+    fun newerResumeAfterSuspendEndsConnected() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        link.connectFailures.add(MailFailure("first boom"))
+        val inSleep = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = {
+            inSleep.countDown()
+            release.await()
+        })
+        val epochA = clock.takeResume()
+        val ownerError = arrayOfNulls<Throwable>(1)
+        val owner = Thread {
+            try {
+                keeper.resume(clock, epochA)
+            } catch (error: Throwable) {
+                ownerError[0] = error
+            }
+        }
+        owner.start()
+        assertTrue(inSleep.await(5, TimeUnit.SECONDS))
+        val suspendEpoch = clock.takeSuspend()
+        keeper.suspendConnections(clock, suspendEpoch)
+        val epochB = clock.takeResume()
+        val resumeError = arrayOfNulls<Throwable>(1)
+        val resumed = CountDownLatch(1)
+        val resumeB = Thread {
+            try {
+                keeper.resume(clock, epochB)
+            } catch (error: Throwable) {
+                resumeError[0] = error
+            } finally {
+                resumed.countDown()
+            }
+        }
+        resumeB.start()
+        assertFalse(resumed.await(300, TimeUnit.MILLISECONDS))
+        release.countDown()
+        owner.join()
+        assertTrue(resumed.await(5, TimeUnit.SECONDS))
+        assertEquals(null, ownerError[0])
+        assertEquals(null, resumeError[0])
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+        assertTrue(link.awaitRewatches(1))
+    }
+
+    @Test
+    fun suspendThatIsStillLatestClosesWithoutIdle() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        link.connectFailures.add(MailFailure("first boom"))
+        val inSleep = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = {
+            inSleep.countDown()
+            release.await()
+        })
+        val epoch = clock.takeResume()
+        val owner = Thread { keeper.resume(clock, epoch) }
+        owner.start()
+        assertTrue(inSleep.await(5, TimeUnit.SECONDS))
+        val suspendEpoch = clock.takeSuspend()
+        keeper.suspendConnections(clock, suspendEpoch)
+        release.countDown()
+        owner.join()
+        assertEquals(ConnectionState.Suspended, keeper.connectionState.value)
+        assertEquals(0, link.rewatches)
+    }
+
+    @Test
     fun rewatchIsNotOnTheReconnectCaller() {
         val link = FakeLink()
         link.deadFlag = true
