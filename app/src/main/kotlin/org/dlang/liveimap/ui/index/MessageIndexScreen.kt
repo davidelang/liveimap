@@ -1841,6 +1841,7 @@ private fun MessageIndexLoaded(
             if (runAdvanced && model.isLongAdvanced(pendingAdvanced, pendingScope)) {
                 // Long search: runs on its own connection without the list gate, so the list stays usable.
                 val text: String = pendingAdvanced
+                val mailboxAtStart = mailbox
                 val orderAtStart = model.order
                 val orderMailboxesAtStart = model.orderMailboxes
                 onAdvancedConsumed()
@@ -1855,8 +1856,12 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        if (model.order == orderAtStart && model.orderMailboxes == orderMailboxesAtStart) {
-                            // Still waiting on the same list: show the results in place.
+                        if (
+                            held.boundMailbox == mailboxAtStart &&
+                            model.order == orderAtStart &&
+                            model.orderMailboxes == orderMailboxesAtStart
+                        ) {
+                            // Same mailbox and UID order this search started from: show the results in place.
                             gate.withLock {
                                 noteVisibleTop()
                                 model.applyAdvancedHits(text, hits)

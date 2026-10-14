@@ -271,8 +271,7 @@ class FolderListModel(
     }
 
     private fun rememberMessages(mailbox: String, count: Int) {
-        val previous = knownMessages[mailbox]
-        if (previous == null || count > previous) knownMessages[mailbox] = count
+        knownMessages[mailbox] = count
     }
 
     fun refreshLevels() {
@@ -359,7 +358,7 @@ class FolderListModel(
             parentMailbox = parentMailbox,
             expanded = showChildren,
             specialUse = node.specialUse,
-            messages = node.messages ?: knownMessages[node.mailbox],
+            messages = knownMessages[node.mailbox] ?: node.messages,
             unseen = node.unseen,
             namespaceRoot = node.namespaceRoot,
             delimiter = node.delimiter,
