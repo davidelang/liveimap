@@ -17,7 +17,13 @@ fun offerForAccount(
     val target = jmapServerTarget(account.imapHost)
     if (target.plainHttp) JmapPlainHttp.allow(target.discoveryUrl)
     val result = fetch.get(target.discoveryUrl)
-    if (result.status != 401 || authorization.isEmpty()) return discoverJmap(result.status, result.body, result.finalUrl)
+    if (result.status != 401 || authorization.isEmpty()) {
+        val open = discoverJmap(result.status, result.body, result.finalUrl)
+        // Stalwart answers the unauthenticated session request with 200 and an anonymous session (no accounts);
+        // that is not this user's session, so fetch it again with credentials, as for 401.
+        val anonymous = open is JmapOffer.Mail && open.session.primaryMailAccountId.isNullOrBlank()
+        if (!anonymous || authorization.isEmpty()) return open
+    }
     // Discovery found the session resource (redirects, trust and pin already checked without credentials);
     // fetch it once more with credentials, on the same URL, refusing redirects, through the pinned GET.
     return discoverJmap(200, jmapAuthenticatedSession(result.finalUrl, authorization, account.jmapCertPin, get, trust), result.finalUrl)

@@ -107,6 +107,36 @@ class JmapAccountTest {
         assertEquals(emptyList<String>(), script.reads)
     }
 
+    @Test
+    fun anonymousSessionIsFetchedAgainWithCredentials() {
+        // Stalwart: 200 with no primary account when unauthenticated.
+        val url = "https://example.com/.well-known/jmap"
+        val anon = mailBody.replace(""""primaryAccounts": { "urn:ietf:params:jmap:mail": "A1" }""", """"primaryAccounts": {}""")
+        val script = AccountOpen(url, 200, anon, listOf(byteArrayOf(1)))
+        val gets = mutableListOf<Pair<String, String>>()
+        val offer = offerForAccount(
+            AccountSettings(imapHost = "example.com", imapPort = 993),
+            script::open,
+            authorization = "Basic x",
+            get = { u, a ->
+                gets += u to a
+                object : JmapBlobExchange {
+                    override val status = 200
+                    override fun peerDer() = listOf(byteArrayOf(1))
+                    override fun bytes() = mailBody.toByteArray()
+                    override fun close() {}
+                }
+            },
+            trust = script::trust,
+        )
+        assertMail(offer)
+        assertEquals(listOf(url to "Basic x"), gets)
+        // Without credentials the anonymous offer is returned as is (no second request).
+        gets.clear()
+        offerForAccount(AccountSettings(imapHost = "example.com", imapPort = 993), script::open, get = { _, _ -> error("no") }, trust = script::trust)
+        assertEquals(emptyList<Pair<String, String>>(), gets)
+    }
+
     private fun assertMail(offer: JmapOffer) {
         when (offer) {
             is JmapOffer.Mail -> assertEquals("A1", offer.session.primaryMailAccountId)
