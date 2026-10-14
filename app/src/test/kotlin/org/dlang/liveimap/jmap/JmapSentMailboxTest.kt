@@ -5,41 +5,6 @@ import org.junit.Test
 
 class JmapSentMailboxTest {
     @Test
-    fun requestMatchesTheA1Document() {
-        assertEquals(sentRequest, jmapSentMailboxRequest("A1"))
-    }
-
-    @Test
-    fun quotedAccountIdEscapesQuote() {
-        val quoted = sentRequest.replace("\"A1\"", "\"a\\\"b\"")
-        assertEquals(quoted, jmapSentMailboxRequest("a\"b"))
-    }
-
-    @Test
-    fun blankAccountIdThrows() {
-        for (blank in listOf("", " ", "\t", "\n")) {
-            assertFails("jmap account id is empty") { jmapSentMailboxRequest(blank) }
-        }
-    }
-
-    @Test
-    fun sampleResponseReturnsMbSent() {
-        assertEquals("mbSent", jmapSentMailboxId(sentResponse))
-    }
-
-    @Test
-    fun missingSentMailboxThrows() {
-        assertFails("jmap sent mailbox is missing") { jmapSentMailboxId(emptyIds) }
-        assertFails("jmap sent mailbox is missing") { jmapSentMailboxId(missingQuery) }
-        assertFails("jmap sent mailbox is missing") { jmapSentMailboxId(nonTextId) }
-        assertFails("jmap sent mailbox is missing") { jmapSentMailboxId("") }
-        for (id in listOf("", " ", "\t", "\n")) {
-            val text = sentResponse.replace("\"mbSent\"", quotedJson(id))
-            assertFails("jmap sent mailbox is missing") { jmapSentMailboxId(text) }
-        }
-    }
-
-    @Test
     fun sendUsesOnlyTheConfiguredSentNameNeverTheRoleOrGuesses() {
         val all = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"c1","name":"Sent","parentId":"p"},{"id":"t2","name":"Sent","parentId":null},{"id":"r","name":"Sent Items","parentId":null,"role":"sent"}]},"0"]]}"""
         val bodies = mutableListOf<String>()
@@ -66,7 +31,20 @@ class JmapSentMailboxTest {
         } catch (missing: JmapSentFolderMissing) {
             assertEquals("Sent Messages", missing.name)
         }
-        assertEquals(null, jmapTopLevelMailboxId(all, "Drafts"))
+        assertEquals(null, jmapMailboxIdByPath(all, "Drafts"))
+        // F148: a configured nested path resolves like the folder list names it.
+        val nested = all.replace("\"parentId\":\"p\"", "\"parentId\":\"p\"},{\"id\":\"p\",\"name\":\"Archive\",\"parentId\":null")
+        assertEquals("c1", jmapMailboxIdByPath(nested, "Archive/Sent"))
+        assertEquals("t2", jmapMailboxIdByPath(nested, "Sent"))
+        assertEquals("c1", jmapFindSentMailbox(session("A1"), "user", "pw", "", { _, _, _ -> object : JmapHttpExchange {
+            override val status = 200
+            override fun peerDer() = listOf(byteArrayOf(1))
+            override fun header(name: String): String? = null
+            override fun body() = nested
+            override fun close() {}
+        } }, noTrust, sentName = "Archive/Sent"))
+        // A parent cycle never matches.
+        assertEquals(null, jmapMailboxIdByPath("""{"methodResponses":[["Mailbox/get",{"list":[{"id":"a","name":"A","parentId":"b"},{"id":"b","name":"B","parentId":"a"}]},"0"]]}""", "B/A"))
     }
 
     @Test

@@ -233,9 +233,10 @@ class JmapSubmissionTest {
     }
 
     @Test
-    fun status500Throws() {
+    fun status500IsMaybeSent() {
+        // F146: a 5xx answer to EmailSubmission/set does not prove the message was not sent.
         val post = SubmitPost(500, "no")
-        assertFails("jmap api status 500") {
+        assertFails(JmapMaybeSent("jmap api status 500").text) {
             jmapSubmit(
                 session(JMAP_SUBMISSION),
                 "M1",

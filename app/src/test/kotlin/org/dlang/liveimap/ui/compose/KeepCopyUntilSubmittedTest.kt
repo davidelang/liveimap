@@ -38,4 +38,22 @@ class KeepCopyUntilSubmittedTest {
         } catch (_: kotlinx.coroutines.CancellationException) {}
         assertEquals(listOf(true), writes) // interrupted mid-send: kept, marked "may be sent"
     }
+
+    @Test
+    fun maybeSentFailureKeepsTheCopyMarkedMayBeSent() {
+        val writes = mutableListOf<Boolean>()
+        try {
+            keepCopyUntilSubmitted(copy, { writes += it.uncertain; true }, { fail("deleted") }) { throw org.dlang.liveimap.jmap.JmapMaybeSent("timeout") }
+            fail()
+        } catch (_: org.dlang.liveimap.jmap.JmapMaybeSent) {}
+        assertEquals(listOf(true, true), writes) // F146: never rewritten as plain "not sent"
+    }
+
+    @Test
+    fun withoutSentCopyKeepsEverythingButTheSentFolder() {
+        val bare = copy.withoutSentCopy()
+        assertEquals("", bare.mailbox)
+        assertEquals(copy.id, bare.id)
+        assertEquals(copy.recipients, bare.recipients)
+    }
 }

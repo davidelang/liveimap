@@ -67,6 +67,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapSentFolderMissing
+import org.dlang.liveimap.jmap.JmapMaybeSent
 import org.dlang.liveimap.jmap.jmapSend
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.jmapBasicAuthorization
@@ -289,6 +290,8 @@ private fun ComposeLoaded(
     // David's Sent rule (c): saving the copy failed, so offer "send without saving a copy" (Alpine's dropped Fcc).
     var offerNoCopy by remember { mutableStateOf(false) }
     var withoutCopy by remember { mutableStateOf(false) }
+    /** F150: the "send without copy" offer came from retrying a stored copy, so it retries that copy. */
+    var noCopyRetry by remember { mutableStateOf(false) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
     var plaintextEntries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
@@ -669,6 +672,21 @@ private fun ComposeLoaded(
         }
     }
 
+    /**
+     * A JMAP send that did not complete. keepCopyUntilSubmitted already left the device copy (F146: still "may be
+     * sent" when the server's answer was lost); the Unsent list shows it like any failed send.
+     */
+    fun jmapSendFailed(copy: DeviceCopy, error: Exception) {
+        val maybe = jmapMaybeSent(error)
+        held = copy.copyWith(uncertain = maybe)
+        notice = when (error) {
+            is JmapFailure -> error.text
+            is MailFailure -> error.text
+            else -> error.message ?: notConnected
+        }
+        status = if (maybe) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
+    }
+
     suspend fun removePostponedSource() {
         val uid = postponedUidToRemove(seed.kind, true, sourceUid) ?: return
         val box = seed.mailbox ?: account.postponedMailbox
@@ -813,9 +831,10 @@ private fun ComposeLoaded(
                     status = notSentNotice
                     return false
                 }
+                var leftOver: String? = null
                 try {
                     val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
-                    jmapSend(
+                    keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
                         copy.bytes,
                         account.email,
@@ -825,11 +844,23 @@ private fun ComposeLoaded(
                         account.jmapCertPin,
                         pinnedJmapUpload(account.jmapCertPin),
                         pinnedJmapPost(account.jmapCertPin),
-                        sentName = account.sentMailbox,
+                        // F150: the copy's own Sent choice (blank after "send without copy" or a no-Fcc bounce).
+                        sentName = copy.mailbox,
+                        saveCopy = copy.mailbox.isNotEmpty(),
                         draftsName = account.postponedMailbox,
-                    )
+                        onNotice = { leftOver = it },
+                    ) }
                 } catch (error: CancellationException) {
                     throw error
+                } catch (error: JmapSentFolderMissing) {
+                    held = copy
+                    notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
+                    offerNoCopy = true
+                    noCopyRetry = true
+                    return false
+                } catch (error: JmapMaybeSent) {
+                    jmapSendFailed(copy, error)
+                    return false
                 } catch (error: JmapFailure) {
                     notice = error.text
                     status = notSentNotice
@@ -844,9 +875,8 @@ private fun ComposeLoaded(
                     return false
                 }
                 storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-                deleteCopy(appContext, copy.id, accountId)
                 if (held?.id == copy.id) held = null
-                notice = null
+                notice = leftOver
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
                     sentStatus(mailboxLeaf(copy.mailbox))
@@ -1168,16 +1198,13 @@ private fun ComposeLoaded(
                             status = notSentNotice
                             return@launchLocked false
                         }
-                        // F50: as on the SMTP path, the device copy exists before the upload/submission starts,
-                        // marked "may be sent", so a process death mid-submission keeps the message.
-                        writeCopy(
-                            appContext,
-                            DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true),
-                            accountId,
-                        )
+                        // F50/David's JMAP rule: the device copy exists before the upload/submission starts, marked
+                        // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
+                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, built.rfc822, via = via)
+                        var leftOver: String? = null
                         try {
                             val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
-                            jmapSend(
+                            keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
                                 built.rfc822,
                                 account.email,
@@ -1188,48 +1215,28 @@ private fun ComposeLoaded(
                                 pinnedJmapUpload(account.jmapCertPin),
                                 pinnedJmapPost(account.jmapCertPin),
                                 sentName = account.sentMailbox,
-                        draftsName = account.postponedMailbox,
+                                draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
-                            )
+                                onNotice = { leftOver = it },
+                            ) }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: JmapSentFolderMissing) {
                             // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
-                            // copy stays (David's JMAP rule) until a send is confirmed.
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
+                            // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
+                            held = sending
                             notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                             offerNoCopy = true
                             return@launchLocked false
-                        } catch (error: JmapFailure) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
-                            notice = error.text
-                            status = notSentNotice
-                            return@launchLocked false
-                        } catch (error: MailFailure) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
-                            notice = error.text
-                            status = notSentNotice
-                            return@launchLocked false
                         } catch (error: Exception) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            writeCopy(appContext, copy, accountId)
-                            held = copy
-                            notice = error.message ?: notConnected
-                            status = notSentNotice
+                            jmapSendFailed(sending, error)
                             return@launchLocked false
                         }
                         storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-                        deleteCopy(appContext, id, accountId)
                         held = null
                         deliveryDone = true
-                        notice = null
-                        status = sentStatus(mailboxLeaf(account.sentMailbox))
+                        notice = leftOver
+                        status = sentStatus(if (withoutCopy) null else mailboxLeaf(account.sentMailbox))
                         removePostponedSource()
                         return@launchLocked true
                     }
@@ -1433,6 +1440,10 @@ private fun ComposeLoaded(
                     notice = null
                     status = sentStatus(null)
                     scope.launch { removePostponedSource() }
+                } else if (kept != null && noCopyRetry) {
+                    noCopyRetry = false
+                    val bare = kept.withoutSentCopy()
+                    scope.launch { writeCopy(appContext, bare, accountId); held = bare; retryCopy(bare) }
                 } else {
                     withoutCopy = true
                     sendMessage()
@@ -1578,10 +1589,11 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
+                                val bouncing = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
                                 try {
                                     val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
                                     keepCopyUntilSubmitted(
-                                        DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced),
+                                        bouncing,
                                         { writeCopy(appContext, it, accountId) },
                                         { deleteCopy(appContext, it, accountId) },
                                     ) { jmapSend(
@@ -1594,33 +1606,18 @@ private fun ComposeLoaded(
                                         account.jmapCertPin,
                                         pinnedJmapUpload(account.jmapCertPin),
                                         pinnedJmapPost(account.jmapCertPin),
-                                        sentName = account.sentMailbox,
+                                        // F149: Fcc on bounce off means no Sent copy (staged in Drafts instead).
+                                        sentName = savedMailbox,
+                                        saveCopy = savedMailbox.isNotEmpty(),
                                         draftsName = account.postponedMailbox,
+                                        onNotice = { notice = it },
                                     ) }
                                     storeAcceptedFlags(listOf(uid))
                                     continue
                                 } catch (error: CancellationException) {
                                     throw error
-                                } catch (error: JmapFailure) {
-                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                                    writeCopy(appContext, copy, accountId)
-                                    held = copy
-                                    notice = error.text
-                                    status = notSentNotice
-                                    return@launchLocked false
-                                } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                                    writeCopy(appContext, copy, accountId)
-                                    held = copy
-                                    notice = error.text
-                                    status = notSentNotice
-                                    return@launchLocked false
                                 } catch (error: Exception) {
-                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                                    writeCopy(appContext, copy, accountId)
-                                    held = copy
-                                    notice = error.message ?: notConnected
-                                    status = notSentNotice
+                                    jmapSendFailed(bouncing, error)
                                     return@launchLocked false
                                 }
                             }

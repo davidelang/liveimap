@@ -20,6 +20,10 @@ internal class DeviceCopy(
 /** F50: native prefix on an SMTP failure that happened after the message was handed to the server. */
 internal const val SmtpUncertainPrefix = "smtp-uncertain: "
 
+/** F150: the same copy, sent with no Sent copy (the user chose "send without copy" on retry). */
+internal fun DeviceCopy.withoutSentCopy() =
+    DeviceCopy(id, appendOnly, "", recipients, bytes, modifiedMillis, via, uncertain)
+
 internal fun DeviceCopy.copyWith(appendOnly: Boolean = this.appendOnly, uncertain: Boolean = this.uncertain) =
     DeviceCopy(id, appendOnly, mailbox, recipients, bytes, modifiedMillis, via, uncertain)
 
@@ -184,6 +188,8 @@ internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
  * Written "may be sent" before [send] starts (so a process death keeps it); deleted on success; on failure kept as
  * a plain unsent copy (the Unsent list shows it like any failed send) and the failure is rethrown.
  */
+internal fun jmapMaybeSent(failure: Throwable): Boolean = failure is org.dlang.liveimap.jmap.JmapMaybeSent
+
 internal inline fun <T> keepCopyUntilSubmitted(
     copy: DeviceCopy,
     write: (DeviceCopy) -> Boolean,
@@ -194,7 +200,8 @@ internal inline fun <T> keepCopyUntilSubmitted(
     val result = try {
         send()
     } catch (failure: Throwable) {
-        if (failure !is kotlinx.coroutines.CancellationException) write(copy.copyWith(uncertain = false))
+        // F146: a lost answer to the submission keeps "may be sent", so the Unsent list says to check Sent first.
+        if (failure !is kotlinx.coroutines.CancellationException) write(copy.copyWith(uncertain = jmapMaybeSent(failure)))
         throw failure
     }
     delete(copy.id)

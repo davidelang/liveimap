@@ -1,13 +1,17 @@
 package org.dlang.liveimap.jmap
 
-fun jmapEmailImportRequest(accountId: String, blobId: String, mailboxId: String): String {
+/** F147: keywords of a staging copy (no Sent copy): a seen draft that this app knows never to resume. */
+const val JMAP_STAGING_KEYWORD = "\$liveimap-staging"
+val JMAP_STAGING_KEYWORDS = listOf("\$draft", "\$seen", JMAP_STAGING_KEYWORD)
+
+fun jmapEmailImportRequest(accountId: String, blobId: String, mailboxId: String, keywords: List<String> = emptyList()): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
     if (blobId.isBlank()) throw JmapFailure("jmap blob id is empty")
     if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
     val account = quoted(accountId)
     val blob = quoted(blobId)
     val mailbox = quoted(mailboxId)
-    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/import",{"accountId":$account,"emails":{"k1":{"blobId":$blob,"mailboxIds":{$mailbox:true}}}},"0"]]}"""
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/import",{"accountId":$account,"emails":{"k1":{"blobId":$blob,"mailboxIds":{$mailbox:true}${if (keywords.isEmpty()) "" else keywords.joinToString(",", ",\"keywords\":{", "}") { quoted(it) + ":true" }}}}},"0"]]}"""
 }
 
 fun jmapImportedEmailId(text: String): String {

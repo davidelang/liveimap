@@ -2,29 +2,6 @@ package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
 
-fun jmapSentMailboxRequest(accountId: String): String {
-    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
-    val account = quoted(accountId)
-    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Mailbox/query",{"accountId":$account,"filter":{"role":"sent"}},"0"],["Mailbox/get",{"accountId":$account,"#ids":{"resultOf":"0","name":"Mailbox/query","path":"/ids"},"properties":["id","role"]},"1"]]}"""
-}
-
-fun jmapSentMailboxId(text: String): String {
-    val root = try {
-        JsonParser(text).parseDocument()
-    } catch (_: JsonBroken) {
-        throw JmapFailure("jmap sent mailbox is missing")
-    }
-    if (root !is Json.Obj) throw JmapFailure("jmap sent mailbox is missing")
-    val ids = queryIds(root.fields["methodResponses"])
-        ?: throw JmapFailure("jmap sent mailbox is missing")
-    if (ids.isEmpty()) throw JmapFailure("jmap sent mailbox is missing")
-    val first = ids[0]
-    if (first !is Json.Str || first.text.isBlank()) {
-        throw JmapFailure("jmap sent mailbox is missing")
-    }
-    return first.text
-}
-
 /** David's Sent rule: a configured Sent folder that cannot be found is an error the user resolves (send without
  *  the copy, or fix the setting); the app never picks another folder. */
 class JmapSentFolderMissing(val name: String) : JmapFailure("jmap sent folder \"$name\" was not found")
@@ -32,6 +9,7 @@ class JmapSentFolderMissing(val name: String) : JmapFailure("jmap sent folder \"
 /**
  * Where the sent copy goes: only the Sent folder configured in settings, matched exactly at top level, whatever
  * the server's role metadata says (roles only prefill the settings default). Blank: null, send without a copy.
+ * F148: [sentName] is the full path ("Archive/Sent"), resolved the way JmapMailSession names folders.
  */
 fun jmapFindSentMailbox(
     session: JmapSession,
@@ -47,7 +25,7 @@ fun jmapFindSentMailbox(
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
-    return jmapTopLevelMailboxId(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
+    return jmapMailboxIdByPath(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
 }
 
 fun jmapMailboxNamesRequest(accountId: String): String {
@@ -55,35 +33,37 @@ fun jmapMailboxNamesRequest(accountId: String): String {
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Mailbox/get",{"accountId":${quoted(accountId)},"ids":null,"properties":["id","name","parentId"]},"0"]]}"""
 }
 
-/** The id of the top-level mailbox named exactly [name] (no role needed), or null. */
-fun jmapTopLevelMailboxId(text: String, name: String): String? {
+/**
+ * F148: the id of the mailbox whose full path is exactly [path]: names joined by [delimiter] from the top, the same
+ * paths JmapMailSession lists (so "Sent" is top level and "Archive/Sent" is Sent under Archive). Null when none.
+ */
+fun jmapMailboxIdByPath(text: String, path: String, delimiter: Char = JmapMailSession.DELIMITER): String? {
     val root = try { JsonParser(text).parseDocument() } catch (_: JsonBroken) { return null }
     val responses = (root as? Json.Obj)?.fields?.get("methodResponses") as? Json.Arr ?: return null
     for (item in responses.values) {
         val call = item as? Json.Arr ?: continue
         if ((call.values.getOrNull(0) as? Json.Str)?.text != "Mailbox/get") continue
         val list = ((call.values.getOrNull(1) as? Json.Obj)?.fields?.get("list") as? Json.Arr) ?: return null
+        class Box(val name: String, val parent: String?)
+        val boxes = HashMap<String, Box>()
         for (box in list.values) {
             val f = (box as? Json.Obj)?.fields ?: continue
-            val parent = f["parentId"]
-            if (parent != null && parent !is Json.Null) continue
-            if ((f["name"] as? Json.Str)?.text == name) return (f["id"] as? Json.Str)?.text?.takeIf { it.isNotBlank() }
+            val id = (f["id"] as? Json.Str)?.text?.takeIf { it.isNotBlank() } ?: continue
+            val name = (f["name"] as? Json.Str)?.text ?: continue
+            boxes[id] = Box(name, (f["parentId"] as? Json.Str)?.text)
         }
-    }
-    return null
-}
-
-private fun queryIds(responses: Json?): List<Json>? {
-    if (responses !is Json.Arr) return null
-    for (item in responses.values) {
-        if (item !is Json.Arr || item.values.size < 2) continue
-        val method = item.values[0]
-        if (method !is Json.Str || method.text != "Mailbox/query") continue
-        val args = item.values[1]
-        if (args !is Json.Obj) return null
-        val ids = args.fields["ids"] ?: return null
-        if (ids !is Json.Arr) return null
-        return ids.values
+        fun fullPath(id: String): String? {
+            val names = ArrayList<String>()
+            var at: String? = id
+            while (at != null) {
+                val box = boxes[at] ?: return null
+                names += box.name
+                if (names.size > boxes.size) return null // a parent cycle: no path
+                at = box.parent
+            }
+            return names.asReversed().joinToString(delimiter.toString())
+        }
+        return boxes.keys.firstOrNull { fullPath(it) == path }
     }
     return null
 }

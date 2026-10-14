@@ -1858,8 +1858,10 @@ class IndexModel(
     }
 
     /** F124: a row resumes as a draft only when its own folder (not the index's) is Postponed. */
-    fun openSeed(uid: Long, rowMailbox: String = ""): ComposeSeed? {
+    fun openSeed(uid: Long, rowMailbox: String = "", rowFlags: Set<String> = emptySet()): ComposeSeed? {
         val folder = rowMailbox.ifEmpty { mailbox }
+        // F147b: a JMAP staging copy (a message being, or already, sent) is never resumed as a draft.
+        if (rowFlags.any { it.equals(org.dlang.liveimap.jmap.JMAP_STAGING_KEYWORD, ignoreCase = true) }) return null
         if (account.postponedMailbox.isNotEmpty() && sameMailbox(folder, account.postponedMailbox)) {
             return ComposeSeed(ComposeKind.ResumePostpone, folder, listOf(uid), listedEpoch(folder))
         }
