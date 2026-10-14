@@ -124,8 +124,12 @@ suspend fun runAcceptance(
     val writer = allowWriter(context.account.username, context.account.imapHost) &&
         allowWriteHost(context.account.smtpHost.ifBlank { context.account.imapHost })
     val rows = ArrayList<ReportRow>()
-    val marker = if (checkSeed) try { readMarker() } catch (e: CancellationException) { throw e } catch (_: Exception) { null } else null
-    val notReset = if (checkSeed) seedGate(marker) else null
+    var markerError: String? = null
+    val marker = if (checkSeed) try { readMarker() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        markerError = "not reset: seed marker read failed: ${e.javaClass.simpleName}: ${e.message.orEmpty().take(200)}"
+        null
+    } else null
+    val notReset = if (checkSeed) markerError ?: seedGate(marker) else null
     if (notReset != null) {
         tests.forEach { rows += ReportRow(it.case.name, it.case.feature, it.case.plans, "skip", notReset) }
         progress(tests.size, tests.size, "")
