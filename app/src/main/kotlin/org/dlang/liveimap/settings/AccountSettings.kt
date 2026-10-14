@@ -1087,7 +1087,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         extraIdleBudget = field(d.extraIdleBudget) { values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2 },
         // Never unlimited: a stored value outside the range is clamped to it.
         maxConnections = field(d.maxConnections) {
-            values["maxConnections"]?.let { parseIntField(it) }?.let(org.dlang.liveimap.session::clampMaxConnections)
+            values["maxConnections"]?.let { parseIntField(it) }?.let { org.dlang.liveimap.session.clampMaxConnections(it) }
                 ?: org.dlang.liveimap.session.DefaultMaxConnections
         },
         savedSearches = field(d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
