@@ -178,3 +178,25 @@ internal fun deleteCopy(context: Context, id: String, accountId: String = "") {
 internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
     unsentAccountDir(filesDir, accountId).deleteRecursively()
 }
+
+/**
+ * David's JMAP rule: every JMAP send keeps a local copy in app-private storage until EmailSubmission is confirmed.
+ * Written "may be sent" before [send] starts (so a process death keeps it); deleted on success; on failure kept as
+ * a plain unsent copy (the Unsent list shows it like any failed send) and the failure is rethrown.
+ */
+internal inline fun <T> keepCopyUntilSubmitted(
+    copy: DeviceCopy,
+    write: (DeviceCopy) -> Boolean,
+    delete: (String) -> Unit,
+    send: () -> T,
+): T {
+    write(copy.copyWith(uncertain = true))
+    val result = try {
+        send()
+    } catch (failure: Throwable) {
+        if (failure !is kotlinx.coroutines.CancellationException) write(copy.copyWith(uncertain = false))
+        throw failure
+    }
+    delete(copy.id)
+    return result
+}

@@ -1194,8 +1194,11 @@ private fun ComposeLoaded(
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: JmapSentFolderMissing) {
-                            // Nothing was sent; the user chooses: fix the setting or send without the copy.
-                            deleteCopy(appContext, id, accountId)
+                            // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
+                            // copy stays (David's JMAP rule) until a send is confirmed.
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
+                            writeCopy(appContext, copy, accountId)
+                            held = copy
                             notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                             offerNoCopy = true
                             return@launchLocked false
@@ -1577,7 +1580,11 @@ private fun ComposeLoaded(
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 try {
                                     val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
-                                    jmapSend(
+                                    keepCopyUntilSubmitted(
+                                        DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced),
+                                        { writeCopy(appContext, it, accountId) },
+                                        { deleteCopy(appContext, it, accountId) },
+                                    ) { jmapSend(
                                         offer,
                                         bounced,
                                         account.email,
@@ -1588,8 +1595,8 @@ private fun ComposeLoaded(
                                         pinnedJmapUpload(account.jmapCertPin),
                                         pinnedJmapPost(account.jmapCertPin),
                                         sentName = account.sentMailbox,
-                        draftsName = account.postponedMailbox,
-                                    )
+                                        draftsName = account.postponedMailbox,
+                                    ) }
                                     storeAcceptedFlags(listOf(uid))
                                     continue
                                 } catch (error: CancellationException) {
