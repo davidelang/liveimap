@@ -237,7 +237,7 @@ class JmapMailSessionTest {
         assertTrue(fake.bodies.isEmpty())
     }
 
-    private class Stream(val responses: ArrayDeque<Pair<Int, String>>) {
+    private class Stream(val responses: ArrayDeque<Pair<Int, String>>, val closeFrees: Boolean = true) {
         val urls = mutableListOf<String>()
         val blocked = java.util.concurrent.CountDownLatch(1)
         fun streamFor(pin: String): (String, String) -> JmapHttpExchange = { url, _ ->
@@ -251,10 +251,10 @@ class JmapMailSessionTest {
                 override fun body(): String {
                     if (next != null) return next.second
                     blocked.countDown()
-                    released.await(5, java.util.concurrent.TimeUnit.SECONDS) // a long-poll that only close() ends
+                    released.await(if (closeFrees) 5L else 20L, java.util.concurrent.TimeUnit.SECONDS) // a long-poll that only close() ends
                     throw IOException("closed")
                 }
-                override fun close() { released.countDown() }
+                override fun close() { if (closeFrees) released.countDown() }
             }
         }
     }
@@ -288,6 +288,31 @@ class JmapMailSessionTest {
         assertTrue(stream.urls.all { it.startsWith("jm https://mail.example/events?types=Email") })
         s.stopWatch() // closes the blocked long-poll and joins
         assertEquals(seen.toList().toString(), 2, seen.size)
+    }
+
+    @Test
+    fun stopWatchDoesNotWaitOnAReadCloseCannotFree() = runBlocking {
+        // Stalwart lab: close() did not free the blocked eventsource read, and the suite hung in stopWatch.
+        val stream = Stream(ArrayDeque(), closeFrees = false)
+        val s = watching(listOf(state0, totalOf(2)), stream)
+        s.watch("INBOX") { }
+        assertTrue(stream.blocked.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val start = System.nanoTime()
+        s.stopWatch()
+        val ms = (System.nanoTime() - start) / 1_000_000
+        assertTrue("stopWatch took $ms ms", ms < JmapMailSession.STOP_WATCH_WAIT_MS + 2_000)
+    }
+
+    @Test
+    fun accountWithoutSubmissionIsNotOffered() {
+        val text = """{"capabilities":{"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{},"urn:ietf:params:jmap:submission":{}},
+            "accounts":{"A1":{"accountCapabilities":{"urn:ietf:params:jmap:mail":{}}}},"primaryAccounts":{"urn:ietf:params:jmap:mail":"A1"},
+            "username":"u","apiUrl":"https://x/api","downloadUrl":"https://x/d","uploadUrl":"https://x/u","eventSourceUrl":"https://x/e","state":"s"}"""
+        assertEquals(false, parseJmapSession(text).offersSubmission())
+        val withIt = text.replace(""""accountCapabilities":{"urn:ietf:params:jmap:mail":{}}""", """"accountCapabilities":{"urn:ietf:params:jmap:mail":{},"urn:ietf:params:jmap:submission":{}}""")
+        assertEquals(true, parseJmapSession(withIt).offersSubmission())
+        // Not listed per account: the session-level capability decides, as before.
+        assertEquals(true, parseJmapSession(text.replace(""""accountCapabilities":{"urn:ietf:params:jmap:mail":{}}""", "")).offersSubmission())
     }
 
     @Test

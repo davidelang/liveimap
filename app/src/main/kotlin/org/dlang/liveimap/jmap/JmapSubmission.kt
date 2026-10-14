@@ -8,6 +8,8 @@ fun jmapEmailSubmissionRequest(
     mailFrom: String,
     rcptTo: List<String>,
     destroyEmail: Boolean = false,
+    /** RFC 8621 §7: the Identity the user sends as (Stalwart requires it). */
+    identityId: String = "",
 ): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
     if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
@@ -19,7 +21,7 @@ fun jmapEmailSubmissionRequest(
     val id = quoted(emailId)
     val from = quoted(mailFrom)
     val recipients = rcptTo.joinToString(",") { "{\"email\":${quoted(it)}}" }
-    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL","$JMAP_SUBMISSION"],"methodCalls":[["EmailSubmission/set",{"accountId":$account,"create":{"k1":{"emailId":$id,"envelope":{"mailFrom":{"email":$from},"rcptTo":[$recipients]}}}${if (destroyEmail) ",\"onSuccessDestroyEmail\":[\"#k1\"]" else ""}},"0"]]}"""
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL","$JMAP_SUBMISSION"],"methodCalls":[["EmailSubmission/set",{"accountId":$account,"create":{"k1":{"emailId":$id,${if (identityId.isBlank()) "" else "\"identityId\":${quoted(identityId)},"}"envelope":{"mailFrom":{"email":$from},"rcptTo":[$recipients]}}}${if (destroyEmail) ",\"onSuccessDestroyEmail\":[\"#k1\"]" else ""}},"0"]]}"""
 }
 
 fun jmapSubmissionId(text: String): String {
@@ -53,11 +55,12 @@ fun jmapSubmit(
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     destroyEmail: Boolean = false,
+    identityId: String = "",
 ): String {
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val request = jmapEmailSubmissionRequest(accountId, emailId, mailFrom, rcptTo, destroyEmail)
+    val request = jmapEmailSubmissionRequest(accountId, emailId, mailFrom, rcptTo, destroyEmail, identityId)
     val authorization = jmapBasicAuthorization(username, password)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
@@ -78,6 +81,7 @@ fun jmapDeliver(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     /** No sent copy: the imported message is only a staging copy, destroyed once the submission succeeds. */
     destroyEmail: Boolean = false,
+    identityId: String = "",
 ): String {
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
     if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
@@ -105,6 +109,7 @@ fun jmapDeliver(
             post,
             trust,
             destroyEmail,
+            identityId,
         )
     } catch (failure: JmapFailure) {
         // F63: the copy in Sent was imported for a send that did not happen; remove it (best effort) so it
@@ -139,6 +144,7 @@ fun jmapSend(
         is JmapOffer.Mail -> offer.session
     }
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    val identityId = jmapIdentityFor(session, mailFrom, username, password, pin, post, trust)
     val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName) else null
     // No Sent folder (none configured, no role "sent", or the user dropped the copy): EmailSubmission still needs
     // an Email, so it is staged in Drafts (else Inbox) and destroyed by onSuccessDestroyEmail. No copy is kept.
@@ -156,8 +162,48 @@ fun jmapSend(
         post,
         trust,
         destroyEmail = sentId == null,
+        identityId = identityId,
     )
     return submissionId
+}
+
+/** Thrown when no Identity has exactly the From address; David's rule: never guess an identity. */
+class JmapNoIdentity(val from: String) : JmapFailure("no JMAP identity matches the From address $from")
+
+fun jmapIdentityRequest(accountId: String): String =
+    """{"using":["urn:ietf:params:jmap:core","$JMAP_SUBMISSION"],"methodCalls":[["Identity/get",{"accountId":${quoted(accountId)},"properties":["id","email"]},"0"]]}"""
+
+/** The id of the identity whose email equals [from] (case-insensitive); null when none does. */
+fun jmapMatchingIdentityId(text: String, from: String): String? {
+    val root = try { JsonParser(text).parseDocument() } catch (_: JsonBroken) { return null }
+    val responses = (root as? Json.Obj)?.fields?.get("methodResponses") as? Json.Arr ?: return null
+    for (item in responses.values) {
+        val call = item as? Json.Arr ?: continue
+        if ((call.values.getOrNull(0) as? Json.Str)?.text != "Identity/get") continue
+        val list = (call.values.getOrNull(1) as? Json.Obj)?.fields?.get("list") as? Json.Arr ?: return null
+        for (row in list.values) {
+            val f = (row as? Json.Obj)?.fields ?: continue
+            val email = (f["email"] as? Json.Str)?.text ?: continue
+            if (email.equals(from.trim(), ignoreCase = true)) return (f["id"] as? Json.Str)?.text?.takeIf { it.isNotBlank() }
+        }
+    }
+    return null
+}
+
+fun jmapIdentityFor(
+    session: JmapSession,
+    from: String,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+): String {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val result = jmapCall(session.apiUrl, jmapIdentityRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
+    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
+    return jmapMatchingIdentityId(result.body, from) ?: throw JmapNoIdentity(from)
 }
 
 fun jmapStagingMailbox(

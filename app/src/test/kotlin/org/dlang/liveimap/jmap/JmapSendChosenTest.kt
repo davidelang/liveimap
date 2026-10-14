@@ -77,6 +77,7 @@ class JmapSendChosenTest {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(
             listOf(
+                200 to identityResponse,
                 200 to namesResponse,
                 200 to importCreated,
                 200 to submissionCreated,
@@ -102,22 +103,19 @@ class JmapSendChosenTest {
         assertTrue(bytes.contentEquals(upload.bodies[0]))
         assertEquals(listOf(authorization), upload.authorizations)
         assertEquals(
-            listOf(
-                "https://example.com/jmap/",
-                "https://example.com/jmap/",
-                "https://example.com/jmap/",
-            ),
+            List(4) { "https://example.com/jmap/" },
             post.urls,
         )
         assertEquals(
             listOf(
+                jmapIdentityRequest("A1"),
                 jmapMailboxNamesRequest("A1"),
                 jmapEmailImportRequest("A1", "B1", "mbSent"),
-                jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com")),
+                jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com"), identityId = "I1"),
             ),
             post.bodies,
         )
-        assertEquals(listOf(authorization, authorization, authorization), post.authorizations)
+        assertEquals(List(4) { authorization }, post.authorizations)
     }
 
     @Test
@@ -126,6 +124,7 @@ class JmapSendChosenTest {
         val upload = SendUpload(201, uploadCreated)
         val post = SendPost(
             listOf(
+                200 to identityResponse,
                 200 to draftsResponse,
                 200 to importCreated,
                 200 to submissionCreated,
@@ -150,22 +149,37 @@ class JmapSendChosenTest {
         assertTrue(bytes.contentEquals(upload.bodies[0]))
         assertEquals(listOf(authorization), upload.authorizations)
         assertEquals(
-            listOf(
-                "https://example.com/jmap/",
-                "https://example.com/jmap/",
-                "https://example.com/jmap/",
-            ),
+            List(4) { "https://example.com/jmap/" },
             post.urls,
         )
         assertEquals(
             listOf(
+                jmapIdentityRequest("A1"),
                 jmapRoleMailboxRequest("A1", "drafts"),
                 jmapEmailImportRequest("A1", "B1", "mbDrafts"),
-                jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com"), destroyEmail = true),
+                jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com"), destroyEmail = true, identityId = "I1"),
             ),
             post.bodies,
         )
-        assertEquals(listOf(authorization, authorization, authorization), post.authorizations)
+        assertEquals(List(4) { authorization }, post.authorizations)
+    }
+
+    @Test
+    fun noIdentityForTheFromAddressFailsBeforeUpload() {
+        val upload = SendUpload(201, uploadCreated)
+        val post = SendPost(listOf(200 to """{"methodResponses":[["Identity/get",{"list":[{"id":"I9","email":"other@example.com"}]},"0"]]}"""))
+        try {
+            jmapSend(JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION)), byteArrayOf(1), "Me@Example.com", listOf("ada@example.com"),
+                "user", "secret", "ab", upload::send, post::post, post::trust, sentName = "Sent")
+            throw AssertionError("expected JmapNoIdentity")
+        } catch (e: JmapNoIdentity) {
+            assertEquals("no JMAP identity matches the From address Me@Example.com", e.text)
+        }
+        assertEquals(emptyList<String>(), upload.urls)
+        // Case-insensitive exact match, never the first identity.
+        val list = """{"methodResponses":[["Identity/get",{"list":[{"id":"I9","email":"other@example.com"},{"id":"I1","email":"me@example.com"}]},"0"]]}"""
+        assertEquals("I1", jmapMatchingIdentityId(list, "ME@example.com"))
+        assertEquals(null, jmapMatchingIdentityId(list, "me@example.co"))
     }
 
     @Test
@@ -273,6 +287,8 @@ class JmapSendChosenTest {
     private val sentResponse =
         """{"methodResponses":[["Mailbox/query",{"ids":["mbSent"]},"0"],["Mailbox/get",{"list":[{"id":"mbSent","role":"sent"}]},"1"]]}"""
 
+    private val identityResponse =
+        """{"methodResponses":[["Identity/get",{"list":[{"id":"I0","email":"x@example.com"},{"id":"I1","email":"me@example.com"}]},"0"]]}"""
     private val namesResponse =
         """{"methodResponses":[["Mailbox/get",{"list":[{"id":"mbSent","name":"Sent","parentId":null}]},"0"]]}"""
     private val draftsResponse =

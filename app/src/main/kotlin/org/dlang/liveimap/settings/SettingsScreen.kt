@@ -2220,7 +2220,23 @@ private fun MailboxPickDialog(
     onPicking: (MailboxPick?) -> Unit,
 ) {
     val field = picking ?: return
+    // David's Sent rule: the server's marks only prefill (offer) a default for an unset folder here.
+    val current = when (field) {
+        MailboxPick.Sent -> editor.settings.sentMailbox
+        MailboxPick.Postponed -> editor.settings.postponedMailbox
+        MailboxPick.Trash -> editor.settings.trashMailbox
+        MailboxPick.Spam -> editor.settings.spamMailbox
+        else -> "x"
+    }
+    val suggestUse = if (current.isNotEmpty()) "" else when (field) {
+        MailboxPick.Sent -> "\\Sent"
+        MailboxPick.Postponed -> "\\Drafts"
+        MailboxPick.Trash -> "\\Trash"
+        MailboxPick.Spam -> "\\Junk"
+        else -> ""
+    }
     MailboxChooser(
+        suggestUse = suggestUse,
         store = editor.bound,
         saveMutex = settingsMutex,
         onStored = { loaded ->

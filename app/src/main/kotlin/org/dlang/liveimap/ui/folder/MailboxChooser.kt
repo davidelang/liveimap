@@ -93,6 +93,8 @@ internal fun MailboxChooser(
     onDismiss: () -> Unit,
     /** F103: the folder the messages are in; it is not offered as a target. */
     exclude: String = "",
+    /** Prefill only: a SPECIAL-USE/role mark (e.g. "\\Sent") whose folder is offered first; never applied unasked. */
+    suggestUse: String = "",
 ) {
     // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -109,6 +111,7 @@ internal fun MailboxChooser(
         onPick = onPick,
         onDismiss = onDismiss,
         exclude = exclude,
+        suggestUse = suggestUse,
     )
 }
 
@@ -121,6 +124,7 @@ private fun MailboxChooserLoaded(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
     exclude: String = "",
+    suggestUse: String = "",
 ) {
     val notConnected = stringResource(R.string.reader_not_connected)
     val session = remember(accountId) { mailSession(accountId) }
@@ -205,6 +209,12 @@ private fun MailboxChooserLoaded(
                     Text(text = message)
                 }
                 if (!stopped) {
+                    val suggested = markedMailbox(rows, suggestUse, { it.mailbox }, { it.specialUse })
+                    if (suggested != null) {
+                        TextButton(onClick = { onPick(suggested) }) {
+                            Text(stringResource(R.string.chooser_server_marked, suggested))
+                        }
+                    }
                     for (row in chooserRows(rows, exclude) { it.mailbox }) {
                         MailboxPickRow(
                             row = row,
@@ -288,3 +298,11 @@ private fun MailboxPickRow(
 /** F103: the rows offered as targets: everything but [exclude] (INBOX compared case-insensitively). */
 internal fun <T> chooserRows(rows: List<T>, exclude: String, name: (T) -> String): List<T> =
     if (exclude.isEmpty()) rows else rows.filterNot { org.dlang.liveimap.session.sameMailbox(name(it), exclude) }
+
+/** The folder the server marks with [use] (SPECIAL-USE flag or JMAP role, case-insensitive), or null. */
+internal fun <T> markedMailbox(rows: List<T>, use: String, name: (T) -> String, specialUse: (T) -> String?): String? {
+    if (use.isBlank()) return null
+    return rows.firstOrNull { row ->
+        specialUse(row).orEmpty().split(Regex("\\s+")).any { it.equals(use, ignoreCase = true) }
+    }?.let(name)
+}

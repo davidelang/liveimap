@@ -23,10 +23,14 @@ data class JmapSession(
     val state: String,
     val capabilityIds: Set<String>,
     val primaryMailAccountId: String?,
+    /** accountCapabilities of the primary mail account; null when the session does not list it. */
+    val mailAccountCapabilityIds: Set<String>? = null,
 ) {
     fun offersMail(): Boolean = JMAP_MAIL in capabilityIds
 
-    fun offersSubmission(): Boolean = JMAP_SUBMISSION in capabilityIds
+    /** Session-level and, when listed, on the account too: Cyrus offers it per account only with a working SMTP. */
+    fun offersSubmission(): Boolean =
+        JMAP_SUBMISSION in capabilityIds && (mailAccountCapabilityIds?.contains(JMAP_SUBMISSION) ?: true)
 }
 
 fun parseJmapSession(text: String): JmapSession {
@@ -56,6 +60,10 @@ fun parseJmapSession(text: String): JmapSession {
         state = requireText(root, "state"),
         capabilityIds = capabilities.keys.toSet(),
         primaryMailAccountId = primaryMailAccountId,
+        mailAccountCapabilityIds = primaryMailAccountId?.let { id ->
+            ((root["accounts"] as? Json.Obj)?.fields?.get(id) as? Json.Obj)?.fields?.get("accountCapabilities")
+                ?.let { (it as? Json.Obj)?.fields?.keys?.toSet() }
+        },
     )
 }
 

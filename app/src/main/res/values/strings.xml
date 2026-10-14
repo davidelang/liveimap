@@ -373,6 +373,7 @@
     <string name="compose_sent_copy_failed">The copy could not be saved to the Sent folder \"%1$s\": %2$s</string>
     <string name="compose_send_without_copy">Send without saving a copy</string>
     <string name="settings_special_unset_warning">Not set: %1$s. Mail still works; nothing is saved to these folders.</string>
+    <string name="chooser_server_marked">Use %1$s (marked by the server)</string>
     <string name="compose_sent_mailbox">Sent mailbox is not set</string>
     <string name="compose_postponed_mailbox">Postponed mailbox is not set</string>
     <string name="compose_from_missing">From address is not set</string>
