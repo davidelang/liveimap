@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
+import java.util.concurrent.ConcurrentHashMap
 
 data class WatchPlan(
     val idle: List<String>,
@@ -25,9 +26,29 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
     return WatchPlan(kept.take(slots), kept.drop(slots))
 }
 
-/** Feeds the stored extra folders into the splitter. Does not open a socket. */
-fun extraWatchPlan(settings: AccountSettings): WatchPlan =
-    planWatchedFolders(settings.watchedFolders, connectionLimits(settings).idleSlots)
+/** Host, user, and port are enough to tell accounts apart. A mailbox stays here after IDLE was missing. */
+private data class NoIdleMailbox(val host: String, val user: String, val port: Int, val mailbox: String)
+
+/** Concurrent set. Not a lock. */
+private val noIdleMailboxes = ConcurrentHashMap.newKeySet<NoIdleMailbox>()
+
+private fun noIdleKey(settings: AccountSettings, mailbox: String): NoIdleMailbox =
+    NoIdleMailbox(settings.imapHost, settings.username, settings.imapPort, mailbox)
+
+/** Feeds the stored extra folders into the splitter. A recorded no-IDLE mailbox is status, not idle, and only while it is still watched. Does not open a socket. */
+fun extraWatchPlan(settings: AccountSettings): WatchPlan {
+    val planned = planWatchedFolders(settings.watchedFolders, connectionLimits(settings).idleSlots)
+    val idle = ArrayList<String>(planned.idle.size)
+    val skipped = ArrayList<String>()
+    for (name in planned.idle) {
+        if (noIdleMailboxes.contains(noIdleKey(settings, name))) skipped.add(name) else idle.add(name)
+    }
+    if (skipped.isEmpty()) return planned
+    val status = ArrayList<String>(planned.status.size + skipped.size)
+    status.addAll(planned.status)
+    status.addAll(skipped)
+    return WatchPlan(idle, status)
+}
 
 /** The main connection plus the index's watch connection: an account cannot work with fewer. */
 const val MinConnections = 2
@@ -231,10 +252,9 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                 suppressClose(session, failure)
                 throw failure
             }
-            // No IDLE (or IDLE hidden): do not stop the later names. STATUS on a connection that is still open.
+            // No IDLE (or IDLE hidden): watchOnly already returned. Do not STATUS this session or an earlier watch.
             if (!session.featureCaps.idle) {
-                val existing = open.lastOrNull { it.accountId == accountId }?.session
-                if (existing != null) existing.statusMessages(listOf(name))
+                noIdleMailboxes.add(noIdleKey(account, name.trim()))
                 closeHeld(session)
                 continue
             }

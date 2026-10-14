@@ -2796,3 +2796,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: copy the SMTP response before free; smtpFd is a dup cleared before the library closes its own number; a folder without IDLE is STATUS on a connection that stays open
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - No IDLE stays off the watch session
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Fixup 2: a folder without IDLE is not STATUS'd on a watch-only extra session; it is recorded by host, user, and port so extraWatchPlan lists it under status while it is still watched, and the next extra folder still opens
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

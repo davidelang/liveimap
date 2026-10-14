@@ -350,15 +350,33 @@ class WatchedFoldersTest {
 
     @Test
     fun oneFolderWithoutIdleDoesNotStopTheNextName() = runBlocking {
+        val account = AccountSettings(imapHost = "no-idle.example", username = "skip", imapPort = 993)
         val skipFirst = IdleRecord()
         skipFirst.capabilities = setOf("IMAP4REV1")
         val openedNext = IdleRecord()
         val queued = arrayListOf(skipFirst, openedNext)
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
-        sessions.apply(AccountSettings(), listOf("A", "B"), "acct")
+        sessions.apply(account, listOf("A", "B"), "acct")
         assertEquals(listOf("open", "stopWatch", "close"), skipFirst.calls)
         assertEquals(listOf("open", "select B", "watch B"), openedNext.calls)
         assertEquals(listOf("B"), sessions.openNames())
+        val planned = extraWatchPlan(account.copy(watchedFolders = listOf("A", "B", "C"), extraIdleBudget = 2))
+        assertEquals(listOf("B"), planned.idle)
+        assertEquals(listOf("C", "A"), planned.status)
+        val dropped = extraWatchPlan(account.copy(watchedFolders = listOf("B", "C"), extraIdleBudget = 2))
+        assertEquals(listOf("B"), dropped.idle)
+        assertEquals(listOf("C"), dropped.status)
+        val otherHost = extraWatchPlan(
+            AccountSettings(
+                imapHost = "other.example",
+                username = "skip",
+                imapPort = 993,
+                watchedFolders = listOf("A", "B", "C"),
+                extraIdleBudget = 2,
+            ),
+        )
+        assertEquals(listOf("A", "B"), otherHost.idle)
+        assertEquals(listOf("C"), otherHost.status)
 
         val keep = IdleRecord()
         val skip = IdleRecord()
@@ -366,11 +384,16 @@ class WatchedFoldersTest {
         val next = IdleRecord()
         val more = arrayListOf(keep, skip, next)
         val again = ExtraIdleSessions { more.removeAt(0) }
-        again.apply(AccountSettings(), listOf("Keep", "Skip", "Next"), "acct")
-        assertEquals(listOf("open", "select Keep", "watch Keep", "status Skip"), keep.calls)
+        again.apply(account, listOf("Keep", "Skip", "Next"), "acct")
+        assertEquals(listOf("open", "select Keep", "watch Keep"), keep.calls)
         assertEquals(listOf("open", "stopWatch", "close"), skip.calls)
         assertEquals(listOf("open", "select Next", "watch Next"), next.calls)
         assertEquals(listOf("Keep", "Next"), again.openNames())
+        val after = extraWatchPlan(
+            account.copy(watchedFolders = listOf("Keep", "Skip", "Next"), extraIdleBudget = 3),
+        )
+        assertEquals(listOf("Keep", "Next"), after.idle)
+        assertEquals(listOf("Skip"), after.status)
     }
 
     @Test
