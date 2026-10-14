@@ -469,6 +469,48 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun thrownWatchOnlyKeepsANoIdleStatusNameUntilIdleReturns() = runBlocking {
+        val hidden = AccountSettings(
+            imapHost = "keep.example",
+            username = "u",
+            imapPort = 993,
+            hiddenCapabilities = setOf("IDLE"),
+            watchedFolders = listOf("A"),
+            extraIdleBudget = 1,
+        )
+        val recorded = IdleRecord()
+        val boom = MailFailure("watch down")
+        val failing = IdleRecord()
+        failing.watchFailure = boom
+        val restored = IdleRecord()
+        val queued = arrayListOf(recorded, failing, restored)
+        val sessions = ExtraIdleSessions { queued.removeAt(0) }
+        applyStoredIdle(sessions, hidden, "acct")
+        assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), recorded.calls)
+        assertEquals(emptyList<String>(), sessions.openNames())
+        assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
+        assertEquals(listOf("A"), extraWatchPlan(hidden).status)
+
+        try {
+            applyStoredIdle(sessions, hidden, "acct")
+            fail("expected MailFailure")
+        } catch (failure: MailFailure) {
+            assertSame(boom, failure)
+        }
+        assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), failing.calls)
+        assertEquals(emptyList<String>(), sessions.openNames())
+        assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
+        assertEquals(listOf("A"), extraWatchPlan(hidden).status)
+
+        val shown = hidden.copy(hiddenCapabilities = emptySet())
+        applyStoredIdle(sessions, shown, "acct")
+        assertEquals(listOf("open", "select A", "watch A"), restored.calls)
+        assertEquals(listOf("A"), sessions.openNames())
+        assertEquals(listOf("A"), extraWatchPlan(shown).idle)
+        assertEquals(emptyList<String>(), extraWatchPlan(shown).status)
+    }
+
+    @Test
     fun watchFailureClosesThatSessionAndKeepsTheEarlierName() = runBlocking {
         val boom = MailFailure("idle down")
         val first = IdleRecord()

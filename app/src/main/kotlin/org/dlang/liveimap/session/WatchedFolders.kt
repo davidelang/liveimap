@@ -29,7 +29,7 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
 /** Host, user, and port are enough to tell accounts apart. The next apply decides this mailbox again. */
 private data class NoIdleMailbox(val host: String, val user: String, val port: Int, val mailbox: String)
 
-/** Concurrent set. Not a lock. An entry does not outlive the next apply of that mailbox. */
+/** Concurrent set. Not a lock. A throw leaves the mark. A finished apply decides that mailbox again. */
 private val noIdleMailboxes = ConcurrentHashMap.newKeySet<NoIdleMailbox>()
 
 private fun noIdleKey(settings: AccountSettings, mailbox: String): NoIdleMailbox =
@@ -251,7 +251,6 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
         for (name in names) {
             if (!seen.add(accountId to name)) continue
             val key = noIdleKey(account, name.trim())
-            noIdleMailboxes.remove(key)
             val session = factory()
             try {
                 session.watchOnly(account, name) { change ->
@@ -268,6 +267,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                 closeHeld(session)
                 continue
             }
+            noIdleMailboxes.remove(key)
             open.add(Held(accountId, name, session))
         }
     }

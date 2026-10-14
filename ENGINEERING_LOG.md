@@ -2831,3 +2831,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the next apply decides each extra folder from capability and hidden IDLE; a server authentication rejection is OpenResult.AuthRejected, not a process-wide flag; a local SCRAM-PLUS fallback does not erase that rejection
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A failed extra IDLE apply keeps the no-IDLE mark
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/probe-state-scope-20261014-1142-plan.md
+- Fixup: drop a no-IDLE name only after watchOnly returns with usable IDLE, or a JMAP watchOnly returns; a throw leaves the previous mark so extraWatchPlan still lists that folder as STATUS
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
