@@ -397,6 +397,28 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun jmapFoldersWithoutImapIdleStaysOpenAndIsNotAStatusName() = runBlocking {
+        val account = AccountSettings(
+            imapHost = "jmap.example",
+            username = "jmap",
+            imapPort = 993,
+            jmapFolders = true,
+            watchedFolders = listOf("A", "B"),
+            extraIdleBudget = 2,
+        )
+        val record = IdleRecord()
+        record.capabilities = setOf("IMAP4REV1")
+        val sessions = ExtraIdleSessions { record }
+        sessions.apply(account, listOf("A"), "acct")
+        assertEquals(false, record.featureCaps.idle)
+        assertEquals(listOf("open"), record.calls)
+        assertEquals(listOf("A"), sessions.openNames())
+        val planned = extraWatchPlan(account)
+        assertEquals(listOf("A", "B"), planned.idle)
+        assertEquals(emptyList<String>(), planned.status)
+    }
+
+    @Test
     fun watchFailureClosesThatSessionAndKeepsTheEarlierName() = runBlocking {
         val boom = MailFailure("idle down")
         val first = IdleRecord()

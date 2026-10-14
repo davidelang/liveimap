@@ -252,8 +252,9 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                 suppressClose(session, failure)
                 throw failure
             }
-            // No IDLE (or IDLE hidden): watchOnly already returned. Do not STATUS this session or an earlier watch.
-            if (!session.featureCaps.idle) {
+            // IMAP with no IDLE (or IDLE hidden): watchOnly already returned. Do not STATUS this session.
+            // A JMAP watchOnly that returns is the event source. featureCaps.idle is the unused IMAP session.
+            if (!account.jmapFolders && !session.featureCaps.idle) {
                 noIdleMailboxes.add(noIdleKey(account, name.trim()))
                 closeHeld(session)
                 continue

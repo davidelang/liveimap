@@ -2803,3 +2803,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup 2: a folder without IDLE is not STATUS'd on a watch-only extra session; it is recorded by host, user, and port so extraWatchPlan lists it under status while it is still watched, and the next extra folder still opens
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - JMAP extra watch is not an IMAP no-IDLE folder
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Work: when jmapFolders is on, a watchOnly that returns stays open and is not recorded as a STATUS name; IMAP without IDLE still records the name and opens later folders
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
