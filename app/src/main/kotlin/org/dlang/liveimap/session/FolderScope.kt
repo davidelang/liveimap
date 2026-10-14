@@ -14,8 +14,8 @@ data class FolderAt(val mailbox: String, val uidValidity: Long = 0L)
 suspend fun selectFolderNow(s: MailSession, folder: FolderAt, fresh: Boolean): SelectResult {
     if (fresh) s.unselect()
     val selected = s.select(folder.mailbox)
-    if (folder.uidValidity != 0L && selected.uidValidity != folder.uidValidity) throw EpochChanged(folder.mailbox)
-
+    // After prepare reconnects, this is the check before the command's UIDs are used. uidValidity 0 does not throw.
+    epochAfterReconnect(folder.uidValidity, selected.uidValidity, folder.mailbox)
     return selected
 }
 

@@ -15,7 +15,6 @@ import org.dlang.liveimap.session.LifecycleClock
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
-import org.dlang.liveimap.session.epochAfterReconnect
 
 internal const val idleBeforeNoopMs = 120_000L
 
@@ -127,14 +126,16 @@ class ConnectionKeeper(
     private var driftNamed = 0L
     private var driftNow = 0L
 
-    fun <T> read(@Suppress("UNUSED_PARAMETER") op: String, block: () -> T): T {
-        if (prepare()) refuseDriftedEpoch()
+    fun <T> read(@Suppress("UNUSED_PARAMETER") op: String, reportNewEpoch: Boolean = false, block: () -> T): T {
+        prepare()
+        refuseDriftedEpoch(reportNewEpoch)
         return try {
             val value = block()
             lastUsed = clock()
             value
         } catch (_: ConnectionLost) {
-            if (reconnect()) refuseDriftedEpoch()
+            reconnect()
+            refuseDriftedEpoch(reportNewEpoch)
             try {
                 val value = block()
                 lastUsed = clock()
@@ -148,7 +149,8 @@ class ConnectionKeeper(
     }
 
     fun <T> write(op: String, block: () -> T): T {
-        if (prepare()) refuseDriftedEpoch()
+        prepare()
+        refuseDriftedEpoch(reportNewEpoch = false)
         return try {
             val value = block()
             lastUsed = clock()
@@ -161,13 +163,16 @@ class ConnectionKeeper(
         }
     }
 
-    private fun refuseDriftedEpoch(): Nothing {
+    // SELECT returns the epoch the server has now. Any other command does not run on a moved epoch.
+    // The folder name is applied by selectFolderNow after SELECT, never as an empty mailbox here.
+    private fun refuseDriftedEpoch(reportNewEpoch: Boolean) {
         val named = driftNamed
         val now = driftNow
+        if (named == 0L || now == named) return
         driftNamed = 0L
         driftNow = 0L
-        epochAfterReconnect(named, now, "")
-        throw EpochUnreachable()
+        if (reportNewEpoch) return
+        throw MailFailure("folder changed on the server (UIDVALIDITY); reload the list")
     }
 
     private fun needsReconnect(): Boolean {
@@ -315,8 +320,6 @@ class ConnectionKeeper(
         scheduleRewatch(life, epoch)
         return drifted
     }
-
-    private class EpochUnreachable : RuntimeException()
 
     // A winning suspend is not Connected. The update retries if that suspend lands first.
     private fun publishConnected(life: LifecycleClock?, epoch: Long) {

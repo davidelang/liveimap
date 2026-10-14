@@ -8,6 +8,7 @@ import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.EpochChanged
 import org.dlang.liveimap.session.LifecycleClock
+import org.dlang.liveimap.session.epochAfterReconnect
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
@@ -550,8 +551,9 @@ class ConnectionKeeperTest {
                 "ok"
             }
             error("expected epoch change")
-        } catch (error: EpochChanged) {
+        } catch (error: MailFailure) {
             assertFalse(ran)
+            if (error is EpochChanged) assertTrue(error.mailbox.isNotEmpty())
         }
         assertEquals(listOf<MailboxChange>(MailboxChange.UidValidityReset), link.emissions)
     }
@@ -569,11 +571,34 @@ class ConnectionKeeperTest {
                 ran = true
             }
             error("expected epoch change")
-        } catch (error: EpochChanged) {
+        } catch (error: MailFailure) {
             assertFalse(ran)
+            if (error is EpochChanged) assertTrue(error.mailbox.isNotEmpty())
         }
         assertEquals(listOf<MailboxChange>(MailboxChange.UidValidityReset), link.emissions)
         assertEquals(1, link.reselects)
+    }
+
+    @Test
+    fun selectAfterReconnectReturnsTheNewEpoch() {
+        val link = FakeLink()
+        link.deadFlag = true
+        link.selectResult = SelectResult(8, 9, 4)
+        val keeper = keeper(link)
+        keeper.noteSelected(SelectResult(5, 9, 4))
+        val selected = keeper.read("select", reportNewEpoch = true) { link.selectResult!! }
+        assertEquals(8L, selected.uidValidity)
+        assertEquals(listOf<MailboxChange>(MailboxChange.UidValidityReset), link.emissions)
+        epochAfterReconnect(0L, selected.uidValidity, "INBOX")
+        var ran = false
+        try {
+            epochAfterReconnect(5L, selected.uidValidity, "INBOX")
+            keeper.write("store") { ran = true }
+            error("expected epoch change")
+        } catch (error: EpochChanged) {
+            assertEquals("INBOX", error.mailbox)
+            assertFalse(ran)
+        }
     }
 
     @Test

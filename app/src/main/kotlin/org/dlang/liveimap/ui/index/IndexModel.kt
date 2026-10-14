@@ -1482,6 +1482,13 @@ class IndexModel(
     /** F105: while set, UID actions run in this folder (a cross-folder search hit's own folder). */
     private var actFolder: String? = null
 
+    /** A removed hit leaves [order] and [orderMailboxes] at the same positions, so the lists stay one length. */
+    private fun dropGoneFromOrder(gone: Set<Long>) {
+        val kept = dropOrderedHits(order, orderMailboxes, gone, actFolder)
+        order = kept.first
+        orderMailboxes = kept.second
+    }
+
     /** True when [row] is one of the rows the current action is about (same folder as the action). */
     private fun inActedFolder(row: IndexRow): Boolean = inListedFolder(row, actFolder ?: mailbox)
 
@@ -1629,10 +1636,11 @@ class IndexModel(
             // Whatever moved is reflected, also when a later batch failed or Stop was pressed.
             if (allMailbox && moved.size == all.size && outcome.failure == null) {
                 order = emptyList()
+                orderMailboxes = emptyList()
                 heldRows = emptyList()
             } else if (moved.isNotEmpty()) {
                 val gone = moved.toSet()
-                if (actFolder == null) order = orderWithout(order, gone)
+                dropGoneFromOrder(gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
             // F102: with copy-then-mark a failed batch may already be copied (COPY ok, STORE failed).
@@ -1689,7 +1697,7 @@ class IndexModel(
             }
             if (done.isNotEmpty()) {
                 val gone = done.toSet()
-                if (actFolder == null) order = orderWithout(order, gone)
+                dropGoneFromOrder(gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
             notice = when {
@@ -2618,12 +2626,7 @@ class IndexModel(
         val end = minOf(uids.size, start + IndexPageSize * 2)
         val loaded = ArrayList<IndexRow>()
         val failed = ArrayList<String>()
-        var index = start
-        while (index < end) {
-            val box = mailboxes[index]
-            var next = index + 1
-            while (next < end && mailboxes[next] == box) next += 1
-            val slice = uids.subList(index, next)
+        for ((box, slice) in pageMailboxGroups(uids, mailboxes, start, end)) {
             // fetchListed checks the box's recorded epoch (or records it) in the same call as the fetch.
             val fetched = try {
                 align(slice, fetchByUid(slice, folder = box))
@@ -2634,7 +2637,6 @@ class IndexModel(
                 emptyList()
             }
             for (row in fetched) loaded.add(row.copy(mailbox = box))
-            index = next
         }
         if (failed.isNotEmpty()) pageFailures = failed.joinToString("; ")
         return loaded
@@ -2817,3 +2819,52 @@ suspend fun allUidsInWindows(session: MailSession, window: Int = 10_000, kind: S
 /** F142: true when a search's select would overwrite the home folder's listed epoch with a different one. */
 internal fun searchEpochMasks(homeFolder: Boolean, listed: Long?, selected: Long): Boolean =
     homeFolder && listed != null && listed > 0 && selected > 0 && listed != selected
+
+/**
+ * Drops [gone] from a search order and the mailbox recorded at that same position.
+ * [actedFolder] null drops every matching UID (the home-folder action). A named folder drops only its own hits,
+ * including while that folder is the acted-on one, so the hit does not stay and show up again.
+ */
+internal fun dropOrderedHits(
+    order: List<Long>,
+    mailboxes: List<String>,
+    gone: Set<Long>,
+    actedFolder: String?,
+): Pair<List<Long>, List<String>> {
+    if (mailboxes.isEmpty()) {
+        val next = if (actedFolder == null) orderWithout(order, gone) else order
+        return next to mailboxes
+    }
+    val uids = ArrayList<Long>(order.size)
+    val boxes = ArrayList<String>(mailboxes.size)
+    val n = minOf(order.size, mailboxes.size)
+    for (i in 0 until n) {
+        val uid = order[i]
+        val box = mailboxes[i]
+        val drop = uid in gone && (actedFolder == null || sameMailbox(box, actedFolder))
+        if (!drop) {
+            uids.add(uid)
+            boxes.add(box)
+        }
+    }
+    return compactUids(uids) to boxes
+}
+
+/** UIDs from start until end, each grouped with the mailbox stored at that position. */
+internal fun pageMailboxGroups(
+    uids: List<Long>,
+    mailboxes: List<String>,
+    start: Int,
+    end: Int,
+): List<Pair<String, List<Long>>> {
+    val groups = ArrayList<Pair<String, List<Long>>>()
+    var index = start
+    while (index < end) {
+        val box = mailboxes[index]
+        var next = index + 1
+        while (next < end && mailboxes[next] == box) next += 1
+        groups.add(box to uids.subList(index, next).toList())
+        index = next
+    }
+    return groups
+}

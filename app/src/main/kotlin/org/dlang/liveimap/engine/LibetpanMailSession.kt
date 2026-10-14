@@ -602,7 +602,7 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    override suspend fun select(mailbox: String): SelectResult = keeper.read("select") {
+    override suspend fun select(mailbox: String): SelectResult = keeper.read("select", reportNewEpoch = true) {
         selectNow(mailbox)
     }
 

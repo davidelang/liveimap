@@ -2866,3 +2866,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Compose from the folder pane uses the seed account and epoch; epoch 0 does not write UIDs
 - One wire mailbox spelling; reconnect re-checks UIDVALIDITY before STORE, EXPUNGE, or COPY
 - Long search, paging, flags, undo, and trash delete follow the folder and epoch the row was listed in
+
+## 2026-10-14 - A reconnect names the folder, and a removed hit leaves its search mailbox
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/message-identity-20261014-1359-plan.md
+- Fixup: SELECT returns the new UIDVALIDITY; a mismatch throws EpochChanged for that folder before STORE, EXPUNGE, or COPY. A removed hit drops the same row from order and orderMailboxes
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
