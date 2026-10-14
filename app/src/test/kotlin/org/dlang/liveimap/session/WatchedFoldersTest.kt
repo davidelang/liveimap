@@ -350,15 +350,27 @@ class WatchedFoldersTest {
 
     @Test
     fun oneFolderWithoutIdleDoesNotStopTheNextName() = runBlocking {
-        val first = IdleRecord()
-        first.capabilities = setOf("IMAP4REV1")
-        val second = IdleRecord()
-        val queued = arrayListOf(first, second)
+        val skipFirst = IdleRecord()
+        skipFirst.capabilities = setOf("IMAP4REV1")
+        val openedNext = IdleRecord()
+        val queued = arrayListOf(skipFirst, openedNext)
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
         sessions.apply(AccountSettings(), listOf("A", "B"), "acct")
-        assertEquals(listOf("open", "status A", "stopWatch", "close"), first.calls)
-        assertEquals(listOf("open", "select B", "watch B"), second.calls)
+        assertEquals(listOf("open", "stopWatch", "close"), skipFirst.calls)
+        assertEquals(listOf("open", "select B", "watch B"), openedNext.calls)
         assertEquals(listOf("B"), sessions.openNames())
+
+        val keep = IdleRecord()
+        val skip = IdleRecord()
+        skip.capabilities = setOf("IMAP4REV1")
+        val next = IdleRecord()
+        val more = arrayListOf(keep, skip, next)
+        val again = ExtraIdleSessions { more.removeAt(0) }
+        again.apply(AccountSettings(), listOf("Keep", "Skip", "Next"), "acct")
+        assertEquals(listOf("open", "select Keep", "watch Keep", "status Skip"), keep.calls)
+        assertEquals(listOf("open", "stopWatch", "close"), skip.calls)
+        assertEquals(listOf("open", "select Next", "watch Next"), next.calls)
+        assertEquals(listOf("Keep", "Next"), again.openNames())
     }
 
     @Test
@@ -401,6 +413,7 @@ class WatchedFoldersTest {
             if (!featureCaps.idle) {
                 calls.add("open")
                 opened = account
+                capabilities = emptySet()
                 return
             }
             super.watchOnly(account, mailbox, onChange)

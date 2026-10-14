@@ -1110,11 +1110,6 @@ class LibetpanMailSession : MailSession {
                         throw MailFailure("watch rejected")
                     }
                     if (!featureCaps.idle) {
-                        nativeUseStagedImap(requireHandle())
-                        try {
-                            statusMessages(listOf(mailbox))
-                        } catch (_: MailFailure) {
-                        }
                         close()
                         return
                     }
@@ -1704,7 +1699,6 @@ class LibetpanMailSession : MailSession {
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
     private external fun nativeWatchLogin(handle: Long): String?
-    private external fun nativeUseStagedImap(handle: Long)
     private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
     private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(

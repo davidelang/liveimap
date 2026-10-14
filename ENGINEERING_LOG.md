@@ -2789,3 +2789,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD follows exec-preflight
+
+## 2026-10-14 - SMTP fd is owned, and no IDLE does not STATUS that watch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Fixup: copy the SMTP response before free; smtpFd is a dup cleared before the library closes its own number; a folder without IDLE is STATUS on a connection that stays open
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

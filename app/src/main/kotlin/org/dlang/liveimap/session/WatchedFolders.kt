@@ -233,10 +233,8 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
             }
             // No IDLE (or IDLE hidden): do not stop the later names. STATUS on a connection that is still open.
             if (!session.featureCaps.idle) {
-                if (session.capabilities.isNotEmpty()) {
-                    val existing = open.lastOrNull { it.accountId == accountId }?.session
-                    (existing ?: session).statusMessages(listOf(name))
-                }
+                val existing = open.lastOrNull { it.accountId == accountId }?.session
+                if (existing != null) existing.statusMessages(listOf(name))
                 closeHeld(session)
                 continue
             }

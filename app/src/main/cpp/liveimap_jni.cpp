@@ -8735,10 +8735,6 @@ bool rememberSmtpSocket(LiveSession * session, int fd) {
     return !closed;
 }
 
-bool rememberSmtpSocket(LiveSession * session, mailsmtp * smtp) {
-    return rememberSmtpSocket(session, smtp != nullptr ? streamFd(smtp->stream) : -1);
-}
-
 // Drops the session mutex for the SMTP conversation and puts it back before releasing the use count.
 struct SmtpHold {
     LiveSession * session = nullptr;
@@ -8756,13 +8752,27 @@ struct SmtpHold {
     ~SmtpHold() { release(); }
 };
 
+// Drops the published dup out of smtpFd. Does not close it and does not shut it down.
+int takeSmtpFd(LiveSession * session) {
+    int owned = -1;
+    if (session == nullptr) return owned;
+    session->mu.lock();
+    owned = session->smtpFd.load();
+    session->smtpFd.store(-1);
+    session->mu.unlock();
+    return owned;
+}
+
 void freeSmtp(LiveSession * session, mailsmtp * smtp) {
+    int owned = -1;
     if (session != nullptr) {
         session->mu.lock();
+        owned = session->smtpFd.load();
         session->smtpFd.store(-1);
         session->mu.unlock();
     }
     if (smtp != nullptr) mailsmtp_free(smtp);
+    if (owned >= 0) close(owned);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -8843,6 +8853,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     capture.keyChainChain = &keyChainChain;
     capture.keyChainKey = keyChainKey;
     bool secured = false;
+    // smtpFd is a dup this code owns. The library may close its own number.
+    int smtpOwned = -1;
     // Network waits (connect, TLS, AUTH, DATA) run without the session mutex. The use count stays held,
     // so close can shut smtpFd down and cannot delete the session until this call returns.
     hold.muHeld = false;
@@ -8861,8 +8873,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             throwFailure(env, dialError);
             return 0;
         }
-        // Publish before the handshake so close can shut this fd down during TLS.
-        if (!rememberSmtpSocket(session, fd)) {
+        // Publish a dup before the handshake so close can shut this socket down during TLS.
+        smtpOwned = dup(fd);
+        if (smtpOwned < 0) {
+            close(fd);
+            freeSmtp(session, smtp);
+            throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
+            return 0;
+        }
+        if (!rememberSmtpSocket(session, smtpOwned)) {
+            close(smtpOwned);
+            smtpOwned = -1;
             freeSmtp(session, smtp);
             close(fd);
             throwFailure(env, "not connected");
@@ -8881,9 +8902,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
         int r = mailsmtp_connect(smtp, stream);
         if (r != MAILSMTP_NO_ERROR) {
+            // The library already closed its fd. Copy the response, then drop the dup. Do not shut that number down.
+            std::string response = asciiSafe(smtp->response, "connection failed");
+            int owned = takeSmtpFd(session);
+            if (owned >= 0) close(owned);
             freeSmtp(session, smtp);
-            throwFailure(env, connectFailure("SMTP", host, port, address,
-                asciiSafe(smtp->response, "connection failed")));
+            throwFailure(env, connectFailure("SMTP", host, port, address, response));
             return 0;
         }
         if (capture.ders.empty()) {
@@ -8900,8 +8924,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             throwFailure(env, dialError);
             return 0;
         }
-        // Publish before the greeting so close can shut this fd down while it is read.
-        if (!rememberSmtpSocket(session, fd)) {
+        // Publish a dup before the greeting so close can shut this socket down while it is read.
+        smtpOwned = dup(fd);
+        if (smtpOwned < 0) {
+            close(fd);
+            freeSmtp(session, smtp);
+            throwFailure(env, connectFailure("SMTP", host, port, address, "connection failed"));
+            return 0;
+        }
+        if (!rememberSmtpSocket(session, smtpOwned)) {
+            close(smtpOwned);
+            smtpOwned = -1;
             freeSmtp(session, smtp);
             close(fd);
             throwFailure(env, "not connected");
@@ -8917,9 +8950,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         where = serviceLabel("SMTP", host, port) + " (" + address + "): ";
         int r = mailsmtp_connect(smtp, stream);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = where + asciiSafe(smtp->response, "connection failed");
+            // The library already closed its fd. Copy the response, then drop the dup. Do not shut that number down.
+            std::string response = asciiSafe(smtp->response, "connection failed");
+            int owned = takeSmtpFd(session);
+            if (owned >= 0) close(owned);
             freeSmtp(session, smtp);
-            throwFailure(env, why);
+            throwFailure(env, where + response);
             return 0;
         }
         if (mode == "StartTls") {
@@ -8958,7 +8994,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                 throwFailure(env, why);
                 return 0;
             }
-            if (!rememberSmtpSocket(session, smtp)) {
+            if (!rememberSmtpSocket(session, smtpOwned)) {
                 freeSmtp(session, smtp);
                 throwFailure(env, "not connected");
                 return 0;
@@ -9081,7 +9117,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (message == nullptr) {
         // Test account (David, 2026-10-12): connect, TLS, EHLO and AUTH only; nothing is sent. QUIT.
         bool authed = !authUser.empty();
+        int owned = takeSmtpFd(session);
         mailsmtp_quit(smtp);
+        if (owned >= 0) close(owned);
         freeSmtp(session, smtp);
         return authed ? 2 : (offeredAuth.empty() ? 3 : 4);
     }
@@ -9177,7 +9215,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         throwFailure(env, why);
         return 0;
     }
+    int owned = takeSmtpFd(session);
     mailsmtp_quit(smtp);
+    if (owned >= 0) close(owned);
     freeSmtp(session, smtp);
     // 0 = no DSN asked, 1 = DSN requested, -1 = asked but the server doesn't offer DSN.
     return dsnNotify == 0 ? 0 : (dsnOffered ? 1 : -1);
