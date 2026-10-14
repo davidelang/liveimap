@@ -31,7 +31,7 @@ class JmapAccountTest {
         val offer = offerForAccount(
             AccountSettings(imapHost = "example.com", imapPort = 993, jmapCertPin = "ab"),
             script::open,
-            script::trust,
+            trust = script::trust,
         )
         assertMail(offer)
         assertEquals(listOf(url), script.opens)
@@ -49,7 +49,7 @@ class JmapAccountTest {
         val offer = offerForAccount(
             AccountSettings(imapHost = "example.com", imapPort = 993, jmapCertPin = "ab"),
             script::open,
-            script::trust,
+            trust = script::trust,
         )
         assertEquals(JmapOffer.None, offer)
         assertEquals(listOf(url), script.opens)
