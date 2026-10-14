@@ -364,8 +364,8 @@ class WatchedFoldersTest {
         assertEquals(listOf("B"), planned.idle)
         assertEquals(listOf("C", "A"), planned.status)
         val dropped = extraWatchPlan(account.copy(watchedFolders = listOf("B", "C"), extraIdleBudget = 2))
-        assertEquals(listOf("B"), dropped.idle)
-        assertEquals(listOf("C"), dropped.status)
+        assertEquals(listOf("B", "C"), dropped.idle)
+        assertEquals(emptyList<String>(), dropped.status)
         val otherHost = extraWatchPlan(
             AccountSettings(
                 imapHost = "other.example",
