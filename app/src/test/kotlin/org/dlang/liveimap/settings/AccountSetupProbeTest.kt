@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -15,7 +16,6 @@ import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.SmtpLoginCheck
-import org.dlang.liveimap.session.SortKey
 import org.dlang.liveimap.session.ThreadNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
