@@ -110,7 +110,8 @@ class AlpineBookWriteTest {
         assertTrue(session.bytes.getValue(1L).contentEquals(headerBefore))
         val appended = session.appended.decodeToString()
         assertTrue(appended.startsWith("X-Pine-Addrbook: 1\r\nSubject: book\r\n\r\n"))
-        assertTrue(appended.contains("ada\tAda\tada@example.com\tSent\tkeep [plaintext]\n"))
+        assertTrue(appended.contains("ada\tAda\tada@example.com\tSent\tkeep [plaintext]\r\n"))
+        assertFalse(Regex("[^\r]\n").containsMatchIn(appended)) // APPEND carries CRLF lines only
         assertFalse(session.expunged.orEmpty().contains(1L))
     }
 
