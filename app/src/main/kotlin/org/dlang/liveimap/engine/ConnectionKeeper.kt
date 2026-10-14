@@ -212,10 +212,10 @@ class ConnectionKeeper(
         var connected = false
         for (attempt in 0 until 2) {
             if (attempt == 1) {
-                if (suspendWins(life, epoch)) stopForSuspend()
+                if (ownerMustStop(life, epoch)) stopForSuspend()
                 sleep(3_000)
             }
-            if (suspendWins(life, epoch)) stopForSuspend()
+            if (ownerMustStop(life, epoch)) stopForSuspend()
             try {
                 link.connect()
                 connected = true
@@ -231,7 +231,7 @@ class ConnectionKeeper(
             broken = true
             throw ConnectionLost(text)
         }
-        if (suspendWins(life, epoch)) stopForSuspend()
+        if (ownerMustStop(life, epoch)) stopForSuspend()
         val previous = lastSelect
         val selected = try {
             link.reselect()
@@ -242,25 +242,22 @@ class ConnectionKeeper(
         if (selected != null) {
             lastSelect = selected
         }
-        if (suspendWins(life, epoch)) stopForSuspend()
+        if (ownerMustStop(life, epoch)) stopForSuspend()
         watchLost = false
         broken = false
         lastUsed = clock()
         publishConnected(life, epoch)
-        // This owner's epoch is no longer current: do not start IDLE. A newer resume already returned.
-        if (!epochCurrent(life, epoch)) {
-            watchLost = true
-            return
-        }
+        if (ownerMustStop(life, epoch)) stopForSuspend()
         scheduleRewatch(life, epoch)
     }
 
-    // Do not publish Connected over a suspend that already closed. update retries if that write lands first.
+    // A moved epoch, including a newer resume, is not Connected. update retries if a suspend lands first.
     private fun publishConnected(life: LifecycleClock?, epoch: Long) {
+        if (ownerMustStop(life, epoch)) stopForSuspend()
         state.update { cur ->
-            if (cur is ConnectionState.Suspended || suspendWins(life, epoch)) cur else ConnectionState.Connected
+            if (cur is ConnectionState.Suspended || ownerMustStop(life, epoch)) cur else ConnectionState.Connected
         }
-        if (state.value is ConnectionState.Suspended || suspendWins(life, epoch)) stopForSuspend()
+        if (state.value is ConnectionState.Suspended || ownerMustStop(life, epoch)) stopForSuspend()
     }
 
     private fun epochCurrent(life: LifecycleClock?, epoch: Long): Boolean {
@@ -276,6 +273,11 @@ class ConnectionKeeper(
         return true
     }
 
+    // True when this owner's epoch is no longer current, including a newer resume, not only a winning suspend.
+    private fun ownerMustStop(life: LifecycleClock?, epoch: Long): Boolean {
+        return !epochCurrent(life, epoch) || suspendWins(life, epoch)
+    }
+
     private fun stopForSuspend(): Nothing {
         link.close()
         state.value = ConnectionState.Suspended
@@ -285,9 +287,9 @@ class ConnectionKeeper(
 
     private fun scheduleRewatch(life: LifecycleClock?, epoch: Long) {
         rewatchScope.launch {
-            if (!epochCurrent(life, epoch) || state.value is ConnectionState.Suspended || suspendWins(life, epoch)) {
+            if (ownerMustStop(life, epoch) || state.value is ConnectionState.Suspended) {
                 watchLost = true
-                if (suspendWins(life, epoch)) stopIdle()
+                if (ownerMustStop(life, epoch)) stopIdle()
                 return@launch
             }
             try {
@@ -296,7 +298,7 @@ class ConnectionKeeper(
                 watchLost = true
                 return@launch
             }
-            if (state.value is ConnectionState.Suspended || suspendWins(life, epoch)) {
+            if (ownerMustStop(life, epoch) || state.value is ConnectionState.Suspended) {
                 watchLost = true
                 stopIdle()
                 return@launch

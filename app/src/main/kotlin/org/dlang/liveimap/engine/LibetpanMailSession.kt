@@ -1302,7 +1302,11 @@ class LibetpanMailSession : MailSession {
             }
             // F144: these changes describe the main connection's selected folder; the index's watcher gets them
             // only when that is the folder it watches, never another folder's counts or epoch.
-            if (reconnectChangeReachesWatcher(selectedMailbox, watchMailbox)) watchCallback?.invoke(change)
+            // One publishedWatch snapshot, same as onNativeWatch and rewatch. The two volatiles can cross.
+            val pending = publishedWatch.get()?.offer
+            if (pending != null && reconnectChangeReachesWatcher(selectedMailbox, pending.mailbox)) {
+                pending.onChange.invoke(change)
+            }
         }
     }
 
