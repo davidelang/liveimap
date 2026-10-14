@@ -2763,3 +2763,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-and-extra-idle-20261014-0827-plan.md
 - Work: SMTP copies what it needs and unlocks before the connect; an extra IDLE folder is one watch login keyed by account and folder; probes close on cancel and an IMAP authentication failure does not reuse that password for SMTP
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Extra IDLE events carry the account that opened them
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-account-id-20261014-0906-plan.md
+- Work: applyExtraIdle takes the account id and a blank id opens nothing; onStart starts extra IDLE for every saved account; a folder row changes only when the event account id is the account on screen
+- First action per standard-plan-compliance-block.md; commits stay on master

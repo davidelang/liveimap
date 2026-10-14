@@ -207,6 +207,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
 
     /** [names] is this account's extra IDLE set. Another account's sessions stay open. */
     suspend fun apply(account: AccountSettings, names: List<String>, accountId: String = "") {
+        if (accountId.isBlank()) return
         val keep = HashSet<Pair<String, String>>()
         for (name in names) keep.add(accountId to name)
         for (held in open.toList()) {

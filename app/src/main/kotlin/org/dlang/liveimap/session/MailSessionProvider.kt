@@ -37,9 +37,10 @@ suspend fun suspendMailSessions() {
     accountSessions.suspendConnections()
 }
 
-suspend fun applyExtraIdle(account: AccountSettings) {
+suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
+    if (accountId.isBlank()) return
     extraIdleLock.withLock {
-        applyStoredIdle(extraIdleSessions, account)
+        applyStoredIdle(extraIdleSessions, account, accountId)
     }
 }
 

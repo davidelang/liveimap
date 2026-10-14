@@ -99,9 +99,11 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         if (smokeLaunch(intent)) return
         lifecycleScope.launch {
-            try {
-                applyExtraIdle(store.load())
-            } catch (_: MailFailure) {
+            for (choice in store.listAccounts()) {
+                try {
+                    applyExtraIdle(store.forAccount(choice.id).load(), choice.id)
+                } catch (_: MailFailure) {
+                }
             }
         }
     }

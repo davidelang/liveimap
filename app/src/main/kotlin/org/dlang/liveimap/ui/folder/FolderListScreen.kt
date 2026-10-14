@@ -393,9 +393,8 @@ private fun FolderListLoaded(
 
     LaunchedEffect(Unit) {
         extraIdleChanges().collect { event ->
-            // Another account's extra IDLE folder can share this mailbox name. A blank id is the holder
-            // used when the caller did not pass an account id.
-            if (event.accountId.isNotEmpty() && event.accountId != accountId) return@collect
+            // Another account's extra IDLE folder can share this mailbox name. A blank id matches nothing.
+            if (event.accountId != accountId) return@collect
             rows = rows.map { row ->
                 if (row.mailbox != event.mailbox) {
                     row

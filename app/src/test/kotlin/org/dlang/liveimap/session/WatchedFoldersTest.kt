@@ -164,6 +164,7 @@ class WatchedFoldersTest {
         applyStoredIdle(
             made.sessions,
             AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
+            "acct",
         )
         assertEquals(2, made.records.size)
         assertEquals(listOf("open", "select A", "watch A"), made.records[0].calls)
@@ -177,6 +178,7 @@ class WatchedFoldersTest {
         applyStoredIdle(
             made.sessions,
             AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 0),
+            "acct",
         )
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
@@ -188,7 +190,16 @@ class WatchedFoldersTest {
         applyStoredIdle(
             made.sessions,
             AccountSettings(watchedFolders = emptyList(), extraIdleBudget = 2),
+            "acct",
         )
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+    }
+
+    @Test
+    fun applyWithBlankAccountIdOpensNothing() = runBlocking {
+        val made = IdleHolder()
+        made.sessions.apply(AccountSettings(watchedFolders = listOf("A"), extraIdleBudget = 2), listOf("A"), "")
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
     }
@@ -197,7 +208,7 @@ class WatchedFoldersTest {
     fun applyOpensOneSessionPerName() = runBlocking {
         val account = AccountSettings(friendlyName = "extra")
         val made = IdleHolder()
-        made.sessions.apply(account, listOf("A", "B"))
+        made.sessions.apply(account, listOf("A", "B"), "acct")
         assertEquals(2, made.records.size)
         assertEquals(listOf("open", "select A", "watch A"), made.records[0].calls)
         assertEquals(listOf("open", "select B", "watch B"), made.records[1].calls)
@@ -210,8 +221,8 @@ class WatchedFoldersTest {
     fun secondApplyClosesOnlyTheDroppedSession() = runBlocking {
         val account = AccountSettings(friendlyName = "extra")
         val made = IdleHolder()
-        made.sessions.apply(account, listOf("A", "B"))
-        made.sessions.apply(account, listOf("A"))
+        made.sessions.apply(account, listOf("A", "B"), "acct")
+        made.sessions.apply(account, listOf("A"), "acct")
         assertEquals(2, made.records.size)
         assertEquals(listOf("open", "select A", "watch A"), made.records[0].calls)
         assertEquals(listOf("open", "select B", "watch B", "stopWatch", "close"), made.records[1].calls)
@@ -221,7 +232,7 @@ class WatchedFoldersTest {
     @Test
     fun stopClosesTheOpenSession() = runBlocking {
         val made = IdleHolder()
-        made.sessions.apply(AccountSettings(), listOf("A"))
+        made.sessions.apply(AccountSettings(), listOf("A"), "acct")
         made.sessions.stop()
         assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), made.records[0].calls)
         assertEquals(emptyList<String>(), made.sessions.openNames())
@@ -266,7 +277,7 @@ class WatchedFoldersTest {
         val record = IdleRecord()
         record.deliverOnWatch = null
         val sessions = ExtraIdleSessions { record }
-        sessions.apply(AccountSettings(), listOf("B"))
+        sessions.apply(AccountSettings(), listOf("B"), "acct")
         val waiting = async { sessions.changes.first() }
         yield()
         val change = MailboxChange.Exists(9)
@@ -280,8 +291,8 @@ class WatchedFoldersTest {
     @Test
     fun emptyApplyClosesWithoutANewSession() = runBlocking {
         val made = IdleHolder()
-        made.sessions.apply(AccountSettings(), listOf("A"))
-        made.sessions.apply(AccountSettings(), emptyList())
+        made.sessions.apply(AccountSettings(), listOf("A"), "acct")
+        made.sessions.apply(AccountSettings(), emptyList(), "acct")
         assertEquals(1, made.records.size)
         assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), made.records[0].calls)
         assertEquals(emptyList<String>(), made.sessions.openNames())
@@ -293,7 +304,7 @@ class WatchedFoldersTest {
         record.openResult = OpenResult.Failed("down")
         val sessions = ExtraIdleSessions { record }
         try {
-            sessions.apply(AccountSettings(), listOf("A"))
+            sessions.apply(AccountSettings(), listOf("A"), "acct")
             fail("expected MailFailure")
         } catch (failure: MailFailure) {
             assertEquals("down", failure.text)
@@ -308,7 +319,7 @@ class WatchedFoldersTest {
         record.openResult = OpenResult.Rejected("IDLE")
         val sessions = ExtraIdleSessions { record }
         try {
-            sessions.apply(AccountSettings(), listOf("A"))
+            sessions.apply(AccountSettings(), listOf("A"), "acct")
             fail("expected MailFailure")
         } catch (failure: MailFailure) {
             assertEquals("watch rejected", failure.text)
@@ -325,9 +336,9 @@ class WatchedFoldersTest {
         second.selectFailure = boom
         val queued = arrayListOf(first, second)
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
-        sessions.apply(AccountSettings(), listOf("A"))
+        sessions.apply(AccountSettings(), listOf("A"), "acct")
         try {
-            sessions.apply(AccountSettings(), listOf("A", "B"))
+            sessions.apply(AccountSettings(), listOf("A", "B"), "acct")
             fail("expected MailFailure")
         } catch (failure: MailFailure) {
             assertSame(boom, failure)
@@ -345,9 +356,9 @@ class WatchedFoldersTest {
         second.watchFailure = boom
         val queued = arrayListOf(first, second)
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
-        sessions.apply(AccountSettings(), listOf("A"))
+        sessions.apply(AccountSettings(), listOf("A"), "acct")
         try {
-            sessions.apply(AccountSettings(), listOf("A", "B"))
+            sessions.apply(AccountSettings(), listOf("A", "B"), "acct")
             fail("expected MailFailure")
         } catch (failure: MailFailure) {
             assertSame(boom, failure)
