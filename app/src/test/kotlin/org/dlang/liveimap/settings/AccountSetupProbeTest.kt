@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import java.io.File
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -98,7 +99,7 @@ class AccountSetupProbeTest {
         val setup = listOf(
             "src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
             "app/src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
-        ).map(::java.io.File).first { it.exists() }.readText()
+        ).map(::File).first { it.exists() }.readText()
         val smtp = setup.substring(setup.indexOf("smtpLogin = {"), setup.indexOf("jmapLogin = {"))
         assertFalse(smtp.contains("ensureOpen"))
         assertFalse(smtp.contains("openWith"))
@@ -107,7 +108,7 @@ class AccountSetupProbeTest {
         val session = listOf(
             "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
             "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
-        ).map(::java.io.File).first { it.exists() }.readText()
+        ).map(::File).first { it.exists() }.readText()
         val check = session.substring(session.indexOf("suspend fun smtpLoginCheck("), session.indexOf("private fun stageSmtp("))
         assertFalse(check.contains("requireHandle"))
         assertFalse(check.contains("ensureOpen"))
