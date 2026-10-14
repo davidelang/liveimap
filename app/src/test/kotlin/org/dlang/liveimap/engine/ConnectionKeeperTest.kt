@@ -2,13 +2,16 @@ package org.dlang.liveimap.engine
 
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
+import org.dlang.liveimap.session.LifecycleClock
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConnectionKeeperTest {
@@ -167,21 +170,167 @@ class ConnectionKeeperTest {
         }
         owner.start()
         inSleep.await()
-        try {
-            keeper.read("fetch") { "no" }
-            error("expected connection lost")
-        } catch (error: ConnectionLost) {
-            assertEquals("Reconnecting", error.text)
-        }
         val connectsWhileOwned = link.connects
+        val loserValue = arrayOfNulls<String>(1)
+        val loserError = arrayOfNulls<Throwable>(1)
+        val loser = Thread {
+            try {
+                loserValue[0] = keeper.read("fetch") { "ok" }
+            } catch (error: Throwable) {
+                loserError[0] = error
+            }
+        }
+        loser.start()
+        assertFalse(loser.join(300))
+        assertEquals(connectsWhileOwned, link.connects)
+        assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
         keeper.resume()
         assertEquals(connectsWhileOwned, link.connects)
         assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
         release.countDown()
         owner.join()
+        assertTrue(loser.join(5_000))
         assertEquals(null, ownerError[0])
+        assertEquals(null, loserError[0])
+        assertEquals("ok", loserValue[0])
         assertEquals(2, link.connects)
         assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
+    }
+
+    @Test
+    fun loserWaitsAndThrowsTheOwnersFailure() {
+        val link = FakeLink()
+        link.deadFlag = true
+        link.connectFailures.add(MailFailure("first boom"))
+        link.connectFailures.add(MailFailure("still down"))
+        val inSleep = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = {
+            inSleep.countDown()
+            release.await()
+        })
+        val ownerError = arrayOfNulls<Throwable>(1)
+        val owner = Thread {
+            try {
+                keeper.read("fetch") { "ok" }
+            } catch (error: Throwable) {
+                ownerError[0] = error
+            }
+        }
+        owner.start()
+        inSleep.await()
+        val loserError = arrayOfNulls<Throwable>(1)
+        val loser = Thread {
+            try {
+                keeper.read("fetch") { "no" }
+            } catch (error: Throwable) {
+                loserError[0] = error
+            }
+        }
+        loser.start()
+        assertFalse(loser.join(300))
+        release.countDown()
+        owner.join()
+        assertTrue(loser.join(5_000))
+        assertTrue(ownerError[0] is ConnectionLost)
+        assertEquals("still down", (ownerError[0] as ConnectionLost).text)
+        assertTrue(loserError[0] is ConnectionLost)
+        assertEquals("still down", (loserError[0] as ConnectionLost).text)
+        assertFalse((loserError[0] as ConnectionLost).text.contains("Reconnecting"))
+        assertEquals(2, link.connects)
+    }
+
+    @Test
+    fun staleSuspendDoesNotClose() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        val suspendEpoch = clock.takeSuspend()
+        clock.takeResume()
+        keeper.suspendConnections(clock, suspendEpoch)
+        assertEquals(0, link.closes)
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+    }
+
+    @Test
+    fun resumeClosesWhenANewerSuspendArrivesBeforeConnect() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        val epoch = clock.takeResume()
+        clock.takeSuspend()
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        keeper.resume(clock, epoch)
+        assertEquals(0, link.connects)
+        assertEquals(0, link.rewatches)
+        assertEquals(ConnectionState.Suspended, keeper.connectionState.value)
+    }
+
+    @Test
+    fun resumeStopsBeforeRewatchWhenSuspendArrivesDuringConnect() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        val epoch = clock.takeResume()
+        link.beforeConnect = { clock.takeSuspend() }
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        keeper.resume(clock, epoch)
+        assertEquals(1, link.connects)
+        assertEquals(0, link.reselects)
+        assertEquals(0, link.rewatches)
+        assertEquals(ConnectionState.Suspended, keeper.connectionState.value)
+    }
+
+    @Test
+    fun rewatchIsNotOnTheReconnectCaller() {
+        val link = FakeLink()
+        link.deadFlag = true
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+        val rewatchThread = arrayOfNulls<Thread>(1)
+        link.rewatchGate = {
+            rewatchThread[0] = Thread.currentThread()
+            entered.countDown()
+            release.await()
+        }
+        val keeper = keeper(link)
+        val reader = Thread {
+            keeper.read("fetch") { "ok" }
+            returned.countDown()
+        }
+        reader.start()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        assertTrue(returned.await(5, TimeUnit.SECONDS))
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+        assertFalse(rewatchThread[0] == reader)
+        release.countDown()
+        reader.join()
+        assertEquals(1, link.rewatches)
+    }
+
+    @Test
+    fun failedRewatchLeavesTheConnectionUp() {
+        val link = FakeLink()
+        link.deadFlag = true
+        link.rewatchFailures.add(MailFailure("idle failed"))
+        val keeper = keeper(link)
+        val value = keeper.read("fetch") { "ok" }
+        assertEquals("ok", value)
+        assertTrue(link.awaitRewatches(1))
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+        val deadline = System.currentTimeMillis() + 2_000
+        var restarted = false
+        while (System.currentTimeMillis() < deadline) {
+            val before = link.rewatches
+            keeper.resume()
+            if (link.rewatches > before) {
+                restarted = true
+                break
+            }
+            Thread.sleep(10)
+        }
+        assertTrue(restarted)
     }
 
     @Test
@@ -232,6 +381,7 @@ class ConnectionKeeperTest {
         keeper.read("fetch") { "ok" }
         assertEquals(1, link.connects)
         assertEquals(1, link.reselects)
+        assertTrue(link.awaitRewatches(1))
         assertEquals(1, link.rewatches)
     }
 
@@ -310,8 +460,19 @@ private class FakeLink : Link {
     var closes = 0
     var reselects = 0
     var rewatches = 0
+    val rewatchFailures = ArrayDeque<Exception>()
+    var rewatchGate: (() -> Unit)? = null
+    private val rewatchArrived = java.util.concurrent.atomic.AtomicInteger(0)
     val emissions = mutableListOf<MailboxChange>()
     var beforeConnect: () -> Unit = {}
+
+    fun awaitRewatches(n: Int): Boolean {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (rewatchArrived.get() < n && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        return rewatchArrived.get() >= n
+    }
 
     override fun dead(): Boolean = deadFlag
 
@@ -339,6 +500,12 @@ private class FakeLink : Link {
 
     override fun rewatch() {
         rewatches += 1
+        try {
+            rewatchGate?.invoke()
+            if (rewatchFailures.isNotEmpty()) throw rewatchFailures.removeFirst()
+        } finally {
+            rewatchArrived.incrementAndGet()
+        }
     }
 
     override fun close() {

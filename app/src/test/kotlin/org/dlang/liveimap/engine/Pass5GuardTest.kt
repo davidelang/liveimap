@@ -75,6 +75,37 @@ class Pass5GuardTest {
         assertTrue(serial.contains("withContext(Dispatchers.IO) { inner.resume() }"))
     }
 
+    /** F267: the watch open copies certificate fields while the session mutex is still held. */
+    @Test fun watchOpenCopiesCertificateFieldsBeforeUnlock() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val unlock = body.indexOf("session->mu.unlock();")
+        assertTrue(unlock > 0)
+        val before = body.substring(0, unlock)
+        assertTrue(before.contains("session->clientP12"))
+        assertTrue(before.contains("session->clientP12Password"))
+        assertTrue(before.contains("session->keyChainChain"))
+        assertTrue(before.contains("session->keyChainKey"))
+        assertTrue(before.contains("session->allowPlaintextAuth"))
+        assertTrue(before.contains("session->authMechanism"))
+        assertTrue(before.contains("session->allowOldTls"))
+        assertTrue(before.contains("session->logImapTraffic"))
+        val after = body.substring(unlock)
+        assertFalse(after.contains("session->clientP12"))
+        assertFalse(after.contains("session->clientP12Password"))
+        assertFalse(after.contains("session->keyChainChain"))
+        assertFalse(after.contains("session->keyChainKey"))
+        assertFalse(after.contains("session->allowPlaintextAuth"))
+        assertFalse(after.contains("session->authMechanism"))
+        assertFalse(after.contains("session->allowOldTls"))
+        assertFalse(after.contains("session->logImapTraffic"))
+        assertTrue(body.contains("&owned"))
+        assertTrue(jni.contains("owned->clientP12"))
+        assertTrue(jni.contains("owned->allowPlaintextAuth"))
+        assertTrue(jni.contains("owned->logImapTraffic"))
+        assertTrue(jni.contains("owned->acceptInvalidCert"))
+    }
+
     /** F27: the extra-IDLE close (reached from onStop on Main) runs on IO. */
     @Test fun watchedFolderCloseIsOffMain() {
         val w = listOf("src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt", "app/src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt")

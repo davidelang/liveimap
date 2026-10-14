@@ -2,6 +2,7 @@ package org.dlang.liveimap.engine
 
 import android.content.Context
 import java.io.File
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.R
@@ -11,6 +12,7 @@ import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
+import org.dlang.liveimap.session.LifecycleCall
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
@@ -86,6 +88,15 @@ class LibetpanMailSession : MailSession {
     @Volatile
     private var watchMailbox: String? = null
 
+    private val watchGate = Any()
+    private val publishedByGeneration = HashMap<Long, WatchOffer>()
+    private var liveWatchGeneration = 0L
+
+    private class WatchOffer(
+        val mailbox: String,
+        val onChange: (MailboxChange) -> Unit,
+    )
+
     @Volatile
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
 
@@ -123,11 +134,13 @@ class LibetpanMailSession : MailSession {
         get() = keeper.connectionState
 
     override suspend fun resume() {
-        keeper.resume()
+        val call = coroutineContext[LifecycleCall]
+        if (call == null) keeper.resume() else keeper.resume(call.clock, call.epoch)
     }
 
     override suspend fun suspendConnections() {
-        keeper.suspendConnections()
+        val call = coroutineContext[LifecycleCall]
+        if (call == null) keeper.suspendConnections() else keeper.suspendConnections(call.clock, call.epoch)
     }
 
     /** Set by openWith: this session belongs to a non-selected account, so its own secrets are used. */
@@ -1023,19 +1036,40 @@ class LibetpanMailSession : MailSession {
         if (!featureCaps.idle) return
         // F136: not through the keeper. The watch is its own connection and runs beside the main one (off the
         // session lane); a reconnect of the main connection from here would race the lane's commands.
-        watchMailbox = mailbox
-        watchCallback = onChange
+        // The callback is stored only for the generation nativeWatch publishes, not before it returns.
         nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-        nativeWatch(requireHandle(), wire(mailbox))
+        nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
         noteTraffic("Idling")
+    }
+
+    fun publishWatch(generation: Long, offer: Any?) {
+        val pending = offer as? WatchOffer ?: return
+        if (generation == 0L) return
+        synchronized(watchGate) {
+            if (generation < liveWatchGeneration) return
+            liveWatchGeneration = generation
+            publishedByGeneration.keys.retainAll { it >= generation }
+            publishedByGeneration[generation] = pending
+            watchMailbox = pending.mailbox
+            watchCallback = pending.onChange
+        }
     }
 
     override suspend fun stopWatch() {
         val h = handle
-        if (h != 0L) {
-            nativeStopWatch(h)
+        val stopped = if (h != 0L) nativeStopWatch(h) else 0L
+        clearPublishedWatch(stopped)
+    }
+
+    private fun clearPublishedWatch(stoppedGeneration: Long) {
+        if (stoppedGeneration == 0L) return
+        synchronized(watchGate) {
+            if (liveWatchGeneration > stoppedGeneration) return
+            publishedByGeneration.clear()
+            watchCallback = null
+            watchMailbox = null
+            if (stoppedGeneration > liveWatchGeneration) liveWatchGeneration = stoppedGeneration
         }
-        watchCallback = null
     }
 
     override suspend fun noop() {
@@ -1155,13 +1189,20 @@ class LibetpanMailSession : MailSession {
         selectedMailbox = null
         selectedReadWrite = false
         sequencesStale = false
-        watchCallback = null
+        synchronized(watchGate) {
+            publishedByGeneration.clear()
+            watchCallback = null
+            watchMailbox = null
+            liveWatchGeneration = 0
+        }
         cache.clear()
         keeper.onSessionClosed()
     }
 
-    fun onNativeWatch(kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
-        val mailbox = watchMailbox
+    fun onNativeWatch(generation: Long, kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
+        val target = synchronized(watchGate) { publishedByGeneration[generation] } ?: return
+        val mailbox = target.mailbox
+        val callback = target.onChange
         val change: MailboxChange = when (kind) {
             0 -> MailboxChange.Exists(exists)
             1 -> MailboxChange.Expunge(exists)
@@ -1172,11 +1213,11 @@ class LibetpanMailSession : MailSession {
             }
             else -> MailboxChange.UidValidityReset
         }
-        if (change !is MailboxChange.Flags && mailbox != null) {
+        if (change !is MailboxChange.Flags) {
             cache.keys.retainAll { it.mailbox != mailbox }
         }
         sequencesStale = true
-        watchCallback?.invoke(change)
+        callback.invoke(change)
     }
 
     private inner class SessionLink : Link {
@@ -1219,10 +1260,13 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun rewatch() {
-            val mailbox = watchMailbox ?: return
-            if (watchCallback == null) return
+            val offer = synchronized(watchGate) {
+                val mailbox = watchMailbox ?: return
+                val callback = watchCallback ?: return
+                WatchOffer(mailbox, callback)
+            }
             nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
-            nativeWatch(requireHandle(), wire(mailbox))
+            nativeWatch(requireHandle(), wire(offer.mailbox), offer)
             noteTraffic("Idling")
         }
 
@@ -1474,8 +1518,8 @@ class LibetpanMailSession : MailSession {
     private external fun nativeFetchSortFieldsRange(handle: Long, field: String, first: Int, last: Int): Array<SortField>?
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
-    private external fun nativeWatch(handle: Long, mailbox: String)
-    private external fun nativeStopWatch(handle: Long)
+    private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
+    private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(
         handle: Long,
         message: ByteArray?,

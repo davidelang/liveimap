@@ -1,10 +1,16 @@
 package org.dlang.liveimap.engine
 
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
+import org.dlang.liveimap.session.LifecycleClock
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
@@ -34,8 +40,13 @@ class ConnectionKeeper(
     @Volatile private var lastSelect: SelectResult? = null
     @Volatile private var broken = false
     @Volatile private var watchLost = false
-    // One reconnect owner. The loser does not connect and does not sleep.
+    // One reconnect owner. A loser does not connect or sleep; it waits for the owner's result.
+    // A resume that loses returns without waiting.
     private val reconnectOwner = AtomicBoolean(false)
+    private val ownerLock = Any()
+    private var ownerResult: CompletableFuture<kotlin.Result<Unit>>? = null
+    private var lifecycle: LifecycleClock? = null
+    private val rewatchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun noteSelected(result: SelectResult) {
         lastSelect = result
@@ -64,16 +75,22 @@ class ConnectionKeeper(
     }
 
     fun resume() {
+        resume(null, null)
+    }
+
+    fun resume(clock: LifecycleClock?, epoch: Long?) {
+        if (clock != null) lifecycle = clock
+        val life = clock ?: lifecycle
         if (needsReconnect()) {
-            reconnect(fromResume = true)
+            reconnect(fromResume = true, epoch = epoch, life = life)
             return
         }
         if (idleTooLong()) {
             try {
                 link.noop()
-                lastUsed = clock()
+                lastUsed = this.clock()
             } catch (_: ConnectionLost) {
-                reconnect(fromResume = true)
+                reconnect(fromResume = true, epoch = epoch, life = life)
                 return
             }
         }
@@ -82,12 +99,22 @@ class ConnectionKeeper(
                 link.rewatch()
                 watchLost = false
             } catch (_: ConnectionLost) {
-                reconnect(fromResume = true)
+                reconnect(fromResume = true, epoch = epoch, life = life)
             }
         }
     }
 
     fun suspendConnections() {
+        closeSuspended()
+    }
+
+    fun suspendConnections(clock: LifecycleClock, epoch: Long) {
+        lifecycle = clock
+        if (epoch < clock.latestResume.get()) return
+        closeSuspended()
+    }
+
+    private fun closeSuspended() {
         link.close()
         state.value = ConnectionState.Suspended
         TrafficLog.noteStatus("Closed (background)")
@@ -150,58 +177,125 @@ class ConnectionKeeper(
         }
     }
 
-    private fun reconnect(fromResume: Boolean = false) {
-        if (!reconnectOwner.compareAndSet(false, true)) {
+    private fun reconnect(fromResume: Boolean = false, epoch: Long? = null, life: LifecycleClock? = lifecycle) {
+        val started = epoch ?: life?.current?.get() ?: 0L
+        val owned = CompletableFuture<kotlin.Result<Unit>>()
+        val pending = synchronized(ownerLock) {
+            if (reconnectOwner.compareAndSet(false, true)) {
+                ownerResult = owned
+                null
+            } else {
+                ownerResult
+            }
+        }
+        if (pending != null) {
             if (fromResume) return
-            throw ConnectionLost("Reconnecting")
+            val error = pending.get().exceptionOrNull() ?: return
+            if (error is LifecycleStop) throw ConnectionLost("Closed (background)")
+            throw error
         }
         try {
-            state.value = ConnectionState.Reconnecting
-            TrafficLog.noteStatus("Reconnecting")
-            link.close()
-            var failure: Exception? = null
-            var connected = false
-            for (attempt in 0 until 2) {
-                if (attempt == 1) {
-                    sleep(3_000)
-                }
-                try {
-                    link.connect()
-                    connected = true
-                    break
-                } catch (error: Exception) {
-                    failure = error
-                }
+            driveReconnect(life, started)
+            owned.complete(kotlin.Result.success(Unit))
+        } catch (stop: LifecycleStop) {
+            if (!owned.isDone) owned.complete(kotlin.Result.failure(stop))
+            if (!fromResume) throw ConnectionLost("Closed (background)")
+        } catch (error: Throwable) {
+            if (!owned.isDone) owned.complete(kotlin.Result.failure(error))
+            throw error
+        } finally {
+            if (!owned.isDone) owned.complete(kotlin.Result.success(Unit))
+            reconnectOwner.set(false)
+        }
+    }
+
+    private fun driveReconnect(life: LifecycleClock?, epoch: Long) {
+        state.value = ConnectionState.Reconnecting
+        TrafficLog.noteStatus("Reconnecting")
+        link.close()
+        var failure: Exception? = null
+        var connected = false
+        for (attempt in 0 until 2) {
+            if (attempt == 1) {
+                if (suspendWins(life, epoch)) stopForSuspend()
+                sleep(3_000)
             }
-            if (!connected) {
-                val text = failureText(failure)
-                state.value = ConnectionState.Lost(text)
-                TrafficLog.noteStatus("Error $text")
-                broken = true
-                throw ConnectionLost(text)
-            }
-            val previous = lastSelect
-            val selected = try {
-                link.reselect()
+            if (suspendWins(life, epoch)) stopForSuspend()
+            try {
+                link.connect()
+                connected = true
+                break
             } catch (error: Exception) {
-                failReconnect(error)
+                failure = error
             }
-            for (change in reconnectChanges(previous, selected)) link.emit(change)
-            if (selected != null) {
-                lastSelect = selected
+        }
+        if (!connected) {
+            val text = failureText(failure)
+            state.value = ConnectionState.Lost(text)
+            TrafficLog.noteStatus("Error $text")
+            broken = true
+            throw ConnectionLost(text)
+        }
+        if (suspendWins(life, epoch)) stopForSuspend()
+        val previous = lastSelect
+        val selected = try {
+            link.reselect()
+        } catch (error: Exception) {
+            failReconnect(error)
+        }
+        for (change in reconnectChanges(previous, selected)) link.emit(change)
+        if (selected != null) {
+            lastSelect = selected
+        }
+        if (suspendWins(life, epoch)) stopForSuspend()
+        watchLost = false
+        scheduleRewatch(life, epoch)
+        broken = false
+        lastUsed = clock()
+        state.value = ConnectionState.Connected
+    }
+
+    private fun suspendWins(life: LifecycleClock?, epoch: Long): Boolean {
+        if (life == null) return false
+        val suspendAt = life.latestSuspend.get()
+        if (suspendAt <= epoch) return false
+        if (suspendAt < life.latestResume.get()) return false
+        return true
+    }
+
+    private fun stopForSuspend(): Nothing {
+        link.close()
+        state.value = ConnectionState.Suspended
+        TrafficLog.noteStatus("Closed (background)")
+        throw LifecycleStop()
+    }
+
+    private fun scheduleRewatch(life: LifecycleClock?, epoch: Long) {
+        rewatchScope.launch {
+            if (state.value is ConnectionState.Suspended || suspendWins(life, epoch)) {
+                watchLost = true
+                if (suspendWins(life, epoch)) stopIdle()
+                return@launch
             }
             try {
                 link.rewatch()
-            } catch (error: Exception) {
-                failReconnect(error)
+            } catch (_: Exception) {
+                watchLost = true
+                return@launch
+            }
+            if (state.value is ConnectionState.Suspended || suspendWins(life, epoch)) {
+                watchLost = true
+                stopIdle()
+                return@launch
             }
             watchLost = false
-            broken = false
-            lastUsed = clock()
-            state.value = ConnectionState.Connected
-        } finally {
-            reconnectOwner.set(false)
         }
+    }
+
+    private fun stopIdle() {
+        link.close()
+        state.value = ConnectionState.Suspended
+        TrafficLog.noteStatus("Closed (background)")
     }
 
     private fun failReconnect(error: Exception): Nothing {
@@ -229,6 +323,8 @@ class ConnectionKeeper(
  * equal or larger number of expunges in the gap are still reported. Expunge comes first so the last count wins.
  * Does not open a socket.
  */
+private class LifecycleStop : RuntimeException()
+
 internal fun reconnectChanges(
     previous: org.dlang.liveimap.session.SelectResult?,
     selected: org.dlang.liveimap.session.SelectResult?,

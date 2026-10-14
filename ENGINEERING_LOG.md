@@ -2741,3 +2741,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-14 - Resume restarts both sides of a routed account.
+
+## 2026-10-14 - Watch generation orders the callback and suspend versus resume
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-20261014-0703-plan.md
+- Work: watch connect copies auth, certificate, and log fields; the published generation owns the callback; a reconnect loser waits; rewatch is off the caller; a lifecycle epoch orders suspend and resume
+- First action per standard-plan-compliance-block.md; commits stay on master

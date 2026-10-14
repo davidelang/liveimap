@@ -1,6 +1,7 @@
 package org.dlang.liveimap.session
 
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -14,9 +15,35 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 
+internal class LifecycleClock {
+    val current = AtomicLong(0)
+    val latestResume = AtomicLong(0)
+    val latestSuspend = AtomicLong(0)
+
+    fun takeResume(): Long {
+        val epoch = current.incrementAndGet()
+        latestResume.set(epoch)
+        return epoch
+    }
+
+    fun takeSuspend(): Long {
+        val epoch = current.incrementAndGet()
+        latestSuspend.set(epoch)
+        return epoch
+    }
+}
+
+internal class LifecycleCall(
+    val clock: LifecycleClock,
+    val epoch: Long,
+) : AbstractCoroutineContextElement(LifecycleCall) {
+    companion object Key : CoroutineContext.Key<LifecycleCall>
+}
+
 class SerialMailSession(
     private val inner: MailSession,
 ) : MailSession {
+    private val lifecycleClock = LifecycleClock()
     // F84: one lane thread per session, created on demand and shut down by close(); a session that is
     // opened again after close() gets a fresh lane.
     private val laneLock = Any()
@@ -41,11 +68,17 @@ class SerialMailSession(
         get() = inner.connectionState
 
     override suspend fun resume() {
-        withContext(Dispatchers.IO) { inner.resume() }
+        val epoch = lifecycleClock.takeResume()
+        withContext(LifecycleCall(lifecycleClock, epoch)) {
+            withContext(Dispatchers.IO) { inner.resume() }
+        }
     }
 
     override suspend fun suspendConnections() {
-        onLane { inner.suspendConnections() }
+        val epoch = lifecycleClock.takeSuspend()
+        withContext(LifecycleCall(lifecycleClock, epoch)) {
+            onLane { inner.suspendConnections() }
+        }
     }
 
     override suspend fun open(account: AccountSettings): OpenResult =
