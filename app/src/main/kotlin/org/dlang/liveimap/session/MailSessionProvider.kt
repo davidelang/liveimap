@@ -1,5 +1,9 @@
 package org.dlang.liveimap.session
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -18,6 +22,9 @@ private val extraIdleSessions = ExtraIdleSessions {
 }
 
 private val extraIdleLock = Mutex()
+
+/** Account ids dropped under [extraIdleLock]. Not a lock. A later apply reads the stamp it published. */
+private val extraIdleDrops = ExtraIdleDropLog()
 
 fun mailSession(accountId: String): MailSession = accountSessions.session(accountId)
 
@@ -40,20 +47,67 @@ suspend fun suspendMailSessions() {
 }
 
 suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
+    applyExtraIdleTo(extraIdleSessions, extraIdleLock, account, accountId, extraIdleDrops)
+}
+
+/**
+ * [seenDrop] is this account's stamp read before [lock]. A drop that records the id while this apply waits
+ * does not open. A later apply that reads the stamp after that drop does.
+ */
+internal suspend fun applyExtraIdleTo(
+    sessions: ExtraIdleSessions,
+    lock: Mutex,
+    account: AccountSettings,
+    accountId: String,
+    drops: ExtraIdleDropLog,
+) {
     if (accountId.isBlank()) return
-    val seen = extraIdleSessions.readGeneration()
-    extraIdleLock.withLock {
-        if (!extraIdleSessions.generationStill(seen)) return
+    val seen = sessions.readGeneration()
+    val seenDrop = drops.stamp(accountId)
+    lock.withLock {
+        if (!sessions.generationStill(seen)) return
+        if (drops.stamp(accountId) != seenDrop) return
         withContext(AccountTarget(accountId)) {
-            applyStoredIdle(extraIdleSessions, account, accountId, seen)
+            applyStoredIdle(sessions, account, accountId, seen)
         }
     }
 }
 
+/** Bump on this thread, then run [suspendSessions] and [stopExtraIdleOn]. The caller keeps the job. */
+internal fun launchExtraIdleStop(
+    scope: CoroutineScope,
+    sessions: ExtraIdleSessions,
+    lock: Mutex,
+    suspendSessions: suspend () -> Unit,
+): Job {
+    sessions.bumpGeneration()
+    return scope.launch(NonCancellable) {
+        try {
+            suspendSessions()
+        } finally {
+            stopExtraIdleOn(sessions, lock)
+        }
+    }
+}
+
+/** onStop calls this. The generation changes before the stop coroutine runs. */
+fun launchExtraIdleStop(scope: CoroutineScope): Job =
+    launchExtraIdleStop(scope, extraIdleSessions, extraIdleLock) { suspendMailSessions() }
+
+/** onStart calls this before it walks accounts, so the late stop does not close the start's sessions. */
+suspend fun runAfterExtraIdleStop(stop: Job?, block: suspend () -> Unit) {
+    stop?.join()
+    block()
+}
+
 suspend fun stopExtraIdle() {
-    extraIdleSessions.bumpGeneration()
-    extraIdleLock.withLock {
-        extraIdleSessions.stop()
+    stopExtraIdleOn(extraIdleSessions, extraIdleLock)
+}
+
+private suspend fun stopExtraIdleOn(sessions: ExtraIdleSessions, lock: Mutex) {
+    sessions.bumpGeneration()
+    lock.withLock {
+        sessions.stop()
     }
 }
 
@@ -62,7 +116,33 @@ fun extraIdleChanges(): kotlinx.coroutines.flow.Flow<IdleFolderChange> = extraId
 
 suspend fun dropMailSession(accountId: String) {
     extraIdleLock.withLock {
-        extraIdleSessions.closeAccount(accountId)
+        recordDroppedExtraIdle(extraIdleSessions, accountId, extraIdleDrops)
     }
     accountSessions.drop(accountId)
+}
+
+/** Under [extraIdleLock]: remember [accountId], then close that account's extra IDLE. */
+internal suspend fun recordDroppedExtraIdle(
+    sessions: ExtraIdleSessions,
+    accountId: String,
+    drops: ExtraIdleDropLog,
+) {
+    if (accountId.isNotBlank()) drops.record(accountId)
+    sessions.closeAccount(accountId)
+}
+
+/** Stamps published under extraIdleLock. A volatile map, not a second lock. */
+internal class ExtraIdleDropLog {
+    @Volatile
+    private var state = State()
+
+    fun stamp(accountId: String): Int = state.at[accountId] ?: 0
+
+    fun record(accountId: String) {
+        val cur = state
+        val seq = cur.seq + 1
+        state = State(cur.at + (accountId to seq), seq)
+    }
+
+    private data class State(val at: Map<String, Int> = emptyMap(), val seq: Int = 0)
 }

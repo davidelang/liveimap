@@ -10,6 +10,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.fail
 import org.junit.Test
@@ -352,7 +353,7 @@ class WatchedFoldersTest {
     }
 
     @Test
-    fun oneFolderWithoutIdleDoesNotStopTheNextName() = runBlocking {
+    fun firstSessionWithoutIdleMarksTheRestWithoutOpening() = runBlocking {
         val account = AccountSettings(imapHost = "no-idle.example", username = "skip", imapPort = 993)
         val skipFirst = IdleRecord()
         skipFirst.capabilities = setOf("IMAP4REV1")
@@ -581,6 +582,62 @@ class WatchedFoldersTest {
         waiting.join()
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
+    }
+
+    @Test
+    fun stopThenStartLeavesTheStartSessionsOpen() = runBlocking {
+        val made = IdleHolder()
+        val lock = Mutex()
+        val gate = Mutex(locked = true)
+        val before = made.sessions.readGeneration()
+        val account = AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 2)
+        val stop = launchExtraIdleStop(this, made.sessions, lock) {
+            gate.withLock { }
+        }
+        assertFalse(made.sessions.generationStill(before))
+        val start = launch {
+            runAfterExtraIdleStop(stop) {
+                applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+            }
+        }
+        var held = true
+        try {
+            yield()
+            assertEquals(emptyList<String>(), made.sessions.openNames())
+            gate.unlock()
+            held = false
+            start.join()
+            assertEquals(listOf("A", "B"), made.sessions.openNames())
+            assertEquals(listOf("open", "select A", "watch A"), made.records[0].calls)
+            assertEquals(listOf("open", "select B", "watch B"), made.records[1].calls)
+        } finally {
+            if (held) gate.unlock()
+        }
+    }
+
+    @Test
+    fun waitingApplyForADroppedAccountOpensNothing() = runBlocking {
+        val made = IdleHolder()
+        val lock = Mutex(locked = true)
+        val drops = ExtraIdleDropLog()
+        val account = AccountSettings(
+            imapHost = "drop-wait.example",
+            username = "a",
+            imapPort = 993,
+            watchedFolders = listOf("INBOX"),
+            extraIdleBudget = 2,
+        )
+        val waiting = launch {
+            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        }
+        repeat(3) { yield() }
+        recordDroppedExtraIdle(made.sessions, "acct-a", drops)
+        lock.unlock()
+        waiting.join()
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        assertEquals(listOf("INBOX"), made.sessions.openNames())
     }
 
     @Test

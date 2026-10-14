@@ -2873,3 +2873,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: SELECT returns the new UIDVALIDITY; a mismatch throws EpochChanged for that folder before STORE, EXPUNGE, or COPY. A removed hit drops the same row from order and orderMailboxes
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A stop finishes before the next extra-IDLE start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-order-20261014-1401-plan.md
+- Work: onStop bumps the extra-IDLE generation before the stop job; onStart joins that job before it walks accounts; a dropped account id recorded under extraIdleLock is not opened by an apply that already read the old stamp
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

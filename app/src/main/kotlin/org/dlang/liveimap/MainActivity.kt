@@ -24,13 +24,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.applyExtraIdle
-import org.dlang.liveimap.session.stopExtraIdle
-import org.dlang.liveimap.session.suspendMailSessions
+import org.dlang.liveimap.session.launchExtraIdleStop
+import org.dlang.liveimap.session.runAfterExtraIdleStop
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
@@ -39,6 +38,7 @@ import org.dlang.liveimap.ui.LiveImapNavHost
 class MainActivity : ComponentActivity() {
     private lateinit var store: DataStoreSettingsStore
     private var extraIdleStart: Job? = null
+    private var extraIdleStop: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,11 +100,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (smokeLaunch(intent)) return
+        val stopping = extraIdleStop
         extraIdleStart = lifecycleScope.launch {
-            for (choice in store.listAccounts()) {
-                try {
-                    applyExtraIdle(store.forAccount(choice.id).load(), choice.id)
-                } catch (_: MailFailure) {
+            runAfterExtraIdleStop(stopping) {
+                for (choice in store.listAccounts()) {
+                    try {
+                        applyExtraIdle(store.forAccount(choice.id).load(), choice.id)
+                    } catch (_: MailFailure) {
+                    }
                 }
             }
         }
@@ -114,13 +117,7 @@ class MainActivity : ComponentActivity() {
         if (!isChangingConfigurations) {
             // F104: no background draft save here (it raced Send and left stale drafts in Postponed).
             extraIdleStart?.cancel()
-            lifecycleScope.launch(NonCancellable) {
-                try {
-                    suspendMailSessions()
-                } finally {
-                    stopExtraIdle()
-                }
-            }
+            extraIdleStop = launchExtraIdleStop(lifecycleScope)
         }
         super.onStop()
     }
