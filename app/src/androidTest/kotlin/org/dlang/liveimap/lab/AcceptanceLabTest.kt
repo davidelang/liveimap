@@ -36,7 +36,7 @@ class AcceptanceLabTest {
     private fun arg(k: String, d: String = "") = args.getString(k) ?: d
 
     @Test
-    fun acceptanceMatrix() = runBlocking {
+    fun acceptanceMatrix(): Unit = runBlocking {
         val host = arg("labHost")
         assumeTrue("no labHost argument", host.isNotEmpty())
         LabTestHooks.set(host, arg("labPass"))
