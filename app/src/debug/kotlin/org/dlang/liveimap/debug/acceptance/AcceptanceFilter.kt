@@ -115,7 +115,9 @@ fun parseWriteHosts(text: String): Set<String> =
 fun allowWriter(user: String, host: String, writeHosts: Set<String>): Boolean = allowUser(user) && allowWriteHost(host, writeHosts)
 
 fun allowUser(user: String): Boolean {
-    return user in allowUsers
+    // A lab login may be a full address (zimbra: liveimap@<its domain>); the lab name is the local part. Writes
+    // still need a supplied lab host, so a real account named like this elsewhere stays read-only.
+    return user.trim().substringBefore('@') in allowUsers
 }
 
 fun allowEntry(

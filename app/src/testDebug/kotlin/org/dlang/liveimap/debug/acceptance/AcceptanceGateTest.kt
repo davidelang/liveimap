@@ -17,6 +17,13 @@ class AcceptanceGateTest {
         assertFalse(allowWriter("liveimap", "imap.gmail.com", supplied))
     }
 
+    @Test fun aFullAddressLoginCountsByItsLocalPart() {
+        val supplied = setOf("lab.example")
+        assertTrue(allowWriter("liveimap@zimbra.example", "lab.example", supplied))
+        assertFalse(allowWriter("dlang@zimbra.example", "lab.example", supplied))
+        assertFalse(allowWriter("liveimap@zimbra.example", "imap.example", supplied))
+    }
+
     @Test fun noHostIsWritableUnlessSupplied() {
         // Nothing is built in: the hosts the old list carried are read-only until a run supplies them.
         for (h in listOf("lab.test", "10.0.2.2", "localhost", "127.0.0.1", "sun.lang.hm", "asgard.lang.hm")) {

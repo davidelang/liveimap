@@ -8,6 +8,7 @@ import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
@@ -28,6 +29,8 @@ class AcceptanceContext(
 ) {
     var inboxUid: Long = 0
     var appendedUid: Long = 0
+    /** The acceptance folder as this server names it (top level, or under the personal namespace prefix). */
+    var testFolder: String = AcceptanceFolder
     fun has(name: String) = session.capabilities.any { it.equals(name, ignoreCase = true) }
     /** [mailbox] as one folder-scoped view, in the epoch the server has now (pass 5: nothing runs unscoped). */
     suspend fun folder(mailbox: String): MailSession =
@@ -80,15 +83,25 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
         "watched"
     },
     t("append to test folder", "smtp-submission", writes = true) {
-        if (!session.mailboxListed(AcceptanceFolder)) throw AcceptanceSkip("$AcceptanceFolder missing (server not reset)")
-        appendedUid = session.appendReturningUid(AcceptanceFolder, testMessage(account, "Acceptance append"))
-        if (appendedUid > 0) "uid $appendedUid" else "appended (no UIDPLUS)"
+        // Servers without top-level folders (courier, older Cyrus: "INBOX.") keep it under the personal prefix.
+        val candidates = listOf(AcceptanceFolder) + session.namespaces()
+            .filter { it.kind == NamespaceKind.Personal && it.prefix.isNotEmpty() }.map { it.prefix + AcceptanceFolder }
+        testFolder = candidates.firstOrNull { session.mailboxListed(it) }
+            ?: throw AcceptanceSkip("$AcceptanceFolder missing (server not reset)")
+        val subject = "Acceptance append ${System.nanoTime()}"
+        appendedUid = session.appendReturningUid(testFolder, testMessage(account, subject))
+        if (appendedUid > 0) return@t "uid $appendedUid"
+        // No UIDPLUS (no APPENDUID): find the message by its unique subject, as the app would after a save.
+        appendedUid = folder(testFolder).searchCriterion("Subject", subject).maxOrNull() ?: 0L
+        if (appendedUid > 0) "uid $appendedUid (found by search, no UIDPLUS)" else throw MailFailure("appended message not found")
     },
     t("flag and delete appended", "delete-and-expunge", writes = true) {
         if (appendedUid <= 0) throw AcceptanceSkip("no appended UID")
-        val box = folder(AcceptanceFolder)
+        val box = folder(testFolder)
         box.storeFlags(listOf(appendedUid), setOf("\\Flagged"), emptySet())
         box.storeFlags(listOf(appendedUid), setOf("\\Deleted"), emptySet())
+        // UID EXPUNGE is UIDPLUS; without it a plain EXPUNGE would also remove other clients' \\Deleted mail.
+        if (!has("UIDPLUS")) return@t "flagged, marked deleted (no UIDPLUS: not expunged)"
         box.uidExpunge(listOf(appendedUid))
         "flagged, deleted, expunged"
     },
