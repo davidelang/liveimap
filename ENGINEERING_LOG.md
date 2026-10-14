@@ -2891,3 +2891,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - A removed search hit leaves only that folder's row
 
 - Approved plan: sandbox/plans/search-order-folder-20261014-1518-plan.md. dropOrderedHits drops the acted folder, or this index mailbox when none is set; the same UID in another folder stays. No new mutex. No install
+
+## 2026-10-14 - The unused extra-IDLE stop is gone
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-stop-dead-20261014-1613-plan.md
+- Work: deleted stopExtraIdle; launchExtraIdleStop is the only stop path. No new mutex. No install

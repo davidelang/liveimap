@@ -256,7 +256,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
     /** Read this before waiting for extraIdleLock. */
     fun readGeneration(): Int = generation.get()
 
-    /** stopExtraIdle bumps this before it waits for extraIdleLock. Not a lock. */
+    /** launchExtraIdleStop bumps this on the calling thread, before its coroutine waits for extraIdleLock. Not a lock. */
     fun bumpGeneration() {
         generation.incrementAndGet()
     }

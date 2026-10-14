@@ -103,11 +103,6 @@ suspend fun runAfterExtraIdleStop(stop: Job?, block: suspend () -> Unit) {
     block()
 }
 
-suspend fun stopExtraIdle() {
-    extraIdleSessions.bumpGeneration()
-    closeExtraIdleIfCurrent(extraIdleSessions, extraIdleLock, extraIdleSessions.readGeneration())
-}
-
 /** Does not bump. An older stop does not call [ExtraIdleSessions.stop] after a newer stop has bumped. */
 private suspend fun closeExtraIdleIfCurrent(sessions: ExtraIdleSessions, lock: Mutex, generation: Int) {
     lock.withLock {
