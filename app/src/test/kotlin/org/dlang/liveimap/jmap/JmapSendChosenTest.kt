@@ -125,7 +125,7 @@ class JmapSendChosenTest {
         val post = SendPost(
             listOf(
                 200 to identityResponse,
-                200 to draftsResponse,
+                200 to draftsNames,
                 200 to importCreated,
                 200 to submissionCreated,
             ),
@@ -141,6 +141,7 @@ class JmapSendChosenTest {
             upload::send,
             post::post,
             post::trust,
+            draftsName = "Drafts",
         )
         val authorization = jmapBasicAuthorization("user", "secret")
         assertEquals("S1", choice)
@@ -155,13 +156,28 @@ class JmapSendChosenTest {
         assertEquals(
             listOf(
                 jmapIdentityRequest("A1"),
-                jmapRoleMailboxRequest("A1", "drafts"),
+                jmapMailboxNamesRequest("A1"),
                 jmapEmailImportRequest("A1", "B1", "mbDrafts"),
                 jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com"), destroyEmail = true, identityId = "I1"),
             ),
             post.bodies,
         )
         assertEquals(List(4) { authorization }, post.authorizations)
+    }
+
+    @Test
+    fun blankSentWithoutAConfiguredDraftsFailsCleanlyBeforeUpload() {
+        val upload = SendUpload(201, uploadCreated)
+        val post = SendPost(listOf(200 to identityResponse))
+        try {
+            jmapSend(JmapOffer.Mail(session(JMAP_MAIL, JMAP_SUBMISSION)), byteArrayOf(1), "me@example.com", listOf("ada@example.com"),
+                "user", "secret", "ab", upload::send, post::post, post::trust)
+            throw AssertionError("expected JmapNoDraftsFolder")
+        } catch (e: JmapNoDraftsFolder) {
+            assertEquals("a Drafts (Postponed) folder must be set to send over JMAP without a Sent folder", e.text)
+        }
+        assertEquals(emptyList<String>(), upload.urls)
+        assertEquals(1, post.urls.size) // only the identity lookup; no Inbox or role fallback
     }
 
     @Test
@@ -291,8 +307,8 @@ class JmapSendChosenTest {
         """{"methodResponses":[["Identity/get",{"list":[{"id":"I0","email":"x@example.com"},{"id":"I1","email":"me@example.com"}]},"0"]]}"""
     private val namesResponse =
         """{"methodResponses":[["Mailbox/get",{"list":[{"id":"mbSent","name":"Sent","parentId":null}]},"0"]]}"""
-    private val draftsResponse =
-        """{"methodResponses":[["Mailbox/query",{"ids":["mbDrafts"]},"0"],["Mailbox/get",{"list":[{"id":"mbDrafts","role":"drafts"}]},"1"]]}"""
+    private val draftsNames =
+        """{"methodResponses":[["Mailbox/get",{"list":[{"id":"mbInbox","name":"Inbox","parentId":null,"role":"inbox"},{"id":"mbDrafts","name":"Drafts","parentId":null}]},"0"]]}"""
     private val uploadCreated =
         """{"accountId":"A1","blobId":"B1","type":"message/rfc822","size":3}"""
 

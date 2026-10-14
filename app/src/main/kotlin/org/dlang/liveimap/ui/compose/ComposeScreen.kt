@@ -826,6 +826,7 @@ private fun ComposeLoaded(
                         pinnedJmapUpload(account.jmapCertPin),
                         pinnedJmapPost(account.jmapCertPin),
                         sentName = account.sentMailbox,
+                        draftsName = account.postponedMailbox,
                     )
                 } catch (error: CancellationException) {
                     throw error
@@ -1187,6 +1188,7 @@ private fun ComposeLoaded(
                                 pinnedJmapUpload(account.jmapCertPin),
                                 pinnedJmapPost(account.jmapCertPin),
                                 sentName = account.sentMailbox,
+                        draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
                             )
                         } catch (error: CancellationException) {
@@ -1586,6 +1588,7 @@ private fun ComposeLoaded(
                                         pinnedJmapUpload(account.jmapCertPin),
                                         pinnedJmapPost(account.jmapCertPin),
                                         sentName = account.sentMailbox,
+                        draftsName = account.postponedMailbox,
                                     )
                                     storeAcceptedFlags(listOf(uid))
                                     continue

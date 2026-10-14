@@ -138,6 +138,8 @@ fun jmapSend(
     sentName: String = "",
     /** False when the user chose "send without saving a copy" after a Sent failure. */
     saveCopy: Boolean = true,
+    /** The account's Postponed/Drafts folder: where a message with no Sent copy is staged for submission. */
+    draftsName: String = "",
 ): String {
     val session = when (offer) {
         JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
@@ -146,9 +148,9 @@ fun jmapSend(
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
     val identityId = jmapIdentityFor(session, mailFrom, username, password, pin, post, trust)
     val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName) else null
-    // No Sent folder (none configured, no role "sent", or the user dropped the copy): EmailSubmission still needs
-    // an Email, so it is staged in Drafts (else Inbox) and destroyed by onSuccessDestroyEmail. No copy is kept.
-    val mailboxId = sentId ?: jmapStagingMailbox(session, username, password, pin, post, trust)
+    // No Sent folder (none configured, or the user dropped the copy): EmailSubmission still needs an Email, so it
+    // is staged in the configured Drafts folder and destroyed by onSuccessDestroyEmail. No copy is kept.
+    val mailboxId = sentId ?: jmapStagingMailbox(session, draftsName, username, password, pin, post, trust)
     val submissionId = jmapDeliver(
         session,
         bytes,
@@ -206,23 +208,25 @@ fun jmapIdentityFor(
     return jmapMatchingIdentityId(result.body, from) ?: throw JmapNoIdentity(from)
 }
 
+/** No Sent folder and no configured Drafts: JMAP needs somewhere to hold the message while it is submitted. */
+class JmapNoDraftsFolder : JmapFailure("a Drafts (Postponed) folder must be set to send over JMAP without a Sent folder")
+
+/** The configured Postponed/Drafts folder, matched exactly at top level; never a role or another folder. */
 fun jmapStagingMailbox(
     session: JmapSession,
+    draftsName: String,
     username: String,
     password: String,
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ): String {
+    if (draftsName.isBlank()) throw JmapNoDraftsFolder()
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val authorization = jmapBasicAuthorization(username, password)
-    for (role in listOf("drafts", "inbox")) {
-        val result = jmapCall(session.apiUrl, jmapRoleMailboxRequest(accountId, role), authorization, pin, post, trust)
-        if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
-        try { return jmapSentMailboxId(result.body) } catch (_: JmapFailure) {}
-    }
-    throw JmapFailure("jmap has no drafts or inbox mailbox to stage the message")
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
+    if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
+    return jmapTopLevelMailboxId(named.body, draftsName) ?: throw JmapFailure("jmap drafts folder \"$draftsName\" was not found")
 }
 
 private fun createdId(created: Json?): String? {

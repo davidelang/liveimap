@@ -346,7 +346,7 @@ class JmapMailSession(
         if (!a.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
         val s = need()
-        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin), postFor(pin), trust, a.sentMailbox) }
+        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin), postFor(pin), trust, a.sentMailbox, draftsName = a.postponedMailbox) }
         -1
     }
 

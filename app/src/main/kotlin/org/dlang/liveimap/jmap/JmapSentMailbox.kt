@@ -50,10 +50,6 @@ fun jmapFindSentMailbox(
     return jmapTopLevelMailboxId(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
 }
 
-/** A mailbox by role (e.g. "drafts"), or null. */
-fun jmapRoleMailboxRequest(accountId: String, role: String): String =
-    jmapSentMailboxRequest(accountId).replace("\"role\":\"sent\"", "\"role\":${quoted(role)}")
-
 fun jmapMailboxNamesRequest(accountId: String): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
     return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Mailbox/get",{"accountId":${quoted(accountId)},"ids":null,"properties":["id","name","parentId"]},"0"]]}"""
