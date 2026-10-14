@@ -336,6 +336,57 @@ class ConnectionKeeperTest {
     }
 
     @Test
+    fun suspendAfterConnectLetsTheNewerResumeReconnect() {
+        val clock = LifecycleClock()
+        val link = FakeLink()
+        link.deadFlag = true
+        val inReselect = CountDownLatch(1)
+        val releaseReselect = CountDownLatch(1)
+        link.beforeReselect = {
+            inReselect.countDown()
+            releaseReselect.await()
+            if (deadFlag) throw MailFailure("closed under the owner")
+        }
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
+        val epochA = clock.takeResume()
+        val ownerError = arrayOfNulls<Throwable>(1)
+        val owner = Thread {
+            try {
+                keeper.resume(clock, epochA)
+            } catch (error: Throwable) {
+                ownerError[0] = error
+            }
+        }
+        owner.start()
+        assertTrue(inReselect.await(5, TimeUnit.SECONDS))
+        assertEquals(1, link.connects)
+        val suspendEpoch = clock.takeSuspend()
+        keeper.suspendConnections(clock, suspendEpoch)
+        val epochB = clock.takeResume()
+        val resumeError = arrayOfNulls<Throwable>(1)
+        val resumed = CountDownLatch(1)
+        val resumeB = Thread {
+            try {
+                keeper.resume(clock, epochB)
+            } catch (error: Throwable) {
+                resumeError[0] = error
+            } finally {
+                resumed.countDown()
+            }
+        }
+        resumeB.start()
+        assertFalse(resumed.await(300, TimeUnit.MILLISECONDS))
+        releaseReselect.countDown()
+        owner.join()
+        assertTrue(resumed.await(5, TimeUnit.SECONDS))
+        assertEquals(null, ownerError[0])
+        assertEquals(null, resumeError[0])
+        assertEquals(ConnectionState.Connected, keeper.connectionState.value)
+        assertTrue(link.connects >= 2)
+        assertTrue(link.awaitRewatches(1))
+    }
+
+    @Test
     fun suspendThatIsStillLatestClosesWithoutIdle() {
         val clock = LifecycleClock()
         val link = FakeLink()
@@ -543,6 +594,7 @@ private class FakeLink : Link {
     private val rewatchArrived = java.util.concurrent.atomic.AtomicInteger(0)
     val emissions = mutableListOf<MailboxChange>()
     var beforeConnect: () -> Unit = {}
+    var beforeReselect: () -> Unit = {}
 
     fun awaitRewatches(n: Int): Boolean {
         val deadline = System.currentTimeMillis() + 5_000
@@ -573,6 +625,7 @@ private class FakeLink : Link {
 
     override fun reselect(): SelectResult? {
         reselects += 1
+        beforeReselect()
         return selectResult
     }
 

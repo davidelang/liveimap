@@ -43,7 +43,7 @@ class ConnectionKeeper(
     @Volatile private var watchLost = false
     // One reconnect owner. A loser does not connect or sleep; it waits for the owner's result.
     // A resume older than that owner returns without waiting. A newer resume waits, and reconnects
-    // if the owner stopped for a suspend. The slot is an atomic, not a mutex.
+    // if the owner stopped for a suspend or was superseded by one. The slot is an atomic, not a mutex.
     private val ownerResult = AtomicReference<ReconnectOwner?>(null)
     private var lifecycle: LifecycleClock? = null
     private val rewatchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -192,7 +192,7 @@ class ConnectionKeeper(
                 if (fromResume && started <= pending.epoch) return
                 val error = pending.result.get().exceptionOrNull()
                 if (fromResume && started > pending.epoch) {
-                    if (error is LifecycleStop) continue
+                    if (error is LifecycleStop || error is SupersededOwner) continue
                     if (error != null) throw error
                     return
                 }
@@ -209,6 +209,9 @@ class ConnectionKeeper(
         } catch (stop: LifecycleStop) {
             outcome = kotlin.Result.failure(stop)
             if (!fromResume) rethrow = ConnectionLost("Closed (background)")
+        } catch (stop: SupersededOwner) {
+            outcome = kotlin.Result.failure(stop)
+            if (!fromResume) rethrow = stop
         } catch (error: Throwable) {
             outcome = kotlin.Result.failure(error)
             rethrow = error
@@ -227,10 +230,10 @@ class ConnectionKeeper(
         var connected = false
         for (attempt in 0 until 2) {
             if (attempt == 1) {
-                if (ownerMustStop(life, epoch)) stopForSuspend()
+                stopOrSupersede(life, epoch)
                 sleep(3_000)
             }
-            if (ownerMustStop(life, epoch)) stopForSuspend()
+            stopOrSupersede(life, epoch)
             try {
                 link.connect()
                 connected = true
@@ -240,39 +243,42 @@ class ConnectionKeeper(
             }
         }
         if (!connected) {
+            if (ownerSuperseded(life, epoch)) throw SupersededOwner()
             val text = failureText(failure)
             state.value = ConnectionState.Lost(text)
             TrafficLog.noteStatus("Error $text")
             broken = true
             throw ConnectionLost(text)
         }
-        if (ownerMustStop(life, epoch)) stopForSuspend()
+        stopOrSupersede(life, epoch)
         val previous = lastSelect
         val selected = try {
             link.reselect()
         } catch (error: Exception) {
+            if (ownerSuperseded(life, epoch)) throw SupersededOwner()
+            if (ownerMustStop(life, epoch)) stopForSuspend()
             failReconnect(error)
         }
         for (change in reconnectChanges(previous, selected)) link.emit(change)
         if (selected != null) {
             lastSelect = selected
         }
-        if (ownerMustStop(life, epoch)) stopForSuspend()
+        stopOrSupersede(life, epoch)
         watchLost = false
         broken = false
         lastUsed = clock()
         publishConnected(life, epoch)
-        if (ownerMustStop(life, epoch)) stopForSuspend()
+        stopOrSupersede(life, epoch)
         scheduleRewatch(life, epoch)
     }
 
     // A winning suspend is not Connected. The update retries if that suspend lands first.
     private fun publishConnected(life: LifecycleClock?, epoch: Long) {
-        if (ownerMustStop(life, epoch)) stopForSuspend()
+        stopOrSupersede(life, epoch)
         state.update { cur ->
-            if (ownerMustStop(life, epoch)) cur else ConnectionState.Connected
+            if (ownerMustStop(life, epoch) || ownerSuperseded(life, epoch)) cur else ConnectionState.Connected
         }
-        if (ownerMustStop(life, epoch)) stopForSuspend()
+        stopOrSupersede(life, epoch)
     }
 
     private fun suspendWins(life: LifecycleClock?, epoch: Long): Boolean {
@@ -288,6 +294,19 @@ class ConnectionKeeper(
         return suspendWins(life, epoch)
     }
 
+    // A suspend already ran after this owner, and a newer resume is the latest move.
+    private fun ownerSuperseded(life: LifecycleClock?, epoch: Long): Boolean {
+        if (life == null) return false
+        val suspendAt = life.latestSuspend.get()
+        if (suspendAt <= epoch) return false
+        return suspendAt < life.latestResume.get()
+    }
+
+    private fun stopOrSupersede(life: LifecycleClock?, epoch: Long) {
+        if (ownerMustStop(life, epoch)) stopForSuspend()
+        if (ownerSuperseded(life, epoch)) throw SupersededOwner()
+    }
+
     private fun stopForSuspend(): Nothing {
         link.close()
         state.value = ConnectionState.Suspended
@@ -297,6 +316,7 @@ class ConnectionKeeper(
 
     private fun scheduleRewatch(life: LifecycleClock?, epoch: Long) {
         rewatchScope.launch {
+            if (ownerSuperseded(life, epoch)) return@launch
             if (ownerMustStop(life, epoch) || state.value is ConnectionState.Suspended) {
                 watchLost = true
                 if (ownerMustStop(life, epoch)) stopIdle()
@@ -308,6 +328,7 @@ class ConnectionKeeper(
                 watchLost = true
                 return@launch
             }
+            if (ownerSuperseded(life, epoch)) return@launch
             if (ownerMustStop(life, epoch) || state.value is ConnectionState.Suspended) {
                 watchLost = true
                 if (ownerMustStop(life, epoch)) stopIdle()
@@ -349,6 +370,8 @@ class ConnectionKeeper(
  * Does not open a socket.
  */
 private class LifecycleStop : RuntimeException()
+
+private class SupersededOwner : RuntimeException()
 
 internal fun reconnectChanges(
     previous: org.dlang.liveimap.session.SelectResult?,

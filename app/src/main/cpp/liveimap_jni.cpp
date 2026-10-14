@@ -241,6 +241,14 @@ struct SecretWipe {
     ~SecretWipe() { wipeSecret(secret); }
 };
 
+// One IDLE event held until nativeWatch publishes that generation or clears it.
+struct WatchNote {
+    int kind = 0;
+    int exists = 0;
+    jlong uid = 0;
+    std::vector<std::string> flags;
+};
+
 struct LiveSession {
     std::mutex mu;
     // F27: a stop joining the watch thread outside mu sets this; any other stop/free/setup waits on stopCv.
@@ -316,6 +324,11 @@ struct LiveSession {
     // Under startMu: 0 waiting, 1 IDLE started, -1 failed. A stop does not write it back to 0.
     int startState = 0;
     std::string startError;
+    // Under startMu: 0 queue, 1 deliver to the published generation, 2 drop.
+    int watchGate = 0;
+    std::vector<WatchNote> watchQueue;
+    bool watchLostBeforePublish = false;
+    bool watchEnded = false;
     jobject selfGlobal = nullptr;
     uint32_t watchUidValidity = 0;
     int watchExists = 0;
@@ -2121,6 +2134,53 @@ void emitWatch(LiveSession * session, int kind, int exists, jlong uid, jobjectAr
     }
 }
 
+jobjectArray flagsArray(JNIEnv * env, const std::vector<std::string> & flags);
+
+void flushQueuedWatch(LiveSession * session, jlong generation, const std::vector<WatchNote> & ready) {
+    for (const WatchNote & note : ready) {
+        jobjectArray flags = nullptr;
+        if (note.kind == 2 && gVm != nullptr) {
+            JNIEnv * env = nullptr;
+            gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+            if (env != nullptr) flags = flagsArray(env, note.flags);
+        }
+        emitWatch(session, note.kind, note.exists, note.uid, flags, generation);
+    }
+}
+
+// Queue while nativeWatch has not published this generation. Drop after a clear. Deliver after a publish.
+void queueWatch(LiveSession * session, int kind, int exists, jlong uid, std::vector<std::string> flags, jlong generation) {
+    std::vector<WatchNote> ready;
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        if (session->watchGate == 2) return;
+        if (session->watchGate == 0) {
+            if (kind == 4) session->watchLostBeforePublish = true;
+            session->watchQueue.push_back(WatchNote{kind, exists, uid, std::move(flags)});
+            return;
+        }
+        ready.swap(session->watchQueue);
+        ready.push_back(WatchNote{kind, exists, uid, std::move(flags)});
+    }
+    flushQueuedWatch(session, generation, ready);
+}
+
+void drainWatchQueue(LiveSession * session, jlong generation) {
+    std::vector<WatchNote> ready;
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        if (session->watchGate != 1 || session->watchQueue.empty()) return;
+        ready.swap(session->watchQueue);
+    }
+    flushQueuedWatch(session, generation, ready);
+}
+
+void markWatchEnded(LiveSession * session) {
+    std::lock_guard<std::mutex> lock(session->startMu);
+    session->watchEnded = true;
+    session->startCv.notify_all();
+}
+
 jobjectArray flagsArray(JNIEnv * env, const std::vector<std::string> & flags) {
     jclass stringCls = env->FindClass("java/lang/String");
     jobjectArray arr = env->NewObjectArray(static_cast<jsize>(flags.size()), stringCls, nullptr);
@@ -2141,23 +2201,18 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
         struct mailimap_mailbox_data * mb = data->rsp_data.rsp_mailbox_data;
         if (mb->mbd_type == MAILIMAP_MAILBOX_DATA_EXISTS) {
             session->watchExists = static_cast<int>(mb->mbd_data.mbd_exists);
-            emitWatch(session, 0, session->watchExists, 0, nullptr, generation);
+            queueWatch(session, 0, session->watchExists, 0, {}, generation);
         }
     } else if (data->rsp_type == MAILIMAP_RESP_DATA_TYPE_MESSAGE_DATA && data->rsp_data.rsp_message_data != nullptr) {
         struct mailimap_message_data * msg = data->rsp_data.rsp_message_data;
         if (msg->mdt_type == MAILIMAP_MESSAGE_DATA_EXPUNGE) {
             if (session->watchExists > 0) session->watchExists -= 1;
-            emitWatch(session, 1, session->watchExists, 0, nullptr, generation);
+            queueWatch(session, 1, session->watchExists, 0, {}, generation);
         } else if (msg->mdt_type == MAILIMAP_MESSAGE_DATA_FETCH) {
             Row row;
             readAtt(msg->mdt_msg_att, &row, nullptr, nullptr);
             if (row.uid != 0) {
-                JNIEnv * env = nullptr;
-                gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-                if (env != nullptr) {
-                    jobjectArray flags = flagsArray(env, row.flags);
-                    emitWatch(session, 2, session->watchExists, static_cast<jlong>(row.uid), flags, generation);
-                }
+                queueWatch(session, 2, session->watchExists, static_cast<jlong>(row.uid), std::move(row.flags), generation);
             }
         }
     } else if (data->rsp_type == MAILIMAP_RESP_DATA_TYPE_COND_STATE && data->rsp_data.rsp_cond_state != nullptr) {
@@ -2167,7 +2222,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
             uint32_t uv = text->rsp_code->rc_data.rc_uidvalidity;
             if (session->watchUidValidity != 0 && uv != session->watchUidValidity) {
                 session->watchUidValidity = uv;
-                emitWatch(session, 3, session->watchExists, 0, nullptr, generation);
+                queueWatch(session, 3, session->watchExists, 0, {}, generation);
             }
         }
     }
@@ -2175,7 +2230,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
         uint32_t uv = session->watch->imap_selection_info->sel_uidvalidity;
         if (session->watchUidValidity != 0 && uv != 0 && uv != session->watchUidValidity) {
             session->watchUidValidity = uv;
-            emitWatch(session, 3, session->watchExists, 0, nullptr, generation);
+            queueWatch(session, 3, session->watchExists, 0, {}, generation);
         }
     }
 }
@@ -2209,6 +2264,7 @@ void watchMain(LiveSession * session) {
         std::lock_guard<std::mutex> lock(session->startMu);
         session->startState = -1;
         session->startError = "idle failed";
+        session->watchEnded = true;
         session->startCv.notify_all();
         return;
     }
@@ -2218,6 +2274,7 @@ void watchMain(LiveSession * session) {
         std::lock_guard<std::mutex> lock(session->startMu);
         if (r != MAILIMAP_NO_ERROR) {
             session->startState = -1;
+            session->watchEnded = true;
             // A server that drops the connection on IDLE (no tagged reply, e.g. a crashing imapd) gets a fixed
             // marker text so the app can fall back to polling (IdleFallback.kt).
             session->startError = r == MAILIMAP_ERROR_STREAM ? std::string("IDLE dropped by server")
@@ -2236,6 +2293,7 @@ void watchMain(LiveSession * session) {
     bool watchLost = false;
     auto idleSince = std::chrono::steady_clock::now();
     while (!session->watchStop.load()) {
+        drainWatchQueue(session, static_cast<jlong>(generation));
         long idleAge = (long) std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - idleSince).count();
         if (!session->watchStop.load() &&
@@ -2247,7 +2305,7 @@ void watchMain(LiveSession * session) {
             // Shutdown fails this in-flight DONE or IDLE. That is a stop, not WatchLost, and not another DONE.
             if (session->watchStop.load()) break;
             if (doneR != MAILIMAP_NO_ERROR || idleR != MAILIMAP_NO_ERROR) {
-                emitWatch(session, 4, session->watchExists, 0, nullptr, static_cast<jlong>(generation));
+                queueWatch(session, 4, session->watchExists, 0, {}, static_cast<jlong>(generation));
                 watchLost = true;
                 break;
             }
@@ -2281,7 +2339,7 @@ void watchMain(LiveSession * session) {
         }
         if (mailimap_read_line(session->watch) == nullptr) {
             if (!session->watchStop.load()) {
-                emitWatch(session, 4, session->watchExists, 0, nullptr, static_cast<jlong>(generation));
+                queueWatch(session, 4, session->watchExists, 0, {}, static_cast<jlong>(generation));
             }
             watchLost = true;
             break;
@@ -2300,6 +2358,8 @@ void watchMain(LiveSession * session) {
     if (!watchLost && !session->watchStop.load()) {
         mailimap_idle_done(session->watch);
     }
+    drainWatchQueue(session, static_cast<jlong>(generation));
+    markWatchEnded(session);
     tlsWatch = nullptr;
     if (session->deleteAfterWatch) {
         // F35: freeSession ran on this thread; nobody else will join or delete, so finish it here.
@@ -8449,6 +8509,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         session->watchStop.store(false);
         session->startState = 0;
         session->startError.clear();
+        session->watchGate = 0;
+        session->watchQueue.clear();
+        session->watchLostBeforePublish = false;
+        session->watchEnded = false;
     }
     if (watch->imap_selection_info != nullptr) {
         session->watchUidValidity = watch->imap_selection_info->sel_uidvalidity;
@@ -8473,26 +8537,49 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         started = session->startState;
     }
     session->mu.lock();
-    // Publish only after IDLE has started. A newer publish wins in Kotlin.
-    if (started > 0 && !watchSetupSuperseded(session->closed, session->watchGeneration, generation, false)) {
+    const bool superseded = watchSetupSuperseded(session->closed, session->watchGeneration, generation, false);
+    bool lostEarly = false;
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        lostEarly = session->watchLostBeforePublish || session->watchEnded;
+    }
+    // Publish only after IDLE has started. A dead IDLE is not published. A newer publish wins in Kotlin.
+    if (started > 0 && !superseded && !lostEarly) {
         if (gJni.publishWatch != nullptr && callback != nullptr) {
             env->CallVoidMethod(thiz, gJni.publishWatch, static_cast<jlong>(generation), callback);
             if (env->ExceptionCheck()) env->ExceptionClear();
         }
     }
-    // This generation is not a live IDLE. Clear it. A stop bumps the generation, so a newer publish stays.
-    if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, false)) {
-        clearThisWatch();
-        unlockSession(session);
-        return 0;
+    bool deliver = false;
+    {
+        std::lock_guard<std::mutex> lock(session->startMu);
+        const bool lost = session->watchLostBeforePublish || session->watchEnded;
+        if (superseded || started <= 0 || lost) {
+            session->watchGate = 2;
+            session->watchQueue.clear();
+        } else {
+            session->watchGate = 1;
+            deliver = true;
+        }
     }
-    if (started < 0) {
-        std::string why = session->startError;
-        if (session->watchThread.joinable()) session->watchThread.join();
-        mailimap_free(session->watch);
-        session->watch = nullptr;
+    if (deliver && session->watchWakeFd >= 0) {
+        uint64_t one = 1;
+        ssize_t ignored = write(session->watchWakeFd, &one, sizeof(one));
+        (void)ignored;
+    }
+    // This generation is not a live IDLE. Clear it. A stop bumps the generation, so a newer publish stays.
+    if (!deliver) {
+        if (started < 0 && !superseded) {
+            std::string why = session->startError;
+            if (session->watchThread.joinable()) session->watchThread.join();
+            mailimap_free(session->watch);
+            session->watch = nullptr;
+            clearThisWatch();
+            throwFailure(env, why);
+            unlockSession(session);
+            return 0;
+        }
         clearThisWatch();
-        throwFailure(env, why);
         unlockSession(session);
         return 0;
     }

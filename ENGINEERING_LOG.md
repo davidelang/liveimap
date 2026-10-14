@@ -2810,3 +2810,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: when jmapFolders is on, a watchOnly that returns stays open and is not recorded as a STATUS name; IMAP without IDLE still records the name and opens later folders
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - First watch event waits for the publish
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-publish-gap-20261014-1002-plan.md
+- Work: queue watch events until the generation is published or cleared; a dead IDLE returns 0; a superseded owner does not fail the newer resume
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
