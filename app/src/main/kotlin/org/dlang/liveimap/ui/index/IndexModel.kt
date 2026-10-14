@@ -461,7 +461,7 @@ fun effectiveDeletePolicy(
     inTrash: Boolean,
     uidPlus: Boolean,
     trashKnown: Boolean,
-    trashNamedByUser: Boolean = true,
+    trashNamedByUser: Boolean,
 ): DeletePolicy {
     // F90: a folder is "Trash" for permanent deletion only when the user named it; one the server merely flags
     // \Trash gets the user's own policy (never an escalation to an undo-less UID EXPUNGE).
@@ -472,6 +472,27 @@ fun effectiveDeletePolicy(
     if (policy == DeletePolicy.DeletePermanently && !uidPlus) return DeletePolicy.MarkDeleted
     if (policy == DeletePolicy.MoveToTrash && !trashKnown) return DeletePolicy.MarkDeleted
     return policy
+}
+
+/**
+ * [policy] is what the home folder was going to do when the user confirmed. A Trash hit made permanent does not
+ * change the home folder. [permanentOnlyInTrash] is that confirm; other folders keep [effectiveDeletePolicy].
+ */
+fun policyForListedDelete(
+    policy: DeletePolicy,
+    folder: String,
+    home: String,
+    trash: String,
+    uidPlus: Boolean,
+    trashNamedByUser: Boolean,
+    permanentOnlyInTrash: Boolean,
+): DeletePolicy {
+    val inTrash = trash.isNotEmpty() && sameMailbox(folder, trash)
+    if (sameMailbox(folder, home)) return policy
+    if (permanentOnlyInTrash && inTrash) {
+        return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
+    }
+    return effectiveDeletePolicy(policy, inTrash, uidPlus, trash.isNotEmpty(), trashNamedByUser)
 }
 
 fun alternateDeletePolicies(
@@ -498,16 +519,17 @@ fun selectAllTarget(filterActive: Boolean, order: List<Long>): SelectAllTarget {
 
 data class MailUndo(
     val delete: Boolean,
-    val uids: List<Long>,
-    val allMailbox: Boolean = false,
     val targetMailbox: String = "",
-    val destUids: List<Long> = emptyList(),
     val usedMove: Boolean = false,
     /** F105: the changed messages with folder and UIDVALIDITY; [IndexModel.undo] acts on exactly these. */
     val source: List<MessageRef> = emptyList(),
     /** Their copies in [targetMailbox] (from COPYUID), same epoch rules. */
     val dest: List<MessageRef> = emptyList(),
-)
+) {
+    val uids: List<Long> get() = source.map { it.uid }
+    val destUids: List<Long> get() = dest.map { it.uid }
+    val allMailbox: Boolean get() = false
+}
 
 /** The account scope of a [MessageRef] made for [settings]. */
 fun refAccountKey(settings: AccountSettings): String = "${settings.username}@${settings.imapHost}"
@@ -529,9 +551,7 @@ fun refUndo(
     val key = refAccountKey(settings)
     return MailUndo(
         delete = target.isEmpty(),
-        uids = listOf(uid),
         targetMailbox = target,
-        destUids = dest,
         usedMove = usedMove,
         source = listOf(MessageRef(key, folder, epoch, uid)),
         dest = if (targetEpoch > 0) dest.map { MessageRef(key, target, targetEpoch, it) } else emptyList(),
@@ -792,6 +812,9 @@ class IndexModel(
 
     var notice: String? = null
 
+    /** Set when a cross-folder page could not fetch one folder. Callers report it instead of dropping the folder. */
+    private var pageFailures: String? = null
+
     /** Opens a side connection for a long search; set by the screen (null in tests: main session). */
     var longSearchLinks: ((AccountSettings, String) -> LongSearchLink)? = null
 
@@ -953,6 +976,7 @@ class IndexModel(
             val loaded = when {
                 usesArrivalSequences() -> fetchArrivalWindow()
                 threading -> loadThreadPage()
+                orderMailboxes.isNotEmpty() -> pagesOfMailboxes(order, orderMailboxes)
                 else -> pagesOf(order)
             }
             rememberStart(target, loaded.size)
@@ -1247,12 +1271,15 @@ class IndexModel(
         val previousMembers = threadMembers
         pageAnchor += 1
         try {
+            pageFailures = null
             heldRows = when {
                 threading -> loadThreadPage()
                 arrivalTotal > 0 -> fetchArrivalWindow()
+                orderMailboxes.isNotEmpty() -> pagesOfMailboxes(order, orderMailboxes)
                 else -> pagesOf(order)
             }
-            notice = null
+            notice = pageFailures
+            pageFailures = null
             publishMessageOrder()
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
@@ -1276,12 +1303,15 @@ class IndexModel(
         pageAnchor -= 1
         lastVisibleIndex = 0
         try {
+            pageFailures = null
             heldRows = when {
                 threading -> loadThreadPage()
                 arrivalTotal > 0 -> fetchArrivalWindow()
+                orderMailboxes.isNotEmpty() -> pagesOfMailboxes(order, orderMailboxes)
                 else -> pagesOf(order)
             }
-            notice = null
+            notice = pageFailures
+            pageFailures = null
             if (threading) publishMessageOrder()
         } catch (failure: MailFailure) {
             pageAnchor = previousAnchor
@@ -1340,7 +1370,7 @@ class IndexModel(
         when (change) {
             is MailboxChange.Flags -> {
                 heldRows = heldRows.map { row ->
-                    if (row.uid == change.uid) row.copy(flags = change.flags) else row
+                    if (row.uid == change.uid && inListedFolder(row, mailbox)) row.copy(flags = change.flags) else row
                 }
             }
             is MailboxChange.Exists -> {
@@ -1453,9 +1483,12 @@ class IndexModel(
     private var actFolder: String? = null
 
     /** True when [row] is one of the rows the current action is about (same folder as the action). */
-    private fun inActedFolder(row: IndexRow): Boolean {
-        val folder = actFolder
-        return if (folder == null) row.mailbox.isEmpty() || row.mailbox == mailbox else row.mailbox == folder
+    private fun inActedFolder(row: IndexRow): Boolean = inListedFolder(row, actFolder ?: mailbox)
+
+    /** [row] was listed in [folder] (an empty row mailbox is this index's folder). */
+    private fun inListedFolder(row: IndexRow, folder: String): Boolean {
+        val named = if (row.mailbox.isEmpty()) mailbox else row.mailbox
+        return sameMailbox(named, folder)
     }
 
     private fun foreign(rowMailbox: String) = rowMailbox.isNotEmpty() && rowMailbox != mailbox
@@ -1510,8 +1543,6 @@ class IndexModel(
         if (parts.any { it.source.isEmpty() || it.delete != first.delete || it.targetMailbox != first.targetMailbox ||
                 it.usedMove != first.usedMove }) return null
         return first.copy(
-            uids = parts.flatMap { it.uids },
-            destUids = parts.flatMap { it.destUids },
             source = parts.flatMap { it.source },
             dest = parts.flatMap { it.dest },
         )
@@ -1523,19 +1554,34 @@ class IndexModel(
             // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
             // and undo only clears \Deleted on UIDs this action actually changed.
             val target = if (allMailbox) frozenAll() else uids
+            val wanted = target.toSet()
             val before = if (allMailbox) home.searchCriterion("Deleted", "").toSet()
-                else heldRows.filter { it.uid in uids.toSet() && "\\Deleted" in it.flags }.map { it.uid }.toSet()
-            for (part in target.chunked(MoveChunk)) home.storeFlags(part, setOf("\\Deleted"), emptySet())
-            val changed = target.filter { it !in before }
-            val idSet = target.toSet()
+                else heldRows.filter { it.uid in wanted && "\\Deleted" in it.flags && inActedFolder(it) }.map { it.uid }.toSet()
+            val done = ArrayList<Long>()
+            var failure: MailFailure? = null
+            for (part in target.chunked(MoveChunk)) {
+                try {
+                    home.storeFlags(part, setOf("\\Deleted"), emptySet())
+                    done.addAll(part)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    failure = error
+                    break
+                }
+            }
+            val changed = done.filter { it !in before }
+            val idSet = done.toSet()
             heldRows = heldRows.map { row ->
                 if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags + "\\Deleted") else row
             }
-            notice = null
+            notice = when {
+                failure != null && done.isNotEmpty() -> "Deleted ${done.size} of ${target.size}, then: ${failure.text}"
+                failure != null -> failure.text
+                else -> null
+            }
             mailUndo = if (changed.isEmpty()) null else MailUndo(
                 delete = true,
-                uids = changed,
-                allMailbox = false,
                 source = refsFor(changed),
             )
         } catch (failure: MailFailure) {
@@ -1606,10 +1652,7 @@ class IndexModel(
             // MOVE could not be reversed and copy-then-mark would leave duplicates.
             mailUndo = if (moved.isEmpty() || outcome.dest.size != moved.size || targetEpoch <= 0L) null else MailUndo(
                 delete = false,
-                uids = moved,
-                allMailbox = false,
                 targetMailbox = moveMailbox,
-                destUids = outcome.dest,
                 usedMove = usedMove,
                 source = refsFor(moved),
                 dest = outcome.dest.map { MessageRef(accountKey, moveMailbox, targetEpoch, it) },
@@ -1629,26 +1672,35 @@ class IndexModel(
         if (!session.featureCaps.uidPlus) return heldRows
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            if (allMailbox) {
-                // F44: snapshot UIDs; UID EXPUNGE only those, so a message arriving now is never destroyed unseen.
-                val snapshot = frozenAll()
-                for (part in snapshot.chunked(MoveChunk)) {
+            val snapshot = if (allMailbox) frozenAll() else uids
+            val done = ArrayList<Long>()
+            var failure: MailFailure? = null
+            for (part in snapshot.chunked(MoveChunk)) {
+                try {
                     home.storeFlags(part, setOf("\\Deleted"), emptySet())
                     home.uidExpunge(part)
+                    done.addAll(part)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    failure = error
+                    break
                 }
-                val gone = snapshot.toSet()
-                if (actFolder == null) order = orderWithout(order, gone)
-                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
-            } else {
-                home.storeFlags(uids, setOf("\\Deleted"), emptySet())
-                home.uidExpunge(uids)
-                val gone = uids.toSet()
+            }
+            if (done.isNotEmpty()) {
+                val gone = done.toSet()
                 if (actFolder == null) order = orderWithout(order, gone)
                 heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
             }
-            notice = null
+            notice = when {
+                failure != null && done.isNotEmpty() -> "Deleted ${done.size} of ${snapshot.size}, then: ${failure.text}"
+                failure != null -> failure.text
+                else -> null
+            }
             mailUndo = null
-            OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
+            if (done.isNotEmpty()) {
+                OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
+            }
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1658,24 +1710,28 @@ class IndexModel(
 
     /**
      * F105: undo exactly what [u] recorded, in the folders and UIDVALIDITY epochs it recorded (a cross-folder hit's
-     * undo works too). An undo without refs (built elsewhere) goes the old way, in this folder.
+     * undo works too). An undo without those refs is refused.
      */
     suspend fun undo(u: MailUndo): List<IndexRow> {
         account = store.load()
         if (u.source.isEmpty()) {
-            return if (u.delete) undoDelete(u.uids, u.allMailbox)
-            else undoMove(u.uids, u.targetMailbox, u.destUids, u.usedMove, u.allMailbox)
+            notice = "Undo not possible: the message was not recorded"
+            mailUndo = null
+            return heldRows
         }
         try {
             if (u.delete) {
                 session.onRefs(accountKey, u.source) { s, _, uids ->
                     for (part in uids.chunked(MoveChunk)) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
                 }
-                val keys = u.source.filter { sameMailbox(it.mailbox, mailbox) }.map { it.uid }.toSet()
                 val hits = u.source.map { it.mailbox to it.uid }.toSet()
                 heldRows = heldRows.map { row ->
-                    val own = row.uid in keys && (row.mailbox.isEmpty() || row.mailbox == mailbox)
-                    if (own || (row.mailbox to row.uid) in hits) row.copy(flags = row.flags - "\\Deleted") else row
+                    val named = if (row.mailbox.isEmpty()) mailbox else row.mailbox
+                    if ((named to row.uid) in hits || u.source.any { sameMailbox(it.mailbox, named) && it.uid == row.uid }) {
+                        row.copy(flags = row.flags - "\\Deleted")
+                    } else {
+                        row
+                    }
                 }
                 notice = null
                 mailUndo = null
@@ -1687,10 +1743,15 @@ class IndexModel(
                 return heldRows
             }
             if (u.usedMove) {
-                // copies go back to each one's own source folder (a multi-folder selection has several)
-                val byHome = u.source.indices.groupBy({ u.source[it].mailbox }, { u.dest[it] })
-                for ((back, refs) in byHome) {
-                    session.onRefs(accountKey, refs) { s, _, uids -> s.copyThenDelete(uids, back) }
+                // Same move the action used (MOVE when that is what ran), so the target does not keep \Deleted copies.
+                val buckets = LinkedHashMap<Triple<String, Long, String>, MutableList<Long>>()
+                for (i in u.source.indices) {
+                    val destRef = u.dest[i]
+                    val key = Triple(destRef.mailbox, destRef.uidValidity, u.source[i].mailbox)
+                    buckets.getOrPut(key) { ArrayList() }.add(destRef.uid)
+                }
+                for ((key, moved) in buckets) {
+                    session.copyFrom(FolderAt(key.first, key.second), moved, key.third, delete = true)
                 }
             } else {
                 session.onRefs(accountKey, u.source) { s, _, uids ->
@@ -1698,54 +1759,6 @@ class IndexModel(
                 }
                 session.onRefs(accountKey, u.dest) { s, _, uids ->
                     s.storeFlags(uids, setOf("\\Deleted"), emptySet())
-                }
-            }
-            notice = null
-            mailUndo = null
-            if (loadedWindow) return reloadKeepingAnchor()
-        } catch (failure: MailFailure) {
-            notice = failure.text
-        }
-        return heldRows
-    }
-
-    suspend fun undoDelete(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
-        try {
-            // F44: undo is per recorded UID; a whole-folder clear would also undelete earlier \Deleted mail.
-            for (part in uids.chunked(MoveChunk)) home.storeFlags(part, emptySet(), setOf("\\Deleted"))
-            val idSet = uids.toSet()
-            heldRows = heldRows.map { row ->
-                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags - "\\Deleted") else row
-            }
-            notice = null
-            mailUndo = null
-        } catch (failure: MailFailure) {
-            notice = failure.text
-        }
-        return heldRows
-    }
-
-    suspend fun undoMove(
-        sourceUids: List<Long>,
-        targetMailbox: String,
-        destUids: List<Long>,
-        usedMove: Boolean,
-        allMailbox: Boolean = false,
-    ): List<IndexRow> {
-        if (usedMove && destUids.isEmpty()) {
-            // F45: nothing to move back; do not report an undo that did not happen.
-            notice = "Undo not possible: the server did not report where the messages went"
-            mailUndo = null
-            return heldRows
-        }
-        try {
-            // Legacy undo (no refs): the target's epoch is unknown, so it is named without one (as before).
-            if (usedMove) {
-                session.inFolder(FolderAt(targetMailbox)) { _, s -> s.copyThenDelete(destUids, mailbox) }
-            } else {
-                if (sourceUids.isNotEmpty()) home.storeFlags(sourceUids, emptySet(), setOf("\\Deleted"))
-                if (destUids.isNotEmpty()) {
-                    session.inFolder(FolderAt(targetMailbox)) { _, s -> s.storeFlags(destUids, setOf("\\Deleted"), emptySet()) }
                 }
             }
             notice = null
@@ -1771,12 +1784,28 @@ class IndexModel(
         try {
             // F44: snapshot UIDs, so new mail is not marked (e.g. \Seen) before it was ever shown.
             val target = if (allMailbox) frozenAll() else uids
-            for (part in target.chunked(MoveChunk)) home.storeFlags(part, add, remove)
-            val idSet = target.toSet()
+            val done = ArrayList<Long>()
+            var failure: MailFailure? = null
+            for (part in target.chunked(MoveChunk)) {
+                try {
+                    home.storeFlags(part, add, remove)
+                    done.addAll(part)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    failure = error
+                    break
+                }
+            }
+            val idSet = done.toSet()
             heldRows = heldRows.map { row ->
                 if (row.uid in idSet && inActedFolder(row)) row.copy(flags = (row.flags + add) - remove) else row
             }
-            notice = null
+            notice = when {
+                failure != null && done.isNotEmpty() -> "Changed ${done.size} of ${target.size}, then: ${failure.text}"
+                failure != null -> failure.text
+                else -> null
+            }
         } catch (failure: MailFailure) {
             notice = failure.text
         }
@@ -1833,7 +1862,7 @@ class IndexModel(
                 val trash = session.knownTrash()
                 val policy = effectiveDeletePolicy(
                     settings.deletePolicy,
-                    trash.isNotEmpty() && (actFolder ?: mailbox) == trash,
+                    trash.isNotEmpty() && sameMailbox(actFolder ?: mailbox, trash),
                     session.featureCaps.uidPlus,
                     trash.isNotEmpty(),
                     trashNamedByUser = usableTrashName(settings.trashMailbox).isNotEmpty(),
@@ -1908,7 +1937,8 @@ class IndexModel(
                 load()
             }
             loadedWindow = true
-            notice = pendingNotice
+            notice = pageFailures ?: pendingNotice
+            pageFailures = null
             pendingNotice = null
             if (!placedStart) lastVisibleIndex = previousIndex
             rememberExists()
@@ -1923,6 +1953,7 @@ class IndexModel(
             threadPlan = previousPlan
             windowFailed = true
             pendingNotice = null
+            pageFailures = null
             forceNewest = false
             honourKeep = false
             notice = failure.text
@@ -2586,27 +2617,26 @@ class IndexModel(
         if (start >= uids.size) return emptyList()
         val end = minOf(uids.size, start + IndexPageSize * 2)
         val loaded = ArrayList<IndexRow>()
-        try {
-            var index = start
-            while (index < end) {
-                val box = mailboxes[index]
-                var next = index + 1
-                while (next < end && mailboxes[next] == box) next += 1
-                val slice = uids.subList(index, next)
-                // fetchListed checks the box's recorded epoch (or records it) in the same call as the fetch.
-                val fetched = try {
-                    align(slice, fetchByUid(slice, folder = box))
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: MailFailure) {
-                    emptyList()
-                }
-                for (row in fetched) loaded.add(row.copy(mailbox = box))
-                index = next
+        val failed = ArrayList<String>()
+        var index = start
+        while (index < end) {
+            val box = mailboxes[index]
+            var next = index + 1
+            while (next < end && mailboxes[next] == box) next += 1
+            val slice = uids.subList(index, next)
+            // fetchListed checks the box's recorded epoch (or records it) in the same call as the fetch.
+            val fetched = try {
+                align(slice, fetchByUid(slice, folder = box))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (failure: MailFailure) {
+                failed.add("$box: ${failure.text}")
+                emptyList()
             }
-        } finally {
-            // Nothing to restore: no folder is ever left selected for anyone else to depend on.
+            for (row in fetched) loaded.add(row.copy(mailbox = box))
+            index = next
         }
+        if (failed.isNotEmpty()) pageFailures = failed.joinToString("; ")
         return loaded
     }
 

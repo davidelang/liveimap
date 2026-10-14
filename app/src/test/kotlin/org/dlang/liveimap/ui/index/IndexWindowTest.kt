@@ -383,27 +383,27 @@ class IndexWindowTest {
     fun effectiveDeletePolicyFallbacks() {
         assertEquals(
             DeletePolicy.DeletePermanently,
-            effectiveDeletePolicy(DeletePolicy.MarkDeleted, inTrash = true, uidPlus = true, trashKnown = true),
+            effectiveDeletePolicy(DeletePolicy.MarkDeleted, inTrash = true, uidPlus = true, trashKnown = true, trashNamedByUser = true),
         )
         assertEquals(
             DeletePolicy.MarkDeleted,
-            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = false, trashKnown = true),
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = false, trashKnown = true, trashNamedByUser = true),
         )
         assertEquals(
             DeletePolicy.MarkDeleted,
-            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = false, trashKnown = false),
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = false, trashKnown = false, trashNamedByUser = true),
         )
         assertEquals(
             DeletePolicy.MarkDeleted,
-            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = true, trashKnown = false),
+            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = true, trashKnown = false, trashNamedByUser = true),
         )
         assertEquals(
             DeletePolicy.MoveToTrash,
-            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = false, trashKnown = true),
+            effectiveDeletePolicy(DeletePolicy.MoveToTrash, inTrash = false, uidPlus = false, trashKnown = true, trashNamedByUser = true),
         )
         assertEquals(
             DeletePolicy.DeletePermanently,
-            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = true, trashKnown = false),
+            effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = false, uidPlus = true, trashKnown = false, trashNamedByUser = true),
         )
     }
 
@@ -768,24 +768,6 @@ class IndexWindowTest {
     }
 
     @Test
-    fun undoMoveRestoresSelectionWhenTargetWorkFails() {
-        val session = FakeMailSession()
-        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
-        session.failure = MailFailure("copy failed")
-        runImmediate { model.undoMove(listOf(1L), "Trash", listOf(9L), usedMove = true) }
-        assertEquals("copy failed", model.notice)
-    }
-
-    @Test
-    fun undoMoveWithoutDestinationUidsIsRefused() {
-        val session = FakeMailSession()
-        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
-        runImmediate { model.undoMove(listOf(1L), "Trash", emptyList(), usedMove = true) }
-        assertTrue(session.copies.isEmpty())
-        assertTrue(model.notice!!.startsWith("Undo not possible"))
-    }
-
-    @Test
     fun deleteAllUsesSnapshotAndUndoOnlyClearsWhatChanged() {
         val session = folder(3)
         session.deletedUids.add(2L)  // already \Deleted before the action
@@ -799,7 +781,7 @@ class IndexWindowTest {
         assertEquals(listOf(1L, 3L), undo.uids)
         assertFalse(undo.allMailbox)
         session.stores.clear()
-        runImmediate { model.undoDelete(undo.uids, undo.allMailbox) }
+        runImmediate { model.undo(undo) }
         assertEquals(listOf(FlagWrite(listOf(1L, 3L), emptySet(), setOf("\\Deleted"))), session.stores)
     }
 

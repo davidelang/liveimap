@@ -19,6 +19,14 @@ suspend fun selectFolderNow(s: MailSession, folder: FolderAt, fresh: Boolean): S
     return selected
 }
 
+/**
+ * Called again after a reconnect, before the command's UIDs are used. A mismatch throws; nothing is stored,
+ * expunged, or copied in the new epoch.
+ */
+fun epochAfterReconnect(named: Long, now: Long, mailbox: String) {
+    if (named != 0L && now != named) throw EpochChanged(mailbox)
+}
+
 /** The folder's UIDVALIDITY is not the one its UIDs were listed in: nothing was sent; reload the list. */
 class EpochChanged(val mailbox: String) :
     MailFailure("folder $mailbox changed on the server (UIDVALIDITY); reload the list")

@@ -15,6 +15,7 @@ import org.dlang.liveimap.session.LifecycleClock
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
+import org.dlang.liveimap.session.epochAfterReconnect
 
 internal const val idleBeforeNoopMs = 120_000L
 
@@ -122,14 +123,18 @@ class ConnectionKeeper(
         TrafficLog.noteStatus("Closed (background)")
     }
 
+    // Epoch the command had selected, and the epoch after the reconnect that just finished.
+    private var driftNamed = 0L
+    private var driftNow = 0L
+
     fun <T> read(@Suppress("UNUSED_PARAMETER") op: String, block: () -> T): T {
-        prepare()
+        if (prepare()) refuseDriftedEpoch()
         return try {
             val value = block()
             lastUsed = clock()
             value
         } catch (_: ConnectionLost) {
-            reconnect()
+            if (reconnect()) refuseDriftedEpoch()
             try {
                 val value = block()
                 lastUsed = clock()
@@ -143,7 +148,7 @@ class ConnectionKeeper(
     }
 
     fun <T> write(op: String, block: () -> T): T {
-        prepare()
+        if (prepare()) refuseDriftedEpoch()
         return try {
             val value = block()
             lastUsed = clock()
@@ -156,6 +161,15 @@ class ConnectionKeeper(
         }
     }
 
+    private fun refuseDriftedEpoch(): Nothing {
+        val named = driftNamed
+        val now = driftNow
+        driftNamed = 0L
+        driftNow = 0L
+        epochAfterReconnect(named, now, "")
+        throw EpochUnreachable()
+    }
+
     private fun needsReconnect(): Boolean {
         return broken || link.dead() ||
             state.value is ConnectionState.Suspended ||
@@ -164,19 +178,20 @@ class ConnectionKeeper(
 
     private fun idleTooLong(): Boolean = clock() - lastUsed >= idleBeforeNoopMs
 
-    private fun prepare() {
+    /** True when the reconnect's folder epoch is not the one the command had selected. */
+    private fun prepare(): Boolean {
         if (needsReconnect()) {
-            reconnect()
-            return
+            return reconnect()
         }
         if (idleTooLong()) {
             try {
                 link.noop()
                 lastUsed = clock()
             } catch (_: ConnectionLost) {
-                reconnect()
+                return reconnect()
             }
         }
+        return false
     }
 
     private class ReconnectOwner(
@@ -184,21 +199,21 @@ class ConnectionKeeper(
         val result: CompletableFuture<kotlin.Result<Unit>>,
     )
 
-    private fun reconnect(fromResume: Boolean = false, epoch: Long? = null, life: LifecycleClock? = lifecycle) {
+    private fun reconnect(fromResume: Boolean = false, epoch: Long? = null, life: LifecycleClock? = lifecycle): Boolean {
         val started = epoch ?: life?.current?.get() ?: 0L
         val owned = CompletableFuture<kotlin.Result<Unit>>()
         val slot = ReconnectOwner(started, owned)
         while (true) {
             val pending = ownerResult.get()
             if (pending != null) {
-                if (fromResume && started <= pending.epoch) return
+                if (fromResume && started <= pending.epoch) return false
                 val error = pending.result.get().exceptionOrNull()
                 if (fromResume && started > pending.epoch) {
                     if (error is LifecycleStop || error is SupersededOwner) continue
                     if (error != null) throw error
-                    return
+                    return false
                 }
-                if (error == null) return
+                if (error == null) return false
                 if (error is LifecycleStop) throw ConnectionLost("Closed (background)")
                 throw error
             }
@@ -206,8 +221,9 @@ class ConnectionKeeper(
         }
         var outcome = kotlin.Result.success(Unit)
         var rethrow: Throwable? = null
+        var drifted = false
         try {
-            driveReconnect(life, started)
+            drifted = driveReconnect(life, started)
         } catch (stop: LifecycleStop) {
             outcome = kotlin.Result.failure(stop)
             if (!fromResume) rethrow = ConnectionLost("Closed (background)")
@@ -242,9 +258,10 @@ class ConnectionKeeper(
             }
         }
         if (rethrow != null) throw rethrow
+        return drifted
     }
 
-    private fun driveReconnect(life: LifecycleClock?, epoch: Long) {
+    private fun driveReconnect(life: LifecycleClock?, epoch: Long): Boolean {
         state.value = ConnectionState.Reconnecting
         TrafficLog.noteStatus("Reconnecting")
         link.close()
@@ -286,6 +303,9 @@ class ConnectionKeeper(
         if (selected != null) {
             lastSelect = selected
         }
+        driftNamed = previous?.uidValidity ?: 0L
+        driftNow = selected?.uidValidity ?: 0L
+        val drifted = driftNamed != 0L && driftNow != driftNamed
         stopOrSupersede(life, epoch)
         watchLost = false
         broken = false
@@ -293,7 +313,10 @@ class ConnectionKeeper(
         publishConnected(life, epoch)
         stopOrSupersede(life, epoch)
         scheduleRewatch(life, epoch)
+        return drifted
     }
+
+    private class EpochUnreachable : RuntimeException()
 
     // A winning suspend is not Connected. The update retries if that suspend lands first.
     private fun publishConnected(life: LifecycleClock?, epoch: Long) {

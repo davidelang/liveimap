@@ -659,6 +659,7 @@ private fun ComposeLoaded(
     }
 
     suspend fun storeAcceptedFlags(uids: List<Long>) {
+        if (seed.uidValidity == 0L) return
         val flags = smtpAcceptFlags(seed.kind)
         val box = seed.mailbox
         if (flags.isEmpty() || box == null || uids.isEmpty()) return
@@ -688,6 +689,7 @@ private fun ComposeLoaded(
     }
 
     suspend fun removePostponedSource() {
+        if (seed.uidValidity == 0L) return
         val uid = postponedUidToRemove(seed.kind, true, sourceUid) ?: return
         val box = seed.mailbox ?: account.postponedMailbox
         try {

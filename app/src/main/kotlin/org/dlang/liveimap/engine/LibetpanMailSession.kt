@@ -527,7 +527,8 @@ class LibetpanMailSession : MailSession {
     }
 
     private fun openMailbox(mailbox: String, write: Boolean): SelectResult {
-        val same = selectedMailbox == mailbox
+        val name = wire(mailbox)
+        val same = selectedMailbox == name
         val wasReadWrite = selectedReadWrite
         val sufficient = same && !sequencesStale && (wasReadWrite || !write)
         if (sufficient) {
@@ -536,20 +537,20 @@ class LibetpanMailSession : MailSession {
         val current = selectedMailbox
         // F101: switching folders is never an expunge. Only an explicit user leave (expungeOnLeave) sends CLOSE;
         // otherwise UNSELECT, or the SELECT below, which closes the old folder without expunging (RFC 3501 6.3.1).
-        if (current != null && current != mailbox && featureCaps.unselect) {
+        if (current != null && current != name && featureCaps.unselect) {
             unselectSelectedMailbox()
         }
         val readWrite = write || (same && sequencesStale && wasReadWrite)
-        val result = nativeSelect(requireHandle(), requireWireText(mailbox), readWrite) ?: run {
+        val result = nativeSelect(requireHandle(), name, readWrite) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
-        selectedMailbox = mailbox
+        selectedMailbox = name
         selectedReadWrite = readWrite
         selected = result
         sequencesStale = false
         keeper.noteSelected(result)
-        noteTraffic("Selected $mailbox")
+        noteTraffic("Selected $name")
         return result
     }
 
@@ -583,8 +584,8 @@ class LibetpanMailSession : MailSession {
     ): List<FolderEntry> = keeper.read("list") {
         val rows = nativeListLevel(
             requireHandle(),
-            requireWireText(prefix),
-            parentMailbox?.let(::requireWireText),
+            wire(prefix),
+            parentMailbox?.let(::wire),
             featureCaps.listKind(unreadCounts),
         ) ?: throw MailFailure("list failed")
         rows.toList()
@@ -597,12 +598,12 @@ class LibetpanMailSession : MailSession {
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
         if (mailboxes.isEmpty()) return emptyMap()
         return keeper.read("status") {
-            nativeStatusMessages(requireHandle(), mailboxes.map(::requireWireText).toTypedArray())
+            nativeStatusMessages(requireHandle(), mailboxes.map(::wire).toTypedArray())
         }
     }
 
     override suspend fun select(mailbox: String): SelectResult = keeper.read("select") {
-        selectNow(wire(mailbox))
+        selectNow(mailbox)
     }
 
     override suspend fun unselect() {
@@ -613,28 +614,30 @@ class LibetpanMailSession : MailSession {
             unselectSelectedMailbox()
             return
         }
-        val result = nativeSelect(requireHandle(), requireWireText(mailbox), false) ?: run {
+        val name = wire(mailbox)
+        val result = nativeSelect(requireHandle(), name, false) ?: run {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
-        selectedMailbox = mailbox
+        selectedMailbox = name
         selectedReadWrite = false
         selected = result
         sequencesStale = false
         keeper.noteSelected(result)
-        noteTraffic("Selected $mailbox")
+        noteTraffic("Selected $name")
     }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = keeper.read("fetch") {
-        if (sequencesStale || selectedMailbox != request.mailbox) {
-            selectNow(request.mailbox)
+        val name = wire(request.mailbox)
+        if (sequencesStale || selectedMailbox != name) {
+            selectNow(name)
         }
         val h = requireHandle()
         val settings = account
         val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
         val rows = nativeFetchIndex(
             h,
-            request.mailbox,
+            name,
             request.mode.ordinal,
             request.firstSequence,
             request.lastSequence,
@@ -838,7 +841,7 @@ class LibetpanMailSession : MailSession {
     ): List<MailboxUids> = keeper.read("search") {
         if (kind != "Advanced") throw MailFailure("search failed")
         if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
-        requireWireText(home)  // F42: the scope home folder goes out as a quoted string too
+        val homeWire = wire(home) // F42: the scope home folder goes out as a quoted string too
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -846,7 +849,7 @@ class LibetpanMailSession : MailSession {
         val rows = nativeSearchScope(
             h,
             scopeName,
-            home,
+            homeWire,
             parsed.combiner.name,
             BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
             Array(parsed.steps.size) { parsed.steps[it].kind },
@@ -865,7 +868,7 @@ class LibetpanMailSession : MailSession {
     ): Int = keeper.read("search") {
         if (kind != "Advanced") throw MailFailure("search failed")
         if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
-        requireWireText(home)  // F42: the scope home folder goes out as a quoted string too
+        val homeWire = wire(home) // F42: the scope home folder goes out as a quoted string too
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -873,7 +876,7 @@ class LibetpanMailSession : MailSession {
         val count = nativeSearchScopeCount(
             h,
             scopeName,
-            home,
+            homeWire,
             parsed.combiner.name,
             BooleanArray(parsed.steps.size) { parsed.steps[it].negated },
             Array(parsed.steps.size) { parsed.steps[it].kind },
@@ -1447,14 +1450,15 @@ class LibetpanMailSession : MailSession {
 
         override fun reselect(): SelectResult? {
             val mailbox = selectedMailbox ?: return null
+            val name = wire(mailbox)
             val readWrite = selectedReadWrite
-            val result = nativeSelect(requireHandle(), requireWireText(mailbox), readWrite) ?: throw MailFailure("select failed")
-            selectedMailbox = mailbox
+            val result = nativeSelect(requireHandle(), name, readWrite) ?: throw MailFailure("select failed")
+            selectedMailbox = name
             selectedReadWrite = readWrite
             selected = result
             cache.clear()
             sequencesStale = true
-            noteTraffic("Selected $mailbox")
+            noteTraffic("Selected $name")
             return result
         }
 

@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.session.CertPrompt
+import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.LongSearchLink
 import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.session.confirmMailPlaintext
@@ -10,13 +11,21 @@ import org.dlang.liveimap.session.SearchProgress
 import org.dlang.liveimap.session.longSearchTimeoutSec
 import org.dlang.liveimap.settings.AccountSettings
 
-/** A fresh libetpan connection for one long search in [mailbox]; never shared with the main session. */
+/** A fresh libetpan connection for one long search in [folder]; never shared with the main session. */
 class LibetpanLongSearchLink(
     private val account: AccountSettings,
-    private val mailbox: String,
+    private val folder: FolderAt,
     private val confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },
     private val confirmPlaintext: suspend () -> Boolean = { confirmMailPlaintext() },
 ) : LongSearchLink {
+    /** A mailbox name with no listed epoch. A name that has an epoch uses the primary constructor. */
+    constructor(
+        account: AccountSettings,
+        mailbox: String,
+        confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },
+        confirmPlaintext: suspend () -> Boolean = { confirmMailPlaintext() },
+    ) : this(account, FolderAt(mailbox), confirmCert, confirmPlaintext)
+
     private val session = LibetpanMailSession()
 
     override suspend fun open() {
@@ -28,7 +37,8 @@ class LibetpanLongSearchLink(
             is OpenResult.Rejected -> throw MailFailure("search connection refused")
             is OpenResult.Failed -> throw MailFailure(opened.text)
         }
-        session.select(mailbox)
+        // Selects [folder] and refuses a UIDVALIDITY that is not the one the list was built in. No hits then.
+        session.inFolder(folder) { _, _ -> }
         session.prepareLongSearch(longSearchTimeoutSec("INPROGRESS" in session.capabilities))
     }
 

@@ -40,4 +40,56 @@ class BoxPass5IndexTest {
             effectiveDeletePolicy(DeletePolicy.MarkDeleted, inTrash = true, uidPlus = true, trashKnown = true, trashNamedByUser = true),
         )
     }
+
+    /** Home multi-select and a cross-folder hit pass trashNamedByUser; a Trash confirm does not expunge the home rows. */
+    @Test fun trashConfirmDoesNotExpungeTheHomeSelection() {
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            policyForListedDelete(
+                DeletePolicy.MarkDeleted,
+                folder = "INBOX",
+                home = "INBOX",
+                trash = "Trash",
+                uidPlus = true,
+                trashNamedByUser = true,
+                permanentOnlyInTrash = true,
+            ),
+        )
+        assertEquals(
+            DeletePolicy.DeletePermanently,
+            policyForListedDelete(
+                DeletePolicy.MarkDeleted,
+                folder = "Trash",
+                home = "INBOX",
+                trash = "Trash",
+                uidPlus = true,
+                trashNamedByUser = true,
+                permanentOnlyInTrash = true,
+            ),
+        )
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            policyForListedDelete(
+                DeletePolicy.MarkDeleted,
+                folder = "Trash",
+                home = "INBOX",
+                trash = "Trash",
+                uidPlus = true,
+                trashNamedByUser = false,
+                permanentOnlyInTrash = false,
+            ),
+        )
+        assertEquals(
+            DeletePolicy.MarkDeleted,
+            policyForListedDelete(
+                DeletePolicy.MarkDeleted,
+                folder = "inbox",
+                home = "INBOX",
+                trash = "Trash",
+                uidPlus = true,
+                trashNamedByUser = false,
+                permanentOnlyInTrash = true,
+            ),
+        )
+    }
 }

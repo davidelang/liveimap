@@ -6,6 +6,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
+import org.dlang.liveimap.session.EpochChanged
 import org.dlang.liveimap.session.LifecycleClock
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
@@ -542,8 +543,37 @@ class ConnectionKeeperTest {
         link.selectResult = SelectResult(8, 9, 4)
         val keeper = keeper(link)
         keeper.noteSelected(SelectResult(5, 9, 4))
-        keeper.read("fetch") { "ok" }
+        var ran = false
+        try {
+            keeper.read("fetch") {
+                ran = true
+                "ok"
+            }
+            error("expected epoch change")
+        } catch (error: EpochChanged) {
+            assertFalse(ran)
+        }
         assertEquals(listOf<MailboxChange>(MailboxChange.UidValidityReset), link.emissions)
+    }
+
+    @Test
+    fun reconnectEpochChangeDoesNotRunTheUidCommand() {
+        val link = FakeLink()
+        link.deadFlag = true
+        link.selectResult = SelectResult(8, 9, 4)
+        val keeper = keeper(link)
+        keeper.noteSelected(SelectResult(5, 9, 4))
+        var ran = false
+        try {
+            keeper.write("store") {
+                ran = true
+            }
+            error("expected epoch change")
+        } catch (error: EpochChanged) {
+            assertFalse(ran)
+        }
+        assertEquals(listOf<MailboxChange>(MailboxChange.UidValidityReset), link.emissions)
+        assertEquals(1, link.reselects)
     }
 
     @Test

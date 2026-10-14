@@ -369,20 +369,24 @@ fun LiveImapNavHost() {
         navController.navigate("filter")
     }
 
+    fun openCompose(seed: ComposeSeed) {
+        composeKindName.value = seed.kind.name
+        composeMailbox.value = seed.mailbox.orEmpty()
+        composeUids.value = seed.uids.joinToString(",")
+        composeEpoch.value = seed.uidValidity
+        composeAccount.value = seed.accountId
+        composeUnsentId.value = ""
+        composeRetryOnOpen.value = false
+        navController.navigate("compose")
+    }
+
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
     val folderListPane: @Composable () -> Unit = {
                     FolderListScreen(
                         onOpenMailbox = { mailbox ->
                             navController.navigate("index/${Uri.encode(mailbox)}")
                         },
-                        onCompose = { seed ->
-                            composeKindName.value = seed.kind.name
-                            composeMailbox.value = seed.mailbox.orEmpty()
-                            composeUids.value = seed.uids.joinToString(",")
-                            composeUnsentId.value = ""
-                            composeRetryOnOpen.value = false
-                            navController.navigate("compose")
-                        },
+                        onCompose = { seed -> openCompose(seed) },
                         onOpenUnsent = { navController.navigate("unsent") },
                         onOpenHelp = { navController.navigate("help") },
                         onCustomize = { navController.navigate("toolbar/folders") },
@@ -394,16 +398,6 @@ fun LiveImapNavHost() {
     val foldersAboveNow = rememberUpdatedState(foldersAbove)
     val navGraph: NavGraphBuilder.() -> Unit = remember {
         {
-            fun openCompose(seed: ComposeSeed) {
-                composeKindName.value = seed.kind.name
-                composeMailbox.value = seed.mailbox.orEmpty()
-                composeUids.value = seed.uids.joinToString(",")
-                composeEpoch.value = seed.uidValidity
-                composeAccount.value = seed.accountId
-                composeUnsentId.value = ""
-                composeRetryOnOpen.value = false
-                navController.navigate("compose")
-            }
             composable("folders") {
                 FolderListScreen(
                     onOpenMailbox = { mailbox ->

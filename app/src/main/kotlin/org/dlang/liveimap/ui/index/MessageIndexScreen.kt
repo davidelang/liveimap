@@ -150,6 +150,8 @@ import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.compose.armForwardOnce
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.session.sameMailbox
+import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.Namespace
@@ -228,6 +230,10 @@ private data class PendingDelete(
     val rowMailbox: String = "",
     /** F105: selected hits from other folders, (folder, UID). */
     val hits: List<Pair<String, Long>> = emptyList(),
+    /** Home-folder policy at the moment the prompt opened. */
+    val policy: DeletePolicy = DeletePolicy.DeletePermanently,
+    /** Confirm of a Trash hit: permanent only for Trash, [policy] for the home folder. */
+    val permanentOnlyInTrash: Boolean = false,
 )
 
 private val filterChoices = listOf(
@@ -627,7 +633,9 @@ internal class IndexScreenHeld : ViewModel() {
         val current = model
         if (current != null && boundMailbox == mailbox && boundSession === session) return current
         val created = IndexModel(session, store, mailbox)
-        created.longSearchLinks = { account, box -> org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box) }
+        created.longSearchLinks = { account, box ->
+            org.dlang.liveimap.engine.LibetpanLongSearchLink(account, FolderAt(box, created.listedEpoch(box)))
+        }
         model = created
         boundSession = session
         boundMailbox = mailbox
@@ -1142,17 +1150,21 @@ private fun MessageIndexLoaded(
         entire: Boolean,
         trash: String,
         hits: List<Pair<String, Long>> = emptyList(),
+        permanentOnlyInTrash: Boolean = false,
     ) {
         var undo: MailUndo? = null
+        val namedTrash = usableTrashName(account.trashMailbox).isNotEmpty()
         gate.withLock {
             model.clearMailUndo()
             model.acrossFolders(uids, hits, entire) { u, e, folder ->
-                // a hit in Trash is deleted the way Trash itself would be
-                val here = if (folder == mailbox) policy else effectiveDeletePolicy(
+                val here = policyForListedDelete(
                     policy,
-                    trash.isNotEmpty() && folder == trash,
+                    folder,
+                    mailbox,
+                    trash,
                     session.featureCaps.uidPlus,
-                    trash.isNotEmpty(),
+                    namedTrash,
+                    permanentOnlyInTrash,
                 )
                 when (here) {
                     DeletePolicy.MarkDeleted -> model.deleteMessages(u, e)
@@ -2290,9 +2302,10 @@ private fun MessageIndexLoaded(
                     val uidPlusNow = session.featureCaps.uidPlus
                     val effectivePolicy = effectiveDeletePolicy(
                         account.deletePolicy,
-                        trashKnown && mailbox == knownTrashName,
+                        trashKnown && sameMailbox(mailbox, knownTrashName),
                         uidPlusNow,
                         trashKnown,
+                        trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
                     )
                     if (multiSelect) {
                         DebugStatusIcon(debugStatus)
@@ -2337,16 +2350,26 @@ private fun MessageIndexLoaded(
                             val entire = allMailbox
                             scope.launch {
                                 val trash = readKnownTrash()
+                                val namedTrash = usableTrashName(account.trashMailbox).isNotEmpty()
                                 val policy = effectiveDeletePolicy(
                                     account.deletePolicy,
-                                    trash.isNotEmpty() && mailbox == trash,
+                                    trash.isNotEmpty() && sameMailbox(mailbox, trash),
                                     session.featureCaps.uidPlus,
                                     trash.isNotEmpty(),
+                                    trashNamedByUser = namedTrash,
                                 )
-                                val hitInTrash = trash.isNotEmpty() && hits.any { it.first == trash } &&
+                                val hitInTrash = namedTrash && trash.isNotEmpty() &&
+                                    hits.any { sameMailbox(it.first, trash) } &&
                                     session.featureCaps.uidPlus
                                 if ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge) {
-                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false, hits = hits)
+                                    pendingPermanent = PendingDelete(
+                                        uids,
+                                        entire,
+                                        fromSwipe = false,
+                                        hits = hits,
+                                        policy = policy,
+                                        permanentOnlyInTrash = true,
+                                    )
                                 } else {
                                     applyDeletePolicy(policy, uids, entire, trash, hits)
                                 }
@@ -2429,7 +2452,13 @@ private fun MessageIndexLoaded(
                                             scope.launch {
                                                 val trash = readKnownTrash()
                                                 if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                                                    pendingPermanent = PendingDelete(uids, entire, fromSwipe = false, hits = hits)
+                                                    pendingPermanent = PendingDelete(
+                                                        uids,
+                                                        entire,
+                                                        fromSwipe = false,
+                                                        hits = hits,
+                                                        policy = policy,
+                                                    )
                                                 } else {
                                                     applyDeletePolicy(policy, uids, entire, trash, hits)
                                                 }
@@ -2945,7 +2974,7 @@ private fun MessageIndexLoaded(
                     val uidPlus = session.featureCaps.uidPlus
                     val body = buildString {
                         // F90: say plainly when this folder is the (detected or configured) Trash.
-                        if (knownTrashName.isNotEmpty() && mailbox == knownTrashName) {
+                        if (knownTrashName.isNotEmpty() && sameMailbox(mailbox, knownTrashName)) {
                             append("This folder is your Trash ($knownTrashName). ")
                         }
                         append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
@@ -3365,9 +3394,10 @@ private fun MessageIndexLoaded(
                                         val trash = readKnownTrash()
                                         val policy = effectiveDeletePolicy(
                                             account.deletePolicy,
-                                            trash.isNotEmpty() && row.mailbox.ifEmpty { mailbox } == trash,
+                                            trash.isNotEmpty() && sameMailbox(row.mailbox.ifEmpty { mailbox }, trash),
                                             session.featureCaps.uidPlus,
                                             trash.isNotEmpty(),
+                                            trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
                                         )
                                         if (policy == DeletePolicy.DeletePermanently) {
                                             pendingPermanent = PendingDelete(
@@ -3476,11 +3506,12 @@ private fun MessageIndexLoaded(
                             finishSwipe(request.uids.single(), SwipeBinding(SwipeAction.Delete), request.rowMailbox)
                         } else {
                             applyDeletePolicy(
-                                DeletePolicy.DeletePermanently,
+                                request.policy,
                                 request.uids,
                                 request.allMailbox,
                                 knownTrashName,
                                 request.hits,
+                                request.permanentOnlyInTrash,
                             )
                         }
                     }

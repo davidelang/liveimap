@@ -2859,3 +2859,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: stopExtraIdle bumps a generation that a waiting apply checks under extraIdleLock before it opens; onStop cancels the onStart job before stopExtraIdle; dropMailSession closes that account's extra IDLE; hidden IDLE opens nothing and a server without IDLE is probed once per apply
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - message identity: act on the listed account, folder, and epoch
+
+- Approved plan: sandbox/plans/message-identity-20261014-1359-plan.md
+- Compose from the folder pane uses the seed account and epoch; epoch 0 does not write UIDs
+- One wire mailbox spelling; reconnect re-checks UIDVALIDITY before STORE, EXPUNGE, or COPY
+- Long search, paging, flags, undo, and trash delete follow the folder and epoch the row was listed in
