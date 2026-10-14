@@ -356,6 +356,8 @@ class JmapMailSession(
     @Volatile private var watchJob: kotlinx.coroutines.Job? = null
     /** F151: the current watch's own stream holder; an orphaned watch only ever touches its own. */
     @Volatile private var watchRun: WatchRun? = null
+    /** Bumped by [suspendConnections] so a watch still in setup does not start the event source. */
+    @Volatile private var watchEpoch = 0
 
     private class WatchRun {
         @Volatile var stream: JmapHttpExchange? = null
@@ -377,6 +379,7 @@ class JmapMailSession(
      * (network, trust, redirect, off-host URL, bad data) ends the watch with WatchLost; the caller restarts it.
      */
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
+        val epoch = watchEpoch
         stopWatch()
         val (mailboxId, startState, startTotal) = lock.withLock {
             ensureListedLocked(mailbox)
@@ -392,9 +395,11 @@ class JmapMailSession(
         val auth = authorization
         val streamPin = pin
         val accountId = accountId()
+        if (epoch != watchEpoch) return
         val run = WatchRun()
         watchRun = run
         watchJob = watchScope.launch {
+            if (epoch != watchEpoch) return@launch
             var state = startState
             var total = startTotal
             try {
@@ -431,6 +436,7 @@ class JmapMailSession(
     }
 
     override suspend fun suspendConnections() {
+        watchEpoch++
         val job = watchJob
         watchJob = null
         job?.cancel()

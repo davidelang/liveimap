@@ -2210,6 +2210,8 @@ void watchMain(LiveSession * session) {
             gIdleRenews.fetch_add(1);
             int doneR = mailimap_idle_done(session->watch);
             int idleR = doneR == MAILIMAP_NO_ERROR ? mailimap_idle(session->watch) : doneR;
+            // Shutdown fails this in-flight DONE or IDLE. That is a stop, not WatchLost, and not another DONE.
+            if (session->watchStop.load()) break;
             if (doneR != MAILIMAP_NO_ERROR || idleR != MAILIMAP_NO_ERROR) {
                 emitWatch(session, 4, session->watchExists, 0, nullptr);
                 watchLost = true;

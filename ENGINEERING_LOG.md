@@ -2714,3 +2714,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
 - Close and stop shut the IMAP, watch, and SMTP sockets down and return; no DONE, LOGOUT, or IDLE done wait
 - First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - hard-close sockets fixup
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Fixup: an IDLE renew that fails because watchStop is set does not emit WatchLost; JMAP suspend during watch setup does not start the event source
+- First action per standard-plan-compliance-block.md
