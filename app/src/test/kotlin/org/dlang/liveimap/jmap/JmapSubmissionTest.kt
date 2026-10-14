@@ -622,4 +622,14 @@ class JmapSubmissionTest {
 
     private val wrongMethod =
         """{"methodResponses":[["Email/set",{"created":{"k1":{"id":"S1"}}},"0"]]}"""
+
+    @Test
+    fun methodErrorNamesItsType() {
+        try {
+            jmapSubmissionId("""{"methodResponses":[["error",{"type":"accountNotSupportedByMethod"},"0"]]}""")
+            org.junit.Assert.fail()
+        } catch (e: JmapFailure) {
+            org.junit.Assert.assertEquals("jmap submission refused: accountNotSupportedByMethod", e.text)
+        }
+    }
 }

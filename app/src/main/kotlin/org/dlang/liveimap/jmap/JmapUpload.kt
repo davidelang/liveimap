@@ -45,7 +45,8 @@ fun jmapUpload(
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val code = jmapNet { exchange.status }
         if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")
-        if (code == 201) return jmapBlobId(jmapNet { exchange.body() })
+        // RFC 8620 §6.1 shows 201; Stalwart answers 200 with the same body. Both carry the blobId.
+        if (code == 200 || code == 201) return jmapBlobId(jmapNet { exchange.body() })
         throw JmapFailure("jmap upload status $code")
     } finally {
         exchange.close()

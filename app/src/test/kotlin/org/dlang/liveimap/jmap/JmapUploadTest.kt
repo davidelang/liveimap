@@ -70,6 +70,12 @@ class JmapUploadTest {
     }
 
     @Test
+    fun status200IsAcceptedLikeStalwart() {
+        val post = UploadPost(200, blobDocument, listOf(byteArrayOf(1)))
+        assertEquals("B1", jmapUpload(uploadSession(), "m".toByteArray(), "user", "secret", "", post::post, post::trust))
+    }
+
+    @Test
     fun a1UploadPostsOnceAndReturnsB1() {
         val bytes = "mail".toByteArray(Charsets.UTF_8)
         val ders = listOf(byteArrayOf(9, 8), byteArrayOf(7))

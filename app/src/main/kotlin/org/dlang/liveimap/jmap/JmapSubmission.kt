@@ -30,7 +30,8 @@ fun jmapSubmissionId(text: String): String {
     }
     if (root !is Json.Obj) throw JmapFailure("jmap submission was not created")
     val args = submissionArgs(root.fields["methodResponses"])
-        ?: throw JmapFailure("jmap submission was not created")
+        ?: throw JmapFailure(methodErrorType(root.fields["methodResponses"])?.let { "jmap submission refused: $it" }
+            ?: "jmap submission was not created")
     val createdId = createdId(args["created"])
     if (createdId != null) {
         if (createdId.isBlank()) throw JmapFailure("jmap submission id is empty")
@@ -194,6 +195,17 @@ private fun notCreatedDescription(notCreated: Json?): String? {
     val description = row.fields["description"]
     if (description !is Json.Str || description.text.isBlank()) return null
     return description.text
+}
+
+/** The type of a method-level ["error", {"type": ...}] response (e.g. Cyrus "accountNotSupportedByMethod"). */
+private fun methodErrorType(responses: Json?): String? {
+    if (responses !is Json.Arr) return null
+    for (item in responses.values) {
+        if (item !is Json.Arr || item.values.size < 2) continue
+        if ((item.values[0] as? Json.Str)?.text != "error") continue
+        return ((item.values[1] as? Json.Obj)?.fields?.get("type") as? Json.Str)?.text?.takeIf { it.isNotBlank() }
+    }
+    return null
 }
 
 private fun submissionArgs(responses: Json?): Map<String, Json>? {
