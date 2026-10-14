@@ -1744,7 +1744,7 @@ class LibetpanMailSession : MailSession {
         var pendingAuthenticationRejection: ImapServerAuthenticationRejected? = null
 
         @Volatile
-        var smtpProbe: SmtpProbeMaterial? = null
+        internal var smtpProbe: SmtpProbeMaterial? = null
 
         /** "TLSv1.3 <cipher> binding=<type>" of the last login on this thread, or "" for plaintext. */
         @JvmStatic
