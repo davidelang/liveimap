@@ -2,6 +2,8 @@ package org.dlang.liveimap.session
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.dlang.liveimap.accounts.AccountTarget
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.settings.AccountSettings
 
@@ -40,7 +42,9 @@ suspend fun suspendMailSessions() {
 suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
     if (accountId.isBlank()) return
     extraIdleLock.withLock {
-        applyStoredIdle(extraIdleSessions, account, accountId)
+        withContext(AccountTarget(accountId)) {
+            applyStoredIdle(extraIdleSessions, account, accountId)
+        }
     }
 }
 
