@@ -79,4 +79,29 @@ class Pass5GuardTest {
         assertTrue(unlock in 0 until join && join < relock)
         assertTrue(jni.contains("while (session->watchStopping) session->stopCv.wait(session->mu);"))
     }
+
+    /** Stop shuts the watch socket down before join, and the stop path does not call mailimap_idle_done. */
+    @Test fun watchStopShutsTheSocketBeforeJoin() {
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val shut = body.indexOf("shutdownWatchSocket(session);")
+        val join = body.indexOf("thread.join();")
+        val unlock = body.indexOf("session->mu.unlock();")
+        val relock = body.indexOf("session->mu.lock();")
+        assertTrue(shut in 0 until join)
+        assertTrue(unlock in 0 until join && join < relock)
+        val stop = jni.indexOf("void stopWatchLocked(")
+        val stopBody = jni.substring(stop, jni.indexOf("\n}\n", stop))
+        val stopShut = stopBody.indexOf("shutdownWatchSocket(session);")
+        val stopJoin = stopBody.indexOf("watchThread.join();")
+        assertTrue(stopShut in 0 until stopJoin)
+        val main = jni.indexOf("void watchMain(")
+        val mainBody = jni.substring(main, jni.indexOf("\n}\n", main))
+        assertTrue(mainBody.contains("if (!watchLost && !session->watchStop.load())"))
+        assertFalse(mainBody.contains("if (!watchLost) {"))
+        val sig = jni.indexOf("void signalWatchStop(")
+        val sigBody = jni.substring(sig, jni.indexOf("\n}\n", sig))
+        assertTrue(sigBody.contains("shutdownWatchSocket(session);"))
+        assertTrue(sigBody.contains("write(fd,"))
+    }
 }

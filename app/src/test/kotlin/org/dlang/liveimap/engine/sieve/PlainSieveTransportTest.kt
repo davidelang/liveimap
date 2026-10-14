@@ -7,10 +7,13 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlainSieveTransportTest {
@@ -67,6 +70,95 @@ class PlainSieveTransportTest {
             } catch (error: Exception) {
             }
             thread.join(2_000)
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun closeWritesNothing() = runBlocking {
+        val listen = ServerSocket()
+        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+        val port = listen.localPort
+        val received = AtomicReference<ByteArray>()
+        val thread = Thread {
+            val client = listen.accept()
+            try {
+                received.set(drain(client.getInputStream()))
+            } finally {
+                try {
+                    client.close()
+                } catch (error: Exception) {
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.start()
+        try {
+            val transport = openPlainSieve("127.0.0.1", port)
+            transport.close()
+            transport.close()
+            thread.join(5_000)
+            assertFalse(thread.isAlive)
+            assertEquals(0, received.get().size)
+        } finally {
+            try {
+                listen.close()
+            } catch (error: Exception) {
+            }
+            thread.join(2_000)
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun closeFailsABlockedRead() = runBlocking {
+        val listen = ServerSocket()
+        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+        val port = listen.localPort
+        val accepted = CountDownLatch(1)
+        val server = Thread {
+            val client = listen.accept()
+            accepted.countDown()
+            try {
+                Thread.sleep(30_000)
+            } catch (error: InterruptedException) {
+            } finally {
+                try {
+                    client.close()
+                } catch (error: Exception) {
+                }
+            }
+        }
+        server.isDaemon = true
+        server.start()
+        val error = AtomicReference<Throwable>()
+        var reader: Thread? = null
+        try {
+            val transport = openPlainSieve("127.0.0.1", port)
+            assertTrue(accepted.await(5, TimeUnit.SECONDS))
+            reader = Thread {
+                try {
+                    runBlocking { transport.readLine() }
+                } catch (thrown: Throwable) {
+                    error.set(thrown)
+                }
+            }
+            reader.isDaemon = true
+            reader.start()
+            Thread.sleep(200)
+            val start = System.nanoTime()
+            transport.close()
+            reader.join(5_000)
+            val ms = (System.nanoTime() - start) / 1_000_000
+            assertFalse(reader.isAlive)
+            assertTrue("read took $ms ms", ms < 5_000)
+            assertTrue(error.get() is SieveFailure)
+        } finally {
+            server.interrupt()
+            try {
+                listen.close()
+            } catch (closeError: Exception) {
+            }
+            server.join(2_000)
+            reader?.join(2_000)
         }
     }
 

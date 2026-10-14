@@ -17,7 +17,7 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
@@ -141,19 +141,25 @@ class PlainSieveTransport internal constructor(
     }
 
     override fun close() {
-        runBlocking(Dispatchers.IO) {
-            if (!closed.compareAndSet(false, true)) return@runBlocking
-            val tls = layered
-            if (tls != null) {
-                try {
-                    tls.close()
-                } catch (e: IOException) {
-                }
-            }
+        if (!closed.compareAndSet(false, true)) return
+        try {
+            socket.shutdownInput()
+        } catch (e: Exception) {
+        }
+        try {
+            socket.shutdownOutput()
+        } catch (e: Exception) {
+        }
+        val tls = layered
+        if (tls != null) {
             try {
-                socket.close()
+                tls.close()
             } catch (e: IOException) {
             }
+        }
+        try {
+            socket.close()
+        } catch (e: IOException) {
         }
     }
 
@@ -278,8 +284,13 @@ private fun closeQuiet(socket: Socket) {
     }
 }
 
+private suspend fun closeWhenCancelled(transport: PlainSieveTransport) {
+    coroutineContext[Job]?.invokeOnCompletion(onCancelling = true) { transport.close() }
+}
+
 suspend fun greetPlain(host: String, port: Int): SieveCapabilities {
     val transport = openPlainSieve(host, port)
+    closeWhenCancelled(transport)
     try {
         val caps = readGreeting(transport)
         logout(transport)
@@ -356,6 +367,7 @@ suspend fun openAndDeliverLiveimap(
             TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
             TlsMode.Implicit -> openImplicitSieve(host, port, activePin)
         }
+        closeWhenCancelled(transport)
         try {
             val caps = when (mode) {
                 TlsMode.None -> readGreeting(transport)
@@ -397,6 +409,7 @@ suspend fun greetSieve(
             TlsMode.None -> greetPlain(host, port)
             TlsMode.StartTls -> {
                 val transport = openPlainSieve(host, port)
+                closeWhenCancelled(transport)
                 try {
                     requireAdvertisedStartTls(readGreeting(transport))
                     val caps = completeStartTls(transport, host, activePin)
@@ -408,6 +421,7 @@ suspend fun greetSieve(
             }
             TlsMode.Implicit -> {
                 val transport = openImplicitSieve(host, port, activePin)
+                closeWhenCancelled(transport)
                 try {
                     val caps = readGreeting(transport)
                     logout(transport)

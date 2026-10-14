@@ -73,21 +73,25 @@ class SessionTableTest {
         table.suspendConnections()
         assertEquals(1, a.suspends)
         assertEquals(1, b.suspends)
+        assertEquals(0, a.closes)
+        assertEquals(0, b.closes)
         assertEquals(made, calls)
     }
 
     @Test
-    fun dropSuspendsThatIdAndForgetsIt() = runBlocking {
+    fun dropClosesThatIdAndForgetsIt() = runBlocking {
         val table = SessionTable { RecordingSession() }
         val storedA = table.session("a") as RecordingSession
         val storedB = table.session("b")
         table.drop("a")
-        assertEquals(1, storedA.suspends)
+        assertEquals(1, storedA.closes)
+        assertEquals(0, storedA.suspends)
         assertNotSame(storedA, table.session("a"))
         assertSame(storedB, table.session("b"))
         table.drop("missing")
         assertSame(storedB, table.session("b"))
         assertEquals(0, (storedB as RecordingSession).suspends)
+        assertEquals(0, (storedB as RecordingSession).closes)
     }
 }
 
@@ -95,6 +99,7 @@ private class RecordingSession : MailSession {
     var cert: (suspend (CertPrompt) -> Boolean)? = null
     var plain: (suspend () -> Boolean)? = null
     var suspends: Int = 0
+    var closes: Int = 0
 
     override val capabilities: Set<String> = emptySet()
 
@@ -154,7 +159,9 @@ private class RecordingSession : MailSession {
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
 
-    override fun close() = Unit
+    override fun close() {
+        closes += 1
+    }
 
     private fun unused(): Nothing = throw MailFailure("not used")
 }

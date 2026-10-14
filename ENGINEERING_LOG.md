@@ -2708,3 +2708,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-10 - STARTTLS sends no SNI for IP-literal hosts (RFC 6066); the lab Courier (GnuTLS) aborted on it. Lab: courier-606 syslog and a stale-pid-safe start.
 
 ## 2026-10-10 - TLS info callback reports only alerts and real failures; lab courier.pem owned by the courier user (couriertls: Permission denied).
+
+## 2026-10-14 - hard-close sockets
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Close and stop shut the IMAP, watch, and SMTP sockets down and return; no DONE, LOGOUT, or IDLE done wait
+- First action per standard-plan-compliance-block.md

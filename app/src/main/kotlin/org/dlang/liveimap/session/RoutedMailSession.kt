@@ -100,7 +100,10 @@ class RoutedMailSession(
 
     override suspend fun resume(): Unit = current().resume()
 
-    override suspend fun suspendConnections(): Unit = current().suspendConnections()
+    override suspend fun suspendConnections() {
+        imap?.suspendConnections()
+        jmap?.suspendConnections()
+    }
 
     override suspend fun namespaces(): List<Namespace> = current().namespaces()
 

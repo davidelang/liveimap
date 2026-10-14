@@ -38,5 +38,5 @@ class LibetpanLongSearchLink(
 
     override fun abort() = session.abortConnection()
 
-    override suspend fun close() = session.suspendConnections()
+    override suspend fun close() = session.close()
 }

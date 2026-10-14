@@ -58,6 +58,6 @@ class SessionTable(
 
     suspend fun drop(accountId: String) {
         val removed = synchronized(lock) { sessions.remove(accountId) } ?: return
-        removed.suspendConnections()
+        removed.close()
     }
 }

@@ -430,6 +430,14 @@ class JmapMailSession(
         kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
     }
 
+    override suspend fun suspendConnections() {
+        val job = watchJob
+        watchJob = null
+        job?.cancel()
+        watchRun?.stop()
+        watchRun = null
+    }
+
     private fun readStream(run: WatchRun, url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
         if (run.stopped) return emptyList()
         val exchange = try {
