@@ -98,7 +98,10 @@ class RoutedMailSession(
         imap = null; jmap = null; imapOpenFor = null
     }
 
-    override suspend fun resume(): Unit = current().resume()
+    override suspend fun resume() {
+        imap?.resume()
+        jmap?.resume()
+    }
 
     override suspend fun suspendConnections() {
         imap?.suspendConnections()

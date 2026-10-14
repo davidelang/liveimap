@@ -17,6 +17,10 @@ private class SuspendRec(val name: String, val log: MutableList<String>) :
         log += "$name suspend"
     }
 
+    override suspend fun resume() {
+        log += "$name resume"
+    }
+
     override fun close() {
         log += "$name close"
     }
@@ -33,7 +37,25 @@ class RoutedSuspendTest {
         routed.suspendConnections()
         assertEquals(listOf("imap suspend", "jmap suspend"), log)
         log.clear()
+        routed.resume()
+        assertEquals(listOf("imap resume", "jmap resume"), log)
+        log.clear()
         routed.close()
         assertEquals(listOf("imap close", "jmap close"), log)
+    }
+
+    @Test
+    fun jmapOnlyResumeDoesNotOpenImap() = runBlocking {
+        val log = mutableListOf<String>()
+        var imapCreated = 0
+        val routed = RoutedMailSession(
+            { imapCreated++; SuspendRec("imap", log) },
+            { SuspendRec("jmap", log) },
+        )
+        routed.open(AccountSettings(username = "u", jmapFolders = true))
+        log.clear()
+        routed.resume()
+        assertEquals(listOf("jmap resume"), log)
+        assertEquals(0, imapCreated)
     }
 }

@@ -2739,3 +2739,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-off-lane-20261014-0617-plan.md
 - Fixup: a stop does not clear a published startState back to 0. The next nativeWatch zeros it under startMu. The IDLE-start wait also returns when the generation changed, the session closed, or the watch was stopped.
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Resume restarts both sides of a routed account.
