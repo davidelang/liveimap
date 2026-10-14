@@ -349,6 +349,19 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun oneFolderWithoutIdleDoesNotStopTheNextName() = runBlocking {
+        val first = IdleRecord()
+        first.capabilities = setOf("IMAP4REV1")
+        val second = IdleRecord()
+        val queued = arrayListOf(first, second)
+        val sessions = ExtraIdleSessions { queued.removeAt(0) }
+        sessions.apply(AccountSettings(), listOf("A", "B"), "acct")
+        assertEquals(listOf("open", "status A", "stopWatch", "close"), first.calls)
+        assertEquals(listOf("open", "select B", "watch B"), second.calls)
+        assertEquals(listOf("B"), sessions.openNames())
+    }
+
+    @Test
     fun watchFailureClosesThatSessionAndKeepsTheEarlierName() = runBlocking {
         val boom = MailFailure("idle down")
         val first = IdleRecord()
@@ -382,7 +395,21 @@ class WatchedFoldersTest {
         var deliverOnWatch: MailboxChange? = MailboxChange.Exists(0)
         var callback: ((MailboxChange) -> Unit)? = null
 
-        override val capabilities: Set<String> = emptySet()
+        override var capabilities: Set<String> = setOf("IMAP4REV1", "IDLE")
+
+        override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+            if (!featureCaps.idle) {
+                calls.add("open")
+                opened = account
+                return
+            }
+            super.watchOnly(account, mailbox, onChange)
+        }
+
+        override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
+            for (name in mailboxes) calls.add("status $name")
+            return emptyMap()
+        }
 
         override suspend fun open(account: AccountSettings): OpenResult {
             calls.add("open")

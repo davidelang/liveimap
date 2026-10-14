@@ -65,6 +65,16 @@ fun capabilityGate(serverList: String): OpenResult {
     return if (caps.imap4rev1 || caps.imap4rev2) OpenResult.Connected else OpenResult.Rejected(serverList)
 }
 
+/** The server rejected AUTH or LOGIN. A local SASL failure is not this. */
+class ImapServerAuthenticationRejected(text: String) : MailFailure(text)
+
+/** Settings for an SMTP probe that has not opened IMAP. */
+internal class SmtpProbeMaterial(
+    val settings: AccountSettings,
+    val password: String,
+    val smtpPassword: String,
+)
+
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
 
@@ -306,6 +316,7 @@ class LibetpanMailSession : MailSession {
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
+        pendingAuthenticationRejection = null
         namespaceList = null
         val password = if (knownPassword != null) {
             knownPassword
@@ -383,6 +394,9 @@ class LibetpanMailSession : MailSession {
         nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened == 0L) {
             val text = nativeTakeError()
+            if (!stageCommand && nativeTakeAuthRejected()) {
+                pendingAuthenticationRejection = ImapServerAuthenticationRejected(text)
+            }
             if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
             TrafficRecorder.event("main", "error", text)
             finishTraffic(account)
@@ -1089,6 +1103,21 @@ class LibetpanMailSession : MailSession {
         when (opened) {
             OpenResult.Connected -> {
                 try {
+                    val line = nativeWatchLogin(requireHandle()) ?: throw MailFailure(nativeTakeError())
+                    capabilityLine = line
+                    if (capabilityGate(line) is OpenResult.Rejected) {
+                        close()
+                        throw MailFailure("watch rejected")
+                    }
+                    if (!featureCaps.idle) {
+                        nativeUseStagedImap(requireHandle())
+                        try {
+                            statusMessages(listOf(mailbox))
+                        } catch (_: MailFailure) {
+                        }
+                        close()
+                        return
+                    }
                     nativeSetWatchWakeMillis((account.idleWakeSeconds) * 1000)
                     nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
                     noteTraffic("Idling")
@@ -1257,20 +1286,55 @@ class LibetpanMailSession : MailSession {
      * [SmtpLoginCheck]; failures throw [MailFailure] with the server's text.
      */
     override suspend fun smtpLoginCheck(): org.dlang.liveimap.session.SmtpLoginCheck {
-        val context = currentApplication()
-        val ownSmtpPassword = credentials?.smtpPassword
-            ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
-        val acct = account
-        val smtpPassword = smtpPasswordFor(acct?.smtpSameAsImap == true, ownSmtpPassword, loggedInPassword.orEmpty())
-        val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
-        val code = keeper.write("send") {
-            nativeSmtp(requireHandle(), null, emptyArray(), smtpUser, smtpPassword, 0, "")
+        val probe = smtpProbe
+        val acct = account ?: probe?.settings ?: credentials?.settings
+            ?: throw MailFailure("not connected")
+        val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password.orEmpty()
+        val ownSmtpPassword = probe?.smtpPassword ?: credentials?.smtpPassword ?: ""
+        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword)
+        val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
+        // A staged session has no IMAP handle and does not dial imapHost.
+        val staged = stageSmtp(acct, imapPassword)
+        if (staged == 0L) throw MailFailure(nativeTakeError().ifEmpty { "smtp error" })
+        try {
+            val code = nativeSmtp(staged, null, emptyArray(), smtpUser, smtpPassword, 0, "")
+            return when (code) {
+                2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
+                3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
+                else -> org.dlang.liveimap.session.SmtpLoginCheck.NoPassword
+            }
+        } finally {
+            nativeClose(staged)
         }
-        return when (code) {
-            2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
-            3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
-            else -> org.dlang.liveimap.session.SmtpLoginCheck.NoPassword
-        }
+    }
+
+    private fun stageSmtp(account: AccountSettings, password: String): Long {
+        val from = if (account.email.isNotEmpty()) account.email else account.username
+        val trafficPath = prepareTraffic(account)
+        val clientCert = ClientCertStore.load(account.clientCert)
+        val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
+        return nativeStage(
+            account.imapHost,
+            account.imapPort,
+            account.username,
+            password,
+            account.smtpHost,
+            account.smtpPort,
+            from,
+            account.pipelineCommands,
+            account.logImapTraffic,
+            trafficPath,
+            account.tlsMode.name,
+            account.certPin,
+            account.allowPlaintextAuth,
+            account.acceptInvalidCert,
+            account.allowOldTls,
+            account.authMechanism,
+            clientCert?.p12,
+            clientCert?.password ?: "",
+            keyChain?.chain,
+            keyChain?.key,
+        )
     }
 
     override fun close() {
@@ -1639,6 +1703,8 @@ class LibetpanMailSession : MailSession {
     private external fun nativeFetchSortFieldsRange(handle: Long, field: String, first: Int, last: Int): Array<SortField>?
     private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
     private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
+    private external fun nativeWatchLogin(handle: Long): String?
+    private external fun nativeUseStagedImap(handle: Long)
     private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
     private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(
@@ -1670,6 +1736,15 @@ class LibetpanMailSession : MailSession {
 
         @JvmStatic
         private external fun nativeTakeError(): String
+
+        @JvmStatic
+        private external fun nativeTakeAuthRejected(): Boolean
+
+        @Volatile
+        var pendingAuthenticationRejection: ImapServerAuthenticationRejected? = null
+
+        @Volatile
+        var smtpProbe: SmtpProbeMaterial? = null
 
         /** "TLSv1.3 <cipher> binding=<type>" of the last login on this thread, or "" for plaintext. */
         @JvmStatic

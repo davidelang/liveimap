@@ -2781,3 +2781,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-followup-20261014-0842-plan.md
 - Work: close only when a suspend is the latest move; a newer resume waits and reconnects if that owner stopped for a suspend; publish the watch callback only after IDLE starts and clear that generation when nativeWatch returns 0
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - SMTP socket lifetime, watch capability, typed auth failure
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Work: publish and clear the SMTP fd under the session mutex; watch-only login uses the capability gate; a server authentication rejection is typed; the SMTP probe does not open IMAP; probe close runs on Dispatchers.IO
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD follows exec-preflight

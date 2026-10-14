@@ -5,6 +5,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.yield
+import org.dlang.liveimap.engine.ImapServerAuthenticationRejected
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -36,7 +37,7 @@ class AccountSetupProbeTest {
     @Test fun imapAuthFailureDoesNotCallSmtpWhenThePasswordIsShared() = runBlocking {
         var smtp = 0
         val probes = AccountProbes(
-            imapLogin = { throw IllegalStateException("login failed: no") },
+            imapLogin = { throw ImapServerAuthenticationRejected("no") },
             smtpLogin = { smtp += 1; SmtpLoginCheck.LoggedIn },
             jmapLogin = {},
             smtpUsesImapPassword = true,
@@ -58,6 +59,22 @@ class AccountSetupProbeTest {
         assertEquals(1, smtp)
     }
 
+    @Test fun localSaslFailureStillTriesSmtp() = runBlocking {
+        var smtp = 0
+        val probes = AccountProbes(
+            imapLogin = {
+                throw IllegalStateException(
+                    "login failed before contacting the server: SASL PLAIN failed locally",
+                )
+            },
+            smtpLogin = { smtp += 1; SmtpLoginCheck.LoggedIn },
+            jmapLogin = {},
+            smtpUsesImapPassword = true,
+        )
+        testAccountLogins(AccountSettings(smtpHost = "smtp.x", smtpSameAsImap = true), probes)
+        assertEquals(1, smtp)
+    }
+
     @Test fun connectionFailureStillTriesSmtp() = runBlocking {
         var smtp = 0
         val probes = AccountProbes(
@@ -75,6 +92,27 @@ class AccountSetupProbeTest {
         assertTrue(testAccountProbes("a", AccountSettings(), "same", "same", fake).smtpUsesImapPassword)
         assertTrue(testAccountProbes("a", AccountSettings(smtpSameAsImap = true), "imap", "other", fake).smtpUsesImapPassword)
         assertFalse(testAccountProbes("a", AccountSettings(), "imap", "smtp", fake).smtpUsesImapPassword)
+    }
+
+    @Test fun smtpProbeDoesNotOpenImapAndCloseIsOnIo() {
+        val setup = listOf(
+            "src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/settings/AccountSetup.kt",
+        ).map(::java.io.File).first { it.exists() }.readText()
+        val smtp = setup.substring(setup.indexOf("smtpLogin = {"), setup.indexOf("jmapLogin = {"))
+        assertFalse(smtp.contains("ensureOpen"))
+        assertFalse(smtp.contains("openWith"))
+        assertTrue(setup.contains("withContext(NonCancellable + Dispatchers.IO)"))
+        assertTrue(setup.contains("CoroutineScope(Dispatchers.IO).launch { closeProbe() }"))
+        val session = listOf(
+            "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+        ).map(::java.io.File).first { it.exists() }.readText()
+        val check = session.substring(session.indexOf("suspend fun smtpLoginCheck("), session.indexOf("private fun stageSmtp("))
+        assertFalse(check.contains("requireHandle"))
+        assertFalse(check.contains("ensureOpen"))
+        assertFalse(check.contains("openWith"))
+        assertTrue(check.contains("nativeStage("))
     }
 }
 
