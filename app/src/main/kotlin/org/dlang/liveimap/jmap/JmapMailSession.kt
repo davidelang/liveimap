@@ -358,6 +358,17 @@ class JmapMailSession(
     @Volatile private var watchRun: WatchRun? = null
     /** Bumped by [suspendConnections] so a watch still in setup does not start the event source. */
     @Volatile private var watchEpoch = 0
+    /** Latest [watch] target, published before setup RPCs so a suspend during setup can be restarted. */
+    @Volatile private var armedWatch: ArmedWatch? = null
+    /** Set only by [suspendConnections]. [stopWatch] and [close] clear it so a deliberate stop stays down. */
+    @Volatile private var restartWatchOnResume = false
+    /** Epoch, the armed watch, and the job are published together so a suspend cannot miss a launch. */
+    private val watchGate = Any()
+
+    private class ArmedWatch(
+        val mailbox: String,
+        val onChange: (MailboxChange) -> Unit,
+    )
 
     private class WatchRun {
         @Volatile var stream: JmapHttpExchange? = null
@@ -379,8 +390,18 @@ class JmapMailSession(
      * (network, trust, redirect, off-host URL, bad data) ends the watch with WatchLost; the caller restarts it.
      */
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
-        val epoch = watchEpoch
-        stopWatch()
+        startWatch(mailbox, onChange, fromResume = false)
+    }
+
+    private suspend fun startWatch(mailbox: String, onChange: (MailboxChange) -> Unit, fromResume: Boolean) {
+        val armed = ArmedWatch(mailbox, onChange)
+        val epoch = synchronized(watchGate) {
+            // A stop or close that landed after resume sampled the flag must not be re-armed.
+            if (fromResume && !restartWatchOnResume) return
+            armedWatch = armed
+            watchEpoch
+        }
+        haltWatchJob()
         val (mailboxId, startState, startTotal) = lock.withLock {
             ensureListedLocked(mailbox)
             val id = idOfLocked(mailbox)
@@ -395,53 +416,86 @@ class JmapMailSession(
         val auth = authorization
         val streamPin = pin
         val accountId = accountId()
-        if (epoch != watchEpoch) return
-        val run = WatchRun()
-        watchRun = run
-        watchJob = watchScope.launch {
-            if (epoch != watchEpoch) return@launch
-            var state = startState
-            var total = startTotal
-            try {
-                while (isActive && !run.stopped) {
-                    val events = readStream(run, url, host, auth, streamPin)
-                    if (!isActive) break
-                    val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
-                    if (next == state) continue
-                    val (flags, newTotal, newState) = lock.withLock { changesSince(state, mailboxId) }
-                    state = newState
-                    for (change in flags) onChange(change)
-                    if (newTotal > total) onChange(MailboxChange.Exists(newTotal))
-                    if (newTotal < total) onChange(MailboxChange.Expunge(newTotal))
-                    total = newTotal
+        synchronized(watchGate) {
+            if (epoch != watchEpoch || armedWatch !== armed) return
+            val run = WatchRun()
+            watchRun = run
+            restartWatchOnResume = false
+            watchJob = watchScope.launch {
+                if (epoch != watchEpoch) return@launch
+                var state = startState
+                var total = startTotal
+                try {
+                    while (isActive && !run.stopped) {
+                        val events = readStream(run, url, host, auth, streamPin)
+                        if (!isActive) break
+                        val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
+                        if (next == state) continue
+                        val (flags, newTotal, newState) = lock.withLock { changesSince(state, mailboxId) }
+                        state = newState
+                        for (change in flags) onChange(change)
+                        if (newTotal > total) onChange(MailboxChange.Exists(newTotal))
+                        if (newTotal < total) onChange(MailboxChange.Expunge(newTotal))
+                        total = newTotal
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    if (isActive) onChange(MailboxChange.WatchLost)
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                if (isActive) onChange(MailboxChange.WatchLost)
             }
         }
     }
 
-    override suspend fun stopWatch() {
-        val job = watchJob ?: return
-        watchJob = null
-        job.cancel()
-        watchRun?.stop() // unblocks a read that is waiting on the server
-        watchRun = null
+    /** Cancels the running source and joins it. Does not forget [armedWatch]; [stopWatch] does that. */
+    private suspend fun haltWatchJob() {
+        val taken = synchronized(watchGate) {
+            val job = watchJob ?: return
+            watchJob = null
+            val run = watchRun
+            watchRun = null
+            job to run
+        }
+        taken.first.cancel()
+        taken.second?.stop() // unblocks a read that is waiting on the server
         // A TLS read blocked in another thread (or a server that holds the response headers until the first
         // event, as Stalwart's eventsource did in the lab) is not always freed by close(); the read times out on
         // its own (readTimeout), so do not hold the caller hostage to it.
-        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
+        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { taken.first.join() }
+    }
+
+    override suspend fun stopWatch() {
+        synchronized(watchGate) {
+            armedWatch = null
+            restartWatchOnResume = false
+        }
+        haltWatchJob()
     }
 
     override suspend fun suspendConnections() {
-        watchEpoch++
-        val job = watchJob
-        watchJob = null
+        var job: kotlinx.coroutines.Job? = null
+        var run: WatchRun? = null
+        synchronized(watchGate) {
+            watchEpoch++
+            if (armedWatch != null) restartWatchOnResume = true
+            job = watchJob
+            watchJob = null
+            run = watchRun
+            watchRun = null
+        }
         job?.cancel()
-        watchRun?.stop()
-        watchRun = null
+        run?.stop()
+    }
+
+    override suspend fun resume() {
+        val armed = synchronized(watchGate) {
+            if (!restartWatchOnResume) return
+            armedWatch ?: run {
+                restartWatchOnResume = false
+                return
+            }
+        }
+        startWatch(armed.mailbox, armed.onChange, fromResume = true)
     }
 
     private fun readStream(run: WatchRun, url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
@@ -504,8 +558,18 @@ class JmapMailSession(
     override suspend fun knownTrash(): String = lock.withLock { roles.entries.firstOrNull { it.value == "trash" }?.key.orEmpty() }
 
     override fun close() {
-        watchJob?.cancel(); watchJob = null
-        watchRun?.stop(); watchRun = null
+        var job: kotlinx.coroutines.Job? = null
+        var run: WatchRun? = null
+        synchronized(watchGate) {
+            armedWatch = null
+            restartWatchOnResume = false
+            job = watchJob
+            watchJob = null
+            run = watchRun
+            watchRun = null
+        }
+        job?.cancel()
+        run?.stop()
         session = null
         authorization = ""
         password = ""

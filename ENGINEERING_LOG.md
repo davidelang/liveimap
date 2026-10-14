@@ -2720,3 +2720,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
 - Fixup: an IDLE renew that fails because watchStop is set does not emit WatchLost; JMAP suspend during watch setup does not start the event source
 - First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - hard-close sockets fixup 2
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Fixup 2: JmapMailSession remembers the watch mailbox and callback before setup. suspendConnections still stops the event source without waiting, and resume starts that watch again. stopWatch and close do not come back. Suspend does not emit WatchLost.
+- First action per standard-plan-compliance-block.md
