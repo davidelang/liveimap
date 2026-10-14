@@ -164,7 +164,7 @@ suspend fun runAcceptance(
 /** The INBOX marker message "LiveIMAP seed corpus-v1 <profile>" (newest match), header only. */
 suspend fun readSeedMarker(context: AcceptanceContext): SeedMarker? {
     val inbox = context.folder("INBOX")
-    val uid = inbox.searchCriterion("SUBJECT", "LiveIMAP seed").maxOrNull() ?: return null
+    val uid = inbox.searchCriterion("Subject", "LiveIMAP seed").maxOrNull() ?: return null
     val raw = inbox.fetchRfc822(uid)
     val text = raw.toString(Charsets.ISO_8859_1)
     val end = text.indexOf("\r\n\r\n").takeIf { it >= 0 } ?: text.indexOf("\n\n").takeIf { it >= 0 } ?: text.length
