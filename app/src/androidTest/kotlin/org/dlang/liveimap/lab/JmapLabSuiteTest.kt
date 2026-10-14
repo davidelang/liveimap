@@ -97,8 +97,8 @@ class JmapLabSuiteTest {
             s.select(inbox)
             val mid = s.selectedExists()
             s.select(other)
-            // a moved message keeps its arrival date, so look through the whole folder
-            val there = s.fetchIndex(IndexRequest(other, IndexMode.ArrivalNewest, limit = 2000)).firstOrNull { it.subject == subject }
+            // a moved message keeps its arrival date, so look through up to 120 (the JMAP window)
+            val there = s.fetchIndex(IndexRequest(other, IndexMode.ArrivalNewest, limit = 120)).firstOrNull { it.subject == subject }
                 ?: throw IllegalStateException("not found in $other")
             s.copyThenDelete(listOf(there.uid), inbox)
             s.select(inbox)
