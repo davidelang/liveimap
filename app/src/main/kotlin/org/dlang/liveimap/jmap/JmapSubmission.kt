@@ -123,13 +123,15 @@ fun jmapSend(
     upload: (String, ByteArray, String, String) -> JmapHttpExchange,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    /** The account's Sent folder name: where the copy goes when the server marks no mailbox role "sent". */
+    sentName: String = "",
 ): String {
     val session = when (offer) {
         JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
         is JmapOffer.Mail -> offer.session
     }
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
-    val mailboxId = jmapFindSentMailbox(session, username, password, pin, post, trust)
+    val mailboxId = jmapFindSentMailbox(session, username, password, pin, post, trust, sentName)
     val submissionId = jmapDeliver(
         session,
         bytes,

@@ -85,6 +85,9 @@ class JmapHttpsFetch(
 
 fun platformJmapExchange(url: String): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        // Discovery has no pin yet: PeerTrust with an empty pin is the system trust plus the debug-only lab CA hook
+        // (LabTestHooks; the release stub trusts nothing extra), the same check the IMAP path makes.
+        if (this is HttpsURLConnection) pinJmapTls(this, "")
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000

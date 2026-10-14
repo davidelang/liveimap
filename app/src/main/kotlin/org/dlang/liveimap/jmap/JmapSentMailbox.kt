@@ -32,6 +32,8 @@ fun jmapFindSentMailbox(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    /** The account's configured Sent folder, used when no mailbox carries role "sent" (Cyrus without special-use). */
+    sentName: String = "",
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
@@ -39,7 +41,37 @@ fun jmapFindSentMailbox(
     val authorization = jmapBasicAuthorization(username, password)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
-    return jmapSentMailboxId(result.body)
+    val byRole = try { jmapSentMailboxId(result.body) } catch (missing: JmapFailure) {
+        if (sentName.isBlank()) throw missing
+        null
+    }
+    if (byRole != null) return byRole
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), authorization, pin, post, trust)
+    if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
+    return jmapTopLevelMailboxId(named.body, sentName) ?: throw JmapFailure("jmap sent mailbox is missing")
+}
+
+fun jmapMailboxNamesRequest(accountId: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Mailbox/get",{"accountId":${quoted(accountId)},"ids":null,"properties":["id","name","parentId"]},"0"]]}"""
+}
+
+/** The id of the top-level mailbox named exactly [name] (no role needed), or null. */
+fun jmapTopLevelMailboxId(text: String, name: String): String? {
+    val root = try { JsonParser(text).parseDocument() } catch (_: JsonBroken) { return null }
+    val responses = (root as? Json.Obj)?.fields?.get("methodResponses") as? Json.Arr ?: return null
+    for (item in responses.values) {
+        val call = item as? Json.Arr ?: continue
+        if ((call.values.getOrNull(0) as? Json.Str)?.text != "Mailbox/get") continue
+        val list = ((call.values.getOrNull(1) as? Json.Obj)?.fields?.get("list") as? Json.Arr) ?: return null
+        for (box in list.values) {
+            val f = (box as? Json.Obj)?.fields ?: continue
+            val parent = f["parentId"]
+            if (parent != null && parent !is Json.Null) continue
+            if ((f["name"] as? Json.Str)?.text == name) return (f["id"] as? Json.Str)?.text?.takeIf { it.isNotBlank() }
+        }
+    }
+    return null
 }
 
 private fun queryIds(responses: Json?): List<Json>? {

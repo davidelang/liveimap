@@ -40,6 +40,31 @@ class JmapSentMailboxTest {
     }
 
     @Test
+    fun noSentRoleFallsBackToTheConfiguredTopLevelName() {
+        val noRole = """{"methodResponses":[["Mailbox/query",{"ids":[]},"0"],["Mailbox/get",{"list":[]},"1"]]}"""
+        val all = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"c1","name":"Sent","parentId":"p"},{"id":"t2","name":"Sent","parentId":null},{"id":"x","name":"Sent Items"}]},"0"]]}"""
+        val replies = ArrayDeque(listOf(noRole, all))
+        val bodies = mutableListOf<String>()
+        val post: (String, String, String) -> JmapHttpExchange = { _, body, _ ->
+            bodies += body
+            val reply = replies.removeFirst()
+            object : JmapHttpExchange {
+                override val status = 200
+                override fun peerDer() = listOf(byteArrayOf(1))
+                override fun header(name: String): String? = null
+                override fun body() = reply
+                override fun close() {}
+            }
+        }
+        assertEquals("t2", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }, sentName = "Sent"))
+        assertEquals(2, bodies.size)
+        // Without a configured name the role lookup alone decides, as before.
+        replies.addAll(listOf(noRole))
+        try { jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }); org.junit.Assert.fail() } catch (_: JmapFailure) {}
+        assertEquals(null, jmapTopLevelMailboxId(all, "Drafts"))
+    }
+
+    @Test
     fun postReturnsMbSent() {
         val post = SentPost(200, sentResponse)
         val id = jmapFindSentMailbox(
