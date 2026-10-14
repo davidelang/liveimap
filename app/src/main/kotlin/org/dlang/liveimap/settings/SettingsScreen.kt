@@ -1281,6 +1281,23 @@ private fun MailboxesGroup(editor: SettingsEditor) {
     val settings = editor.settings
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
     BackHandler(enabled = picking != null) { picking = null }
+    // David's Sent rule (d): leaving with special folders unset only warns; it never blocks.
+    val leaveContext = androidx.compose.ui.platform.LocalContext.current
+    val sentLabel = stringResource(R.string.settings_sent_mailbox)
+    val postponedLabel = stringResource(R.string.settings_postponed_mailbox)
+    val latest = androidx.compose.runtime.rememberUpdatedState(settings)
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            val unset = unsetSpecialFolders(latest.value).map { if (it == SpecialFolder.Sent) sentLabel else postponedLabel }
+            if (unset.isNotEmpty()) {
+                android.widget.Toast.makeText(
+                    leaveContext,
+                    leaveContext.getString(R.string.settings_special_unset_warning, unset.joinToString(", ")),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
     SettingsPage {
         SettingsSection(
             title = stringResource(R.string.settings_special_use),
@@ -3345,3 +3362,12 @@ internal fun rulesSummaryWho(settings: AccountSettings): String =
         .ifEmpty { settings.username.trim() }
         .ifEmpty { settings.imapHost.trim() }
         .ifEmpty { "?" }
+
+
+internal enum class SpecialFolder { Sent, Postponed }
+
+/** The special folders a leave warning names: unset ones only. A warning, never a block (David's Sent rule d). */
+internal fun unsetSpecialFolders(settings: AccountSettings): List<SpecialFolder> = buildList {
+    if (settings.sentMailbox.isBlank()) add(SpecialFolder.Sent)
+    if (settings.postponedMailbox.isBlank()) add(SpecialFolder.Postponed)
+}

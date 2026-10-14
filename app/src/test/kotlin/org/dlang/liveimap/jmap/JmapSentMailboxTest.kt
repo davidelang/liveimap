@@ -40,49 +40,41 @@ class JmapSentMailboxTest {
     }
 
     @Test
-    fun noSentRoleFallsBackToTheConfiguredTopLevelName() {
-        val noRole = """{"methodResponses":[["Mailbox/query",{"ids":[]},"0"],["Mailbox/get",{"list":[]},"1"]]}"""
-        val all = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"c1","name":"Sent","parentId":"p"},{"id":"t2","name":"Sent","parentId":null},{"id":"x","name":"Sent Items"}]},"0"]]}"""
-        val replies = ArrayDeque(listOf(noRole, all))
+    fun sendUsesOnlyTheConfiguredSentNameNeverTheRoleOrGuesses() {
+        val all = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"c1","name":"Sent","parentId":"p"},{"id":"t2","name":"Sent","parentId":null},{"id":"r","name":"Sent Items","parentId":null,"role":"sent"}]},"0"]]}"""
         val bodies = mutableListOf<String>()
         val post: (String, String, String) -> JmapHttpExchange = { _, body, _ ->
             bodies += body
-            val reply = replies.removeFirst()
             object : JmapHttpExchange {
                 override val status = 200
                 override fun peerDer() = listOf(byteArrayOf(1))
                 override fun header(name: String): String? = null
-                override fun body() = reply
+                override fun body() = all
                 override fun close() {}
             }
         }
-        assertEquals("t2", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }, sentName = "Sent"))
-        assertEquals(2, bodies.size)
-        // Without a configured name the common names are tried in order.
-        val items = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m","name":"Sent Messages","parentId":null},{"id":"i","name":"Sent Items","parentId":null}]},"0"]]}"""
-        replies.addAll(listOf(noRole, items))
-        assertEquals("i", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }))
-        replies.addAll(listOf(noRole, """{"methodResponses":[["Mailbox/get",{"list":[{"id":"o","name":"Outbox","parentId":null},{"id":"c","name":"Sent","parentId":"p"}]},"0"]]}"""))
-        try { jmapFindSentMailbox(session("A1"), "user", "pw", "", post, { _, _, _ -> "" }); org.junit.Assert.fail() } catch (_: JmapFailure) {}
+        val noTrust: (String, List<ByteArray>, String) -> String = { _, _, _ -> "" }
+        assertEquals("t2", jmapFindSentMailbox(session("A1"), "user", "pw", "", post, noTrust, sentName = "Sent"))
+        // Blank setting: no copy, and no server lookup at all (role metadata never decides).
+        bodies.clear()
+        assertEquals(null, jmapFindSentMailbox(session("A1"), "user", "pw", "", post, noTrust, sentName = ""))
+        assertEquals(0, bodies.size)
+        // Configured but missing: a clear error, never another folder.
+        try {
+            jmapFindSentMailbox(session("A1"), "user", "pw", "", post, noTrust, sentName = "Sent Messages")
+            org.junit.Assert.fail()
+        } catch (missing: JmapSentFolderMissing) {
+            assertEquals("Sent Messages", missing.name)
+        }
         assertEquals(null, jmapTopLevelMailboxId(all, "Drafts"))
     }
 
     @Test
-    fun postReturnsMbSent() {
-        val post = SentPost(200, sentResponse)
-        val id = jmapFindSentMailbox(
-            session("A1"),
-            "user",
-            "secret",
-            "ab",
-            post::post,
-            post::trust,
-        )
-        assertEquals("mbSent", id)
-        assertEquals(listOf("https://example.com/jmap/"), post.urls)
-        assertEquals(listOf(sentRequest), post.bodies)
-        assertEquals(listOf(jmapBasicAuthorization("user", "secret")), post.authorizations)
-        assertEquals(listOf("ab"), post.pins)
+    fun noCopySubmissionDestroysTheStagedEmail() {
+        val plain = jmapEmailSubmissionRequest("A", "E", "a@b", listOf("c@d"))
+        val staged = jmapEmailSubmissionRequest("A", "E", "a@b", listOf("c@d"), destroyEmail = true)
+        assertEquals(false, plain.contains("onSuccessDestroyEmail"))
+        assertEquals(true, staged.contains("\"onSuccessDestroyEmail\":[\"#k1\"]"))
     }
 
     @Test
@@ -97,6 +89,7 @@ class JmapSentMailboxTest {
                     "ab",
                     post::post,
                     post::trust,
+                    sentName = "Sent",
                 )
             }
         }
@@ -114,6 +107,7 @@ class JmapSentMailboxTest {
                 "ab",
                 post::post,
                 post::trust,
+                sentName = "Sent",
             )
         }
     }

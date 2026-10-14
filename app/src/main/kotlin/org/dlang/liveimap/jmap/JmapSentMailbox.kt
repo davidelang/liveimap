@@ -25,6 +25,14 @@ fun jmapSentMailboxId(text: String): String {
     return first.text
 }
 
+/** David's Sent rule: a configured Sent folder that cannot be found is an error the user resolves (send without
+ *  the copy, or fix the setting); the app never picks another folder. */
+class JmapSentFolderMissing(val name: String) : JmapFailure("jmap sent folder \"$name\" was not found")
+
+/**
+ * Where the sent copy goes: only the Sent folder configured in settings, matched exactly at top level, whatever
+ * the server's role metadata says (roles only prefill the settings default). Blank: null, send without a copy.
+ */
 fun jmapFindSentMailbox(
     session: JmapSession,
     username: String,
@@ -32,27 +40,19 @@ fun jmapFindSentMailbox(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-    /** The account's configured Sent folder, used when no mailbox carries role "sent" (Cyrus without special-use). */
     sentName: String = "",
-): String {
+): String? {
+    if (sentName.isBlank()) return null
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val request = jmapSentMailboxRequest(accountId)
-    val authorization = jmapBasicAuthorization(username, password)
-    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
-    if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
-    val byRole = try { jmapSentMailboxId(result.body) } catch (missing: JmapFailure) {
-        null
-    }
-    if (byRole != null) return byRole
-    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), authorization, pin, post, trust)
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
-    // No role=sent: the configured name, else the common names, top level and exact.
-    val names = if (sentName.isNotBlank()) listOf(sentName) else JMAP_COMMON_SENT_NAMES
-    return names.firstNotNullOfOrNull { jmapTopLevelMailboxId(named.body, it) } ?: throw JmapFailure("jmap sent mailbox is missing")
+    return jmapTopLevelMailboxId(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
 }
 
-val JMAP_COMMON_SENT_NAMES = listOf("Sent", "Sent Items", "Sent Messages")
+/** A mailbox by role (e.g. "drafts"), or null. */
+fun jmapRoleMailboxRequest(accountId: String, role: String): String =
+    jmapSentMailboxRequest(accountId).replace("\"role\":\"sent\"", "\"role\":${quoted(role)}")
 
 fun jmapMailboxNamesRequest(accountId: String): String {
     if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")

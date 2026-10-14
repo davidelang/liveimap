@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.jmap.JmapFailure
+import org.dlang.liveimap.jmap.JmapSentFolderMissing
 import org.dlang.liveimap.jmap.jmapSend
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.jmapBasicAuthorization
@@ -285,6 +286,9 @@ private fun ComposeLoaded(
     // Set when the server took the message without the requested DSN; kept through the "Sent" status.
     var dsnRefused by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
+    // David's Sent rule (c): saving the copy failed, so offer "send without saving a copy" (Alpine's dropped Fcc).
+    var offerNoCopy by remember { mutableStateOf(false) }
+    var withoutCopy by remember { mutableStateOf(false) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf(AddressTarget.To) }
     var plaintextEntries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
@@ -681,7 +685,7 @@ private fun ComposeLoaded(
     }
 
     fun sentStatus(savedLeaf: String?): String? = sentStatusText(
-        savedLeaf?.let { appContext.getString(R.string.compose_sent_saved, it) },
+        savedLeaf?.takeIf { it.isNotEmpty() }?.let { appContext.getString(R.string.compose_sent_saved, it) },
         if (dsnRefused) appContext.getString(R.string.compose_dsn_unsupported) else null,
     )
 
@@ -749,7 +753,8 @@ private fun ComposeLoaded(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
-                    notice = error.text
+                    notice = appContext.getString(R.string.compose_sent_copy_failed, copy.mailbox, error.text)
+                    offerNoCopy = true
                     status = acceptedNotice
                     return false
                 }
@@ -1104,7 +1109,7 @@ private fun ComposeLoaded(
                     val account = base.withSending(r).let { s ->
                         if (viaSettings == null) s
                         else s.copy(sentMailbox = viaFccMailbox(base.sentMailbox, r.fcc, viaSettings.sentMailbox))
-                    }
+                    }.let { if (withoutCopy) it.copy(sentMailbox = "") else it }
                     val mismatch = fromMismatch(
                         accountRules(base), accountDefaultRule(base), accountId,
                         sendingContext(), account.email, via.ifEmpty { accountId },
@@ -1137,10 +1142,7 @@ private fun ComposeLoaded(
                         notice = appContext.getString(R.string.compose_no_recipients)
                         return@launchLocked false
                     }
-                    if (account.sentMailbox.isEmpty()) {
-                        notice = sentMailboxMissing
-                        return@launchLocked false
-                    }
+                    // David's Sent rule (b): no Sent folder configured means send without saving a copy.
                     val built = try {
                         assemble(account)
                     } catch (error: CancellationException) {
@@ -1185,9 +1187,16 @@ private fun ComposeLoaded(
                                 pinnedJmapUpload(account.jmapCertPin),
                                 pinnedJmapPost(account.jmapCertPin),
                                 sentName = account.sentMailbox,
+                                saveCopy = !withoutCopy,
                             )
                         } catch (error: CancellationException) {
                             throw error
+                        } catch (error: JmapSentFolderMissing) {
+                            // Nothing was sent; the user chooses: fix the setting or send without the copy.
+                            deleteCopy(appContext, id, accountId)
+                            notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
+                            offerNoCopy = true
+                            return@launchLocked false
                         } catch (error: JmapFailure) {
                             val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
                             writeCopy(appContext, copy, accountId)
@@ -1238,7 +1247,7 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-                    try {
+                    if (account.sentMailbox.isNotEmpty()) try {
                         outbound(via).append(account.sentMailbox, accepted)
                     } catch (error: CancellationException) {
                         throw error
@@ -1246,7 +1255,8 @@ private fun ComposeLoaded(
                         val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
                         writeCopy(appContext, copy, accountId)
                         held = copy
-                        notice = error.text
+                        notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
+                        offerNoCopy = true
                         status = acceptedNotice
                         return@launchLocked false
                     }
@@ -1406,6 +1416,24 @@ private fun ComposeLoaded(
         if (stateText != null) Text(stateText)
         val failure = notice
         if (failure != null) Text(failure)
+        if (offerNoCopy && !deliveryDone) {
+            TextButton(onClick = {
+                offerNoCopy = false
+                val kept = held
+                if (kept != null && kept.appendOnly) {
+                    // Already sent; only the copy is dropped.
+                    deleteCopy(appContext, kept.id, accountId)
+                    held = null
+                    deliveryDone = true
+                    notice = null
+                    status = sentStatus(null)
+                    scope.launch { removePostponedSource() }
+                } else {
+                    withoutCopy = true
+                    sendMessage()
+                }
+            }) { Text(stringResource(R.string.compose_send_without_copy)) }
+        }
         if (
             failure == acceptedNotice ||
             failure == notSentNotice ||
