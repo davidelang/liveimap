@@ -237,7 +237,8 @@ suspend fun writePineBook(
     System.arraycopy(state.headerBytes, 0, message, 0, state.headerBytes.size)
     System.arraycopy(state.separator, 0, message, state.headerBytes.size, state.separator.size)
     System.arraycopy(body, 0, message, state.headerBytes.size + state.separator.size, body.size)
-    val appended = session.appendReturningUid(mailbox, message, emptySet())
+    // IMAP APPEND needs CRLF lines; Cyrus refuses bare newlines ("Message contains bare newlines").
+    val appended = session.appendReturningUid(mailbox, crlfLines(message), emptySet())
     // F127: trimming deletes by UID, so only within the epoch the UIDs were listed in, after reselecting it
     val after = readPineBook(session, mailbox)
     if (after !is PineRead.Ready || state.uidValidity == 0L || after.state.uidValidity != state.uidValidity) {
@@ -257,6 +258,17 @@ suspend fun writePineBook(
         revisions
     }
     return PineWriteResult.Wrote(expunge)
+}
+
+/** Every bare LF becomes CRLF; existing CRLF pairs are kept as they are. */
+internal fun crlfLines(bytes: ByteArray): ByteArray {
+    val out = java.io.ByteArrayOutputStream(bytes.size + bytes.size / 16 + 2)
+    for (i in bytes.indices) {
+        val b = bytes[i]
+        if (b == '\n'.code.toByte() && (i == 0 || bytes[i - 1] != '\r'.code.toByte())) out.write(13)
+        out.write(b.toInt())
+    }
+    return out.toByteArray()
 }
 
 private data class SplitMessage(val header: ByteArray, val separator: ByteArray, val body: ByteArray)
