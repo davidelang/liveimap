@@ -616,6 +616,44 @@ class WatchedFoldersTest {
     }
 
     @Test
+    fun olderStopAfterTheStartOpensLeavesThoseSessionsOpen() = runBlocking {
+        val made = IdleHolder()
+        val lock = Mutex()
+        val gate = Mutex(locked = true)
+        val account = AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 2)
+        applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+        assertEquals(listOf("A", "B"), made.sessions.openNames())
+        val older = launchExtraIdleStop(this, made.sessions, lock) {
+            gate.withLock { }
+        }
+        val newer = launchExtraIdleStop(this, made.sessions, lock) { }
+        val start = launch {
+            runAfterExtraIdleStop(newer) {
+                applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+            }
+        }
+        var held = true
+        try {
+            start.join()
+            assertEquals(listOf("A", "B"), made.sessions.openNames())
+            assertEquals(
+                listOf("open", "select A", "watch A", "stopWatch", "close"),
+                made.records[0].calls,
+            )
+            assertEquals(listOf("open", "select A", "watch A"), made.records[2].calls)
+            assertEquals(listOf("open", "select B", "watch B"), made.records[3].calls)
+            gate.unlock()
+            held = false
+            older.join()
+            assertEquals(listOf("A", "B"), made.sessions.openNames())
+            assertEquals(listOf("open", "select A", "watch A"), made.records[2].calls)
+            assertEquals(listOf("open", "select B", "watch B"), made.records[3].calls)
+        } finally {
+            if (held) gate.unlock()
+        }
+    }
+
+    @Test
     fun waitingApplyForADroppedAccountOpensNothing() = runBlocking {
         val made = IdleHolder()
         val lock = Mutex(locked = true)
@@ -636,6 +674,40 @@ class WatchedFoldersTest {
         waiting.join()
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
+        drops.clear("acct-a")
+        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        assertEquals(listOf("INBOX"), made.sessions.openNames())
+    }
+
+    @Test
+    fun applyThatReadsTheDropAfterRecordOpensNothing() = runBlocking {
+        val made = IdleHolder()
+        val lock = Mutex(locked = true)
+        val drops = ExtraIdleDropLog()
+        val account = AccountSettings(
+            imapHost = "drop-after-record.example",
+            username = "a",
+            imapPort = 993,
+            watchedFolders = listOf("INBOX"),
+            extraIdleBudget = 2,
+        )
+        val oldStamp = launch {
+            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        }
+        repeat(3) { yield() }
+        recordDroppedExtraIdle(made.sessions, "acct-a", drops)
+        val duringClose = launch {
+            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        }
+        repeat(3) { yield() }
+        lock.unlock()
+        oldStamp.join()
+        duringClose.join()
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        assertEquals(0, made.records.size)
+        drops.clear("acct-a")
         applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
         assertEquals(listOf("INBOX"), made.sessions.openNames())
     }

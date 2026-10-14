@@ -2880,3 +2880,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: onStop bumps the extra-IDLE generation before the stop job; onStart joins that job before it walks accounts; a dropped account id recorded under extraIdleLock is not opened by an apply that already read the old stamp
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A late extra-IDLE stop does not close the next start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-order-20261014-1401-plan.md
+- Fixup: the stop job closes only while the generation it recorded is still current and does not bump again; a dropped account stays in the set until closeAccount and accountSessions.drop have returned, so an apply that read the new stamp opens nothing
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

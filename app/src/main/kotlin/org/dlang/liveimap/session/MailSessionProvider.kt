@@ -23,7 +23,7 @@ private val extraIdleSessions = ExtraIdleSessions {
 
 private val extraIdleLock = Mutex()
 
-/** Account ids dropped under [extraIdleLock]. Not a lock. A later apply reads the stamp it published. */
+/** Account ids held under [extraIdleLock] until that drop returns. Not a lock. */
 private val extraIdleDrops = ExtraIdleDropLog()
 
 fun mailSession(accountId: String): MailSession = accountSessions.session(accountId)
@@ -51,8 +51,8 @@ suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
 }
 
 /**
- * [seenDrop] is this account's stamp read before [lock]. A drop that records the id while this apply waits
- * does not open. A later apply that reads the stamp after that drop does.
+ * The stamp and the dropped set are read before [lock]. Under the lock, a held id does not open,
+ * and neither does one whose stamp changed. A later apply that starts after the drop clears may open.
  */
 internal suspend fun applyExtraIdleTo(
     sessions: ExtraIdleSessions,
@@ -63,17 +63,19 @@ internal suspend fun applyExtraIdleTo(
 ) {
     if (accountId.isBlank()) return
     val seen = sessions.readGeneration()
-    val seenDrop = drops.stamp(accountId)
+    val seenDrop = drops.mark(accountId)
+    if (seenDrop.held) return
     lock.withLock {
         if (!sessions.generationStill(seen)) return
-        if (drops.stamp(accountId) != seenDrop) return
+        val now = drops.mark(accountId)
+        if (now.held || now.stamp != seenDrop.stamp) return
         withContext(AccountTarget(accountId)) {
             applyStoredIdle(sessions, account, accountId, seen)
         }
     }
 }
 
-/** Bump on this thread, then run [suspendSessions] and [stopExtraIdleOn]. The caller keeps the job. */
+/** Bump on this thread and record that generation. Close later only while it is still current. */
 internal fun launchExtraIdleStop(
     scope: CoroutineScope,
     sessions: ExtraIdleSessions,
@@ -81,11 +83,12 @@ internal fun launchExtraIdleStop(
     suspendSessions: suspend () -> Unit,
 ): Job {
     sessions.bumpGeneration()
+    val generation = sessions.readGeneration()
     return scope.launch(NonCancellable) {
         try {
             suspendSessions()
         } finally {
-            stopExtraIdleOn(sessions, lock)
+            closeExtraIdleIfCurrent(sessions, lock, generation)
         }
     }
 }
@@ -101,12 +104,14 @@ suspend fun runAfterExtraIdleStop(stop: Job?, block: suspend () -> Unit) {
 }
 
 suspend fun stopExtraIdle() {
-    stopExtraIdleOn(extraIdleSessions, extraIdleLock)
+    extraIdleSessions.bumpGeneration()
+    closeExtraIdleIfCurrent(extraIdleSessions, extraIdleLock, extraIdleSessions.readGeneration())
 }
 
-private suspend fun stopExtraIdleOn(sessions: ExtraIdleSessions, lock: Mutex) {
-    sessions.bumpGeneration()
+/** Does not bump. An older stop does not call [ExtraIdleSessions.stop] after a newer stop has bumped. */
+private suspend fun closeExtraIdleIfCurrent(sessions: ExtraIdleSessions, lock: Mutex, generation: Int) {
     lock.withLock {
+        if (!sessions.generationStill(generation)) return
         sessions.stop()
     }
 }
@@ -118,7 +123,13 @@ suspend fun dropMailSession(accountId: String) {
     extraIdleLock.withLock {
         recordDroppedExtraIdle(extraIdleSessions, accountId, extraIdleDrops)
     }
-    accountSessions.drop(accountId)
+    try {
+        accountSessions.drop(accountId)
+    } finally {
+        extraIdleLock.withLock {
+            extraIdleDrops.clear(accountId)
+        }
+    }
 }
 
 /** Under [extraIdleLock]: remember [accountId], then close that account's extra IDLE. */
@@ -131,18 +142,32 @@ internal suspend fun recordDroppedExtraIdle(
     sessions.closeAccount(accountId)
 }
 
-/** Stamps published under extraIdleLock. A volatile map, not a second lock. */
+/** Stamps and the in-flight drop set, published under extraIdleLock. A volatile map, not a second lock. */
 internal class ExtraIdleDropLog {
     @Volatile
     private var state = State()
 
-    fun stamp(accountId: String): Int = state.at[accountId] ?: 0
+    fun mark(accountId: String): ExtraIdleDropMark {
+        val at = state.at[accountId] ?: return ExtraIdleDropMark(0, false)
+        return ExtraIdleDropMark(at.seq, at.held)
+    }
 
     fun record(accountId: String) {
         val cur = state
         val seq = cur.seq + 1
-        state = State(cur.at + (accountId to seq), seq)
+        state = State(cur.at + (accountId to Mark(seq, true)), seq)
     }
 
-    private data class State(val at: Map<String, Int> = emptyMap(), val seq: Int = 0)
+    /** After closeAccount and accountSessions.drop. The stamp moves so a sample from the drop still misses. */
+    fun clear(accountId: String) {
+        val cur = state
+        if (cur.at[accountId] == null) return
+        val seq = cur.seq + 1
+        state = State(cur.at + (accountId to Mark(seq, false)), seq)
+    }
+
+    private data class Mark(val seq: Int, val held: Boolean)
+    private data class State(val at: Map<String, Mark> = emptyMap(), val seq: Int = 0)
 }
+
+internal data class ExtraIdleDropMark(val stamp: Int, val held: Boolean)
