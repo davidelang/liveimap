@@ -1144,8 +1144,10 @@ class LibetpanMailSession : MailSession {
         val offer = WatchOffer(mailbox, onChange)
         val started = nativeWatch(requireHandle(), wire(mailbox), offer)
         if (started == 0L) {
+            keeper.markWatchLost()
             val cur = publishedWatch.get()
             if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+            return
         }
         noteTraffic("Idling")
     }
@@ -1426,8 +1428,10 @@ class LibetpanMailSession : MailSession {
             nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
             val started = nativeWatch(requireHandle(), wire(offer.mailbox), offer)
             if (started == 0L) {
+                keeper.markWatchLost()
                 val cur = publishedWatch.get()
                 if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+                return
             }
             noteTraffic("Idling")
         }

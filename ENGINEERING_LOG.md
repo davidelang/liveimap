@@ -2838,3 +2838,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: drop a no-IDLE name only after watchOnly returns with usable IDLE, or a JMAP watchOnly returns; a throw leaves the previous mark so extraWatchPlan still lists that folder as STATUS
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A deliver wake is consumed, and an early watch loss schedules rewatch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-wake-20261014-1236-plan.md
+- Work: the IDLE thread reads watchWakeFd when poll reports it, so a publish wake does not spin; an early WatchLost or ended thread is joined and freed and returns 0 without throwFailure; watch and rewatch call markWatchLost on that 0 and do not note Idling
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

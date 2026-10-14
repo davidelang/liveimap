@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine
 
+import java.io.File
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -623,6 +624,32 @@ class ConnectionKeeperTest {
             listOf(MailboxChange.UidValidityReset),
             reconnectChanges(before, org.dlang.liveimap.session.SelectResult(8, 1, 0)),
         )
+    }
+
+    /** A 0 from watch or rewatch marks the watch lost, so a later resume starts it again. */
+    @Test fun earlyLossLeavesTheWatchLostSoResumeRewatches() {
+        val kt = listOf(
+            "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
+        ).map(::File).first { it.exists() }.readText()
+        val watchAt = kt.indexOf("override suspend fun watch(")
+        val watch = kt.substring(watchAt, kt.indexOf("override suspend fun stopWatch(", watchAt))
+        val rewatchAt = kt.indexOf("override fun rewatch(")
+        val rewatch = kt.substring(rewatchAt, kt.indexOf("override fun close()", rewatchAt))
+        for (body in listOf(watch, rewatch)) {
+            val zero = body.indexOf("if (started == 0L)")
+            val lost = body.indexOf("keeper.markWatchLost()", zero)
+            val idling = body.indexOf("noteTraffic(\"Idling\")")
+            assertTrue(zero in 0 until lost && lost < idling)
+            assertTrue(body.substring(zero, idling).contains("return"))
+        }
+        val link = FakeLink()
+        val kept = keeper(link)
+        kept.markWatchLost()
+        kept.resume()
+        assertEquals(1, link.rewatches)
+        kept.resume()
+        assertEquals(1, link.rewatches)
     }
 }
 

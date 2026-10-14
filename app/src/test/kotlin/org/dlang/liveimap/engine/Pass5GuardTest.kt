@@ -297,4 +297,24 @@ class Pass5GuardTest {
         val back = body.indexOf("return 0;", clear)
         assertTrue(dead in 0 until clear && clear < back)
     }
+
+    /** A deliver wake is read so poll does not spin. An early loss joins and frees the watch thread. */
+    @Test fun deliverWakeIsReadAndEarlyLossJoins() {
+        val main = jni.indexOf("void watchMain(")
+        val mainBody = jni.substring(main, jni.indexOf("\n}\n", main))
+        val poll = mainBody.indexOf("poll(pfd,")
+        val reported = mainBody.indexOf("pfd[1].revents", poll)
+        val readWake = mainBody.indexOf("read(session->watchWakeFd", reported)
+        val stop = mainBody.indexOf("watchStop.load()", readWake)
+        assertTrue(poll in 0 until reported && reported < readWake && readWake < stop)
+        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
+        val body = jni.substring(n, jni.indexOf("\n}\n", n))
+        val loss = body.indexOf("started < 0 || lost")
+        val join = body.indexOf("session->watchThread.join()", loss)
+        val freed = body.indexOf("mailimap_free(session->watch)", join)
+        val cleared = body.indexOf("clearThisWatch();", freed)
+        val back = body.indexOf("return 0;", cleared)
+        assertTrue(loss in 0 until join && join < freed && freed < cleared && cleared < back)
+        assertTrue(body.substring(cleared, back).contains("if (started < 0)"))
+    }
 }

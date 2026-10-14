@@ -2334,6 +2334,12 @@ void watchMain(LiveSession * session) {
             int pollMs = watchPollMs(session->watchWakeFd >= 0, renewLeft,
                 (long) mailimap_idle_get_done_delay(session->watch), gWatchWakeMs.load());
             int pr = poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, pollMs);
+            // A deliver or stop write must be consumed. Leaving the eventfd readable makes poll return at once.
+            if (pr > 0 && session->watchWakeFd >= 0 && (pfd[1].revents & POLLIN) != 0) {
+                uint64_t drained = 0;
+                ssize_t ignored = read(session->watchWakeFd, &drained, sizeof(drained));
+                (void)ignored;
+            }
             if (session->watchStop.load()) break;
             if (pr <= 0 || (pfd[0].revents == 0)) continue;
         }
@@ -8551,9 +8557,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         }
     }
     bool deliver = false;
+    bool lost = false;
     {
         std::lock_guard<std::mutex> lock(session->startMu);
-        const bool lost = session->watchLostBeforePublish || session->watchEnded;
+        lost = session->watchLostBeforePublish || session->watchEnded;
         if (superseded || started <= 0 || lost) {
             session->watchGate = 2;
             session->watchQueue.clear();
@@ -8568,14 +8575,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         (void)ignored;
     }
     // This generation is not a live IDLE. Clear it. A stop bumps the generation, so a newer publish stays.
+    // An early WatchLost or a thread that already ended is joined and freed like a failed start, without throwFailure.
     if (!deliver) {
-        if (started < 0 && !superseded) {
+        if (!superseded && (started < 0 || lost)) {
             std::string why = session->startError;
             if (session->watchThread.joinable()) session->watchThread.join();
             mailimap_free(session->watch);
             session->watch = nullptr;
             clearThisWatch();
-            throwFailure(env, why);
+            if (started < 0) throwFailure(env, why);
             unlockSession(session);
             return 0;
         }
