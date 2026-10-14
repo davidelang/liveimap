@@ -27,4 +27,12 @@ class AcceptanceSeedTest {
         assertEquals(List(3) { "skip" }, rows.map { it.result })
         assertEquals("not reset: no seed marker", rows.first().reason)
     }
+
+    @Test
+    fun labHostAddressIsALabWriteHost() {
+        org.junit.Assert.assertTrue(allowWriteHost("10.2.3.133"))
+        org.junit.Assert.assertTrue(allowWriter("liveimap", "10.2.3.133"))
+        org.junit.Assert.assertFalse(allowWriteHost("10.2.3.134"))
+        org.junit.Assert.assertFalse(allowWriter("dlang", "10.2.3.133"))
+    }
 }

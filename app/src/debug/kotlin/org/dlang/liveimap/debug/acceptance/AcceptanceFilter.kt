@@ -102,7 +102,8 @@ fun allowHost(hosts: Set<String>, host: String, port: Int): Boolean {
  */
 fun allowWriteHost(host: String): Boolean {
     val h = host.trim().lowercase()
-    if (h in setOf("lab.test", "10.0.2.2", "localhost", "127.0.0.1")) return true
+    // 10.2.3.133: the lab host (LAB_BIND) the emulator reaches the lab containers on (David 2026-10-13).
+    if (h in setOf("lab.test", "10.0.2.2", "localhost", "127.0.0.1", "10.2.3.133")) return true
     return h.substringBefore('.') == "sun"
 }
 
