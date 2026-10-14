@@ -78,7 +78,7 @@ class ConnectionKeeper(
         resume(null, null)
     }
 
-    fun resume(clock: LifecycleClock?, epoch: Long?) {
+    internal fun resume(clock: LifecycleClock?, epoch: Long?) {
         if (clock != null) lifecycle = clock
         val life = clock ?: lifecycle
         if (needsReconnect()) {
@@ -108,7 +108,7 @@ class ConnectionKeeper(
         closeSuspended()
     }
 
-    fun suspendConnections(clock: LifecycleClock, epoch: Long) {
+    internal fun suspendConnections(clock: LifecycleClock, epoch: Long) {
         lifecycle = clock
         if (epoch < clock.latestResume.get()) return
         closeSuspended()
