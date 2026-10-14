@@ -109,7 +109,7 @@ class AccountSetupProbeTest {
             "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
             "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
         ).map(::File).first { it.exists() }.readText()
-        val check = session.substring(session.indexOf("suspend fun smtpLoginCheck("), session.indexOf("private fun stageSmtp("))
+        val check = session.substring(session.indexOf("suspend fun smtpLoginCheck("), session.indexOf("override fun close()"))
         assertFalse(check.contains("requireHandle"))
         assertFalse(check.contains("ensureOpen"))
         assertFalse(check.contains("openWith"))
