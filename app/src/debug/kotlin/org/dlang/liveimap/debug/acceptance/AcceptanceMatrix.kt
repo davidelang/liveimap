@@ -56,6 +56,7 @@ suspend fun runMatrix(
     tests: List<AcceptanceTest>,
     readOnly: (String) -> Boolean = { false },
     progress: (String) -> Unit = {},
+    writeHosts: Set<String> = emptySet(),
 ): List<ReportRow> {
     val rows = ArrayList<ReportRow>()
     for (server in servers) {
@@ -67,7 +68,7 @@ suspend fun runMatrix(
                     rows += ReportRow("login", "tls-auth", listOf(RunnerPlan), "fail", why, server = server.label, variant = variant.name)
                     continue
                 }
-                rows += runAcceptance(context, tests, readOnly(server.label)).map { it.copy(server = server.label, variant = variant.name) }
+                rows += runAcceptance(context, tests, readOnly(server.label), writeHosts = writeHosts).map { it.copy(server = server.label, variant = variant.name) }
             }
         } finally {
             server.close()

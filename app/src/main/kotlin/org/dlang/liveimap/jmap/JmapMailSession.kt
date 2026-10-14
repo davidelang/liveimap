@@ -338,8 +338,17 @@ class JmapMailSession(
         uids.getOrPut(mailboxId) { Uids() }.uid(created)
     }
 
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
-        throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
+    /** "Send over JMAP" (account.emailSubmission): Email/import into Sent, then EmailSubmission/set (jmapSend), as
+     *  compose does. Without it a JMAP account sends through its SMTP server, which is not this session. Returns -1:
+     *  EmailSubmission reports no DSN choice here. */
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = lock.withLock {
+        val a = account ?: throw MailFailure("not connected")
+        if (!a.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
+        if (rfc822.isEmpty()) throw MailFailure("message is empty")
+        val s = need()
+        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin), postFor(pin), trust) }
+        -1
+    }
 
     // ---- push (RFC 8620 §7.3 EventSource) ----
 

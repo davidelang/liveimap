@@ -97,18 +97,22 @@ fun allowHost(hosts: Set<String>, host: String, port: Int): Boolean {
 }
 
 /**
- * F46: servers where mail-changing acceptance cases (APPEND, flags/expunge, a real SMTP send) may run: the
- * emulator lab and sun (the disposable copy). asgard (authoritative) and moon (replica) are never written to.
+ * F46: servers where mail-changing acceptance cases (APPEND, flags/expunge, a real SMTP send) may run. No host is
+ * built in: whoever runs the suite supplies [writeHosts] (the lab script from host.env, -e labWriteHosts; the in-app
+ * runner from files/acceptance-write-hosts). An empty set means read-only everywhere. asgard/moon are never supplied.
  */
-fun allowWriteHost(host: String): Boolean {
+fun allowWriteHost(host: String, writeHosts: Set<String>): Boolean {
     val h = host.trim().lowercase()
-    // 10.2.3.133: the lab host (LAB_BIND) the emulator reaches the lab containers on (David 2026-10-13).
-    if (h in setOf("lab.test", "10.0.2.2", "localhost", "127.0.0.1", "10.2.3.133")) return true
-    return h.substringBefore('.') == "sun"
+    return h.isNotEmpty() && writeHosts.any { it.trim().lowercase() == h }
 }
 
-/** Writes need both a lab user name and a lab host; a real account whose name happens to match is safe. */
-fun allowWriter(user: String, host: String): Boolean = allowUser(user) && allowWriteHost(host)
+/** Parses a supplied write-host list: comma, space or newline separated; blanks and # comments dropped. */
+fun parseWriteHosts(text: String): Set<String> =
+    text.lines().map { it.substringBefore('#') }.flatMap { it.split(',', ' ', '\t') }
+        .map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+
+/** Writes need both a lab user name and a supplied lab host; a real account whose name happens to match is safe. */
+fun allowWriter(user: String, host: String, writeHosts: Set<String>): Boolean = allowUser(user) && allowWriteHost(host, writeHosts)
 
 fun allowUser(user: String): Boolean {
     return user in allowUsers

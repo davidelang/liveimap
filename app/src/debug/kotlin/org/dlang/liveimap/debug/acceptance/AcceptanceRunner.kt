@@ -92,12 +92,6 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
         box.uidExpunge(listOf(appendedUid))
         "flagged, deleted, expunged"
     },
-    t("send to self", "smtp-submission", writes = true) {
-        if (account.email.isBlank()) throw AcceptanceSkip("no test recipient (account email empty)")
-        if (account.smtpHost.isBlank()) throw AcceptanceSkip("no SMTP server configured")
-        val r = session.smtpSend(testMessage(account, "Acceptance send"), listOf(account.email))
-        "sent" + if (r < 0) " (no DSN)" else ""
-    },
     t("reconnect", "session-select-examine") {
         session.close()
         when (val o = reopen()) {
@@ -107,6 +101,18 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
         }
     },
 )
+
+/** Not in the per-server IMAP matrix (SMTP is not IMAP): one check that the lab's fake SMTP sink accepts a message.
+ *  No delivery check, no variants. The in-app runner still offers it with the IMAP tests. */
+val smtpAcceptTest: AcceptanceTest =
+    t("smtp accepts message", "smtp-submission", writes = true) {
+    if (account.email.isBlank()) throw AcceptanceSkip("no test recipient (account email empty)")
+    if (account.smtpHost.isBlank()) throw AcceptanceSkip("no SMTP server configured")
+    val r = session.smtpSend(testMessage(account, "Acceptance send"), listOf(account.email))
+    "sent" + if (r < 0) " (no DSN)" else ""
+}
+
+val deviceAcceptanceTests: List<AcceptanceTest> = acceptanceTests + smtpAcceptTest
 
 /**
  * Runs [tests] in order on an opened [context]. Mail-changing tests run only for lab allowlist users and
@@ -118,12 +124,14 @@ suspend fun runAcceptance(
     readOnly: Boolean,
     progress: (Int, Int, String) -> Unit = { _, _, _ -> },
     clock: () -> Long = System::currentTimeMillis,
+    /** Hosts the caller says may be written (lab hosts supplied at run time; none built in). */
+    writeHosts: Set<String> = emptySet(),
     /** Lab servers must carry the seed marker; real servers are prepared by the user and not checked. */
-    checkSeed: Boolean = allowWriteHost(context.account.imapHost),
+    checkSeed: Boolean = allowWriteHost(context.account.imapHost, writeHosts),
     readMarker: suspend () -> SeedMarker? = { readSeedMarker(context) },
 ): List<ReportRow> {
-    val writer = allowWriter(context.account.username, context.account.imapHost) &&
-        allowWriteHost(context.account.smtpHost.ifBlank { context.account.imapHost })
+    val writer = allowWriter(context.account.username, context.account.imapHost, writeHosts) &&
+        allowWriteHost(context.account.smtpHost.ifBlank { context.account.imapHost }, writeHosts)
     val rows = ArrayList<ReportRow>()
     var markerError: String? = null
     val marker = if (checkSeed) try { readMarker() } catch (e: CancellationException) { throw e } catch (e: Exception) {

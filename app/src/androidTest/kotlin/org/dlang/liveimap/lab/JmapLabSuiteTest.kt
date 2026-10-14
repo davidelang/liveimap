@@ -106,6 +106,20 @@ class JmapLabSuiteTest {
             if (mid != before - 1 || after != before) throw IllegalStateException("exists $before -> $mid -> $after")
             "INBOX -> $other -> INBOX ($before -> $mid -> $after)"
         }
+        // "Send over JMAP": EmailSubmission through JmapMailSession.smtpSend (Email/import into Sent, then
+        // EmailSubmission/set), to the lab account itself (-e jmapRcpt, e.g. liveimap@<lab domain>). Lab only.
+        if (arg("jmapRcpt").isNotEmpty()) step("submit") {
+            val rcpt = arg("jmapRcpt")
+            val sender = session()
+            val jmapAccount = account.copy(email = rcpt, emailSubmission = true)
+            if (sender.open(jmapAccount) != OpenResult.Connected) throw IllegalStateException("open for submit failed")
+            try {
+                val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: LiveIMAP JMAP submission ${System.currentTimeMillis()}\r\n" +
+                    "Message-ID: <jmap-${System.nanoTime()}@${rcpt.substringAfter('@')}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nJMAP lab submission.\r\n").toByteArray()
+                sender.smtpSend(msg, listOf(rcpt))
+                "EmailSubmission accepted for $rcpt"
+            } finally { sender.close() }
+        }
         step("push") {
             s.select(inbox)
             val got = CompletableDeferred<MailboxChange>()

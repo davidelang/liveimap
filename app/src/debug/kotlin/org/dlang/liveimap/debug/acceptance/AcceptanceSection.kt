@@ -52,9 +52,9 @@ fun AcceptanceSection() {
                 session.setCertConfirmer(::confirmMailCertificate)
                 session.setPlaintextConfirmer(::confirmMailPlaintext)
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-                val selected = selectCases(acceptanceTests.map { it.case }, suite, acceptanceTests.flatMap { it.case.plans }, 3, "")
+                val selected = selectCases(deviceAcceptanceTests.map { it.case }, suite, deviceAcceptanceTests.flatMap { it.case.plans }, 3, "")
                     .map { it.name }.toSet()
-                val tests = acceptanceTests.filter { it.case.name in selected }
+                val tests = deviceAcceptanceTests.filter { it.case.name in selected }
                 var caps = ""
                 // F46: the session is closed whether or not the open succeeded.
                 val rows = try {
@@ -62,6 +62,8 @@ fun AcceptanceSection() {
                     caps = session.capabilities.joinToString(" ")
                     if (opened == OpenResult.Connected) {
                         runAcceptance(AcceptanceContext(session, account) { session.openWith(credentials) }, tests, readOnly = false,
+                            // Lab hosts the person running it supplied (adb: run-as ... files/acceptance-write-hosts); none: read-only.
+                            writeHosts = java.io.File(appContext.filesDir, "acceptance-write-hosts").takeIf { it.exists() }?.readText()?.let(::parseWriteHosts).orEmpty(),
                             progress = { done, total, name -> line = "$done/$total $name" })
                     } else {
                         val why = (opened as? OpenResult.Failed)?.text ?: (opened as? OpenResult.Rejected)?.capabilities ?: "open failed"

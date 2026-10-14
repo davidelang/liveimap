@@ -13,7 +13,7 @@ class AcceptanceRunnerTest {
         val fake = FakeLab(caps)
         val account = AccountSettings(username = user, email = email, imapHost = host, smtpHost = host)
         val rows = runBlocking {
-            runAcceptance(AcceptanceContext(fake, account) { OpenResult.Connected }, acceptanceTests, readOnly = false, clock = { 0L }, readMarker = { SeedMarker(SeedVersion, false) })
+            runAcceptance(AcceptanceContext(fake, account) { OpenResult.Connected }, deviceAcceptanceTests, readOnly = false, writeHosts = setOf("lab.test"), clock = { 0L }, readMarker = { SeedMarker(SeedVersion, false) })
         }
         return rows to fake
     }
@@ -21,7 +21,7 @@ class AcceptanceRunnerTest {
 
     @Test fun everyRegisteredTestGetsARowAndFailuresDoNotStopTheRun() {
         val (rows, _) = run("liveimap", setOf("IMAP4rev1"))
-        assertEquals(acceptanceTests.size, rows.size)
+        assertEquals(deviceAcceptanceTests.size, rows.size)
         assertEquals("pass", rows.row("namespaces").result)
         assertEquals("fail", rows.row("list top level").result)
         assertEquals("not used", rows.row("list top level").reason)
@@ -37,7 +37,7 @@ class AcceptanceRunnerTest {
 
     @Test fun realUserChangesNoMailAndSendsNothing() {
         val (rows, fake) = run("david", setOf("IMAP4rev1"))
-        for (name in listOf("append to test folder", "flag and delete appended", "send to self")) {
+        for (name in listOf("append to test folder", "flag and delete appended", "smtp accepts message")) {
             assertEquals("skip", rows.row(name).result)
             assertEquals("not a lab test user: no mail changed", rows.row(name).reason)
         }
@@ -46,14 +46,14 @@ class AcceptanceRunnerTest {
 
     @Test fun labUserSendsOnlyToItsOwnAddress() {
         val (rows, fake) = run("liveimap", setOf("IMAP4rev1"))
-        assertEquals("pass", rows.row("send to self").result)
+        assertEquals("pass", rows.row("smtp accepts message").result)
         assertEquals(listOf("send liveimap@lab.test"), fake.calls.filter { it.startsWith("send") })
         assertTrue("append LiveIMAP-Test" in fake.calls)
     }
 
     @Test fun noEmailMeansNoSend() {
         val (rows, fake) = run("liveimap", setOf("IMAP4rev1"), email = "")
-        assertEquals("skip", rows.row("send to self").result)
+        assertEquals("skip", rows.row("smtp accepts message").result)
         assertTrue(fake.calls.none { it.startsWith("send") })
     }
 

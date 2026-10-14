@@ -10,7 +10,10 @@ import org.dlang.liveimap.debug.acceptance.AcceptanceSuite
 import org.dlang.liveimap.debug.acceptance.MatrixServer
 import org.dlang.liveimap.debug.acceptance.acceptanceTests
 import org.dlang.liveimap.debug.acceptance.acceptanceVariants
+import org.dlang.liveimap.debug.acceptance.parseWriteHosts
+import org.dlang.liveimap.debug.acceptance.runAcceptance
 import org.dlang.liveimap.debug.acceptance.runMatrix
+import org.dlang.liveimap.debug.acceptance.smtpAcceptTest
 import org.dlang.liveimap.debug.acceptance.summaryLine
 import org.dlang.liveimap.debug.acceptance.variantAccount
 import org.dlang.liveimap.debug.acceptance.variantSession
@@ -45,7 +48,7 @@ class AcceptanceLabTest {
         val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
             tlsMode = TlsMode.valueOf(arg("labTls", "None")),
             // lab.smtp_args (smtp.tsv): the lab server's own SMTP port and a local lab recipient, as LabSuiteTest.
-            email = arg("labRcpt").ifEmpty { arg("labUser") + "@lab.test" },
+            email = arg("labRcpt"),
             smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25)
         val wanted = arg("accVariants").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
@@ -64,11 +67,35 @@ class AcceptanceLabTest {
                 is OpenResult.Rejected -> null to r.capabilities
             }
         }, close = { current?.close() })
-        val rows = runMatrix(listOf(server), variants, acceptanceTests)
+        val rows = runMatrix(listOf(server), variants, acceptanceTests, writeHosts = parseWriteHosts(arg("labWriteHosts")))
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
         val header = listOf("server" to server.label, "imap" to "$host:${arg("labPort")} ${arg("labTls", "None")}", "summary" to summaryLine(rows))
         writeReport(dir, AcceptanceReport(AcceptanceSuite.Full, rows, header), arg("labRun", "acc"))
         android.util.Log.i("AcceptanceLab", summaryLine(rows))
+    }
+
+    /** One check outside the matrix: the lab's fake SMTP sink (-e labSmtpPort) accepts a message. No delivery check. */
+    @Test
+    fun smtpAccepts(): Unit = runBlocking {
+        val host = arg("labHost")
+        assumeTrue("no labHost/labSmtpPort argument", host.isNotEmpty() && arg("labSmtpPort").isNotEmpty())
+        LabTestHooks.set(host, arg("labPass"))
+        val ca = arg("labCa")
+        if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
+        val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
+            tlsMode = TlsMode.valueOf(arg("labTls", "None")), email = arg("labRcpt"),
+            smtpHost = host, smtpPort = arg("labSmtpPort").toInt())
+        val raw = LibetpanMailSession()
+        raw.setCertConfirmer { false }
+        raw.setPlaintextConfirmer { true }
+        try {
+            check(raw.open(account) == OpenResult.Connected) { "open failed" }
+            val row = runAcceptance(AcceptanceContext(raw, account) { raw.open(account) }, listOf(smtpAcceptTest), readOnly = false, writeHosts = parseWriteHosts(arg("labWriteHosts"))).single()
+            android.util.Log.i("AcceptanceLab", "smtp: ${row.result} ${row.reason}")
+            check(row.result == "pass") { "smtp accepts message: ${row.result} ${row.reason}" }
+        } finally {
+            raw.close()
+        }
     }
 }

@@ -23,16 +23,9 @@ class AcceptanceSeedTest {
     fun labServerWithoutMarkerSkipsEveryTest() = kotlinx.coroutines.runBlocking {
         val tests = acceptanceTests.take(3)
         val ctx = AcceptanceContext(FakeLab(emptySet()), org.dlang.liveimap.settings.AccountSettings(username = "liveimap", imapHost = "lab.test")) { org.dlang.liveimap.session.OpenResult.Connected }
-        val rows = runAcceptance(ctx, tests, readOnly = false, readMarker = { null })
+        val rows = runAcceptance(ctx, tests, readOnly = false, writeHosts = setOf("lab.test"), readMarker = { null })
         assertEquals(List(3) { "skip" }, rows.map { it.result })
         assertEquals("not reset: no seed marker", rows.first().reason)
     }
 
-    @Test
-    fun labHostAddressIsALabWriteHost() {
-        org.junit.Assert.assertTrue(allowWriteHost("10.2.3.133"))
-        org.junit.Assert.assertTrue(allowWriter("liveimap", "10.2.3.133"))
-        org.junit.Assert.assertFalse(allowWriteHost("10.2.3.134"))
-        org.junit.Assert.assertFalse(allowWriter("dlang", "10.2.3.133"))
-    }
 }

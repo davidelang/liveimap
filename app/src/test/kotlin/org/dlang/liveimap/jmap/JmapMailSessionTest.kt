@@ -225,6 +225,18 @@ class JmapMailSessionTest {
         try { s.append("INBOX", "x".toByteArray()); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("overQuota")) }
     }
 
+    @Test
+    fun sendOverJmapNeedsTheOptionAndASubmissionCapability() = runBlocking {
+        // Without "send over JMAP" the session does not send; the account's SMTP server does.
+        val plain = open(Fake(ArrayDeque()))
+        try { plain.smtpSend("x".toByteArray(), listOf("a@b")); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("SMTP")) }
+        // With it, a server that does not offer urn:ietf:params:jmap:submission fails before any upload.
+        val fake = Fake(ArrayDeque())
+        val jm = open(fake, AccountSettings(username = "u", email = "u@x", jmapCertPin = "jm", emailSubmission = true))
+        try { jm.smtpSend("x".toByteArray(), listOf("a@b")); fail() } catch (e: MailFailure) { assertTrue(e.text, e.text.contains("submission")) }
+        assertTrue(fake.bodies.isEmpty())
+    }
+
     private class Stream(val responses: ArrayDeque<Pair<Int, String>>) {
         val urls = mutableListOf<String>()
         val blocked = java.util.concurrent.CountDownLatch(1)

@@ -7778,6 +7778,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobj
     if (bad) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
+    utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
     bool displayName = strcasecmp(name.c(), "DISPLAYFROM") == 0 || strcasecmp(name.c(), "DISPLAYTO") == 0;
@@ -7874,6 +7876,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
     if (bad) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
+    utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars name(env, keyName);
     std::string ret = partialReturn(first, last);
@@ -7961,6 +7965,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     if (bad) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
+    utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
     JChars alg(env, algorithm);
     if (strcasecmp(alg.c(), "REFERENCES") != 0 && strcasecmp(alg.c(), "ORDEREDSUBJECT") != 0) {
