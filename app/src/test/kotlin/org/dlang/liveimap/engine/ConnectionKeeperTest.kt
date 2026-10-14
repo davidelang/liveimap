@@ -345,7 +345,7 @@ class ConnectionKeeperTest {
         link.beforeReselect = {
             inReselect.countDown()
             releaseReselect.await()
-            if (deadFlag) throw MailFailure("closed under the owner")
+            if (link.deadFlag) throw MailFailure("closed under the owner")
         }
         val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = { })
         val epochA = clock.takeResume()
