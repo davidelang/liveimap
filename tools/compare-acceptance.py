@@ -7,7 +7,7 @@ import json, sys
 def rows(path):
     with open(path) as f:
         report = json.load(f)
-    key = lambda r: (report.get("server", ""), r["name"])
+    key = lambda r: (" / ".join(x for x in (r.get("server", ""), r.get("variant", "")) if x), r["name"])
     return report, {key(r): r for r in report.get("rows", [])}
 
 

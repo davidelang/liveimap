@@ -33,6 +33,9 @@ data class ReportRow(
     val result: String,
     val reason: String,
     val millis: Long = -1,
+    /** Matrix runs: which server and capability/fallback variant (empty for a single-server run). */
+    val server: String = "",
+    val variant: String = "",
 )
 
 data class AcceptanceReport(
@@ -170,6 +173,8 @@ private fun reportJson(report: AcceptanceReport): String {
             "\"plans\":${jsonArray(row.plans)}," +
             "\"result\":${jsonString(row.result)}," +
             "\"reason\":${jsonString(row.reason)}" +
+            (if (row.server.isNotEmpty()) ",\"server\":${jsonString(row.server)}" else "") +
+            (if (row.variant.isNotEmpty()) ",\"variant\":${jsonString(row.variant)}" else "") +
             (if (row.millis >= 0) ",\"ms\":${row.millis}" else "") + "}"
     }
     val header = report.header.joinToString("") { (k, v) -> "${jsonString(k)}:${jsonString(v)}," }
@@ -179,7 +184,9 @@ private fun reportJson(report: AcceptanceReport): String {
 private fun reportText(report: AcceptanceReport): String {
     val text = StringBuilder()
     for ((k, v) in report.header) text.append("# ").append(k).append(": ").append(v).append('\n')
+    if (report.rows.any { it.server.isNotEmpty() || it.variant.isNotEmpty() }) text.append(matrixGrid(report.rows))
     for (row in report.rows) {
+        if (row.server.isNotEmpty() || row.variant.isNotEmpty()) text.append(row.server).append('\t').append(row.variant).append('\t')
         text.append(row.name)
         text.append('\t')
         text.append(row.result)
