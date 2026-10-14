@@ -2852,3 +2852,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: the last watch target survives a cleared publish; rewatch calls nativeWatch when that offer is null; a 0 throws ConnectionLost so resume and scheduleRewatch leave watchLost set
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Extra IDLE stops when the app stops or the account is removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-lifetime-20261014-0936-plan.md
+- Work: stopExtraIdle bumps a generation that a waiting apply checks under extraIdleLock before it opens; onStop cancels the onStart job before stopExtraIdle; dropMailSession closes that account's extra IDLE; hidden IDLE opens nothing and a server without IDLE is probed once per apply
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -41,14 +41,17 @@ suspend fun suspendMailSessions() {
 
 suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
     if (accountId.isBlank()) return
+    val seen = extraIdleSessions.readGeneration()
     extraIdleLock.withLock {
+        if (!extraIdleSessions.generationStill(seen)) return
         withContext(AccountTarget(accountId)) {
-            applyStoredIdle(extraIdleSessions, account, accountId)
+            applyStoredIdle(extraIdleSessions, account, accountId, seen)
         }
     }
 }
 
 suspend fun stopExtraIdle() {
+    extraIdleSessions.bumpGeneration()
     extraIdleLock.withLock {
         extraIdleSessions.stop()
     }
@@ -58,5 +61,8 @@ suspend fun stopExtraIdle() {
 fun extraIdleChanges(): kotlinx.coroutines.flow.Flow<IdleFolderChange> = extraIdleSessions.changes
 
 suspend fun dropMailSession(accountId: String) {
+    extraIdleLock.withLock {
+        extraIdleSessions.closeAccount(accountId)
+    }
     accountSessions.drop(accountId)
 }

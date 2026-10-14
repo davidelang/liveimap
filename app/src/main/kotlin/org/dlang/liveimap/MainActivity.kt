@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.BuildConfig
@@ -37,6 +38,7 @@ import org.dlang.liveimap.ui.LiveImapNavHost
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: DataStoreSettingsStore
+    private var extraIdleStart: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,7 +100,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (smokeLaunch(intent)) return
-        lifecycleScope.launch {
+        extraIdleStart = lifecycleScope.launch {
             for (choice in store.listAccounts()) {
                 try {
                     applyExtraIdle(store.forAccount(choice.id).load(), choice.id)
@@ -111,6 +113,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         if (!isChangingConfigurations) {
             // F104: no background draft save here (it raced Send and left stale drafts in Postponed).
+            extraIdleStart?.cancel()
             lifecycleScope.launch(NonCancellable) {
                 try {
                     suspendMailSessions()

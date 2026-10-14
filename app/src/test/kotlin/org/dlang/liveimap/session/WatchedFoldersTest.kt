@@ -1,7 +1,10 @@
 package org.dlang.liveimap.session
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.yield
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
@@ -358,14 +361,14 @@ class WatchedFoldersTest {
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
         sessions.apply(account, listOf("A", "B"), "acct")
         assertEquals(listOf("open", "stopWatch", "close"), skipFirst.calls)
-        assertEquals(listOf("open", "select B", "watch B"), openedNext.calls)
-        assertEquals(listOf("B"), sessions.openNames())
+        assertEquals(emptyList<String>(), openedNext.calls)
+        assertEquals(emptyList<String>(), sessions.openNames())
         val planned = extraWatchPlan(account.copy(watchedFolders = listOf("A", "B", "C"), extraIdleBudget = 2))
-        assertEquals(listOf("B"), planned.idle)
-        assertEquals(listOf("C", "A"), planned.status)
+        assertEquals(emptyList<String>(), planned.idle)
+        assertEquals(listOf("C", "A", "B"), planned.status)
         val dropped = extraWatchPlan(account.copy(watchedFolders = listOf("B", "C"), extraIdleBudget = 2))
-        assertEquals(listOf("B", "C"), dropped.idle)
-        assertEquals(emptyList<String>(), dropped.status)
+        assertEquals(listOf("C"), dropped.idle)
+        assertEquals(listOf("B"), dropped.status)
         val otherHost = extraWatchPlan(
             AccountSettings(
                 imapHost = "other.example",
@@ -430,6 +433,7 @@ class WatchedFoldersTest {
         )
         val first = IdleHolder()
         applyStoredIdle(first.sessions, hidden, "acct")
+        assertEquals(0, first.records.size)
         assertEquals(emptyList<String>(), first.sessions.openNames())
         assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
         assertEquals(listOf("A"), extraWatchPlan(hidden).status)
@@ -478,31 +482,30 @@ class WatchedFoldersTest {
             watchedFolders = listOf("A"),
             extraIdleBudget = 1,
         )
-        val recorded = IdleRecord()
         val boom = MailFailure("watch down")
         val failing = IdleRecord()
         failing.watchFailure = boom
         val restored = IdleRecord()
-        val queued = arrayListOf(recorded, failing, restored)
+        val queued = arrayListOf(failing, restored)
         val sessions = ExtraIdleSessions { queued.removeAt(0) }
         applyStoredIdle(sessions, hidden, "acct")
-        assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), recorded.calls)
+        assertEquals(2, queued.size)
         assertEquals(emptyList<String>(), sessions.openNames())
         assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
         assertEquals(listOf("A"), extraWatchPlan(hidden).status)
 
+        val shown = hidden.copy(hiddenCapabilities = emptySet())
         try {
-            applyStoredIdle(sessions, hidden, "acct")
+            applyStoredIdle(sessions, shown, "acct")
             fail("expected MailFailure")
         } catch (failure: MailFailure) {
             assertSame(boom, failure)
         }
         assertEquals(listOf("open", "select A", "watch A", "stopWatch", "close"), failing.calls)
         assertEquals(emptyList<String>(), sessions.openNames())
-        assertEquals(emptyList<String>(), extraWatchPlan(hidden).idle)
-        assertEquals(listOf("A"), extraWatchPlan(hidden).status)
+        assertEquals(emptyList<String>(), extraWatchPlan(shown).idle)
+        assertEquals(listOf("A"), extraWatchPlan(shown).status)
 
-        val shown = hidden.copy(hiddenCapabilities = emptySet())
         applyStoredIdle(sessions, shown, "acct")
         assertEquals(listOf("open", "select A", "watch A"), restored.calls)
         assertEquals(listOf("A"), sessions.openNames())
@@ -528,6 +531,108 @@ class WatchedFoldersTest {
         assertEquals(listOf("open", "select A", "watch A"), first.calls)
         assertEquals(listOf("open", "select B", "watch B", "stopWatch", "close"), second.calls)
         assertEquals(listOf("A"), sessions.openNames())
+    }
+
+    @Test
+    fun droppingOneAccountClosesOnlyThatAccount() = runBlocking {
+        val records = ArrayList<IdleRecord>()
+        val sessions = ExtraIdleSessions {
+            IdleRecord().also {
+                it.deliverOnWatch = null
+                records.add(it)
+            }
+        }
+        val accountA = AccountSettings(imapHost = "drop-a.example", username = "a", imapPort = 993)
+        val accountB = AccountSettings(imapHost = "drop-b.example", username = "b", imapPort = 993)
+        sessions.apply(accountA, listOf("INBOX"), "acct-a")
+        sessions.apply(accountB, listOf("INBOX"), "acct-b")
+        records[0].callback?.invoke(MailboxChange.Exists(1))
+        sessions.closeAccount("acct-a")
+        assertEquals(listOf("open", "select INBOX", "watch INBOX", "stopWatch", "close"), records[0].calls)
+        assertEquals(listOf("open", "select INBOX", "watch INBOX"), records[1].calls)
+        assertEquals(listOf("INBOX"), sessions.openNames())
+        val waiting = async { sessions.changes.first() }
+        yield()
+        records[0].callback?.invoke(MailboxChange.Exists(8))
+        records[1].callback?.invoke(MailboxChange.Exists(4))
+        val emitted = waiting.await()
+        assertEquals("acct-b", emitted.accountId)
+        assertEquals(MailboxChange.Exists(4), emitted.change)
+    }
+
+    @Test
+    fun staleApplyOpensNothing() = runBlocking {
+        val made = IdleHolder()
+        val seen = made.sessions.readGeneration()
+        val gate = Mutex(locked = true)
+        val waiting = launch {
+            gate.withLock {
+                applyStoredIdle(
+                    made.sessions,
+                    AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 2),
+                    "acct",
+                    seen,
+                )
+            }
+        }
+        yield()
+        made.sessions.bumpGeneration()
+        gate.unlock()
+        waiting.join()
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+    }
+
+    @Test
+    fun hiddenIdleOpensNoSession() = runBlocking {
+        val hidden = AccountSettings(
+            imapHost = "hide-none.example",
+            username = "u",
+            imapPort = 993,
+            hiddenCapabilities = setOf("IDLE"),
+            watchedFolders = listOf("A", "B", "C"),
+            extraIdleBudget = 3,
+        )
+        val made = IdleHolder()
+        applyStoredIdle(made.sessions, hidden, "acct")
+        assertEquals(0, made.records.size)
+        assertEquals(emptyList<String>(), made.sessions.openNames())
+        val planned = extraWatchPlan(hidden)
+        assertEquals(emptyList<String>(), planned.idle)
+        assertEquals(listOf("A", "B", "C"), planned.status)
+    }
+
+    @Test
+    fun serverWithoutIdleOpensOneSessionForSeveralNames() = runBlocking {
+        val account = AccountSettings(
+            imapHost = "probe-once.example",
+            username = "u",
+            imapPort = 993,
+            watchedFolders = listOf("A", "B", "C"),
+            extraIdleBudget = 3,
+        )
+        val probe = IdleRecord()
+        probe.capabilities = setOf("IMAP4REV1")
+        var calls = 0
+        val sessions = ExtraIdleSessions {
+            calls += 1
+            probe
+        }
+        applyStoredIdle(sessions, account, "acct")
+        assertEquals(1, calls)
+        assertEquals(listOf("open", "stopWatch", "close"), probe.calls)
+        assertEquals(emptyList<String>(), sessions.openNames())
+        val planned = extraWatchPlan(account)
+        assertEquals(emptyList<String>(), planned.idle)
+        assertEquals(listOf("A", "B", "C"), planned.status)
+
+        val opened = ArrayList<IdleRecord>()
+        val again = ExtraIdleSessions { IdleRecord().also { opened.add(it) } }
+        applyStoredIdle(again, account, "acct")
+        assertEquals(3, opened.size)
+        assertEquals(listOf("A", "B", "C"), again.openNames())
+        assertEquals(listOf("A", "B", "C"), extraWatchPlan(account).idle)
+        assertEquals(emptyList<String>(), extraWatchPlan(account).status)
     }
 
     private class IdleHolder {

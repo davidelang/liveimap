@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 data class WatchPlan(
     val idle: List<String>,
@@ -35,9 +37,12 @@ private val noIdleMailboxes = ConcurrentHashMap.newKeySet<NoIdleMailbox>()
 private fun noIdleKey(settings: AccountSettings, mailbox: String): NoIdleMailbox =
     NoIdleMailbox(settings.imapHost, settings.username, settings.imapPort, mailbox)
 
+private fun idleHidden(account: AccountSettings): Boolean =
+    account.hiddenCapabilities.any { it.equals("IDLE", ignoreCase = true) }
+
 /** IDLE is usable only when this session advertises it and the account has not hidden it. */
 private fun idleUsable(account: AccountSettings, session: MailSession): Boolean {
-    if (account.hiddenCapabilities.any { it.equals("IDLE", ignoreCase = true) }) return false
+    if (idleHidden(account)) return false
     return session.featureCaps.idle
 }
 
@@ -91,8 +96,15 @@ fun connectionLimits(settings: AccountSettings): ConnectionLimits =
 fun maxConnectionsFromText(text: String): Int? =
     text.trim().takeIf { it.matches(Regex("\\d{1,3}")) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
-/** Retries each extra IDLE slot, including a folder the last apply left on STATUS. Over-budget names are not opened. */
-suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings, accountId: String = "") {
+/** Retries each extra IDLE slot, including a folder the last apply left on STATUS. Over-budget names are not opened.
+ *  [seenGeneration] is the value read before extraIdleLock. A stop that bumped it does not open. */
+suspend fun applyStoredIdle(
+    sessions: ExtraIdleSessions,
+    account: AccountSettings,
+    accountId: String = "",
+    seenGeneration: Int = sessions.readGeneration(),
+) {
+    if (!sessions.generationStill(seenGeneration)) return
     val names = planWatchedFolders(account.watchedFolders, connectionLimits(account).idleSlots).idle
     sessions.apply(account, names, accountId)
 }
@@ -216,6 +228,13 @@ class IdleChangeCoalescer {
         out
     }
 
+    fun dropAccount(accountId: String) {
+        synchronized(pending) {
+            val keys = pending.keys.filter { it.first == accountId }
+            for (key in keys) pending.remove(key)
+        }
+    }
+
     val changes: Flow<IdleFolderChange> = flow {
         while (true) {
             for (change in drain()) emit(change)
@@ -227,56 +246,101 @@ class IdleChangeCoalescer {
 class ExtraIdleSessions(private val factory: () -> MailSession) {
     private val open = ArrayList<Held>()
     private val coalescer = IdleChangeCoalescer()
+    private val generation = AtomicInteger(0)
 
     /** Count and reset changes per extra IDLE folder, coalesced per folder (F28); nothing is lost. */
     val changes: Flow<IdleFolderChange> = coalescer.changes
 
     fun openNames(): List<String> = open.map { it.name }
 
+    /** Read this before waiting for extraIdleLock. */
+    fun readGeneration(): Int = generation.get()
+
+    /** stopExtraIdle bumps this before it waits for extraIdleLock. Not a lock. */
+    fun bumpGeneration() {
+        generation.incrementAndGet()
+    }
+
+    fun generationStill(seen: Int): Boolean = generation.get() == seen
+
     /** [names] is this account's extra IDLE set. Another account's sessions stay open. */
     suspend fun apply(account: AccountSettings, names: List<String>, accountId: String = "") {
         if (accountId.isBlank()) return
+        val hiddenIdle = !account.jmapFolders && idleHidden(account)
         val keep = HashSet<Pair<String, String>>()
-        for (name in names) keep.add(accountId to name)
+        if (!hiddenIdle) {
+            for (name in names) keep.add(accountId to name)
+        }
         for (held in open.toList()) {
             if (held.accountId != accountId) continue
             if ((held.accountId to held.name) in keep) continue
-            closeHeld(held.session)
-            open.remove(held)
+            release(held)
+        }
+        if (hiddenIdle) {
+            for (name in names) noIdleMailboxes.add(noIdleKey(account, name.trim()))
+            return
         }
         val seen = HashSet<Pair<String, String>>()
         for (held in open) {
             if (held.accountId == accountId) seen.add(held.accountId to held.name)
         }
+        var sawSession = false
+        var firstLacksIdle = false
         for (name in names) {
             if (!seen.add(accountId to name)) continue
             val key = noIdleKey(account, name.trim())
+            if (!account.jmapFolders && firstLacksIdle) {
+                noIdleMailboxes.add(key)
+                continue
+            }
+            val live = AtomicBoolean(true)
             val session = factory()
             try {
                 session.watchOnly(account, name) { change ->
+                    if (!live.get()) return@watchOnly
                     coalescer.offer(IdleFolderChange(name, change, accountId))
                 }
             } catch (failure: Throwable) {
+                live.set(false)
                 suppressClose(session, failure)
                 throw failure
             }
-            // IMAP with no IDLE (or IDLE hidden): watchOnly already returned. Do not STATUS this session.
+            // IMAP with no IDLE: this session already returned. Do not STATUS it.
+            // The first such session in this apply marks the rest without another login.
             // A JMAP watchOnly that returns is the event source. featureCaps.idle is the unused IMAP session.
             if (!account.jmapFolders && !idleUsable(account, session)) {
                 noIdleMailboxes.add(key)
+                live.set(false)
                 closeHeld(session)
+                if (!sawSession) firstLacksIdle = true
+                sawSession = true
                 continue
             }
+            sawSession = true
             noIdleMailboxes.remove(key)
-            open.add(Held(accountId, name, session))
+            open.add(Held(accountId, name, session, live))
         }
+    }
+
+    suspend fun closeAccount(accountId: String) {
+        if (accountId.isBlank()) return
+        for (held in open.toList()) {
+            if (held.accountId != accountId) continue
+            release(held)
+        }
+        coalescer.dropAccount(accountId)
     }
 
     suspend fun stop() {
         for (held in open.toList()) {
-            closeHeld(held.session)
-            open.remove(held)
+            release(held)
         }
+    }
+
+    private suspend fun release(held: Held) {
+        held.live.set(false)
+        closeHeld(held.session)
+        open.remove(held)
     }
 
     private suspend fun closeHeld(session: MailSession) {
@@ -296,5 +360,10 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
         }
     }
 
-    private class Held(val accountId: String, val name: String, val session: MailSession)
+    private class Held(
+        val accountId: String,
+        val name: String,
+        val session: MailSession,
+        val live: AtomicBoolean,
+    )
 }
