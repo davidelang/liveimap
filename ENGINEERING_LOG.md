@@ -2726,3 +2726,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
 - Fixup 2: JmapMailSession remembers the watch mailbox and callback before setup. suspendConnections still stops the event source without waiting, and resume starts that watch again. stopWatch and close do not come back. Suspend does not emit WatchLost.
 - First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - Watch setup and resume off the lane
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-off-lane-20261014-0617-plan.md
+- Work: watch setup, IDLE start, and resume reconnect do not hold the lane or the session mutex across network I/O
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c8b3225ba1c48100e1511c2e926af79f102d5f1a

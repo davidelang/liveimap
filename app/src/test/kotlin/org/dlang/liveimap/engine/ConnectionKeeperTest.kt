@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import java.util.ArrayDeque
+import java.util.concurrent.CountDownLatch
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.MailFailure
@@ -141,6 +142,46 @@ class ConnectionKeeperTest {
         assertEquals(listOf(3_000L), sleeps)
         assertEquals(ConnectionState.Lost("still down"), keeper.connectionState.value)
         assertEquals(2, link.connects)
+    }
+
+    @Test
+    fun secondReconnectDoesNotSleepWhileOneRuns() {
+        val link = FakeLink()
+        link.deadFlag = true
+        link.connectFailures.add(MailFailure("first boom"))
+        val sleeps = mutableListOf<Long>()
+        val inSleep = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val keeper = ConnectionKeeper(link, clock = { 0L }, sleep = {
+            synchronized(sleeps) { sleeps.add(it) }
+            inSleep.countDown()
+            release.await()
+        })
+        val ownerError = arrayOfNulls<Throwable>(1)
+        val owner = Thread {
+            try {
+                keeper.read("fetch") { "ok" }
+            } catch (error: Throwable) {
+                ownerError[0] = error
+            }
+        }
+        owner.start()
+        inSleep.await()
+        try {
+            keeper.read("fetch") { "no" }
+            error("expected connection lost")
+        } catch (error: ConnectionLost) {
+            assertEquals("Reconnecting", error.text)
+        }
+        val connectsWhileOwned = link.connects
+        keeper.resume()
+        assertEquals(connectsWhileOwned, link.connects)
+        assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
+        release.countDown()
+        owner.join()
+        assertEquals(null, ownerError[0])
+        assertEquals(2, link.connects)
+        assertEquals(listOf(3_000L), synchronized(sleeps) { sleeps.toList() })
     }
 
     @Test

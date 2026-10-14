@@ -8027,6 +8027,32 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     return obj;
 }
 
+// ENABLE UTF8=ACCEPT on a watch connection. Does not touch the session: the main imap and its utf8 flag stay put.
+void enableUtf8On(mailimap * imap) {
+    if (imap == nullptr) return;
+    clist * list = clist_new();
+    if (list == nullptr) return;
+    char * owned = strdup("UTF8=ACCEPT");
+    struct mailimap_capability * cap = owned != nullptr
+        ? mailimap_capability_new(MAILIMAP_CAPABILITY_NAME, nullptr, owned) : nullptr;
+    if (cap == nullptr || clist_append(list, cap) != 0) {
+        if (cap != nullptr) mailimap_capability_free(cap);
+        else free(owned);
+        clist_free(list);
+        return;
+    }
+    struct mailimap_capability_data * data = mailimap_capability_data_new(list);
+    if (data == nullptr) {
+        mailimap_capability_free(cap);
+        clist_free(list);
+        return;
+    }
+    struct mailimap_capability_data * result = nullptr;
+    mailimap_enable(imap, data, &result);
+    mailimap_capability_data_free(data);
+    if (result != nullptr) mailimap_capability_data_free(result);
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject thiz, jlong handle, jstring mailbox) {
     if (!ensureJni(env)) return;
@@ -8047,9 +8073,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     TrafficIdScope idScope("watch");
     std::string error;
     mailimap * watch = nullptr;
-    // F13/F136: the watch is its own connection; connect, TLS and login run without the session lock so the
-    // account's other commands are not queued behind a slow or unreachable network. The use count taken by
-    // lockSession stays held, so the session cannot be deleted meanwhile (freeSession waits for it).
+    // F13/F136/F261: connect, TLS, login, EXAMINE and the IDLE-start wait run without the session lock.
+    // The use count taken by lockSession stays held, so the session cannot be deleted meanwhile.
+    // Copied before the unlock: the examine and the watch thread do not read session->imap or the password.
     const std::string host = session->host;
     const std::string user = session->user;
     std::string password = session->password;
@@ -8057,6 +8083,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     const std::string tlsMode = session->tlsMode;
     const std::string certPin = session->certPin;
     const int port = session->imapPort;
+    const bool utf8 = session->utf8;
+    const std::string mailboxName = mb.c();
     const uint64_t generation = ++session->watchGeneration;
     session->mu.unlock();
     if (tlsMode == "None") {
@@ -8077,16 +8105,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         unlockSession(session);
         return;
     }
-    if (session->utf8) {
-        // Same mailbox-name form as the main connection (the name passed in is UTF-8 there).
-        mailimap * main = session->imap;
-        session->imap = watch;
-        bool before = session->utf8;
-        enableNamed(session, "UTF8=ACCEPT");
-        session->utf8 = before;
-        session->imap = main;
+    session->mu.unlock();
+    if (utf8) enableUtf8On(watch);
+    int r = mailimap_examine(watch, mailboxName.c_str());
+    session->mu.lock();
+    if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
+        if (watch != nullptr) mailimap_free(watch);
+        unlockSession(session);
+        return;
     }
-    int r = mailimap_examine(watch, mb.c());
     if (!cmdOk(r)) {
         if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
             mailimap_free(watch);
@@ -8113,9 +8140,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     session->selfGlobal = env->NewGlobalRef(thiz);
     if (session->watchWakeFd < 0) session->watchWakeFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     session->watchThread = std::thread(watchMain, session);
+    session->mu.unlock();
     {
         std::unique_lock<std::mutex> lock(session->startMu);
         session->startCv.wait(lock, [&] { return session->startState != 0; });
+    }
+    session->mu.lock();
+    // This watch is already published, so the installed flag would match it. A stop bumps the generation.
+    if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, false)) {
+        unlockSession(session);
+        return;
     }
     if (session->startState < 0) {
         std::string why = session->startError;

@@ -40,7 +40,7 @@ class Pass5GuardTest {
     // F50 JMAP copy-first: was a source-text check; now every JMAP send goes through keepCopyUntilSubmitted, whose
     // behaviour is tested in ui/compose/KeepCopyUntilSubmittedTest.
 
-    /** F13/F136: the watch connection is opened without the session lock, and installs only if not superseded. */
+    /** F13/F136/F261: connect, EXAMINE, and the IDLE-start wait run without the session lock. Publish checks the generation. */
     @Test fun watchSetupConnectsWithoutTheLock() {
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
@@ -48,11 +48,31 @@ class Pass5GuardTest {
         val open = body.indexOf("openTls(")
         val relock = body.indexOf("session->mu.lock();")
         assertTrue(unlock in 0 until open && open < relock)
+        val examine = body.indexOf("mailimap_examine(")
+        val examineUnlock = body.lastIndexOf("session->mu.unlock();", examine)
+        val examineLock = body.indexOf("session->mu.lock();", examine)
+        assertTrue(examineUnlock in 0 until examine && examine < examineLock)
+        val wait = body.indexOf("session->startCv.wait(")
+        val waitUnlock = body.lastIndexOf("session->mu.unlock();", wait)
+        val waitLock = body.indexOf("session->mu.lock();", wait)
+        assertTrue(waitUnlock in 0 until wait && wait < waitLock)
+        val publish = body.indexOf("session->watch = watch;")
+        val checkBeforePublish = body.lastIndexOf("watchSetupSuperseded(", publish)
+        assertTrue(examine < checkBeforePublish && checkBeforePublish < publish)
+        val afterWait = body.substring(wait)
+        val checkAfterWait = afterWait.indexOf("watchSetupSuperseded(")
+        val freeAfterWait = afterWait.indexOf("mailimap_free(session->watch)")
+        assertTrue(checkAfterWait in 0 until freeAfterWait)
         assertTrue(body.contains("watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)"))
         val serial = listOf("src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt", "app/src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt")
             .map(::File).first { it.exists() }.readText()
-        assertTrue(serial.contains("watchMutex.withLock { withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) } }"))
+        assertFalse(serial.contains("watchMutex"))
         assertFalse(serial.contains("onLane { inner.watch("))
+        assertFalse(serial.contains("onLane { inner.stopWatch("))
+        assertFalse(serial.contains("onLane { inner.resume("))
+        assertTrue(serial.contains("withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) }"))
+        assertTrue(serial.contains("withContext(Dispatchers.IO) { inner.stopWatch() }"))
+        assertTrue(serial.contains("withContext(Dispatchers.IO) { inner.resume() }"))
     }
 
     /** F27: the extra-IDLE close (reached from onStop on Main) runs on IO. */

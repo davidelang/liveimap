@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine
 
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.session.ConnectionLost
@@ -33,6 +34,8 @@ class ConnectionKeeper(
     @Volatile private var lastSelect: SelectResult? = null
     @Volatile private var broken = false
     @Volatile private var watchLost = false
+    // One reconnect owner. The loser does not connect and does not sleep.
+    private val reconnectOwner = AtomicBoolean(false)
 
     fun noteSelected(result: SelectResult) {
         lastSelect = result
@@ -62,7 +65,7 @@ class ConnectionKeeper(
 
     fun resume() {
         if (needsReconnect()) {
-            reconnect()
+            reconnect(fromResume = true)
             return
         }
         if (idleTooLong()) {
@@ -70,7 +73,7 @@ class ConnectionKeeper(
                 link.noop()
                 lastUsed = clock()
             } catch (_: ConnectionLost) {
-                reconnect()
+                reconnect(fromResume = true)
                 return
             }
         }
@@ -79,7 +82,7 @@ class ConnectionKeeper(
                 link.rewatch()
                 watchLost = false
             } catch (_: ConnectionLost) {
-                reconnect()
+                reconnect(fromResume = true)
             }
         }
     }
@@ -147,50 +150,58 @@ class ConnectionKeeper(
         }
     }
 
-    private fun reconnect() {
-        state.value = ConnectionState.Reconnecting
-        TrafficLog.noteStatus("Reconnecting")
-        link.close()
-        var failure: Exception? = null
-        var connected = false
-        for (attempt in 0 until 2) {
-            if (attempt == 1) {
-                sleep(3_000)
-            }
-            try {
-                link.connect()
-                connected = true
-                break
-            } catch (error: Exception) {
-                failure = error
-            }
-        }
-        if (!connected) {
-            val text = failureText(failure)
-            state.value = ConnectionState.Lost(text)
-            TrafficLog.noteStatus("Error $text")
-            broken = true
-            throw ConnectionLost(text)
-        }
-        val previous = lastSelect
-        val selected = try {
-            link.reselect()
-        } catch (error: Exception) {
-            failReconnect(error)
-        }
-        for (change in reconnectChanges(previous, selected)) link.emit(change)
-        if (selected != null) {
-            lastSelect = selected
+    private fun reconnect(fromResume: Boolean = false) {
+        if (!reconnectOwner.compareAndSet(false, true)) {
+            if (fromResume) return
+            throw ConnectionLost("Reconnecting")
         }
         try {
-            link.rewatch()
-        } catch (error: Exception) {
-            failReconnect(error)
+            state.value = ConnectionState.Reconnecting
+            TrafficLog.noteStatus("Reconnecting")
+            link.close()
+            var failure: Exception? = null
+            var connected = false
+            for (attempt in 0 until 2) {
+                if (attempt == 1) {
+                    sleep(3_000)
+                }
+                try {
+                    link.connect()
+                    connected = true
+                    break
+                } catch (error: Exception) {
+                    failure = error
+                }
+            }
+            if (!connected) {
+                val text = failureText(failure)
+                state.value = ConnectionState.Lost(text)
+                TrafficLog.noteStatus("Error $text")
+                broken = true
+                throw ConnectionLost(text)
+            }
+            val previous = lastSelect
+            val selected = try {
+                link.reselect()
+            } catch (error: Exception) {
+                failReconnect(error)
+            }
+            for (change in reconnectChanges(previous, selected)) link.emit(change)
+            if (selected != null) {
+                lastSelect = selected
+            }
+            try {
+                link.rewatch()
+            } catch (error: Exception) {
+                failReconnect(error)
+            }
+            watchLost = false
+            broken = false
+            lastUsed = clock()
+            state.value = ConnectionState.Connected
+        } finally {
+            reconnectOwner.set(false)
         }
-        watchLost = false
-        broken = false
-        lastUsed = clock()
-        state.value = ConnectionState.Connected
     }
 
     private fun failReconnect(error: Exception): Nothing {

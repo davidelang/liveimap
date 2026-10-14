@@ -41,7 +41,7 @@ class SerialMailSession(
         get() = inner.connectionState
 
     override suspend fun resume() {
-        onLane { inner.resume() }
+        withContext(Dispatchers.IO) { inner.resume() }
     }
 
     override suspend fun suspendConnections() {
@@ -192,18 +192,15 @@ class SerialMailSession(
         unscoped("clientThread")
 
     /**
-     * F13/F136/F27: watch setup (a whole connect, TLS and login of the separate IDLE connection) and stop (DONE and
-     * its reply) do not take the lane, so the account's other commands are not queued behind them. Watch and stop
-     * stay ordered among themselves; the native side holds its session lock only to install or remove the watch.
+     * F13/F136/F27: watch setup (connect, TLS, login, EXAMINE, IDLE start) and stop do not take the lane.
+     * The native generation orders a watch. The session lock is held only to publish or remove it.
      */
-    private val watchMutex = Mutex()
-
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
-        watchMutex.withLock { withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) } }
+        withContext(Dispatchers.IO) { inner.watch(mailbox, onChange) }
     }
 
     override suspend fun stopWatch() {
-        watchMutex.withLock { withContext(Dispatchers.IO) { inner.stopWatch() } }
+        withContext(Dispatchers.IO) { inner.stopWatch() }
     }
 
     override suspend fun noop() {
