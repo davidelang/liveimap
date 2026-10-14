@@ -508,6 +508,8 @@ data class AccountSettings(
     val inboundRules: List<InboundRule> = emptyList(),
     val watchedFolders: List<String> = emptyList(),
     val extraIdleBudget: Int = 2,
+    /** David's rule: most connections this account opens to its server (main, watch, search, extra IDLE). */
+    val maxConnections: Int = org.dlang.liveimap.session.DefaultMaxConnections,
     val savedSearches: List<SavedSearch> = emptyList(),
     val savedAdvanced: List<SavedAdvanced> = emptyList(),
     val emailSubmission: Boolean = false,
@@ -647,6 +649,7 @@ private val fieldNames = listOf(
     "inboundRules",
     "watchedFolders",
     "extraIdleBudget",
+    "maxConnections",
     "savedSearches",
     "savedAdvanced",
     "emailSubmission",
@@ -797,6 +800,7 @@ fun AccountSettings.encode(): String = buildString {
         appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
     }
     if (extraIdleBudget != 2) appendLine("extraIdleBudget=$extraIdleBudget")
+    if (maxConnections != org.dlang.liveimap.session.DefaultMaxConnections) appendLine("maxConnections=$maxConnections")
     if (savedSearches.isNotEmpty()) {
         appendLine("savedSearches=${encodeSavedSearches(savedSearches)}")
     }
@@ -937,6 +941,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "inboundRules" ||
             key == "watchedFolders" ||
             key == "extraIdleBudget" ||
+            key == "maxConnections" ||
             key == "savedSearches" ||
             key == "savedAdvanced" ||
             key == "emailSubmission" ||
@@ -1080,6 +1085,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
         inboundRules = field(d.inboundRules) { values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList() },
         watchedFolders = field(d.watchedFolders) { values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList() },
         extraIdleBudget = field(d.extraIdleBudget) { values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2 },
+        // Never unlimited: a stored value outside the range is clamped to it.
+        maxConnections = field(d.maxConnections) {
+            values["maxConnections"]?.let { parseIntField(it) }?.let(org.dlang.liveimap.session::clampMaxConnections)
+                ?: org.dlang.liveimap.session.DefaultMaxConnections
+        },
         savedSearches = field(d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
         savedAdvanced = field(d.savedAdvanced) { values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList() },
         emailSubmission = field(d.emailSubmission) { values["emailSubmission"]?.let { parseBoolean(it) } ?: false },

@@ -27,7 +27,42 @@ fun planWatchedFolders(folders: List<String>, idleBudget: Int): WatchPlan {
 
 /** Feeds the stored extra folders into the splitter. Does not open a socket. */
 fun extraWatchPlan(settings: AccountSettings): WatchPlan =
-    planWatchedFolders(settings.watchedFolders, settings.extraIdleBudget)
+    planWatchedFolders(settings.watchedFolders, connectionLimits(settings).idleSlots)
+
+/** The main connection plus the index's watch connection: an account cannot work with fewer. */
+const val MinConnections = 2
+/** Default per-account limit: room for the search connection and two extra IDLE folders (below Dovecot's
+ *  default mail_max_userip_connections of 10). */
+const val DefaultMaxConnections = 8
+/** Hard ceiling; the limit is never unlimited. */
+const val MaxConnectionsCeiling = 20
+/** F158: today each extra IDLE folder is a whole session (main + watch login), so it costs two connections. */
+const val ExtraIdleConnectionCost = 2
+
+fun clampMaxConnections(n: Int): Int = n.coerceIn(MinConnections, MaxConnectionsCeiling)
+
+/**
+ * How an account's connection limit is spent: main + watch always; then one connection so a body/text search
+ * runs without leaving the primary folder; then extra IDLE folders (also capped by the extra IDLE budget).
+ * Folders that get no IDLE slot fall back to STATUS polling on an existing connection (WatchPlan.status).
+ */
+data class ConnectionLimits(val total: Int, val searchConnection: Boolean, val idleSlots: Int)
+
+fun connectionLimits(maxConnections: Int, idleBudget: Int): ConnectionLimits {
+    val total = clampMaxConnections(maxConnections)
+    var left = total - MinConnections
+    val search = left >= 1
+    if (search) left -= 1
+    val idle = minOf(idleBudget.coerceIn(0, MaxExtraIdle), left / ExtraIdleConnectionCost)
+    return ConnectionLimits(total, search, idle)
+}
+
+fun connectionLimits(settings: AccountSettings): ConnectionLimits =
+    connectionLimits(settings.maxConnections, settings.extraIdleBudget)
+
+/** Digits in MinConnections..MaxConnectionsCeiling, or null (never unlimited). */
+fun maxConnectionsFromText(text: String): Int? =
+    text.trim().takeIf { it.matches(Regex("\\d{1,3}")) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
 /** Applies only the stored extra IDLE names. STATUS names are not opened. */
 suspend fun applyStoredIdle(sessions: ExtraIdleSessions, account: AccountSettings) {

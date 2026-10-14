@@ -406,6 +406,7 @@
     <string name="settings_watched_folder_note">Extra folders besides the open folder.</string>
     <string name="settings_extra_folders">Extra folders</string>
     <string name="settings_extra_idle_budget">Extra IDLE budget</string>
+    <string name="settings_max_connections">Most connections to the server (%1$d–%2$d)</string>
     <string name="settings_no_server">No server</string>
     <string name="settings_plaintext_ports">IMAP and SMTP are plaintext only when TLS is None. STARTTLS and implicit TLS encrypt them.</string>
     <string name="settings_imap_host">IMAP host</string>

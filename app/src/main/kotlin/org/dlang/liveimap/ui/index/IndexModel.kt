@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.session.connectionLimits
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.MessageRef
@@ -2398,13 +2399,17 @@ class IndexModel(
      */
     private suspend fun searchMaybeLong(kind: String, argument: String): List<Long> {
         presetHits?.let { return it }
-        if (longSearchLinks == null || !isLongSearch(kind, argument)) return home.searchCriterion(kind, argument)
+        // David's connection limit: with no room for a search connection, search on the main one.
+        if (longSearchLinks == null || !isLongSearch(kind, argument) || !connectionLimits(account).searchConnection) {
+            return home.searchCriterion(kind, argument)
+        }
         return runLongSearch(argument)
     }
 
     /** True when [text] in [scope] would run as a long search on a side connection. */
     fun isLongAdvanced(text: String, scope: SearchScope): Boolean =
-        longSearchLinks != null && scope == SearchScope.Current && isLongSearch("Advanced", text)
+        longSearchLinks != null && scope == SearchScope.Current && isLongSearch("Advanced", text) &&
+            connectionLimits(account).searchConnection
 
     /**
      * Runs a long advanced search on its side connection and returns the hits without touching the list: the

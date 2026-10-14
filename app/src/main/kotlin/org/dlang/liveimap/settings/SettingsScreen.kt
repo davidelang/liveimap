@@ -1111,6 +1111,16 @@ private fun AccountGroup(editor: SettingsEditor) {
                         editor.persist(editor.settings.copy(extraIdleBudget = budget))
                     },
                 )
+                LineField(
+                    label = stringResource(R.string.settings_max_connections, org.dlang.liveimap.session.MinConnections, org.dlang.liveimap.session.MaxConnectionsCeiling),
+                    value = settings.maxConnections.toString(),
+                    ready = editor.ready,
+                    interpret = { draft, _ -> org.dlang.liveimap.session.maxConnectionsFromText(draft)?.toString() },
+                    onCommit = { text ->
+                        val limit = org.dlang.liveimap.session.maxConnectionsFromText(text) ?: return@LineField
+                        editor.persist(editor.settings.copy(maxConnections = limit))
+                    },
+                )
             }
         }
         SettingsSection(
