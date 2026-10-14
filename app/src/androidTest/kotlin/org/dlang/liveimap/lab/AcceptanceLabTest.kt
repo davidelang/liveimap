@@ -43,7 +43,11 @@ class AcceptanceLabTest {
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
-            tlsMode = TlsMode.valueOf(arg("labTls", "None")), email = arg("labUser") + "@lab.test")
+            tlsMode = TlsMode.valueOf(arg("labTls", "None")),
+            // lab.smtp_args (smtp.tsv): the lab server's own SMTP port and a local lab recipient, as LabSuiteTest.
+            email = arg("labRcpt").ifEmpty { arg("labUser") + "@lab.test" },
+            smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
+            smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25)
         val wanted = arg("accVariants").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         val variants = if (wanted.isEmpty()) acceptanceVariants else acceptanceVariants.filter { it.name in wanted }
         var current: MailSession? = null

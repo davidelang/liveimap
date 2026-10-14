@@ -41,8 +41,10 @@ import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.ui.index.parseAdvancedQuery
 
-internal fun searchNeedsCharset(text: String): Boolean =
-    text.any { it.code > 127 }
+/** CHARSET UTF-8 for non-ASCII search text, except once UTF8=ACCEPT is enabled: RFC 6855 section 3 forbids
+ * the CHARSET argument then (dovecot: "Cannot set search charset when using UTF8=ACCEPT"); text is UTF-8 anyway. */
+internal fun searchNeedsCharset(text: String, utf8Enabled: Boolean = false): Boolean =
+    !utf8Enabled && text.any { it.code > 127 }
 
 // ServerProbe and ServerProbeTest still read this list. The gate does not.
 internal val requiredCapabilities = listOf(
@@ -653,7 +655,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
         remember("SEARCH $query") {
-            val ids = nativeSearchText(h, requireWireText(query), featureCaps.searchKind() == "Esearch")
+            val ids = nativeSearchText(h, requireWireText(query), featureCaps.searchKind() == "Esearch", !utf8Names)
                 ?: throw MailFailure("search failed")
             ids.asList()
         }
@@ -661,7 +663,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
         val h = requireHandle()
-        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         remember("CRITERION $kind $argument") {
             val ids = (if (kind == "Advanced") {
                 val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
@@ -695,7 +697,7 @@ class LibetpanMailSession : MailSession {
         }
         return keeper.read("search") {
             val h = requireHandle()
-            val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
+            val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
             val count = if (kind == "Advanced") {
                 val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
                 if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -728,7 +730,7 @@ class LibetpanMailSession : MailSession {
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
-        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         val rows = nativeSearchScope(
             h,
             scopeName,
@@ -755,7 +757,7 @@ class LibetpanMailSession : MailSession {
         val h = requireHandle()
         val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
         if (parsed.steps.isEmpty()) throw MailFailure("bad search")
-        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         val count = nativeSearchScopeCount(
             h,
             scopeName,
@@ -870,7 +872,7 @@ class LibetpanMailSession : MailSession {
         require(first != 0 && last != 0 && (first > 0) == (last > 0)) { "window $first..$last" }
         return keeper.read("search") {
             val h = requireHandle()
-            val charset = searchNeedsCharset(requireSearchArgument(kind, argument))
+            val charset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
             fun window(lo: Int, hi: Int) = uidWindowOf(
                 nativeSearchCriterionWindow(h, kind, argument, charset, lo, hi) ?: throw MailFailure("search failed"),
             )
@@ -888,7 +890,7 @@ class LibetpanMailSession : MailSession {
     /** One search, without the keeper's reconnect-and-retry: a dropped connection is a cancel or a failure. */
     fun longSearch(kind: String, argument: String): List<Long> {
         val h = requireHandle()
-        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument))
+        val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         val ids = if (kind == "Advanced") {
             val parsed = parseAdvancedQuery(argument) ?: throw MailFailure("bad search")
             if (parsed.steps.isEmpty()) throw MailFailure("bad search")
@@ -1371,7 +1373,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String)
     private external fun nativeTakeCopiedUids(handle: Long): LongArray?
     private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>): Long
-    private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean): LongArray?
+    private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean, withCharset: Boolean): LongArray?
     private external fun nativeSearchCriterion(
         handle: Long,
         kind: String,

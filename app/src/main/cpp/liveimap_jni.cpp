@@ -7078,7 +7078,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env, jobject, jlong handle,
-    jstring query, jboolean useEsearch) {
+    jstring query, jboolean useEsearch, jboolean withCharset) {
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
@@ -7091,7 +7091,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
     struct mailimap_search_key * key = mailimap_search_key_new_text(strdup(q.c()));
     if (useEsearch == JNI_TRUE) {
         struct mailimap_response * response = nullptr;
-        int r = sendEsearch(session->imap, true, "ALL", true, false, key, &response);
+        int r = sendEsearch(session->imap, true, "ALL", withCharset == JNI_TRUE, false, key, &response);
         mailimap_search_key_free(key);
         if (r != MAILIMAP_NO_ERROR) {
             throwImap(env, session, r, "search failed");
@@ -7113,7 +7113,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
         return arr;
     }
     clist * result = nullptr;
-    int r = mailimap_uid_search(session->imap, "UTF-8", key, &result);
+    int r = mailimap_uid_search(session->imap, withCharset == JNI_TRUE ? "UTF-8" : nullptr, key, &result);
     mailimap_search_key_free(key);
     if (!cmdOk(r)) {
         if (result != nullptr) mailimap_search_result_free(result);

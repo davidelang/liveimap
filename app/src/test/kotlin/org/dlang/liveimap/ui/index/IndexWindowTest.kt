@@ -874,6 +874,9 @@ class IndexWindowTest {
         assertTrue(session.textSearches.isEmpty())
         assertFalse(searchNeedsCharset("needle"))
         assertTrue(searchNeedsCharset("é"))
+        // RFC 6855: no CHARSET once UTF8=ACCEPT is enabled (dovecot rejects it).
+        assertFalse(searchNeedsCharset("é", utf8Enabled = true))
+        assertFalse(searchNeedsCharset("needle", utf8Enabled = true))
     }
 
     @Test
