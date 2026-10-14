@@ -354,7 +354,21 @@ class JmapMailSession(
 
     private val watchScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     @Volatile private var watchJob: kotlinx.coroutines.Job? = null
-    @Volatile private var openStream: JmapHttpExchange? = null
+    /** F151: the current watch's own stream holder; an orphaned watch only ever touches its own. */
+    @Volatile private var watchRun: WatchRun? = null
+
+    private class WatchRun {
+        @Volatile var stream: JmapHttpExchange? = null
+        @Volatile var stopped = false
+
+        /** Ends this watch: its stream is closed from a thread that is not the (possibly blocked) reader. */
+        fun stop() {
+            stopped = true
+            val open = stream ?: return
+            stream = null
+            Thread({ runCatching { open.close() } }, "jmap-push-close").apply { isDaemon = true }.start()
+        }
+    }
 
     /**
      * Watch [mailbox] through the server's event source: one request at a time with closeafter=state, so each
@@ -378,12 +392,14 @@ class JmapMailSession(
         val auth = authorization
         val streamPin = pin
         val accountId = accountId()
+        val run = WatchRun()
+        watchRun = run
         watchJob = watchScope.launch {
             var state = startState
             var total = startTotal
             try {
-                while (isActive) {
-                    val events = readStream(url, host, auth, streamPin)
+                while (isActive && !run.stopped) {
+                    val events = readStream(run, url, host, auth, streamPin)
                     if (!isActive) break
                     val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
                     if (next == state) continue
@@ -406,20 +422,28 @@ class JmapMailSession(
         val job = watchJob ?: return
         watchJob = null
         job.cancel()
-        openStream?.close() // unblocks a read that is waiting on the server
+        watchRun?.stop() // unblocks a read that is waiting on the server
+        watchRun = null
         // A TLS read blocked in another thread (or a server that holds the response headers until the first
         // event, as Stalwart's eventsource did in the lab) is not always freed by close(); the read times out on
         // its own (readTimeout), so do not hold the caller hostage to it.
         kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
     }
 
-    private fun readStream(url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
+    private fun readStream(run: WatchRun, url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
+        if (run.stopped) return emptyList()
         val exchange = try {
             streamFor(streamPin)(url, auth)
         } catch (e: java.io.IOException) {
             throw JmapFailure(e.message ?: "jmap push failed")
         }
-        openStream = exchange
+        run.stream = exchange
+        // Stopped while connecting: this stream is nobody's; drop it now rather than read on it.
+        if (run.stopped) {
+            run.stream = null
+            exchange.close()
+            return emptyList()
+        }
         try {
             val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
@@ -428,7 +452,7 @@ class JmapMailSession(
             val body = jmapNet { exchange.body() }
             return if (body.isBlank()) emptyList() else parseJmapPushEvents(body)
         } finally {
-            openStream = null
+            if (run.stream === exchange) run.stream = null
             exchange.close()
         }
     }
@@ -467,7 +491,7 @@ class JmapMailSession(
 
     override fun close() {
         watchJob?.cancel(); watchJob = null
-        openStream?.close()
+        watchRun?.stop(); watchRun = null
         session = null
         authorization = ""
         password = ""

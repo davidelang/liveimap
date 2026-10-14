@@ -127,7 +127,7 @@ class JmapSendChosenTest {
                 200 to identityResponse,
                 200 to draftsNames,
                 200 to importCreated,
-                200 to submissionCreated,
+                200 to submissionDestroyed,
             ),
         )
         val choice = jmapSend(
@@ -157,7 +157,7 @@ class JmapSendChosenTest {
             listOf(
                 jmapIdentityRequest("A1"),
                 jmapMailboxNamesRequest("A1"),
-                jmapEmailImportRequest("A1", "B1", "mbDrafts"),
+                jmapEmailImportRequest("A1", "B1", "mbDrafts", JMAP_STAGING_KEYWORDS),
                 jmapEmailSubmissionRequest("A1", "M1", "me@example.com", listOf("ada@example.com"), destroyEmail = true, identityId = "I1"),
             ),
             post.bodies,
@@ -315,6 +315,8 @@ class JmapSendChosenTest {
     private val importCreated =
         """{"methodResponses":[["Email/import",{"created":{"k1":{"id":"M1"}}},"0"]]}"""
 
+    private val submissionDestroyed =
+        """{"methodResponses":[["EmailSubmission/set",{"created":{"k1":{"id":"S1"}}},"0"],["Email/set",{"destroyed":["M1"]},"0"]]}"""
     private val submissionCreated =
         """{"methodResponses":[["EmailSubmission/set",{"created":{"k1":{"id":"S1"}}},"0"]]}"""
 }

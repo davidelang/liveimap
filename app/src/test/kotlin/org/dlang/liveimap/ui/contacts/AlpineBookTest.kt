@@ -176,6 +176,24 @@ class AlpineBookTest {
         assertTrue(bookHasAddress(named, "ada@example.com"))
         assertFalse(bookHasAddress(named, "other@example.com"))
     }
+    @Test
+    fun listNicknamesExpandAgainstTheBookAndUnknownOnesAreDropped() {
+        val book = parseAlpineBook(
+            "team\tTeam\t(alice@x.example, bob, team2, ghost)\t\t\n" +
+                "bob\tBob Builder\tbob@y.example\t\t\n" +
+                "team2\tTeam Two\t(carol@z.example, team)\t\t\n",
+        )
+        assertEquals(
+            listOf(
+                SelectedAddress("", "alice@x.example"),
+                SelectedAddress("Bob Builder", "bob@y.example"),
+                SelectedAddress("", "carol@z.example"),
+            ),
+            pickedAddresses(book[0], book),
+        )
+        // Without the book, bare nicknames are never sent as local names.
+        assertEquals(listOf(SelectedAddress("", "alice@x.example")), pickedAddresses(book[0]))
+    }
 }
 
 private fun ascii(text: String): ByteArray = text.toByteArray(Charsets.US_ASCII)
@@ -287,23 +305,4 @@ private fun <T> runImmediate(block: suspend () -> T): T {
     var result: Result<T>? = null
     block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
     return result!!.getOrThrow()
-
-    @Test
-    fun listNicknamesExpandAgainstTheBookAndUnknownOnesAreDropped() {
-        val book = parseAlpineBook(
-            "team\tTeam\t(alice@x.example, bob, team2, ghost)\t\t\n" +
-                "bob\tBob Builder\tbob@y.example\t\t\n" +
-                "team2\tTeam Two\t(carol@z.example, team)\t\t\n",
-        )
-        assertEquals(
-            listOf(
-                SelectedAddress("", "alice@x.example"),
-                SelectedAddress("Bob Builder", "bob@y.example"),
-                SelectedAddress("", "carol@z.example"),
-            ),
-            pickedAddresses(book[0], book),
-        )
-        // Without the book, bare nicknames are never sent as local names.
-        assertEquals(listOf(SelectedAddress("", "alice@x.example")), pickedAddresses(book[0]))
-    }
 }
