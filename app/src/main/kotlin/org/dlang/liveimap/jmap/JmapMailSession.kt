@@ -407,7 +407,10 @@ class JmapMailSession(
         watchJob = null
         job.cancel()
         openStream?.close() // unblocks a read that is waiting on the server
-        job.join()
+        // A TLS read blocked in another thread (or a server that holds the response headers until the first
+        // event, as Stalwart's eventsource did in the lab) is not always freed by close(); the read times out on
+        // its own (readTimeout), so do not hold the caller hostage to it.
+        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
     }
 
     private fun readStream(url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
@@ -622,6 +625,7 @@ class JmapMailSession(
             return patch
         }
 
+        internal const val STOP_WATCH_WAIT_MS = 5_000L
         internal fun specialUseOf(role: String): String = "\\" + role.replaceFirstChar { it.uppercase() }
 
         internal fun args(root: Json.Obj, name: String): Map<String, Json>? {
