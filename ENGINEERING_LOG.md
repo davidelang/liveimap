@@ -2977,3 +2977,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - arrival tail fetch failure notice
 
 - Failed addNewTail sets notice; refreshShown clears notice before applyExistsCount so a tail failure stays visible.
+
+## 2026-10-14 - arrival tail fetch failure notice
+
+- Fixup: the refresh test throws only on the ArrivalNewest tail fetch, so the shown-row fetch succeeds. A later refresh whose fetches succeed leaves notice null.
+- No new mutex. No install

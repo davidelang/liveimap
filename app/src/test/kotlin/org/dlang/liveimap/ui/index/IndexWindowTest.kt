@@ -1374,13 +1374,24 @@ class IndexWindowTest {
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
         val beforeUids = model.rows.map { it.uid }
+        val fetches = session.fetchRequests.size
+        assertTrue(beforeUids.isNotEmpty())
         session.exists = 11
         session.rows[11L] = row(11L)
+        session.failureFetchMode = IndexMode.ArrivalNewest
         session.failure = MailFailure("tail failed")
-        runImmediate { model.refreshShown(model.rows.map { it.uid }, 11) }
+        runImmediate { model.refreshShown(beforeUids, 11) }
+        assertEquals(IndexMode.ByUid, session.fetchRequests[fetches].mode)
+        assertEquals(beforeUids, session.fetchRequests[fetches].uids)
+        assertEquals(IndexMode.ArrivalNewest, session.fetchRequests[fetches + 1].mode)
+        assertEquals(1, session.fetchRequests[fetches + 1].limit)
+        assertEquals(fetches + 2, session.fetchRequests.size)
         assertEquals(beforeUids, model.rows.map { it.uid })
         assertEquals(0, model.pendingNew)
         assertEquals("tail failed", model.notice)
+        session.failureFetchMode = null
+        runImmediate { model.refreshShown(model.rows.map { it.uid }, 11) }
+        assertNull(model.notice)
     }
 
     @Test
@@ -2522,6 +2533,8 @@ private class FakeMailSession(
     var searchUids: List<Long> = emptyList()
     var threadNode: ThreadNode = ThreadNode(null, emptyList())
     var failure: MailFailure? = null
+    /** When set, [failure] is thrown only from a fetch of this mode. */
+    var failureFetchMode: IndexMode? = null
     var rfc822Count: Int = 0
     var structureCount: Int = 0
     var peekCount: Int = 0
@@ -2567,7 +2580,7 @@ private class FakeMailSession(
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
         fetchRequests += request
-        throwIfArmed()
+        if (failureFetchMode == null || request.mode == failureFetchMode) throwIfArmed()
         return when (request.mode) {
             IndexMode.ByUid -> request.uids.asReversed().map { uid -> rows[uid] ?: row(uid) }
             IndexMode.ArrivalRange -> {
