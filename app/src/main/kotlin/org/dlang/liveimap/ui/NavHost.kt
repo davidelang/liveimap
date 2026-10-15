@@ -277,6 +277,7 @@ fun LiveImapNavHost() {
     val composeUnsentId = rememberSaveable { mutableStateOf("") }
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
     val composeAccount = rememberSaveable { mutableStateOf("") } // F121: the opener's account
+    val composeForward = rememberSaveable { mutableStateOf("") }
     val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
     val filterSeedFrom = rememberSaveable { mutableStateOf("") }
     val filterSeedTo = rememberSaveable { mutableStateOf("") }
@@ -375,6 +376,11 @@ fun LiveImapNavHost() {
         composeUids.value = seed.uids.joinToString(",")
         composeEpoch.value = seed.uidValidity
         composeAccount.value = seed.accountId
+        composeForward.value = when (seed.forwardAsAttachment) {
+            null -> ""
+            true -> "true"
+            false -> "false"
+        }
         composeUnsentId.value = ""
         composeRetryOnOpen.value = false
         navController.navigate("compose")
@@ -720,6 +726,7 @@ fun LiveImapNavHost() {
                     },
                     uidValidity = composeEpoch.value,
                     accountId = composeAccount.value,
+                    forwardAsAttachment = navForwardChoice(composeForward.value),
                 )
                 ComposeScreen(
                     seed = seed,
@@ -740,6 +747,7 @@ fun LiveImapNavHost() {
                             composeUids.value = ""
                             composeUnsentId.value = id
                             composeRetryOnOpen.value = retry
+                            composeForward.value = ""
                             navController.navigate("compose")
                         },
                         onBack = { navController.popBackStack() },
@@ -1837,6 +1845,12 @@ private fun PaneTree(
 
 /** F105: the reader route carries the folder's UIDVALIDITY as listed (0 = unknown, captured on first open). */
 internal const val ReaderRoutePattern = "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"
+
+internal fun navForwardChoice(stored: String): Boolean? = when (stored) {
+    "true" -> true
+    "false" -> false
+    else -> null
+}
 
 internal fun readerRoute(mailbox: String, uid: Long, sequence: Int, epoch: Long): String =
     "reader/${Uri.encode(mailbox)}/$uid/$sequence?epoch=$epoch"
