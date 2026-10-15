@@ -3076,3 +3076,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - Existing JMAP mail is numbered by received time before uidNext is reported.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-existing-20261015-1326-plan.md. The first use of a mailbox numbers existing mail oldest-first before uidNext. A later id stays at or above that next.
+
+## 2026-10-15 - A bounce whose Sent copy fails is still remembered as sent.

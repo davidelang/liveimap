@@ -1600,6 +1600,7 @@ private fun ComposeLoaded(
                                     held = copy
                                     notice = error.text
                                     status = acceptedNotice
+                                    addBounceAccepted(uid)
                                     return@launchLocked false
                                 }
                                 deleteCopy(appContext, id, accountId)
