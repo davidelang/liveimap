@@ -2986,3 +2986,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - Native IMAP follow-up
 
 - utf8FromJava copies with GetStringRegion into a wiped buffer; asciiSafe decodes server UTF-8 for ThrowNew; one top-level filter-chain Group; COMPRESS NO keeps the session up.
+
+## 2026-10-14 - Search refuses a group inside the one allowed group
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
+- Fixup: a Group criterion parses its body at depth 1, so a Group step inside it is refused and the search does not run. One Or group still sorts, windows, and threads.

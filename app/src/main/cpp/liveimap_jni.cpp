@@ -5475,7 +5475,9 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
         if (key == nullptr) throwFailure(env, "bad search");
         return key;
     }
-    if (sameKind(kind, "Group")) return groupKey(env, argument, 0);
+    // This kind is the one allowed group. Its body is already inside that group, so a Group step
+    // here is refused instead of folded into the search. chainKey does the same with depth + 1.
+    if (sameKind(kind, "Group")) return groupKey(env, argument, 1);
     if (sameKind(kind, "All")) return mailimap_search_key_new_all();
     if (sameKind(kind, "New")) return searchKeyType(MAILIMAP_SEARCH_KEY_NEW);
     if (sameKind(kind, "NotNew")) return notKey(searchKeyType(MAILIMAP_SEARCH_KEY_NEW));
