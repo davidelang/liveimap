@@ -3068,3 +3068,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - JMAP pages stay small, and a late UID stays at or above UIDNEXT.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-followup-20261015-1252-plan.md. Email/query pages are 120 with calculateTotal. A new UID is at least uidNext. A text part is fetched once up to JmapMaxBody. Part bytes stay only for the last structure.
+
+## 2026-10-15 - A successful bounce drops its device copy, and a second tap skips what already went.

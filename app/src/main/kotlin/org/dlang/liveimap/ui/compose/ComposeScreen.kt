@@ -273,6 +273,12 @@ private fun ComposeLoaded(
     var inReplyTo by rememberSaveable { mutableStateOf("") }
     var referencesHeader by rememberSaveable { mutableStateOf("") }
     var bounceTo by rememberSaveable { mutableStateOf("") }
+    var bounceAccepted by rememberSaveable(seed.mailbox, seed.uidValidity) { mutableStateOf("") }
+    fun bounceAcceptedSet(): Set<Long> =
+        bounceAccepted.split(',').mapNotNull { it.toLongOrNull() }.toSet()
+    fun addBounceAccepted(uid: Long) {
+        bounceAccepted = (bounceAcceptedSet() + uid).joinToString(",")
+    }
     var draftLoaded by rememberSaveable { mutableStateOf(false) }
     var retryArmedFor by rememberSaveable { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
@@ -1536,20 +1542,19 @@ private fun ComposeLoaded(
                         notice = sentMailboxMissing
                         return@launchLocked false
                     }
-                    val resentTo = bounceTo.trim()
-                    if (resentTo.isEmpty()) {
+                    val recipients = bounceRecipientSpecs(bounceTo)
+                    if (recipients.isEmpty()) {
                         notice = resentMissing
                         return@launchLocked false
                     }
                     if (seed.uids.isEmpty()) return@launchLocked false
                     val box = seed.mailbox ?: return@launchLocked false
-                    val recipient = addrSpec(resentTo).ifEmpty { resentTo }
+                    val resentTo = recipients.joinToString(", ")
                     val resentFrom = formatMailbox(account.displayName, account.email)
+                    val alreadyAccepted = bounceAcceptedSet()
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
-                            val acceptedUids = HashSet<Long>()
-                            for (uid in seed.uids) {
-                                if (acceptedUids.contains(uid)) continue
+                            for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
                                 val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
                                 val bounced = buildBounce(
                                     original,
@@ -1560,14 +1565,14 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                                val sending = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced, uncertain = true)
+                                val sending = DeviceCopy(id, false, savedMailbox, recipients, bounced, uncertain = true)
                                 if (!writeCopy(appContext, sending, accountId)) {
                                     notice = appContext.getString(R.string.compose_copy_not_saved)
                                     status = notSentNotice
                                     return@launchLocked false
                                 }
                                 val accepted = try {
-                                    sendSmtp(bounced, listOf(recipient))
+                                    sendSmtp(bounced, recipients)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
@@ -1579,21 +1584,26 @@ private fun ComposeLoaded(
                                     status = if (smtpUncertain(error.text)) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
                                     return@launchLocked false
                                 }
-                                acceptedUids.add(uid)
                                 storeAcceptedFlags(listOf(uid))
-                                if (!account.bounceFcc) continue
+                                if (!account.bounceFcc) {
+                                    deleteCopy(appContext, id, accountId)
+                                    addBounceAccepted(uid)
+                                    continue
+                                }
                                 try {
                                     session.append(account.sentMailbox, accepted)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, true, account.sentMailbox, listOf(recipient), accepted)
+                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted)
                                     writeCopy(appContext, copy, accountId)
                                     held = copy
                                     notice = error.text
                                     status = acceptedNotice
                                     return@launchLocked false
                                 }
+                                deleteCopy(appContext, id, accountId)
+                                addBounceAccepted(uid)
                             }
                         }
                         BounceDelivery.Submission -> {
@@ -1605,7 +1615,7 @@ private fun ComposeLoaded(
                                 notice = error.message ?: notConnected
                                 return@launchLocked false
                             }
-                            for (uid in seed.uids) {
+                            for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
                                 val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
                                 val bounced = buildBounce(
                                     original,
@@ -1616,7 +1626,7 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                                val bouncing = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
+                                val bouncing = DeviceCopy(id, false, savedMailbox, recipients, bounced)
                                 try {
                                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                                     keepCopyUntilSubmitted(
@@ -1627,7 +1637,7 @@ private fun ComposeLoaded(
                                         offer,
                                         bounced,
                                         account.email,
-                                        listOf(recipient),
+                                        recipients,
                                         account.username,
                                         password,
                                         account.jmapCertPin,
@@ -1641,6 +1651,7 @@ private fun ComposeLoaded(
                                         policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
                                     storeAcceptedFlags(listOf(uid))
+                                    addBounceAccepted(uid)
                                     continue
                                 } catch (error: CancellationException) {
                                     throw error
@@ -1971,6 +1982,23 @@ private fun chipProbe(stored: String, buffer: String): String {
     val pending = buffer.trim()
     if (pending.isEmpty()) return stored
     return appendAddress(stored, pending)
+}
+
+internal fun bounceUidsStillToSend(uids: List<Long>, accepted: Set<Long>): List<Long> {
+    val still = ArrayList<Long>()
+    for (uid in uids) {
+        if (uid !in accepted) still.add(uid)
+    }
+    return still
+}
+
+internal fun bounceRecipientSpecs(field: String): List<String> {
+    val specs = ArrayList<String>()
+    for (piece in splitAddresses(field)) {
+        val spec = addrSpec(piece).trim()
+        if (spec.isNotEmpty()) specs.add(spec)
+    }
+    return specs
 }
 
 internal fun mailboxLeaf(mailbox: String): String {
