@@ -2925,3 +2925,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
 - Fixup: prefer-HTML keeps walking past an earlier plain part to a later text/html part, and does not enter message/rfc822 once a text part is found. FetchStructure refuses a UID outside 1..0xFFFFFFFF. ensureJni does not take another global ref before ready, and a missing optional class does not keep ready false
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md. A NIL or empty server PREVIEW does not mark that index row's preview present

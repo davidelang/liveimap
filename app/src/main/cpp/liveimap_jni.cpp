@@ -1570,9 +1570,9 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
             struct mailimap_extension_data * ext = item->att_data.att_extension_data;
             if (ext->ext_extension == &liveimap_extra_extension && ext->ext_type == LIVE_PREVIEW) {
                 auto * blob = static_cast<LiveBlob *>(ext->ext_data);
-                row->hasPreview = true;
-                if (blob != nullptr && blob->isNil == 0 && blob->data != nullptr) {
+                if (blob != nullptr && blob->isNil == 0 && blob->data != nullptr && blob->len > 0) {
                     row->preview.assign(blob->data, blob->len);
+                    row->hasPreview = !row->preview.empty();
                 }
             }
         }
@@ -6799,7 +6799,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
             for (size_t i = 0; i < rows.size(); ++i) {
-                if (!rows[i].hasPreview) continue;
+                if (!rows[i].hasPreview || rows[i].preview.empty()) continue;
                 previews[i] = rows[i].preview;
                 havePreview[i] = 1;
             }
@@ -6880,7 +6880,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         std::vector<char> havePreview(rows.size(), 0);
         if (serverPreview) {
             for (size_t i = 0; i < rows.size(); ++i) {
-                if (!rows[i].hasPreview) continue;
+                if (!rows[i].hasPreview || rows[i].preview.empty()) continue;
                 previews[i] = rows[i].preview;
                 havePreview[i] = 1;
             }
