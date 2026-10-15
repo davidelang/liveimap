@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -47,6 +48,20 @@ class JmapSubmitOutcomeTest {
         server::upload, server::post, { _, _, _ -> "" }, sentName = sent, saveCopy = sent.isNotEmpty(),
         draftsName = "Drafts", onNotice = { notices += it },
     )
+
+    @Test
+    fun acceptInvalidSentLookupDoesNotThrowCertificateUntrusted() {
+        val server = Server(base(mapOf("EmailSubmission/set" to { _ -> Ex(200, created) })))
+        assertEquals(
+            "S1",
+            jmapSend(
+                JmapOffer.Mail(session), message, "me@example.com", listOf("ada@example.com"), "user", "pw", "",
+                server::upload, server::post, { _, _, _ -> "certificate untrusted" },
+                sentName = "Sent", saveCopy = true, draftsName = "Drafts",
+                policy = TlsPolicy(acceptInvalidCert = true),
+            ),
+        )
+    }
 
     @Test
     fun identityAndEnvelopeFollowTheMessageFrom() {

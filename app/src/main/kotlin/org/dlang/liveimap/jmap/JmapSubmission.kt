@@ -268,7 +268,7 @@ fun jmapSend(
     // account address; [mailFrom] is only the fallback for a message without one.
     val author = org.dlang.liveimap.ui.compose.headerFromAddress(bytes).ifBlank { mailFrom.trim() }
     val identityId = jmapIdentityFor(session, author, username, password, pin, post, trust, policy)
-    val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName) else null
+    val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName, policy) else null
     // No Sent folder (none configured, or the user dropped the copy): EmailSubmission still needs an Email, so it
     // is staged in the configured Drafts folder and destroyed by onSuccessDestroyEmail. No copy is kept.
     val mailboxId = sentId ?: jmapStagingMailbox(session, draftsName, username, password, pin, post, trust, policy)

@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -45,6 +46,33 @@ class JmapSentMailboxTest {
         } }, noTrust, sentName = "Archive/Sent"))
         // A parent cycle never matches.
         assertEquals(null, jmapMailboxIdByPath("""{"methodResponses":[["Mailbox/get",{"list":[{"id":"a","name":"A","parentId":"b"},{"id":"b","name":"B","parentId":"a"}]},"0"]]}""", "B/A"))
+    }
+
+    @Test
+    fun acceptInvalidFindsConfiguredSentWhenUntrusted() {
+        val post = mailboxPost(sentNamesBody)
+        val untrusted: (String, List<ByteArray>, String) -> String = { _, _, _ -> "certificate untrusted" }
+        assertEquals(
+            "t2",
+            jmapFindSentMailbox(
+                session("A1"), "user", "pw", "", post, untrusted, sentName = "Sent",
+                policy = TlsPolicy(acceptInvalidCert = true),
+            ),
+        )
+        assertFails("certificate untrusted") {
+            jmapFindSentMailbox(session("A1"), "user", "pw", "", post, untrusted, sentName = "Sent")
+        }
+    }
+
+    @Test
+    fun acceptInvalidStillRejectsCertificateChangedOnSentLookup() {
+        val changed: (String, List<ByteArray>, String) -> String = { _, _, _ -> "certificate changed" }
+        assertFails("certificate changed") {
+            jmapFindSentMailbox(
+                session("A1"), "user", "pw", "", mailboxPost(sentNamesBody), changed, sentName = "Sent",
+                policy = TlsPolicy(acceptInvalidCert = true),
+            )
+        }
     }
 
     @Test
@@ -98,6 +126,19 @@ class JmapSentMailboxTest {
             assertEquals(message, failure.text)
         }
     }
+
+    private fun mailboxPost(body: String): (String, String, String) -> JmapHttpExchange = { _, _, _ ->
+        object : JmapHttpExchange {
+            override val status = 200
+            override fun peerDer() = listOf(byteArrayOf(1))
+            override fun header(name: String): String? = null
+            override fun body() = body
+            override fun close() {}
+        }
+    }
+
+    private val sentNamesBody =
+        """{"methodResponses":[["Mailbox/get",{"list":[{"id":"c1","name":"Sent","parentId":"p"},{"id":"t2","name":"Sent","parentId":null},{"id":"r","name":"Sent Items","parentId":null,"role":"sent"}]},"0"]]}"""
 
     private fun session(account: String?) = JmapSession(
         username = "user@example.com",

@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
 
 /** David's Sent rule: a configured Sent folder that cannot be found is an error the user resolves (send without
  *  the copy, or fix the setting); the app never picks another folder. */
@@ -19,11 +20,12 @@ fun jmapFindSentMailbox(
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     sentName: String = "",
+    policy: TlsPolicy = TlsPolicy(),
 ): String? {
     if (sentName.isBlank()) return null
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust, policy)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
     return jmapMailboxIdByPath(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
 }
