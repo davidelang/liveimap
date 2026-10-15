@@ -44,9 +44,9 @@ class JmapMailSessionTest {
     private val noKids = """{"methodResponses":[["Mailbox/get",{"list":[]},"0"]]}"""
     private val total = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":2}]},"0"]]}"""
     private val emails = """{"methodResponses":[["Email/query",{"ids":["e1","e2"]},"0"],["Email/get",{"list":[{"id":"e1","keywords":{"${'$'}seen":true},"size":10,"receivedAt":"2026-10-13T00:00:00Z","subject":"a","from":[{"email":"x@y"}]},{"id":"e2","keywords":{},"subject":"b"}]},"1"]]}"""
-    /** e1's receivedAt; e2 has none, so it takes the following uidNext. */
-    private val e1Uid = 1791849600L
-    private val e2Uid = 1791849601L
+    /** e1 is assigned first. e2 has no receivedAt, so it takes the next UID. */
+    private val e1Uid = 1L
+    private val e2Uid = 2L
 
     @Test
     fun listSelectFetchUsesTheJmapPinAndNumbersUids() = runBlocking {
@@ -119,21 +119,23 @@ class JmapMailSessionTest {
     @Test
     fun arrivalUidKeepsTheFirstAssignment() {
         val t = JmapMailSession.Uids()
-        assertEquals(200L, t.uid("n", 200L))
-        assertEquals(100L, t.uid("o", 100L))
-        assertEquals(200L, t.uid("n", 200L))
-        assertEquals(201L, t.next)
-        val third = t.uid("p", 200L)
-        assertTrue(third != 200L && third != 100L)
-        assertEquals(201L, t.next)
-        assertEquals(201L, t.uid("q", null))
-        assertEquals(202L, t.next)
+        val start = t.next
+        assertEquals(start, t.uid("n", 200L))
+        assertEquals(start + 1, t.next)
+        val left = t.next
+        val older = t.uid("o", 100L)
+        val same = t.uid("s", 200L)
+        assertTrue(older >= left && same >= left && older != same)
+        assertTrue(t.next > older && t.next > same)
+        assertEquals(start, t.uid("n", 200L))
+        assertEquals(older, t.uid("o", 100L))
+        assertEquals(same, t.uid("s", 200L))
     }
 
     @Test
     fun shortPageIsNotTheWholeFolder() = runBlocking {
-        val one = """{"methodResponses":[["Email/query",{"ids":["a"]},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
-        val two = """{"methodResponses":[["Email/query",{"ids":["b"]},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
+        val one = """{"methodResponses":[["Email/query",{"ids":["a"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
+        val two = """{"methodResponses":[["Email/query",{"ids":["b"],"total":2},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
         val paged = Fake(ArrayDeque(listOf(level, noKids, total, one, two)))
         val pagedSession = open(paged)
         pagedSession.listLevel("", null, false)
@@ -144,7 +146,7 @@ class JmapMailSessionTest {
         assertEquals(2, calls.size)
         assertTrue(!calls[0].contains("\"position\""))
         assertTrue(calls[1].contains("\"position\":1"))
-        assertEquals(listOf(200L, 100L), both)
+        assertEquals(listOf(1L, 2L), both)
         val whole = """{"methodResponses":[["Email/query",{"ids":["a","b"]},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"},{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
         val once = Fake(ArrayDeque(listOf(level, noKids, total, whole)))
         val onceSession = open(once)
@@ -156,6 +158,40 @@ class JmapMailSessionTest {
         assertEquals(1, sent.size)
         assertTrue(!sent[0].contains("\"position\""))
         assertEquals(2, all.size)
+    }
+
+    @Test
+    fun selectTotalZeroStillPagesOnTheQueryTotal() = runBlocking {
+        val total0 = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":0}]},"0"]]}"""
+        val one = """{"methodResponses":[["Email/query",{"ids":["a"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
+        val two = """{"methodResponses":[["Email/query",{"ids":["b"],"total":2},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
+        val paged = Fake(ArrayDeque(listOf(level, noKids, total0, one, two)))
+        val s = open(paged)
+        s.listLevel("", null, false)
+        s.select("INBOX")
+        val from = paged.bodies.size
+        s.sort(org.dlang.liveimap.settings.SortKey.Arrival, true)
+        val calls = paged.bodies.drop(from)
+        assertEquals(2, calls.size)
+        for (call in calls) {
+            assertTrue(call.contains("\"limit\":120"))
+            assertTrue(call.contains("\"calculateTotal\":true"))
+            assertTrue(!call.substringAfter("Email/get").contains("\"ids\":["))
+        }
+        assertTrue(!calls[0].contains("\"position\""))
+        assertTrue(calls[1].contains("\"position\":1"))
+        val whole = """{"methodResponses":[["Email/query",{"ids":["a","b"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"},{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
+        val once = Fake(ArrayDeque(listOf(level, noKids, total0, whole)))
+        val onceSession = open(once)
+        onceSession.listLevel("", null, false)
+        onceSession.select("INBOX")
+        val mark = once.bodies.size
+        onceSession.sort(org.dlang.liveimap.settings.SortKey.Arrival, true)
+        val sent = once.bodies.drop(mark)
+        assertEquals(1, sent.size)
+        assertTrue(!sent[0].contains("\"position\""))
+        assertTrue(sent[0].contains("\"limit\":120"))
+        assertTrue(sent[0].contains("\"calculateTotal\":true"))
     }
 
     private class Blobs(val status: Int = 200, val data: ByteArray = "RAW".toByteArray()) {
@@ -212,6 +248,47 @@ class JmapMailSessionTest {
     }
 
     @Test
+    fun textPeekAsksForJmapMaxBodyAndReusesThatPrefix() = runBlocking {
+        val full = "0123456789abcdef"
+        val queued = ArrayDeque(listOf(level, noKids, total, emails, structure))
+        val bodies = mutableListOf<String>()
+        val post: (String, TlsPolicy) -> (String, String, String) -> JmapHttpExchange = { _, _ ->
+            { _, body, _ ->
+                bodies += body
+                val reply = if (body.contains("\"bodyValues\"")) {
+                    val cap = Regex(""""maxBodyValueBytes":(\d+)""").find(body)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    val n = cap.coerceIn(0, full.length)
+                    val value = full.take(n)
+                    val truncated = n < full.length
+                    """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"$value","isTruncated":$truncated}}}]},"0"]]}"""
+                } else {
+                    queued.removeFirst()
+                }
+                object : JmapHttpExchange {
+                    override val status = 200
+                    override fun peerDer() = listOf(byteArrayOf(1))
+                    override fun header(name: String): String? = null
+                    override fun body() = reply
+                    override fun close() {}
+                }
+            }
+        }
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, post, { _, _, _ -> "" }, { 42 })
+        assertEquals(OpenResult.Connected, s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm")))
+        s.listLevel("", null, false)
+        s.select("INBOX")
+        s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        s.fetchStructure(e1Uid)
+        val before = bodies.size
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
+        assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
+        val calls = bodies.drop(before)
+        assertEquals(1, calls.size)
+        assertTrue(calls[0].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
+        assertTrue(calls[0].contains("Email/get"))
+    }
+
+    @Test
     fun peekPartPastAShortCacheAppendsTheBytesAtThatOffset() = runBlocking {
         val short = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123","isTruncated":true}}}]},"0"]]}"""
         val prefix = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123456789abcdef","isTruncated":false}}}]},"0"]]}"""
@@ -222,8 +299,8 @@ class JmapMailSessionTest {
         assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
         val calls = fake.bodies.drop(before)
         assertEquals(2, calls.size)
-        assertTrue(calls[0].contains("\"maxBodyValueBytes\":4"))
-        assertTrue(calls[1].contains("\"maxBodyValueBytes\":8"))
+        assertTrue(calls[0].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
+        assertTrue(calls[1].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
         val cached = fake.bodies.size
         assertArrayEquals("89ab".toByteArray(), s.peekPart(e1Uid, "1", 8, 4))
         assertArrayEquals("cdef".toByteArray(), s.peekPart(e1Uid, "1", 12, 8))
@@ -242,13 +319,13 @@ class JmapMailSessionTest {
         assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 3))
         val cached = fake.bodies.size
         assertEquals(before + 1, cached)
-        assertTrue(fake.bodies.last().contains("\"maxBodyValueBytes\":3"))
+        assertTrue(fake.bodies.last().contains("\"maxBodyValueBytes\":$JmapMaxBody"))
         assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 2))
         assertEquals(cached, fake.bodies.size)
         assertArrayEquals("abcd".toByteArray(), s.peekPart(e1Uid, "1", 2, 4))
         val calls = fake.bodies.drop(before)
         assertEquals(2, calls.size)
-        assertTrue(calls[1].contains("\"maxBodyValueBytes\":6"))
+        assertTrue(calls[1].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
     }
 
     @Test
@@ -261,6 +338,19 @@ class JmapMailSessionTest {
         assertArrayEquals("0123456789".toByteArray(), s.fetchRfc822(e1Uid))
         assertEquals("https://mail.example/dl/A1/raw%201?type=message%2Frfc822", blobs.urls.last())
         assertEquals(listOf("jm", "jm"), blobs.pins)
+    }
+
+    @Test
+    fun fetchStructureDropsThePreviousMessagesBytes() = runBlocking {
+        val e2 = """{"methodResponses":[["Email/get",{"list":[{"id":"e2","bodyStructure":{"partId":"1","blobId":"b9","type":"text/plain","size":1}}]},"0"]]}"""
+        val blobs = Blobs(data = "0123456789".toByteArray())
+        val (s, _) = ready(listOf(structure, e2), blobs)
+        s.fetchStructure(e1Uid)
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "3", 0, 4))
+        assertEquals(1, blobs.urls.size)
+        s.fetchStructure(e2Uid)
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "3", 0, 4))
+        assertEquals(2, blobs.urls.size)
     }
 
     @Test
