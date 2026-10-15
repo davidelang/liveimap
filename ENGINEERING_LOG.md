@@ -3033,3 +3033,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - JMAP discovery can offer a pin
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-discovery-pin-20261015-0521-plan.md. Discovery passes the account pin and can offer a pin when system CAs reject the certificate. A matching pin wins over name and expiry. No install.
+
+## 2026-10-15 - Live JMAP discovery uses the account pin.

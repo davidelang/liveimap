@@ -11,22 +11,24 @@ fun offerForAccount(
     get: (String, String) -> JmapBlobExchange = pinnedJmapGet(account.jmapCertPin),
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check, // last: tests pass it as a trailing lambda
 ): JmapOffer {
-    if (account.imapHost.isBlank()) return JmapOffer.None
-    val fetch = JmapHttpsFetch(account.jmapCertPin, open, trust)  // F63: the JMAP server's own pin
-    // The JMAP server field takes host, host:port or an https URL (port 443 unless given).
-    val target = jmapServerTarget(account.imapHost)
-    if (target.plainHttp) JmapPlainHttp.allow(target.discoveryUrl)
-    val result = fetch.get(target.discoveryUrl)
-    if (result.status != 401 || authorization.isEmpty()) {
-        val open = discoverJmap(result.status, result.body, result.finalUrl)
-        // Stalwart answers the unauthenticated session request with 200 and an anonymous session (no accounts);
-        // that is not this user's session, so fetch it again with credentials, as for 401.
-        val anonymous = open is JmapOffer.Mail && open.session.primaryMailAccountId.isNullOrBlank()
-        if (!anonymous || authorization.isEmpty()) return open
+    return withJmapDiscoveryTls(account.jmapCertPin, account.acceptInvalidCert) {
+        if (account.imapHost.isBlank()) return@withJmapDiscoveryTls JmapOffer.None
+        val fetch = JmapHttpsFetch(account.jmapCertPin, open, trust)  // F63: the JMAP server's own pin
+        // The JMAP server field takes host, host:port or an https URL (port 443 unless given).
+        val target = jmapServerTarget(account.imapHost)
+        if (target.plainHttp) JmapPlainHttp.allow(target.discoveryUrl)
+        val result = fetch.get(target.discoveryUrl)
+        if (result.status != 401 || authorization.isEmpty()) {
+            val open = discoverJmap(result.status, result.body, result.finalUrl)
+            // Stalwart answers the unauthenticated session request with 200 and an anonymous session (no accounts);
+            // that is not this user's session, so fetch it again with credentials, as for 401.
+            val anonymous = open is JmapOffer.Mail && open.session.primaryMailAccountId.isNullOrBlank()
+            if (!anonymous || authorization.isEmpty()) return@withJmapDiscoveryTls open
+        }
+        // Discovery found the session resource (redirects, trust and pin already checked without credentials);
+        // fetch it once more with credentials, on the same URL, refusing redirects, through the pinned GET.
+        discoverJmap(200, jmapAuthenticatedSession(result.finalUrl, authorization, account.jmapCertPin, get, trust), result.finalUrl)
     }
-    // Discovery found the session resource (redirects, trust and pin already checked without credentials);
-    // fetch it once more with credentials, on the same URL, refusing redirects, through the pinned GET.
-    return discoverJmap(200, jmapAuthenticatedSession(result.finalUrl, authorization, account.jmapCertPin, get, trust), result.finalUrl)
 }
 
 fun jmapAuthenticatedSession(
