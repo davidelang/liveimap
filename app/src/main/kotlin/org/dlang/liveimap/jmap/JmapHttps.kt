@@ -51,8 +51,8 @@ class JmapHttpsFetch(
     private val pin: String,
     private val open: (String) -> JmapHttpExchange,
     private val policy: TlsPolicy = TlsPolicy(),
-    private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     private val accountKey: String = "",
+    private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ) : JmapFetch {
     override fun get(url: String): JmapHttpResult {
         if (!jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap fetch is not https")

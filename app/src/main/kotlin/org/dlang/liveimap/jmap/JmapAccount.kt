@@ -12,12 +12,12 @@ fun offerForAccount(
     /** Basic authorization; sent only when the unauthenticated session request answers 401 (RFC 8620 needs auth). */
     authorization: String = "",
     get: (String, String) -> JmapBlobExchange = pinnedJmapGet(account.jmapCertPin, account.tlsPolicy()),
-    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check, // tests pass it as a trailing lambda
     accountKey: String = "",
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check, // tests pass it as a trailing lambda
 ): JmapOffer {
     if (account.imapHost.isBlank()) return JmapOffer.None
     val policy = account.tlsPolicy()
-    val fetch = JmapHttpsFetch(account.jmapCertPin, open, policy, trust, accountKey)  // F63: the JMAP server's own pin
+    val fetch = JmapHttpsFetch(account.jmapCertPin, open, policy, accountKey, trust)  // F63: the JMAP server's own pin
     // The JMAP server field takes host, host:port or an https URL (port 443 unless given).
     val target = jmapServerTarget(account.imapHost)
     if (target.plainHttp) JmapPlainHttp.allow(accountKey, target.discoveryUrl)
