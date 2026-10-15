@@ -3018,3 +3018,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - The cross-folder delete test acts in each hit folder
 
 - multiSelectAcrossFoldersActsInEachFolderAndUndoesByRefs passes the hit folder into deleteMessages.
+
+## 2026-10-15 - A long search leaves the list queue free until its hits are applied.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/long-search-queue-20261015-0431-plan.md. The long search runs on the screen scope. Only applying its hits uses the list queue.
+- No new mutex. No install

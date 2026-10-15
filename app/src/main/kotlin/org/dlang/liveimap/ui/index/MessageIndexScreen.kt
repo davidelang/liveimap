@@ -783,6 +783,12 @@ private fun MessageIndexLoaded(
         true
     }
     val scope = rememberCoroutineScope()
+    // Screen-scope turn for long search. A later search joins the earlier job; this is not the model queue.
+    val longSearchTail = remember {
+        object {
+            var job: Job = Job().also { it.complete() }
+        }
+    }
     val modelOps = remember { Channel<suspend () -> Unit>(Channel.UNLIMITED) }
     remember {
         scope.launch {
@@ -1881,12 +1887,15 @@ private fun MessageIndexLoaded(
             if (runAdvanced && model.isLongAdvanced(pendingAdvanced, pendingScope)) {
                 // Long search: runs on its own connection without the list gate, so the list stays usable.
                 val text: String = pendingAdvanced
-                val mailboxAtStart = mailbox
+                val mailboxAtStart = held.boundMailbox
                 val orderAtStart = model.order
                 val orderMailboxesAtStart = model.orderMailboxes
                 onAdvancedConsumed()
                 // On the screen scope, not this effect: the effect restarts when the query is consumed.
-                enqueueModel {
+                // A second long search waits until this one returns and its apply op is queued.
+                val previous = longSearchTail.job
+                val searchJob = scope.launch {
+                    previous.join()
                     val hits = try {
                         model.runLongSearch(text)
                     } catch (error: CancellationException) {
@@ -1896,34 +1905,32 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        val appliedInPlace = if (
-                            held.boundMailbox == mailboxAtStart &&
-                            model.order == orderAtStart &&
-                            model.orderMailboxes == orderMailboxesAtStart
-                        ) {
-                            // Same mailbox and UID order this search started from: show the results in place.
-                            noteVisibleTop()
-                            model.applyAdvancedHits(text, hits)
-                            pull()
-                            true
-                        } else {
-                            false
-                        }
-                        if (appliedInPlace) {
-                            if (model.rows.isNotEmpty()) scrollToStart()
-                        } else {
-                            // The user moved on: offer the results as their own view.
-                            scope.launch {
-                                val shown = snackbarHostState.showSnackbar(
-                                    message = appContext.getString(R.string.index_long_search_done, hits.size),
-                                    actionLabel = appContext.getString(R.string.index_long_search_show),
-                                    duration = SnackbarDuration.Long,
-                                )
-                                if (shown == SnackbarResult.ActionPerformed) showLongSearchHits(text, hits)
+                        enqueueModel {
+                            if (
+                                held.boundMailbox == mailboxAtStart &&
+                                model.order == orderAtStart &&
+                                model.orderMailboxes == orderMailboxesAtStart
+                            ) {
+                                // Same mailbox and UID order this search started from: show the results in place.
+                                noteVisibleTop()
+                                model.applyAdvancedHits(text, hits)
+                                pull()
+                                if (model.rows.isNotEmpty()) scrollToStart()
+                            } else {
+                                // The user moved on: offer the results as their own view.
+                                scope.launch {
+                                    val shown = snackbarHostState.showSnackbar(
+                                        message = appContext.getString(R.string.index_long_search_done, hits.size),
+                                        actionLabel = appContext.getString(R.string.index_long_search_show),
+                                        duration = SnackbarDuration.Long,
+                                    )
+                                    if (shown == SnackbarResult.ActionPerformed) showLongSearchHits(text, hits)
+                                }
                             }
                         }
                     }
                 }
+                longSearchTail.job = searchJob
                 runAdvanced = false
             }
             if (runAdvanced) {
