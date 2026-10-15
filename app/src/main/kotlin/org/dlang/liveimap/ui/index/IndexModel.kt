@@ -1319,6 +1319,8 @@ class IndexModel(
         val previousOrder = order
         val previousMembers = threadMembers
         val previousSummaries = summaries
+        val previousExists = knownExists
+        val previousArrival = arrivalTotal
         val existsNow = maxOf(reportedExists, home.selectedExists())
         try {
             val shown = shownUids.distinct()
@@ -1346,6 +1348,8 @@ class IndexModel(
             order = previousOrder
             threadMembers = previousMembers
             summaries = previousSummaries
+            knownExists = previousExists
+            arrivalTotal = previousArrival
             notice = failure.text
         }
         return heldRows
@@ -2076,12 +2080,12 @@ class IndexModel(
             else -> 0
         }
         val wasAtEnd = includesNewest(if (arrivalTotal > 0) arrivalTotal else order.size)
+        if (growth > 0 && wasAtEnd) addNewTail(growth)
         if (existsNow > 0) {
             knownExists = existsNow
             if (filterUids == null) arrivalTotal = existsNow
         }
         if (growth <= 0) return
-        if (wasAtEnd) addNewTail(growth)
         pendingNew += growth
         newMailUnnumbered = false
     }

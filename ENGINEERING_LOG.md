@@ -2904,3 +2904,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/new-mail-20261014-1623-plan.md
 - Fixup: a count learned later replaces the first LIST-STATUS value, including a smaller one. A long search shows hits in place only when the mailbox and the UID order are still the ones it started from
 - No new mutex. No install
+
+## 2026-10-14 - A failed arrival fetch keeps the previous count
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/new-mail-20261014-1623-plan.md
+- Fixup: a failed tail fetch leaves knownExists at the previous count. A long search re-checks the mailbox and UID order inside the lock before applying hits. An expunge scrolls to the anchor's new index in the lazy list. The folder tree walk stays on the caller
+- No new mutex. No install

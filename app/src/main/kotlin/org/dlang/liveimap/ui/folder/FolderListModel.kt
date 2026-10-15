@@ -38,7 +38,7 @@ class FolderListModel(
     private var buildUnread: Boolean = false
 
     /**
-     * The visible tree. Session calls suspend on their own lane; the tree walk runs off the main thread, and
+     * The visible tree. Session calls suspend on their own lane; the tree walk runs on the caller, and
      * counts learned by STATUS are kept across rebuilds (an expand never drops a count already shown).
      */
     suspend fun loadLevel(): List<FolderRow> = loadLevelNow()

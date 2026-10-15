@@ -1856,17 +1856,30 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        if (
+                        val appliedInPlace = if (
                             held.boundMailbox == mailboxAtStart &&
                             model.order == orderAtStart &&
                             model.orderMailboxes == orderMailboxesAtStart
                         ) {
-                            // Same mailbox and UID order this search started from: show the results in place.
                             gate.withLock {
-                                noteVisibleTop()
-                                model.applyAdvancedHits(text, hits)
-                                pull()
+                                if (
+                                    held.boundMailbox == mailboxAtStart &&
+                                    model.order == orderAtStart &&
+                                    model.orderMailboxes == orderMailboxesAtStart
+                                ) {
+                                    // Same mailbox and UID order this search started from: show the results in place.
+                                    noteVisibleTop()
+                                    model.applyAdvancedHits(text, hits)
+                                    pull()
+                                    true
+                                } else {
+                                    false
+                                }
                             }
+                        } else {
+                            false
+                        }
+                        if (appliedInPlace) {
                             if (model.rows.isNotEmpty()) scrollToStart()
                         } else {
                             // The user moved on: offer the results as their own view.
@@ -1941,7 +1954,10 @@ private fun MessageIndexLoaded(
                         model.applyChange(change)
                         pull()
                     }
-                    if (change is MailboxChange.Exists && anchorEntry is IndexEntry.Message) {
+                    if (
+                        anchorEntry is IndexEntry.Message &&
+                        (change is MailboxChange.Exists || change is MailboxChange.Expunge)
+                    ) {
                         val afterEntries = buildIndexEntries(
                             model.rows,
                             expandedThreads,
