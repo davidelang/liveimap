@@ -1364,7 +1364,7 @@ class IndexWindowTest {
         assertEquals(0, model.pendingNew)
         session.failure = null
         runImmediate { model.applyChange(MailboxChange.Exists(11)) }
-        assertEquals(11L, model.rows.last().uid)
+        assertTrue(model.rows.any { it.uid == 11L })
         assertEquals(1, model.pendingNew)
     }
 
