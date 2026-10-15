@@ -27,6 +27,7 @@ class PeerTrustTest {
         val der = der("peer-trust-ok.pem")
         val pin = PeerTrust.offer(listOf(der))!![4]
         assertEquals("", PeerTrust.check("other.example", listOf(der), pin))
+        assertEquals("certificate changed", PeerTrust.check("other.example", listOf(der), "00"))
         assertEquals("name mismatch", PeerTrust.check("other.example", listOf(der), ""))
     }
 
@@ -35,6 +36,7 @@ class PeerTrustTest {
         val der = der("peer-trust-expired.pem")
         val pin = PeerTrust.offer(listOf(der))!![4]
         assertEquals("", PeerTrust.check("imap.example", listOf(der), pin))
+        assertEquals("certificate changed", PeerTrust.check("imap.example", listOf(der), "00"))
         assertEquals("certificate expired", PeerTrust.check("imap.example", listOf(der), ""))
     }
 

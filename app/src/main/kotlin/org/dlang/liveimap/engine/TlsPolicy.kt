@@ -5,7 +5,7 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * Per-account TLS relaxations from Advanced settings, both off by default.
- * acceptInvalidCert accepts a certificate that fails validation (name, expiry, trust, changed), like pine
+ * acceptInvalidCert accepts a certificate that fails validation (name, expiry, trust), like pine
  * /novalidate-cert; connection and handshake failures are never overridden. allowOldTls allows TLS 1.0/1.1,
  * small DH keys and legacy ciphers for that account's connections only. Also a coroutine context element, so
  * ManageSieve picks it up without threading it through every call.
@@ -27,7 +27,6 @@ val certificateVerdicts: Set<String> = setOf(
     "name mismatch",
     "certificate expired",
     "certificate untrusted",
-    "certificate changed",
     "certificate rejected",
 )
 

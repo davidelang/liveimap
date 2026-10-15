@@ -96,16 +96,13 @@ private val jmapDiscoveryAcceptInvalid = ThreadLocal<Boolean>()
 internal fun <T> withJmapDiscoveryTls(pin: String, acceptInvalidCert: Boolean, block: () -> T): T {
     val previousPin = jmapDiscoveryPin.get()
     val previousAccept = jmapDiscoveryAcceptInvalid.get()
-    val previousPeer = PeerTrust.acceptInvalid.get()
     jmapDiscoveryPin.set(pin)
     jmapDiscoveryAcceptInvalid.set(acceptInvalidCert)
-    PeerTrust.acceptInvalid.set(acceptInvalidCert)
     try {
         return block()
     } finally {
         if (previousPin == null) jmapDiscoveryPin.remove() else jmapDiscoveryPin.set(previousPin)
         if (previousAccept == null) jmapDiscoveryAcceptInvalid.remove() else jmapDiscoveryAcceptInvalid.set(previousAccept)
-        if (previousPeer == null) PeerTrust.acceptInvalid.remove() else PeerTrust.acceptInvalid.set(previousPeer)
     }
 }
 

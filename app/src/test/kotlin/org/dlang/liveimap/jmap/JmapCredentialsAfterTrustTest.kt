@@ -89,6 +89,20 @@ class JmapCredentialsAfterTrustTest {
         c.responseCode
     }
 
+    private fun postInDiscovery(port: Int, pin: String, acceptInvalid: Boolean): Result<Int> = runCatching {
+        withJmapDiscoveryTls(pin, acceptInvalid) {
+            val c = URL("https://localhost:$port/jmap").openConnection() as HttpsURLConnection
+            pinJmapTls(c, pin)
+            c.connectTimeout = 5000
+            c.readTimeout = 5000
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("Authorization", "Basic c2VjcmV0LWNyZWRz")
+            c.outputStream.use { it.write("secret-body".toByteArray()) }
+            c.responseCode
+        }
+    }
+
     @Test fun nothingIsWrittenToAnUntrustedPeer() {
         val store = serverKeyStore()
         val (port, received) = server(store)
@@ -107,5 +121,22 @@ class JmapCredentialsAfterTrustTest {
         val result = post(port, pin)
         assertEquals(200, result.getOrThrow())
         assertTrue(received().contains("Authorization: Basic c2VjcmV0LWNyZWRz"))
+    }
+
+    @Test fun acceptInvalidDoesNotAcceptAWrongPin() {
+        val store = serverKeyStore()
+        val (port, received) = server(store)
+        val wrongPin = "00".repeat(32)
+        assertTrue(postInDiscovery(port, wrongPin, true).isFailure)
+        val got = received()
+        assertFalse(got.contains("Authorization"))
+        assertFalse(got.contains("secret"))
+    }
+
+    @Test fun acceptInvalidAllowsAnEmptyPin() {
+        val store = serverKeyStore()
+        val (port, received) = server(store)
+        assertEquals(200, postInDiscovery(port, "", true).getOrThrow())
+        assertTrue(received().contains("Authorization"))
     }
 }

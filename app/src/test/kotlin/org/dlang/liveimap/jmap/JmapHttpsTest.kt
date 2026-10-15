@@ -42,6 +42,30 @@ class JmapHttpsTest {
     }
 
     @Test
+    fun acceptInvalidReadsBodyOnNameMismatch() {
+        val url = "https://example.com/.well-known/jmap"
+        val script = Script(listOf(Step(url, 200, body = "secret")))
+        val client = JmapHttpsFetch("pin", script::open) { _, _, _ -> "name mismatch" }
+        val result = withJmapDiscoveryTls("pin", true) { client.get(url) }
+        assertEquals("secret", result.body)
+        assertEquals(listOf(url), script.reads)
+    }
+
+    @Test
+    fun nameMismatchWithoutAcceptInvalidDoesNotReadBody() {
+        val url = "https://example.com/.well-known/jmap"
+        val script = Script(listOf(Step(url, 200, body = "secret")))
+        val client = JmapHttpsFetch("pin", script::open) { _, _, _ -> "name mismatch" }
+        try {
+            withJmapDiscoveryTls("pin", false) { client.get(url) }
+            throw AssertionError("expected JmapFailure")
+        } catch (failure: JmapFailure) {
+            assertEquals("name mismatch", failure.text)
+        }
+        assertEquals(emptyList<String>(), script.reads)
+    }
+
+    @Test
     fun defaultTrustIsPeerTrust() {
         val url = "https://example.com/.well-known/jmap"
         val script = Script(listOf(Step(url, 200, body = "secret", ders = emptyList())))

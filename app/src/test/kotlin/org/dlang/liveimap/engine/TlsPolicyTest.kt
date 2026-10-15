@@ -25,6 +25,8 @@ class TlsPolicyTest {
         assertEquals("", applyTlsPolicy("name mismatch", policy))
         assertEquals("", applyTlsPolicy("certificate expired", policy))
         assertEquals("", applyTlsPolicy("certificate untrusted", policy))
+        assertEquals("", applyTlsPolicy("certificate rejected", policy))
+        assertEquals("certificate changed", applyTlsPolicy("certificate changed", policy))
         assertEquals("connection failed", applyTlsPolicy("connection failed", policy))
         assertEquals("TLS 1.2 required", applyTlsPolicy("TLS 1.2 required", policy))
         assertEquals("", applyTlsPolicy("", policy))

@@ -73,6 +73,23 @@ class JmapAccountTest {
     }
 
     @Test
+    fun acceptInvalidDoesNotClearCertificateChanged() {
+        val url = "https://example.com/.well-known/jmap"
+        val script = AccountOpen(url, 200, "secret", listOf(byteArrayOf(1)))
+        try {
+            offerForAccount(
+                AccountSettings(imapHost = "example.com", jmapCertPin = "ab", acceptInvalidCert = true),
+                script::open,
+            ) { _, _, _ -> "certificate changed" }
+            throw AssertionError("expected JmapFailure")
+        } catch (failure: JmapFailure) {
+            assertEquals("certificate changed", failure.text)
+        }
+        assertEquals(listOf(url), script.opens)
+        assertEquals(emptyList<String>(), script.reads)
+    }
+
+    @Test
     fun redirectLimitPropagates() {
         val failure = JmapFailure("jmap redirect limit")
         var trusted = false

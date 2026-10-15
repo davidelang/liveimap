@@ -3037,3 +3037,6 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - Live JMAP discovery uses the account pin.
 
 ## 2026-10-15 - The old JMAP message helpers are gone.
+
+## 2026-10-15 - A stored pin wins, and accept-invalid does not clear a certificate change.
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-discovery-cert-changed-20261015-0645-plan.md. A non-empty pin decides before the name, the dates, the lab hook, and the CA check. accept-invalid no longer clears certificate changed.
