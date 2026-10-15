@@ -1132,7 +1132,8 @@ bool preferredFound(const PartWant * want, bool preferHtml) {
 void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want);
 
 // enterRfc822 is false while the message's own parts are still being considered. A message/rfc822
-// attachment is entered only on the second walk, and only when that first walk found no text part.
+// attachment is entered only on the second walk, after that first walk found no text part. Text
+// remembered inside an earlier attachment does not skip a later message/rfc822 sibling.
 void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want,
     bool enterRfc822) {
     if (body == nullptr) {
@@ -1162,7 +1163,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     struct mailimap_body_type_1part * part = body->bd_data.bd_body_1part;
     std::string section = prefix.empty() ? "1" : prefix;
     if (part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr) {
-        if (!enterRfc822 || want->found) return;
+        if (!enterRfc822) return;
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
         if (inner != nullptr && inner->bd_type == MAILIMAP_BODY_MPART) {
             findPreferred(inner, section, preferHtml, want);

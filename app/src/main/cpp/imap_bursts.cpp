@@ -6,106 +6,7 @@
 #include <string>
 #include <strings.h>
 
-extern "C" {
-int mailimap_crlf_send(mailstream * fd);
-int mailimap_uid_fetch_send(mailstream * fd, struct mailimap_set * set,
-    struct mailimap_fetch_type * fetch_type);
-int mailimap_status_send(mailstream * fd, const char * mb,
-    struct mailimap_status_att_list * status_att_list);
-}
-
-namespace {
-
-// mailimap_send_current_tag increments before it writes. The high tag is put back
-// on every exit. An earlier tag is installed only around that reply's read and parse.
-struct TagGuard {
-    mailimap * imap;
-    int highest;
-    bool issued = false;
-
-    explicit TagGuard(mailimap * session)
-        : imap(session), highest(session != nullptr ? session->imap_tag : 0) {}
-
-    void note() {
-        if (imap == nullptr) return;
-        issued = true;
-        if (imap->imap_tag > highest) highest = imap->imap_tag;
-    }
-
-    void forReply(int tag) {
-        if (imap != nullptr) imap->imap_tag = tag;
-    }
-
-    void restore() {
-        if (imap != nullptr) imap->imap_tag = highest;
-    }
-
-    ~TagGuard() { restore(); }
-};
-
-int streamError() {
-    return MAILIMAP_ERROR_STREAM;
-}
-
-void takeMessages(mailimap * imap, std::map<std::string, int> * out) {
-    if (imap->imap_response_info == nullptr) return;
-    struct mailimap_mailbox_data_status * status = imap->imap_response_info->rsp_status;
-    imap->imap_response_info->rsp_status = nullptr;
-    if (status == nullptr) return;
-    if (status->st_mailbox != nullptr && status->st_info_list != nullptr) {
-        for (clistiter * cur = clist_begin(status->st_info_list); cur != nullptr; cur = clist_next(cur)) {
-            auto * info = static_cast<struct mailimap_status_info *>(clist_content(cur));
-            if (info == nullptr || info->st_att != MAILIMAP_STATUS_ATT_MESSAGES) continue;
-            if (info->st_value > static_cast<uint32_t>(INT_MAX)) continue;
-            (*out)[status->st_mailbox] = static_cast<int>(info->st_value);
-        }
-    }
-    mailimap_mailbox_data_status_free(status);
-}
-
-int readStatusReply(mailimap * imap, TagGuard & guard, int tag, std::map<std::string, int> * out) {
-    dropStatus(imap);
-    guard.forReply(tag);
-    if (mailimap_read_line(imap) == nullptr) return streamError();
-    struct mailimap_response * response = nullptr;
-    int r = mailimap_parse_response(imap, &response);
-    guard.restore();
-    if (r != MAILIMAP_NO_ERROR) {
-        dropStatus(imap);
-        return streamError();
-    }
-    if (taggedOk(response)) takeMessages(imap, out);
-    else dropStatus(imap);
-    mailimap_response_free(response);
-    return MAILIMAP_NO_ERROR;
-}
-
-int readPreviewReply(mailimap * imap, TagGuard & guard, int tag, size_t index,
-    const std::vector<PreviewAsk> & asks, std::vector<std::string> & previews) {
-    dropFetchList(imap);
-    guard.forReply(tag);
-    if (mailimap_read_line(imap) == nullptr) return streamError();
-    struct mailimap_response * response = nullptr;
-    int r = mailimap_parse_response(imap, &response);
-    guard.restore();
-    if (r != MAILIMAP_NO_ERROR) {
-        dropFetchList(imap);
-        return streamError();
-    }
-    if (taggedOk(response)) {
-        clist * fetched = imap->imap_response_info != nullptr
-            ? imap->imap_response_info->rsp_fetch_list : nullptr;
-        previews[index] = previewSectionText(
-            fetched, asks[index].charset, asks[index].encoding, asks[index].html);
-    }
-    dropFetchList(imap);
-    mailimap_response_free(response);
-    return MAILIMAP_NO_ERROR;
-}
-
-PreviewDecoder previewDecoder = nullptr;
-
-}  // namespace
+static PreviewDecoder previewDecoder = nullptr;
 
 void setPreviewDecoder(PreviewDecoder decoder) {
     previewDecoder = decoder;
@@ -405,7 +306,6 @@ int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mai
     if (mailboxes.empty()) return MAILIMAP_NO_ERROR;
     if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
     if (pipeline) return statusViaLibrary(imap, mailboxes, out);
-    TagGuard guard(imap);
     struct mailimap_status_att_list * atts = mailimap_status_att_list_new_empty();
     if (atts == nullptr) return MAILIMAP_ERROR_MEMORY;
     int r = mailimap_status_att_list_add(atts, MAILIMAP_STATUS_ATT_MESSAGES);
@@ -413,46 +313,23 @@ int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mai
         mailimap_status_att_list_free(atts);
         return r;
     }
-    std::vector<int> tags;
-    tags.reserve(mailboxes.size());
-    for (size_t i = 0; i < mailboxes.size(); ++i) {
-        r = mailimap_send_current_tag(imap);
-        guard.note();
-        if (r != MAILIMAP_NO_ERROR) {
+    for (const std::string & mb : mailboxes) {
+        struct mailimap_mailbox_data_status * status = nullptr;
+        r = mailimap_status(imap, mb.c_str(), atts, &status);
+        if (r == MAILIMAP_NO_ERROR) putStatusMessages(status, out);
+        if (status != nullptr) mailimap_mailbox_data_status_free(status);
+        int checked = pipelineResult(imap, r);
+        if (checked == MAILIMAP_ERROR_STREAM) {
             mailimap_status_att_list_free(atts);
-            return streamError();
+            return MAILIMAP_ERROR_STREAM;
         }
-        r = mailimap_status_send(imap->imap_stream, mailboxes[i].c_str(), atts);
-        if (r != MAILIMAP_NO_ERROR) {
+        // A tagged NO or BAD omits that mailbox. Anything else stops the burst.
+        if (checked != MAILIMAP_NO_ERROR && checked != MAILIMAP_ERROR_STATUS) {
             mailimap_status_att_list_free(atts);
-            return streamError();
-        }
-        r = mailimap_crlf_send(imap->imap_stream);
-        if (r != MAILIMAP_NO_ERROR) {
-            mailimap_status_att_list_free(atts);
-            return streamError();
-        }
-        int tag = imap->imap_tag;
-        tags.push_back(tag);
-        if (!pipeline) {
-            if (mailstream_flush(imap->imap_stream) == -1) {
-                mailimap_status_att_list_free(atts);
-                return streamError();
-            }
-            int rr = readStatusReply(imap, guard, tag, out);
-            if (rr != MAILIMAP_NO_ERROR) {
-                mailimap_status_att_list_free(atts);
-                return rr;
-            }
+            return checked;
         }
     }
     mailimap_status_att_list_free(atts);
-    if (!pipeline) return MAILIMAP_NO_ERROR;
-    if (mailstream_flush(imap->imap_stream) == -1) return streamError();
-    for (int tag : tags) {
-        int rr = readStatusReply(imap, guard, tag, out);
-        if (rr != MAILIMAP_NO_ERROR) return rr;
-    }
     return MAILIMAP_NO_ERROR;
 }
 
@@ -462,75 +339,27 @@ int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byte
     if (asks.empty() || byteLimit <= 0) return MAILIMAP_NO_ERROR;
     if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
     if (pipeline) return previewViaLibrary(imap, asks, byteLimit, previews);
-    TagGuard guard(imap);
-    struct Sent {
-        int tag;
-        size_t index;
-    };
-    std::vector<Sent> sent;
-    sent.reserve(asks.size());
-    bool allocFailed = false;
     for (size_t i = 0; i < asks.size(); ++i) {
-        struct mailimap_section * section = sectionFromSpec(asks[i].section);
-        if (section == nullptr) {
-            if (!guard.issued) return MAILIMAP_ERROR_MEMORY;
-            allocFailed = true;
-            continue;
+        struct mailimap_uid_fetch_request * req = previewRequest(asks[i], byteLimit);
+        if (req == nullptr) return MAILIMAP_ERROR_MEMORY;
+        clist * result = nullptr;
+        int r = mailimap_uid_fetch(imap, req->ufr_set, req->ufr_fetch_type, &result);
+        freeUidFetchRequest(req);
+        int checked = pipelineResult(imap, r);
+        if (checked == MAILIMAP_ERROR_STREAM) {
+            if (r == MAILIMAP_NO_ERROR && result != nullptr) mailimap_fetch_list_free(result);
+            return MAILIMAP_ERROR_STREAM;
         }
-        struct mailimap_fetch_att * att = mailimap_fetch_att_new_body_peek_section_partial(
-            section, 0, static_cast<uint32_t>(byteLimit));
-        struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
-        if (att == nullptr || fetch == nullptr) {
-            if (fetch != nullptr) mailimap_fetch_type_free(fetch);
-            if (att == nullptr) mailimap_section_free(section);
-            else mailimap_fetch_att_free(att);
-            if (!guard.issued) return MAILIMAP_ERROR_MEMORY;
-            allocFailed = true;
-            continue;
+        if (r == MAILIMAP_NO_ERROR && result != nullptr) {
+            for (clistiter * cur = clist_begin(result); cur != nullptr; cur = clist_next(cur)) {
+                auto * att = static_cast<struct mailimap_msg_att *>(clist_content(cur));
+                if (uidOfAtt(att) != asks[i].uid) continue;
+                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
+            }
+            mailimap_fetch_list_free(result);
         }
-        mailimap_fetch_type_new_fetch_att_list_add(fetch, att);
-        struct mailimap_set * set = mailimap_set_new_single(asks[i].uid);
-        if (set == nullptr) {
-            mailimap_fetch_type_free(fetch);
-            if (!guard.issued) return MAILIMAP_ERROR_MEMORY;
-            allocFailed = true;
-            continue;
-        }
-        int r = mailimap_send_current_tag(imap);
-        guard.note();
-        if (r != MAILIMAP_NO_ERROR) {
-            mailimap_set_free(set);
-            mailimap_fetch_type_free(fetch);
-            return streamError();
-        }
-        r = mailimap_uid_fetch_send(imap->imap_stream, set, fetch);
-        if (r != MAILIMAP_NO_ERROR) {
-            mailimap_set_free(set);
-            mailimap_fetch_type_free(fetch);
-            return streamError();
-        }
-        r = mailimap_crlf_send(imap->imap_stream);
-        mailimap_set_free(set);
-        mailimap_fetch_type_free(fetch);
-        if (r != MAILIMAP_NO_ERROR) return streamError();
-        int tag = imap->imap_tag;
-        if (!pipeline) {
-            if (mailstream_flush(imap->imap_stream) == -1) return streamError();
-            int rr = readPreviewReply(imap, guard, tag, i, asks, previews);
-            if (rr != MAILIMAP_NO_ERROR) return rr;
-            continue;
-        }
-        sent.push_back(Sent{tag, i});
+        // A tagged NO leaves that preview empty. Anything else stops the burst.
+        if (checked != MAILIMAP_NO_ERROR && checked != MAILIMAP_ERROR_UID_FETCH) return checked;
     }
-    if (pipeline && !sent.empty()) {
-        if (mailstream_flush(imap->imap_stream) == -1) return streamError();
-        for (const Sent & item : sent) {
-            int rr = readPreviewReply(imap, guard, item.tag, item.index, asks, previews);
-            if (rr != MAILIMAP_NO_ERROR) return rr;
-        }
-    }
-    // A later send already returned STREAM. An allocation that never issued a tag
-    // still fails the burst after any earlier replies have been read.
-    if (allocFailed) return MAILIMAP_ERROR_MEMORY;
     return MAILIMAP_NO_ERROR;
 }
