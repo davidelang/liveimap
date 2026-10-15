@@ -6,6 +6,7 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CompletableDeferred
+import org.dlang.liveimap.accounts.AccountTarget
 import org.dlang.liveimap.engine.LabTestHooks
 import org.dlang.liveimap.jmap.JmapMailSession
 import org.dlang.liveimap.jmap.offerForAccount
@@ -28,11 +29,12 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class JmapLabSuiteTest {
+    private val labAccountKey = "lab"
     private val args = InstrumentationRegistry.getArguments()
     private fun arg(k: String, d: String = "") = args.getString(k) ?: d
 
     @Test
-    fun jmapSuite() = runBlocking {
+    fun jmapSuite() = runBlocking(AccountTarget(labAccountKey)) {
         val field = arg("jmapServer")
         assumeTrue("no jmapServer argument", field.isNotEmpty())
         val host = arg("labHost")
@@ -41,7 +43,7 @@ class JmapLabSuiteTest {
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true)
-        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, platformJmapExchange(a.jmapCertPin, a.tlsPolicy()), authorization = auth) }, passwordOf = { pass })
+        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, platformJmapExchange(a.jmapCertPin, a.tlsPolicy()), authorization = auth, accountKey = labAccountKey) }, passwordOf = { pass })
             .also { it.setCertConfirmer { false } } // only the lab CA is trusted
         val s = session()
         val steps = StringBuilder("step\tresult\tdetail\n")

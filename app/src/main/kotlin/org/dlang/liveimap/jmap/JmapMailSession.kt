@@ -93,6 +93,8 @@ class JmapMailSession(
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
 
     override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
+        val previousKey = accountKey
+        var connected = false
         try {
             accountKey = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId ?: ""
             var trusted = account
@@ -124,9 +126,12 @@ class JmapMailSession(
             authorization = loginAuthorization
             epoch = epochClock().coerceAtLeast(1L) and 0x7fffffffL
             ids.clear(); roles.clear(); uids.clear(); parts.clear(); selectedPath = null
+            connected = true
             OpenResult.Connected
         } catch (failure: JmapFailure) {
             OpenResult.Failed(failure.text)
+        } finally {
+            if (!connected) accountKey = previousKey
         }
     }
 
