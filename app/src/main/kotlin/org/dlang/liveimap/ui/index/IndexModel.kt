@@ -2266,7 +2266,8 @@ class IndexModel(
             }
             return null
         }
-        if (order is WindowedOrder) return order.indexOfLoaded { it in found }
+        val loadedOrder = order
+        if (loadedOrder is WindowedOrder) return loadedOrder.indexOfLoaded { it in found }
         val index = order.indexOfFirst { it in found }
         if (index < 0 || index >= count) return null
         return index
@@ -2292,7 +2293,8 @@ class IndexModel(
             }
             return null
         }
-        if (order is WindowedOrder) return order.indexOfLoaded(uid)
+        val loadedOrder = order
+        if (loadedOrder is WindowedOrder) return loadedOrder.indexOfLoaded(uid)
         val index = order.indexOf(uid)
         if (index < 0 || index >= count) return null
         return index
