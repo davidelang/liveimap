@@ -407,7 +407,8 @@ class JmapMailSession(
             val fetched = text.toByteArray(Charsets.UTF_8)
             val tail = if (fetched.size > have) fetched.copyOfRange(have, fetched.size) else ByteArray(0)
             part.bytes = if (cached == null) fetched else cached + tail
-            part.whole = !truncated || fetched.size.toLong() < cap
+            // A truncated value can be shorter than the cap when UTF-8 stops on a character. That prefix is not the whole part.
+            part.whole = !truncated
         } else if (cached == null) {
             val blob = part.blobId ?: throw MailFailure("part $section has no content")
             part.bytes = download(blob, part.type)

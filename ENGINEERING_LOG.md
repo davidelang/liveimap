@@ -3056,3 +3056,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - A text peek past the cache keeps the part bytes at that offset.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart asks for a prefix through the bytes it lacks and appends only that tail.
+
+## 2026-10-15 - A truncated short text prefix is not the whole part.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart leaves the part incomplete while the body value is truncated, so a later range past that cache fetches.

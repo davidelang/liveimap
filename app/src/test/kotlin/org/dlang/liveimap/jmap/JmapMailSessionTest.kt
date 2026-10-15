@@ -232,6 +232,26 @@ class JmapMailSessionTest {
     }
 
     @Test
+    fun peekPartTruncatedShortPrefixFetchesPastTheCache() = runBlocking {
+        // A 3-byte cap returns a 2-byte character and isTruncated, so the prefix is shorter than the cap.
+        val short = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"é","isTruncated":true}}}]},"0"]]}"""
+        val prefix = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"éabcd","isTruncated":false}}}]},"0"]]}"""
+        val (s, fake) = ready(listOf(structure, short, prefix))
+        s.fetchStructure(e1Uid)
+        val before = fake.bodies.size
+        assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 3))
+        val cached = fake.bodies.size
+        assertEquals(before + 1, cached)
+        assertTrue(fake.bodies.last().contains("\"maxBodyValueBytes\":3"))
+        assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 2))
+        assertEquals(cached, fake.bodies.size)
+        assertArrayEquals("abcd".toByteArray(), s.peekPart(e1Uid, "1", 2, 4))
+        val calls = fake.bodies.drop(before)
+        assertEquals(2, calls.size)
+        assertTrue(calls[1].contains("\"maxBodyValueBytes\":6"))
+    }
+
+    @Test
     fun attachmentsAndRawMessagesDownloadOnTheApiHostWithTheJmapPin() = runBlocking {
         val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw 1"}]},"0"]]}"""
         val blobs = Blobs(data = "0123456789".toByteArray())
