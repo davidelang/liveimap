@@ -1332,6 +1332,43 @@ class IndexWindowTest {
     }
 
     @Test
+    fun lowerExistsResetsBaselineWithoutPill() {
+        val session = folder(10)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val fetches = session.fetchRequests.size
+        session.exists = 9
+        runImmediate { model.applyChange(MailboxChange.Exists(9)) }
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+        assertEquals(fetches, session.fetchRequests.size)
+        session.exists = 10
+        session.rows[10L] = row(10L)
+        runImmediate { model.applyChange(MailboxChange.Exists(10)) }
+        assertEquals(1, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+        assertEquals(fetches + 1, session.fetchRequests.size)
+    }
+
+    @Test
+    fun failedTailFetchLeavesOldCount() {
+        val session = folder(10)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val beforeUids = model.rows.map { it.uid }
+        session.exists = 11
+        session.rows[11L] = row(11L)
+        session.failure = MailFailure("fetch failed")
+        runImmediate { model.applyChange(MailboxChange.Exists(11)) }
+        assertEquals(beforeUids, model.rows.map { it.uid })
+        assertEquals(0, model.pendingNew)
+        session.failure = null
+        runImmediate { model.applyChange(MailboxChange.Exists(11)) }
+        assertEquals(11L, model.rows.last().uid)
+        assertEquals(1, model.pendingNew)
+    }
+
+    @Test
     fun refreshShownDoesNotInsertIntoNonArrivalView() {
         val session = folder(10)
         session.sortUids = (1L..10L).toList()

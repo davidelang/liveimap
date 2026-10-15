@@ -1409,13 +1409,14 @@ class LibetpanMailSession : MailSession {
             0 -> MailboxChange.Exists(exists)
             1 -> MailboxChange.Expunge(exists)
             2 -> MailboxChange.Flags(uid, flags?.toSet() ?: emptySet())
+            5 -> MailboxChange.ShownFlags
             4 -> {
                 keeper.markWatchLost()
                 MailboxChange.WatchLost
             }
             else -> MailboxChange.UidValidityReset
         }
-        if (change !is MailboxChange.Flags) {
+        if (change !is MailboxChange.Flags && change !is MailboxChange.ShownFlags) {
             cache.keys.retainAll { it.mailbox != mailbox }
         }
         sequencesStale = true
@@ -1491,7 +1492,7 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun emit(change: MailboxChange) {
-            if (change !is MailboxChange.Flags) {
+            if (change !is MailboxChange.Flags && change !is MailboxChange.ShownFlags) {
                 val mailbox = selectedMailbox
                 if (mailbox != null) {
                     cache.keys.retainAll { it.mailbox != mailbox }

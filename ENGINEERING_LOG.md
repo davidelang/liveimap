@@ -2959,3 +2959,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
 - Fixup 2: a scope response whose set contains an unresolvable '*' is refused even when another mailbox hit is present, so the call does not return an empty success. The tagged completion stays consumed. A user set such as 5:* is still sent when the mailbox has a message
 - No new mutex. No install
+
+## 2026-10-14 - Lower EXISTS baseline and ShownFlags refresh
+
+- Plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md — lower EXISTS resets baseline; failed tail fetch rolls back; folder re-list drops learned counts; chooser list weighted; watch EXAMINE CONDSTORE without ENABLE; UID-less flag FETCH emits ShownFlags once per IDLE wake.

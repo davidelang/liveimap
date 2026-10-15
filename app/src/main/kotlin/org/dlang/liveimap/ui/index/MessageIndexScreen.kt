@@ -1856,28 +1856,20 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        val appliedInPlace = if (
-                            held.boundMailbox == mailboxAtStart &&
-                            model.order == orderAtStart &&
-                            model.orderMailboxes == orderMailboxesAtStart
-                        ) {
-                            gate.withLock {
-                                if (
-                                    held.boundMailbox == mailboxAtStart &&
-                                    model.order == orderAtStart &&
-                                    model.orderMailboxes == orderMailboxesAtStart
-                                ) {
-                                    // Same mailbox and UID order this search started from: show the results in place.
-                                    noteVisibleTop()
-                                    model.applyAdvancedHits(text, hits)
-                                    pull()
-                                    true
-                                } else {
-                                    false
-                                }
+                        val appliedInPlace = gate.withLock {
+                            if (
+                                held.boundMailbox == mailboxAtStart &&
+                                model.order == orderAtStart &&
+                                model.orderMailboxes == orderMailboxesAtStart
+                            ) {
+                                // Same mailbox and UID order this search started from: show the results in place.
+                                noteVisibleTop()
+                                model.applyAdvancedHits(text, hits)
+                                pull()
+                                true
+                            } else {
+                                false
                             }
-                        } else {
-                            false
                         }
                         if (appliedInPlace) {
                             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1951,7 +1943,11 @@ private fun MessageIndexLoaded(
                     )
                     val anchorEntry = anchorEntries.getOrNull(anchorIndex)
                     gate.withLock {
-                        model.applyChange(change)
+                        when (change) {
+                            MailboxChange.ShownFlags ->
+                                model.applyShownFlags(visibleMessageUids(), folderExists)
+                            else -> model.applyChange(change)
+                        }
                         pull()
                     }
                     if (

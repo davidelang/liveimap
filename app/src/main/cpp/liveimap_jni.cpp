@@ -334,6 +334,8 @@ struct LiveSession {
     jobject selfGlobal = nullptr;
     uint32_t watchUidValidity = 0;
     int watchExists = 0;
+    // At most one ShownFlags (kind 5) per network IDLE wake.
+    bool watchShownFlagsSent = false;
     // F38: written by a stop request so the IDLE poll wakes at once; the poll timeout is only a backstop.
     int watchWakeFd = -1;
     // F35: the session was freed from its own watch thread; watchMain deletes it on the way out.
@@ -2261,6 +2263,9 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
             readAtt(msg->mdt_msg_att, &row, nullptr, nullptr);
             if (row.uid != 0) {
                 queueWatch(session, 2, session->watchExists, static_cast<jlong>(row.uid), std::move(row.flags), generation);
+            } else if (!row.flags.empty() && !session->watchShownFlagsSent) {
+                session->watchShownFlagsSent = true;
+                queueWatch(session, 5, session->watchExists, 0, {}, generation);
             }
         }
     } else if (data->rsp_type == MAILIMAP_RESP_DATA_TYPE_COND_STATE && data->rsp_data.rsp_cond_state != nullptr) {
@@ -2364,6 +2369,7 @@ void watchMain(LiveSession * session) {
         // EXISTS then waited for the next packet (fake equivalence run caught it). Read buffered data first.
         mailstream * ws = session->watch->imap_stream;
         bool buffered = ws != nullptr && ws->read_buffer_len > 0;
+        bool newNetworkData = buffered;
         if (!buffered && ws != nullptr && mailstream_get_low(ws) != nullptr
             && mailstream_get_low(ws)->driver != mailstream_socket_driver) {  // TLS (the watch never compresses)
             ssl_st * wssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(ws));
@@ -2390,7 +2396,9 @@ void watchMain(LiveSession * session) {
             }
             if (session->watchStop.load()) break;
             if (pr <= 0 || (pfd[0].revents == 0)) continue;
+            newNetworkData = (pfd[0].revents & POLLIN) != 0;
         }
+        if (newNetworkData) session->watchShownFlagsSent = false;
         if (mailimap_read_line(session->watch) == nullptr) {
             if (!session->watchStop.load()) {
                 queueWatch(session, 4, session->watchExists, 0, {}, static_cast<jlong>(generation));
@@ -8877,9 +8885,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
             mailimap_capability_data_free(caps);
         }
     }
-    if (capabilityLineOffersCondstore(capsForCondstore)) enableCondstoreOn(watch);
     if (utf8) enableUtf8On(watch);
-    int r = mailimap_examine(watch, mailboxName.c_str());
+    const bool condstore = capabilityLineOffersCondstore(capsForCondstore);
+    uint64_t watchMod = 0;
+    int r = condstore
+        ? selectFullCapture(watch, mailboxName.c_str(), &watchMod, "EXAMINE", true)
+        : mailimap_examine(watch, mailboxName.c_str());
     session->mu.lock();
     if (watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)) {
         if (watch != nullptr) mailimap_free(watch);

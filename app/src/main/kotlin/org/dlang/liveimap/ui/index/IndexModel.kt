@@ -1372,12 +1372,17 @@ class IndexModel(
                 mailUndo = null
                 replaceWindow { fetchCurrent() }
             }
+            MailboxChange.ShownFlags -> Unit
             MailboxChange.WatchLost,
             MailboxChange.Reconnected,
             -> Unit
         }
         return heldRows
     }
+
+    /** Refreshes on-screen rows after a UID-less flag FETCH on the watch connection. */
+    suspend fun applyShownFlags(shownUids: List<Long>, reportedExists: Int): List<IndexRow> =
+        refreshShown(shownUids, reportedExists)
 
     /**
      * David, 2026-10-12 (F129/F142): every query and UID action names its folder and epoch; the session layer
@@ -2062,7 +2067,11 @@ class IndexModel(
     private suspend fun applyExistsCount(existsNow: Int) {
         if (existsNow <= 0) return
         val baseline = knownExists
-        if (baseline > 0 && existsNow <= baseline) return
+        if (baseline > 0 && existsNow < baseline) {
+            knownExists = existsNow
+            return
+        }
+        if (baseline > 0 && existsNow == baseline) return
         if (!listInsertsNewMail()) {
             knownExists = existsNow
             pendingNew = 0
@@ -2080,7 +2089,13 @@ class IndexModel(
             else -> 0
         }
         val wasAtEnd = includesNewest(if (arrivalTotal > 0) arrivalTotal else order.size)
-        if (growth > 0 && wasAtEnd) addNewTail(growth)
+        if (growth > 0 && wasAtEnd) {
+            try {
+                addNewTail(growth)
+            } catch (failure: MailFailure) {
+                return
+            }
+        }
         if (existsNow > 0) {
             knownExists = existsNow
             if (filterUids == null) arrivalTotal = existsNow

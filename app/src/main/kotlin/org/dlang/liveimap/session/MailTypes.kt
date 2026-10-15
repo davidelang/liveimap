@@ -145,6 +145,7 @@ sealed class MailboxChange {
     data class Exists(val exists: Int) : MailboxChange()
     data class Expunge(val exists: Int) : MailboxChange()
     data class Flags(val uid: Long, val flags: Set<String>) : MailboxChange()
+    data object ShownFlags : MailboxChange()
     data object UidValidityReset : MailboxChange()
     data object WatchLost : MailboxChange()
     data object Reconnected : MailboxChange()

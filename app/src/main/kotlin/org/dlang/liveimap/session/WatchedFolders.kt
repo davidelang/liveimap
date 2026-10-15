@@ -138,6 +138,7 @@ fun folderMessageCount(current: Int?, change: MailboxChange): Int? = when (chang
     is MailboxChange.Exists -> change.exists
     is MailboxChange.Expunge -> change.exists
     is MailboxChange.Flags,
+    MailboxChange.ShownFlags,
     MailboxChange.UidValidityReset,
     MailboxChange.WatchLost,
     MailboxChange.Reconnected,
@@ -210,7 +211,9 @@ class IdleChangeCoalescer {
 
     fun offer(change: IdleFolderChange) {
         val kind = when (change.change) {
-            is MailboxChange.Flags -> return
+            is MailboxChange.Flags,
+            MailboxChange.ShownFlags,
+            -> return
             is MailboxChange.Exists, is MailboxChange.Expunge -> "count"
             else -> change.change.toString()
         }

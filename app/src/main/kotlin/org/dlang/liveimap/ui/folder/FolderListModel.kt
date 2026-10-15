@@ -238,7 +238,7 @@ class FolderListModel(
         for (row in due) {
             countedAt[row.mailbox] = now
         }
-        for ((name, count) in counts) rememberMessages(name, count)
+        for ((name, count) in counts) knownMessages[name] = count
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
@@ -258,7 +258,7 @@ class FolderListModel(
         for (name in due) {
             countedAt[name] = now
         }
-        for ((name, count) in counts) rememberMessages(name, count)
+        for ((name, count) in counts) knownMessages[name] = count
         return visible.map { row ->
             val count = counts[row.mailbox]
             if (count != null) row.copy(messages = count) else row
@@ -267,11 +267,7 @@ class FolderListModel(
 
     /** A count the screen learned another way (IDLE on a watched folder). */
     fun noteMessages(mailbox: String, count: Int?) {
-        if (count != null) rememberMessages(mailbox, count)
-    }
-
-    private fun rememberMessages(mailbox: String, count: Int) {
-        knownMessages[mailbox] = count
+        if (count != null) knownMessages[mailbox] = count
     }
 
     fun refreshLevels() {
@@ -338,6 +334,9 @@ class FolderListModel(
         if (hit != null) return hit
         val listed = session.listLevel(prefix, parentMailbox, unreadCounts)
         levelCache[key] = listed
+        for (entry in listed) {
+            if (entry.messages != null) knownMessages.remove(entry.mailbox)
+        }
         return listed
     }
 
