@@ -38,15 +38,16 @@ fun jmapDownload(
     get: (String, String) -> JmapBlobExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     policy: TlsPolicy = TlsPolicy(),
+    accountKey: String = "",
 ): ByteArray {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val url = jmapDownloadUrl(session.downloadUrl, accountId, blobId, type, "message")
-    val host = httpsHost(url) ?: throw JmapFailure("jmap download url is not https")
-    if (!host.equals(httpsHost(session.apiUrl), ignoreCase = true)) throw JmapFailure("jmap download url is on another host")
+    val host = httpsHost(url, accountKey) ?: throw JmapFailure("jmap download url is not https")
+    if (!host.equals(httpsHost(session.apiUrl, accountKey), ignoreCase = true)) throw JmapFailure("jmap download url is on another host")
     val exchange = jmapNet { get(url, authorization) }
     try {
-        val verdict = applyTlsPolicy(jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
+        val verdict = applyTlsPolicy(jmapVerdict(accountKey, url) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val status = jmapNet { exchange.status }
         if (status in 300..399) throw JmapFailure("jmap download redirect")
@@ -57,9 +58,9 @@ fun jmapDownload(
     }
 }
 
-private fun httpsHost(url: String): String? = try {
+private fun httpsHost(url: String, accountKey: String): String? = try {
     val uri = URI(url)
-    if (jmapUrlAllowed(url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
+    if (jmapUrlAllowed(accountKey, url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
 } catch (_: Exception) {
     null
 }

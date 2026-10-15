@@ -79,14 +79,35 @@ class JmapServerTargetTest {
 
     @Test
     fun onlyTheConfiguredOriginMayBePlain() {
-        assertFalse(jmapUrlAllowed("http://mail.example:31923/jmap"))
-        JmapPlainHttp.allow("http://mail.example:31923/.well-known/jmap")
-        assertTrue(jmapUrlAllowed("http://mail.example:31923/jmap/"))
-        assertTrue(jmapUrlAllowed("http://MAIL.example:31923/jmap/{accountId}"))
-        assertFalse(jmapUrlAllowed("http://mail.example/jmap"))      // port 80 is another origin
-        assertFalse(jmapUrlAllowed("http://other.example:31923/jmap"))
-        assertTrue(jmapUrlAllowed("https://other.example/jmap"))
-        assertFalse(jmapUrlAllowed("ftp://mail.example:31923/"))
+        assertFalse(jmapUrlAllowed("A", "http://mail.example:31923/jmap"))
+        JmapPlainHttp.allow("A", "http://mail.example:31923/.well-known/jmap")
+        assertTrue(jmapUrlAllowed("A", "http://mail.example:31923/jmap/"))
+        assertTrue(jmapUrlAllowed("A", "http://MAIL.example:31923/jmap/{accountId}"))
+        assertFalse(jmapUrlAllowed("A", "http://mail.example/jmap"))      // port 80 is another origin
+        assertFalse(jmapUrlAllowed("A", "http://other.example:31923/jmap"))
+        assertTrue(jmapUrlAllowed("A", "https://other.example/jmap"))
+        assertFalse(jmapUrlAllowed("A", "ftp://mail.example:31923/"))
+    }
+
+    @Test
+    fun httpOriginIsAllowedOnlyForThatAccount() {
+        JmapPlainHttp.allow("A", "http://a.example/.well-known/jmap")
+        JmapPlainHttp.allow("B", "http://b.example/jmap")
+        assertTrue(jmapUrlAllowed("A", "http://a.example/jmap"))
+        assertFalse(jmapUrlAllowed("B", "http://a.example/jmap"))
+        assertTrue(jmapUrlAllowed("A", "https://other.example/jmap"))
+        assertFalse(jmapUrlAllowed("", "http://a.example/jmap"))
+        JmapPlainHttp.drop("A")
+        assertFalse(jmapUrlAllowed("A", "http://a.example/jmap"))
+        assertFalse(jmapUrlAllowed("B", "http://a.example/jmap"))
+        assertTrue(jmapUrlAllowed("B", "http://b.example/jmap"))
+    }
+
+    @Test
+    fun verdictSkipsTheCertificateOnlyForTheAllowingAccount() {
+        JmapPlainHttp.allow("A", "http://a.example/jmap")
+        assertEquals("", jmapVerdict("A", "http://a.example/jmap") { "certificate untrusted" })
+        assertEquals("certificate untrusted", jmapVerdict("B", "http://a.example/jmap") { "certificate untrusted" })
     }
 
     @Test
@@ -97,7 +118,7 @@ class JmapServerTargetTest {
         val offer = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { u ->
             opened += u
             if (u.endsWith("/.well-known/jmap")) exchange(301, location = "http://h.example:31923/jmap") else exchange(200, session)
-        }, trust = { _, _, _ -> trusted++; "certificate untrusted" })
+        }, trust = { _, _, _ -> trusted++; "certificate untrusted" }, accountKey = "A")
         assertTrue(offer.toString(), offer is JmapOffer.Mail)
         assertEquals(listOf("http://h.example:31923/.well-known/jmap", "http://h.example:31923/jmap"), opened)
         assertEquals(0, trusted)
@@ -108,7 +129,7 @@ class JmapServerTargetTest {
         val toOther = runCatching {
             offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { u ->
                 if (u.contains("31923")) exchange(301, location = "http://evil.example/jmap") else exchange(200, "{}")
-            }, trust = { _, _, _ -> "" })
+            }, trust = { _, _, _ -> "" }, accountKey = "A")
         }
         assertTrue(toOther.exceptionOrNull() is JmapFailure)
         val downgrade = runCatching {
@@ -121,12 +142,12 @@ class JmapServerTargetTest {
 
     @Test
     fun apiCallsOverTheConfiguredOriginSkipTrustOthersStillRefused() {
-        JmapPlainHttp.allow("http://h.example:31923/")
+        JmapPlainHttp.allow("A", "http://h.example:31923/")
         var trusted = 0
-        val ok = jmapCall("http://h.example:31923/jmap/", "{}", "Basic x", "", { _, _, _ -> exchange(200, "{}") }, { _, _, _ -> trusted++; "bad" })
+        val ok = jmapCall("http://h.example:31923/jmap/", "{}", "Basic x", "", { _, _, _ -> exchange(200, "{}") }, { _, _, _ -> trusted++; "bad" }, accountKey = "A")
         assertEquals(200, ok.status)
         assertEquals(0, trusted)
-        try { jmapCall("http://h.example:8080/jmap/", "{}", "Basic x", "", { _, _, _ -> exchange(200) }); fail() } catch (_: JmapFailure) {}
+        try { jmapCall("http://h.example:8080/jmap/", "{}", "Basic x", "", { _, _, _ -> exchange(200) }, accountKey = "A"); fail() } catch (_: JmapFailure) {}
     }
 
     private val labSession = """{"capabilities":{"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{}},"accounts":{"a":{}},"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},"username":"u","apiUrl":"http://h.example:31923/jmap/","downloadUrl":"http://h.example:31923/jmap/download/{accountId}/{blobId}/{name}?accept={type}","uploadUrl":"http://h.example:31923/jmap/upload/{accountId}/","eventSourceUrl":"http://h.example:31923/jmap/eventsource/","state":"0"}"""
@@ -143,7 +164,7 @@ class JmapServerTargetTest {
         val gets = mutableListOf<Pair<String, String>>()
         val offer = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { u ->
             if (u.endsWith("/.well-known/jmap")) exchange(301, location = "http://h.example:31923/jmap") else exchange(401)
-        }, trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { u, a -> gets += u to a; blob(200, labSession) })
+        }, trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { u, a -> gets += u to a; blob(200, labSession) }, accountKey = "A")
         assertTrue(offer.toString(), offer is JmapOffer.Mail)
         assertEquals(listOf("http://h.example:31923/jmap" to "Basic eA=="), gets)
     }
@@ -152,10 +173,10 @@ class JmapServerTargetTest {
     fun credentialsAreNeverSentWhenTheSessionIsOpenOrNoPasswordIsGiven() {
         var gets = 0
         val open = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(200, labSession) },
-            trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> gets++; blob(200, labSession) })
+            trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> gets++; blob(200, labSession) }, accountKey = "A")
         assertTrue(open is JmapOffer.Mail)
         val none = offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(401) },
-            trust = { _, _, _ -> "" }, get = { _, _ -> gets++; blob(200, labSession) })
+            trust = { _, _, _ -> "" }, get = { _, _ -> gets++; blob(200, labSession) }, accountKey = "A")
         assertEquals(JmapOffer.None, none)
         assertEquals(0, gets)
     }
@@ -164,7 +185,7 @@ class JmapServerTargetTest {
     fun refusedLoginAndUntrustedCertificateFail() {
         val refused = runCatching {
             offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(401) },
-                trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> blob(401, "") })
+                trust = { _, _, _ -> "" }, authorization = "Basic eA==", get = { _, _ -> blob(401, "") }, accountKey = "A")
         }.exceptionOrNull()
         assertTrue(refused is JmapFailure)
         val untrusted = runCatching {
@@ -175,11 +196,19 @@ class JmapServerTargetTest {
 
     @Test
     fun pathOnlySessionUrlsResolveAgainstTheSessionOrigin() {
-        JmapPlainHttp.allow("http://h.example:31923/")
+        JmapPlainHttp.allow("A", "http://h.example:31923/")
         val body = """{"capabilities":{"urn:ietf:params:jmap:core":{},"urn:ietf:params:jmap:mail":{}},"accounts":{"a":{}},"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},"username":"u","apiUrl":"/jmap/","downloadUrl":"/jmap/download/{accountId}/{blobId}/{name}?accept={type}","uploadUrl":"/jmap/upload/{accountId}/","eventSourceUrl":"/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}","state":"0"}"""
-        val offer = discoverJmap(200, body, "http://h.example:31923/jmap") as JmapOffer.Mail
+        val offer = discoverJmap(200, body, "http://h.example:31923/jmap", "A") as JmapOffer.Mail
         assertEquals("http://h.example:31923/jmap/", offer.session.apiUrl)
         assertEquals("http://h.example:31923/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}", offer.session.eventSourceUrl)
-        assertEquals(JmapOffer.None, discoverJmap(200, body.replace("\"/jmap/\"", "\"//evil.example/jmap/\""), "http://h.example:31923/jmap"))
+        assertEquals(JmapOffer.None, discoverJmap(200, body.replace("\"/jmap/\"", "\"//evil.example/jmap/\""), "http://h.example:31923/jmap", "A"))
+    }
+
+    @Test
+    fun offerAllowsPlainHttpOnlyForItsAccount() {
+        offerForAccount(AccountSettings(imapHost = "http://h.example:31923"), open = { exchange(404) }, trust = { _, _, _ -> "" }, accountKey = "A")
+        val discovery = "http://h.example:31923/.well-known/jmap"
+        assertTrue(JmapPlainHttp.allowed("A", discovery))
+        assertFalse(JmapPlainHttp.allowed("B", discovery))
     }
 }

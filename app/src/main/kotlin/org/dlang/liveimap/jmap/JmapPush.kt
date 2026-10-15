@@ -9,12 +9,12 @@ data class JmapPushEvent(
     val data: String,
 )
 
-fun jmapEventSourceUrl(eventSourceUrl: String): String {
+fun jmapEventSourceUrl(eventSourceUrl: String, accountKey: String = ""): String {
     if (eventSourceUrl.isBlank()) throw JmapFailure("jmap event source url is empty")
     if (eventSourceUrl.contains('#')) throw JmapFailure("jmap event source url has a fragment")
     // RFC 8620 §7.3: eventSourceUrl is an RFC 6570 level-1 template with {types}, {closeafter} and {ping}.
-    if (eventSourceUrl.contains('{') || eventSourceUrl.contains('}')) return expandEventSourceTemplate(eventSourceUrl)
-    if (!jmapUrlAllowed(eventSourceUrl)) {
+    if (eventSourceUrl.contains('{') || eventSourceUrl.contains('}')) return expandEventSourceTemplate(eventSourceUrl, accountKey)
+    if (!jmapUrlAllowed(accountKey, eventSourceUrl)) {
         throw JmapFailure("jmap event source url is not https")
     }
     val joiner = if (eventSourceUrl.contains('?')) "&" else "?"
@@ -28,7 +28,7 @@ private val eventSourceValues = mapOf("types" to "Email", "closeafter" to "state
  * variables expand to "" as RFC 6570 says for undefined ones; any operator or malformed brace is refused, so a
  * template cannot smuggle in a different host or path.
  */
-internal fun expandEventSourceTemplate(template: String): String {
+internal fun expandEventSourceTemplate(template: String, accountKey: String): String {
     val out = StringBuilder()
     var i = 0
     while (i < template.length) {
@@ -50,7 +50,7 @@ internal fun expandEventSourceTemplate(template: String): String {
     val url = out.toString()
     val host = try { java.net.URI(url).host } catch (_: Exception) { null }
     val templateHost = try { java.net.URI(template.substringBefore('{')).host } catch (_: Exception) { null }
-    if (host == null || !jmapUrlAllowed(url)) throw JmapFailure("jmap event source url is not https")
+    if (host == null || !jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap event source url is not https")
     if (templateHost == null || !host.equals(templateHost, ignoreCase = true)) {
         throw JmapFailure("jmap event source url template moves the host")
     }

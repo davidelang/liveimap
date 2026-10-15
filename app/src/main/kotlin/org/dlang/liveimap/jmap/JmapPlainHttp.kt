@@ -9,13 +9,24 @@ import java.util.concurrent.ConcurrentHashMap
  * still has to be https, so a server cannot move an https account onto plain http (redirects, session URLs).
  */
 object JmapPlainHttp {
-    private val origins = ConcurrentHashMap.newKeySet<String>()
+    private val origins = ConcurrentHashMap<String, MutableSet<String>>()
 
-    fun allow(url: String) {
-        originOf(url)?.let { origins += it }
+    fun allow(accountKey: String, url: String) {
+        if (accountKey.isBlank()) return
+        val origin = originOf(url) ?: return
+        origins.computeIfAbsent(accountKey) { ConcurrentHashMap.newKeySet() }.add(origin)
     }
 
-    fun allowed(url: String): Boolean = originOf(url)?.let { it in origins } == true
+    fun allowed(accountKey: String, url: String): Boolean {
+        if (accountKey.isBlank()) return false
+        val origin = originOf(url) ?: return false
+        return origins[accountKey]?.contains(origin) == true
+    }
+
+    /** Drops this key's origins and no other key's. */
+    fun drop(accountKey: String) {
+        origins.remove(accountKey)
+    }
 
     internal fun clear() = origins.clear()
 
@@ -28,14 +39,14 @@ object JmapPlainHttp {
     }
 }
 
-/** https always; http only for an origin the user configured. */
-fun jmapUrlAllowed(url: String): Boolean {
+/** https always; http only for an origin this account configured. A blank key allows https and refuses http. */
+fun jmapUrlAllowed(accountKey: String, url: String): Boolean {
     val scheme = try { URI(url.substringBefore('{')).scheme } catch (_: Exception) { null }
         ?: Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://").find(url.trim())?.groupValues?.get(1)
     if (scheme.equals("https", ignoreCase = true)) return true
-    return scheme.equals("http", ignoreCase = true) && JmapPlainHttp.allowed(url)
+    return scheme.equals("http", ignoreCase = true) && JmapPlainHttp.allowed(accountKey, url)
 }
 
-/** The certificate verdict, skipped for a configured plain-http origin (there is no certificate). */
-inline fun jmapVerdict(url: String, check: () -> String): String =
-    if (JmapPlainHttp.allowed(url)) "" else check()
+/** The certificate verdict, skipped only for this key's plain-http origin (there is no certificate). */
+inline fun jmapVerdict(accountKey: String, url: String, check: () -> String): String =
+    if (JmapPlainHttp.allowed(accountKey, url)) "" else check()

@@ -15,6 +15,7 @@ import org.dlang.liveimap.R
 import org.dlang.liveimap.accounts.AccountCredentials
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.jmap.JmapOffer
+import org.dlang.liveimap.jmap.JmapPlainHttp
 import org.dlang.liveimap.jmap.jmapMailboxLevel
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
@@ -159,14 +160,19 @@ internal fun testAccountProbes(
         },
         jmapLogin = {
             withContext(Dispatchers.IO) {
-                val policy = candidate.tlsPolicy()
-                val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy), authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
-                if (offer !is JmapOffer.Mail) {
-                    throw IllegalStateException(
-                        if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
-                    )
+                val probeKey = java.util.UUID.randomUUID().toString()
+                try {
+                    val policy = candidate.tlsPolicy()
+                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy), authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password), accountKey = probeKey)
+                    if (offer !is JmapOffer.Mail) {
+                        throw IllegalStateException(
+                            if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
+                        )
+                    }
+                    jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, policy), policy = policy, accountKey = probeKey)
+                } finally {
+                    JmapPlainHttp.drop(probeKey)
                 }
-                jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, policy), policy = policy)
             }
         },
         smtpUsesImapPassword = candidate.smtpSameAsImap || smtpPassword == password,

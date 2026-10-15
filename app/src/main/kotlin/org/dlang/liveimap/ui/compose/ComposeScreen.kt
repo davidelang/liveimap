@@ -836,7 +836,7 @@ private fun ComposeLoaded(
                 }
                 var leftOver: String? = null
                 try {
-                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
+                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
                         copy.bytes,
@@ -852,7 +852,7 @@ private fun ComposeLoaded(
                         saveCopy = copy.mailbox.isNotEmpty(),
                         draftsName = account.postponedMailbox,
                         onNotice = { leftOver = it },
-                        policy = account.tlsPolicy(),
+                        policy = account.tlsPolicy(), accountKey = accountId,
                     ) }
                 } catch (error: CancellationException) {
                     throw error
@@ -1207,7 +1207,7 @@ private fun ComposeLoaded(
                         val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, built.rfc822, via = via)
                         var leftOver: String? = null
                         try {
-                            val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
+                            val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
                                 built.rfc822,
@@ -1222,7 +1222,7 @@ private fun ComposeLoaded(
                                 draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
                                 onNotice = { leftOver = it },
-                                policy = account.tlsPolicy(),
+                                policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
                         } catch (error: CancellationException) {
                             throw error
@@ -1596,7 +1596,7 @@ private fun ComposeLoaded(
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 val bouncing = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
                                 try {
-                                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
+                                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                                     keepCopyUntilSubmitted(
                                         bouncing,
                                         { writeCopy(appContext, it, accountId) },
@@ -1616,7 +1616,7 @@ private fun ComposeLoaded(
                                         saveCopy = savedMailbox.isNotEmpty(),
                                         draftsName = account.postponedMailbox,
                                         onNotice = { notice = it },
-                                        policy = account.tlsPolicy(),
+                                        policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
                                     storeAcceptedFlags(listOf(uid))
                                     continue

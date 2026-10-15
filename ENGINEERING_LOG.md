@@ -3044,3 +3044,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - JMAP accept-invalid is the account policy on every call.
 
 ## 2026-10-15 - JMAP sent-copy lookup uses the account TLS policy.
+
+## 2026-10-15 - A JMAP http origin is allowed for the account that configured it.

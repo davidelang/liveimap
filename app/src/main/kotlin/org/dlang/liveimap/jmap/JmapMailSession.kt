@@ -64,6 +64,8 @@ class JmapMailSession(
 
     private val lock = Mutex()
     private var account: AccountSettings? = null
+    /** Android account id from [org.dlang.liveimap.accounts.AccountTarget] at [open]; blank allows https only. */
+    internal var accountKey = ""
     private var session: JmapSession? = null
     private var authorization = ""
     private var pin = ""
@@ -92,6 +94,7 @@ class JmapMailSession(
 
     override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
         try {
+            accountKey = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId ?: ""
             var trusted = account
             val loginPassword = passwordOf(account)
             val loginAuthorization = jmapBasicAuthorization(account.username, loginPassword)
@@ -156,7 +159,7 @@ class JmapMailSession(
             val s = need()
             val parentId = if (parentMailbox == null) null else idOfLocked(parentMailbox)
             val policy = accountPolicy()
-            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, postFor(pin, policy), trust, policy) }
+            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, postFor(pin, policy), trust, policy, accountKey) }
             return rows.map { row ->
                 val path = if (parentMailbox == null) row.name else parentMailbox + DELIMITER + row.name
                 ids[path] = row.id
@@ -337,7 +340,7 @@ class JmapMailSession(
         val keywords = flags.map { keywordOf(it) }.distinct().joinToString(",", "{", "}") { q(it) + ":true" }
         val s = need()
         val policy = accountPolicy()
-        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, uploadFor(pin, policy), trust, policy) }
+        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, uploadFor(pin, policy), trust, policy, accountKey) }
         val body = """{"using":$USING,"methodCalls":[["Email/import",{"accountId":${q(accountId())},"emails":{"k1":{"blobId":${q(blob)},"mailboxIds":{${q(mailboxId)}:true},"keywords":$keywords}}},"0"]]}"""
         val created = call(body) { root -> importedId(root) }
         uids.getOrPut(mailboxId) { Uids() }.uid(created)
@@ -352,7 +355,7 @@ class JmapMailSession(
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
         val s = need()
         val policy = accountPolicy()
-        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin, policy), postFor(pin, policy), trust, a.sentMailbox, draftsName = a.postponedMailbox, policy = policy) }
+        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin, policy), postFor(pin, policy), trust, a.sentMailbox, draftsName = a.postponedMailbox, policy = policy, accountKey = accountKey) }
         -1
     }
 
@@ -416,7 +419,7 @@ class JmapMailSession(
             Triple(id, state, total)
         }
         val s = need()
-        val url = try { jmapEventSourceUrl(s.eventSourceUrl) } catch (e: JmapFailure) { throw MailFailure(e.text) }
+        val url = try { jmapEventSourceUrl(s.eventSourceUrl, accountKey) } catch (e: JmapFailure) { throw MailFailure(e.text) }
         val host = hostOf(url) ?: throw MailFailure("jmap event source url is not https")
         if (!host.equals(hostOf(s.apiUrl), ignoreCase = true)) throw MailFailure("jmap event source is on another host")
         val auth = authorization
@@ -520,7 +523,7 @@ class JmapMailSession(
             return emptyList()
         }
         try {
-            val verdict = applyTlsPolicy(jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }, policy)
+            val verdict = applyTlsPolicy(jmapVerdict(accountKey, url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }, policy)
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
@@ -605,7 +608,7 @@ class JmapMailSession(
 
     private suspend fun download(blobId: String, type: String): ByteArray {
         val policy = accountPolicy()
-        return jmap { jmapDownload(need(), blobId, type, authorization, pin, getFor(pin, policy), trust, policy) }
+        return jmap { jmapDownload(need(), blobId, type, authorization, pin, getFor(pin, policy), trust, policy, accountKey) }
     }
 
     private fun selectedTable(): Pair<String, Uids> {
@@ -631,7 +634,7 @@ class JmapMailSession(
     private suspend fun <T> call(body: String, parse: (Json.Obj) -> T): T {
         val s = need()
         val policy = accountPolicy()
-        val result = jmap { jmapCall(s.apiUrl, body, authorization, pin, postFor(pin, policy), trust, policy) }
+        val result = jmap { jmapCall(s.apiUrl, body, authorization, pin, postFor(pin, policy), trust, policy, accountKey) }
         if (result.status != 200) throw MailFailure("jmap api status ${result.status}")
         val root = try {
             JsonParser(result.body).parseDocument()
@@ -809,7 +812,7 @@ class JmapMailSession(
 
         internal fun hostOf(url: String): String? = try {
             val uri = java.net.URI(url)
-            if (jmapUrlAllowed(url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
+            if (jmapUrlAllowed(accountKey, url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
         } catch (_: Exception) {
             null
         }
@@ -906,8 +909,10 @@ class JmapMailSession(
 }
 
 /** The app's JMAP session: platform discovery and HTTPS, the account's password from its own store. */
-fun platformJmapMailSession(): JmapMailSession = JmapMailSession(
-    discover = { account, auth -> offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = auth) },
+fun platformJmapMailSession(): JmapMailSession {
+    lateinit var session: JmapMailSession
+    session = JmapMailSession(
+    discover = { account, auth -> offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = auth, accountKey = session.accountKey) },
     passwordOf = { _ ->
         val context = org.dlang.liveimap.engine.currentApplication() ?: throw JmapFailure("keystore unavailable")
         val owner = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
@@ -922,4 +927,6 @@ fun platformJmapMailSession(): JmapMailSession = JmapMailSession(
             ?: throw JmapFailure("no account")
         org.dlang.liveimap.settings.DataStoreSettingsStore(context, owner).update { it.copy(jmapCertPin = pin) }
     },
-)
+    )
+    return session
+}

@@ -84,14 +84,14 @@ private fun parsePort(text: String): Int {
     return port
 }
 
-fun discoverJmap(status: Int, body: String, finalUrl: String): JmapOffer {
+fun discoverJmap(status: Int, body: String, finalUrl: String, accountKey: String = ""): JmapOffer {
     if (finalUrl.isBlank()) return JmapOffer.None
     val scheme = try {
         URI(finalUrl).scheme
     } catch (rejected: Exception) {
         return JmapOffer.None
     }
-    if (scheme == null || !jmapUrlAllowed(finalUrl)) return JmapOffer.None
+    if (scheme == null || !jmapUrlAllowed(accountKey, finalUrl)) return JmapOffer.None
     if (status != 200) return JmapOffer.None
     var session = try {
         parseJmapSession(body)

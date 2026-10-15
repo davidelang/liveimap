@@ -39,8 +39,9 @@ fun jmapFolderLevel(
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     policy: TlsPolicy = TlsPolicy(),
+    accountKey: String = "",
 ): List<JmapFolderRow> {
-    val mailboxes = jmapMailboxLevel(session, parentId, username, password, pin, post, trust, policy)
+    val mailboxes = jmapMailboxLevel(session, parentId, username, password, pin, post, trust, policy, accountKey)
     if (mailboxes.isEmpty()) return emptyList()
     val withChildren = jmapMailboxChildren(
         session,
@@ -51,6 +52,7 @@ fun jmapFolderLevel(
         post,
         trust,
         policy,
+        accountKey,
     )
     return jmapFolderRows(mailboxes, withChildren)
 }

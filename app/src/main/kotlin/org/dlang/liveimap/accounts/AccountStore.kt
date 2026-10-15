@@ -24,6 +24,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.jmap.JmapFailure
+import org.dlang.liveimap.jmap.JmapPlainHttp
+import org.dlang.liveimap.jmap.jmapServerTarget
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.ui.compose.deleteUnsentAccount
 import org.dlang.liveimap.settings.AccountSettings
@@ -215,6 +218,7 @@ class AccountStore private constructor(private val context: Context) {
                 } ?: return@withContext false
                 val stored = storedPreference(accountId)
                 if (!manager.removeAccountExplicitly(account)) return@withContext false
+                JmapPlainHttp.drop(accountId)
                 removeAccountFiles(context, accountId, stored)
                 deleteUnsentAccount(context.filesDir, accountId)
                 AndroidAccountCipher().delete(accountId)
@@ -250,6 +254,15 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    private fun dropHttpAllowUnlessPlain(accountId: String, imapHost: String) {
+        val plain = try {
+            jmapServerTarget(imapHost).plainHttp
+        } catch (_: JmapFailure) {
+            false
+        }
+        if (!plain) JmapPlainHttp.drop(accountId)
+    }
+
     private suspend fun loadLocked(): AccountSettings {
         val accounts = readAccounts()
         val account = pick(accounts)
@@ -270,6 +283,7 @@ class AccountStore private constructor(private val context: Context) {
             runCatching { overlayAccountFields(decodeAccountSettings(it), existing.userData) }.getOrNull()
         }
         val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
+        if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
         val name = nameFor(existing, plan.settings, accountId)
         // Every settings-file save rewrites the AccountManager record first: the engine connects from it.
         writeAccount(name, plan.userData, plan.passwordSlot)

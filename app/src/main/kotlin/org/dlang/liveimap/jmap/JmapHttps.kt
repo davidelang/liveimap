@@ -52,9 +52,10 @@ class JmapHttpsFetch(
     private val open: (String) -> JmapHttpExchange,
     private val policy: TlsPolicy = TlsPolicy(),
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    private val accountKey: String = "",
 ) : JmapFetch {
     override fun get(url: String): JmapHttpResult {
-        if (!jmapUrlAllowed(url)) throw JmapFailure("jmap fetch is not https")
+        if (!jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap fetch is not https")
         var current = url
         var followed = 0
         while (true) {
@@ -63,7 +64,7 @@ class JmapHttpsFetch(
             try {
                 val ders = jmapNet { exchange.peerDer() }
                 val verdict = applyTlsPolicy(
-                    jmapVerdict(current) { jmapNet { trust(host, ders, pin) } },
+                    jmapVerdict(accountKey, current) { jmapNet { trust(host, ders, pin) } },
                     policy,
                 )
                 if (verdict.isNotEmpty()) {
@@ -79,7 +80,7 @@ class JmapHttpsFetch(
                 val location = exchange.header("Location")
                 if (location.isNullOrBlank()) throw JmapFailure("jmap redirect lacks location")
                 val next = URI(current).resolve(location).toString()
-                if (!jmapUrlAllowed(next)) throw JmapFailure("jmap redirect is not https")
+                if (!jmapUrlAllowed(accountKey, next)) throw JmapFailure("jmap redirect is not https")
                 current = next
                 followed += 1
             } finally {
