@@ -29,6 +29,10 @@ internal fun DeviceCopy.copyWith(appendOnly: Boolean = this.appendOnly, uncertai
 
 internal fun smtpUncertain(text: String): Boolean = text.startsWith(SmtpUncertainPrefix)
 
+/** The device copy left after an SMTP failure: uncertain only when the error is `smtp-uncertain:`. */
+internal fun deviceCopyAfterSmtpFailure(copy: DeviceCopy, text: String): DeviceCopy =
+    copy.copyWith(uncertain = smtpUncertain(text))
+
 internal fun smtpFailureText(text: String): String = text.removePrefix(SmtpUncertainPrefix)
 
 internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
@@ -187,7 +191,10 @@ internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
  * David's JMAP rule: every JMAP send keeps a local copy in app-private storage until EmailSubmission is confirmed.
  * Written "may be sent" before [send] starts (so a process death keeps it); deleted on success; on failure kept as
  * a plain unsent copy (the Unsent list shows it like any failed send) and the failure is rethrown.
+ * A false [write] throws [DeviceCopyNotSaved] and does not call [send] or [delete].
  */
+internal class DeviceCopyNotSaved : Exception()
+
 internal fun jmapMaybeSent(failure: Throwable): Boolean = failure is org.dlang.liveimap.jmap.JmapMaybeSent
 
 internal inline fun <T> keepCopyUntilSubmitted(
@@ -196,7 +203,7 @@ internal inline fun <T> keepCopyUntilSubmitted(
     delete: (String) -> Unit,
     send: () -> T,
 ): T {
-    write(copy.copyWith(uncertain = true))
+    if (!write(copy.copyWith(uncertain = true))) throw DeviceCopyNotSaved()
     val result = try {
         send()
     } catch (failure: Throwable) {

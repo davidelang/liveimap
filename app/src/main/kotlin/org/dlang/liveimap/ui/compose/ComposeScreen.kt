@@ -856,6 +856,10 @@ private fun ComposeLoaded(
                     ) }
                 } catch (error: CancellationException) {
                     throw error
+                } catch (_: DeviceCopyNotSaved) {
+                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                    status = notSentNotice
+                    return false
                 } catch (error: JmapSentFolderMissing) {
                     held = copy
                     notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
@@ -1226,6 +1230,10 @@ private fun ComposeLoaded(
                             ) }
                         } catch (error: CancellationException) {
                             throw error
+                        } catch (_: DeviceCopyNotSaved) {
+                            notice = appContext.getString(R.string.compose_copy_not_saved)
+                            status = notSentNotice
+                            return@launchLocked false
                         } catch (error: JmapSentFolderMissing) {
                             // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
                             // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
@@ -1248,7 +1256,11 @@ private fun ComposeLoaded(
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
                     val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
-                    writeCopy(appContext, sending, accountId)
+                    if (!writeCopy(appContext, sending, accountId)) {
+                        notice = appContext.getString(R.string.compose_copy_not_saved)
+                        status = notSentNotice
+                        return@launchLocked false
+                    }
                     val accepted = try {
                         sendSmtp(built.rfc822, built.recipients, via)
                     } catch (error: CancellationException) {
@@ -1535,7 +1547,9 @@ private fun ComposeLoaded(
                     val resentFrom = formatMailbox(account.displayName, account.email)
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
+                            val acceptedUids = HashSet<Long>()
                             for (uid in seed.uids) {
+                                if (acceptedUids.contains(uid)) continue
                                 val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
                                 val bounced = buildBounce(
                                     original,
@@ -1546,18 +1560,26 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
+                                val sending = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced, uncertain = true)
+                                if (!writeCopy(appContext, sending, accountId)) {
+                                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                                    status = notSentNotice
+                                    return@launchLocked false
+                                }
                                 val accepted = try {
                                     sendSmtp(bounced, listOf(recipient))
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
-                                    writeCopy(appContext, copy, accountId)
+                                    val copy = deviceCopyAfterSmtpFailure(sending, error.text)
+                                    val saved = writeCopy(appContext, copy, accountId)
                                     held = copy
-                                    notice = error.text
-                                    status = notSentNotice
+                                    notice = smtpFailureText(error.text) +
+                                        if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
+                                    status = if (smtpUncertain(error.text)) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
                                     return@launchLocked false
                                 }
+                                acceptedUids.add(uid)
                                 storeAcceptedFlags(listOf(uid))
                                 if (!account.bounceFcc) continue
                                 try {
@@ -1622,6 +1644,10 @@ private fun ComposeLoaded(
                                     continue
                                 } catch (error: CancellationException) {
                                     throw error
+                                } catch (_: DeviceCopyNotSaved) {
+                                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                                    status = notSentNotice
+                                    return@launchLocked false
                                 } catch (error: Exception) {
                                     jmapSendFailed(bouncing, error)
                                     return@launchLocked false

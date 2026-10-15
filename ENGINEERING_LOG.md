@@ -3060,3 +3060,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - A truncated short text prefix is not the whole part.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart leaves the part incomplete while the body value is truncated, so a later range past that cache fetches.
+
+## 2026-10-15 - A failed device copy stops the send, and an SMTP bounce keeps an uncertain outcome.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-delivery-20261015-0522-plan.md. A failed device-copy write does not send. An SMTP bounce writes first and keeps an uncertain outcome when the error is smtp-uncertain.

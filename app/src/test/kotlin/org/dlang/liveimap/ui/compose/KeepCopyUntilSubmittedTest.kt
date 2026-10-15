@@ -1,11 +1,24 @@
 package org.dlang.liveimap.ui.compose
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Test
 
 class KeepCopyUntilSubmittedTest {
     private val copy = DeviceCopy("id1", false, "Sent", listOf("a@b"), "m".toByteArray())
+
+    @Test
+    fun failedWriteDoesNotSendOrDelete() {
+        val writes = mutableListOf<Boolean>()
+        var sent = false
+        try {
+            keepCopyUntilSubmitted(copy, { writes += it.uncertain; false }, { fail("deleted") }) { sent = true; "S" }
+            fail()
+        } catch (_: DeviceCopyNotSaved) {}
+        assertFalse(sent)
+        assertEquals(listOf(true), writes)
+    }
 
     @Test
     fun successDeletesTheCopyAfterTheUncertainWrite() {

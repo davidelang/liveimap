@@ -121,6 +121,13 @@ class UnsentStoreTest {
     }
 
     @Test
+    fun deviceCopyAfterSmtpFailureKeepsAnUncertainOutcome() {
+        val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), "U".toByteArray())
+        assertTrue(deviceCopyAfterSmtpFailure(copy, "smtp-uncertain: DATA: timeout").uncertain)
+        assertFalse(deviceCopyAfterSmtpFailure(copy, "connection refused").uncertain)
+    }
+
+    @Test
     fun uncertainSmtpPrefix() {
         assertTrue(smtpUncertain("smtp-uncertain: DATA: timeout"))
         assertEquals("DATA: timeout", smtpFailureText("smtp-uncertain: DATA: timeout"))
