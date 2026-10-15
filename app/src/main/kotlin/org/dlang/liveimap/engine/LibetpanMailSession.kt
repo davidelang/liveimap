@@ -344,19 +344,6 @@ class LibetpanMailSession : MailSession {
      * mechanism that failed (servers whose SASL lacks the binding type, e.g. tls-unique-only on TLS 1.3). The
      * retry keeps the TLS mode, so it never falls back to clear text, and it is not saved.
      */
-    /**
-     * Password for this session: lab hook when set, else what logged in here, else this account's stored secret.
-     * [Link.connect] reads this before a reconnect close; a full [close] may clear [loggedInPassword] afterward.
-     */
-    private fun sessionPassword(account: AccountSettings): String {
-        LabTestHooks.passwordFor(account.imapHost)?.let { return it }
-        loggedInPassword?.let { return it }
-        val context = currentApplication() ?: throw MailFailure("keystore unavailable")
-        return credentials?.password ?: runBlocking {
-            ownStore(context).password()
-        }
-    }
-
     private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
         val first = loginOnce(account, knownPassword)
         if (first !is OpenResult.Failed) return first
@@ -370,6 +357,19 @@ class LibetpanMailSession : MailSession {
             noteTraffic("Logged in without channel binding (${retry.authMechanism})")
         }
         return openResultAfterPlusFallback(first, opened)
+    }
+
+    /**
+     * Password for this session: lab hook when set, else what logged in here, else this account's stored secret.
+     * [Link.connect] reads this before a reconnect close; a full [close] may clear [loggedInPassword] afterward.
+     */
+    private fun sessionPassword(account: AccountSettings): String {
+        LabTestHooks.passwordFor(account.imapHost)?.let { return it }
+        loggedInPassword?.let { return it }
+        val context = currentApplication() ?: throw MailFailure("keystore unavailable")
+        return credentials?.password ?: runBlocking {
+            ownStore(context).password()
+        }
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
