@@ -2545,7 +2545,7 @@ class IndexModel(
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
         val size = IndexPageSize * 2
         val first = home.searchWindow(kind, query, 1, size) ?: return null
-        if (first.uids.isEmpty()) return null
+        if (first.uids.isEmpty() && first.total > 0) return null
         val total = first.total
         val complete = first.uids.size == total
         if (!complete && total <= size) return null
