@@ -5888,7 +5888,9 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
     jsize length = env->GetStringLength(value);
     if (length <= 0) return std::string();
     std::vector<jchar> units(static_cast<size_t>(length));
-    if (env->GetStringRegion(value, 0, length, units.data()) != 0) {
+    env->GetStringRegion(value, 0, length, units.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
         return std::string();
     }
     std::string out;
