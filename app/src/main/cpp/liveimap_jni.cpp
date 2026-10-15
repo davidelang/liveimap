@@ -502,18 +502,56 @@ void registerExtensions() {
     });
 }
 
+static void appendModifiedUtf8(std::string & out, uint32_t cp) {
+    if (cp < 0x80u) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp < 0x800u) {
+        out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp < 0x10000u) {
+        out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else {
+        cp -= 0x10000u;
+        appendModifiedUtf8(out, 0xD800u + (cp >> 10));
+        appendModifiedUtf8(out, 0xDC00u + (cp & 0x3FFu));
+    }
+}
+
 std::string asciiSafe(const char * text, const char * fallback) {
     std::string out;
     if (text != nullptr) {
-        for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text); *p != 0; ++p) {
-            unsigned char c = *p;
-            if (c == '\n' || c == '\r' || c == '\t') {
-                out.push_back(' ');
-            } else if (c < 32 || c == 127) {
-                continue;
+        const unsigned char * p = reinterpret_cast<const unsigned char *>(text);
+        while (*p != 0) {
+            uint32_t cp = 0;
+            int n = 1;
+            if (*p < 0x80) {
+                cp = *p;
+            } else if ((*p & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80 && *p >= 0xC2) {
+                cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F);
+                n = 2;
+            } else if ((*p & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+                cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+                n = 3;
+            } else if ((*p & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80) {
+                cp = ((*p & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+                n = 4;
             } else {
-                out.push_back(static_cast<char>(c));
+                cp = 0xFFFDu;
+                ++p;
+                appendModifiedUtf8(out, cp);
+                continue;
             }
+            const bool overlong = (n == 3 && cp < 0x800) || (n == 4 && cp < 0x10000);
+            if (overlong || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+                cp = 0xFFFDu;
+            }
+            p += n;
+            if (cp < 0x20 || cp == 0x7F) {
+                continue;
+            }
+            appendModifiedUtf8(out, cp);
         }
     }
     if (out.empty()) {
@@ -3870,12 +3908,17 @@ void enableNamed(LiveSession * session, const char * capName) {
 void compressSession(LiveSession * session) {
     if (session == nullptr || session->imap == nullptr) return;
     int r = mailimap_compress(session->imap);
-    if (r != MAILIMAP_NO_ERROR) {
-        shutdownMainSocket(session);
+    if (r == MAILIMAP_NO_ERROR) {
+        if (!session->logImapTraffic || session->imap->imap_stream == nullptr) return;
+        mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
         return;
     }
-    if (!session->logImapTraffic || session->imap->imap_stream == nullptr) return;
-    mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
+    if (r == MAILIMAP_ERROR_EXTENSION) {
+        return;
+    }
+    if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE || r == MAILIMAP_ERROR_FATAL) {
+        shutdownMainSocket(session);
+    }
 }
 
 int sendWord(mailstream * fd, const char * word, bool leadSpace) {
@@ -5362,8 +5405,9 @@ static struct mailimap_search_key * uidSetKey(const char * text) {
 }
 
 // "Group" argument: a nested query (IndexModel.groupArgument): "And"/"Or", then steps "Yes|Not US kind US argument",
-// separated by RS. A group inside a group is refused. Throws "bad search" when malformed.
-static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep) {
+// separated by RS. One Group step at the filter-chain top; a group inside a group is refused. Throws "bad search" when malformed.
+static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep,
+    int * topGroupCount = nullptr) {
     if (text == nullptr || depth > 8) { throwFailure(env, "bad search"); return nullptr; }
     std::vector<std::string> lines;
     std::string cur;
@@ -5383,10 +5427,12 @@ static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text,
             return nullptr;
         }
         std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
-        if (kind == "Group" && depth >= 0) {
-            if (folded != nullptr) mailimap_search_key_free(folded);
-            throwFailure(env, "bad search");
-            return nullptr;
+        if (kind == "Group") {
+            if (depth > 0 || (topGroupCount != nullptr && ++*topGroupCount > 1)) {
+                if (folded != nullptr) mailimap_search_key_free(folded);
+                throwFailure(env, "bad search");
+                return nullptr;
+            }
         }
         struct mailimap_search_key * step = kind == "Group" ? groupKeySep(env, arg.c_str(), depth + 1, 0x1e, 0x1f)
                                                             : criterionKey(env, kind.c_str(), arg.c_str());
@@ -5839,17 +5885,20 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
 
 std::string utf8FromJava(JNIEnv * env, jstring value) {
     if (value == nullptr) return std::string();
-    const jchar * chars = env->GetStringChars(value, nullptr);
-    if (chars == nullptr) return std::string();
     jsize length = env->GetStringLength(value);
+    if (length <= 0) return std::string();
+    std::vector<jchar> units(static_cast<size_t>(length));
+    if (env->GetStringRegion(value, 0, length, units.data()) != 0) {
+        return std::string();
+    }
     std::string out;
     // F97: worst case up front (4 bytes per UTF-16 unit), so a password never reallocates and leaves an unwiped copy.
     out.reserve(static_cast<size_t>(length) * 4u + 1u);
     for (jsize i = 0; i < length; ++i) {
-        uint32_t cp = chars[i];
+        uint32_t cp = units[static_cast<size_t>(i)];
         if (cp >= 0xD800 && cp <= 0xDBFF) {
             if (i + 1 < length) {
-                uint32_t low = chars[i + 1];
+                uint32_t low = units[static_cast<size_t>(i + 1)];
                 if (low >= 0xDC00 && low <= 0xDFFF) {
                     cp = 0x10000u + (((cp - 0xD800u) << 10) | (low - 0xDC00u));
                     ++i;
@@ -5878,10 +5927,8 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
             out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
         }
     }
-    // The GetStringChars buffer is the only copy of these units. Wipe it in place; no second heap buffer.
-    volatile jchar * wipe = const_cast<jchar *>(chars);
-    for (jsize i = 0; i < length; ++i) wipe[i] = 0;
-    env->ReleaseStringChars(value, chars);
+    volatile jchar * wipe = units.data();
+    for (jsize i = 0; i < length; ++i) wipe[static_cast<size_t>(i)] = 0;
     return out;
 }
 
@@ -8405,8 +8452,9 @@ struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf
     for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text.c()); p != nullptr && *p != 0; ++p) {
         if (*p >= 0x80) { *utf8 = true; break; }
     }
-    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t. A nested group is refused.
-    struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t');
+    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t. One group at the top.
+    int topGroups = 0;
+    struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t', &topGroups);
     if (key == nullptr || env->ExceptionCheck()) {
         if (key != nullptr) mailimap_search_key_free(key);
         *bad = true;

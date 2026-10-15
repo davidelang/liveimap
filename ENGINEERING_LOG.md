@@ -2982,3 +2982,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Fixup: the refresh test throws only on the ArrivalNewest tail fetch, so the shown-row fetch succeeds. A later refresh whose fetches succeed leaves notice null.
 - No new mutex. No install
+
+## 2026-10-14 - Native IMAP follow-up
+
+- utf8FromJava copies with GetStringRegion into a wiped buffer; asciiSafe decodes server UTF-8 for ThrowNew; one top-level filter-chain Group; COMPRESS NO keeps the session up.
