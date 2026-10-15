@@ -12,10 +12,10 @@ data class ServerSaveReview(
     val quiet: Boolean get() = tlsWarning == null && !unreachable && lines.isEmpty()
 }
 
-/** One review at Save: the TLS-off warning (once) plus the server check result; [check] null = check failed. */
+/** One review at Save: the TLS-off warning (once) plus the server check. A null check failed for IMAP; a JMAP draft skips that probe. */
 fun serverSaveReview(draft: AccountSettings, check: ServerCheck?): ServerSaveReview = ServerSaveReview(
     tlsWarning = noTlsWarning(draft),
-    unreachable = check == null || !check.reachable,
+    unreachable = if (draft.jmapFolders) check?.reachable == false else check == null || !check.reachable,
     lines = check?.let { it.conflicts + it.notes }.orEmpty(),
 )
 

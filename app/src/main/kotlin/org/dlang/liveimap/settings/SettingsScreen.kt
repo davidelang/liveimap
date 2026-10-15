@@ -567,7 +567,11 @@ private fun AccountGroup(editor: SettingsEditor) {
         editor.ui.launch {
             serverChecking = true
             val result = try {
-                withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(draft) }
+                if (draft.jmapFolders) {
+                    null
+                } else {
+                    withContext(Dispatchers.IO) { LibetpanMailSession.checkServerSettings(draft) }
+                }
             } catch (_: Exception) {
                 null
             } finally {

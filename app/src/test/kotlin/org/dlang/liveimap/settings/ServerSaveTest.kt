@@ -31,6 +31,25 @@ class ServerSaveTest {
         assertEquals("smtp.example", draft.imapHost)
     }
 
+    @Test fun jmapNullCheckIsNotUnreachable() {
+        val draft = newAccountSettings().copy(jmapFolders = true)
+        val review = serverSaveReview(draft, null)
+        assertFalse(review.unreachable)
+        assertTrue(review.quiet)
+        val plain = serverSaveReview(draft.withTlsMode(TlsMode.None), null)
+        assertNotNull(plain.tlsWarning)
+        assertFalse(plain.unreachable)
+    }
+
+    @Test fun jmapSaveSkipsCheckServerSettings() {
+        val s = screen()
+        val save = s.substring(s.indexOf("fun saveServer()"), s.indexOf("serverReview?.let"))
+        val jmap = save.substring(save.indexOf("if (draft.jmapFolders)"), save.indexOf("} else {"))
+        assertFalse(jmap.contains("checkServerSettings"))
+        val imap = save.substring(save.indexOf("} else {"), save.indexOf("} catch"))
+        assertTrue(imap.contains("LibetpanMailSession.checkServerSettings"))
+    }
+
     @Test fun conflictsAndNotesListed() {
         val review = serverSaveReview(newAccountSettings(), ServerCheck(true, listOf("c"), listOf("n")))
         assertEquals(listOf("c", "n"), review.lines)
