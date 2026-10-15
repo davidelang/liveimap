@@ -3086,3 +3086,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - The compose route keeps the forward mode.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-forward-nav-20261015-1504-plan.md. openCompose stores forwardAsAttachment; the compose route puts it back on the seed; an unsent retry clears it. No install.
+
+## 2026-10-15 - The lab safety test compiles with the delete-policy argument
+
+- LabSafetyTest.delete passes trashNamedByUser from usableTrashName(account.trashMailbox). The other four effectiveDeletePolicy arguments stay. No install.

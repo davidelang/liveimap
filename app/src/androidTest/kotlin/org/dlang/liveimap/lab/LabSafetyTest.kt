@@ -9,6 +9,7 @@ import org.dlang.liveimap.engine.LabTestHooks
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.TrafficRecorder
 import org.dlang.liveimap.session.OpenResult
+import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.MoveMethod
@@ -79,7 +80,7 @@ class LabSafetyTest {
             suspend fun delete(uid: Long) {
                 // As IndexModel.performSwipe(Delete): the effective policy, then the matching session calls.
                 val trash = session.knownTrash()
-                when (effectiveDeletePolicy(account.deletePolicy, false, session.featureCaps.uidPlus, trash.isNotEmpty())) {
+                when (effectiveDeletePolicy(account.deletePolicy, false, session.featureCaps.uidPlus, trash.isNotEmpty(), trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty())) {
                     DeletePolicy.MarkDeleted -> session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                     DeletePolicy.MoveToTrash -> session.copyThenDelete(listOf(uid), trash)
                     DeletePolicy.DeletePermanently -> {
