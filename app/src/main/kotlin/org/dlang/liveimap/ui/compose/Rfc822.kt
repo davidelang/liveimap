@@ -32,6 +32,8 @@ class OutgoingPart(
     val mediaType: String,
     val bytes: ByteArray,
     val wireBase64: Boolean,
+    /** Server transfer encoding of a forwarded part. Null keeps the older base64 choice. */
+    val transferEncoding: String? = null,
 )
 
 class PlainMessage(
@@ -483,14 +485,17 @@ internal fun flowPlain(body: String, column: Int): String {
 
 private fun flowPlainLine(line: String, column: Int): String {
     if (line == "--" || line == "-- ") return "-- "
-    val trimmed = line.trimEnd(' ', '\t')
+    val trimmed = line.trimEnd(' ')
+    val stuffed = flowStuff(trimmed)
+    if (stuffed.codePointCount(0, stuffed.length) <= column) return stuffed
     val prefix = quotePrefix(trimmed)
-    val words = trimmed.substring(prefix.length).split(Regex("[ \t]+")).filter { it.isNotEmpty() }
-    if (words.isEmpty()) return prefix
+    val tokens = flowTokens(trimmed.substring(prefix.length))
+    if (tokens.isEmpty()) return prefix
     val pieces = ArrayList<String>()
     var index = 0
-    while (index < words.size) {
-        val piece = chooseFlowPiece(prefix, words, index, column)
+    while (index < tokens.size) {
+        val piece = chooseFlowPiece(prefix, tokens, index, column)
+        if (piece.count <= 0) break
         pieces.add(piece.text)
         index += piece.count
     }
@@ -501,53 +506,91 @@ private fun flowPlainLine(line: String, column: Int): String {
     }.joinToString("\n")
 }
 
+private class FlowTok(val sep: String, val word: String)
+
 private class FlowPiece(val count: Int, val text: String)
 
-private fun chooseFlowPiece(prefix: String, words: List<String>, start: Int, column: Int): FlowPiece {
+private fun flowStuff(text: String): String {
+    if (text.isEmpty()) return text
+    if (text[0] == '>' || text.startsWith("From ")) return " $text"
+    return text
+}
+
+private fun flowTokens(rest: String): List<FlowTok> {
+    val out = ArrayList<FlowTok>()
+    var i = 0
+    while (i < rest.length) {
+        val sepStart = i
+        while (i < rest.length && (rest[i] == ' ' || rest[i] == '\t')) i++
+        val sep = rest.substring(sepStart, i)
+        if (i >= rest.length) break
+        val wordStart = i
+        while (i < rest.length && rest[i] != ' ' && rest[i] != '\t') i++
+        out.add(FlowTok(sep, rest.substring(wordStart, i)))
+    }
+    return out
+}
+
+private fun chooseFlowPiece(prefix: String, tokens: List<FlowTok>, start: Int, column: Int): FlowPiece {
     val wide = (column - 2).coerceAtLeast(1)
-    val wideCount = takeFlowWords(prefix, words, start, wide)
-    val wideText = joinFlowPiece(prefix, words, start, wideCount)
+    val wideCount = takeFlowTokens(prefix, tokens, start, wide)
+    val wideText = joinFlowTokens(prefix, tokens, start, wideCount)
     if (!needsFlowStuff(wideText)) return FlowPiece(wideCount, wideText)
     val narrow = (column - 3).coerceAtLeast(1)
-    val narrowCount = takeFlowWords(prefix, words, start, narrow)
-    return FlowPiece(narrowCount, joinFlowPiece(prefix, words, start, narrowCount))
+    val narrowCount = takeFlowTokens(prefix, tokens, start, narrow)
+    return FlowPiece(narrowCount, joinFlowTokens(prefix, tokens, start, narrowCount))
 }
 
 private fun needsFlowStuff(text: String): Boolean {
     if (text.isEmpty()) return false
-    if (text[0] == ' ' || text[0] == '>') return true
+    if (text[0] == '>') return true
     return text.startsWith("From ")
 }
 
-private fun takeFlowWords(prefix: String, words: List<String>, start: Int, width: Int): Int {
-    val remaining = words.size - start
+private fun takeFlowTokens(prefix: String, tokens: List<FlowTok>, start: Int, width: Int): Int {
+    val remaining = tokens.size - start
     if (remaining <= 0) return 0
     val prefixCount = prefix.codePointCount(0, prefix.length)
     if (prefixCount >= width) return remaining
     var count = prefixCount
-    var hasWord = false
     var taken = 0
     var index = start
-    while (index < words.size) {
-        val wordCount = words[index].codePointCount(0, words[index].length)
-        if (hasWord && count + 1 + wordCount > width) break
-        if (!hasWord && prefixCount + wordCount > width) return 1
-        if (hasWord) count += 1
-        count += wordCount
-        hasWord = true
+    while (index < tokens.size) {
+        val sepCount = if (taken == 0 && start > 0) 0 else tokens[index].sep.codePointCount(0, tokens[index].sep.length)
+        val extra = sepCount + tokens[index].word.codePointCount(0, tokens[index].word.length)
+        if (taken > 0 && count + extra > width) break
+        if (taken == 0 && prefixCount + extra > width) return 1
+        count += extra
         taken++
         index++
     }
     return taken
 }
 
-private fun joinFlowPiece(prefix: String, words: List<String>, start: Int, count: Int): String {
+private fun joinFlowTokens(prefix: String, tokens: List<FlowTok>, start: Int, count: Int): String {
     val out = StringBuilder(prefix)
-    for (index in 0 until count) {
-        if (index > 0) out.append(' ')
-        out.append(words[start + index])
+    for (index in start until start + count) {
+        if (index != start || start == 0) out.append(tokens[index].sep)
+        out.append(tokens[index].word)
     }
     return out.toString()
+}
+
+/** A forwarded part keeps the server's transfer encoding. [looksLikeBase64] is not the decision. */
+internal fun forwardWire(encoding: String, bytes: ByteArray): Pair<String, ByteArray> {
+    val token = encoding.substringBefore(';').trim().lowercase()
+    return when (token) {
+        "quoted-printable" -> "quoted-printable" to bytes
+        "7bit" -> "7bit" to bytes
+        "base64" -> "base64" to rewrapBase64(bytes)
+        "binary" -> "binary" to bytes
+        "x-uuencode" -> "x-uuencode" to bytes
+        "" -> {
+            val eight = bytes.any { (it.toInt() and 0xFF) > 127 }
+            (if (eight) "8bit" else "7bit") to bytes
+        }
+        else -> token to bytes
+    }
 }
 
 /** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
@@ -589,7 +632,13 @@ fun buildPlain(message: PlainMessage): BuiltMail {
         )
         for (part in message.attachments) {
             // F80(d): base64 already on the wire is re-wrapped at 76, never copied as it came.
-            val encoded = if (part.wireBase64) rewrapBase64(part.bytes) else mimeBase64(part.bytes)
+            val (cte, encoded) = if (part.transferEncoding != null) {
+                forwardWire(part.transferEncoding, part.bytes)
+            } else if (part.wireBase64) {
+                "base64" to rewrapBase64(part.bytes)
+            } else {
+                "base64" to mimeBase64(part.bytes)
+            }
             val type = cleanHeader(part.mediaType).ifEmpty { "application/octet-stream" }
             val file = cleanHeader(part.filename).ifEmpty { "attachment" }
             val (nameParam, dispositionParam) = filenameParams(file)
@@ -597,7 +646,7 @@ fun buildPlain(message: PlainMessage): BuiltMail {
                 out,
                 boundary,
                 "$type; $nameParam",
-                "base64",
+                cte,
                 "attachment; $dispositionParam",
                 encoded,
             )
@@ -822,7 +871,7 @@ internal fun quotedPrintable(bytes: ByteArray): ByteArray {
 }
 
 fun withoutEightBit(rfc822: ByteArray): ByteArray {
-    if (!messageHas8bitCte(rfc822)) return rfc822
+    if (!subtreeHas8bitHeader(rfc822)) return rfc822
     val sep = indexOfCrlfCrlf(rfc822)
     if (sep < 0) return rfc822
     val header = rfc822.copyOfRange(0, sep)
@@ -995,10 +1044,44 @@ private fun lineEndAfter(body: ByteArray, from: Int): Int {
     return i
 }
 
+private fun subtreeHas8bitHeader(bytes: ByteArray): Boolean {
+    val sep = indexOfCrlfCrlf(bytes)
+    if (sep < 0) return false
+    val header = bytes.copyOfRange(0, sep)
+    if (headerHas8bitCte(header)) return true
+    val contentType = unfoldedHeader(header, "Content-Type")
+    if (!contentType.trim().lowercase().startsWith("multipart/")) return false
+    val boundary = headerParam(contentType, "boundary")
+    if (boundary.isEmpty()) return false
+    val body = bytes.copyOfRange(sep + 4, bytes.size)
+    for (chunk in splitMultipartChunks(body, boundary)) {
+        if (subtreeHas8bitHeader(chunk)) return true
+    }
+    return false
+}
+
 private fun rewriteOnePart(part: ByteArray): ByteArray {
     val sep = indexOfCrlfCrlf(part)
     if (sep < 0) return part
     val header = part.copyOfRange(0, sep)
+    val contentType = unfoldedHeader(header, "Content-Type")
+    if (contentType.trim().lowercase().startsWith("multipart/")) {
+        if (!subtreeHas8bitHeader(part)) return part
+        val boundary = headerParam(contentType, "boundary")
+        if (boundary.isEmpty()) return part
+        val rawBody = part.copyOfRange(sep + 4, part.size)
+        val keepBreak = rawBody.size >= 2 &&
+            rawBody[rawBody.size - 2] == '\r'.code.toByte() &&
+            rawBody[rawBody.size - 1] == '\n'.code.toByte()
+        val content = if (keepBreak) rawBody.copyOfRange(0, rawBody.size - 2) else rawBody
+        val head = if (headerHas8bitCte(header)) replace8bitCte(header) else header
+        val out = ByteArrayOutputStream()
+        out.write(head)
+        out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.write(rewriteMultipartBody(content, boundary))
+        if (keepBreak) out.write("\r\n".toByteArray(Charsets.US_ASCII))
+        return out.toByteArray()
+    }
     if (!headerHas8bitCte(header)) return part
     val rawBody = part.copyOfRange(sep + 4, part.size)
     val keepBreak = rawBody.size >= 2 &&
@@ -1295,42 +1378,131 @@ internal fun charsetOf(contentType: String): Charset {
     }
 }
 
-fun headerParam(header: String, name: String): String {
-    val pattern = Regex("(?i)(?:^|;)\\s*" + Regex.escape(name) + "\\s*=\\s*(\"([^\"]*)\"|([^;\\s]+))")
-    val match = pattern.find(header) ?: return ""
-    if (match.groupValues[1].startsWith("\"")) return match.groupValues[2]
-    return match.groupValues[3]
+fun headerParam(header: String, name: String): String = readParam(header, name, star = false).orEmpty()
+
+private fun isParamSpace(c: Char): Boolean =
+    c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u000C' || c == '\u000B'
+
+/** Quoted value, else the token. No [Regex]: the name is different on each call. */
+private fun readParam(header: String, name: String, star: Boolean): String? {
+    var searchFrom = 0
+    var first = true
+    while (true) {
+        val marker = if (first) -1 else header.indexOf(';', searchFrom)
+        if (!first && marker < 0) return null
+        var j = if (first) 0 else marker + 1
+        while (j < header.length && isParamSpace(header[j])) j++
+        val nameAt = j + name.length <= header.length &&
+            header.regionMatches(j, name, 0, name.length, ignoreCase = true)
+        if (nameAt) {
+            var k = j + name.length
+            val starred = k < header.length && header[k] == '*'
+            if (starred) k++
+            if (starred == star) {
+                while (k < header.length && isParamSpace(header[k])) k++
+                if (k < header.length && header[k] == '=') {
+                    k++
+                    while (k < header.length && isParamSpace(header[k])) k++
+                    if (k < header.length && header[k] == '"') {
+                        val end = header.indexOf('"', k + 1)
+                        if (end >= 0) return header.substring(k + 1, end)
+                    }
+                    val start = k
+                    while (k < header.length && header[k] != ';' && !isParamSpace(header[k])) k++
+                    if (k > start) return header.substring(start, k)
+                }
+            }
+        }
+        if (first) {
+            first = false
+            searchFrom = 0
+        } else {
+            searchFrom = marker + 1
+        }
+    }
 }
 
 private fun readMultipart(body: ByteArray, contentType: String): Pair<String, List<OutgoingPart>> {
+    if (headerParam(contentType, "boundary").isEmpty()) return body.toString(Charsets.UTF_8) to emptyList()
+    val found = readMultipartFound(body, contentType)
+    return (found.first ?: "") to found.second
+}
+
+private fun readMultipartFound(body: ByteArray, contentType: String): Pair<String?, List<OutgoingPart>> {
     val boundary = headerParam(contentType, "boundary")
-    if (boundary.isEmpty()) return body.toString(Charsets.UTF_8) to emptyList()
-    var text = ""
-    var haveText = false
+    if (boundary.isEmpty()) return null to emptyList()
+    var text: String? = null
     val parts = ArrayList<OutgoingPart>()
     for (chunk in splitMultipartChunks(body, boundary)) {
         val part = parseRfc822(chunk)
-        val type = headerValues(part, "Content-Type").firstOrNull().orEmpty()
+        val type = rawHeader(part, "Content-Type")
         val cte = headerValues(part, "Content-Transfer-Encoding").firstOrNull().orEmpty()
-        val decoded = decodeTransfer(part.body, cte)
         val media = type.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
-        if (!haveText && media.equals("text/plain", ignoreCase = true)) {
+        if (media.startsWith("multipart/", ignoreCase = true)) {
+            val nested = readMultipartFound(part.body, type)
+            if (text == null && nested.first != null) text = nested.first
+            parts.addAll(nested.second)
+        } else if (text == null && media.equals("text/plain", ignoreCase = true)) {
+            val decoded = decodeTransfer(part.body, cte)
             text = decoded.toString(charsetOf(type)).replace("\r\n", "\n").replace('\r', '\n')
-            haveText = true
-        } else if (!media.startsWith("multipart/", ignoreCase = true)) {
-            parts.add(OutgoingPart(filenameOf(part, type), media, decoded, wireBase64 = false))
+        } else {
+            val decoded = decodeTransfer(part.body, cte)
+            parts.add(OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false))
         }
     }
     return text to parts
 }
 
-private fun filenameOf(part: ParsedRfc822, contentType: String): String {
-    val disposition = headerValues(part, "Content-Disposition").firstOrNull().orEmpty()
-    val fromDisposition = headerParam(disposition, "filename")
+private fun rawHeader(part: ParsedRfc822, name: String): String =
+    part.headers.firstOrNull { it.name.equals(name, ignoreCase = true) }?.raw.orEmpty()
+
+private fun filenameOf(part: ParsedRfc822): String {
+    val disposition = rawHeader(part, "Content-Disposition")
+    val star = readParam(disposition, "filename", star = true)
+    if (star != null) {
+        val decoded = decode2231(star)
+        if (decoded.isNotEmpty()) return decoded
+    }
+    val fromDisposition = decodeHeaderWords(headerParam(disposition, "filename"))
     if (fromDisposition.isNotEmpty()) return fromDisposition
-    val fromType = headerParam(contentType, "name")
+    val fromType = decodeHeaderWords(headerParam(rawHeader(part, "Content-Type"), "name"))
     if (fromType.isNotEmpty()) return fromType
     return "attachment"
+}
+
+private fun decode2231(raw: String): String {
+    val first = raw.indexOf('\'')
+    val second = if (first >= 0) raw.indexOf('\'', first + 1) else -1
+    val charsetName: String
+    val encoded: String
+    if (first >= 0 && second > first) {
+        charsetName = raw.substring(0, first)
+        encoded = raw.substring(second + 1)
+    } else {
+        charsetName = "UTF-8"
+        encoded = raw
+    }
+    val charset = try {
+        if (charsetName.isEmpty()) Charsets.UTF_8 else Charset.forName(charsetName)
+    } catch (_: Exception) {
+        Charsets.UTF_8
+    }
+    val out = ByteArrayOutputStream()
+    var i = 0
+    while (i < encoded.length) {
+        val c = encoded[i]
+        if (c == '%' && i + 2 < encoded.length) {
+            val value = hexByteOrNull(encoded.substring(i + 1, i + 3))
+            if (value != null) {
+                out.write(value)
+                i += 3
+                continue
+            }
+        }
+        out.write(c.toString().toByteArray(Charsets.UTF_8))
+        i++
+    }
+    return out.toByteArray().toString(charset)
 }
 
 private fun splitMultipartChunks(body: ByteArray, boundary: String): List<ByteArray> {

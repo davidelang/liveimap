@@ -7,6 +7,7 @@ import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.ui.reader.RawViewCapBytes
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -720,5 +721,43 @@ class JmapMailSessionTest {
         s.stopWatch()
         assertTrue(posts > 0 && gets > 0 && uploads > 0 && streams > 0)
         assertTrue(seen.all { it.acceptInvalidCert })
+    }
+
+    @Test
+    fun peekPartHeaderUsesEmailHeadersAndDoesNotDownload() = runBlocking {
+        val headers = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","headers":[{"name":"From","value":"a@b"}]}]},"0"]]}"""
+        val missing = """{"methodResponses":[["Email/get",{"list":[{"id":"e1"}]},"0"]]}"""
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, headers, missing)))
+        var downloads = 0
+        val s = JmapMailSession(
+            { _, _ -> JmapOffer.Mail(session) },
+            { "pw" },
+            fake::postFor,
+            { _, _, _ -> "" },
+            { 42 },
+            getFor = { _, _ ->
+                { _, _ ->
+                    downloads++
+                    object : JmapBlobExchange {
+                        override val status = 200
+                        override fun peerDer() = listOf(byteArrayOf(1))
+                        override fun bytes() = ByteArray(0)
+                        override fun close() {}
+                    }
+                }
+            },
+        )
+        assertEquals(OpenResult.Connected, s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm")))
+        s.listLevel("", null, false)
+        s.select("INBOX")
+        val bytes = s.peekPart(e1Uid, "HEADER", 0, RawViewCapBytes)
+        assertTrue(bytes.toString(Charsets.UTF_8).contains("From: a@b"))
+        assertEquals(0, downloads)
+        try {
+            s.peekPart(e1Uid, "HEADER", 0, RawViewCapBytes)
+            fail()
+        } catch (_: MailFailure) {
+        }
+        assertEquals(0, downloads)
     }
 }

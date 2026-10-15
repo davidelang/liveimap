@@ -44,10 +44,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -83,11 +86,13 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
+import org.dlang.liveimap.ui.reader.RawViewCapBytes
 import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.reader.unknownCharsetNote
@@ -128,6 +133,7 @@ private class ForwardRow(
     val included: Boolean,
     val bytes: ByteArray?,
     val wireBase64: Boolean,
+    val encoding: String?,
 ) {
     fun toggle(): ForwardRow = ForwardRow(
         key,
@@ -138,8 +144,20 @@ private class ForwardRow(
         !included,
         bytes,
         wireBase64,
+        encoding,
     )
 }
+
+private val headerValueSaver = mapSaver(
+    save = { value: SnapshotStateMap<String, String> -> value.toMap() },
+    restore = { saved ->
+        val map = mutableStateMapOf<String, String>()
+        for ((key, item) in saved) {
+            if (item is String) map[key] = item
+        }
+        map
+    },
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -260,6 +278,7 @@ private fun ComposeLoaded(
     var notice by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
+    var loadedDelimiter by remember { mutableStateOf<Char?>(null) }
     var busy by remember { mutableStateOf(false) }
     var selectedMailbox by remember { mutableStateOf<String?>(null) }
     val boxEpochs = remember { HashMap<String, Long>() }
@@ -288,7 +307,7 @@ private fun ComposeLoaded(
     var originalParsed by remember { mutableStateOf<ParsedRfc822?>(null) }
     var mismatchArmed by remember { mutableStateOf(false) }
     var fromMenuOpen by remember { mutableStateOf(false) }
-    val headerValuesTyped = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    val headerValuesTyped = rememberSaveable(saver = headerValueSaver) { mutableStateMapOf<String, String>() }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
     var deliveryDone by remember { mutableStateOf(false) }
     // Set when the server took the message without the requested DSN; kept through the "Sent" status.
@@ -310,6 +329,10 @@ private fun ComposeLoaded(
     var baseSubject by rememberSaveable { mutableStateOf("") }
     var baseBody by rememberSaveable { mutableStateOf("") }
     var baseRowKeyText by rememberSaveable { mutableStateOf("") }
+    var baseHeader by rememberSaveable { mutableStateOf("") }
+    var baseIncluded by rememberSaveable { mutableStateOf("") }
+    var basePinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
+    var baseUseReplyTo by rememberSaveable { mutableStateOf(false) }
     var baselineReady by rememberSaveable { mutableStateOf(false) }
     var copiesOpen by rememberSaveable { mutableStateOf(false) }
     var toBuffer by rememberSaveable { mutableStateOf("") }
@@ -321,10 +344,10 @@ private fun ComposeLoaded(
     var useReplyTo by rememberSaveable { mutableStateOf(false) }
     var replyToLine by rememberSaveable { mutableStateOf("") }
     var replyCcLine by rememberSaveable { mutableStateOf("") }
-    val forwardOnce = rememberSaveable {
-        val code = ForwardOnce.code
-        ForwardOnce.code = -1
-        code
+
+    fun statusLeaf(mailbox: String): String {
+        val delimiter = loadedDelimiter
+        return if (delimiter == null) mailboxLeaf(mailbox) else mailboxLeaf(mailbox, delimiter)
     }
 
     BackHandler(enabled = pickerOpen) {
@@ -465,7 +488,7 @@ private fun ComposeLoaded(
     suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
-        val parsed = parseRfc822(inBox(box) { s -> s.fetchRfc822(uid) })
+        val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, RawViewCapBytes) })
         originalParsed = parsed
         val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
         val rules0 = resolveNow(settings)
@@ -513,11 +536,7 @@ private fun ComposeLoaded(
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
-        val asAttachment = when (forwardOnce) {
-            1 -> true
-            0 -> false
-            else -> settings.forwardAsAttachment
-        }
+        val asAttachment = seed.forwardAsAttachment ?: settings.forwardAsAttachment
         if (asAttachment) {
             val original = inBox(box) { s -> s.fetchRfc822(uid) }
             if (!draftLoaded) {
@@ -540,6 +559,7 @@ private fun ComposeLoaded(
                     included = true,
                     bytes = original,
                     wireBase64 = false,
+                    encoding = null,
                 ),
             )
             return
@@ -547,7 +567,7 @@ private fun ComposeLoaded(
         val tree = if (draftLoaded) {
             inBox(box) { s -> s.fetchStructure(uid) }
         } else {
-            val parsed = parseRfc822(inBox(box) { s -> s.fetchRfc822(uid) })
+            val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, RawViewCapBytes) })
             originalParsed = parsed
             val r = resolveNow(settings)
             val fetched = inBox(box) { s -> s.fetchStructure(uid) }
@@ -581,6 +601,7 @@ private fun ComposeLoaded(
                 included = settings.includeForwardAttachments,
                 bytes = null,
                 wireBase64 = false,
+                encoding = item.encoding,
             )
         }
     }
@@ -608,6 +629,7 @@ private fun ComposeLoaded(
                 included = true,
                 bytes = part.bytes,
                 wireBase64 = part.wireBase64,
+                encoding = null,
             )
         }
     }
@@ -633,16 +655,16 @@ private fun ComposeLoaded(
         for (row in forwardRows) {
             if (!row.included) continue
             val payload = if (row.bytes != null) {
-                row.bytes to row.wireBase64
+                row.bytes
             } else {
                 if (uid == null) throw MailFailure(fetchFailed)
                 val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
-                val fetched = peekWireBytes(row.size, 65536, true) { offset, length ->
+                val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
+                peekWireBytes(row.size, 65536, base64) { offset, length ->
                     inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
                 }
-                fetched to looksLikeBase64(fetched)
             }
-            parts.add(OutgoingPart(row.filename, row.mediaType, payload.first, payload.second))
+            parts.add(OutgoingPart(row.filename, row.mediaType, payload, row.wireBase64, row.encoding))
         }
         return buildPlain(
             PlainMessage(
@@ -789,7 +811,7 @@ private fun ComposeLoaded(
                 if (held?.id == copy.id) held = null
                 notice = null
                 deliveryDone = true
-                status = sentStatus(mailboxLeaf(copy.mailbox))
+                status = sentStatus(statusLeaf(copy.mailbox))
                 removePostponedSource()
                 return true
             }
@@ -823,7 +845,7 @@ private fun ComposeLoaded(
                 notice = null
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
-                    sentStatus(mailboxLeaf(copy.mailbox))
+                    sentStatus(statusLeaf(copy.mailbox))
                 } else {
                     sentStatus(null)
                 }
@@ -893,7 +915,7 @@ private fun ComposeLoaded(
                 notice = leftOver
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
-                    sentStatus(mailboxLeaf(copy.mailbox))
+                    sentStatus(statusLeaf(copy.mailbox))
                 } else {
                     sentStatus(null)
                 }
@@ -938,6 +960,12 @@ private fun ComposeLoaded(
         }
     }
 
+    fun headerSnapshot(): String =
+        headerValuesTyped.entries.sortedBy { it.key }.joinToString("\n") { "${it.key}=${it.value}" }
+
+    fun includedSnapshot(): String =
+        forwardRows.joinToString("\n") { "${it.key}=${it.included}" }
+
     fun captureBaseline() {
         baseTo = toText
         baseCc = ccText
@@ -945,6 +973,10 @@ private fun ComposeLoaded(
         baseSubject = subject
         baseBody = bodyField.text
         baseRowKeyText = forwardRows.joinToString("\n") { it.key }
+        baseHeader = headerSnapshot()
+        baseIncluded = includedSnapshot()
+        basePinnedFrom = pinnedFrom
+        baseUseReplyTo = useReplyTo
         baselineReady = true
     }
 
@@ -967,6 +999,14 @@ private fun ComposeLoaded(
             baselineSubject = baseSubject,
             baselineBody = baseBody,
             rowRemoved = attachmentRowRemoved(),
+            header = headerSnapshot(),
+            baselineHeader = baseHeader,
+            included = includedSnapshot(),
+            baselineIncluded = baseIncluded,
+            pinnedFrom = pinnedFrom,
+            baselinePinnedFrom = basePinnedFrom,
+            useReplyTo = useReplyTo,
+            baselineUseReplyTo = baseUseReplyTo,
         )
         if (dirty || bounceTo.isNotEmpty()) discardOpen = true else onDone()
     }
@@ -999,7 +1039,7 @@ private fun ComposeLoaded(
                 held = null
             }
             notice = null
-            status = appContext.getString(R.string.compose_saved_to, mailboxLeaf(account.postponedMailbox))
+            status = appContext.getString(R.string.compose_saved_to, statusLeaf(account.postponedMailbox))
             removePostponedSource()
             true
         }
@@ -1125,6 +1165,12 @@ private fun ComposeLoaded(
             } catch (error: MailFailure) {
                 notice = error.text
             }
+            try {
+                loadedDelimiter = favoriteDelimiter(session.namespaces())
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+            }
         }
         if (leave) onDone()
     }
@@ -1173,7 +1219,7 @@ private fun ComposeLoaded(
                     }
                     if (deliveryDone) {
                         notice = null
-                        status = sentStatus(mailboxLeaf(account.sentMailbox))
+                        status = sentStatus(statusLeaf(account.sentMailbox))
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
@@ -1255,7 +1301,7 @@ private fun ComposeLoaded(
                         held = null
                         deliveryDone = true
                         notice = leftOver
-                        status = sentStatus(if (withoutCopy) null else mailboxLeaf(account.sentMailbox))
+                        status = sentStatus(if (withoutCopy) null else statusLeaf(account.sentMailbox))
                         removePostponedSource()
                         return@launchLocked true
                     }
@@ -1299,7 +1345,7 @@ private fun ComposeLoaded(
                     held = null
                     deliveryDone = true
                     notice = null
-                    status = sentStatus(mailboxLeaf(account.sentMailbox))
+                    status = sentStatus(statusLeaf(account.sentMailbox))
                     removePostponedSource()
                     true
                 }
@@ -1670,7 +1716,7 @@ private fun ComposeLoaded(
                     notice = null
                     deliveryDone = true
                     status = if (account.bounceFcc) {
-                        sentStatus(mailboxLeaf(account.sentMailbox))
+                        sentStatus(statusLeaf(account.sentMailbox))
                     } else {
                         sentStatus(null)
                     }
@@ -1863,17 +1909,8 @@ private fun ComposeLoaded(
     }
 }
 
-/** Next compose only. -1 uses the setting, 0 is inline, 1 is message/rfc822. */
-internal object ForwardOnce {
-    var code: Int = -1
-}
-
-internal fun armForwardOnce(asAttachment: Boolean) {
-    ForwardOnce.code = if (asAttachment) 1 else 0
-}
-
-internal fun oppositeForwardLabel(settingOn: Boolean): String =
-    if (settingOn) "Forward inline" else "Forward as attachment"
+internal fun oppositeForwardLabel(inlineLabel: String, attachmentLabel: String, settingOn: Boolean): String =
+    if (settingOn) inlineLabel else attachmentLabel
 
 internal fun replyCursorBody(quoted: String, above: Boolean): String {
     val block = quoted.trimEnd('\n')
@@ -1894,8 +1931,20 @@ internal fun composeIsDirty(
     baselineSubject: String,
     baselineBody: String,
     rowRemoved: Boolean,
+    header: String = "",
+    baselineHeader: String = "",
+    included: String = "",
+    baselineIncluded: String = "",
+    pinnedFrom: String? = null,
+    baselinePinnedFrom: String? = null,
+    useReplyTo: Boolean = false,
+    baselineUseReplyTo: Boolean = false,
 ): Boolean {
     if (rowRemoved) return true
+    if (header != baselineHeader) return true
+    if (included != baselineIncluded) return true
+    if (pinnedFrom != baselinePinnedFrom) return true
+    if (useReplyTo != baselineUseReplyTo) return true
     return to != baselineTo ||
         cc != baselineCc ||
         bcc != baselineBcc ||
@@ -2007,6 +2056,12 @@ internal fun mailboxLeaf(mailbox: String): String {
     if (slash >= 0) return mailbox.substring(slash + 1)
     val dot = mailbox.lastIndexOf('.')
     if (dot >= 0) return mailbox.substring(dot + 1)
+    return mailbox
+}
+
+internal fun mailboxLeaf(mailbox: String, delimiter: Char): String {
+    val at = mailbox.lastIndexOf(delimiter)
+    if (at >= 0) return mailbox.substring(at + 1)
     return mailbox
 }
 

@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.compose
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -261,7 +262,7 @@ class Rfc822Test {
         assertEquals("one two\nthree four", wrapPlain("one\ttwo three four", 10))
         assertEquals("one two three four", wrapPlain("one two three four", 0))
         assertEquals("one two  \nthree  \nfour", flowPlain("one two three four", 10))
-        assertEquals("one two  \nthree  \nfour", flowPlain("one\ttwo three four", 10))
+        assertEquals("one\ttwo  \nthree  \nfour", flowPlain("one\ttwo three four", 10))
         assertEquals("one two three four", flowPlain("one two three four", 0))
         assertEquals("abcdefghijk", flowPlain("abcdefghijk", 5))
         assertEquals(" > one  \n > two  \n > three", flowPlain("> one two three", 10))
@@ -306,6 +307,92 @@ class Rfc822Test {
         val fixedText = fixed.rfc822.toString(Charsets.UTF_8)
         assertTrue(fixedText.contains("one two\r\nthree four"))
         assertFalse(fixedText.contains("flowed"))
+    }
+
+    @Test
+    fun flowedLineThatFitsKeepsSpacesAndTabs() {
+        assertEquals("    keep  me", flowPlain("    keep  me", 72))
+        assertEquals("one\ttwo", flowPlain("one\ttwo", 72))
+        assertEquals("-- ", flowPlain("-- ", 10))
+        assertEquals("-- ", flowPlain("--", 10))
+    }
+
+    @Test
+    fun resumeReadsFilenameStarAndNestedPlain() {
+        val bytes = (
+            "Content-Type: multipart/mixed; boundary=mix\r\n\r\n" +
+                "--mix\r\n" +
+                "Content-Type: multipart/alternative; boundary=alt\r\n\r\n" +
+                "--alt\r\n" +
+                "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
+                "hello\r\n" +
+                "--alt\r\n" +
+                "Content-Type: text/html; charset=utf-8\r\n\r\n" +
+                "<p>no</p>\r\n" +
+                "--alt--\r\n" +
+                "--mix\r\n" +
+                "Content-Type: application/pdf; name=\"=?UTF-8?B?aGkudHh0?=\"\r\n" +
+                "Content-Disposition: attachment; filename*=UTF-8''r%C3%A9sum%C3%A9.pdf\r\n\r\n" +
+                "%PDF\r\n" +
+                "--mix--\r\n"
+            ).toByteArray(Charsets.UTF_8)
+        val loaded = loadEditor(bytes)
+        assertEquals("hello", loaded.body)
+        assertEquals("résumé.pdf", loaded.attachments.first { it.mediaType == "application/pdf" }.filename)
+        assertTrue(loaded.attachments.any { it.mediaType.equals("text/html", ignoreCase = true) })
+        val named = (
+            "Content-Type: multipart/mixed; boundary=n\r\n\r\n" +
+                "--n\r\n" +
+                "Content-Type: text/plain\r\n\r\n" +
+                "body\r\n" +
+                "--n\r\n" +
+                "Content-Type: application/octet-stream; name=\"=?UTF-8?B?aGkudHh0?=\"\r\n\r\n" +
+                "x\r\n" +
+                "--n--\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        assertEquals("hi.txt", loadEditor(named).attachments.single().filename)
+    }
+
+    @Test
+    fun nestedEightBitIsRewrittenAndABodyLineIsNot() {
+        val nested = (
+            "Content-Type: multipart/mixed; boundary=outer\r\n" +
+                "Content-Transfer-Encoding: 7bit\r\n\r\n" +
+                "--outer\r\n" +
+                "Content-Type: multipart/mixed; boundary=inner\r\n\r\n" +
+                "--inner\r\n" +
+                "Content-Type: text/plain; charset=utf-8\r\n" +
+                "Content-Transfer-Encoding: 8bit\r\n\r\n" +
+                "caf\u00e9\r\n" +
+                "--inner--\r\n" +
+                "--outer--\r\n"
+            ).toByteArray(Charsets.UTF_8)
+        val rewritten = withoutEightBit(nested)
+        assertFalse(has8bitCte(rewritten))
+        assertTrue(rewritten.toString(Charsets.ISO_8859_1).contains("quoted-printable"))
+        assertTrue(rewritten.toString(Charsets.ISO_8859_1).contains("=C3=A9"))
+        val bodyLine = (
+            "Content-Type: text/plain\r\n" +
+                "Content-Transfer-Encoding: 7bit\r\n\r\n" +
+                "Content-Transfer-Encoding: 8bit\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        assertSame(bodyLine, withoutEightBit(bodyLine))
+    }
+
+    @Test
+    fun forwardWireKeepsTheServersEncoding() {
+        val qp = "a=3Db".toByteArray(Charsets.US_ASCII)
+        val quoted = forwardWire("quoted-printable", qp)
+        assertEquals("quoted-printable", quoted.first)
+        assertArrayEquals(qp, quoted.second)
+        val seven = "abcd".toByteArray(Charsets.US_ASCII)
+        val ascii = forwardWire("7bit", seven)
+        assertEquals("7bit", ascii.first)
+        assertArrayEquals(seven, ascii.second)
+        assertTrue(looksLikeBase64(seven))
+        val encoded = forwardWire("base64", seven)
+        assertEquals("base64", encoded.first)
+        assertArrayEquals(rewrapBase64(seven), encoded.second)
     }
 
     @Test

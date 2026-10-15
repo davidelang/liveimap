@@ -57,6 +57,59 @@ class ComposeChromeTest {
                 rowRemoved = true,
             ),
         )
+        assertTrue(
+            composeIsDirty(
+                to = "ann@example.com",
+                cc = "bo@example.com",
+                bcc = "cy@example.com",
+                subject = "Hello",
+                body = "Body",
+                baselineTo = "ann@example.com",
+                baselineCc = "bo@example.com",
+                baselineBcc = "cy@example.com",
+                baselineSubject = "Hello",
+                baselineBody = "Body",
+                rowRemoved = false,
+                header = "x-priority=1",
+                baselineHeader = "",
+            ),
+        )
+        assertTrue(
+            composeIsDirty(
+                to = "ann@example.com",
+                cc = "bo@example.com",
+                bcc = "cy@example.com",
+                subject = "Hello",
+                body = "Body",
+                baselineTo = "ann@example.com",
+                baselineCc = "bo@example.com",
+                baselineBcc = "cy@example.com",
+                baselineSubject = "Hello",
+                baselineBody = "Body",
+                rowRemoved = false,
+                pinnedFrom = "me@home.example",
+                baselinePinnedFrom = null,
+            ),
+        )
+        assertFalse(
+            composeIsDirty(
+                to = "ann@example.com",
+                cc = "bo@example.com",
+                bcc = "cy@example.com",
+                subject = "Hello",
+                body = "Body",
+                baselineTo = "ann@example.com",
+                baselineCc = "bo@example.com",
+                baselineBcc = "cy@example.com",
+                baselineSubject = "Hello",
+                baselineBody = "Body",
+                rowRemoved = false,
+                header = "x-priority=1",
+                baselineHeader = "x-priority=1",
+                pinnedFrom = "me@home.example",
+                baselinePinnedFrom = "me@home.example",
+            ),
+        )
     }
 
     @Test

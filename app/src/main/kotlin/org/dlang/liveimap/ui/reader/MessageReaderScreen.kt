@@ -136,7 +136,7 @@ import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
-import org.dlang.liveimap.ui.compose.armForwardOnce
+import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
@@ -1824,8 +1824,15 @@ private fun MessageReaderLoaded(
                     text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                     onClick = {
                         moreMenu = false
-                        armForwardOnce(!account.forwardAsAttachment)
-                        onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
+                        onCompose(
+                            ComposeSeed(
+                                ComposeKind.Forward,
+                                mailbox,
+                                listOf(uid),
+                                readerEpoch,
+                                forwardAsAttachment = !account.forwardAsAttachment,
+                            ),
+                        )
                     },
                 )
                 // HTML and plain text are positions of the display selector; the menu keeps the other views.
@@ -2527,8 +2534,10 @@ private fun bodyViewName(view: BodyView): String = stringResource(
 )
 
 @Composable
-private fun forwardStyleName(asAttachment: Boolean): String = stringResource(
-    if (asAttachment) R.string.label_forward_inline else R.string.settings_forward_attachment,
+private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
+    stringResource(R.string.label_forward_inline),
+    stringResource(R.string.label_forward_attachment),
+    asAttachment,
 )
 
 private fun ReaderToolbarAction.readerAction(): ReaderAction? = when (this) {

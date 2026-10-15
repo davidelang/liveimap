@@ -9166,6 +9166,16 @@ bool has8bit(const char * s, size_t n) {
     return false;
 }
 
+// Bytes after the header blank line. A Content-Transfer-Encoding line in the body is not a body byte.
+bool bodyHas8bit(const char * raw, size_t n) {
+    for (size_t i = 0; i + 1 < n; ++i) {
+        if (raw[i] != '\n') continue;
+        if (raw[i + 1] == '\n') return has8bit(raw + i + 2, n - (i + 2));
+        if (raw[i + 1] == '\r' && i + 2 < n && raw[i + 2] == '\n') return has8bit(raw + i + 3, n - (i + 3));
+    }
+    return false;
+}
+
 // Header section only (up to the first empty line).
 bool headerHas8bit(const char * raw, size_t n) {
     for (size_t i = 0; i < n; ++i) {
@@ -9684,6 +9694,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } else {
         mailsmtp_set_channel_binding(smtp, nullptr, nullptr, 0);
     }
+    bool authOk = false;
     if (mechanism == "EXTERNAL") {
         r = smtpAuthExternal(smtp);
         if (r != MAILSMTP_NO_ERROR) {
@@ -9693,6 +9704,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             throwFailure(env, why);
             return 0;
         }
+        authOk = true;
     } else if (!mechanism.empty()) {
         if (authUser.empty()) {
             freeSmtp(session, smtp);
@@ -9709,6 +9721,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             throwFailure(env, why);
             return 0;
         }
+        authOk = true;
     } else if (!offeredAuth.empty() && !noCredentials) {
         if (!authUser.empty() && !smtpTls && !allowPlaintextAuth &&
             offeredPlainOrLogin(offeredAuth)) {
@@ -9722,12 +9735,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     }
     if (message == nullptr) {
         // Test account (David, 2026-10-12): connect, TLS, EHLO and AUTH only; nothing is sent. QUIT.
-        bool authed = !authUser.empty();
         int owned = takeSmtpFd(session);
         mailsmtp_quit(smtp);
         if (owned >= 0) close(owned);
         freeSmtp(session, smtp);
-        return authed ? 2 : (offeredAuth.empty() ? 3 : 4);
+        if (authOk) return 2;
+        if (!authUser.empty() && offeredAuth.empty()) return 3;
+        return offeredAuth.empty() ? 3 : 4;
     }
     jsize nmsg = message != nullptr ? env->GetArrayLength(message) : 0;
     jbyte * raw = nmsg > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
@@ -9765,9 +9779,23 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         throwFailure(env, "8bitmime");
         return 0;
     }
+    bool declare8bit = false;
+    if (raw != nullptr) {
+        const char * bytes = reinterpret_cast<const char *>(raw);
+        size_t len = static_cast<size_t>(nmsg);
+        declare8bit = messageHas8bitCte(bytes, len) || bodyHas8bit(bytes, len);
+    }
     if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
+    const char * body8 = (declare8bit && allow8bit) ? " BODY=8BITMIME" : "";
     if (needUtf8) {
-        std::string cmd = "MAIL FROM:<" + mailFrom + "> SMTPUTF8" +
+        std::string cmd = "MAIL FROM:<" + mailFrom + "> SMTPUTF8" + body8 +
+            (dsnNotify != 0 && dsnOffered ? " RET=HDRS" : "") + "\r\n";
+        r = mailsmtp_send_command(smtp, const_cast<char *>(cmd.c_str()));
+        if (r == MAILSMTP_NO_ERROR) {
+            r = mailsmtp_read_response(smtp) == 250 ? MAILSMTP_NO_ERROR : MAILSMTP_ERROR_MAILBOX_UNAVAILABLE;
+        }
+    } else if (declare8bit && allow8bit) {
+        std::string cmd = std::string("MAIL FROM:<") + mailFrom + ">" + body8 +
             (dsnNotify != 0 && dsnOffered ? " RET=HDRS" : "") + "\r\n";
         r = mailsmtp_send_command(smtp, const_cast<char *>(cmd.c_str()));
         if (r == MAILSMTP_NO_ERROR) {

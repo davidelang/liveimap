@@ -357,6 +357,11 @@ class JmapMailSession(
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = lock.withLock {
         if (offset < 0 || length < 0) throw MailFailure("part range is invalid")
         val id = emailIdLocked(uid)
+        if (section.equals("HEADER", ignoreCase = true)) {
+            val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["headers"]},"0"]]}"""
+            val bytes = call(body) { root -> headerBlock(firstEmail(root)) }
+            return@withLock slice(bytes, offset, length)
+        }
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
         val needEnd = offset.toLong() + length.toLong()
         val cached = part.bytes
@@ -983,6 +988,18 @@ class JmapMailSession(
         internal fun firstEmail(root: Json.Obj): Map<String, Json> {
             val list = args(root, "Email/get")?.get("list") as? Json.Arr ?: throw MailFailure("jmap response lacks Email/get")
             return (list.values.firstOrNull() as? Json.Obj)?.fields ?: throw MailFailure("message is gone on the server")
+        }
+
+        internal fun headerBlock(email: Map<String, Json>): ByteArray {
+            val headers = email["headers"] as? Json.Arr ?: throw MailFailure("jmap message has no headers")
+            val out = StringBuilder()
+            for (item in headers.values) {
+                val fields = (item as? Json.Obj)?.fields ?: continue
+                val name = (fields["name"] as? Json.Str)?.text ?: continue
+                val value = (fields["value"] as? Json.Str)?.text.orEmpty()
+                out.append(name).append(": ").append(value).append("\r\n")
+            }
+            return out.toString().toByteArray(Charsets.UTF_8)
         }
 
         internal fun bodyValue(email: Map<String, Json>, partId: String): Pair<String, Boolean> {

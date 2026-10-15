@@ -244,6 +244,8 @@ data class ComposeSeed(
     val uidValidity: Long = 0L,
     /** F121: the account the source messages (and the reply) belong to; "" = the active account at open time. */
     val accountId: String = "",
+    /** Null uses the account's forward-as-attachment setting. */
+    val forwardAsAttachment: Boolean? = null,
 ) {
     /** The source messages as references (empty until the epoch is known). */
     fun refs(accountId: String): List<MessageRef> =

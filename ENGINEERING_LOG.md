@@ -3078,3 +3078,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-existing-20261015-1326-plan.md. The first use of a mailbox numbers existing mail oldest-first before uidNext. A later id stays at or above that next.
 
 ## 2026-10-15 - A bounce whose Sent copy fails is still remembered as sent.
+
+## 2026-10-15 - Compose keeps whitespace, attachment names, and the server's encoding.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-mime-20261015-0522-plan.md. Flowed text keeps spaces. Resume reads filename* and a nested multipart. A nested 8-bit part is rewritten. Reply and inline forward peek HEADER. A forwarded part keeps its transfer encoding. The forward mode is on the seed. Back asks when extra edits changed. BODY=8BITMIME is declared for an 8-bit body. The SMTP probe returns 2 only after AUTH succeeds.

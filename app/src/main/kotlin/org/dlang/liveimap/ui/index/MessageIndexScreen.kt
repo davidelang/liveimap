@@ -148,7 +148,7 @@ import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
-import org.dlang.liveimap.ui.compose.armForwardOnce
+import org.dlang.liveimap.ui.compose.oppositeForwardLabel
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.sameMailbox
@@ -2575,9 +2575,14 @@ private fun MessageIndexLoaded(
                                         text = { Text(forwardStyleName(account.forwardAsAttachment)) },
                                         onClick = {
                                             selectionMore = false
-                                            armForwardOnce(!account.forwardAsAttachment)
                                             onCompose(
-                                                ComposeSeed(ComposeKind.Forward, mailbox, listOf(oneUid), model.listedEpoch(mailbox)),
+                                                ComposeSeed(
+                                                    ComposeKind.Forward,
+                                                    mailbox,
+                                                    listOf(oneUid),
+                                                    model.listedEpoch(mailbox),
+                                                    forwardAsAttachment = !account.forwardAsAttachment,
+                                                ),
                                             )
                                         },
                                     )
@@ -4229,8 +4234,10 @@ private fun swipeActionName(action: SwipeAction): String = stringResource(
 )
 
 @Composable
-private fun forwardStyleName(asAttachment: Boolean): String = stringResource(
-    if (asAttachment) R.string.label_forward_inline else R.string.settings_forward_attachment,
+private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
+    stringResource(R.string.label_forward_inline),
+    stringResource(R.string.label_forward_attachment),
+    asAttachment,
 )
 
 @Composable

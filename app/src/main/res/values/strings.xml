@@ -648,6 +648,7 @@ Your version: %2$s</string>
     <string name="label_comfortable">Comfortable</string>
     <string name="label_large">Large</string>
     <string name="label_forward_inline">Forward inline</string>
+    <string name="label_forward_attachment">Forward as attachment</string>
     <string name="copy_not_alpine">This mailbox is not an Alpine address book</string>
     <string name="copy_changed">The address book changed. Nothing was written.</string>
     <string name="copy_done">Copied.</string>

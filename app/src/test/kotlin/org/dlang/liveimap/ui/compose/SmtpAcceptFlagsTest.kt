@@ -20,5 +20,7 @@ class SmtpAcceptFlagsTest {
         assertEquals("sent-mail", mailboxLeaf("INBOX.sent-mail"))
         assertEquals("Drafts", mailboxLeaf("Drafts"))
         assertEquals("Drafts", mailboxLeaf("INBOX/Archive/Drafts"))
+        assertEquals("2026.10", mailboxLeaf("Archive/2026.10", '/'))
+        assertEquals("sent-mail", mailboxLeaf("INBOX.sent-mail", '.'))
     }
 }
