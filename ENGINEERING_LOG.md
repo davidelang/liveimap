@@ -2929,3 +2929,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - The parser refuses a set it cannot represent
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md. A NIL or empty server PREVIEW does not mark that index row's preview present
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: PeekPart and FetchRfc822 throw when a FETCH names the message but has no body, or the body section is NIL. A zero-length array is only a real empty body. utf8FromJava wipes the GetStringChars buffer in place before release
+- No new mutex. No install

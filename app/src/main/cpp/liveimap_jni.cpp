@@ -5804,6 +5804,9 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
             out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
         }
     }
+    // The GetStringChars buffer is the only copy of these units. Wipe it in place; no second heap buffer.
+    volatile jchar * wipe = const_cast<jchar *>(chars);
+    for (jsize i = 0; i < length; ++i) wipe[i] = 0;
     env->ReleaseStringChars(value, chars);
     return out;
 }
@@ -7149,18 +7152,21 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     size_t n = 0;
     bool matched = false;
     if (list != nullptr) {
-        for (clistiter * cur = clist_begin(list); cur != nullptr && bytes == nullptr; cur = clist_next(cur)) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr && !matched; cur = clist_next(cur)) {
             auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
             if (msg == nullptr || msg->att_list == nullptr) continue;
-            matched = true;
-            for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
+            for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr && !matched; ic = clist_next(ic)) {
                 auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
                 if (item == nullptr) continue;
                 if (item->att_type == MAILIMAP_MSG_ATT_ITEM_STATIC && item->att_data.att_static != nullptr) {
                     struct mailimap_msg_att_static * st = item->att_data.att_static;
                     if (st->att_type == MAILIMAP_MSG_ATT_BODY_SECTION && st->att_data.att_body_section != nullptr) {
-                        bytes = st->att_data.att_body_section->sec_body_part;
-                        n = st->att_data.att_body_section->sec_length;
+                        struct mailimap_msg_att_body_section * sec = st->att_data.att_body_section;
+                        if (sec->sec_body_part != nullptr) {
+                            bytes = sec->sec_body_part;
+                            n = sec->sec_length;
+                            matched = true;
+                        }
                     }
                 } else if (item->att_type == MAILIMAP_MSG_ATT_ITEM_EXTENSION && item->att_data.att_extension_data != nullptr) {
                     struct mailimap_extension_data * ext = item->att_data.att_extension_data;
@@ -7169,9 +7175,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
                         if (blob != nullptr && blob->isNil == 0 && blob->data != nullptr) {
                             bytes = blob->data;
                             n = blob->len;
-                        } else if (blob != nullptr) {
-                            bytes = "";
-                            n = 0;
+                            matched = true;
                         }
                     }
                 }
@@ -7219,17 +7223,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
     size_t n = 0;
     bool matched = false;
     if (list != nullptr) {
-        for (clistiter * cur = clist_begin(list); cur != nullptr && bytes == nullptr; cur = clist_next(cur)) {
+        for (clistiter * cur = clist_begin(list); cur != nullptr && !matched; cur = clist_next(cur)) {
             auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
             if (msg == nullptr || msg->att_list == nullptr) continue;
-            matched = true;
-            for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
+            for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr && !matched; ic = clist_next(ic)) {
                 auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
                 if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) continue;
                 struct mailimap_msg_att_static * st = item->att_data.att_static;
-                if (st->att_type == MAILIMAP_MSG_ATT_RFC822) {
+                if (st->att_type == MAILIMAP_MSG_ATT_RFC822 && st->att_data.att_rfc822.att_content != nullptr) {
                     bytes = st->att_data.att_rfc822.att_content;
                     n = st->att_data.att_rfc822.att_length;
+                    matched = true;
                 }
             }
         }
