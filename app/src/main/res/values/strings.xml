@@ -141,7 +141,6 @@
     <string name="index_close">Close</string>
     <string name="index_back">Back</string>
     <string name="index_move">Move</string>
-    <string name="index_delete">Delete</string>
     <string name="index_more">More</string>
     <string name="index_select_all">Select all</string>
     <string name="index_mark_answered">Mark answered</string>
@@ -431,7 +430,6 @@
     <string name="settings_email_submission_note">Off uses SMTP.</string>
     <string name="settings_jmap_folders">Browse folders over JMAP</string>
     <string name="settings_jmap_folders_note">Off uses IMAP even when the server offers JMAP.</string>
-    <string name="jmap_delete_confirm">Delete this message?</string>
     <string name="settings_import">Import</string>
     <string name="settings_import_pinerc">Import from .pinerc…</string>
     <string name="settings_export_pinerc">Export .pinerc…</string>

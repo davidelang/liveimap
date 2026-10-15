@@ -140,6 +140,14 @@ fun jmapStagingDestroyed(text: String, emailId: String): Boolean? {
     return null
 }
 
+fun jmapDestroyRequest(accountId: String, emailId: String): String {
+    if (accountId.isBlank()) throw JmapFailure("jmap account id is empty")
+    if (emailId.isBlank()) throw JmapFailure("jmap message id is empty")
+    val account = quoted(accountId)
+    val id = quoted(emailId)
+    return """{"using":["urn:ietf:params:jmap:core","$JMAP_MAIL"],"methodCalls":[["Email/set",{"accountId":$account,"destroy":[$id]},"0"]]}"""
+}
+
 fun jmapDeliver(
     session: JmapSession,
     bytes: ByteArray,

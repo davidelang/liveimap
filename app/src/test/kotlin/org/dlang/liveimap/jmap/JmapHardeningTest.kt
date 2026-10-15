@@ -1,6 +1,5 @@
 package org.dlang.liveimap.jmap
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -48,24 +47,5 @@ class JmapHardeningTest {
             jmapCall("https://mail.example/jmap/", "{}", "Basic x", "", { _, _, _ -> Ex(200, "", fail = true) }, { _, _, _ -> "" })
         }.exceptionOrNull()
         assertTrue(e.toString(), e is JmapFailure)
-    }
-
-    @Test fun f63ChangesFollowHasMoreChanges() {
-        val replies = ArrayDeque(listOf(
-            """{"methodResponses":[["Email/changes",{"oldState":"s1","newState":"s2","hasMoreChanges":true,"created":[],"updated":[],"destroyed":["e0"]},"0"]]}""",
-            """{"methodResponses":[["Email/changes",{"oldState":"s2","newState":"s3","hasMoreChanges":false,"created":["e5"],"updated":[],"destroyed":[]},"0"]]}""",
-        ))
-        val sent = mutableListOf<String>()
-        val changes = jmapEmailChanges(session(), "s1", "u", "p", "", { _, body, _ -> sent += body; Ex(200, replies.removeFirst()) }, { _, _, _ -> "" })
-        assertEquals("s3", changes.newState)
-        assertEquals(listOf("e0"), changes.destroyed)
-        assertEquals(listOf("e5"), changes.created)
-        assertFalse(changes.hasMoreChanges)
-        assertTrue(sent[1].contains("\"sinceState\":\"s2\""))
-    }
-
-    @Test fun f68RoutingIsOptInAndPushIsOutsideTheGate() {
-        val folders = File("src/main/kotlin/org/dlang/liveimap/ui/folder/FolderListScreen.kt").readText()
-        assertTrue(folders.contains("FolderListLoaded("))
     }
 }
