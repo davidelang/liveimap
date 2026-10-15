@@ -1129,7 +1129,12 @@ bool preferredFound(const PartWant * want, bool preferHtml) {
     return want->found && want->html == preferHtml;
 }
 
-void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want) {
+void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want);
+
+// enterRfc822 is false while the message's own parts are still being considered. A message/rfc822
+// attachment is entered only on the second walk, and only when that first walk found no text part.
+void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want,
+    bool enterRfc822) {
     if (body == nullptr) {
         return;
     }
@@ -1144,7 +1149,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
         }
         for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
             std::string section = prefix.empty() ? std::to_string(index) : prefix + "." + std::to_string(index);
-            findPreferred(static_cast<struct mailimap_body *>(clist_content(cur)), section, preferHtml, want);
+            findPreferred(static_cast<struct mailimap_body *>(clist_content(cur)), section, preferHtml, want, enterRfc822);
             if (preferredFound(want, preferHtml)) {
                 return;
             }
@@ -1157,7 +1162,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     struct mailimap_body_type_1part * part = body->bd_data.bd_body_1part;
     std::string section = prefix.empty() ? "1" : prefix;
     if (part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr) {
-        if (want->found) return;
+        if (!enterRfc822 || want->found) return;
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
         if (inner != nullptr && inner->bd_type == MAILIMAP_BODY_MPART) {
             findPreferred(inner, section, preferHtml, want);
@@ -1181,6 +1186,13 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     }
     if (plain && !want->found) {
         rememberText(want, section, part, false);
+    }
+}
+
+void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want) {
+    findPreferred(body, prefix, preferHtml, want, false);
+    if (!want->found) {
+        findPreferred(body, prefix, preferHtml, want, true);
     }
 }
 
@@ -7161,20 +7173,20 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
                 if (item->att_type == MAILIMAP_MSG_ATT_ITEM_STATIC && item->att_data.att_static != nullptr) {
                     struct mailimap_msg_att_static * st = item->att_data.att_static;
                     if (st->att_type == MAILIMAP_MSG_ATT_BODY_SECTION && st->att_data.att_body_section != nullptr) {
+                        // libetpan: a real empty nstring is a non-null pointer of length 0; NIL is a null pointer
+                        // of length 0. Both are a body. No BODY section on this FETCH is still "gone".
                         struct mailimap_msg_att_body_section * sec = st->att_data.att_body_section;
-                        if (sec->sec_body_part != nullptr) {
-                            bytes = sec->sec_body_part;
-                            n = sec->sec_length;
-                            matched = true;
-                        }
+                        bytes = sec->sec_body_part;
+                        n = bytes != nullptr ? sec->sec_length : 0;
+                        matched = true;
                     }
                 } else if (item->att_type == MAILIMAP_MSG_ATT_ITEM_EXTENSION && item->att_data.att_extension_data != nullptr) {
                     struct mailimap_extension_data * ext = item->att_data.att_extension_data;
                     if (ext->ext_extension == &liveimap_extra_extension && ext->ext_type == LIVE_BINARY) {
                         auto * blob = static_cast<LiveBlob *>(ext->ext_data);
-                        if (blob != nullptr && blob->isNil == 0 && blob->data != nullptr) {
+                        if (blob != nullptr) {
                             bytes = blob->data;
-                            n = blob->len;
+                            n = bytes != nullptr ? blob->len : 0;
                             matched = true;
                         }
                     }
@@ -7230,9 +7242,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
                 auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
                 if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) continue;
                 struct mailimap_msg_att_static * st = item->att_data.att_static;
-                if (st->att_type == MAILIMAP_MSG_ATT_RFC822 && st->att_data.att_rfc822.att_content != nullptr) {
+                if (st->att_type == MAILIMAP_MSG_ATT_RFC822) {
+                    // NIL is a null pointer of length 0. The attribute itself is the body; a FETCH that
+                    // names the message and has no RFC822 still leaves matched false.
                     bytes = st->att_data.att_rfc822.att_content;
-                    n = st->att_data.att_rfc822.att_length;
+                    n = bytes != nullptr ? st->att_data.att_rfc822.att_length : 0;
                     matched = true;
                 }
             }

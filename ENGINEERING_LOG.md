@@ -2935,3 +2935,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
 - Fixup: PeekPart and FetchRfc822 throw when a FETCH names the message but has no body, or the body section is NIL. A zero-length array is only a real empty body. utf8FromJava wipes the GetStringChars buffer in place before release
 - No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: PeekPart and FetchRfc822 return an empty array for a NIL body and for a real empty body. A FETCH that names the message and carries no body still throws. findPreferred considers the message's own parts before it enters a message/rfc822 attachment, and a text part there stops that walk.
+- No new mutex. No install
