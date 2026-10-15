@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.index
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,6 +97,30 @@ class WindowedOrderTest {
         assertEquals(listOf(9L, 1L, 2L), joinUids(listOf(9L), listOf(1L, 2L)))
         assertEquals(listOf(1L, 3L), orderWithout(listOf(1L, 2L, 3L), setOf(2L)))
         assertEquals(false, orderWithout(listOf(1L, 2L), setOf(2L)) is java.util.ArrayList<*>)
+    }
+
+    @Test
+    fun maxUidIndexUsesLoadedWindowsOnly() {
+        val complete = WindowedOrder(3, 4) { _, _ -> error("loader") }
+        complete.seed(0, listOf(4L, 9L, 2L))
+        assertEquals(1, complete.maxUidIndex())
+
+        val split = WindowedOrder(8, 4) { _, _ -> error("loader") }
+        split.seed(0, listOf(1L, 2L, 3L, 4L))
+        split.seed(1, listOf(10L, 7L))
+        assertEquals(4, split.maxUidIndex())
+
+        var calls = 0
+        val hostile = WindowedOrder(Int.MAX_VALUE, 4) { _, _ ->
+            calls += 1
+            emptyList()
+        }
+        hostile.seed(0, listOf(5L, 6L, 7L, 8L))
+        assertEquals(3, hostile.maxUidIndex())
+        assertEquals(0, calls)
+
+        val empty = WindowedOrder(0, 4) { _, _ -> error("loader") }
+        assertNull(empty.maxUidIndex())
     }
 
     /** F81: a hostile COUNT does not make known() walk every position. */

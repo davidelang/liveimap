@@ -69,6 +69,29 @@ class WindowedOrder(
         return null
     }
 
+    /**
+     * Loaded position of the highest real UID. Walks loaded windows only, ignores [Unknown], and does not call
+     * [ensure]. Null when no real UID is loaded.
+     */
+    fun maxUidIndex(): Int? {
+        var bestIndex: Int? = null
+        var bestUid = Long.MIN_VALUE
+        for (w in windows.keys.sorted()) {
+            val list = windows.getValue(w)
+            val start = w * windowSize
+            val limit = minOf(list.size, (total - start).coerceAtLeast(0))
+            for (i in 0 until limit) {
+                val id = list[i]
+                if (id == Unknown) continue
+                if (bestIndex == null || id > bestUid) {
+                    bestUid = id
+                    bestIndex = start + i
+                }
+            }
+        }
+        return bestIndex
+    }
+
     /** After removing [gone], positions shift: shrink only by loaded UIDs and reload windows lazily. */
     fun without(gone: Set<Long>): WindowedOrder {
         var removed = 0

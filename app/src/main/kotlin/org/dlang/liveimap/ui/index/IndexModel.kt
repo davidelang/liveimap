@@ -1019,7 +1019,7 @@ class IndexModel(
     }
 
     private suspend fun nextArrivalSequence(anchorSequence: Int): Int? {
-        val matches = home.searchStart(StartRule.FirstUnseen, false, SearchEdge.All)
+        val matches = home().searchStart(StartRule.FirstUnseen, false, SearchEdge.All)
         if (matches.isEmpty()) return null
         if (anchorSequence == 0) {
             val chosen = if (view.newestFirst) matches.maxOrNull() else matches.minOrNull()
@@ -1035,7 +1035,7 @@ class IndexModel(
     }
 
     private suspend fun nextOrderedIndex(anchorUid: Long?): Int? {
-        val found = home.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        val found = home().searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
         if (found.isEmpty()) return null
         val start = if (anchorUid == null) {
             0
@@ -1050,7 +1050,7 @@ class IndexModel(
     }
 
     private suspend fun nextThreadIndex(anchorUid: Long?): Int? {
-        val found = home.searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
+        val found = home().searchStart(StartRule.FirstUnseen, true, SearchEdge.All).toSet()
         if (found.isEmpty()) return null
         val anchorThread = if (anchorUid == null) {
             -1
@@ -1156,7 +1156,7 @@ class IndexModel(
     private suspend fun searchFilters(filters: List<AppliedFilter>): Set<Long>? {
         val (kind, argument) = combinedFilterSearch(filters) ?: return emptySet()
         return try {
-            home.searchCriterion(kind, argument).toSet()
+            home().searchCriterion(kind, argument).toSet()
         } catch (failure: MailFailure) {
             notice = failure.text
             null
@@ -1220,7 +1220,7 @@ class IndexModel(
             threadPlan
         } else {
             try {
-                collapsedThreads(home.thread(SortKey.ThreadReferences), newestFirst = false)
+                collapsedThreads(home().thread(SortKey.ThreadReferences), newestFirst = false)
             } catch (failure: MailFailure) {
                 notice = failure.text
                 return heldRows
@@ -1323,7 +1323,7 @@ class IndexModel(
         val previousSummaries = summaries
         val previousExists = knownExists
         val previousArrival = arrivalTotal
-        val existsNow = maxOf(reportedExists, home.selectedExists())
+        val existsNow = maxOf(reportedExists, home().selectedExists())
         try {
             val shown = shownUids.distinct()
             if (shown.isNotEmpty()) {
@@ -1389,20 +1389,18 @@ class IndexModel(
     /**
      * David, 2026-10-12 (F129/F142): every query and UID action names its folder and epoch; the session layer
      * selects or verifies that folder inside the same call that runs the command. Nothing here selects or pins.
-     * The folder is the acted-on hit's folder while [actFolder] is set, else this index's folder. Its epoch is the
+     * [folder] is the hit's folder for one cross-folder call, and this index's mailbox otherwise. Its epoch is the
      * one recorded when its rows were listed (0 for this folder before the first listing: reads only; a hit's
      * folder with no recorded epoch is refused).
      */
-    private fun actAt(): FolderAt {
-        val folder = actFolder ?: mailbox
-        return FolderAt(folder, epochs[folder] ?: if (folder == mailbox) 0L else -1L)
-    }
+    private fun actAt(folder: String): FolderAt =
+        FolderAt(folder, epochs[folder] ?: if (folder == mailbox) 0L else -1L)
 
-    /** This index's folder (or the acted-on hit's), bound per call. */
-    private val home: MailSession get() = session.at(actAt())
+    /** [folder] bound for this call. Callers outside a cross-folder hit pass this index's mailbox. */
+    private fun home(folder: String = mailbox): MailSession = session.at(actAt(folder))
 
     /** F123: the shown folder's message count (never whatever folder the shared session has selected). */
-    suspend fun shownExists(): Int = home.selectedExists()
+    suspend fun shownExists(): Int = home().selectedExists()
 
     /** F123: the poll tick (only without IDLE): NOOP and EXISTS of this index's own folder, in one call. */
     suspend fun pollShownExists(): Int = session.inFolder(FolderAt(mailbox)) { _, s ->
@@ -1449,7 +1447,7 @@ class IndexModel(
         epochs[folder] = epoch
     }
 
-    private fun refsFor(uids: List<Long>, folder: String = actFolder ?: mailbox): List<MessageRef> {
+    private fun refsFor(uids: List<Long>, folder: String = mailbox): List<MessageRef> {
         val epoch = epochOf(folder)
         return uids.map { MessageRef(accountKey, folder, epoch, it) }
     }
@@ -1461,24 +1459,21 @@ class IndexModel(
         allMailboxCeiling = session.folderInfo(FolderAt(mailbox, epochOf(mailbox).takeIf { it != 0L } ?: -1L)).uidNext
     }
 
-    private suspend fun frozenAll(kind: String = "All"): List<Long> {
-        val all = allUidsInWindows(home, kind = kind)
+    private suspend fun frozenAll(kind: String = "All", folder: String = mailbox): List<Long> {
+        val all = allUidsInWindows(home(folder), kind = kind)
         val ceiling = allMailboxCeiling
         return if (ceiling > 0) all.filter { it < ceiling } else all
     }
 
-    /** F105: while set, UID actions run in this folder (a cross-folder search hit's own folder). */
-    private var actFolder: String? = null
-
     /** A removed hit leaves [order] and [orderMailboxes] at the same positions, so the lists stay one length. */
-    private fun dropGoneFromOrder(gone: Set<Long>) {
-        val kept = dropOrderedHits(order, orderMailboxes, gone, actFolder, mailbox)
+    private fun dropGoneFromOrder(gone: Set<Long>, folder: String = mailbox) {
+        val kept = dropOrderedHits(order, orderMailboxes, gone, folder, mailbox)
         order = kept.first
         orderMailboxes = kept.second
     }
 
     /** True when [row] is one of the rows the current action is about (same folder as the action). */
-    private fun inActedFolder(row: IndexRow): Boolean = inListedFolder(row, actFolder ?: mailbox)
+    private fun inActedFolder(row: IndexRow, folder: String = mailbox): Boolean = inListedFolder(row, folder)
 
     /** [row] was listed in [folder] (an empty row mailbox is this index's folder). */
     private fun inListedFolder(row: IndexRow, folder: String): Boolean {
@@ -1489,17 +1484,13 @@ class IndexModel(
     private fun foreign(rowMailbox: String) = rowMailbox.isNotEmpty() && rowMailbox != mailbox
 
     /**
-     * F105: run [block] against [rowMailbox] (a search hit from another folder), then return the session to this
-     * index's folder. Undo is not offered for such actions: MailUndo carries no folder.
+     * F105: run [block] against [rowMailbox] (a search hit from another folder). The folder is an argument of
+     * this call only. A later call uses this index's mailbox. Undo is not offered for such actions: MailUndo
+     * carries no folder.
      */
-    private suspend fun <T> inRowFolder(rowMailbox: String, block: suspend () -> T): T {
-        if (!foreign(rowMailbox)) return block()
-        actFolder = rowMailbox
-        try {
-            return block()
-        } finally {
-            actFolder = null
-        }
+    private suspend fun <T> inRowFolder(rowMailbox: String, block: suspend (folder: String) -> T): T {
+        val folder = if (foreign(rowMailbox)) rowMailbox else mailbox
+        return block(folder)
     }
 
     /**
@@ -1526,7 +1517,7 @@ class IndexModel(
         }
         if (own.isNotEmpty() || entire) part { op(own, entire, mailbox) }
         for ((folder, uids) in hits.groupBy({ it.first }, { it.second })) {
-            part { inRowFolder(folder) { op(uids, false, folder) } }
+            part { inRowFolder(folder) { acted -> op(uids, false, acted) } }
         }
         notice = notes.distinct().joinToString("; ").ifEmpty { null }
         mailUndo = if (undos.size == parts) mergeUndo(undos) else null
@@ -1543,20 +1534,24 @@ class IndexModel(
         )
     }
 
-    suspend fun deleteMessages(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
+    suspend fun deleteMessages(
+        uids: List<Long>,
+        allMailbox: Boolean = false,
+        folder: String = mailbox,
+    ): List<IndexRow> {
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
             // F44: "entire folder" works on a UID snapshot (never 1:*), so mail arriving meanwhile is untouched,
             // and undo only clears \Deleted on UIDs this action actually changed.
-            val target = if (allMailbox) frozenAll() else uids
+            val target = if (allMailbox) frozenAll(folder = folder) else uids
             val wanted = target.toSet()
-            val before = if (allMailbox) home.searchCriterion("Deleted", "").toSet()
-                else heldRows.filter { it.uid in wanted && "\\Deleted" in it.flags && inActedFolder(it) }.map { it.uid }.toSet()
+            val before = if (allMailbox) home(folder).searchCriterion("Deleted", "").toSet()
+                else heldRows.filter { it.uid in wanted && "\\Deleted" in it.flags && inActedFolder(it, folder) }.map { it.uid }.toSet()
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
             for (part in target.chunked(MoveChunk)) {
                 try {
-                    home.storeFlags(part, setOf("\\Deleted"), emptySet())
+                    home(folder).storeFlags(part, setOf("\\Deleted"), emptySet())
                     done.addAll(part)
                 } catch (error: CancellationException) {
                     throw error
@@ -1568,7 +1563,7 @@ class IndexModel(
             val changed = done.filter { it !in before }
             val idSet = done.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = row.flags + "\\Deleted") else row
+                if (row.uid in idSet && inActedFolder(row, folder)) row.copy(flags = row.flags + "\\Deleted") else row
             }
             notice = when {
                 failure != null && done.isNotEmpty() -> "Deleted ${done.size} of ${target.size}, then: ${failure.text}"
@@ -1577,7 +1572,7 @@ class IndexModel(
             }
             mailUndo = if (changed.isEmpty()) null else MailUndo(
                 delete = true,
-                source = refsFor(changed),
+                source = refsFor(changed, folder),
             )
         } catch (failure: MailFailure) {
             notice = failure.text
@@ -1586,14 +1581,19 @@ class IndexModel(
         return heldRows
     }
 
-    suspend fun moveMessages(uids: List<Long>, moveMailbox: String, allMailbox: Boolean = false): List<IndexRow> {
+    suspend fun moveMessages(
+        uids: List<Long>,
+        moveMailbox: String,
+        allMailbox: Boolean = false,
+        folder: String = mailbox,
+    ): List<IndexRow> {
         if (moveMailbox.isEmpty()) {
             notice = "Move folder is not set"
             mailUndo = null
             return heldRows
         }
         if (!allMailbox && uids.isEmpty()) return heldRows
-        if (sameMailbox(moveMailbox, actFolder ?: mailbox)) {
+        if (sameMailbox(moveMailbox, folder)) {
             // F103: copy-then-mark into the same folder would duplicate every message.
             notice = "Already in ${mailboxLeaf(moveMailbox)}"
             mailUndo = null
@@ -1605,7 +1605,7 @@ class IndexModel(
         try {
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
-            val all = if (allMailbox) frozenAll(moveAllKind(settings)) else uids
+            val all = if (allMailbox) frozenAll(moveAllKind(settings), folder) else uids
             val chunk = LabTestHooks.moveChunk() ?: MoveChunk
             val big = all.size > chunk
             var targetEpoch = -1L // one destination epoch for all batches, else 0 (no undo)
@@ -1613,7 +1613,7 @@ class IndexModel(
                 if (big) onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
             }) { part ->
                 // One call: select/verify the source, copy, and read COPYUID before anything else can run.
-                val copied = session.copyFrom(actAt(), part, moveMailbox, delete = true)
+                val copied = session.copyFrom(actAt(folder), part, moveMailbox, delete = true)
                 val epoch = copied.targetEpoch
                 targetEpoch = if (targetEpoch == -1L || targetEpoch == epoch) epoch else 0L
                 copied.copiedUids
@@ -1628,8 +1628,8 @@ class IndexModel(
                 heldRows = emptyList()
             } else if (moved.isNotEmpty()) {
                 val gone = moved.toSet()
-                dropGoneFromOrder(gone)
-                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
+                dropGoneFromOrder(gone, folder)
+                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it, folder) }
             }
             // F102: with copy-then-mark a failed batch may already be copied (COPY ok, STORE failed).
             val maybeCopied = if (outcome.failure != null && !usedMove) {
@@ -1650,7 +1650,7 @@ class IndexModel(
                 delete = false,
                 targetMailbox = moveMailbox,
                 usedMove = usedMove,
-                source = refsFor(moved),
+                source = refsFor(moved, folder),
                 dest = outcome.dest.map { MessageRef(accountKey, moveMailbox, targetEpoch, it) },
             )
             if (moved.isNotEmpty() && mailUndo == null && outcome.failure == null) {
@@ -1664,17 +1664,21 @@ class IndexModel(
         return heldRows
     }
 
-    suspend fun deletePermanently(uids: List<Long>, allMailbox: Boolean = false): List<IndexRow> {
+    suspend fun deletePermanently(
+        uids: List<Long>,
+        allMailbox: Boolean = false,
+        folder: String = mailbox,
+    ): List<IndexRow> {
         if (!session.featureCaps.uidPlus) return heldRows
         if (!allMailbox && uids.isEmpty()) return heldRows
         try {
-            val snapshot = if (allMailbox) frozenAll() else uids
+            val snapshot = if (allMailbox) frozenAll(folder = folder) else uids
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
             for (part in snapshot.chunked(MoveChunk)) {
                 try {
-                    home.storeFlags(part, setOf("\\Deleted"), emptySet())
-                    home.uidExpunge(part)
+                    home(folder).storeFlags(part, setOf("\\Deleted"), emptySet())
+                    home(folder).uidExpunge(part)
                     done.addAll(part)
                 } catch (error: CancellationException) {
                     throw error
@@ -1685,8 +1689,8 @@ class IndexModel(
             }
             if (done.isNotEmpty()) {
                 val gone = done.toSet()
-                dropGoneFromOrder(gone)
-                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it) }
+                dropGoneFromOrder(gone, folder)
+                heldRows = heldRows.filter { it.uid !in gone || !inActedFolder(it, folder) }
             }
             notice = when {
                 failure != null && done.isNotEmpty() -> "Deleted ${done.size} of ${snapshot.size}, then: ${failure.text}"
@@ -1771,6 +1775,7 @@ class IndexModel(
         add: Set<String>,
         remove: Set<String>,
         allMailbox: Boolean = false,
+        folder: String = mailbox,
     ): List<IndexRow> {
         if (allMailbox) {
             if (add.isEmpty() && remove.isEmpty()) return heldRows
@@ -1779,12 +1784,12 @@ class IndexModel(
         }
         try {
             // F44: snapshot UIDs, so new mail is not marked (e.g. \Seen) before it was ever shown.
-            val target = if (allMailbox) frozenAll() else uids
+            val target = if (allMailbox) frozenAll(folder = folder) else uids
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
             for (part in target.chunked(MoveChunk)) {
                 try {
-                    home.storeFlags(part, add, remove)
+                    home(folder).storeFlags(part, add, remove)
                     done.addAll(part)
                 } catch (error: CancellationException) {
                     throw error
@@ -1795,7 +1800,7 @@ class IndexModel(
             }
             val idSet = done.toSet()
             heldRows = heldRows.map { row ->
-                if (row.uid in idSet && inActedFolder(row)) row.copy(flags = (row.flags + add) - remove) else row
+                if (row.uid in idSet && inActedFolder(row, folder)) row.copy(flags = (row.flags + add) - remove) else row
             }
             notice = when {
                 failure != null && done.isNotEmpty() -> "Changed ${done.size} of ${target.size}, then: ${failure.text}"
@@ -1811,7 +1816,7 @@ class IndexModel(
     suspend fun expunge(): List<IndexRow> {
         if (!session.featureCaps.uidPlus) return heldRows
         try {
-            home.uidExpungeDeleted()
+            home().uidExpungeDeleted()
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
@@ -1823,7 +1828,7 @@ class IndexModel(
     suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
         if (uids.isEmpty()) return heldRows
         try {
-            home.uidExpunge(uids)
+            home().uidExpunge(uids)
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
@@ -1844,13 +1849,13 @@ class IndexModel(
                     notice = "Open the message to change flags on a hit from another folder"
                     return IndexCommand.None
                 }
-                else -> return inRowFolder(rowMailbox) { performSwipeHere(uid, binding) }
+                else -> return inRowFolder(rowMailbox) { acted -> performSwipeHere(uid, binding, acted) }
             }
         }
-        return performSwipeHere(uid, binding)
+        return performSwipeHere(uid, binding, mailbox)
     }
 
-    private suspend fun performSwipeHere(uid: Long, binding: SwipeBinding): IndexCommand {
+    private suspend fun performSwipeHere(uid: Long, binding: SwipeBinding, folder: String): IndexCommand {
         when (binding.action) {
             SwipeAction.Delete -> {
                 val settings = store.load()
@@ -1858,25 +1863,25 @@ class IndexModel(
                 val trash = session.knownTrash()
                 val policy = effectiveDeletePolicy(
                     settings.deletePolicy,
-                    trash.isNotEmpty() && sameMailbox(actFolder ?: mailbox, trash),
+                    trash.isNotEmpty() && sameMailbox(folder, trash),
                     session.featureCaps.uidPlus,
                     trash.isNotEmpty(),
                     trashNamedByUser = usableTrashName(settings.trashMailbox).isNotEmpty(),
                 )
                 when (policy) {
-                    DeletePolicy.MarkDeleted -> deleteMessages(listOf(uid))
-                    DeletePolicy.MoveToTrash -> moveMessages(listOf(uid), trash)
-                    DeletePolicy.DeletePermanently -> deletePermanently(listOf(uid))
+                    DeletePolicy.MarkDeleted -> deleteMessages(listOf(uid), folder = folder)
+                    DeletePolicy.MoveToTrash -> moveMessages(listOf(uid), trash, folder = folder)
+                    DeletePolicy.DeletePermanently -> deletePermanently(listOf(uid), folder = folder)
                 }
             }
-            SwipeAction.Move -> moveMessages(listOf(uid), binding.moveMailbox)
-            SwipeAction.Reply -> return IndexCommand.Compose(actionSeed(ComposeKind.Reply, listOf(uid)))
-            SwipeAction.ReplyAll -> return IndexCommand.Compose(actionSeed(ComposeKind.ReplyAll, listOf(uid)))
+            SwipeAction.Move -> moveMessages(listOf(uid), binding.moveMailbox, folder = folder)
+            SwipeAction.Reply -> return IndexCommand.Compose(actionSeed(ComposeKind.Reply, listOf(uid), folder))
+            SwipeAction.ReplyAll -> return IndexCommand.Compose(actionSeed(ComposeKind.ReplyAll, listOf(uid), folder))
             SwipeAction.SetFlag -> {
-                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), setOf(binding.flag), emptySet())
+                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), setOf(binding.flag), emptySet(), folder = folder)
             }
             SwipeAction.ClearFlag -> {
-                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), emptySet(), setOf(binding.flag))
+                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), emptySet(), setOf(binding.flag), folder = folder)
             }
             SwipeAction.FlagScreen -> return IndexCommand.ShowFlags(uid)
         }
@@ -1894,10 +1899,10 @@ class IndexModel(
         return null
     }
 
-    fun bounceSeed(uids: List<Long>): ComposeSeed = actionSeed(ComposeKind.Bounce, uids)
+    fun bounceSeed(uids: List<Long>): ComposeSeed = actionSeed(ComposeKind.Bounce, uids, mailbox)
 
-    fun actionSeed(kind: ComposeKind, uids: List<Long>): ComposeSeed =
-        ComposeSeed(kind, actFolder ?: mailbox, uids, listedEpoch(actFolder ?: mailbox))
+    fun actionSeed(kind: ComposeKind, uids: List<Long>, folder: String = mailbox): ComposeSeed =
+        ComposeSeed(kind, folder, uids, listedEpoch(folder))
 
     suspend fun watch(onChange: (MailboxChange) -> Unit) {
         session.watch(mailbox, onChange)
@@ -2004,7 +2009,7 @@ class IndexModel(
             if (target != null) rememberStart(target, loaded.size)
             return loaded
         }
-        var exists = home.selectedExists()
+        var exists = home().selectedExists()
         if (exists <= 0) {
             exists = session.folderInfo(FolderAt(mailbox, epochs[mailbox] ?: 0L)).exists
         }
@@ -2202,7 +2207,16 @@ class IndexModel(
 
     private fun newestDisplayIndex(count: Int): Int {
         if (count <= 0) return 0
-        if (order is WindowedOrder) return if (view.newestFirst) 0 else count - 1
+        val windowed = order as? WindowedOrder
+        if (windowed != null) {
+            // UID order (a windowed search, or arrival) and date order put the newest message at one end.
+            if (activeSearch != null || view.key == SortKey.Arrival || view.key == SortKey.Date) {
+                return if (view.newestFirst) 0 else count - 1
+            }
+            val found = windowed.maxUidIndex()
+            if (found != null) return found.coerceIn(0, (count - 1).coerceAtLeast(0))
+            return if (view.newestFirst) 0 else count - 1
+        }
         if (usesArrivalSequences()) return if (view.newestFirst) 0 else count - 1
         if (threading) {
             var best = 0
@@ -2236,7 +2250,7 @@ class IndexModel(
             SearchEdge.All
         }
         val matches = try {
-            home.searchStart(rule, false, edge)
+            home().searchStart(rule, false, edge)
         } catch (failure: MailFailure) {
             if (pendingNotice == null) pendingNotice = failure.text
             return null
@@ -2253,7 +2267,7 @@ class IndexModel(
     private suspend fun flagIndex(rule: StartRule, count: Int): Int? {
         if (usesArrivalSequences()) return arrivalSearchedIndex(rule, count)
         val matches = try {
-            home.searchStart(rule, true, SearchEdge.All)
+            home().searchStart(rule, true, SearchEdge.All)
         } catch (failure: MailFailure) {
             if (pendingNotice == null) pendingNotice = failure.text
             return null
@@ -2276,7 +2290,7 @@ class IndexModel(
     private suspend fun findKeptIndex(uid: Long, count: Int): Int? {
         if (usesArrivalSequences()) {
             val sequences = try {
-                home.locateUid(uid)
+                home().locateUid(uid)
             } catch (failure: MailFailure) {
                 if (pendingNotice == null) pendingNotice = failure.text
                 return null
@@ -2344,7 +2358,7 @@ class IndexModel(
             moveStop = false
             try {
                 restrict(
-                    home.clientOrder(key, newestFirst, { done, total ->
+                    home().clientOrder(key, newestFirst, { done, total ->
                         onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
                     }, { moveStop }),
                 )
@@ -2353,7 +2367,7 @@ class IndexModel(
             }
         } else {
             // With a filter on, the criteria go with SORT; restricting to the search result is only the fallback.
-            criteria?.let { home.sortMatching(key, newestFirst, it) } ?: restrict(home.sort(key, newestFirst))
+            criteria?.let { home().sortMatching(key, newestFirst, it) } ?: restrict(home().sort(key, newestFirst))
         }
         order = uids
         arrivalTotal = 0
@@ -2373,13 +2387,13 @@ class IndexModel(
         }
         val node = if (!serverThread && slowerClientThread(account)) {
             requireClientFallbackRoom()
-            home.clientThread(key)
+            home().clientThread(key)
         } else {
             null
         }
         val criteria = chainCriteria()
-        val matched = if (node == null && criteria != null) home.threadMatching(key, criteria) else null
-        val collapsed = collapsedThreads(node ?: matched ?: home.thread(key), newestFirst)
+        val matched = if (node == null && criteria != null) home().threadMatching(key, criteria) else null
+        val collapsed = collapsedThreads(node ?: matched ?: home().thread(key), newestFirst)
         // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
         val kept = if (matched != null) collapsed else restrictThreads(collapsed)
         threading = true
@@ -2397,7 +2411,7 @@ class IndexModel(
 
     private suspend fun requireClientFallbackRoom() {
         if (allowLargeClientFallback || mailbox in account.fallbackAskSkip) return
-        if (overAskThreshold(home.selectedExists(), account.askFallback)) {
+        if (overAskThreshold(home().selectedExists(), account.askFallback)) {
             throw MailFailure("folder is large")
         }
     }
@@ -2430,7 +2444,7 @@ class IndexModel(
         val found = if (advanced != null) {
             searchMaybeLong("Advanced", advanced)
         } else {
-            home.searchCriterion(activeSearchField.name, query)
+            home().searchCriterion(activeSearchField.name, query)
         }
         val uids = sortedUids(found, view.newestFirst)
         order = uids
@@ -2450,9 +2464,9 @@ class IndexModel(
     private suspend fun windowedSort(key: SortKey, newestFirst: Boolean, criteria: String? = null): WindowedOrder? {
         val size = IndexPageSize * 2
         suspend fun window(lo: Int, hi: Int): UidWindow? = if (criteria == null) {
-            home.sortWindow(key, newestFirst, lo, hi)
+            home().sortWindow(key, newestFirst, lo, hi)
         } else {
-            home.sortWindowMatching(key, newestFirst, lo, hi, criteria)
+            home().sortWindowMatching(key, newestFirst, lo, hi, criteria)
         }
         val first = window(1, size) ?: return null
         if (first.uids.isEmpty() && first.total > 0) return null
@@ -2489,7 +2503,7 @@ class IndexModel(
         presetHits?.let { return it }
         // David's connection limit: with no room for a search connection, search on the main one.
         if (longSearchLinks == null || !isLongSearch(kind, argument) || !connectionLimits(account).searchConnection) {
-            return home.searchCriterion(kind, argument)
+            return home().searchCriterion(kind, argument)
         }
         return runLongSearch(argument)
     }
@@ -2544,14 +2558,14 @@ class IndexModel(
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
         val size = IndexPageSize * 2
-        val first = home.searchWindow(kind, query, 1, size) ?: return null
+        val first = home().searchWindow(kind, query, 1, size) ?: return null
         if (first.uids.isEmpty() && first.total > 0) return null
         val total = first.total
         val complete = first.uids.size == total
         if (!complete && total <= size) return null
         val order = WindowedOrder(total, size) { lo, hi ->
             val (a, b) = searchWindowRange(lo, hi, total, newestFirst)
-            val hits = home.searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
+            val hits = home().searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
             if (newestFirst) hits.reversed() else hits
         }
         val display = if (complete || !newestFirst) {
@@ -2559,7 +2573,7 @@ class IndexModel(
             if (newestFirst) sorted.asReversed() else sorted
         } else {
             val (a, b) = searchWindowRange(1, size, total, true)
-            home.searchWindow(kind, query, a, b)?.uids?.sorted()?.asReversed()
+            home().searchWindow(kind, query, a, b)?.uids?.sorted()?.asReversed()
                 ?: throw MailFailure("search failed")
         }
         if (display.isEmpty()) {
@@ -2715,7 +2729,7 @@ class IndexModel(
     }
 
     private suspend fun rememberExists() {
-        val exists = home.selectedExists()
+        val exists = home().selectedExists()
         if (exists > 0) knownExists = exists
     }
 
