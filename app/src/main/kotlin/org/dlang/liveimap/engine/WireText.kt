@@ -45,5 +45,13 @@ fun requireSearchArgument(kind: String, argument: String): String {
     return argument
 }
 
-/** SORT/THREAD criteria: raw IMAP search keys; a CR or LF would end the command (F42). */
-fun requireCriteria(criteria: String): String = requireWireText(criteria)
+/** SORT/THREAD criteria. An advanced query keeps its newlines; each step is checked. Raw IMAP text still refuses CR, LF, and NUL. */
+fun requireCriteria(criteria: String): String {
+    val parsed = parseAdvancedQuery(criteria)
+    if (parsed == null) return requireWireText(criteria)
+    parsed.steps.forEach { step ->
+        if (step.argument.contains('\r') || step.argument.contains('\u0000')) throw MailFailure("text with a line break cannot be sent to the server")
+        if (step.kind in keywordKinds && !flagAtomOk(step.argument)) throw MailFailure("not a valid IMAP keyword")
+    }
+    return criteria
+}

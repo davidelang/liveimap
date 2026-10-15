@@ -549,6 +549,10 @@ std::string asciiSafe(const char * text, const char * fallback) {
                 cp = 0xFFFDu;
             }
             p += n;
+            if (cp == '\n' || cp == '\r' || cp == '\t') {
+                appendModifiedUtf8(out, ' ');
+                continue;
+            }
             if (cp < 0x20 || cp == 0x7F) {
                 continue;
             }
@@ -3927,12 +3931,9 @@ void compressSession(LiveSession * session) {
         mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
         return;
     }
-    if (r == MAILIMAP_ERROR_EXTENSION) {
-        return;
-    }
-    if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE || r == MAILIMAP_ERROR_FATAL) {
-        shutdownMainSocket(session);
-    }
+    // Stay up, compression off, only when a tagged refusal left the stream in step.
+    if (r == MAILIMAP_ERROR_EXTENSION && mailimap_is_desynchronized(session->imap) == 0) return;
+    shutdownMainSocket(session);
 }
 
 int sendWord(mailstream * fd, const char * word, bool leadSpace) {
@@ -5419,9 +5420,9 @@ static struct mailimap_search_key * uidSetKey(const char * text) {
 }
 
 // "Group" argument: a nested query (IndexModel.groupArgument): "And"/"Or", then steps "Yes|Not US kind US argument",
-// separated by RS. One Group step at the filter-chain top; a group inside a group is refused. Throws "bad search" when malformed.
-static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep,
-    int * topGroupCount = nullptr) {
+// separated by RS. Sibling groups are allowed. A Group step whose enclosing depth is greater than 0 is refused.
+// Throws "bad search" when malformed.
+static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep) {
     if (text == nullptr || depth > 8) { throwFailure(env, "bad search"); return nullptr; }
     std::vector<std::string> lines;
     std::string cur;
@@ -5441,12 +5442,10 @@ static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text,
             return nullptr;
         }
         std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
-        if (kind == "Group") {
-            if (depth > 0 || (topGroupCount != nullptr && ++*topGroupCount > 1)) {
-                if (folded != nullptr) mailimap_search_key_free(folded);
-                throwFailure(env, "bad search");
-                return nullptr;
-            }
+        if (kind == "Group" && depth > 0) {
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            throwFailure(env, "bad search");
+            return nullptr;
         }
         struct mailimap_search_key * step = kind == "Group" ? groupKeySep(env, arg.c_str(), depth + 1, 0x1e, 0x1f)
                                                             : criterionKey(env, kind.c_str(), arg.c_str());
@@ -5489,8 +5488,7 @@ struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const
         if (key == nullptr) throwFailure(env, "bad search");
         return key;
     }
-    // This kind is the one allowed group. Its body is already inside that group, so a Group step
-    // here is refused instead of folded into the search. chainKey does the same with depth + 1.
+    // A Group argument is parsed at depth 1, so a Group step inside it is the depth check above.
     if (sameKind(kind, "Group")) return groupKey(env, argument, 1);
     if (sameKind(kind, "All")) return mailimap_search_key_new_all();
     if (sameKind(kind, "New")) return searchKeyType(MAILIMAP_SEARCH_KEY_NEW);
@@ -7904,33 +7902,18 @@ struct mailimap_search_key * advancedKey(JNIEnv * env, const char * combiner, jb
     }
     const bool foldAnd = sameKind(combiner, "And");
     struct mailimap_search_key * folded = nullptr;
-    // chainKey counts Group steps at the top and refuses a second sibling before SORT or THREAD.
-    // One Group is allowed. A Group inside that Group stays refused in criterionKey (depth 1).
-    int topGroups = 0;
+    // Two Group steps in one advanced query both parse. A group inside a group is refused in groupKeySep.
     for (jsize i = 0; i < n; ++i) {
         jstring kindJs = static_cast<jstring>(env->GetObjectArrayElement(kinds, i));
         jstring argJs = static_cast<jstring>(env->GetObjectArrayElement(arguments, i));
         struct mailimap_search_key * step = nullptr;
-        bool secondGroup = false;
         {
             JChars kindChars(env, kindJs);
             JChars argChars(env, argJs);
-            if (!kindChars.s || !argChars.s) {
-                step = nullptr;
-            } else if (sameKind(kindChars.c(), "Group") && ++topGroups > 1) {
-                secondGroup = true;
-            } else {
-                step = criterionKey(env, kindChars.c(), argChars.c());
-            }
+            if (kindChars.s && argChars.s) step = criterionKey(env, kindChars.c(), argChars.c());
         }
         if (kindJs != nullptr) env->DeleteLocalRef(kindJs);
         if (argJs != nullptr) env->DeleteLocalRef(argJs);
-        if (secondGroup) {
-            if (folded != nullptr) mailimap_search_key_free(folded);
-            env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
-            throwFailure(env, "bad search");
-            return nullptr;
-        }
         if (env->ExceptionCheck() || step == nullptr) {
             if (step != nullptr) mailimap_search_key_free(step);
             if (folded != nullptr) mailimap_search_key_free(folded);
@@ -8511,9 +8494,8 @@ struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf
     for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text.c()); p != nullptr && *p != 0; ++p) {
         if (*p >= 0x80) { *utf8 = true; break; }
     }
-    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t. One group at the top.
-    int topGroups = 0;
-    struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t', &topGroups);
+    // filterChainGroup text: \\n between steps, \\t between fields, parsed at depth 0. Two top-level Group steps both parse.
+    struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t');
     if (key == nullptr || env->ExceptionCheck()) {
         if (key != nullptr) mailimap_search_key_free(key);
         *bad = true;

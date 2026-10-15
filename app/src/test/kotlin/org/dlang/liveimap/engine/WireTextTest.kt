@@ -78,6 +78,34 @@ class WireTextPathsTest {
         assertEquals(ok, requireSearchArgument("Advanced", ok))
     }
 
+    @Test fun filterChainGroupKeepsNewlinesAndRawBreaksThrow() {
+        val fromOr = org.dlang.liveimap.ui.index.encodeAdvancedQuery(
+            org.dlang.liveimap.ui.index.AdvancedCombiner.Or,
+            listOf(
+                org.dlang.liveimap.ui.index.AdvancedStep(false, "From", "a"),
+                org.dlang.liveimap.ui.index.AdvancedStep(false, "From", "b"),
+            ),
+        )!!
+        val subjectOr = org.dlang.liveimap.ui.index.encodeAdvancedQuery(
+            org.dlang.liveimap.ui.index.AdvancedCombiner.Or,
+            listOf(
+                org.dlang.liveimap.ui.index.AdvancedStep(false, "Subject", "c"),
+                org.dlang.liveimap.ui.index.AdvancedStep(false, "Subject", "d"),
+            ),
+        )!!
+        val chain = org.dlang.liveimap.ui.index.filterChainGroup(
+            listOf(
+                org.dlang.liveimap.ui.index.AppliedFilter("A", fromOr, "Advanced"),
+                org.dlang.liveimap.ui.index.AppliedFilter("B", subjectOr, "Advanced"),
+            ),
+        )!!
+        assertEquals(chain, requireCriteria(chain))
+        assertTrue(chain.contains("\n"))
+        assertEquals(2, chain.split("\tGroup\t").size - 1)
+        assertTrue(runCatching { requireCriteria("SUBJECT \"a\nb\"") }.isFailure)
+        assertTrue(runCatching { requireCriteria("And\nYes\tSubject\ta\rX") }.isFailure)
+    }
+
     @Test fun listPostCrLfNeverReachesRcpt() {
         val m = parsed("List-Post: <mailto:list@x.example%0D%0ARCPT%20TO:%3Cspy@evil%3E>")
         // F59: rejected outright now (null), so nothing reaches RCPT TO

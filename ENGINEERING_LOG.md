@@ -3000,3 +3000,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - Pin the agent channel at the host master tip
 
 - agent-coordination-tickets pin e9e8d6cac3f1d75d4df626464ce3e150c1daeff3 (host master).
+
+## 2026-10-15 - Sibling groups sort, SMTP breaks stay spaced, and a bad COMPRESS drops.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-edges-20261015-0202-plan.md. CR, LF, and tab in server text become one space each. Two sibling groups parse; a group inside a group is refused. COMPRESS stays up only on success or a tagged refusal that left the stream in step.
