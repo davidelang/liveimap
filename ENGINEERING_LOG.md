@@ -2996,3 +2996,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
 - Fixup: a second top-level Group on search is bad search and is not sent. GetStringRegion failure wipes the owned copy and does not come back as an empty string.
+
+## 2026-10-15 - Pin the agent channel at the host master tip
+
+- agent-coordination-tickets pin e9e8d6cac3f1d75d4df626464ce3e150c1daeff3 (host master).
