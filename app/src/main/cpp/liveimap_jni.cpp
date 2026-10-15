@@ -4098,13 +4098,21 @@ constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jel
 
 // F99: set when a '*' was read. '*' is not rewritten to uidnext-1 and is not expanded into the list.
 thread_local bool tlsSeqSawStar = false;
+// A non-mailbox set contained '*'. Refuse the command after the tagged completion is read.
+thread_local bool tlsStarCommandRefused = false;
+// A MAILBOX hit was dropped because its set contained '*'.
+thread_local bool tlsStarDroppedHit = false;
 
-int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx, uint32_t * out) {
+int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
+    uint32_t * out, bool * star) {
+    if (star != nullptr) *star = false;
     if (peekChar(buffer, *indx) == '*') {
         *indx += 1;
         tlsSeqSawStar = true;
-        // The largest UID in use is not uidnext-1. A set that needs that number is refused.
-        return MAILIMAP_ERROR_PARSE;
+        if (star != nullptr) *star = true;
+        *out = 0;
+        // The largest UID in use is not uidnext-1. The set is refused after the line is consumed.
+        return MAILIMAP_NO_ERROR;
     }
     return mailimap_nz_number_parse(fd, buffer, ctx, indx, out);
 }
@@ -4113,29 +4121,33 @@ int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_con
     uint64_t total = static_cast<uint64_t>(clist_count(list));
     for (;;) {
         uint32_t first = 0;
-        int r = parseSeqNumber(fd, buffer, ctx, indx, &first);
+        bool firstStar = false;
+        int r = parseSeqNumber(fd, buffer, ctx, indx, &first, &firstStar);
         if (r != MAILIMAP_NO_ERROR) return r;
         uint32_t last = first;
+        bool lastStar = firstStar;
         if (peekChar(buffer, *indx) == ':') {
             *indx += 1;
-            r = parseSeqNumber(fd, buffer, ctx, indx, &last);
+            r = parseSeqNumber(fd, buffer, ctx, indx, &last, &lastStar);
             if (r != MAILIMAP_NO_ERROR) return r;
         }
-        if (first > last) {
-            uint32_t tmp = first;
-            first = last;
-            last = tmp;
-        }
-        // F49: never squeeze a wide range to its endpoints (select-all would then act on two messages). Every
-        // range is expanded; past kMaxSeqSetUids in total the answer fails clearly instead of being lossy.
-        total += static_cast<uint64_t>(last) - first + 1;
-        if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
-        {
-            uint32_t n = first;
-            for (;;) {
-                if (!appendUid(list, n)) return MAILIMAP_ERROR_MEMORY;
-                if (n == last) break;
-                ++n;
+        if (!firstStar && !lastStar) {
+            if (first > last) {
+                uint32_t tmp = first;
+                first = last;
+                last = tmp;
+            }
+            // F49: never squeeze a wide range to its endpoints (select-all would then act on two messages). Every
+            // range is expanded; past kMaxSeqSetUids in total the answer fails clearly instead of being lossy.
+            total += static_cast<uint64_t>(last) - first + 1;
+            if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
+            {
+                uint32_t n = first;
+                for (;;) {
+                    if (!appendUid(list, n)) return MAILIMAP_ERROR_MEMORY;
+                    if (n == last) break;
+                    ++n;
+                }
             }
         }
         if (peekChar(buffer, *indx) != ',') break;
@@ -4426,6 +4438,22 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         // than guess (the stream stays in step, the rest of the search still answers).
         freeUidList(uids);
         imapStrFree(mailbox);
+        tlsStarDroppedHit = true;
+        struct mailimap_extension_data * ignored =
+            mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, nullptr);
+        if (ignored == nullptr) return MAILIMAP_ERROR_MEMORY;
+        ignored->ext_type = -1;
+        *result = ignored;
+        *indx = cur;
+        return MAILIMAP_NO_ERROR;
+    }
+    if (!sawMailbox && tlsSeqSawStar) {
+        // The set cannot be resolved to a UID that is in use. Accept the line so the tagged completion is
+        // read, then refuse the command. Do not rewrite '*' to uidnext-1, n:*, or 1..n.
+        freeUidList(uids);
+        imapStrFree(mailbox);
+        if (tlsLive != nullptr && tlsImap != nullptr && tlsLive->imap == tlsImap) tlsLive->esearchCount = -1;
+        tlsStarCommandRefused = true;
         struct mailimap_extension_data * ignored =
             mailimap_extension_data_new(&liveimap_extra_extension, LIVE_ESEARCH, nullptr);
         if (ignored == nullptr) return MAILIMAP_ERROR_MEMORY;
@@ -4791,14 +4819,48 @@ clist * takeSort(mailimap * imap) {
     return uids;
 }
 
+bool starLeftAResult(mailimap * imap) {
+    if (imap == nullptr || imap->imap_response_info == nullptr || imap->imap_response_info->rsp_extension_list == nullptr) {
+        return false;
+    }
+    for (clistiter * cur = clist_begin(imap->imap_response_info->rsp_extension_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * ext = static_cast<struct mailimap_extension_data *>(clist_content(cur));
+        if (ext == nullptr || ext->ext_data == nullptr || ext->ext_extension == nullptr) continue;
+        if (ext->ext_extension == &liveimap_extra_extension
+            && (ext->ext_type == LIVE_SCOPE || ext->ext_type == LIVE_ESEARCH)) {
+            return true;
+        }
+        if (ext->ext_extension == &mailimap_extension_esearch) return true;
+    }
+    return false;
+}
+
 int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     int r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
     if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
     if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    tlsStarCommandRefused = false;
+    tlsStarDroppedHit = false;
     tlsImap = imap;
     r = mailimap_parse_response(imap, response);
     tlsImap = nullptr;
+    // A dropped mailbox hit still leaves the other hits. Refuse only when nothing usable remains, or when
+    // the set itself was not mailbox-scoped. The tagged line is already consumed; PARSE would drop the connection.
+    bool refuseStar = tlsStarCommandRefused || (tlsStarDroppedHit && !starLeftAResult(imap));
+    tlsStarCommandRefused = false;
+    tlsStarDroppedHit = false;
+    if (r == MAILIMAP_NO_ERROR && refuseStar) {
+        // The tagged line is already consumed. PARSE would drop the connection and hide the refusal.
+        freeExtensionList(imap);
+        if (response != nullptr && *response != nullptr) {
+            mailimap_response_free(*response);
+            *response = nullptr;
+        }
+        if (imap != nullptr) imap->imap_response = nullptr;
+        if (tlsLive != nullptr && tlsLive->imap == imap) tlsLive->esearchCount = -1;
+        return MAILIMAP_ERROR_SEARCH;
+    }
     return r;
 }
 

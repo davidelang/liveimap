@@ -2947,3 +2947,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
 - Fixup: serial status and preview bursts call mailimap_status and mailimap_uid_fetch. findPreferred keeps preferred HTML in a later message/rfc822 when the top level has no text part
 - No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: an ESEARCH set containing '*' is consumed and refused, not expanded, so the tagged completion is read and the session stays in step. A user set such as 5:* is still sent when the mailbox has a message
+- No new mutex. No install
