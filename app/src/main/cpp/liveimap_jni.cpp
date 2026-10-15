@@ -4100,7 +4100,7 @@ constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jel
 thread_local bool tlsSeqSawStar = false;
 // A non-mailbox set contained '*'. Refuse the command after the tagged completion is read.
 thread_local bool tlsStarCommandRefused = false;
-// A MAILBOX hit was dropped because its set contained '*'.
+// A MAILBOX hit was dropped because its set contained '*'. Refuse after the tagged completion is read.
 thread_local bool tlsStarDroppedHit = false;
 
 int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
@@ -4434,8 +4434,9 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         tlsLive->esearchCount = countValue;
     }
     if (sawMailbox && tlsSeqSawStar) {
-        // F99: a MAILBOX-correlated result using '*' cannot be resolved here; drop that mailbox's hit rather
-        // than guess (the stream stays in step, the rest of the search still answers).
+        // A mailbox set containing '*' cannot be resolved to a UID that is in use. Accept the line so the
+        // tagged completion is read, then refuse the command even if another mailbox hit is present.
+        // Do not rewrite '*' to uidnext-1.
         freeUidList(uids);
         imapStrFree(mailbox);
         tlsStarDroppedHit = true;
@@ -4819,22 +4820,6 @@ clist * takeSort(mailimap * imap) {
     return uids;
 }
 
-bool starLeftAResult(mailimap * imap) {
-    if (imap == nullptr || imap->imap_response_info == nullptr || imap->imap_response_info->rsp_extension_list == nullptr) {
-        return false;
-    }
-    for (clistiter * cur = clist_begin(imap->imap_response_info->rsp_extension_list); cur != nullptr; cur = clist_next(cur)) {
-        auto * ext = static_cast<struct mailimap_extension_data *>(clist_content(cur));
-        if (ext == nullptr || ext->ext_data == nullptr || ext->ext_extension == nullptr) continue;
-        if (ext->ext_extension == &liveimap_extra_extension
-            && (ext->ext_type == LIVE_SCOPE || ext->ext_type == LIVE_ESEARCH)) {
-            return true;
-        }
-        if (ext->ext_extension == &mailimap_extension_esearch) return true;
-    }
-    return false;
-}
-
 int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     int r = mailimap_crlf_send(imap->imap_stream);
     if (r != MAILIMAP_NO_ERROR) return r;
@@ -4845,9 +4830,10 @@ int finishParsed(mailimap * imap, struct mailimap_response ** response) {
     tlsImap = imap;
     r = mailimap_parse_response(imap, response);
     tlsImap = nullptr;
-    // A dropped mailbox hit still leaves the other hits. Refuse only when nothing usable remains, or when
-    // the set itself was not mailbox-scoped. The tagged line is already consumed; PARSE would drop the connection.
-    bool refuseStar = tlsStarCommandRefused || (tlsStarDroppedHit && !starLeftAResult(imap));
+    // A set containing '*' that cannot be resolved is refused, including when another mailbox hit is
+    // present. libetpan may have kept that mailbox's UIDs and dropped its name; that object is not a
+    // result to return. The tagged line is already consumed; PARSE would drop the connection.
+    bool refuseStar = tlsStarCommandRefused || tlsStarDroppedHit;
     tlsStarCommandRefused = false;
     tlsStarDroppedHit = false;
     if (r == MAILIMAP_NO_ERROR && refuseStar) {
