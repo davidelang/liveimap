@@ -1,6 +1,8 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 import java.util.Base64
 import javax.net.ssl.HttpsURLConnection
@@ -20,13 +22,14 @@ fun jmapCall(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): JmapHttpResult {
     if (apiUrl.isBlank()) throw JmapFailure("jmap api url is empty")
     if (!jmapUrlAllowed(apiUrl)) throw JmapFailure("jmap api url is not https")
     val host = apiHost(apiUrl)
     val exchange = jmapNet { post(apiUrl, body, authorization) }
     try {
-        val verdict = jmapVerdict(apiUrl) { jmapNet { trust(host, exchange.peerDer(), pin) } }
+        val verdict = applyTlsPolicy(jmapVerdict(apiUrl) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val status = jmapNet { exchange.status }
         if (status in apiRedirectStatuses) throw JmapFailure("jmap api redirect")
@@ -44,12 +47,13 @@ fun jmapMailboxLevel(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): List<JmapMailbox> {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapMailboxLevelRequest(accountId, parentId)
     val authorization = jmapBasicAuthorization(username, password)
-    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     return parseJmapMailboxes(result.body)
 }
@@ -62,20 +66,21 @@ fun jmapMailboxChildren(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): Set<String> {
     if (mailboxIds.isEmpty()) throw JmapFailure("jmap mailbox ids are empty")
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapMailboxChildProbe(accountId, mailboxIds)
     val authorization = jmapBasicAuthorization(username, password)
-    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     return jmapMailboxParentIds(parentListText(result.body))
 }
 
-fun platformJmapPost(url: String, body: String, authorization: String, pin: String): JmapHttpExchange {
+fun platformJmapPost(url: String, body: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -119,9 +124,10 @@ fun platformJmapUpload(
     contentType: String,
     authorization: String,
     pin: String,
+    policy: TlsPolicy = TlsPolicy(),
 ): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000

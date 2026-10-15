@@ -83,6 +83,7 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.alpineBooks
@@ -835,7 +836,7 @@ private fun ComposeLoaded(
                 }
                 var leftOver: String? = null
                 try {
-                    val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
+                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
                         copy.bytes,
@@ -844,13 +845,14 @@ private fun ComposeLoaded(
                         account.username,
                         password,
                         account.jmapCertPin,
-                        pinnedJmapUpload(account.jmapCertPin),
-                        pinnedJmapPost(account.jmapCertPin),
+                        pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
+                        pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
                         // F150: the copy's own Sent choice (blank after "send without copy" or a no-Fcc bounce).
                         sentName = copy.mailbox,
                         saveCopy = copy.mailbox.isNotEmpty(),
                         draftsName = account.postponedMailbox,
                         onNotice = { leftOver = it },
+                        policy = account.tlsPolicy(),
                     ) }
                 } catch (error: CancellationException) {
                     throw error
@@ -1205,7 +1207,7 @@ private fun ComposeLoaded(
                         val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, built.rfc822, via = via)
                         var leftOver: String? = null
                         try {
-                            val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
+                            val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
                                 built.rfc822,
@@ -1214,12 +1216,13 @@ private fun ComposeLoaded(
                                 account.username,
                                 password,
                                 account.jmapCertPin,
-                                pinnedJmapUpload(account.jmapCertPin),
-                                pinnedJmapPost(account.jmapCertPin),
+                                pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
+                                pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
                                 sentName = account.sentMailbox,
                                 draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
                                 onNotice = { leftOver = it },
+                                policy = account.tlsPolicy(),
                             ) }
                         } catch (error: CancellationException) {
                             throw error
@@ -1593,7 +1596,7 @@ private fun ComposeLoaded(
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 val bouncing = DeviceCopy(id, false, savedMailbox, listOf(recipient), bounced)
                                 try {
-                                    val offer = offerForAccount(account, ::platformJmapExchange, authorization = jmapBasicAuthorization(account.username, password))
+                                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password))
                                     keepCopyUntilSubmitted(
                                         bouncing,
                                         { writeCopy(appContext, it, accountId) },
@@ -1606,13 +1609,14 @@ private fun ComposeLoaded(
                                         account.username,
                                         password,
                                         account.jmapCertPin,
-                                        pinnedJmapUpload(account.jmapCertPin),
-                                        pinnedJmapPost(account.jmapCertPin),
+                                        pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
+                                        pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
                                         // F149: Fcc on bounce off means no Sent copy (staged in Drafts instead).
                                         sentName = savedMailbox,
                                         saveCopy = savedMailbox.isNotEmpty(),
                                         draftsName = account.postponedMailbox,
                                         onNotice = { notice = it },
+                                        policy = account.tlsPolicy(),
                                     ) }
                                     storeAcceptedFlags(listOf(uid))
                                     continue

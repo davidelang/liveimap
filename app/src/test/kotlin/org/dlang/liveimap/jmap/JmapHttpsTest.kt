@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -45,8 +46,8 @@ class JmapHttpsTest {
     fun acceptInvalidReadsBodyOnNameMismatch() {
         val url = "https://example.com/.well-known/jmap"
         val script = Script(listOf(Step(url, 200, body = "secret")))
-        val client = JmapHttpsFetch("pin", script::open) { _, _, _ -> "name mismatch" }
-        val result = withJmapDiscoveryTls("pin", true) { client.get(url) }
+        val client = JmapHttpsFetch("pin", script::open, TlsPolicy(acceptInvalidCert = true)) { _, _, _ -> "name mismatch" }
+        val result = client.get(url)
         assertEquals("secret", result.body)
         assertEquals(listOf(url), script.reads)
     }
@@ -57,7 +58,7 @@ class JmapHttpsTest {
         val script = Script(listOf(Step(url, 200, body = "secret")))
         val client = JmapHttpsFetch("pin", script::open) { _, _, _ -> "name mismatch" }
         try {
-            withJmapDiscoveryTls("pin", false) { client.get(url) }
+            client.get(url)
             throw AssertionError("expected JmapFailure")
         } catch (failure: JmapFailure) {
             assertEquals("name mismatch", failure.text)
@@ -265,7 +266,7 @@ class JmapHttpsTest {
     }
 
     private fun fetch(script: Script, pin: String = "pin"): JmapHttpsFetch =
-        JmapHttpsFetch(pin, script::open, script::trust)
+        JmapHttpsFetch(pin, script::open, trust = script::trust)
 }
 
 private data class SeenTrust(

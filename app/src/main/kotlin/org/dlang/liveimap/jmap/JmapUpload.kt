@@ -1,6 +1,8 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 
 fun jmapUploadUrl(uploadUrl: String, accountId: String): String {
@@ -30,6 +32,7 @@ fun jmapUpload(
     pin: String,
     post: (String, ByteArray, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
@@ -41,7 +44,7 @@ fun jmapUpload(
     val exchange = jmapNet { post(url, bytes, "message/rfc822", authorization) }
     try {
         val host = uploadHost(url)
-        val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }
+        val verdict = applyTlsPolicy(jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val code = jmapNet { exchange.status }
         if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")

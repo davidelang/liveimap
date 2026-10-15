@@ -7,6 +7,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
@@ -25,6 +27,7 @@ import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.settings.tlsPolicy
 
 /**
  * A JMAP account (RFC 8620/8621) behind [MailSession] (roadmap jmap.md). LiveIMAP's own client over the platform
@@ -42,13 +45,13 @@ class JmapMailSession(
     /** account, authorization (sent only if the session resource needs it) */
     private val discover: (AccountSettings, String) -> JmapOffer,
     private val passwordOf: suspend (AccountSettings) -> String,
-    private val postFor: (pin: String) -> (String, String, String) -> JmapHttpExchange = ::pinnedJmapPost,
+    private val postFor: (pin: String, policy: TlsPolicy) -> (String, String, String) -> JmapHttpExchange = ::pinnedJmapPost,
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     private val epochClock: () -> Long = { System.currentTimeMillis() / 1000 },
-    private val getFor: (pin: String) -> (String, String) -> JmapBlobExchange = ::pinnedJmapGet,
-    private val uploadFor: (pin: String) -> (String, ByteArray, String, String) -> JmapHttpExchange = ::pinnedJmapUpload,
-    private val streamFor: (pin: String) -> (String, String) -> JmapHttpExchange =
-        { p -> { url, auth -> platformJmapEventSource(url, auth, p) } },
+    private val getFor: (pin: String, policy: TlsPolicy) -> (String, String) -> JmapBlobExchange = ::pinnedJmapGet,
+    private val uploadFor: (pin: String, policy: TlsPolicy) -> (String, ByteArray, String, String) -> JmapHttpExchange = ::pinnedJmapUpload,
+    private val streamFor: (pin: String, policy: TlsPolicy) -> (String, String) -> JmapHttpExchange =
+        { p, policy -> { url, auth -> platformJmapEventSource(url, auth, p, policy) } },
     /** Stores a confirmed JMAP pin on the account (field-level update, F75). */
     private val savePin: suspend (String) -> Unit = {},
     private val describe: (List<ByteArray>) -> Array<String>? = PeerTrust::offer,
@@ -152,7 +155,8 @@ class JmapMailSession(
     private suspend fun levelLocked(parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> {
             val s = need()
             val parentId = if (parentMailbox == null) null else idOfLocked(parentMailbox)
-            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, postFor(pin), trust) }
+            val policy = accountPolicy()
+            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, postFor(pin, policy), trust, policy) }
             return rows.map { row ->
                 val path = if (parentMailbox == null) row.name else parentMailbox + DELIMITER + row.name
                 ids[path] = row.id
@@ -332,7 +336,8 @@ class JmapMailSession(
         val mailboxId = idOfLocked(mailbox)
         val keywords = flags.map { keywordOf(it) }.distinct().joinToString(",", "{", "}") { q(it) + ":true" }
         val s = need()
-        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, uploadFor(pin), trust) }
+        val policy = accountPolicy()
+        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, uploadFor(pin, policy), trust, policy) }
         val body = """{"using":$USING,"methodCalls":[["Email/import",{"accountId":${q(accountId())},"emails":{"k1":{"blobId":${q(blob)},"mailboxIds":{${q(mailboxId)}:true},"keywords":$keywords}}},"0"]]}"""
         val created = call(body) { root -> importedId(root) }
         uids.getOrPut(mailboxId) { Uids() }.uid(created)
@@ -346,7 +351,8 @@ class JmapMailSession(
         if (!a.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
         val s = need()
-        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin), postFor(pin), trust, a.sentMailbox, draftsName = a.postponedMailbox) }
+        val policy = accountPolicy()
+        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin, policy), postFor(pin, policy), trust, a.sentMailbox, draftsName = a.postponedMailbox, policy = policy) }
         -1
     }
 
@@ -500,8 +506,9 @@ class JmapMailSession(
 
     private fun readStream(run: WatchRun, url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
         if (run.stopped) return emptyList()
+        val policy = accountPolicy()
         val exchange = try {
-            streamFor(streamPin)(url, auth)
+            streamFor(streamPin, policy)(url, auth)
         } catch (e: java.io.IOException) {
             throw JmapFailure(e.message ?: "jmap push failed")
         }
@@ -513,7 +520,7 @@ class JmapMailSession(
             return emptyList()
         }
         try {
-            val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }
+            val verdict = applyTlsPolicy(jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), streamPin) } }, policy)
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
@@ -581,6 +588,7 @@ class JmapMailSession(
     private fun need(): JmapSession = session ?: throw MailFailure("not connected")
     private fun accountId(): String = need().primaryMailAccountId ?: throw MailFailure("jmap account id is empty")
     private fun accountName(): String = account?.username ?: throw MailFailure("not connected")
+    private fun accountPolicy(): TlsPolicy = account?.tlsPolicy() ?: TlsPolicy()
 
     private fun idOfLocked(path: String): String =
         ids[path] ?: if (path.equals("INBOX", ignoreCase = true)) {
@@ -595,8 +603,10 @@ class JmapMailSession(
         return table.byUid[uid] ?: throw MailFailure("unknown message in $path")
     }
 
-    private suspend fun download(blobId: String, type: String): ByteArray =
-        jmap { jmapDownload(need(), blobId, type, authorization, pin, getFor(pin), trust) }
+    private suspend fun download(blobId: String, type: String): ByteArray {
+        val policy = accountPolicy()
+        return jmap { jmapDownload(need(), blobId, type, authorization, pin, getFor(pin, policy), trust, policy) }
+    }
 
     private fun selectedTable(): Pair<String, Uids> {
         val path = selectedPath ?: throw MailFailure("no folder selected")
@@ -620,7 +630,8 @@ class JmapMailSession(
 
     private suspend fun <T> call(body: String, parse: (Json.Obj) -> T): T {
         val s = need()
-        val result = jmap { jmapCall(s.apiUrl, body, authorization, pin, postFor(pin), trust) }
+        val policy = accountPolicy()
+        val result = jmap { jmapCall(s.apiUrl, body, authorization, pin, postFor(pin, policy), trust, policy) }
         if (result.status != 200) throw MailFailure("jmap api status ${result.status}")
         val root = try {
             JsonParser(result.body).parseDocument()
@@ -896,7 +907,7 @@ class JmapMailSession(
 
 /** The app's JMAP session: platform discovery and HTTPS, the account's password from its own store. */
 fun platformJmapMailSession(): JmapMailSession = JmapMailSession(
-    discover = { account, auth -> offerForAccount(account, ::platformJmapExchange, authorization = auth) },
+    discover = { account, auth -> offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = auth) },
     passwordOf = { _ ->
         val context = org.dlang.liveimap.engine.currentApplication() ?: throw JmapFailure("keystore unavailable")
         val owner = kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId

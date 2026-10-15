@@ -50,6 +50,7 @@ fun jmapUrlHost(url: String): String? =
 class JmapHttpsFetch(
     private val pin: String,
     private val open: (String) -> JmapHttpExchange,
+    private val policy: TlsPolicy = TlsPolicy(),
     private val trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
 ) : JmapFetch {
     override fun get(url: String): JmapHttpResult {
@@ -58,13 +59,12 @@ class JmapHttpsFetch(
         var followed = 0
         while (true) {
             val host = jmapTrustHost(current)
-            val acceptInvalidCert = jmapDiscoveryAcceptInvalid.get() == true
-            val exchange = jmapNet { withJmapDiscoveryTls(pin, acceptInvalidCert) { open(current) } }
+            val exchange = jmapNet { open(current) }
             try {
                 val ders = jmapNet { exchange.peerDer() }
                 val verdict = applyTlsPolicy(
                     jmapVerdict(current) { jmapNet { trust(host, ders, pin) } },
-                    TlsPolicy(acceptInvalidCert = acceptInvalidCert),
+                    policy,
                 )
                 if (verdict.isNotEmpty()) {
                     // Discovery is unauthenticated, so a pinnable failure can be offered (nothing was sent).
@@ -89,36 +89,19 @@ class JmapHttpsFetch(
     }
 }
 
-private val jmapDiscoveryPin = ThreadLocal<String>()
-private val jmapDiscoveryAcceptInvalid = ThreadLocal<Boolean>()
-
-/** The account pin and acceptInvalidCert for the discovery handshake. Restored when [block] returns. */
-internal fun <T> withJmapDiscoveryTls(pin: String, acceptInvalidCert: Boolean, block: () -> T): T {
-    val previousPin = jmapDiscoveryPin.get()
-    val previousAccept = jmapDiscoveryAcceptInvalid.get()
-    jmapDiscoveryPin.set(pin)
-    jmapDiscoveryAcceptInvalid.set(acceptInvalidCert)
-    try {
-        return block()
-    } finally {
-        if (previousPin == null) jmapDiscoveryPin.remove() else jmapDiscoveryPin.set(previousPin)
-        if (previousAccept == null) jmapDiscoveryAcceptInvalid.remove() else jmapDiscoveryAcceptInvalid.set(previousAccept)
-    }
-}
-
-fun platformJmapExchange(url: String): JmapHttpExchange {
-    val pin = jmapDiscoveryPin.get().orEmpty()
+/** Discovery exchange. [deferPinnable] is on: a certificate the system CAs reject can still be offered for pinning. */
+fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String) -> JmapHttpExchange = { url ->
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        // The account pin, when discovery installed one. No Authorization on this call: a certificate the system
-        // CAs reject is left for the post-exchange check, which can offer the pin.
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, deferPinnable = true)
+        // No Authorization on this call: a certificate the system CAs reject is left for the post-exchange check,
+        // which can offer the pin.
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy, deferPinnable = true)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
         requestMethod = "GET"
         setRequestProperty("Accept", "application/json")
     }
-    return object : JmapHttpExchange {
+    object : JmapHttpExchange {
         override val status: Int
             get() = connection.responseCode
 
@@ -171,18 +154,17 @@ private fun jmapTrustHost(url: String): String {
  * request carrying credentials is never written to a peer that fails it (F02). The verdict after the exchange
  * stays as a second check. Unauthenticated discovery passes [deferPinnable], so a certificate the system CAs
  * reject still reaches that check and can be offered for pinning. A call that will send credentials does not.
- * acceptInvalidCert on the discovery scope accepts a name, expiry, or trust failure the way IMAP's TlsPolicy does.
+ * [policy] is applied once. acceptInvalidCert accepts a name, expiry, or trust failure. A changed certificate stays a failure.
  */
-fun pinJmapTls(connection: HttpsURLConnection, pin: String, deferPinnable: Boolean = false) {
+fun pinJmapTls(connection: HttpsURLConnection, pin: String, policy: TlsPolicy = TlsPolicy(), deferPinnable: Boolean = false) {
     val host = jmapTrustHost(connection.url.toString())
-    val acceptInvalidCert = jmapDiscoveryAcceptInvalid.get() == true
     val manager = object : javax.net.ssl.X509TrustManager {
         override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
             throw java.security.cert.CertificateException("client trust is not used")
 
         override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
             val ders = chain?.map { it.encoded } ?: emptyList()
-            val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), TlsPolicy(acceptInvalidCert = acceptInvalidCert))
+            val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
             if (verdict.isEmpty()) return
             if (deferPinnable && jmapPinnable(verdict)) return
             throw java.security.cert.CertificateException(verdict)
@@ -197,8 +179,8 @@ fun pinJmapTls(connection: HttpsURLConnection, pin: String, deferPinnable: Boole
     connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(connection.url.host, ignoreCase = true) }
 }
 
-fun pinnedJmapPost(pin: String): (String, String, String) -> JmapHttpExchange =
-    { url, body, authorization -> platformJmapPost(url, body, authorization, pin) }
+fun pinnedJmapPost(pin: String, policy: TlsPolicy = TlsPolicy()): (String, String, String) -> JmapHttpExchange =
+    { url, body, authorization -> platformJmapPost(url, body, authorization, pin, policy) }
 
-fun pinnedJmapUpload(pin: String): (String, ByteArray, String, String) -> JmapHttpExchange =
-    { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin) }
+fun pinnedJmapUpload(pin: String, policy: TlsPolicy = TlsPolicy()): (String, ByteArray, String, String) -> JmapHttpExchange =
+    { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin, policy) }

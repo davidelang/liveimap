@@ -13,6 +13,7 @@ import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLServerSocket
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,9 +78,9 @@ class JmapCredentialsAfterTrustTest {
         return socket.localPort to { done.await(10, TimeUnit.SECONDS); got.get() }
     }
 
-    private fun post(port: Int, pin: String): Result<Int> = runCatching {
+    private fun post(port: Int, pin: String, policy: TlsPolicy = TlsPolicy()): Result<Int> = runCatching {
         val c = URL("https://localhost:$port/jmap").openConnection() as HttpsURLConnection
-        pinJmapTls(c, pin)
+        pinJmapTls(c, pin, policy)
         c.connectTimeout = 5000
         c.readTimeout = 5000
         c.requestMethod = "POST"
@@ -87,20 +88,6 @@ class JmapCredentialsAfterTrustTest {
         c.setRequestProperty("Authorization", "Basic c2VjcmV0LWNyZWRz")
         c.outputStream.use { it.write("secret-body".toByteArray()) }
         c.responseCode
-    }
-
-    private fun postInDiscovery(port: Int, pin: String, acceptInvalid: Boolean): Result<Int> = runCatching {
-        withJmapDiscoveryTls(pin, acceptInvalid) {
-            val c = URL("https://localhost:$port/jmap").openConnection() as HttpsURLConnection
-            pinJmapTls(c, pin)
-            c.connectTimeout = 5000
-            c.readTimeout = 5000
-            c.requestMethod = "POST"
-            c.doOutput = true
-            c.setRequestProperty("Authorization", "Basic c2VjcmV0LWNyZWRz")
-            c.outputStream.use { it.write("secret-body".toByteArray()) }
-            c.responseCode
-        }
     }
 
     @Test fun nothingIsWrittenToAnUntrustedPeer() {
@@ -127,7 +114,16 @@ class JmapCredentialsAfterTrustTest {
         val store = serverKeyStore()
         val (port, received) = server(store)
         val wrongPin = "00".repeat(32)
-        assertTrue(postInDiscovery(port, wrongPin, true).isFailure)
+        assertTrue(post(port, wrongPin, TlsPolicy(acceptInvalidCert = true)).isFailure)
+        val got = received()
+        assertFalse(got.contains("Authorization"))
+        assertFalse(got.contains("secret"))
+    }
+
+    @Test fun emptyPinWithTheDefaultPolicyFailsTheHandshake() {
+        val store = serverKeyStore()
+        val (port, received) = server(store)
+        assertTrue(post(port, "", TlsPolicy()).isFailure)
         val got = received()
         assertFalse(got.contains("Authorization"))
         assertFalse(got.contains("secret"))
@@ -136,7 +132,7 @@ class JmapCredentialsAfterTrustTest {
     @Test fun acceptInvalidAllowsAnEmptyPin() {
         val store = serverKeyStore()
         val (port, received) = server(store)
-        assertEquals(200, postInDiscovery(port, "", true).getOrThrow())
+        assertEquals(200, post(port, "", TlsPolicy(acceptInvalidCert = true)).getOrThrow())
         assertTrue(received().contains("Authorization"))
     }
 }

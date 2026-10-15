@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.engine.TlsPolicy
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailFailure
@@ -19,7 +20,7 @@ class JmapMailSessionTest {
     private class Fake(val replies: ArrayDeque<String>, val status: Int = 200) {
         val bodies = mutableListOf<String>()
         val pins = mutableListOf<String>()
-        fun postFor(pin: String): (String, String, String) -> JmapHttpExchange = { _, body, _ ->
+        fun postFor(pin: String, policy: TlsPolicy): (String, String, String) -> JmapHttpExchange = { _, body, _ ->
             pins += pin
             bodies += body
             val reply = replies.removeFirst()
@@ -94,7 +95,7 @@ class JmapMailSessionTest {
             s.listLevel("", null, false)
             try { s.select("INBOX"); fail(reply) } catch (_: MailFailure) {}
         }
-        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, { { _, _, _ -> throw IOException("reset") } }, { _, _, _ -> "" })
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, { _, _ -> { _, _, _ -> throw IOException("reset") } }, { _, _, _ -> "" })
         s.open(AccountSettings(username = "u"))
         try { s.listLevel("", null, false); fail() } catch (_: MailFailure) {}
     }
@@ -115,7 +116,7 @@ class JmapMailSessionTest {
     private class Blobs(val status: Int = 200, val data: ByteArray = "RAW".toByteArray()) {
         val urls = mutableListOf<String>()
         val pins = mutableListOf<String>()
-        fun getFor(pin: String): (String, String) -> JmapBlobExchange = { url, _ ->
+        fun getFor(pin: String, policy: TlsPolicy): (String, String) -> JmapBlobExchange = { url, _ ->
             pins += pin; urls += url
             object : JmapBlobExchange {
                 override val status = this@Blobs.status
@@ -126,7 +127,7 @@ class JmapMailSessionTest {
         }
     }
 
-    private fun ready(replies: List<String>, blobs: Blobs = Blobs(), upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { error("no upload") }): Pair<JmapMailSession, Fake> {
+    private fun ready(replies: List<String>, blobs: Blobs = Blobs(), upload: (String, TlsPolicy) -> (String, ByteArray, String, String) -> JmapHttpExchange = { _, _ -> error("no upload") }): Pair<JmapMailSession, Fake> {
         val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
         val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 }, blobs::getFor, upload)
         runBlocking {
@@ -189,7 +190,7 @@ class JmapMailSessionTest {
     fun saveUploadsThenImportsWithKeywords() = runBlocking {
         val imported = """{"methodResponses":[["Email/import",{"created":{"k1":{"id":"e9"}}},"0"]]}"""
         val uploads = mutableListOf<String>()
-        val upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { pin ->
+        val upload: (String, TlsPolicy) -> (String, ByteArray, String, String) -> JmapHttpExchange = { pin, _ ->
             { url, _, _, _ ->
                 uploads += "$pin $url"
                 object : JmapHttpExchange {
@@ -212,7 +213,7 @@ class JmapMailSessionTest {
     @Test
     fun saveRefusedByServerFails() = runBlocking {
         val refused = """{"methodResponses":[["Email/import",{"notCreated":{"k1":{"type":"overQuota"}}},"0"]]}"""
-        val upload: (String) -> (String, ByteArray, String, String) -> JmapHttpExchange = { _ -> { _, _, _, _ ->
+        val upload: (String, TlsPolicy) -> (String, ByteArray, String, String) -> JmapHttpExchange = { _, _ -> { _, _, _, _ ->
             object : JmapHttpExchange {
                 override val status = 201
                 override fun peerDer() = listOf(byteArrayOf(1))
@@ -240,7 +241,7 @@ class JmapMailSessionTest {
     private class Stream(val responses: ArrayDeque<Pair<Int, String>>, val closeFrees: Boolean = true) {
         val urls = mutableListOf<String>()
         val blocked = java.util.concurrent.CountDownLatch(1)
-        fun streamFor(pin: String): (String, String) -> JmapHttpExchange = { url, _ ->
+        fun streamFor(pin: String, policy: TlsPolicy): (String, String) -> JmapHttpExchange = { url, _ ->
             urls += "$pin $url"
             val next = synchronized(responses) { responses.removeFirstOrNull() }
             val released = java.util.concurrent.CountDownLatch(1)
@@ -262,7 +263,7 @@ class JmapMailSessionTest {
     private fun watching(replies: List<String>, stream: Stream, events: String = "https://mail.example/events"): JmapMailSession {
         val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
         val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session.copy(eventSourceUrl = events)) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 },
-            Blobs()::getFor, { error("no upload") }, stream::streamFor)
+            Blobs()::getFor, { _, _ -> error("no upload") }, stream::streamFor)
         runBlocking {
             s.open(AccountSettings(username = "u", jmapCertPin = "jm"))
             s.listLevel("", null, false); s.select("INBOX")
@@ -394,5 +395,75 @@ class JmapMailSessionTest {
         val s = open(fake)
         assertEquals(4, s.select("Work/2026").exists)
         assertTrue(fake.bodies.last().contains("\"w26\""))
+    }
+
+    @Test
+    fun acceptInvalidCertIsPassedToFolderUploadSendDownloadAndPush() = runBlocking {
+        val seen = mutableListOf<TlsPolicy>()
+        val replies = ArrayDeque(listOf(
+            level, noKids, total, emails,
+            """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw1"}]},"0"]]}""",
+            """{"methodResponses":[["Email/import",{"created":{"k1":{"id":"e9"}}},"0"]]}""",
+            """{"methodResponses":[]}""",
+            state0, totalOf(2),
+        ))
+        fun exchange(reply: String, status: Int = 200) = object : JmapHttpExchange {
+            override val status = status
+            override fun peerDer() = listOf(byteArrayOf(1))
+            override fun header(name: String): String? = null
+            override fun body() = reply
+            override fun close() {}
+        }
+        val streamed = java.util.concurrent.CountDownLatch(1)
+        var posts = 0
+        var gets = 0
+        var uploads = 0
+        var streams = 0
+        val mail = session.copy(capabilityIds = setOf(JMAP_MAIL, JMAP_SUBMISSION))
+        val s = JmapMailSession(
+            discover = { _, _ -> JmapOffer.Mail(mail) },
+            passwordOf = { "pw" },
+            postFor = { _, policy ->
+                posts++
+                seen += policy
+                { _, _, _ -> exchange(replies.removeFirst()) }
+            },
+            trust = { _, _, _ -> "" },
+            epochClock = { 42 },
+            getFor = { _, policy ->
+                gets++
+                seen += policy
+                { _, _ -> object : JmapBlobExchange {
+                    override val status = 200
+                    override fun peerDer() = listOf(byteArrayOf(1))
+                    override fun bytes() = "RAW".toByteArray()
+                    override fun close() {}
+                } }
+            },
+            uploadFor = { _, policy ->
+                uploads++
+                seen += policy
+                { _, _, _, _ -> exchange("""{"blobId":"B9"}""", 201) }
+            },
+            streamFor = { _, policy ->
+                streams++
+                seen += policy
+                streamed.countDown()
+                { _, _ -> exchange("") }
+            },
+        )
+        val account = AccountSettings(username = "u", acceptInvalidCert = true, email = "u@x", emailSubmission = true, jmapCertPin = "jm")
+        assertEquals(OpenResult.Connected, s.open(account))
+        s.listLevel("", null, false)
+        s.select("INBOX")
+        s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        assertArrayEquals("RAW".toByteArray(), s.fetchRfc822(1L))
+        assertEquals(1L, s.appendReturningUid("INBOX", "x".toByteArray(), emptySet()))
+        try { s.smtpSend("From: u@x\r\n\r\nhi\r\n".toByteArray(), listOf("a@b")); fail() } catch (_: MailFailure) {}
+        s.watch("INBOX") { }
+        assertTrue(streamed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        s.stopWatch()
+        assertTrue(posts > 0 && gets > 0 && uploads > 0 && streams > 0)
+        assertTrue(seen.all { it.acceptInvalidCert })
     }
 }

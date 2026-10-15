@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
 
 data class JmapFolderRow(
     val id: String,
@@ -37,8 +38,9 @@ fun jmapFolderLevel(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): List<JmapFolderRow> {
-    val mailboxes = jmapMailboxLevel(session, parentId, username, password, pin, post, trust)
+    val mailboxes = jmapMailboxLevel(session, parentId, username, password, pin, post, trust, policy)
     if (mailboxes.isEmpty()) return emptyList()
     val withChildren = jmapMailboxChildren(
         session,
@@ -48,6 +50,7 @@ fun jmapFolderLevel(
         pin,
         post,
         trust,
+        policy,
     )
     return jmapFolderRows(mailboxes, withChildren)
 }

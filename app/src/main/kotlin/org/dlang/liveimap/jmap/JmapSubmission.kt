@@ -1,6 +1,7 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
 
 fun jmapEmailSubmissionRequest(
     accountId: String,
@@ -59,7 +60,8 @@ fun jmapSubmit(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     destroyEmail: Boolean = false,
     identityId: String = "",
-): String = jmapSubmitAnswer(session, emailId, mailFrom, rcptTo, username, password, pin, post, trust, destroyEmail, identityId).first
+    policy: TlsPolicy = TlsPolicy(),
+): String = jmapSubmitAnswer(session, emailId, mailFrom, rcptTo, username, password, pin, post, trust, destroyEmail, identityId, policy).first
 
 /** The EmailSubmission id and the whole answer (which carries the implicit Email/set of onSuccessDestroyEmail). */
 fun jmapSubmitAnswer(
@@ -74,6 +76,7 @@ fun jmapSubmitAnswer(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     destroyEmail: Boolean = false,
     identityId: String = "",
+    policy: TlsPolicy = TlsPolicy(),
 ): Pair<String, String> {
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
     val accountId = session.primaryMailAccountId
@@ -82,7 +85,7 @@ fun jmapSubmitAnswer(
     val authorization = jmapBasicAuthorization(username, password)
     // F146: once the EmailSubmission request may have reached the server, a lost answer is not "not sent".
     val result = try {
-        jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+        jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy)
     } catch (failure: JmapFailure) {
         throw JmapMaybeSent(failure.text)
     }
@@ -165,6 +168,7 @@ fun jmapDeliver(
     identityId: String = "",
     /** F147a: told when a sent message's staging copy could not be removed from Drafts. */
     onNotice: (String) -> Unit = {},
+    policy: TlsPolicy = TlsPolicy(),
 ): String {
     if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
     if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
@@ -172,16 +176,16 @@ fun jmapDeliver(
     if (rcptTo.isEmpty() || rcptTo.any { it.isBlank() }) {
         throw JmapFailure("jmap submission recipient is empty")
     }
-    val blobId = jmapUpload(session, bytes, username, password, pin, upload, trust)
+    val blobId = jmapUpload(session, bytes, username, password, pin, upload, trust, policy)
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapEmailImportRequest(accountId, blobId, mailboxId, if (destroyEmail) JMAP_STAGING_KEYWORDS else emptyList())
     val authorization = jmapBasicAuthorization(username, password)
-    val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust)
+    val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy)
     if (imported.status != 200) throw JmapFailure("jmap api status ${imported.status}")
     val emailId = jmapImportedEmailId(imported.body)
     fun destroyCopy(): Boolean = try {
-        jmapStagingDestroyed(jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust).body, emailId) == true
+        jmapStagingDestroyed(jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust, policy).body, emailId) == true
     } catch (_: JmapFailure) {
         false
     }
@@ -198,6 +202,7 @@ fun jmapDeliver(
             trust,
             destroyEmail,
             identityId,
+            policy,
         )
         // F147a: a staging copy the server did not destroy is removed now, or the user is told it is left over.
         if (destroyEmail && jmapStagingDestroyed(submitted.second, emailId) != true && !destroyCopy()) {
@@ -207,7 +212,7 @@ fun jmapDeliver(
     } catch (maybe: JmapMaybeSent) {
         // F146: settle it from the server before anything is deleted or reported.
         val known = try {
-            jmapSubmissionQueryIds(jmapCall(session.apiUrl, jmapSubmissionQueryRequest(accountId, emailId), authorization, pin, post, trust).body)
+            jmapSubmissionQueryIds(jmapCall(session.apiUrl, jmapSubmissionQueryRequest(accountId, emailId), authorization, pin, post, trust, policy).body)
         } catch (_: JmapFailure) {
             null
         }
@@ -226,7 +231,7 @@ fun jmapDeliver(
         // F63: the copy in Sent was imported for a send that did not happen; remove it (best effort) so it
         // does not look sent and a retry does not leave a duplicate.
         try {
-            jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust)
+            jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust, policy)
         } catch (_: JmapFailure) {
         }
         throw failure
@@ -252,6 +257,7 @@ fun jmapSend(
     /** The account's Postponed/Drafts folder: where a message with no Sent copy is staged for submission. */
     draftsName: String = "",
     onNotice: (String) -> Unit = {},
+    policy: TlsPolicy = TlsPolicy(),
 ): String {
     val session = when (offer) {
         JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
@@ -261,11 +267,11 @@ fun jmapSend(
     // F145: the identity (and the envelope sender) is the message's own From (Resent-From for a bounce), not the
     // account address; [mailFrom] is only the fallback for a message without one.
     val author = org.dlang.liveimap.ui.compose.headerFromAddress(bytes).ifBlank { mailFrom.trim() }
-    val identityId = jmapIdentityFor(session, author, username, password, pin, post, trust)
+    val identityId = jmapIdentityFor(session, author, username, password, pin, post, trust, policy)
     val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName) else null
     // No Sent folder (none configured, or the user dropped the copy): EmailSubmission still needs an Email, so it
     // is staged in the configured Drafts folder and destroyed by onSuccessDestroyEmail. No copy is kept.
-    val mailboxId = sentId ?: jmapStagingMailbox(session, draftsName, username, password, pin, post, trust)
+    val mailboxId = sentId ?: jmapStagingMailbox(session, draftsName, username, password, pin, post, trust, policy)
     val submissionId = jmapDeliver(
         session,
         bytes,
@@ -281,6 +287,7 @@ fun jmapSend(
         destroyEmail = sentId == null,
         identityId = identityId,
         onNotice = onNotice,
+        policy = policy,
     )
     return submissionId
 }
@@ -316,10 +323,11 @@ fun jmapIdentityFor(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val result = jmapCall(session.apiUrl, jmapIdentityRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
+    val result = jmapCall(session.apiUrl, jmapIdentityRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust, policy)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     return jmapMatchingIdentityId(result.body, from) ?: throw JmapNoIdentity(from)
 }
@@ -336,11 +344,12 @@ fun jmapStagingMailbox(
     pin: String,
     post: (String, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): String {
     if (draftsName.isBlank()) throw JmapNoDraftsFolder()
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust)
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust, policy)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
     return jmapMailboxIdByPath(named.body, draftsName) ?: throw JmapFailure("jmap drafts folder \"$draftsName\" was not found")
 }

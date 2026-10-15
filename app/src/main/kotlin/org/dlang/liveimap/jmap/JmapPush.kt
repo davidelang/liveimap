@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.TlsPolicy
 import java.net.URI
 import javax.net.ssl.HttpsURLConnection
 
@@ -107,9 +108,9 @@ fun jmapPushEmailState(data: String, accountId: String): String? {
     return email.text
 }
 
-fun platformJmapEventSource(url: String, authorization: String, pin: String): JmapHttpExchange {
+fun platformJmapEventSource(url: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapHttpExchange {
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 150_000 // F82: above the ping=120 the request asks for

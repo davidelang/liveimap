@@ -19,7 +19,6 @@ import org.dlang.liveimap.jmap.jmapMailboxLevel
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.platformJmapExchange
-import org.dlang.liveimap.jmap.withJmapDiscoveryTls
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SerialMailSession
@@ -160,15 +159,14 @@ internal fun testAccountProbes(
         },
         jmapLogin = {
             withContext(Dispatchers.IO) {
-                withJmapDiscoveryTls(candidate.jmapCertPin, candidate.acceptInvalidCert) {
-                    val offer = offerForAccount(candidate, ::platformJmapExchange, authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
-                    if (offer !is JmapOffer.Mail) {
-                        throw IllegalStateException(
-                            if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
-                        )
-                    }
-                    jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin))
+                val policy = candidate.tlsPolicy()
+                val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy), authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
+                if (offer !is JmapOffer.Mail) {
+                    throw IllegalStateException(
+                        if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
+                    )
                 }
+                jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, policy), policy = policy)
             }
         },
         smtpUsesImapPassword = candidate.smtpSameAsImap || smtpPassword == password,

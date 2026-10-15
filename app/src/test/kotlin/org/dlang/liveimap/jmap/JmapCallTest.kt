@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -92,11 +93,56 @@ class JmapCallTest {
         val url = "https://example.com/jmap/"
         val post = CallPost(200, "secret")
         assertFails("certificate changed") {
-            jmapCall(url, "{}", "Basic x", "ab", post::post) { _, _, _ -> "certificate changed" }
+            jmapCall(url, "{}", "Basic x", "ab", post::post, { _, _, _ -> "certificate changed" })
         }
         assertEquals(listOf(url), post.urls)
         assertEquals(emptyList<String>(), post.reads)
         assertEquals(post.urls, post.closes)
+    }
+
+    @Test
+    fun acceptInvalidReturnsTheBodyWhenUntrusted() {
+        val url = "https://example.com/jmap/"
+        val post = CallPost(200, "body")
+        val result = jmapCall(
+            url,
+            "{}",
+            "Basic x",
+            "",
+            post::post,
+            { _, _, _ -> "certificate untrusted" },
+            TlsPolicy(acceptInvalidCert = true),
+        )
+        assertEquals("body", result.body)
+        assertEquals(listOf(url), post.reads)
+    }
+
+    @Test
+    fun defaultPolicyRejectsCertificateUntrusted() {
+        val url = "https://example.com/jmap/"
+        val post = CallPost(200, "secret")
+        assertFails("certificate untrusted") {
+            jmapCall(url, "{}", "Basic x", "", post::post, { _, _, _ -> "certificate untrusted" })
+        }
+        assertEquals(emptyList<String>(), post.reads)
+    }
+
+    @Test
+    fun acceptInvalidStillRejectsCertificateChanged() {
+        val url = "https://example.com/jmap/"
+        val post = CallPost(200, "secret")
+        assertFails("certificate changed") {
+            jmapCall(
+                url,
+                "{}",
+                "Basic x",
+                "",
+                post::post,
+                { _, _, _ -> "certificate changed" },
+                TlsPolicy(acceptInvalidCert = true),
+            )
+        }
+        assertEquals(emptyList<String>(), post.reads)
     }
 
     @Test

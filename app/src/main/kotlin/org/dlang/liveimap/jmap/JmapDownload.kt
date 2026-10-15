@@ -1,6 +1,8 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 import java.net.URLEncoder
 import javax.net.ssl.HttpsURLConnection
@@ -35,6 +37,7 @@ fun jmapDownload(
     pin: String,
     get: (String, String) -> JmapBlobExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
 ): ByteArray {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
@@ -43,7 +46,7 @@ fun jmapDownload(
     if (!host.equals(httpsHost(session.apiUrl), ignoreCase = true)) throw JmapFailure("jmap download url is on another host")
     val exchange = jmapNet { get(url, authorization) }
     try {
-        val verdict = jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }
+        val verdict = applyTlsPolicy(jmapVerdict(url) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
         if (verdict.isNotEmpty()) throw JmapFailure(verdict)
         val status = jmapNet { exchange.status }
         if (status in 300..399) throw JmapFailure("jmap download redirect")
@@ -76,9 +79,9 @@ fun readJmapBytes(stream: java.io.InputStream): ByteArray {
     return out.toByteArray()
 }
 
-fun platformJmapGet(url: String, authorization: String, pin: String): JmapBlobExchange {
+fun platformJmapGet(url: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapBlobExchange {
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 30_000
@@ -93,4 +96,5 @@ fun platformJmapGet(url: String, authorization: String, pin: String): JmapBlobEx
     }
 }
 
-fun pinnedJmapGet(pin: String): (String, String) -> JmapBlobExchange = { url, auth -> platformJmapGet(url, auth, pin) }
+fun pinnedJmapGet(pin: String, policy: TlsPolicy = TlsPolicy()): (String, String) -> JmapBlobExchange =
+    { url, auth -> platformJmapGet(url, auth, pin, policy) }

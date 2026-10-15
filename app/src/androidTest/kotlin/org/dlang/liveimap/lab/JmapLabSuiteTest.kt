@@ -15,6 +15,7 @@ import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.tlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -40,7 +41,7 @@ class JmapLabSuiteTest {
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true)
-        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, ::platformJmapExchange, authorization = auth) }, passwordOf = { pass })
+        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, platformJmapExchange(a.jmapCertPin, a.tlsPolicy()), authorization = auth) }, passwordOf = { pass })
             .also { it.setCertConfirmer { false } } // only the lab CA is trusted
         val s = session()
         val steps = StringBuilder("step\tresult\tdetail\n")
