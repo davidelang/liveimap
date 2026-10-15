@@ -26,14 +26,16 @@ class PeerTrustTest {
     fun wrongNameIgnoresPin() {
         val der = der("peer-trust-ok.pem")
         val pin = PeerTrust.offer(listOf(der))!![4]
-        assertEquals("name mismatch", PeerTrust.check("other.example", listOf(der), pin))
+        assertEquals("", PeerTrust.check("other.example", listOf(der), pin))
+        assertEquals("name mismatch", PeerTrust.check("other.example", listOf(der), ""))
     }
 
     @Test
     fun expiredIgnoresPin() {
         val der = der("peer-trust-expired.pem")
         val pin = PeerTrust.offer(listOf(der))!![4]
-        assertEquals("certificate expired", PeerTrust.check("imap.example", listOf(der), pin))
+        assertEquals("", PeerTrust.check("imap.example", listOf(der), pin))
+        assertEquals("certificate expired", PeerTrust.check("imap.example", listOf(der), ""))
     }
 
     @Test

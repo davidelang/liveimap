@@ -20,8 +20,14 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 object PeerTrust {
+    /** Set for a JMAP discovery whose account accepts an invalid certificate. Unset everywhere else. */
+    internal val acceptInvalid = ThreadLocal<Boolean>()
+
     @JvmStatic
-    fun check(host: String, ders: List<ByteArray>, pin: String): String {
+    fun check(host: String, ders: List<ByteArray>, pin: String): String =
+        applyTlsPolicy(peerVerdict(host, ders, pin), TlsPolicy(acceptInvalidCert = acceptInvalid.get() == true))
+
+    private fun peerVerdict(host: String, ders: List<ByteArray>, pin: String): String {
         if (ders.isEmpty()) return "empty certificate chain"
         val chain = try {
             val factory = CertificateFactory.getInstance("X.509")
@@ -32,6 +38,10 @@ object PeerTrust {
             return "certificate rejected"
         }
         val leaf = chain[0]
+        // A pin the user stored wins before the name and the dates, so an expired or misnamed certificate they
+        // already pinned still matches. An empty or different pin is still rejected for those reasons.
+        val normalized = normalizePin(pin)
+        if (normalized.isNotEmpty() && normalized == fingerprintOf(leaf)) return ""
         if (!nameMatches(host, leaf)) return "name mismatch"
         try {
             leaf.checkValidity()
@@ -41,9 +51,6 @@ object PeerTrust {
             return "certificate expired"
         }
         if (LabTestHooks.trustsLabLeaf(host, leaf)) return ""
-        val normalized = normalizePin(pin)
-        val fingerprint = fingerprintOf(leaf)
-        if (normalized.isNotEmpty() && normalized == fingerprint) return ""
         if (normalized.isNotEmpty()) return "certificate changed"
         val managers = try {
             TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())

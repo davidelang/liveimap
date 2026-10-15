@@ -1,6 +1,8 @@
 package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 import javax.net.ssl.HttpsURLConnection
 
@@ -56,10 +58,14 @@ class JmapHttpsFetch(
         var followed = 0
         while (true) {
             val host = jmapTrustHost(current)
-            val exchange = jmapNet { open(current) }
+            val acceptInvalidCert = jmapDiscoveryAcceptInvalid.get() == true
+            val exchange = jmapNet { withJmapDiscoveryTls(pin, acceptInvalidCert) { open(current) } }
             try {
                 val ders = jmapNet { exchange.peerDer() }
-                val verdict = jmapVerdict(current) { jmapNet { trust(host, ders, pin) } }
+                val verdict = applyTlsPolicy(
+                    jmapVerdict(current) { jmapNet { trust(host, ders, pin) } },
+                    TlsPolicy(acceptInvalidCert = acceptInvalidCert),
+                )
                 if (verdict.isNotEmpty()) {
                     // Discovery is unauthenticated, so a pinnable failure can be offered (nothing was sent).
                     if (jmapPinnable(verdict)) throw JmapPinOffer(verdict, host, ders)
@@ -83,11 +89,32 @@ class JmapHttpsFetch(
     }
 }
 
+private val jmapDiscoveryPin = ThreadLocal<String>()
+private val jmapDiscoveryAcceptInvalid = ThreadLocal<Boolean>()
+
+/** The account pin and acceptInvalidCert for the discovery handshake. Restored when [block] returns. */
+internal fun <T> withJmapDiscoveryTls(pin: String, acceptInvalidCert: Boolean, block: () -> T): T {
+    val previousPin = jmapDiscoveryPin.get()
+    val previousAccept = jmapDiscoveryAcceptInvalid.get()
+    val previousPeer = PeerTrust.acceptInvalid.get()
+    jmapDiscoveryPin.set(pin)
+    jmapDiscoveryAcceptInvalid.set(acceptInvalidCert)
+    PeerTrust.acceptInvalid.set(acceptInvalidCert)
+    try {
+        return block()
+    } finally {
+        if (previousPin == null) jmapDiscoveryPin.remove() else jmapDiscoveryPin.set(previousPin)
+        if (previousAccept == null) jmapDiscoveryAcceptInvalid.remove() else jmapDiscoveryAcceptInvalid.set(previousAccept)
+        if (previousPeer == null) PeerTrust.acceptInvalid.remove() else PeerTrust.acceptInvalid.set(previousPeer)
+    }
+}
+
 fun platformJmapExchange(url: String): JmapHttpExchange {
+    val pin = jmapDiscoveryPin.get().orEmpty()
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        // Discovery has no pin yet: PeerTrust with an empty pin is the system trust plus the debug-only lab CA hook
-        // (LabTestHooks; the release stub trusts nothing extra), the same check the IMAP path makes.
-        if (this is HttpsURLConnection) pinJmapTls(this, "")
+        // The account pin, when discovery installed one. No Authorization on this call: a certificate the system
+        // CAs reject is left for the post-exchange check, which can offer the pin.
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, deferPinnable = true)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -145,19 +172,23 @@ private fun jmapTrustHost(url: String): String {
 /**
  * Runs the account's trust verdict (pin, lab hooks, platform CAs, host name) inside the TLS handshake, so a
  * request carrying credentials is never written to a peer that fails it (F02). The verdict after the exchange
- * stays as a second check; unauthenticated discovery keeps the post-exchange check so a changed certificate
- * can still be offered for pinning.
+ * stays as a second check. Unauthenticated discovery passes [deferPinnable], so a certificate the system CAs
+ * reject still reaches that check and can be offered for pinning. A call that will send credentials does not.
+ * acceptInvalidCert on the discovery scope accepts a name, expiry, or trust failure the way IMAP's TlsPolicy does.
  */
-fun pinJmapTls(connection: HttpsURLConnection, pin: String) {
+fun pinJmapTls(connection: HttpsURLConnection, pin: String, deferPinnable: Boolean = false) {
     val host = jmapTrustHost(connection.url.toString())
+    val acceptInvalidCert = jmapDiscoveryAcceptInvalid.get() == true
     val manager = object : javax.net.ssl.X509TrustManager {
         override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
             throw java.security.cert.CertificateException("client trust is not used")
 
         override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
             val ders = chain?.map { it.encoded } ?: emptyList()
-            val verdict = org.dlang.liveimap.engine.PeerTrust.check(host, ders, pin)
-            if (verdict.isNotEmpty()) throw java.security.cert.CertificateException(verdict)
+            val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), TlsPolicy(acceptInvalidCert = acceptInvalidCert))
+            if (verdict.isEmpty()) return
+            if (deferPinnable && jmapPinnable(verdict)) return
+            throw java.security.cert.CertificateException(verdict)
         }
 
         override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
@@ -165,7 +196,7 @@ fun pinJmapTls(connection: HttpsURLConnection, pin: String) {
     val context = javax.net.ssl.SSLContext.getInstance("TLS")
     context.init(null, arrayOf(manager), null)
     connection.sslSocketFactory = context.socketFactory
-    // PeerTrust.check has already matched the leaf against this host in the handshake.
+    // The verdict already ran in the handshake, including a stored pin that wins over the name.
     connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(connection.url.host, ignoreCase = true) }
 }
 

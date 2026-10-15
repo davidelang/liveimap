@@ -3029,3 +3029,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-drop-old-screen-tests-20261015-0550-plan.md. A jmapFolders account opens FolderListLoaded. The old folder screen, model, route, and old push helpers are gone. Protocol tests stay.
 
 ## 2026-10-15 - The SMTP guard allows accept-invalid except when the certificate changed.
+
+## 2026-10-15 - JMAP discovery can offer a pin
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-discovery-pin-20261015-0521-plan.md. Discovery passes the account pin and can offer a pin when system CAs reject the certificate. A matching pin wins over name and expiry. No install.
