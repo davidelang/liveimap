@@ -1944,8 +1944,28 @@ private fun MessageIndexLoaded(
                     val anchorEntry = anchorEntries.getOrNull(anchorIndex)
                     gate.withLock {
                         when (change) {
-                            MailboxChange.ShownFlags ->
-                                model.applyShownFlags(visibleMessageUids(), folderExists)
+                            MailboxChange.ShownFlags -> {
+                                val entries = buildIndexEntries(
+                                    model.rows,
+                                    expandedThreads,
+                                    model.threadMembers,
+                                    model.threadHidden,
+                                    model.threadDepth,
+                                    model.anchorPage,
+                                )
+                                val info = listState.layoutInfo.visibleItemsInfo
+                                val shown = if (info.isEmpty()) {
+                                    model.rows.map { it.uid }
+                                } else {
+                                    val uids = ArrayList<Long>()
+                                    for (item in info) {
+                                        val entry = entries.getOrNull(item.index) ?: continue
+                                        if (entry is IndexEntry.Message) uids.add(entry.row.uid)
+                                    }
+                                    if (uids.isEmpty()) model.rows.map { it.uid } else uids
+                                }
+                                model.applyShownFlags(shown, folderExists)
+                            }
                             else -> model.applyChange(change)
                         }
                         pull()
