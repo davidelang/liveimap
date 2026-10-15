@@ -21,6 +21,14 @@ class SessionTable(
         }
     }
 
+    /** The session already open for [accountId], or null. Does not call the factory. */
+    fun existing(accountId: String): MailSession? {
+        if (accountId.isEmpty()) return null
+        synchronized(lock) {
+            return sessions[accountId]
+        }
+    }
+
     fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
         synchronized(lock) {
             certConfirmer = confirm

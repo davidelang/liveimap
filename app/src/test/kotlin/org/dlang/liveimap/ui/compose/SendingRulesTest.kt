@@ -90,4 +90,22 @@ class SendingRulesTest {
         val edited = one.replace("x", "x%zz")
         assertEquals("x%zz", decodeRules(edited).single().name)
     }
+
+    @Test
+    fun patchByIdKeepsTheOtherRule() {
+        val a = SendingRule("A", id = "a")
+        val b = SendingRule("B", id = "b")
+        val deleted = listOf(b)
+        assertEquals(deleted, patchSendingRule(deleted, "a") { it.copy(name = "Z") })
+        val named = patchSendingRule(listOf(a, b), "a") { it.copy(name = "A2") }
+        val both = patchSendingRule(named, "a") { it.copy(conditions = it.conditions.copy(recipient = listOf("r"))) }
+        assertEquals("A2", both[0].name)
+        assertEquals(listOf("r"), both[0].conditions.recipient)
+        assertEquals("B", both[1].name)
+        val swapped = listOf(b, a)
+        val patched = patchSendingRule(swapped, "a") { it.copy(name = "A3") }
+        assertEquals("b", patched[0].id)
+        assertEquals("A3", patched[1].name)
+        assertEquals(listOf(a, b), patchSendingRule(listOf(a, b), "missing") { it.copy(name = "nope") })
+    }
 }

@@ -5,6 +5,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -23,6 +24,21 @@ class SessionTableTest {
         assertSame(first, second)
         assertNotSame(first, other)
         assertEquals(2, calls)
+    }
+
+    @Test
+    fun existingDoesNotCreate() {
+        var calls = 0
+        val table = SessionTable {
+            calls += 1
+            RecordingSession()
+        }
+        assertNull(table.existing(""))
+        assertNull(table.existing("missing"))
+        assertEquals(0, calls)
+        val made = table.session("a")
+        assertSame(made, table.existing("a"))
+        assertEquals(1, calls)
     }
 
     @Test

@@ -35,11 +35,12 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
+import org.dlang.liveimap.engine.sieve.assignInboundIds
+import org.dlang.liveimap.engine.sieve.deleteInboundRule
+import org.dlang.liveimap.engine.sieve.patchInboundRule
 import org.dlang.liveimap.engine.sieve.LiveimapActivateAction
 import org.dlang.liveimap.engine.sieve.LiveimapActivatePlan
 import org.dlang.liveimap.engine.sieve.RuleCriterion
@@ -55,9 +56,11 @@ import org.dlang.liveimap.settings.sieveEndpoint
 import org.dlang.liveimap.settings.tlsPolicy
 
 @Composable
-fun FilterListScreen(onOpen: (Int) -> Unit) {
+fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
     val appContext = LocalContext.current.applicationContext
-    val store = remember { DataStoreSettingsStore(appContext) }
+    val store = remember(accountId) {
+        DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })
+    }
     val scope = rememberCoroutineScope()
     var rules by remember { mutableStateOf<List<InboundRule>?>(null) }
     var uploading by remember { mutableStateOf(false) }
@@ -67,7 +70,12 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
     LifecycleStartEffect(store) {
         val job = scope.launch {
             val loaded = try {
-                store.load().inboundRules
+                val account = store.load()
+                val assigned = assignInboundIds(account.inboundRules)
+                if (assigned != account.inboundRules) {
+                    store.update { it.copy(inboundRules = assigned) }
+                }
+                assigned
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -114,7 +122,7 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
             ListItem(
                 headlineContent = { Text(criterionLabel(rule)) },
                 supportingContent = { Text(actionLabel(rule)) },
-                modifier = Modifier.clickable { onOpen(index) },
+                modifier = Modifier.clickable { onOpen(index, rule.id) },
             )
         }
         HorizontalDivider()
@@ -152,7 +160,7 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
                                 },
                                 account.username,
                                 password,
-                                emitSieve(account.inboundRules),
+                                script,
                                 account.allowPlaintextAuth,
                             ) { plan ->
                                 val answer = CompletableDeferred<Boolean>()
@@ -188,14 +196,17 @@ fun FilterListScreen(onOpen: (Int) -> Unit) {
 
 @Composable
 fun FilterEditorScreen(
+    accountId: String,
+    ruleId: String,
     index: Int,
     seed: List<RuleCriterion>,
     onDone: () -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
-    val store = remember { DataStoreSettingsStore(appContext) }
+    val store = remember(accountId) {
+        DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })
+    }
     val scope = rememberCoroutineScope()
-    val gate = remember { Mutex() }
     var from by rememberSaveable { mutableStateOf(seedValue(seed, RuleField.From)) }
     var to by rememberSaveable { mutableStateOf(seedValue(seed, RuleField.To)) }
     var listId by rememberSaveable { mutableStateOf(seedValue(seed, RuleField.ListId)) }
@@ -206,11 +217,11 @@ fun FilterEditorScreen(
     var redirectTo by rememberSaveable { mutableStateOf("") }
     var discard by rememberSaveable { mutableStateOf(false) }
     var ready by rememberSaveable { mutableStateOf(index < 0) }
-    LifecycleStartEffect(store, index) {
+    LifecycleStartEffect(store, ruleId, index) {
         val job = scope.launch {
             if (ready || index < 0) return@launch
             val rule = try {
-                store.load().inboundRules.getOrNull(index)
+                if (ruleId.isBlank()) null else store.load().inboundRules.firstOrNull { it.id == ruleId }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -235,41 +246,27 @@ fun FilterEditorScreen(
     }
     val draft = draftRule(from, to, listId, subject, fileInto, markRead, flagged, redirectTo, discard)
     val canSave = draft.criteria.isNotEmpty() && hasFilterAction(draft)
-    fun persist(nextIndex: Int, remove: Boolean) {
+    fun persist(remove: Boolean) {
         if (!ready) return
+        val id = ruleId
         scope.launch {
-            gate.withLock {
-                if (!remove && !canSave) return@withLock
-                val loaded = try {
-                    store.load()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    return@withLock
-                }
-                val next = loaded.inboundRules.toMutableList()
-                if (remove) {
-                    if (nextIndex !in next.indices) {
-                        onDone()
-                        return@withLock
+            if (!remove && !canSave) return@launch
+            try {
+                store.update { current ->
+                    val rules = current.inboundRules
+                    val next = when {
+                        remove -> deleteInboundRule(rules, id)
+                        id.isBlank() && index < 0 -> rules + draft.copy(id = java.util.UUID.randomUUID().toString())
+                        else -> patchInboundRule(rules, id) { draft.copy(id = id) }
                     }
-                    next.removeAt(nextIndex)
-                } else if (nextIndex in next.indices) {
-                    next[nextIndex] = draft
-                } else if (nextIndex < 0) {
-                    next.add(draft)
-                } else {
-                    return@withLock
+                    current.copy(inboundRules = next)
                 }
-                try {
-                    store.update { it.copy(inboundRules = next) }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    return@withLock
-                }
-                onDone()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return@launch
             }
+            onDone()
         }
     }
     Column(
@@ -288,11 +285,11 @@ fun FilterEditorScreen(
         FilterField(stringResource(R.string.filter_redirect), redirectTo, ready) { redirectTo = it }
         FilterCheck(stringResource(R.string.filter_discard), discard, ready) { discard = it }
         Row {
-            TextButton(onClick = { persist(index, remove = false) }, enabled = ready && canSave) {
+            TextButton(onClick = { persist(remove = false) }, enabled = ready && canSave) {
                 Text(stringResource(R.string.filter_save))
             }
             if (index >= 0) {
-                TextButton(onClick = { persist(index, remove = true) }, enabled = ready) {
+                TextButton(onClick = { persist(remove = true) }, enabled = ready) {
                     Text(stringResource(R.string.filter_delete))
                 }
             }

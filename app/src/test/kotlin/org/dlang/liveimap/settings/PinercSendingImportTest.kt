@@ -1,8 +1,14 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.ui.compose.ComposeKindTag
 import org.dlang.liveimap.ui.compose.DsnMode
+import org.dlang.liveimap.ui.compose.RuleActions
+import org.dlang.liveimap.ui.compose.RuleConditions
+import org.dlang.liveimap.ui.compose.SendingRule
 import org.dlang.liveimap.ui.compose.decodeRules
+import org.dlang.liveimap.ui.compose.encodeRules
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,5 +60,68 @@ class PinercSendingImportTest {
         val r = previewPinerc(text, AccountSettings())
         assertTrue(decodeRules(r.next.sendingRules).isEmpty())
         assertTrue(r.skipped.any { "Work" in it && "every message" in it })
+    }
+
+    @Test
+    fun statsIsRefusedAndExportMatchesImport() {
+        val withStats = "LIT:pattern=\"/NICK=work/TO=a@b/STATS=1\" action=\"/ROLE=1/FROM=me@x\""
+        assertNull(pineRole(withStats))
+        val without = "LIT:pattern=\"/NICK=work/TO=a@b\" action=\"/ROLE=1/FROM=me@x\""
+        val imported = pineRole(without)
+        assertEquals("work", imported?.name)
+        assertEquals(listOf("a@b"), imported?.conditions?.sentTo)
+
+        val quoted = pinercQuoted("a,b")
+        assertEquals("\"a,b\"", quoted)
+        assertEquals(listOf("a,b"), previewPinerc("alt-addresses=$quoted\n", AccountSettings()).next.altAddresses)
+
+        val role = SendingRule(
+            name = "work",
+            conditions = RuleConditions(
+                kinds = setOf(ComposeKindTag.Reply),
+                sentTo = listOf("a@b"),
+                listId = "list.example",
+            ),
+            actions = RuleActions(fromAddress = "me@x", sendAccount = "other-account"),
+        )
+        val account = AccountSettings(
+            signature = "Hello\nthere",
+            quotePrefix = "| ",
+            replyLeadIn = "On {date}, {from} wrote:",
+            composerHeaders = "Reply-To, X-Priority",
+            viewerHeaders = "List-Id, X-Mailer",
+            sigDashes = true,
+            sigAtBottom = true,
+            dsnMode = DsnMode.Off,
+            sendingRules = encodeRules(listOf(role)),
+        )
+        val text = encodePinerc(account)
+        val features = text.lines().first { it.startsWith("feature-list=") }.substringAfter("=").split(",")
+        assertTrue(features.contains("enable-sigdashes"))
+        assertTrue(features.contains("signature-at-bottom"))
+        assertTrue(features.contains("no-enable-delivery-status-notification"))
+        assertFalse(features.contains("enable-delivery-status-notification"))
+        val rolesLine = text.lines().first { it.startsWith("patterns-roles=") }
+        assertFalse(rolesLine.contains("reply"))
+        assertFalse(rolesLine.contains("list.example"))
+        assertFalse(rolesLine.contains("other-account"))
+        assertFalse(text.contains("signature tokens are unread"))
+        val back = previewPinerc(text, AccountSettings()).next
+        assertEquals("Hello\nthere", back.signature)
+        assertEquals("| ", back.quotePrefix)
+        assertEquals("On {date}, {from} wrote:", back.replyLeadIn)
+        assertEquals("Reply-To, X-Priority", back.composerHeaders)
+        assertEquals("List-Id, X-Mailer", back.viewerHeaders)
+        assertTrue(back.sigDashes)
+        assertTrue(back.sigAtBottom)
+        assertEquals(DsnMode.Off, back.dsnMode)
+        val rules = decodeRules(back.sendingRules)
+        assertEquals(1, rules.size)
+        assertEquals("work", rules[0].name)
+        assertEquals(listOf("a@b"), rules[0].conditions.sentTo)
+        assertTrue(rules[0].conditions.kinds.isEmpty())
+        assertEquals("", rules[0].conditions.listId)
+        assertEquals("me@x", rules[0].actions.fromAddress)
+        assertNull(rules[0].actions.sendAccount)
     }
 }

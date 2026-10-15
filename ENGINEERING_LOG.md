@@ -3090,3 +3090,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - The lab safety test compiles with the delete-policy argument
 
 - LabSafetyTest.delete passes trashNamedByUser from usableTrashName(account.trashMailbox). The other four effectiveDeletePolicy arguments stay. No install.
+
+## 2026-10-15 - Settings stay on the account that was open
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-binding-20261015-0522-plan.md
+- Work: deleting options read an existing session and do not open one; a Sieve pin is written through the store captured before the check; sending and inbound rules patch by id; passwords are not saved instance state; pinerc export writes the keys import reads; preference writes finish inside the account gate; removal drops that session; filter screens keep the account id from when they opened
+- No new mutex. No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

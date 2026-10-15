@@ -23,7 +23,32 @@ data class InboundRule(
     val flags: Set<SystemFlag> = emptySet(),
     val redirectTo: String = "",
     val discard: Boolean = false,
+    val id: String = "",
 )
+
+/** Fills a blank id. A rule that already has an id is unchanged. */
+fun assignInboundIds(rules: List<InboundRule>): List<InboundRule> =
+    rules.map { rule ->
+        if (rule.id.isNotBlank()) rule else rule.copy(id = java.util.UUID.randomUUID().toString())
+    }
+
+/** Replaces the rule with [id]. A blank or missing id leaves the list unchanged. */
+fun patchInboundRule(rules: List<InboundRule>, id: String, edit: (InboundRule) -> InboundRule): List<InboundRule> {
+    if (id.isBlank()) return rules
+    val index = rules.indexOfFirst { it.id == id }
+    if (index < 0) return rules
+    val next = rules.toMutableList()
+    next[index] = edit(next[index])
+    return next
+}
+
+/** Removes the rule with [id]. A blank or missing id leaves the list unchanged. */
+fun deleteInboundRule(rules: List<InboundRule>, id: String): List<InboundRule> {
+    if (id.isBlank()) return rules
+    val index = rules.indexOfFirst { it.id == id }
+    if (index < 0) return rules
+    return rules.filterIndexed { i, _ -> i != index }
+}
 
 fun seedCriteria(from: String, to: String, listId: String, subject: String): List<RuleCriterion> {
     val out = ArrayList<RuleCriterion>(4)

@@ -420,8 +420,8 @@ fun encodePinerc(settings: AccountSettings): String {
     }
     lines.add(
         "# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, " +
-            "threading-index-style, composer-wrap-column, or feature-list tokens other than " +
-            "the expunge confirm tokens.",
+            "threading-index-style, or composer-wrap-column. It reads the expunge confirm tokens, " +
+            "enable-sigdashes, signature-at-bottom, and enable-delivery-status-notification.",
     )
 
     fun add(name: String, value: String) {
@@ -454,6 +454,12 @@ fun encodePinerc(settings: AccountSettings): String {
     val startup = pinercStartup(settings.inboxStart)
     if (startup != null) lines.add("incoming-startup-rule=$startup")
     add("default-saved-msg-folder", pinercQuoted(settings.savedMailbox))
+    add("literal-signature", pinercQuoted(pineEscape(settings.signature)))
+    add("reply-indent-string", pinercQuoted(settings.quotePrefix))
+    add("reply-leadin", pinercQuoted(settings.replyLeadIn))
+    add("customized-hdrs", settings.composerHeaders)
+    add("viewer-hdrs", settings.viewerHeaders)
+    add("patterns-roles", pinercRoles(org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)))
     lines.add("saved-msg-name-rule=${pinercSaveRule(settings.saveNameRule)}")
     lines.add("threading-index-style=${pinercThreadStyle(settings.threadIndexStyle)}")
     lines.add("composer-wrap-column=${settings.composerWrapColumn}")
@@ -683,7 +689,7 @@ internal fun pineRole(entry: String): org.dlang.liveimap.ui.compose.SendingRule?
     val action = section("action") ?: return null
     if (action["ROLE"] != "1") return null
     val name = pattern["NICK"]?.takeIf { it.isNotBlank() } ?: return null
-    val known = setOf("NICK", "COMM", "TO", "CC", "RECIP", "FROM", "FLDTYPE", "FOLDER", "STATS")
+    val known = setOf("NICK", "COMM", "TO", "CC", "RECIP", "FROM", "FLDTYPE", "FOLDER")
     if (pattern.keys.any { it !in known }) return null
     fun list(v: String?) = v.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
     val folder = if (pattern["FLDTYPE"] == "SPEC") list(pattern["FOLDER"]).firstOrNull().orEmpty() else ""
@@ -1104,14 +1110,73 @@ private fun applyCollectionPrefix(
     return FolderKind.Mailbox(name)
 }
 
-private fun pinercQuoted(value: String): String {
+internal fun pinercQuoted(value: String): String {
     val needs = value.startsWith(" ") ||
         value.endsWith(" ") ||
         ' ' in value ||
         '"' in value ||
-        '\\' in value
+        '\\' in value ||
+        ',' in value
     if (!needs) return value
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
+/** The inverse of [pineEscapes]: newline, tab, and backslash. */
+private fun pineEscape(text: String): String = buildString {
+    for (c in text) {
+        when (c) {
+            '\\' -> append("\\\\")
+            '\n' -> append("\\n")
+            '\t' -> append("\\t")
+            else -> append(c)
+        }
+    }
+}
+
+private fun pinercRoleEscape(value: String): String = buildString {
+    for (c in value) {
+        when (c) {
+            '\\', '"' -> {
+                append('\\')
+                append(c)
+            }
+            else -> append(c)
+        }
+    }
+}
+
+/** Kinds, list id, and send-account are not pinerc role fields, so they are not written. */
+private fun pinercRoles(rules: List<org.dlang.liveimap.ui.compose.SendingRule>): String {
+    val pieces = ArrayList<String>()
+    for (rule in rules) {
+        if (rule.name.isBlank()) continue
+        val pattern = StringBuilder()
+        pattern.append("/NICK=").append(pinercRoleEscape(rule.name))
+        if (rule.conditions.sentTo.isNotEmpty()) {
+            pattern.append("/TO=").append(pinercRoleEscape(rule.conditions.sentTo.joinToString(",")))
+        }
+        if (rule.conditions.originalFrom.isNotEmpty()) {
+            pattern.append("/FROM=").append(pinercRoleEscape(rule.conditions.originalFrom.joinToString(",")))
+        }
+        if (rule.conditions.folder.isNotEmpty()) {
+            pattern.append("/FLDTYPE=SPEC/FOLDER=").append(pinercRoleEscape(rule.conditions.folder))
+        }
+        val action = StringBuilder("/ROLE=1")
+        val fromName = rule.actions.fromName
+        val fromAddress = rule.actions.fromAddress
+        val from = when {
+            !fromName.isNullOrBlank() && !fromAddress.isNullOrBlank() -> "$fromName <$fromAddress>"
+            !fromAddress.isNullOrBlank() -> fromAddress
+            !fromName.isNullOrBlank() -> fromName
+            else -> ""
+        }
+        if (from.isNotEmpty()) action.append("/FROM=").append(pinercRoleEscape(from))
+        rule.actions.replyTo?.let { action.append("/REPLYTO=").append(pinercRoleEscape(it)) }
+        rule.actions.fcc?.let { action.append("/FCC=").append(pinercRoleEscape(it)) }
+        rule.actions.signature?.let { action.append("/LSIG=").append(pinercRoleEscape(pineEscape(it))) }
+        pieces.add("pattern=\"$pattern\" action=\"$action\"")
+    }
+    return pieces.joinToString(",")
 }
 
 private fun pinercTls(mode: TlsMode): String = when (mode) {
@@ -1191,6 +1256,15 @@ private fun pinercThreadStyle(style: ThreadIndexStyle): String = when (style) {
 private fun pinercFeatures(settings: AccountSettings): String {
     val tokens = ArrayList<String>(6)
     tokens.add(if (settings.askBeforeExpunge) "no-expunge-without-confirm" else "expunge-without-confirm")
+    tokens.add(if (settings.sigDashes) "enable-sigdashes" else "no-enable-sigdashes")
+    tokens.add(if (settings.sigAtBottom) "signature-at-bottom" else "no-signature-at-bottom")
+    tokens.add(
+        if (settings.dsnMode == org.dlang.liveimap.ui.compose.DsnMode.Off) {
+            "no-enable-delivery-status-notification"
+        } else {
+            "enable-delivery-status-notification"
+        },
+    )
     if (settings.quellFlowed) tokens.add("quell-flowed-text")
     if (settings.forwardAsAttachment) tokens.add("forward-as-attachment")
     if (settings.bodyView == BodyView.PlainOrError) tokens.add("prefer-plain-text")

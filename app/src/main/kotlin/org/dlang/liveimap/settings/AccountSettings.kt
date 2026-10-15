@@ -1231,7 +1231,8 @@ private fun encodeInboundRule(rule: InboundRule): String {
     val criteria = rule.criteria.joinToString("&") { criterion ->
         "${criterion.field.name}=${percentEncode(criterion.value)}"
     }
-    val actions = ArrayList<String>(5)
+    val actions = ArrayList<String>(6)
+    if (rule.id.isNotEmpty()) actions.add("id=${percentEncode(rule.id)}")
     if (rule.fileInto.isNotEmpty()) actions.add("file=${percentEncode(rule.fileInto)}")
     if (SystemFlag.Seen in rule.flags) actions.add("seen")
     if (SystemFlag.Flagged in rule.flags) actions.add("flagged")
@@ -1256,11 +1257,19 @@ private fun decodeInboundRule(value: String): InboundRule {
     val flags = linkedSetOf<SystemFlag>()
     var redirectTo = ""
     var discard = false
+    var id = ""
     var sawFile = false
     var sawRedirect = false
     var sawDiscard = false
+    var sawId = false
     for (token in actionPart.split(',')) {
         when {
+            token.startsWith("id=") -> {
+                if (sawId) throw IllegalArgumentException("broken rule")
+                sawId = true
+                id = percentDecode(token.substring("id=".length))
+                if (id.isEmpty()) throw IllegalArgumentException("broken rule")
+            }
             token == "seen" -> {
                 if (!flags.add(SystemFlag.Seen)) throw IllegalArgumentException("broken rule")
             }
@@ -1296,6 +1305,7 @@ private fun decodeInboundRule(value: String): InboundRule {
         flags = flags,
         redirectTo = redirectTo,
         discard = discard,
+        id = id,
     )
 }
 

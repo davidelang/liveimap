@@ -33,6 +33,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.ThemeMode
+import org.dlang.liveimap.session.dropMailSession
 import org.dlang.liveimap.settings.accountDrawerFolders
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
@@ -56,23 +57,23 @@ class AccountStore private constructor(private val context: Context) {
 
     suspend fun save(settings: AccountSettings) {
         val encoded = settings.encode()
-        val writePreferences = gate.withLock {
-            withContext(Dispatchers.IO) { stageSave(settings, encoded) }
+        gate.withLock {
+            val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
+            writePreferences()
         }
-        writePreferences()
     }
 
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
     suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
         var next: AccountSettings? = null
-        val writePreferences = gate.withLock {
-            withContext(Dispatchers.IO) {
+        gate.withLock {
+            val writePreferences = withContext(Dispatchers.IO) {
                 val updated = edit(loadLocked())
                 next = updated
                 stageSave(updated, updated.encode())
             }
+            writePreferences()
         }
-        writePreferences()
         return next!!
     }
 
@@ -81,10 +82,10 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun setPassword(value: String) {
-        val writePreferences = gate.withLock {
-            withContext(Dispatchers.IO) { stagePassword(value) }
+        gate.withLock {
+            val writePreferences = withContext(Dispatchers.IO) { stagePassword(value) }
+            writePreferences()
         }
-        writePreferences()
     }
 
     suspend fun smtpPassword(): String {
@@ -559,6 +560,7 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
         AndroidAccountCipher().delete(accountId)
         // F29: the same clean-up as the in-app removal: SMTP password, client cert, imported key, image trust.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            dropMailSession(accountId)
             val stored = appContext.accountSettingsDataStore.data.first()[stringPreferencesKey(accountId)]
             removeAccountFiles(appContext, accountId, stored)
             AccountStore.shared(appContext).forgetSmtpPassword(accountId)

@@ -44,6 +44,7 @@ data class SendingRule(
     val actions: RuleActions = RuleActions(),
     /** Unknown keys from a newer version, kept as is. */
     val extra: Map<String, String> = emptyMap(),
+    val id: String = "",
 )
 
 data class ComposeContext(
@@ -229,6 +230,7 @@ fun encodeRules(rules: List<SendingRule>): String = rules.joinToString("\n") { r
     val c = r.conditions
     val a = r.actions
     val kv = linkedMapOf("name" to enc(r.name))
+    if (r.id.isNotEmpty()) kv["id"] = enc(r.id)
     if (c.kinds.isNotEmpty()) kv["kinds"] = c.kinds.joinToString(",") { it.code }
     if (c.recipient.isNotEmpty()) kv["recipient"] = list(c.recipient)
     if (c.sentTo.isNotEmpty()) kv["sentTo"] = list(c.sentTo)
@@ -263,6 +265,7 @@ fun decodeRules(text: String): List<SendingRule> = text.lines().filter { it.isNo
     fun b(k: String) = kv.remove(k)?.toBooleanStrictOrNull()
     fun l(k: String) = kv.remove(k)?.let { unlist(it) } ?: emptyList()
     val name = s("name") ?: return@mapNotNull null
+    val id = s("id").orEmpty()
     val kinds = kv.remove("kinds")?.split(',')?.mapNotNull { c -> ComposeKindTag.entries.firstOrNull { it.code == c } }?.toSet() ?: emptySet()
     val cond = RuleConditions(kinds, l("recipient"), l("sentTo"), s("listId").orEmpty(), s("folder").orEmpty(), l("origFrom"))
     val act = RuleActions(
@@ -271,7 +274,23 @@ fun decodeRules(text: String): List<SendingRule> = text.lines().filter { it.isNo
         fcc = s("fcc"), dsn = kv.remove("dsn")?.let { c -> DsnMode.entries.firstOrNull { it.code == c } },
         replyToList = b("toList"), role = s("role"), sendAccount = s("account"),
     )
-    SendingRule(name, cond, act, kv.toMap())
+    SendingRule(name, cond, act, kv.toMap(), id)
+}
+
+/** Fills a blank id. A rule that already has an id is unchanged. */
+fun assignSendingIds(rules: List<SendingRule>): List<SendingRule> =
+    rules.map { rule ->
+        if (rule.id.isNotBlank()) rule else rule.copy(id = java.util.UUID.randomUUID().toString())
+    }
+
+/** Edits the rule with [id] inside [rules]. A blank or missing id does not insert a rule. */
+fun patchSendingRule(rules: List<SendingRule>, id: String, edit: (SendingRule) -> SendingRule): List<SendingRule> {
+    if (id.isEmpty()) return rules
+    val index = rules.indexOfFirst { it.id == id }
+    if (index < 0) return rules
+    val next = rules.toMutableList()
+    next[index] = edit(next[index])
+    return next
 }
 
 // ---------- presets (each returns ordinary rules) ----------

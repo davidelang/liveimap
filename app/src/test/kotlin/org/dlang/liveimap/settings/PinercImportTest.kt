@@ -958,7 +958,7 @@ class PinercImportTest {
         assertTrue(features.contains("forward-as-attachment"))
         assertTrue(features.contains("render-html-internally"))
         assertTrue(features.contains("convert-dates-to-localtime"))
-        assertTrue(text.contains("# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, threading-index-style, composer-wrap-column, or feature-list tokens other than the expunge confirm tokens."))
+        assertTrue(text.contains("# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, threading-index-style, or composer-wrap-column. It reads the expunge confirm tokens, enable-sigdashes, signature-at-bottom, and enable-delivery-status-notification."))
         assertTrue(text.contains("# auto-expunge"))
         for (line in text.lines()) {
             if (line.isEmpty() || line.startsWith("#")) continue

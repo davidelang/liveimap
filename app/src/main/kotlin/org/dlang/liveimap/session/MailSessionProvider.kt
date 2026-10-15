@@ -28,6 +28,9 @@ private val extraIdleDrops = ExtraIdleDropLog()
 
 fun mailSession(accountId: String): MailSession = accountSessions.session(accountId)
 
+/** A session already open for [accountId], or null. Does not create one. */
+fun existingMailSession(accountId: String): MailSession? = accountSessions.existing(accountId)
+
 fun setMailCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
     accountSessions.setCertConfirmer(confirm)
 }

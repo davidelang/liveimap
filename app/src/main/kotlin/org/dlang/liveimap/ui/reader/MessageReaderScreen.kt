@@ -334,7 +334,7 @@ fun MessageReaderScreen(
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
-    onFilterLike: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -375,7 +375,7 @@ private fun MessageReaderLoaded(
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
-    onFilterLike: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -1761,7 +1761,7 @@ private fun MessageReaderLoaded(
                     text = { Text(stringResource(R.string.reader_filter_like)) },
                     onClick = {
                         moreMenu = false
-                        onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject)
+                        onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject, accountId)
                     },
                 )
                 if (renderedHtml && dark) {

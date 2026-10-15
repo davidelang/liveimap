@@ -283,6 +283,9 @@ fun LiveImapNavHost() {
     val filterSeedTo = rememberSaveable { mutableStateOf("") }
     val filterSeedListId = rememberSaveable { mutableStateOf("") }
     val filterSeedSubject = rememberSaveable { mutableStateOf("") }
+    val filterAccountId = rememberSaveable { mutableStateOf("") }
+    val filterRuleId = rememberSaveable { mutableStateOf("") }
+    val filterListAccount = rememberSaveable { mutableStateOf("") }
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     // F121: the favorite being edited belongs to one account; edits go to that account, never the active one
@@ -361,12 +364,22 @@ fun LiveImapNavHost() {
         navController.popBackStack()
     }
 
-    fun openFilterEditor(index: Int, from: String, to: String, listId: String, subject: String) {
+    fun openFilterEditor(
+        index: Int,
+        from: String,
+        to: String,
+        listId: String,
+        subject: String,
+        accountId: String,
+        ruleId: String,
+    ) {
         filterEditIndex.value = index
         filterSeedFrom.value = from
         filterSeedTo.value = to
         filterSeedListId.value = listId
         filterSeedSubject.value = subject
+        filterAccountId.value = accountId
+        filterRuleId.value = ruleId
         navController.navigate("filter")
     }
 
@@ -592,8 +605,8 @@ fun LiveImapNavHost() {
                                     onBack = { paneUid = -1L },
                                     onFolderViewSaved = { noteFolderView() },
                                     onCustomize = { navController.navigate("toolbar/reader") },
-                                    onFilterLike = { from, to, listId, subject ->
-                                        openFilterEditor(-1, from, to, listId, subject)
+                                    onFilterLike = { from, to, listId, subject, accountId ->
+                                        openFilterEditor(-1, from, to, listId, subject, accountId, "")
                                     },
                                 )
                             }
@@ -709,8 +722,8 @@ fun LiveImapNavHost() {
                         }
                     },
                     onCustomize = { navController.navigate("toolbar/reader") },
-                    onFilterLike = { from, to, listId, subject ->
-                        openFilterEditor(-1, from, to, listId, subject)
+                    onFilterLike = { from, to, listId, subject, accountId ->
+                        openFilterEditor(-1, from, to, listId, subject, accountId, "")
                     },
                 )
             }
@@ -825,8 +838,11 @@ fun LiveImapNavHost() {
                 }
             }
             composable("filters") {
+                val accountId = rememberSaveable { filterListAccount.value }
                 UpPage(stringResource(R.string.filter_edit_list), onUp = { navController.popBackStack() }) {
-                    FilterListScreen(onOpen = { index -> openFilterEditor(index, "", "", "", "") })
+                    FilterListScreen(accountId = accountId, onOpen = { index, ruleId ->
+                        openFilterEditor(index, "", "", "", "", accountId, ruleId)
+                    })
                 }
             }
             composable("filter") {
@@ -835,11 +851,15 @@ fun LiveImapNavHost() {
                 val to = rememberSaveable { filterSeedTo.value }
                 val listId = rememberSaveable { filterSeedListId.value }
                 val subject = rememberSaveable { filterSeedSubject.value }
+                val accountId = rememberSaveable { filterAccountId.value }
+                val ruleId = rememberSaveable { filterRuleId.value }
                 UpPage(
                     title = stringResource(if (index < 0) R.string.filter_add else R.string.filter_edit),
                     onUp = { navController.popBackStack() },
                 ) {
                     FilterEditorScreen(
+                        accountId = accountId,
+                        ruleId = ruleId,
                         index = index,
                         seed = seedCriteria(from, to, listId, subject),
                         onDone = { navController.popBackStack() },
@@ -1073,11 +1093,12 @@ fun LiveImapNavHost() {
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
                 navigateFromDrawer {
-                    openFilterEditor(-1, "", "", "", "")
+                    openFilterEditor(-1, "", "", "", "", store.chosenAccountId().orEmpty(), "")
                 }
             },
             onEditFilters = {
                 navigateFromDrawer {
+                    filterListAccount.value = store.chosenAccountId().orEmpty()
                     navController.navigate("filters")
                 }
             },

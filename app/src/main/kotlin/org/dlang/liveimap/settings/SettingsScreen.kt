@@ -118,10 +118,10 @@ import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.engine.sieve.SieveCapabilities
 import org.dlang.liveimap.engine.sieve.SieveFailure
 import org.dlang.liveimap.engine.sieve.greetSieve
-import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.session.dropMailSession
+import org.dlang.liveimap.session.existingMailSession
 import org.dlang.liveimap.session.extraIdleBudgetFromText
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.watchedFolderText
@@ -269,6 +269,24 @@ private class SettingsEditor(
         accounts = listed.map { it.copy(chosen = it.id == editingId) }
         ready = true
     }
+}
+
+/**
+ * Writes only the Sieve pin through [store], bound to [editingId] when that was captured.
+ * Does not save the rest of the settings.
+ */
+internal suspend fun persistSievePin(store: DataStoreSettingsStore, editingId: String?, fingerprint: String) {
+    val target = if (editingId.isNullOrEmpty()) store else store.forAccount(editingId)
+    target.update { it.copy(sieveCertPin = fingerprint) }
+}
+
+/**
+ * No open session, or a JMAP account, does not show an IMAP "server lacks" reason.
+ * An open IMAP session uses what that session advertised.
+ */
+internal fun serverCapAllows(jmapFolders: Boolean, sessionOpen: Boolean, advertised: Boolean): Boolean {
+    if (jmapFolders || !sessionOpen) return true
+    return advertised
 }
 
 /** Bumped after every settings save, so another editor on screen (the two-pane group list) reloads. */
@@ -996,6 +1014,8 @@ private fun AccountGroup(editor: SettingsEditor) {
                 TextButton(
                     onClick = {
                         if (checkingSieve) return@TextButton
+                        val sieveStore = editor.bound
+                        val sieveAccount = editor.editingId
                         val (host, port) = sieveEndpoint(editor.settings)
                         if (host.isBlank()) {
                             sieveReport = noSieveHost
@@ -1010,7 +1030,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                                 sieveReport = sieveCheckText(
                                     withContext(editor.settings.tlsPolicy()) {
                                         greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
-                                            editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
+                                            persistSievePin(sieveStore, sieveAccount, fingerprint)
                                         }
                                     },
                                 )
@@ -1534,11 +1554,13 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(autoExpunge = it))
             }
             val id = editor.accounts.firstOrNull { it.chosen }?.id
-            val caps = if (id.isNullOrEmpty()) {
-                Capabilities.parse("")
-            } else {
-                mailSession(id).featureCaps
-            }
+            val session = if (id.isNullOrEmpty()) null else existingMailSession(id)
+            val caps = session?.featureCaps
+            fun allows(advertised: Boolean) = serverCapAllows(settings.jmapFolders, session != null, advertised)
+            val listExtended = allows(caps?.listExtended == true)
+            val uidPlus = allows(caps?.uidPlus == true)
+            val canMove = allows(caps?.move == true)
+            val compress = allows(caps?.compressDeflate == true)
             val trashSet = settings.trashMailbox.isNotEmpty()
             ReasonChoice(
                 stringResource(R.string.settings_delete_button),
@@ -1546,17 +1568,17 @@ private fun ReadingGroup(editor: SettingsEditor) {
                     ReasonOption(DeletePolicy.MarkDeleted, true, null),
                     ReasonOption(
                         DeletePolicy.MoveToTrash,
-                        trashSet || caps.listExtended,
+                        trashSet || listExtended,
                         when {
                             trashSet -> null
-                            caps.listExtended -> stringResource(R.string.settings_trash_needed)
+                            listExtended -> stringResource(R.string.settings_trash_needed)
                             else -> stringResource(R.string.settings_reason_no_trash)
                         },
                     ),
                     ReasonOption(
                         DeletePolicy.DeletePermanently,
-                        caps.uidPlus,
-                        if (caps.uidPlus) null else stringResource(R.string.settings_reason_uidplus),
+                        uidPlus,
+                        if (uidPlus) null else stringResource(R.string.settings_reason_uidplus),
                     ),
                 ),
                 settings.deletePolicy,
@@ -1570,8 +1592,8 @@ private fun ReadingGroup(editor: SettingsEditor) {
                     ReasonOption(MoveMethod.CopyThenMarkDeleted, true, null),
                     ReasonOption(
                         MoveMethod.ImapMove,
-                        caps.move,
-                        if (caps.move) null else stringResource(R.string.settings_reason_move),
+                        canMove,
+                        if (canMove) null else stringResource(R.string.settings_reason_move),
                     ),
                 ),
                 settings.moveMethod,
@@ -1589,8 +1611,8 @@ private fun ReadingGroup(editor: SettingsEditor) {
             ReasonChoice(
                 stringResource(R.string.settings_compression),
                 listOf(
-                    ReasonOption(Compression.On, caps.compressDeflate, if (caps.compressDeflate) null else stringResource(R.string.settings_reason_compress)),
-                    ReasonOption(Compression.Auto, caps.compressDeflate, if (caps.compressDeflate) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.On, compress, if (compress) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.Auto, compress, if (compress) null else stringResource(R.string.settings_reason_compress)),
                     ReasonOption(Compression.Off, true, null),
                 ),
                 settings.compression,
@@ -2562,7 +2584,11 @@ private fun LineField(
     onFocus: ((Boolean) -> Unit)? = null,
     onCommit: (String) -> Unit,
 ) {
-    val draftState = rememberSaveable { mutableStateOf(value) }
+    val draftState = if (password) {
+        remember { mutableStateOf(value) }
+    } else {
+        rememberSaveable { mutableStateOf(value) }
+    }
     val baselineState = remember { mutableStateOf(value) }
     if (value != baselineState.value) {
         if (draftState.value == baselineState.value || draftState.value == value) {
@@ -3206,6 +3232,11 @@ private fun SendingRulesRows(editor: SettingsEditor) {
     val rules = org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)
     fun save(list: List<org.dlang.liveimap.ui.compose.SendingRule>) =
         editor.persist(editor.settings.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(list)))
+    LaunchedEffect(rules.map { it.id }) {
+        if (rules.any { it.id.isBlank() }) {
+            save(org.dlang.liveimap.ui.compose.assignSendingIds(rules))
+        }
+    }
     var editing by remember { mutableStateOf<Int?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
@@ -3256,17 +3287,26 @@ private fun SendingRulesRows(editor: SettingsEditor) {
         )
         Row {
             TextButton(enabled = index > 0, onClick = {
-                save(rules.toMutableList().also { it.add(index - 1, it.removeAt(index)) }); editing = null
+                val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
+                if (index in list.indices) save(list.toMutableList().also { it.add(index - 1, it.removeAt(index)) })
+                editing = null
             }) { Text(stringResource(R.string.settings_rule_up)) }
             TextButton(enabled = index < rules.size - 1, onClick = {
-                save(rules.toMutableList().also { it.add(index + 1, it.removeAt(index)) }); editing = null
+                val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
+                if (index in list.indices) save(list.toMutableList().also { it.add(index + 1, it.removeAt(index)) })
+                editing = null
             }) { Text(stringResource(R.string.settings_rule_down)) }
-            TextButton(onClick = { save(rules.filterIndexed { i, _ -> i != index }); editing = null }) {
+            TextButton(onClick = {
+                val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
+                if (index in list.indices) save(list.filterIndexed { i, _ -> i != index })
+                editing = null
+            }) {
                 Text(stringResource(R.string.settings_rule_delete))
             }
         }
-        if (editing == index) RuleEditor(rule, editor.ready, accounts) { changed ->
-            save(rules.toMutableList().also { it[index] = changed })
+        if (editing == index) RuleEditor(rule, editor.ready, accounts) { edit ->
+            val current = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
+            save(org.dlang.liveimap.ui.compose.patchSendingRule(current, rule.id, edit))
         }
     }
     Text(stringResource(R.string.settings_rules_presets))
@@ -3274,7 +3314,9 @@ private fun SendingRulesRows(editor: SettingsEditor) {
     FlowRow {
         fun add(new: List<org.dlang.liveimap.ui.compose.SendingRule>) {
             if (new.isEmpty()) return
-            save(rules + new); editing = rules.size
+            val current = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
+            save(org.dlang.liveimap.ui.compose.assignSendingIds(current + new))
+            editing = current.size
         }
         val p = org.dlang.liveimap.ui.compose.RulePresets
         AssistChip(onClick = { add(p.replyFromSentTo(settings.altAddresses.ifEmpty { listOf(me) })) },
@@ -3329,57 +3371,59 @@ private fun RuleEditor(
     rule: org.dlang.liveimap.ui.compose.SendingRule,
     ready: Boolean,
     accounts: List<AccountChoice>,
-    onChange: (org.dlang.liveimap.ui.compose.SendingRule) -> Unit,
+    onPatch: ((org.dlang.liveimap.ui.compose.SendingRule) -> org.dlang.liveimap.ui.compose.SendingRule) -> Unit,
 ) {
     fun list(t: String) = t.split(',').map { it.trim() }.filter { it.isNotEmpty() }
     fun opt(t: String) = t.ifBlank { null }
     val c = rule.conditions
     val a = rule.actions
-    LineField(stringResource(R.string.settings_rule_name), rule.name, ready = ready) { onChange(rule.copy(name = it.ifBlank { rule.name })) }
-    LineField(stringResource(R.string.settings_rule_recipient), c.recipient.joinToString(", "), ready = ready) {
-        onChange(rule.copy(conditions = c.copy(recipient = list(it))))
+    LineField(stringResource(R.string.settings_rule_name), rule.name, ready = ready) { text ->
+        onPatch { latest -> latest.copy(name = text.ifBlank { latest.name }) }
     }
-    LineField(stringResource(R.string.settings_rule_sent_to), c.sentTo.joinToString(", "), ready = ready) {
-        onChange(rule.copy(conditions = c.copy(sentTo = list(it))))
+    LineField(stringResource(R.string.settings_rule_recipient), c.recipient.joinToString(", "), ready = ready) { text ->
+        onPatch { latest -> latest.copy(conditions = latest.conditions.copy(recipient = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_list_id), c.listId, ready = ready) {
-        onChange(rule.copy(conditions = c.copy(listId = it.trim())))
+    LineField(stringResource(R.string.settings_rule_sent_to), c.sentTo.joinToString(", "), ready = ready) { text ->
+        onPatch { latest -> latest.copy(conditions = latest.conditions.copy(sentTo = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_folder), c.folder, ready = ready) {
-        onChange(rule.copy(conditions = c.copy(folder = it.trim())))
+    LineField(stringResource(R.string.settings_rule_list_id), c.listId, ready = ready) { text ->
+        onPatch { latest -> latest.copy(conditions = latest.conditions.copy(listId = text.trim())) }
     }
-    LineField(stringResource(R.string.settings_rule_orig_from), c.originalFrom.joinToString(", "), ready = ready) {
-        onChange(rule.copy(conditions = c.copy(originalFrom = list(it))))
+    LineField(stringResource(R.string.settings_rule_folder), c.folder, ready = ready) { text ->
+        onPatch { latest -> latest.copy(conditions = latest.conditions.copy(folder = text.trim())) }
     }
-    LineField(stringResource(R.string.settings_rule_from_name), a.fromName.orEmpty(), ready = ready) {
-        onChange(rule.copy(actions = a.copy(fromName = opt(it))))
+    LineField(stringResource(R.string.settings_rule_orig_from), c.originalFrom.joinToString(", "), ready = ready) { text ->
+        onPatch { latest -> latest.copy(conditions = latest.conditions.copy(originalFrom = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_from), a.fromAddress.orEmpty(), KeyboardType.Email, ready = ready) {
-        onChange(rule.copy(actions = a.copy(fromAddress = opt(it))))
+    LineField(stringResource(R.string.settings_rule_from_name), a.fromName.orEmpty(), ready = ready) { text ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(fromName = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_reply_to), a.replyTo.orEmpty(), KeyboardType.Email, ready = ready) {
-        onChange(rule.copy(actions = a.copy(replyTo = opt(it))))
+    LineField(stringResource(R.string.settings_rule_from), a.fromAddress.orEmpty(), KeyboardType.Email, ready = ready) { text ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(fromAddress = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_signature), a.signature.orEmpty(), singleLine = false, ready = ready) {
-        onChange(rule.copy(actions = a.copy(signature = opt(it))))
+    LineField(stringResource(R.string.settings_rule_reply_to), a.replyTo.orEmpty(), KeyboardType.Email, ready = ready) { text ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(replyTo = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_fcc), a.fcc.orEmpty(), ready = ready) {
-        onChange(rule.copy(actions = a.copy(fcc = opt(it))))
+    LineField(stringResource(R.string.settings_signature), a.signature.orEmpty(), singleLine = false, ready = ready) { text ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(signature = opt(text))) }
     }
-    BoolField(stringResource(R.string.settings_rule_reply_list), a.replyToList == true) {
-        onChange(rule.copy(actions = a.copy(replyToList = if (it) true else null)))
+    LineField(stringResource(R.string.settings_rule_fcc), a.fcc.orEmpty(), ready = ready) { text ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(fcc = opt(text))) }
+    }
+    BoolField(stringResource(R.string.settings_rule_reply_list), a.replyToList == true) { enabled ->
+        onPatch { latest -> latest.copy(actions = latest.actions.copy(replyToList = if (enabled) true else null)) }
     }
     Text(stringResource(R.string.settings_rule_send_account))
     FlowRow {
         FilterChip(
             selected = a.sendAccount == null,
-            onClick = { onChange(rule.copy(actions = a.copy(sendAccount = null))) },
+            onClick = { onPatch { latest -> latest.copy(actions = latest.actions.copy(sendAccount = null)) } },
             label = { Text(stringResource(R.string.settings_rule_send_this)) },
         )
         for (choice in accounts) {
             FilterChip(
                 selected = a.sendAccount == choice.id,
-                onClick = { onChange(rule.copy(actions = a.copy(sendAccount = choice.id))) },
+                onClick = { onPatch { latest -> latest.copy(actions = latest.actions.copy(sendAccount = choice.id)) } },
                 label = { Text(choice.name) },
             )
         }
