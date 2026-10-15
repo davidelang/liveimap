@@ -1369,6 +1369,21 @@ class IndexWindowTest {
     }
 
     @Test
+    fun refreshShownLeavesNoticeWhenTailFetchFails() {
+        val session = folder(10)
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val beforeUids = model.rows.map { it.uid }
+        session.exists = 11
+        session.rows[11L] = row(11L)
+        session.failure = MailFailure("tail failed")
+        runImmediate { model.refreshShown(model.rows.map { it.uid }, 11) }
+        assertEquals(beforeUids, model.rows.map { it.uid })
+        assertEquals(0, model.pendingNew)
+        assertEquals("tail failed", model.notice)
+    }
+
+    @Test
     fun refreshShownDoesNotInsertIntoNonArrivalView() {
         val session = folder(10)
         session.sortUids = (1L..10L).toList()

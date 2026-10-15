@@ -1340,8 +1340,8 @@ class IndexModel(
                 }
                 refreshSummaryUnread()
             }
-            applyExistsCount(existsNow)
             notice = null
+            applyExistsCount(existsNow)
             publishMessageOrder()
         } catch (failure: MailFailure) {
             heldRows = previousRows
@@ -2093,6 +2093,7 @@ class IndexModel(
             try {
                 addNewTail(growth)
             } catch (failure: MailFailure) {
+                notice = failure.text
                 return
             }
         }

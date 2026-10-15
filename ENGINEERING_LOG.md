@@ -2973,3 +2973,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - Reconnect uses session login password
 
 - Keeper reconnect passes sessionPassword (lab hook, loggedInPassword, then store) into login; watch stop path unchanged (main IMAP stays up).
+
+## 2026-10-14 - arrival tail fetch failure notice
+
+- Failed addNewTail sets notice; refreshShown clears notice before applyExistsCount so a tail failure stays visible.
