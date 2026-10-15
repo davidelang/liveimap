@@ -37,6 +37,7 @@
 #include <strings.h>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <string>
 #include <thread>
@@ -172,7 +173,7 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
     }
 }
 
-std::string utf8FromJava(JNIEnv * env, jstring value);
+std::optional<std::string> utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
 extern thread_local std::string gTlsAlert;
@@ -735,12 +736,14 @@ bool ensureJni(JNIEnv * env) {
 /* Standard UTF-8 (not JNI modified UTF-8) because these strings go on the wire (F41): a supplementary character
  * must be one 4-byte sequence, not two encoded surrogates. The copy is wiped on release (it may be a password). */
 struct JChars {
-    std::string s;
+    std::optional<std::string> s;
     JChars(JNIEnv * e, jstring js) : s(utf8FromJava(e, js)) {}
-    ~JChars() { wipeSecret(s); }
+    ~JChars() { if (s) wipeSecret(*s); }
     JChars(const JChars &) = delete;
     JChars & operator=(const JChars &) = delete;
-    const char * c() const { return s.c_str(); }
+    // A failed copy is nullopt, not "". Callers that only test emptiness would send that as a real
+    // empty password or query. A line break is refused before it is written on the wire.
+    const char * c() const { return s ? s->c_str() : "\n"; }
 };
 
 jstring newString(JNIEnv * env, const char * text) {
@@ -3035,8 +3038,13 @@ void storePeerOffer(JNIEnv * env, jclass cls, jobject list) {
                 lines.clear();
                 break;
             }
-            lines.push_back(utf8FromJava(env, static_cast<jstring>(item)));
+            auto line = utf8FromJava(env, static_cast<jstring>(item));
             env->DeleteLocalRef(item);
+            if (!line) {
+                lines.clear();
+                break;
+            }
+            lines.push_back(std::move(*line));
         }
     }
     env->DeleteLocalRef(result);
@@ -3123,8 +3131,9 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
     } else {
-        text = utf8FromJava(env, static_cast<jstring>(result));
+        auto got = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
+        if (got) text = std::move(*got);
     }
     if (gate.publish && promptableTrust(text)) {
         storePeerOffer(env, cls, list);
@@ -3313,8 +3322,13 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     // Mechanisms best first (imapAuthOrder); the first is tried, the rest only after a local failure.
     std::vector<std::string> order;
     if (result != nullptr) {
-        std::string joined = utf8FromJava(env, static_cast<jstring>(result));
+        auto got = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
+        if (!got) {
+            *error = "auth choice failed";
+            return false;
+        }
+        std::string joined = std::move(*got);
         size_t at = 0;
         while (at < joined.size()) {
             size_t sp = joined.find(' ', at);
@@ -5885,15 +5899,22 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
     }
 }
 
-std::string utf8FromJava(JNIEnv * env, jstring value) {
+std::optional<std::string> utf8FromJava(JNIEnv * env, jstring value) {
+    if (env->ExceptionCheck()) return std::nullopt;
     if (value == nullptr) return std::string();
     jsize length = env->GetStringLength(value);
+    if (env->ExceptionCheck()) return std::nullopt;
     if (length <= 0) return std::string();
     std::vector<jchar> units(static_cast<size_t>(length));
+    auto wipeOwned = [&]() {
+        volatile jchar * wipe = units.data();
+        for (jsize i = 0; i < length; ++i) wipe[static_cast<size_t>(i)] = 0;
+    };
+    // Copy into this function's buffer. Never write the Java string (GetStringChars / GetStringCritical).
     env->GetStringRegion(value, 0, length, units.data());
     if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return std::string();
+        wipeOwned();
+        return std::nullopt;
     }
     std::string out;
     // F97: worst case up front (4 bytes per UTF-16 unit), so a password never reallocates and leaves an unwiped copy.
@@ -5931,8 +5952,7 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
             out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
         }
     }
-    volatile jchar * wipe = units.data();
-    for (jsize i = 0; i < length; ++i) wipe[static_cast<size_t>(i)] = 0;
+    wipeOwned();
     return out;
 }
 
@@ -5975,8 +5995,9 @@ std::string decodePreviewBytes(const char * bytes, size_t length, const std::str
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
     } else {
-        text = utf8FromJava(env, static_cast<jstring>(result));
+        auto got = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
+        if (got) text = std::move(*got);
     }
     env->DeleteLocalRef(array);
     env->DeleteLocalRef(jCharset);
@@ -6243,6 +6264,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) return 0;
     auto * session = new LiveSession();
     session->stagedWatch = true;
     session->host = h.c();
@@ -6264,6 +6286,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     session->allowOldTls = allowOldTls == JNI_TRUE;
     {
         JChars mech(env, authMechanism);
+        if (!mech.s) {
+            delete session;
+            return 0;
+        }
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
     }
@@ -6272,6 +6298,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
         session->clientP12.resize(static_cast<size_t>(n));
         if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
         JChars cpw(env, clientP12Password);
+        if (!cpw.s) {
+            delete session;
+            return 0;
+        }
         session->clientP12Password = cpw.c();
         if (!session->clientP12Password.empty()) {
             session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
@@ -6315,6 +6345,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) return 0;
     clearCertOffer();
     auto * session = new LiveSession();
     session->host = h.c();
@@ -6336,6 +6367,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->allowOldTls = allowOldTls == JNI_TRUE;
     {
         JChars mech(env, authMechanism);
+        if (!mech.s) {
+            delete session;
+            return 0;
+        }
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
     }
@@ -6344,6 +6379,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         session->clientP12.resize(static_cast<size_t>(n));
         if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
         JChars cpw(env, clientP12Password);
+        if (!cpw.s) {
+            delete session;
+            return 0;
+        }
         session->clientP12Password = cpw.c();
         if (!session->clientP12Password.empty()) {
             session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
@@ -7865,17 +7904,33 @@ struct mailimap_search_key * advancedKey(JNIEnv * env, const char * combiner, jb
     }
     const bool foldAnd = sameKind(combiner, "And");
     struct mailimap_search_key * folded = nullptr;
+    // chainKey counts Group steps at the top and refuses a second sibling before SORT or THREAD.
+    // One Group is allowed. A Group inside that Group stays refused in criterionKey (depth 1).
+    int topGroups = 0;
     for (jsize i = 0; i < n; ++i) {
         jstring kindJs = static_cast<jstring>(env->GetObjectArrayElement(kinds, i));
         jstring argJs = static_cast<jstring>(env->GetObjectArrayElement(arguments, i));
         struct mailimap_search_key * step = nullptr;
+        bool secondGroup = false;
         {
             JChars kindChars(env, kindJs);
             JChars argChars(env, argJs);
-            step = criterionKey(env, kindChars.c(), argChars.c());
+            if (!kindChars.s || !argChars.s) {
+                step = nullptr;
+            } else if (sameKind(kindChars.c(), "Group") && ++topGroups > 1) {
+                secondGroup = true;
+            } else {
+                step = criterionKey(env, kindChars.c(), argChars.c());
+            }
         }
         if (kindJs != nullptr) env->DeleteLocalRef(kindJs);
         if (argJs != nullptr) env->DeleteLocalRef(argJs);
+        if (secondGroup) {
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            env->ReleaseBooleanArrayElements(negated, flags, JNI_ABORT);
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
         if (env->ExceptionCheck() || step == nullptr) {
             if (step != nullptr) mailimap_search_key_free(step);
             if (folded != nullptr) mailimap_search_key_free(folded);
@@ -9240,8 +9295,10 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
         return false;
     }
     if (result != nullptr) {
-        *mechanism = utf8FromJava(env, static_cast<jstring>(result));
+        auto got = utf8FromJava(env, static_cast<jstring>(result));
         env->DeleteLocalRef(result);
+        if (!got) return false;
+        *mechanism = std::move(*got);
     }
     return true;
 }
@@ -9341,12 +9398,20 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     hold.session = session;
     // F52: no silent fallback to the IMAP login here. Kotlin passes the IMAP login explicitly only when the SMTP
     // host is the same host or registrable domain (Public Suffix List, smtpMayReuseImapLogin).
-    std::string authUser = utf8FromJava(env, smtpUsername);
-    std::string authPass = utf8FromJava(env, smtpPassword);
+    auto authUserGot = utf8FromJava(env, smtpUsername);
+    auto authPassGot = utf8FromJava(env, smtpPassword);
+    if (!authUserGot || !authPassGot) {
+        if (authPassGot) wipeSecret(*authPassGot);
+        return 0;
+    }
+    std::string authUser = std::move(*authUserGot);
+    std::string authPass = std::move(*authPassGot);
     SecretWipe authPassWipe{authPass};
     if (authPass.empty()) authUser.clear();
     // MAIL FROM: the message's From when compose chose it (a plus alias or a configured From), else the account.
-    std::string mailFrom = utf8FromJava(env, envelopeFrom);
+    auto mailFromGot = utf8FromJava(env, envelopeFrom);
+    if (!mailFromGot) return 0;
+    std::string mailFrom = std::move(*mailFromGot);
     if (mailFrom.empty()) mailFrom = session->from;
     {
         bool ok = envelopeAddressOk(mailFrom.c_str());
@@ -9806,6 +9871,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
     JChars h(env, host);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
+    if (!h.s || !mode.s || !pin.s) return nullptr;
     LiveSession probe;
     probe.acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
     probe.allowOldTls = allowOldTls == JNI_TRUE;

@@ -2991,3 +2991,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
 - Fixup: a Group criterion parses its body at depth 1, so a Group step inside it is refused and the search does not run. One Or group still sorts, windows, and threads.
+
+## 2026-10-14 - Search refuses a second top-level group
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
+- Fixup: a second top-level Group on search is bad search and is not sent. GetStringRegion failure wipes the owned copy and does not come back as an empty string.
