@@ -49,9 +49,34 @@ class WindowedOrder(
         windows.getValue(w).take((total - start).coerceAtLeast(0)).filter { it != Unknown }
     }
 
-    /** After removing [gone], positions shift: keep the total right and reload windows lazily. */
+    /** First loaded position matching [uid], or null when that UID is not in a loaded window. */
+    fun indexOfLoaded(uid: Long): Int? {
+        if (uid == Unknown) return null
+        return indexOfLoaded { it == uid }
+    }
+
+    /** First loaded position matching [match]. Scans loaded windows only and does not call [ensure]. */
+    fun indexOfLoaded(match: (Long) -> Boolean): Int? {
+        for (w in windows.keys.sorted()) {
+            val list = windows.getValue(w)
+            val start = w * windowSize
+            val limit = minOf(list.size, (total - start).coerceAtLeast(0))
+            for (i in 0 until limit) {
+                val id = list[i]
+                if (id != Unknown && match(id)) return start + i
+            }
+        }
+        return null
+    }
+
+    /** After removing [gone], positions shift: shrink only by loaded UIDs and reload windows lazily. */
     fun without(gone: Set<Long>): WindowedOrder {
-        val removed = known().count { it in gone }.coerceAtLeast(if (gone.isEmpty()) 0 else gone.size)
+        var removed = 0
+        if (gone.isNotEmpty()) {
+            for (uid in known()) {
+                if (uid in gone) removed += 1
+            }
+        }
         return WindowedOrder((total - removed).coerceAtLeast(0), windowSize, loader)
     }
 

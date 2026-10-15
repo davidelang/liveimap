@@ -132,8 +132,6 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -785,7 +783,6 @@ private fun MessageIndexLoaded(
     val cancelSearch = remember { mutableStateOf(false) }
     var searchProgress by remember { mutableStateOf<String?>(null) }
     val watchRecovery = remember { WatchBackoff() }
-    val gate = remember { Mutex() }
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
     var rows by held.rowsState
@@ -929,7 +926,7 @@ private fun MessageIndexLoaded(
         leavingIndex = true
         scope.launch {
             try {
-                gate.withLock { session.expungeOnLeave(mailbox) }
+                session.expungeOnLeave(mailbox)
                 onBack()
             } catch (error: CancellationException) {
                 leavingIndex = false
@@ -946,7 +943,7 @@ private fun MessageIndexLoaded(
     LaunchedEffect(mailbox, account.trashMailbox, connected) {
         if (!connected) return@LaunchedEffect
         knownTrashName = try {
-            gate.withLock { session.knownTrash() }
+            session.knownTrash()
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
@@ -974,10 +971,10 @@ private fun MessageIndexLoaded(
         val entire = allMailbox
         selectionMore = false
         scope.launch {
-            gate.withLock {
-                model.acrossFolders(uids, hits, entire) { u, e, _ -> model.changeFlags(u, add, remove, e) }
-                sync.block()
-            }
+
+            model.acrossFolders(uids, hits, entire) { u, e, _ -> model.changeFlags(u, add, remove, e) }
+            sync.block()
+        
         }
     }
 
@@ -1023,10 +1020,10 @@ private fun MessageIndexLoaded(
         val current = offer ?: return
         undoOffer = null
         scope.launch {
-            gate.withLock {
-                model.undo(current)
-                sync.block()
-            }
+
+            model.undo(current)
+            sync.block()
+        
             snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
@@ -1046,11 +1043,11 @@ private fun MessageIndexLoaded(
         }
         scope.launch {
             var ok = false
-            gate.withLock {
-                model.expungeUids(offer.uids)
-                sync.block()
-                ok = model.notice == null
-            }
+
+            model.expungeUids(offer.uids)
+            sync.block()
+            ok = model.notice == null
+        
             finishUndoExpunge(ok)
         }
     }
@@ -1084,7 +1081,7 @@ private fun MessageIndexLoaded(
     fun pull() { sync.block() }
 
     fun selectAllMessages() {
-        if (blocksFolderSelection(model.orderMailboxes, mailbox)) {
+        if (model.order !is WindowedOrder && blocksFolderSelection(model.orderMailboxes, mailbox)) {
             // F105: every hit, each by its own folder (home-folder hits as plain UIDs)
             val boxes = model.orderMailboxes
             val own = ArrayList<Long>()
@@ -1108,15 +1105,13 @@ private fun MessageIndexLoaded(
             SelectAllTarget.EntireMailbox -> {
                 scope.launch {
                     // F107: freeze "entire folder" at UIDNEXT now; mail arriving before the confirm is not included.
-                    val exists = gate.withLock {
-                        try {
-                            model.freezeAllMailbox()
-                        } catch (failure: MailFailure) {
-                            model.reportNotice(failure.text)
-                            return@launch
-                        }
-                        model.shownExists() // F123
+                    try {
+                        model.freezeAllMailbox()
+                    } catch (failure: MailFailure) {
+                        model.reportNotice(failure.text)
+                        return@launch
                     }
+                    val exists = model.shownExists() // F123
                     allMailbox = true
                     mailboxExists = exists
                     folderExists = exists
@@ -1131,7 +1126,7 @@ private fun MessageIndexLoaded(
 
     suspend fun readKnownTrash(): String {
         val trash = try {
-            gate.withLock { session.knownTrash() }
+            session.knownTrash()
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
@@ -1151,57 +1146,57 @@ private fun MessageIndexLoaded(
     ) {
         var undo: MailUndo? = null
         val namedTrash = usableTrashName(account.trashMailbox).isNotEmpty()
-        gate.withLock {
-            model.clearMailUndo()
-            model.acrossFolders(uids, hits, entire) { u, e, folder ->
-                val here = policyForListedDelete(
-                    policy,
-                    folder,
-                    mailbox,
-                    trash,
-                    session.featureCaps.uidPlus,
-                    namedTrash,
-                    permanentOnlyInTrash,
-                )
-                when (here) {
-                    DeletePolicy.MarkDeleted -> model.deleteMessages(u, e)
-                    DeletePolicy.MoveToTrash -> model.moveMessages(u, trash, e)
-                    DeletePolicy.DeletePermanently -> model.deletePermanently(u, e)
-                }
+
+        model.clearMailUndo()
+        model.acrossFolders(uids, hits, entire) { u, e, folder ->
+            val here = policyForListedDelete(
+                policy,
+                folder,
+                mailbox,
+                trash,
+                session.featureCaps.uidPlus,
+                namedTrash,
+                permanentOnlyInTrash,
+            )
+            when (here) {
+                DeletePolicy.MarkDeleted -> model.deleteMessages(u, e)
+                DeletePolicy.MoveToTrash -> model.moveMessages(u, trash, e)
+                DeletePolicy.DeletePermanently -> model.deletePermanently(u, e)
             }
-            pull()
-            undo = model.mailUndo
         }
+        pull()
+        undo = model.mailUndo
+    
         val pending = undo
         if (pending != null) publishUndo(pending)
     }
 
     suspend fun finishSwipe(uid: Long, binding: SwipeBinding, rowMailbox: String = "") {
         var undo: MailUndo? = null
-        gate.withLock {
-            model.clearMailUndo()
-            when (val command = model.performSwipe(uid, binding, rowMailbox)) {
-                is IndexCommand.Compose -> onCompose(command.seed)
-                is IndexCommand.ShowFlags -> flagUid = command.uid
-                IndexCommand.None -> Unit
-            }
-            pull()
-            undo = model.mailUndo
+
+        model.clearMailUndo()
+        when (val command = model.performSwipe(uid, binding, rowMailbox)) {
+            is IndexCommand.Compose -> onCompose(command.seed)
+            is IndexCommand.ShowFlags -> flagUid = command.uid
+            IndexCommand.None -> Unit
         }
+        pull()
+        undo = model.mailUndo
+    
         val pending = undo
         if (pending != null) publishUndo(pending)
     }
 
     fun onNewMailPill() {
         scope.launch {
-            gate.withLock {
-                val plainArrival = model.view.key == SortKey.Arrival &&
-                    !model.filterActive &&
-                    !model.searchActive
-                model.acknowledgeNewMail()
-                if (plainArrival) model.jumpToNewest()
-                pull()
-            }
+
+            val plainArrival = model.view.key == SortKey.Arrival &&
+                !model.filterActive &&
+                !model.searchActive
+            model.acknowledgeNewMail()
+            if (plainArrival) model.jumpToNewest()
+            pull()
+        
             if (model.rows.isNotEmpty()) scrollToNewestEnd()
         }
     }
@@ -1219,31 +1214,31 @@ private fun MessageIndexLoaded(
 
     fun toggleThread(rootUid: Long) {
         scope.launch {
-            gate.withLock {
-                val current = expandedThreads
-                val opening = rootUid !in current
-                if (opening && !model.cacheThreadMembers(rootUid)) {
-                    pull()
-                    return@withLock
-                }
-                val next = LinkedHashSet(current)
-                if (opening) next.add(rootUid) else next.remove(rootUid)
-                expandedThreads = next
-                model.noteExpanded(next)
-                model.publishMessageOrder()
+
+            val current = expandedThreads
+            val opening = rootUid !in current
+            if (opening && !model.cacheThreadMembers(rootUid)) {
                 pull()
+                return@launch
             }
+            val next = LinkedHashSet(current)
+            if (opening) next.add(rootUid) else next.remove(rootUid)
+            expandedThreads = next
+            model.noteExpanded(next)
+            model.publishMessageOrder()
+            pull()
+        
         }
     }
 
     fun runCriterion(kind: String, argument: String, label: String) {
         val narrow = narrowArmed
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                model.applyCriterion(kind, argument, narrow, label)
-                pull()
-            }
+
+            noteVisibleTop()
+            model.applyCriterion(kind, argument, narrow, label)
+            pull()
+        
             if (model.notice == null) {
                 narrowArmed = false
                 query = ""
@@ -1256,11 +1251,11 @@ private fun MessageIndexLoaded(
 
     fun runShowAll() {
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                model.showAll()
-                pull()
-            }
+
+            noteVisibleTop()
+            model.showAll()
+            pull()
+        
             if (model.notice == null) {
                 narrowArmed = false
                 query = ""
@@ -1273,11 +1268,11 @@ private fun MessageIndexLoaded(
 
     fun runWiden() {
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                model.widenFilter()
-                pull()
-            }
+
+            noteVisibleTop()
+            model.widenFilter()
+            pull()
+        
             if (model.notice == null) narrowArmed = false
             if (model.rows.isNotEmpty()) scrollToStart()
         }
@@ -1326,13 +1321,13 @@ private fun MessageIndexLoaded(
         narrowArmed = false
         prompt = null
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                val next = if (continueThread) pending else FolderView(SortKey.Arrival, newestFirst = true)
-                model.applyView(next)
-                seedExpandedFromStyle()
-                pull()
-            }
+
+            noteVisibleTop()
+            val next = if (continueThread) pending else FolderView(SortKey.Arrival, newestFirst = true)
+            model.applyView(next)
+            seedExpandedFromStyle()
+            pull()
+        
             if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
@@ -1369,14 +1364,14 @@ private fun MessageIndexLoaded(
         narrowArmed = false
         prompt = null
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                model.allowLargeClientFallback = continueFallback
-                val next = if (continueFallback) pending else FolderView(SortKey.Arrival, newestFirst = true)
-                model.applyView(next)
-                seedExpandedFromStyle()
-                pull()
-            }
+
+            noteVisibleTop()
+            model.allowLargeClientFallback = continueFallback
+            val next = if (continueFallback) pending else FolderView(SortKey.Arrival, newestFirst = true)
+            model.applyView(next)
+            seedExpandedFromStyle()
+            pull()
+        
             if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
@@ -1413,13 +1408,13 @@ private fun MessageIndexLoaded(
         narrowArmed = false
         prompt = null
         scope.launch {
-            gate.withLock {
-                noteVisibleTop()
-                val next = if (continueSort) pending else FolderView(SortKey.Arrival, newestFirst = true)
-                model.applyView(next)
-                seedExpandedFromStyle()
-                pull()
-            }
+
+            noteVisibleTop()
+            val next = if (continueSort) pending else FolderView(SortKey.Arrival, newestFirst = true)
+            model.applyView(next)
+            seedExpandedFromStyle()
+            pull()
+        
             if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
@@ -1464,7 +1459,7 @@ private fun MessageIndexLoaded(
 
     suspend fun folderExistsNow(): Int? {
         return try {
-            gate.withLock { session.folderInfo(FolderAt(mailbox)).exists }
+            session.folderInfo(FolderAt(mailbox)).exists
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
@@ -1551,10 +1546,10 @@ private fun MessageIndexLoaded(
         )
         if (result == SnackbarResult.ActionPerformed) {
             lastReported = null
-            gate.withLock {
-                model.loadWindow()
-                pull()
-            }
+
+            model.loadWindow()
+            pull()
+        
             if (model.rows.isNotEmpty()) scrollToStart()
         }
     }
@@ -1603,7 +1598,7 @@ private fun MessageIndexLoaded(
             }
             held.recordAnchor = true
             true
-        } else gate.withLock {
+        } else run {
             heading = MailboxTitle(mailbox, "")
             loading = true
             banner = null
@@ -1613,7 +1608,7 @@ private fun MessageIndexLoaded(
                 throw error
             } catch (error: Exception) {
                 banner = error.message ?: "not connected"
-                return@withLock false
+                return@run false
             }
             try {
                 store.password()
@@ -1621,7 +1616,7 @@ private fun MessageIndexLoaded(
                 throw error
             } catch (error: Exception) {
                 banner = error.message ?: "not connected"
-                return@withLock false
+                return@run false
             }
             val opened = try {
                 session.openBound(store, settings)
@@ -1629,16 +1624,16 @@ private fun MessageIndexLoaded(
                 throw error
             } catch (error: MailFailure) {
                 banner = error.text
-                return@withLock false
+                return@run false
             }
             when (opened) {
                 is OpenResult.Rejected -> {
                     banner = opened.capabilities
-                    return@withLock false
+                    return@run false
                 }
                 is OpenResult.Failed -> {
                     banner = opened.text
-                    return@withLock false
+                    return@run false
                 }
                 OpenResult.Connected -> Unit
             }
@@ -1665,7 +1660,7 @@ private fun MessageIndexLoaded(
                     throw error
                 } catch (error: MailFailure) {
                     banner = error.text
-                    return@withLock false
+                    return@run false
                 }
                 pendingExists = selected.exists
                 if (
@@ -1674,7 +1669,7 @@ private fun MessageIndexLoaded(
                     overAskThreshold(selected.exists, settings.askFallback)
                 ) {
                     pendingFallback = savedView
-                    return@withLock false
+                    return@run false
                 }
             }
             val threading = savedAdvertised && !clientFallback && (savedView.key == SortKey.ThreadReferences ||
@@ -1686,7 +1681,7 @@ private fun MessageIndexLoaded(
                     throw error
                 } catch (error: MailFailure) {
                     banner = error.text
-                    return@withLock false
+                    return@run false
                 }
                 pendingExists = selected.exists
                 if (
@@ -1695,7 +1690,7 @@ private fun MessageIndexLoaded(
                     overAskThreshold(selected.exists, settings.askThread)
                 ) {
                     pendingThread = savedView
-                    return@withLock false
+                    return@run false
                 }
             }
             val serverSort = savedAdvertised && !clientFallback && !threading &&
@@ -1707,7 +1702,7 @@ private fun MessageIndexLoaded(
                     throw error
                 } catch (error: MailFailure) {
                     banner = error.text
-                    return@withLock false
+                    return@run false
                 }
                 pendingExists = selected.exists
                 if (
@@ -1716,7 +1711,7 @@ private fun MessageIndexLoaded(
                     overAskThreshold(selected.exists, settings.askSort)
                 ) {
                     pendingSort = savedView
-                    return@withLock false
+                    return@run false
                 }
             }
             model.loadWindow()
@@ -1742,18 +1737,18 @@ private fun MessageIndexLoaded(
             fallbackAskFromConnect = true
             fallbackAsk = fallback
             val fallbackAnswer = fallbackChoice.receive()
-            gate.withLock {
-                if (fallbackAnswer != AskAnswer.Cancel) {
-                    model.allowLargeClientFallback = true
-                    model.applyView(fallback)
-                } else {
-                    model.allowLargeClientFallback = false
-                    model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                }
-                seedExpandedFromStyle()
-                connected = true
-                pull()
+
+            if (fallbackAnswer != AskAnswer.Cancel) {
+                model.allowLargeClientFallback = true
+                model.applyView(fallback)
+            } else {
+                model.allowLargeClientFallback = false
+                model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
             }
+            seedExpandedFromStyle()
+            connected = true
+            pull()
+        
             held.windowReady = true
             loading = false
             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1764,16 +1759,16 @@ private fun MessageIndexLoaded(
                 threadAskFromConnect = true
                 threadAsk = chosen
                 val threadAnswer = threadChoice.receive()
-                gate.withLock {
-                    if (threadAnswer != AskAnswer.Cancel) {
-                        model.applyView(chosen)
-                    } else {
-                        model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                    }
-                    seedExpandedFromStyle()
-                    connected = true
-                    pull()
+
+                if (threadAnswer != AskAnswer.Cancel) {
+                    model.applyView(chosen)
+                } else {
+                    model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                 }
+                seedExpandedFromStyle()
+                connected = true
+                pull()
+            
                 held.windowReady = true
                 loading = false
                 if (model.rows.isNotEmpty()) scrollToStart()
@@ -1784,17 +1779,17 @@ private fun MessageIndexLoaded(
                     sortAskFromConnect = true
                     sortAsk = sortPending
                     val sortAnswer = sortChoice.receive()
-                    gate.withLock {
-                        if (sortAnswer != AskAnswer.Cancel) {
-                            sortConfirmed = true
-                            model.applyView(sortPending)
-                        } else {
-                            model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                        }
-                        seedExpandedFromStyle()
-                        connected = true
-                        pull()
+
+                    if (sortAnswer != AskAnswer.Cancel) {
+                        sortConfirmed = true
+                        model.applyView(sortPending)
+                    } else {
+                        model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
                     }
+                    seedExpandedFromStyle()
+                    connected = true
+                    pull()
+                
                     held.windowReady = true
                     loading = false
                     if (model.rows.isNotEmpty()) scrollToStart()
@@ -1817,7 +1812,7 @@ private fun MessageIndexLoaded(
                 mailbox !in model.account.searchAskSkip
             ) {
                 val exists = try {
-                    gate.withLock { model.shownExists() }
+                    model.shownExists()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1856,20 +1851,18 @@ private fun MessageIndexLoaded(
                         null
                     }
                     if (hits != null) {
-                        val appliedInPlace = gate.withLock {
-                            if (
-                                held.boundMailbox == mailboxAtStart &&
-                                model.order == orderAtStart &&
-                                model.orderMailboxes == orderMailboxesAtStart
-                            ) {
-                                // Same mailbox and UID order this search started from: show the results in place.
-                                noteVisibleTop()
-                                model.applyAdvancedHits(text, hits)
-                                pull()
-                                true
-                            } else {
-                                false
-                            }
+                        val appliedInPlace = if (
+                            held.boundMailbox == mailboxAtStart &&
+                            model.order == orderAtStart &&
+                            model.orderMailboxes == orderMailboxesAtStart
+                        ) {
+                            // Same mailbox and UID order this search started from: show the results in place.
+                            noteVisibleTop()
+                            model.applyAdvancedHits(text, hits)
+                            pull()
+                            true
+                        } else {
+                            false
                         }
                         if (appliedInPlace) {
                             if (model.rows.isNotEmpty()) scrollToStart()
@@ -1882,11 +1875,11 @@ private fun MessageIndexLoaded(
                                     duration = SnackbarDuration.Long,
                                 )
                                 if (shown == SnackbarResult.ActionPerformed) {
-                                    gate.withLock {
-                                        noteVisibleTop()
-                                        model.applyAdvancedHits(text, hits)
-                                        pull()
-                                    }
+
+                                    noteVisibleTop()
+                                    model.applyAdvancedHits(text, hits)
+                                    pull()
+                                
                                     if (model.rows.isNotEmpty()) scrollToStart()
                                 }
                             }
@@ -1898,21 +1891,21 @@ private fun MessageIndexLoaded(
             if (runAdvanced) {
                 cancelSearch.value = false
                 try {
-                    gate.withLock {
-                        noteVisibleTop()
-                        model.applyAdvanced(
-                            pendingAdvanced,
-                            pendingScope,
-                            cancelled = { cancelSearch.value },
-                        ) { current, total ->
-                            searchProgress = appContext.getString(
-                                R.string.index_search_folder_progress,
-                                current,
-                                total,
-                            )
-                        }
-                        pull()
+
+                    noteVisibleTop()
+                    model.applyAdvanced(
+                        pendingAdvanced,
+                        pendingScope,
+                        cancelled = { cancelSearch.value },
+                    ) { current, total ->
+                        searchProgress = appContext.getString(
+                            R.string.index_search_folder_progress,
+                            current,
+                            total,
+                        )
                     }
+                    pull()
+                
                 } finally {
                     searchProgress = null
                 }
@@ -1942,34 +1935,34 @@ private fun MessageIndexLoaded(
                         model.anchorPage,
                     )
                     val anchorEntry = anchorEntries.getOrNull(anchorIndex)
-                    gate.withLock {
-                        when (change) {
-                            MailboxChange.ShownFlags -> {
-                                val entries = buildIndexEntries(
-                                    model.rows,
-                                    expandedThreads,
-                                    model.threadMembers,
-                                    model.threadHidden,
-                                    model.threadDepth,
-                                    model.anchorPage,
-                                )
-                                val info = listState.layoutInfo.visibleItemsInfo
-                                val shown = if (info.isEmpty()) {
-                                    model.rows.map { it.uid }
-                                } else {
-                                    val uids = ArrayList<Long>()
-                                    for (item in info) {
-                                        val entry = entries.getOrNull(item.index) ?: continue
-                                        if (entry is IndexEntry.Message) uids.add(entry.row.uid)
-                                    }
-                                    if (uids.isEmpty()) model.rows.map { it.uid } else uids
+
+                    when (change) {
+                        MailboxChange.ShownFlags -> {
+                            val entries = buildIndexEntries(
+                                model.rows,
+                                expandedThreads,
+                                model.threadMembers,
+                                model.threadHidden,
+                                model.threadDepth,
+                                model.anchorPage,
+                            )
+                            val info = listState.layoutInfo.visibleItemsInfo
+                            val shown = if (info.isEmpty()) {
+                                model.rows.map { it.uid }
+                            } else {
+                                val uids = ArrayList<Long>()
+                                for (item in info) {
+                                    val entry = entries.getOrNull(item.index) ?: continue
+                                    if (entry is IndexEntry.Message) uids.add(entry.row.uid)
                                 }
-                                model.applyShownFlags(shown, folderExists)
+                                if (uids.isEmpty()) model.rows.map { it.uid } else uids
                             }
-                            else -> model.applyChange(change)
+                            model.applyShownFlags(shown, folderExists)
                         }
-                        pull()
+                        else -> model.applyChange(change)
                     }
+                    pull()
+                
                     if (
                         anchorEntry is IndexEntry.Message &&
                         (change is MailboxChange.Exists || change is MailboxChange.Expunge)
@@ -2147,17 +2140,17 @@ private fun MessageIndexLoaded(
         refreshing = true
         scope.launch {
             try {
-                gate.withLock {
-                    model.refreshShown(shown, exists)
-                    val failed = model.notice
-                    if (failed != null) {
-                        lastReported = failed
-                        banner = failed
-                    } else if (connected) {
-                        banner = null
-                    }
-                    pull()
+
+                model.refreshShown(shown, exists)
+                val failed = model.notice
+                if (failed != null) {
+                    lastReported = failed
+                    banner = failed
+                } else if (connected) {
+                    banner = null
                 }
+                pull()
+            
             } finally {
                 refreshing = false
             }
@@ -2204,12 +2197,12 @@ private fun MessageIndexLoaded(
         }.collect { index ->
             val before = model.anchorPage
             val holdNewest = !model.view.newestFirst && model.showsNewestEnd && userAtNewestEnd()
-            gate.withLock {
-                if (!holdNewest) {
-                    model.onFirstVisible(index)
-                    pull()
-                }
+
+            if (!holdNewest) {
+                model.onFirstVisible(index)
+                pull()
             }
+        
             if (model.anchorPage != before && model.rows.isNotEmpty()) {
                 listState.scrollToItem(0)
             }
@@ -2223,10 +2216,10 @@ private fun MessageIndexLoaded(
             if (model.pendingNew <= 0 && !model.newMailUnnumbered) return@collect
             if (!model.showsNewestEnd) return@collect
             userMovedSincePill.value = false
-            gate.withLock {
-                model.acknowledgeNewMail()
-                pull()
-            }
+
+            model.acknowledgeNewMail()
+            pull()
+        
         }
     }
 
@@ -2243,10 +2236,10 @@ private fun MessageIndexLoaded(
                     allowNewer.value = false
                     scope.launch {
                         val before = model.anchorPage
-                        gate.withLock {
-                            model.revealNewer()
-                            sync.block()
-                        }
+
+                        model.revealNewer()
+                        sync.block()
+                    
                         if (model.anchorPage < before && model.rows.isNotEmpty()) {
                             val target = (IndexPageSize - 1).coerceAtMost(model.rows.lastIndex)
                             if (target >= 0) listState.scrollToItem(target)
@@ -2371,14 +2364,14 @@ private fun MessageIndexLoaded(
                             val entire = allMailbox
                             scope.launch {
                                 var undo: MailUndo? = null
-                                gate.withLock {
-                                    model.clearMailUndo()
-                                    model.acrossFolders(uids, hits, entire) { u, e, _ ->
-                                        model.moveMessages(u, barMoveMailbox(account), e)
-                                    }
-                                    pull()
-                                    undo = model.mailUndo
+
+                                model.clearMailUndo()
+                                model.acrossFolders(uids, hits, entire) { u, e, _ ->
+                                    model.moveMessages(u, barMoveMailbox(account), e)
                                 }
+                                pull()
+                                undo = model.mailUndo
+                            
                                 val pending = undo
                                 if (pending != null) publishUndo(pending)
                             }
@@ -2711,11 +2704,11 @@ private fun MessageIndexLoaded(
                                 onClick = {
                                     menuOpen = false
                                     scope.launch {
-                                        gate.withLock {
-                                            noteVisibleTop()
-                                            run()
-                                            pull()
-                                        }
+
+                                        noteVisibleTop()
+                                        run()
+                                        pull()
+                                    
                                         model.notice?.let { postSnack(it) }
                                     }
                                 },
@@ -2738,12 +2731,12 @@ private fun MessageIndexLoaded(
                                 query = ""
                                 narrowArmed = false
                                 prompt = null
-                                gate.withLock {
-                                    noteVisibleTop()
-                                    model.applyView(next)
-                                    seedExpandedFromStyle()
-                                    pull()
-                                }
+
+                                noteVisibleTop()
+                                model.applyView(next)
+                                seedExpandedFromStyle()
+                                pull()
+                            
                                 if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         }
@@ -2756,12 +2749,12 @@ private fun MessageIndexLoaded(
                                 query = ""
                                 narrowArmed = false
                                 prompt = null
-                                gate.withLock {
-                                    noteVisibleTop()
-                                    model.applyView(next)
-                                    seedExpandedFromStyle()
-                                    pull()
-                                }
+
+                                noteVisibleTop()
+                                model.applyView(next)
+                                seedExpandedFromStyle()
+                                pull()
+                            
                                 if (model.rows.isNotEmpty()) scrollToStart()
                             }
                         }
@@ -2834,10 +2827,10 @@ private fun MessageIndexLoaded(
                                     confirmExpunge = true
                                 } else {
                                     scope.launch {
-                                        gate.withLock {
-                                            model.expunge()
-                                            pull()
-                                        }
+
+                                        model.expunge()
+                                        pull()
+                                    
                                     }
                                 }
                             },
@@ -2855,7 +2848,7 @@ private fun MessageIndexLoaded(
                                 menuOpen = false
                                 scope.launch {
                                     val info = try {
-                                        gate.withLock { model.shownInfo() } // F123
+                                        model.shownInfo() // F123
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {
@@ -2883,19 +2876,19 @@ private fun MessageIndexLoaded(
                                     var snackNone = false
                                     var askName: String? = null
                                     try {
-                                        gate.withLock {
-                                            val landed = model.nextUnread()
-                                            pull()
-                                            if (landed) {
-                                                moved = true
-                                            } else if (model.notice == null) {
-                                                val name = nextUnseenFolder(
-                                                    mailbox,
-                                                    folderList.unseenFolderOrder(),
-                                                )
-                                                if (name == null) snackNone = true else askName = name
-                                            }
+
+                                        val landed = model.nextUnread()
+                                        pull()
+                                        if (landed) {
+                                            moved = true
+                                        } else if (model.notice == null) {
+                                            val name = nextUnseenFolder(
+                                                mailbox,
+                                                folderList.unseenFolderOrder(),
+                                            )
+                                            if (name == null) snackNone = true else askName = name
                                         }
+                                    
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {
@@ -3036,11 +3029,11 @@ private fun MessageIndexLoaded(
                                 confirmExpunge = false
                                 scope.launch {
                                     var ok = false
-                                    gate.withLock {
-                                        if (specific != null) model.expungeUids(specific) else model.expunge()
-                                        pull()
-                                        ok = model.notice == null
-                                    }
+
+                                    if (specific != null) model.expungeUids(specific) else model.expunge()
+                                    pull()
+                                    ok = model.notice == null
+                                
                                     if (specific != null) finishUndoExpunge(ok)
                                 }
                             }) { Text(stringResource(R.string.index_expunge), color = MaterialTheme.colorScheme.error) }
@@ -3074,11 +3067,11 @@ private fun MessageIndexLoaded(
                                 selected = true,
                                 onClick = {
                                     scope.launch {
-                                        gate.withLock {
-                                            noteVisibleTop()
-                                            model.dropFiltersFrom(index)
-                                            pull()
-                                        }
+
+                                        noteVisibleTop()
+                                        model.dropFiltersFrom(index)
+                                        pull()
+                                    
                                         if (model.notice == null) narrowArmed = false
                                         if (model.rows.isNotEmpty()) scrollToStart()
                                     }
@@ -3137,11 +3130,11 @@ private fun MessageIndexLoaded(
                                 narrowArmed = false
                                 prompt = null
                                 scope.launch {
-                                    gate.withLock {
-                                        noteVisibleTop()
-                                        model.applySearch("")
-                                        pull()
-                                    }
+
+                                    noteVisibleTop()
+                                    model.applySearch("")
+                                    pull()
+                                
                                     if (model.rows.isNotEmpty()) scrollToStart()
                                 }
                             }
@@ -3154,11 +3147,11 @@ private fun MessageIndexLoaded(
                                 narrowArmed = false
                                 prompt = null
                                 scope.launch {
-                                    gate.withLock {
-                                        noteVisibleTop()
-                                        model.applySearch(query, held.searchField)
-                                        pull()
-                                    }
+
+                                    noteVisibleTop()
+                                    model.applySearch(query, held.searchField)
+                                    pull()
+                                
                                     if (model.rows.isNotEmpty()) scrollToStart()
                                 }
                             },
@@ -3226,11 +3219,11 @@ private fun MessageIndexLoaded(
                                                 narrowArmed = false
                                                 prompt = null
                                                 scope.launch {
-                                                    gate.withLock {
-                                                        noteVisibleTop()
-                                                        model.applySearch(item.query, item.field)
-                                                        pull()
-                                                    }
+
+                                                    noteVisibleTop()
+                                                    model.applySearch(item.query, item.field)
+                                                    pull()
+                                                
                                                     if (model.rows.isNotEmpty()) scrollToStart()
                                                 }
                                             },
@@ -3274,20 +3267,20 @@ private fun MessageIndexLoaded(
                         TextButton(
                             onClick = {
                                 scope.launch {
-                                    gate.withLock {
-                                        model.changeFlags(listOf(flagsFor), setOf(flag), emptySet())
-                                        pull()
-                                    }
+
+                                    model.changeFlags(listOf(flagsFor), setOf(flag), emptySet())
+                                    pull()
+                                
                                 }
                             },
                         ) { Text(stringResource(R.string.index_set_flag, flag)) }
                         TextButton(
                             onClick = {
                                 scope.launch {
-                                    gate.withLock {
-                                        model.changeFlags(listOf(flagsFor), emptySet(), setOf(flag))
-                                        pull()
-                                    }
+
+                                    model.changeFlags(listOf(flagsFor), emptySet(), setOf(flag))
+                                    pull()
+                                
                                 }
                             },
                         ) { Text(stringResource(R.string.index_clear_flag, flag)) }
@@ -3602,11 +3595,9 @@ private fun MessageIndexLoaded(
                     val sequence = jumpText.trim().toIntOrNull() ?: return@TextButton
                     jumpOpen = false
                     scope.launch {
-                        val found = gate.withLock {
-                            val landed = model.jumpToPosition(sequence)
-                            pull()
-                            landed
-                        }
+                        val landed = model.jumpToPosition(sequence)
+                        pull()
+                        val found = landed
                         if (found) scrollToStart()
                         else postSnack(appContext.getString(R.string.index_jump_missing, sequence))
                     }
@@ -3688,10 +3679,10 @@ private fun MessageIndexLoaded(
                 TextButton(onClick = {
                     confirmMarkAllRead = false
                     scope.launch {
-                        gate.withLock {
-                            model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
-                            pull()
-                        }
+
+                        model.changeFlags(emptyList(), setOf("\\Seen"), emptySet(), allMailbox = true)
+                        pull()
+                    
                     }
                 }) { Text(stringResource(R.string.index_mark_all_read_go)) }
             },
@@ -3740,10 +3731,10 @@ private fun MessageIndexLoaded(
                         TextButton(onClick = {
                             openAt = false
                             scope.launch {
-                                gate.withLock {
-                                    model.setFolderStart(rule)
-                                    pull()
-                                }
+
+                                model.setFolderStart(rule)
+                                pull()
+                            
                             }
                         }) {
                             Column {
@@ -3755,10 +3746,10 @@ private fun MessageIndexLoaded(
                     TextButton(onClick = {
                         openAt = false
                         scope.launch {
-                            gate.withLock {
-                                model.setFolderStart(null)
-                                pull()
-                            }
+
+                            model.setFolderStart(null)
+                            pull()
+                        
                         }
                     }) { Text(stringResource(R.string.index_default)) }
                 }

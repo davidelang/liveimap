@@ -3004,3 +3004,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - Sibling groups sort, SMTP breaks stay spaced, and a bad COMPRESS drops.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-edges-20261015-0202-plan.md. CR, LF, and tab in server text become one space each. Two sibling groups parse; a group inside a group is refused. COMPRESS stays up only on success or a tagged refusal that left the stream in step.
+
+## 2026-10-15 - Search windows keep real UIDs, and a flag change drops the remembered result.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/search-ui-20261015-0327-plan.md
+- Flag and shown-flag changes drop that mailbox's remembered search, sort, and thread. A window shrinks by loaded UIDs only. Select-all of a window uses known UIDs. Windowed sort and search honour the start rule. The body-count prompt uses the scope. The advanced-search draft is saveable. The index screen mutex is gone.
+- No new mutex. No install

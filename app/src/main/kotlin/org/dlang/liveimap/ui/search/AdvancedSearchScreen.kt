@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -59,6 +60,7 @@ import org.dlang.liveimap.ui.index.advancedHasBody
 import org.dlang.liveimap.ui.index.countHits
 import org.dlang.liveimap.ui.index.deleteAdvanced
 import org.dlang.liveimap.ui.index.encodeAdvancedQuery
+import org.dlang.liveimap.ui.index.mailboxesFor
 import org.dlang.liveimap.ui.index.saveAdvanced
 import org.dlang.liveimap.ui.mailScreenInsets
 
@@ -121,6 +123,59 @@ private data class AdvancedDraft(
     val negated: Boolean,
 )
 
+private val defaultDraftRows = listOf(AdvancedDraft("Subject", "", false))
+
+private val combinerSaver = Saver<AdvancedCombiner, String>(
+    save = { value -> value.name },
+    restore = { name ->
+        AdvancedCombiner.entries.firstOrNull { entry -> entry.name == name } ?: AdvancedCombiner.And
+    },
+)
+
+private val scopeSaver = Saver<SearchScope, String>(
+    save = { value -> value.name },
+    restore = { name ->
+        SearchScope.entries.firstOrNull { entry -> entry.name == name } ?: SearchScope.Current
+    },
+)
+
+private val draftRowSaver = Saver<List<AdvancedDraft>, String>(
+    save = { rows ->
+        rows.joinToString("\n") { row ->
+            val negated = if (row.negated) "1" else "0"
+            "${row.kind}\t${row.value}\t$negated"
+        }
+    },
+    restore = { saved -> restoreDraftRows(saved) },
+)
+
+private fun restoreDraftRows(saved: String): List<AdvancedDraft> {
+    if (saved.isEmpty()) return defaultDraftRows
+    val known = HashSet<String>()
+    for (field in advancedFields) known.add(field.kind)
+    val rows = ArrayList<AdvancedDraft>()
+    for (line in saved.split('\n')) {
+        val parts = line.split('\t')
+        if (parts.size != 3) return defaultDraftRows
+        val kind = parts[0]
+        if (kind !in known) return defaultDraftRows
+        val negated = when (parts[2]) {
+            "0" -> false
+            "1" -> true
+            else -> return defaultDraftRows
+        }
+        rows.add(AdvancedDraft(kind, parts[1], negated))
+    }
+    if (rows.isEmpty()) return defaultDraftRows
+    return rows
+}
+
+internal fun bodyPromptExists(scope: SearchScope, currentExists: Int, scopeExists: Int): Int =
+    if (scope == SearchScope.Current) currentExists else scopeExists
+
+internal fun bodyPromptSkipped(scope: SearchScope, mailbox: String, skip: Set<String>): Boolean =
+    scope == SearchScope.Current && mailbox in skip
+
 @Composable
 private fun advancedFieldLabel(kind: String): String {
     val field = advancedFields.first { it.kind == kind }
@@ -161,11 +216,11 @@ private fun AdvancedSearchLoaded(
     onSearch: (String, SearchScope) -> Unit,
     onBack: () -> Unit,
 ) {
-    var combiner by remember { mutableStateOf(AdvancedCombiner.And) }
-    var fuzzyOn by remember { mutableStateOf(false) }
-    var rows by remember { mutableStateOf(listOf(AdvancedDraft("Subject", "", false))) }
+    var combiner by rememberSaveable(stateSaver = combinerSaver) { mutableStateOf(AdvancedCombiner.And) }
+    var fuzzyOn by rememberSaveable { mutableStateOf(false) }
+    var rows by rememberSaveable(stateSaver = draftRowSaver) { mutableStateOf(defaultDraftRows) }
     var openRow by remember { mutableIntStateOf(-1) }
-    var scope by remember { mutableStateOf(SearchScope.Current) }
+    var scope by rememberSaveable(stateSaver = scopeSaver) { mutableStateOf(SearchScope.Current) }
     var counting by remember { mutableStateOf(false) }
     var countProgress by remember { mutableStateOf<String?>(null) }
     var countNumber by remember { mutableStateOf<Int?>(null) }
@@ -351,6 +406,7 @@ private fun AdvancedSearchLoaded(
                         countNumber = null
                         skippedLines = emptyList()
                         countError = null
+                        countBodyAllowed = false
                         scopeRunner.launch {
                             try {
                                 if (advancedHasBody(text) && !countBodyAllowed) {
@@ -362,10 +418,28 @@ private fun AdvancedSearchLoaded(
                                         countError = error.message ?: "not connected"
                                         return@launch
                                     }
-                                    if (mailbox !in settings.searchAskSkip) {
+                                    if (!bodyPromptSkipped(chosen, mailbox, settings.searchAskSkip)) {
                                         val exists = try {
-                                            // F123: the count of the folder being searched, not the session's
-                                            session.folderInfo(org.dlang.liveimap.session.FolderAt(mailbox)).exists
+                                            if (chosen == SearchScope.Current) {
+                                                // F123: the count of the folder being searched, not the session's
+                                                val currentExists = session.folderInfo(
+                                                    org.dlang.liveimap.session.FolderAt(mailbox),
+                                                ).exists
+                                                bodyPromptExists(chosen, currentExists, 0)
+                                            } else {
+                                                var sum = 0
+                                                for (box in mailboxesFor(chosen, mailbox, session)) {
+                                                    try {
+                                                        sum += session.folderInfo(
+                                                            org.dlang.liveimap.session.FolderAt(box),
+                                                        ).exists
+                                                    } catch (error: CancellationException) {
+                                                        throw error
+                                                    } catch (_: MailFailure) {
+                                                    }
+                                                }
+                                                bodyPromptExists(chosen, 0, sum)
+                                            }
                                         } catch (error: CancellationException) {
                                             throw error
                                         } catch (error: MailFailure) {
@@ -415,6 +489,7 @@ private fun AdvancedSearchLoaded(
                             } finally {
                                 counting = false
                                 countProgress = null
+                                countBodyAllowed = false
                             }
                         }
                     },
@@ -531,6 +606,7 @@ private fun AdvancedSearchLoaded(
                 TextButton(
                     onClick = {
                         val name = saveName
+                        if (name.isBlank()) return@TextButton
                         val text = encodedQuery()
                         val chosen = scope
                         saveNameOpen = false

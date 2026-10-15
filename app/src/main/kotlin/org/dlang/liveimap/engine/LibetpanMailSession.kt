@@ -1429,9 +1429,7 @@ class LibetpanMailSession : MailSession {
             }
             else -> MailboxChange.UidValidityReset
         }
-        if (change !is MailboxChange.Flags && change !is MailboxChange.ShownFlags) {
-            cache.keys.retainAll { it.mailbox != mailbox }
-        }
+        cache.keys.retainAll { it.mailbox != mailbox }
         sequencesStale = true
         callback.invoke(change)
     }
@@ -1505,11 +1503,11 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun emit(change: MailboxChange) {
+            val mailbox = selectedMailbox
+            if (mailbox != null) {
+                cache.keys.retainAll { it.mailbox != mailbox }
+            }
             if (change !is MailboxChange.Flags && change !is MailboxChange.ShownFlags) {
-                val mailbox = selectedMailbox
-                if (mailbox != null) {
-                    cache.keys.retainAll { it.mailbox != mailbox }
-                }
                 sequencesStale = true
             }
             // F144: these changes describe the main connection's selected folder; the index's watcher gets them

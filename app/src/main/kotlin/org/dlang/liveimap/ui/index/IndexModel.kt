@@ -514,7 +514,9 @@ sealed class SelectAllTarget {
 }
 
 fun selectAllTarget(filterActive: Boolean, order: List<Long>): SelectAllTarget {
-    return if (filterActive) SelectAllTarget.Uids(order) else SelectAllTarget.EntireMailbox
+    if (!filterActive) return SelectAllTarget.EntireMailbox
+    if (order is WindowedOrder) return SelectAllTarget.Uids(order.known())
+    return SelectAllTarget.Uids(order)
 }
 
 data class MailUndo(
@@ -2200,6 +2202,7 @@ class IndexModel(
 
     private fun newestDisplayIndex(count: Int): Int {
         if (count <= 0) return 0
+        if (order is WindowedOrder) return if (view.newestFirst) 0 else count - 1
         if (usesArrivalSequences()) return if (view.newestFirst) 0 else count - 1
         if (threading) {
             var best = 0
@@ -2263,6 +2266,7 @@ class IndexModel(
             }
             return null
         }
+        if (order is WindowedOrder) return order.indexOfLoaded { it in found }
         val index = order.indexOfFirst { it in found }
         if (index < 0 || index >= count) return null
         return index
@@ -2288,6 +2292,7 @@ class IndexModel(
             }
             return null
         }
+        if (order is WindowedOrder) return order.indexOfLoaded(uid)
         val index = order.indexOf(uid)
         if (index < 0 || index >= count) return null
         return index
@@ -2324,8 +2329,11 @@ class IndexModel(
                 order = windowed
                 arrivalTotal = 0
                 pendingNew = 0
-                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, 0)
-                return pagesOf(windowed)
+                val target = resolveTarget(windowed.size, preserveAnchor)
+                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, target ?: 0)
+                val loaded = pagesOf(windowed)
+                if (target != null) rememberStart(target, loaded.size)
+                return loaded
             }
         }
         val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
@@ -2410,8 +2418,11 @@ class IndexModel(
                 order = windowed
                 arrivalTotal = 0
                 pendingNew = 0
-                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, 0)
-                return pagesOf(windowed)
+                val target = resolveTarget(windowed.size, preserveAnchor)
+                pageAnchor = clampedAnchor(windowed.size, preserveAnchor, target ?: 0)
+                val loaded = pagesOf(windowed)
+                if (target != null) rememberStart(target, loaded.size)
+                return loaded
             }
         }
         val found = if (advanced != null) {
@@ -2442,11 +2453,29 @@ class IndexModel(
             home.sortWindowMatching(key, newestFirst, lo, hi, criteria)
         }
         val first = window(1, size) ?: return null
-        if (first.total <= size) return null
+        if (first.uids.isEmpty() && first.total > 0) return null
+        val complete = first.uids.size == first.total
+        if (!complete && first.total <= size) return null
         val order = WindowedOrder(first.total, size) { lo, hi ->
             window(lo, hi)?.uids ?: throw MailFailure("sort failed")
         }
-        order.seed(0, first.uids)
+        if (complete) {
+            val uids = first.uids
+            if (uids.isEmpty()) {
+                order.seed(0, emptyList())
+            } else {
+                var at = 0
+                var w = 0
+                while (at < uids.size) {
+                    val end = minOf(at + size, uids.size)
+                    order.seed(w, uids.subList(at, end))
+                    at = end
+                    w += 1
+                }
+            }
+        } else {
+            order.seed(0, first.uids)
+        }
         return order
     }
 
@@ -2513,15 +2542,38 @@ class IndexModel(
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
         val size = IndexPageSize * 2
-        val probe = home.searchWindow(kind, query, 1, 1) ?: return null
-        val total = probe.total
-        if (total <= size) return null
+        val first = home.searchWindow(kind, query, 1, size) ?: return null
+        if (first.uids.isEmpty()) return null
+        val total = first.total
+        val complete = first.uids.size == total
+        if (!complete && total <= size) return null
         val order = WindowedOrder(total, size) { lo, hi ->
             val (a, b) = searchWindowRange(lo, hi, total, newestFirst)
             val hits = home.searchWindow(kind, query, a, b)?.uids?.sorted() ?: throw MailFailure("search failed")
             if (newestFirst) hits.reversed() else hits
         }
-        order.ensure(0, size)
+        val display = if (complete || !newestFirst) {
+            val sorted = first.uids.sorted()
+            if (newestFirst) sorted.asReversed() else sorted
+        } else {
+            val (a, b) = searchWindowRange(1, size, total, true)
+            home.searchWindow(kind, query, a, b)?.uids?.sorted()?.asReversed()
+                ?: throw MailFailure("search failed")
+        }
+        if (display.isEmpty()) {
+            order.seed(0, emptyList())
+        } else if (complete) {
+            var at = 0
+            var w = 0
+            while (at < display.size) {
+                val end = minOf(at + size, display.size)
+                order.seed(w, display.subList(at, end))
+                at = end
+                w += 1
+            }
+        } else {
+            order.seed(0, display)
+        }
         return order
     }
 

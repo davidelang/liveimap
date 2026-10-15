@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.index
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WindowedOrderTest {
@@ -44,6 +45,27 @@ class WindowedOrderTest {
         val after = orderWithout(o, setOf(5L, 6L)) as WindowedOrder
         assertEquals(998, after.size)
         assertEquals(0, after.loadedWindows())
+    }
+
+    @Test
+    fun withoutCountsOnlyLoadedUids() = runBlocking {
+        val o = order()
+        o.ensure(0, 100)
+        assertEquals(1000, o.without(setOf(5000L)).size)
+        assertEquals(999, o.without(setOf(5L, 5000L)).size)
+    }
+
+    @Test
+    fun selectAllWindowUsesKnownUids() {
+        val order = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> emptyList() }
+        order.seed(0, listOf(5L, 6L, 7L, 8L))
+        val started = System.nanoTime()
+        val target = selectAllTarget(true, order)
+        val uids = (target as SelectAllTarget.Uids).uids
+        assertEquals(listOf(5L, 6L, 7L, 8L), uids)
+        assertEquals(false, 0L in uids)
+        assertTrue(System.nanoTime() - started < 1_000_000_000L)
+        assertEquals(SelectAllTarget.EntireMailbox, selectAllTarget(false, order))
     }
 
     @Test
