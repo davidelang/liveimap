@@ -2920,3 +2920,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
 - Fixup: a connect past 30s closes the in-flight sockets; UID 0, a negative UID, or a UID above 0xFFFFFFFF fails the call; a nested group and an unresolvable star are refused; an empty preview slot is not present; the count is this command's count; tlsAuthType does not invent a cipher name
 - NEEDS-INPUT: the unused pipelining loop is in imap_bursts.cpp, outside the Critical Files
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: prefer-HTML keeps walking past an earlier plain part to a later text/html part, and does not enter message/rfc822 once a text part is found. FetchStructure refuses a UID outside 1..0xFFFFFFFF. ensureJni does not take another global ref before ready, and a missing optional class does not keep ready false

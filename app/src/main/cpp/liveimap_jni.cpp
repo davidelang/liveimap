@@ -593,52 +593,42 @@ void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback
     throwFailure(env, text);
 }
 
+static bool holdGlobal(JNIEnv * env, jclass * slot, const char * name) {
+    if (*slot != nullptr) {
+        return true;
+    }
+    jclass local = env->FindClass(name);
+    if (local == nullptr || env->ExceptionCheck()) {
+        if (local != nullptr) env->DeleteLocalRef(local);
+        env->ExceptionClear();
+        return false;
+    }
+    *slot = static_cast<jclass>(env->NewGlobalRef(local));
+    env->DeleteLocalRef(local);
+    if (*slot == nullptr) {
+        env->ExceptionClear();
+        return false;
+    }
+    return true;
+}
+
 bool ensureJni(JNIEnv * env) {
     if (gJni.ready) {
         return true;
     }
-    jclass local;
-    local = env->FindClass("org/dlang/liveimap/session/MailFailure");
-    if (local == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return false;
-    }
-    if (gJni.mailFailure == nullptr) gJni.mailFailure = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
+    if (!holdGlobal(env, &gJni.mailFailure, "org/dlang/liveimap/session/MailFailure")) return false;
     cacheConnectionLost(env);
-    local = env->FindClass("org/dlang/liveimap/session/IndexRow");
-    gJni.indexRow = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/FolderEntry");
-    gJni.folderEntry = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/Namespace");
-    gJni.ns = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/NamespaceKind");
-    gJni.nsKind = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/SelectResult");
-    gJni.selectResult = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/MimePart");
-    gJni.mimePart = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("org/dlang/liveimap/session/ThreadNode");
-    gJni.threadNode = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("java/util/ArrayList");
-    gJni.arrayList = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("java/util/HashSet");
-    gJni.hashSet = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("java/lang/Long");
-    gJni.longCls = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    local = env->FindClass("java/lang/Integer");
-    gJni.integerCls = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
+    if (!holdGlobal(env, &gJni.indexRow, "org/dlang/liveimap/session/IndexRow")) return false;
+    if (!holdGlobal(env, &gJni.folderEntry, "org/dlang/liveimap/session/FolderEntry")) return false;
+    if (!holdGlobal(env, &gJni.ns, "org/dlang/liveimap/session/Namespace")) return false;
+    if (!holdGlobal(env, &gJni.nsKind, "org/dlang/liveimap/session/NamespaceKind")) return false;
+    if (!holdGlobal(env, &gJni.selectResult, "org/dlang/liveimap/session/SelectResult")) return false;
+    if (!holdGlobal(env, &gJni.mimePart, "org/dlang/liveimap/session/MimePart")) return false;
+    if (!holdGlobal(env, &gJni.threadNode, "org/dlang/liveimap/session/ThreadNode")) return false;
+    if (!holdGlobal(env, &gJni.arrayList, "java/util/ArrayList")) return false;
+    if (!holdGlobal(env, &gJni.hashSet, "java/util/HashSet")) return false;
+    if (!holdGlobal(env, &gJni.longCls, "java/lang/Long")) return false;
+    if (!holdGlobal(env, &gJni.integerCls, "java/lang/Integer")) return false;
     gJni.indexRowInit = env->GetMethodID(gJni.indexRow, "<init>",
         "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;)V");
     gJni.folderInit = env->GetMethodID(gJni.folderEntry, "<init>",
@@ -663,39 +653,36 @@ bool ensureJni(JNIEnv * env) {
     gJni.shared = env->GetStaticFieldID(gJni.nsKind, "Shared",
         "Lorg/dlang/liveimap/session/NamespaceKind;");
     jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
+    if (sessionCls == nullptr || env->ExceptionCheck()) {
+        if (sessionCls != nullptr) env->DeleteLocalRef(sessionCls);
+        env->ExceptionClear();
+        return false;
+    }
     gJni.onWatch = env->GetMethodID(sessionCls, "onNativeWatch", "(JIIJ[Ljava/lang/String;)V");
     gJni.publishWatch = env->GetMethodID(sessionCls, "publishWatch", "(JLjava/lang/Object;)V");
     gJni.clearPublishedWatch = env->GetMethodID(sessionCls, "clearPublishedWatch", "(J)V");
     env->DeleteLocalRef(sessionCls);
-    local = env->FindClass("org/dlang/liveimap/engine/TrafficLog");
-    if (local != nullptr) {
-        gJni.trafficLog = static_cast<jclass>(env->NewGlobalRef(local));
-        env->DeleteLocalRef(local);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (holdGlobal(env, &gJni.trafficLog, "org/dlang/liveimap/engine/TrafficLog")) {
         gJni.trafficAccept = env->GetStaticMethodID(
             gJni.trafficLog, "acceptNative", "(Ljava/lang/String;I[B)V");
         gJni.trafficFlush = env->GetStaticMethodID(gJni.trafficLog, "flushNative", "()V");
         gJni.trafficNote = env->GetStaticMethodID(
             gJni.trafficLog, "noteNative", "(Ljava/lang/String;Ljava/lang/String;)V");
     }
-    local = env->FindClass("org/dlang/liveimap/session/SortField");
-    if (local != nullptr) {
-        gJni.sortField = static_cast<jclass>(env->NewGlobalRef(local));
-        env->DeleteLocalRef(local);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (holdGlobal(env, &gJni.sortField, "org/dlang/liveimap/session/SortField")) {
         gJni.sortFieldInit = env->GetMethodID(gJni.sortField, "<init>", "(JLjava/lang/String;JZ)V");
     }
-    local = env->FindClass("org/dlang/liveimap/session/ThreadHeader");
-    if (local != nullptr) {
-        gJni.threadHeader = static_cast<jclass>(env->NewGlobalRef(local));
-        env->DeleteLocalRef(local);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (holdGlobal(env, &gJni.threadHeader, "org/dlang/liveimap/session/ThreadHeader")) {
         gJni.threadHeaderInit = env->GetMethodID(
             gJni.threadHeader,
             "<init>",
             "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     }
-    local = env->FindClass("org/dlang/liveimap/session/MailboxUids");
-    if (local != nullptr) {
-        gJni.mailboxUids = static_cast<jclass>(env->NewGlobalRef(local));
-        env->DeleteLocalRef(local);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (holdGlobal(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) {
         gJni.mailboxUidsInit = env->GetMethodID(
             gJni.mailboxUids, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
     }
@@ -1138,15 +1125,15 @@ void rememberText(PartWant * want, const std::string & section, struct mailimap_
     want->encoding = partEncoding(fields);
 }
 
-bool plainFound(const PartWant * want) {
-    return want->found && !want->html;
+bool preferredFound(const PartWant * want, bool preferHtml) {
+    return want->found && want->html == preferHtml;
 }
 
 void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want) {
     if (body == nullptr) {
         return;
     }
-    if (plainFound(want) || (preferHtml && want->found && want->html)) {
+    if (preferredFound(want, preferHtml)) {
         return;
     }
     if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
@@ -1158,7 +1145,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
         for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
             std::string section = prefix.empty() ? std::to_string(index) : prefix + "." + std::to_string(index);
             findPreferred(static_cast<struct mailimap_body *>(clist_content(cur)), section, preferHtml, want);
-            if (plainFound(want) || (preferHtml && want->found && want->html)) {
+            if (preferredFound(want, preferHtml)) {
                 return;
             }
         }
@@ -7001,6 +6988,11 @@ jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::str
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
+    if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
+        throwFailure(env, "bad uid");
+        unlockSession(session);
+        return nullptr;
+    }
     struct mailimap_set * set = mailimap_set_new_single(static_cast<uint32_t>(uid));
     struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
     mailimap_fetch_type_new_fetch_att_list_add(fetch, mailimap_fetch_att_new_bodystructure());
