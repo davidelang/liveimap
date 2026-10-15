@@ -2,6 +2,7 @@ package org.dlang.liveimap.engine.sieve
 
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
