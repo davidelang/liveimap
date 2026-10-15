@@ -2963,3 +2963,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - Lower EXISTS baseline and ShownFlags refresh
 
 - Plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md — lower EXISTS resets baseline; failed tail fetch rolls back; folder re-list drops learned counts; chooser list weighted; watch EXAMINE CONDSTORE without ENABLE; UID-less flag FETCH emits ShownFlags once per IDLE wake.
+
+## 2026-10-14 - Lower EXISTS baseline and ShownFlags refresh
+
+- Approved plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md
+- Fixup: FLAGS () still emits one ShownFlags note per IDLE wake. Exists 0 sets the baseline, so the next arrival fetches the tail and raises the pill
+- No new mutex. No install

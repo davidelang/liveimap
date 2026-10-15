@@ -2065,12 +2065,12 @@ class IndexModel(
             !threading
 
     private suspend fun applyExistsCount(existsNow: Int) {
-        if (existsNow <= 0) return
         val baseline = knownExists
         if (baseline > 0 && existsNow < baseline) {
             knownExists = existsNow
             return
         }
+        if (existsNow <= 0) return
         if (baseline > 0 && existsNow == baseline) return
         if (!listInsertsNewMail()) {
             knownExists = existsNow

@@ -1345,6 +1345,8 @@ struct Row {
     uint32_t uid = 0;
     uint32_t sequence = 0;
     std::vector<std::string> flags;
+    // FLAGS was in the FETCH, including FLAGS (). An empty list still has no names.
+    bool sawFlags = false;
     int64_t epoch = 0;
     int size = 0;
     std::string from;
@@ -1534,15 +1536,17 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
         if (item == nullptr) {
             continue;
         }
-        if (item->att_type == MAILIMAP_MSG_ATT_ITEM_DYNAMIC && item->att_data.att_dyn != nullptr
-            && item->att_data.att_dyn->att_list != nullptr) {
-            for (clistiter * fc = clist_begin(item->att_data.att_dyn->att_list); fc != nullptr; fc = clist_next(fc)) {
-                auto * flag = static_cast<struct mailimap_flag_fetch *>(clist_content(fc));
-                std::string name = flagName(flag);
-                if (!name.empty()) {
-                    row->flags.push_back(name);
-                    if (strcasecmp(name.c_str(), "\\Deleted") == 0) {
-                        row->deleted = true;
+        if (item->att_type == MAILIMAP_MSG_ATT_ITEM_DYNAMIC && item->att_data.att_dyn != nullptr) {
+            row->sawFlags = true;
+            if (item->att_data.att_dyn->att_list != nullptr) {
+                for (clistiter * fc = clist_begin(item->att_data.att_dyn->att_list); fc != nullptr; fc = clist_next(fc)) {
+                    auto * flag = static_cast<struct mailimap_flag_fetch *>(clist_content(fc));
+                    std::string name = flagName(flag);
+                    if (!name.empty()) {
+                        row->flags.push_back(name);
+                        if (strcasecmp(name.c_str(), "\\Deleted") == 0) {
+                            row->deleted = true;
+                        }
                     }
                 }
             }
@@ -2263,7 +2267,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
             readAtt(msg->mdt_msg_att, &row, nullptr, nullptr);
             if (row.uid != 0) {
                 queueWatch(session, 2, session->watchExists, static_cast<jlong>(row.uid), std::move(row.flags), generation);
-            } else if (!row.flags.empty() && !session->watchShownFlagsSent) {
+            } else if (row.sawFlags && !session->watchShownFlagsSent) {
                 session->watchShownFlagsSent = true;
                 queueWatch(session, 5, session->watchExists, 0, {}, generation);
             }
@@ -2369,7 +2373,8 @@ void watchMain(LiveSession * session) {
         // EXISTS then waited for the next packet (fake equivalence run caught it). Read buffered data first.
         mailstream * ws = session->watch->imap_stream;
         bool buffered = ws != nullptr && ws->read_buffer_len > 0;
-        bool newNetworkData = buffered;
+        // The rest of a packet already sits in the read buffer. That is the same wake, not a new one.
+        bool newNetworkData = false;
         if (!buffered && ws != nullptr && mailstream_get_low(ws) != nullptr
             && mailstream_get_low(ws)->driver != mailstream_socket_driver) {  // TLS (the watch never compresses)
             ssl_st * wssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(ws));
