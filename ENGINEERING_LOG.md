@@ -2914,3 +2914,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-14 - Native IMAP parser, connect, and TLS (phase 4)
 
 - Refuse bad UID sets, keywords, and nested search groups; implicit TLS uses tcpConnect + SNI; PKCS#12 password masked; silent STORE; PeerTrust uses UNKNOWN.
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: a connect past 30s closes the in-flight sockets; UID 0, a negative UID, or a UID above 0xFFFFFFFF fails the call; a nested group and an unresolvable star are refused; an empty preview slot is not present; the count is this command's count; tlsAuthType does not invent a cipher name
+- NEEDS-INPUT: the unused pipelining loop is in imap_bursts.cpp, outside the Critical Files

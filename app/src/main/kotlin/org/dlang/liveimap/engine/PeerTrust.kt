@@ -87,14 +87,10 @@ object PeerTrust {
 }
 
 /**
- * F18: checkServerTrusted wants the key-exchange name (as a TLS stack reports it), not the key algorithm; the
- * key usage the JDK manager checks depends on it. The handshake ran in native code, so name the ECDHE form
- * that matches the leaf key (what every server negotiates today).
+ * F18: checkServerTrusted wants the key-exchange name a TLS stack reports. The certificate key algorithm
+ * is not that name. This does not invent one.
  */
 internal fun tlsAuthType(keyAlgorithm: String): String = when (keyAlgorithm.uppercase()) {
-    "RSA" -> "ECDHE_RSA"
-    "EC", "ECDSA" -> "ECDHE_ECDSA"
-    "RSASSA-PSS" -> "ECDHE_RSA"
     else -> "UNKNOWN"
 }
 

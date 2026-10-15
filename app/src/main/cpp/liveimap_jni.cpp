@@ -449,6 +449,8 @@ void signalWatchStop(LiveSession * session) {
     shutdownWatchSocket(session);
 }
 thread_local mailimap * tlsImap = nullptr;
+// The IMAP connection this thread holds via lockImapSession, so a user UID set can see whether a UID is in use.
+thread_local mailimap * tlsLockedImap = nullptr;
 thread_local LiveSession * tlsLive = nullptr;
 thread_local const char * tlsTrafficId = nullptr;
 
@@ -796,6 +798,7 @@ LiveSession * lockSession(JNIEnv * env, jlong handle) {
 }
 
 void unlockSession(LiveSession * session) {
+    tlsLockedImap = nullptr;
     if (session != nullptr) {
         session->mu.unlock();
         session->users.fetch_sub(1);
@@ -812,6 +815,7 @@ LiveSession * lockImapSession(JNIEnv * env, jlong handle) {
         throwConnectionLost(env, "IMAP connection lost");
         return nullptr;
     }
+    tlsLockedImap = session->imap;
     return session;
 }
 
@@ -2622,7 +2626,7 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     std::string chosen;
     while (winner < 0) {
         auto now = std::chrono::steady_clock::now();
-        if (now >= deadline && nextStart >= candidates.size() && pending.empty()) break;
+        if (now >= deadline) break;
         while (nextStart < candidates.size()) {
             auto due = raceStart + std::chrono::milliseconds(kConnectStaggerMs * nextStart);
             if (now < due) break;
@@ -2680,6 +2684,15 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
         }
         pending.erase(std::remove_if(pending.begin(), pending.end(),
             [](const Pending & p) { return p.fd < 0; }), pending.end());
+    }
+    if (winner < 0) {
+        for (Pending & p : pending) {
+            if (p.fd < 0) continue;
+            close(p.fd);
+            p.fd = -1;
+            if (!failures.empty()) failures += "; ";
+            failures += connectFailure(proto, host, port, p.numeric, "timed out");
+        }
     }
     freeaddrinfo(res);
     if (winner < 0) {
@@ -2767,17 +2780,6 @@ void postTrafficFlush() {
     endTrafficJni(attached);
 }
 
-void appendTrafficLine(const std::string & path, const std::string & line) {
-    (void)path;
-    postTrafficNote("main", line);
-}
-
-void emitTrafficLine(const std::string & line, const std::string & path) {
-    // One logcat copy, debug level only (F10: the INFO duplicate doubled the exposure).
-    __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s", line.c_str());
-    appendTrafficLine(path, line);
-}
-
 // Sent and received stay separate streams. Kotlin owns the file.
 void logImapBuffer(LiveSession * live, int log_type, const char * str, size_t size,
     const std::string & connectionId) {
@@ -2797,7 +2799,10 @@ void flushTrafficTail(LiveSession * live) {
 
 void noteParsedRows(LiveSession * session, size_t count) {
     if (session == nullptr || !session->logImapTraffic) return;
-    emitTrafficLine("parsed " + std::to_string(count), session->trafficLogPath);
+    std::string line = "parsed " + std::to_string(count);
+    // One logcat copy, debug level only (F10: the INFO duplicate doubled the exposure).
+    __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s", line.c_str());
+    postTrafficNote("main", line);
 }
 
 bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
@@ -4089,26 +4094,17 @@ bool appendUid(clist * list, uint32_t uid) {
     return true;
 }
 
-uint32_t starUid() {
-    if (tlsImap != nullptr && tlsImap->imap_selection_info != nullptr && tlsImap->imap_selection_info->sel_uidnext > 1) {
-        return tlsImap->imap_selection_info->sel_uidnext - 1;
-    }
-    return 0;
-}
-
 constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jelly has 200k
 
-// F99: set when a '*' was read; '*' means the selected mailbox's highest UID, which is wrong for another mailbox.
+// F99: set when a '*' was read. '*' is not rewritten to uidnext-1 and is not expanded into the list.
 thread_local bool tlsSeqSawStar = false;
 
 int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx, uint32_t * out) {
     if (peekChar(buffer, *indx) == '*') {
         *indx += 1;
         tlsSeqSawStar = true;
-        uint32_t resolved = starUid();
-        if (resolved == 0) return MAILIMAP_ERROR_PARSE;
-        *out = resolved;
-        return MAILIMAP_NO_ERROR;
+        // The largest UID in use is not uidnext-1. A set that needs that number is refused.
+        return MAILIMAP_ERROR_PARSE;
     }
     return mailimap_nz_number_parse(fd, buffer, ctx, indx, out);
 }
@@ -4301,6 +4297,18 @@ int parseCorrelatorGroup(mailstream * fd, MMAPString * buffer, struct mailimap_p
     return MAILIMAP_NO_ERROR;
 }
 
+// Sequence numbers and UIDs are different sets. Appending both into one list would search the wrong messages.
+bool claimNumberKind(bool asUid, bool * sawSeq, bool * sawUid) {
+    if (asUid) {
+        if (*sawSeq) return false;
+        *sawUid = true;
+        return true;
+    }
+    if (*sawUid) return false;
+    *sawSeq = true;
+    return true;
+}
+
 int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_context * ctx, size_t * indx,
     struct mailimap_extension_data ** result) {
     size_t cur = *indx;
@@ -4315,6 +4323,9 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
     int64_t countValue = 0;
     std::string tag;
     bool tagSeen = false;
+    bool uidTag = false;
+    bool sawSeq = false;
+    bool sawUid = false;
     tlsSeqSawStar = false;
     for (;;) {
         size_t save = cur;
@@ -4333,10 +4344,14 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
         if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
         std::string name = atom != nullptr ? atom : "";
         imapStrFree(atom);
-        if (strcasecmp(name.c_str(), "UID") == 0) continue;
+        if (strcasecmp(name.c_str(), "UID") == 0) {
+            uidTag = true;
+            continue;
+        }
         if (strcasecmp(name.c_str(), "ALL") == 0) {
             r = mailimap_space_parse(fd, buffer, &cur);
             if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            if (!claimNumberKind(uidTag, &sawSeq, &sawUid)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
             r = parseSeqSet(fd, buffer, ctx, &cur, uids);
             if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             hasAll = true;
@@ -4348,6 +4363,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             uint32_t number = 0;
             r = mailimap_nz_number_parse(fd, buffer, ctx, &cur, &number);
             if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
+            if (!claimNumberKind(uidTag, &sawSeq, &sawUid)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
             if (!appendUid(uids, number)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_MEMORY);
             continue;
         }
@@ -4372,6 +4388,7 @@ int parseEsearch(mailstream * fd, MMAPString * buffer, struct mailimap_parser_co
             if (cur + 3 <= buffer->len && strncasecmp(buffer->str + cur, "NIL", 3) == 0) {
                 cur += 3;
             } else {
+                if (!claimNumberKind(uidTag, &sawSeq, &sawUid)) return failEsearch(uids, mailbox, MAILIMAP_ERROR_PARSE);
                 r = parseSeqSet(fd, buffer, ctx, &cur, uids);
                 if (r != MAILIMAP_NO_ERROR) return failEsearch(uids, mailbox, r);
             }
@@ -5213,26 +5230,65 @@ bool emptyText(JNIEnv * env, const char * argument) {
 
 struct mailimap_search_key * criterionKey(JNIEnv * env, const char * kind, const char * argument);
 
-// "Uid" argument: an IMAP UID set such as 1,3:5,9 (digits, commas, colons only). Null when malformed.
+// True when the selected mailbox has a message, so '*' names a UID that is in use.
+bool selectedHasUid() {
+    mailimap * imap = tlsLockedImap != nullptr ? tlsLockedImap : tlsImap;
+    if (imap == nullptr || imap->imap_selection_info == nullptr) return false;
+    return imap->imap_selection_info->sel_exists > 0;
+}
+
+// One bound of a user UID set. '*' is the star (libetpan sends 0 as '*'), not an empty bound and not uidnext-1.
+bool readUidBound(const char *& p, uint32_t * number, bool * star) {
+    *star = false;
+    *number = 0;
+    if (*p == '*') {
+        ++p;
+        *star = true;
+        return true;
+    }
+    if (*p < '0' || *p > '9') return false;
+    uint64_t value = 0;
+    int digits = 0;
+    while (*p >= '0' && *p <= '9') {
+        if (digits >= 10) return false;
+        value = value * 10u + static_cast<uint64_t>(*p - '0');
+        ++p;
+        ++digits;
+        if (value > 0xffffffffull) return false;
+    }
+    if (digits == 0 || value == 0) return false;
+    *number = static_cast<uint32_t>(value);
+    return true;
+}
+
+// "Uid" argument: an IMAP UID set such as 1,3:5,9 or 5:*. Null when a bound is empty, zero, or above 0xFFFFFFFF,
+// or when '*' cannot name a UID that is in use. The star is sent as '*', not expanded and not rewritten.
 static struct mailimap_search_key * uidSetKey(const char * text) {
     if (text == nullptr || *text == 0) return nullptr;
     struct mailimap_set * set = mailimap_set_new_empty();
     if (set == nullptr) return nullptr;
     const char * p = text;
     while (*p != 0) {
-        uint64_t first = 0, last = 0;
-        int digits = 0;
-        while (*p >= '0' && *p <= '9' && digits < 10) { first = first * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
-        if (digits == 0 || digits > 10 || first == 0 || first > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+        bool firstStar = false;
+        bool lastStar = false;
+        uint32_t first = 0;
+        uint32_t last = 0;
+        if (!readUidBound(p, &first, &firstStar)) { mailimap_set_free(set); return nullptr; }
+        if (firstStar) {
+            if (!selectedHasUid()) { mailimap_set_free(set); return nullptr; }
+            first = 0;
+        }
         last = first;
+        lastStar = firstStar;
         if (*p == ':') {
             ++p;
-            last = 0;
-            digits = 0;
-            while (*p >= '0' && *p <= '9' && digits < 10) { last = last * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
-            if (digits == 0 || digits > 10 || last == 0 || last > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+            if (!readUidBound(p, &last, &lastStar)) { mailimap_set_free(set); return nullptr; }
+            if (lastStar) {
+                if (!selectedHasUid()) { mailimap_set_free(set); return nullptr; }
+                last = 0;
+            }
         }
-        if (mailimap_set_add_interval(set, (uint32_t) first, (uint32_t) last) != MAILIMAP_NO_ERROR) {
+        if (mailimap_set_add_interval(set, first, last) != MAILIMAP_NO_ERROR) {
             mailimap_set_free(set);
             return nullptr;
         }
@@ -5245,7 +5301,7 @@ static struct mailimap_search_key * uidSetKey(const char * text) {
 }
 
 // "Group" argument: a nested query (IndexModel.groupArgument): "And"/"Or", then steps "Yes|Not US kind US argument",
-// separated by RS. Groups may nest only to a small depth. Throws "bad search" when malformed.
+// separated by RS. A group inside a group is refused. Throws "bad search" when malformed.
 static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text, int depth, char lineSep, char fieldSep) {
     if (text == nullptr || depth > 8) { throwFailure(env, "bad search"); return nullptr; }
     std::vector<std::string> lines;
@@ -5266,7 +5322,7 @@ static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text,
             return nullptr;
         }
         std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
-        if (kind == "Group" && depth >= 1) {
+        if (kind == "Group" && depth >= 0) {
             if (folded != nullptr) mailimap_search_key_free(folded);
             throwFailure(env, "bad search");
             return nullptr;
@@ -5560,6 +5616,7 @@ int listSubscribed(mailimap * imap, clist ** result) {
 jlong completeCount(JNIEnv * env, LiveSession * session, struct mailimap_search_key * key, jboolean withCharset,
     jboolean fuzzy) {
     session->esearchCount = -1;
+    tlsEsearchExtCount = -1;
     tlsLive = session;
     struct mailimap_response * response = nullptr;
     int r = sendEsearch(session->imap, true, "COUNT", withCharset == JNI_TRUE, fuzzy == JNI_TRUE, key, &response);
@@ -6778,6 +6835,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 return nullptr;
             }
             for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
+                if (got[n].empty()) continue;
                 previews[at[n]] = got[n];
                 havePreview[at[n]] = 1;
             }
@@ -6858,6 +6916,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 return nullptr;
             }
             for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
+                if (got[n].empty()) continue;
                 previews[at[n]] = got[n];
                 havePreview[at[n]] = 1;
             }
@@ -7032,6 +7091,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
+    if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
+        throwFailure(env, "bad uid");
+        unlockSession(session);
+        return nullptr;
+    }
     if (offset < 0 || length < 0) {
         throwFailure(env, "bad fetch range");
         unlockSession(session);
@@ -7142,6 +7206,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
+    if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
+        throwFailure(env, "bad uid");
+        unlockSession(session);
+        return nullptr;
+    }
     struct mailimap_set * set = mailimap_set_new_single(static_cast<uint32_t>(uid));
     struct mailimap_fetch_type * fetch = mailimap_fetch_type_new_fetch_att_list_empty();
     mailimap_fetch_type_new_fetch_att_list_add(fetch, mailimap_fetch_att_new_rfc822());
@@ -7314,11 +7383,11 @@ std::vector<uint32_t> uidsFromArray(JNIEnv * env, jlongArray uids) {
     std::vector<jlong> raw(static_cast<size_t>(n));
     if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
     for (jlong value : raw) {
-        if (value == 0) {
+        if (value <= 0 || value > static_cast<jlong>(UINT32_MAX)) {
             throwFailure(env, "bad uid");
+            values.clear();
             return values;
         }
-        if (value < 0 || value > static_cast<jlong>(UINT32_MAX)) continue;
         values.push_back(static_cast<uint32_t>(value));
     }
     return values;
@@ -7331,7 +7400,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
-    if (values.empty()) {
+    if (env->ExceptionCheck() || values.empty()) {
         unlockSession(session);
         return;
     }
@@ -7383,7 +7452,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
-    if (values.empty()) {
+    if (env->ExceptionCheck() || values.empty()) {
         unlockSession(session);
         return;
     }
@@ -7406,7 +7475,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv *
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
-    if (values.empty()) {
+    if (env->ExceptionCheck() || values.empty()) {
         unlockSession(session);
         return;
     }
@@ -8264,7 +8333,7 @@ struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf
     for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text.c()); p != nullptr && *p != 0; ++p) {
         if (*p >= 0x80) { *utf8 = true; break; }
     }
-    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t; nested groups inside.
+    // Same text as an And advanced query (IndexModel.filterChainGroup): lines by \\n, fields by \\t. A nested group is refused.
     struct mailimap_search_key * key = groupKeySep(env, text.c(), 0, '\n', '\t');
     if (key == nullptr || env->ExceptionCheck()) {
         if (key != nullptr) mailimap_search_key_free(key);
@@ -8279,11 +8348,15 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobject, jlong handle,
     jstring keyName, jboolean newestFirst, jboolean useEsort, jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockImapSession(env, handle);
+    if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
-    if (bad) return nullptr;
-    LiveSession * session = lockImapSession(env, handle);
-    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    if (bad) {
+        if (crit != nullptr) mailimap_search_key_free(crit);
+        unlockSession(session);
+        return nullptr;
+    }
     // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
     utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
@@ -8377,11 +8450,15 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env, jobject, jlong handle,
     jstring keyName, jboolean newestFirst, jint first, jint last, jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockImapSession(env, handle);
+    if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
-    if (bad) return nullptr;
-    LiveSession * session = lockImapSession(env, handle);
-    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    if (bad) {
+        if (crit != nullptr) mailimap_search_key_free(crit);
+        unlockSession(session);
+        return nullptr;
+    }
     // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
     utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
@@ -8466,11 +8543,15 @@ extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jobject, jlong handle, jstring algorithm,
     jstring criteria) {
     if (!ensureJni(env)) return nullptr;
+    LiveSession * session = lockImapSession(env, handle);
+    if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
     struct mailimap_search_key * crit = chainKey(env, criteria, &utf8, &bad);
-    if (bad) return nullptr;
-    LiveSession * session = lockImapSession(env, handle);
-    if (session == nullptr) { if (crit != nullptr) mailimap_search_key_free(crit); return nullptr; }
+    if (bad) {
+        if (crit != nullptr) mailimap_search_key_free(crit);
+        unlockSession(session);
+        return nullptr;
+    }
     // SORT/THREAD always name a charset; after ENABLE UTF8=ACCEPT only UTF-8 is valid (RFC 6855 3, courier).
     utf8 = utf8 || session->utf8;
     struct KeyHolder { struct mailimap_search_key * k; ~KeyHolder() { if (k != nullptr) mailimap_search_key_free(k); } } held{crit};
