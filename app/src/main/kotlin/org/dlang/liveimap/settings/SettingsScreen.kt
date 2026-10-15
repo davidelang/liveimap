@@ -149,6 +149,18 @@ private val settingsIo = CoroutineScope(
         },
 )
 private val settingsMutex = Mutex()
+private val openSettingsEditors = mutableListOf<SettingsEditor>()
+
+private fun bindSettingsEditor(editor: SettingsEditor) {
+    synchronized(openSettingsEditors) { openSettingsEditors.add(editor) }
+}
+
+private fun unbindSettingsEditor(editor: SettingsEditor) {
+    synchronized(openSettingsEditors) { openSettingsEditors.remove(editor) }
+}
+
+private fun sameSieveAccount(openId: String?, capturedId: String?): Boolean =
+    openId.orEmpty() == capturedId.orEmpty()
 
 enum class SettingsGroup(val route: String, private val titleRes: Int) {
     Account("account", R.string.settings_account),
@@ -273,11 +285,20 @@ private class SettingsEditor(
 
 /**
  * Writes only the Sieve pin through [store], bound to [editingId] when that was captured.
- * Does not save the rest of the settings.
+ * Does not save the rest of the settings. The open editor for that account keeps the pin too.
  */
 internal suspend fun persistSievePin(store: DataStoreSettingsStore, editingId: String?, fingerprint: String) {
     val target = if (editingId.isNullOrEmpty()) store else store.forAccount(editingId)
-    target.update { it.copy(sieveCertPin = fingerprint) }
+    // Same lock as editor.persist's read of settingsState. A save cannot encode the old pin after this write.
+    settingsMutex.withLock {
+        target.update { it.copy(sieveCertPin = fingerprint) }
+        val editors = synchronized(openSettingsEditors) { openSettingsEditors.toList() }
+        for (editor in editors) {
+            if (!sameSieveAccount(editor.editingId, editingId)) continue
+            editor.settings = editor.settings.copy(sieveCertPin = fingerprint)
+        }
+    }
+    SettingsRevision.bump()
 }
 
 /**
@@ -302,6 +323,10 @@ private fun rememberSettingsEditor(): SettingsEditor {
     val ui = rememberCoroutineScope()
     val store = remember { DataStoreSettingsStore(appContext) }
     val editor = remember(store) { SettingsEditor(store, appContext, ui) }
+    DisposableEffect(editor) {
+        bindSettingsEditor(editor)
+        onDispose { unbindSettingsEditor(editor) }
+    }
     LaunchedEffect(store) { editor.load() }
     return editor
 }

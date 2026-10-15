@@ -3102,3 +3102,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Fixup: the sieve test imports AccountSettings.encode, which lives in the settings package
 - No new mutex. No install, and no message sent
+
+## 2026-10-15 - Sieve pin stays on the open editor
+
+- Fixup: persistSievePin records the pin on the open editor for that account and bumps SettingsRevision, under the settings lock, so a later save does not write the old pin back. The fingerprint callback still does not call editor.persist or read editor.settings. No new mutex. No install, and no message sent.
