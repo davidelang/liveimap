@@ -32,7 +32,17 @@ fun jmapUpload(
     pin: String,
     post: (String, ByteArray, String, String) -> JmapHttpExchange,
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-    policy: TlsPolicy = TlsPolicy(),
+): String = jmapUpload(session, bytes, username, password, pin, post, trust, TlsPolicy())
+
+fun jmapUpload(
+    session: JmapSession,
+    bytes: ByteArray,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, ByteArray, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String,
+    policy: TlsPolicy,
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")

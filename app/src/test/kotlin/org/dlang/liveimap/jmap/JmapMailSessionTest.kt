@@ -448,7 +448,7 @@ class JmapMailSessionTest {
             streamFor = { _, policy ->
                 streams++
                 seen += policy
-                streamed.countDown()
+                streamed.countDown();
                 { _, _ -> exchange("") }
             },
         )
