@@ -3014,3 +3014,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - A sorted window opens on the newest UID, and index changes run one at a time.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/search-ui-followup-20261015-0404-plan.md. UID and date windows open at an end; other windowed sorts use the highest loaded UID. The acted folder is a call argument. Index changes run on one queue.
+
+## 2026-10-15 - The cross-folder delete test acts in each hit folder
+
+- multiSelectAcrossFoldersActsInEachFolderAndUndoesByRefs passes the hit folder into deleteMessages.

@@ -682,7 +682,7 @@ class IndexWindowTest {
         model.noteFolderEpoch("Archive", 1L)
         model.noteFolderEpoch("Old", 1L)
         val hits = listOf("Archive" to 4L, "Old" to 7L)
-        runImmediate { model.acrossFolders(listOf(4L), hits, false) { u, e, _ -> model.deleteMessages(u, e) } }
+        runImmediate { model.acrossFolders(listOf(4L), hits, false) { u, e, folder -> model.deleteMessages(u, e, folder) } }
         assertEquals(3, session.stores.size)
         assertEquals(listOf("INBOX", "Archive", "Old"), session.storeFolders)
         val undo = model.mailUndo!!
