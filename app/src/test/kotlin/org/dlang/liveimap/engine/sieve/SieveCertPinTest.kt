@@ -27,9 +27,10 @@ class SieveCertPinTest {
         }
         val fingerprint = PeerTrust.offer(listOf(leaf.encoded))!![4]
         SieveServerTrust("imap.example", fingerprint).checkServerTrusted(arrayOf(leaf), "RSA")
-        val other = SieveServerTrust("other.example", fingerprint)
+        SieveServerTrust("other.example", fingerprint).checkServerTrusted(arrayOf(leaf), "RSA")
+        val unpinned = SieveServerTrust("other.example", "")
         try {
-            other.checkServerTrusted(arrayOf(leaf), "RSA")
+            unpinned.checkServerTrusted(arrayOf(leaf), "RSA")
             throw AssertionError("expected CertificateException")
         } catch (error: CertificateException) {
             assertEquals("name mismatch", error.message)
