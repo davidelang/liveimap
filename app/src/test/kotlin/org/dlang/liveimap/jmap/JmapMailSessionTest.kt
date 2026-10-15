@@ -289,31 +289,63 @@ class JmapMailSessionTest {
     }
 
     @Test
+    fun shortTruncatedTextPrefixIsNotFetchedAgain() = runBlocking {
+        val queued = ArrayDeque(listOf(level, noKids, total, emails, structure))
+        val bodies = mutableListOf<String>()
+        val post: (String, TlsPolicy) -> (String, String, String) -> JmapHttpExchange = { _, _ ->
+            { _, body, _ ->
+                bodies += body
+                val reply = if (body.contains("\"bodyValues\"")) {
+                    """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"abcd","isTruncated":true}}}]},"0"]]}"""
+                } else {
+                    queued.removeFirst()
+                }
+                object : JmapHttpExchange {
+                    override val status = 200
+                    override fun peerDer() = listOf(byteArrayOf(1))
+                    override fun header(name: String): String? = null
+                    override fun body() = reply
+                    override fun close() {}
+                }
+            }
+        }
+        val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, post, { _, _, _ -> "" }, { 42 })
+        assertEquals(OpenResult.Connected, s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm")))
+        s.listLevel("", null, false)
+        s.select("INBOX")
+        s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        s.fetchStructure(e1Uid)
+        val before = bodies.size
+        assertArrayEquals("abcd".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
+        assertArrayEquals(ByteArray(0), s.peekPart(e1Uid, "1", 4, 4))
+        val calls = bodies.drop(before)
+        assertEquals(1, calls.size)
+        assertTrue(calls[0].contains("Email/get"))
+        assertTrue(calls[0].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
+    }
+
+    @Test
     fun peekPartPastAShortCacheAppendsTheBytesAtThatOffset() = runBlocking {
         val short = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123","isTruncated":true}}}]},"0"]]}"""
-        val prefix = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123456789abcdef","isTruncated":false}}}]},"0"]]}"""
-        val (s, fake) = ready(listOf(structure, short, prefix))
+        val (s, fake) = ready(listOf(structure, short))
         s.fetchStructure(e1Uid)
         val before = fake.bodies.size
         assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
-        assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
+        assertArrayEquals(ByteArray(0), s.peekPart(e1Uid, "1", 4, 4))
         val calls = fake.bodies.drop(before)
-        assertEquals(2, calls.size)
+        assertEquals(1, calls.size)
         assertTrue(calls[0].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
-        assertTrue(calls[1].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
         val cached = fake.bodies.size
-        assertArrayEquals("89ab".toByteArray(), s.peekPart(e1Uid, "1", 8, 4))
-        assertArrayEquals("cdef".toByteArray(), s.peekPart(e1Uid, "1", 12, 8))
+        assertArrayEquals(ByteArray(0), s.peekPart(e1Uid, "1", 8, 4))
         assertEquals(cached, fake.bodies.size)
         assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
     }
 
     @Test
     fun peekPartTruncatedShortPrefixFetchesPastTheCache() = runBlocking {
-        // A 3-byte cap returns a 2-byte character and isTruncated, so the prefix is shorter than the cap.
+        // A truncated character shorter than JmapMaxBody is kept, and a later peek does not ask again.
         val short = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"é","isTruncated":true}}}]},"0"]]}"""
-        val prefix = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"éabcd","isTruncated":false}}}]},"0"]]}"""
-        val (s, fake) = ready(listOf(structure, short, prefix))
+        val (s, fake) = ready(listOf(structure, short))
         s.fetchStructure(e1Uid)
         val before = fake.bodies.size
         assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 3))
@@ -322,10 +354,8 @@ class JmapMailSessionTest {
         assertTrue(fake.bodies.last().contains("\"maxBodyValueBytes\":$JmapMaxBody"))
         assertArrayEquals("é".toByteArray(), s.peekPart(e1Uid, "1", 0, 2))
         assertEquals(cached, fake.bodies.size)
-        assertArrayEquals("abcd".toByteArray(), s.peekPart(e1Uid, "1", 2, 4))
-        val calls = fake.bodies.drop(before)
-        assertEquals(2, calls.size)
-        assertTrue(calls[1].contains("\"maxBodyValueBytes\":$JmapMaxBody"))
+        assertArrayEquals(ByteArray(0), s.peekPart(e1Uid, "1", 2, 4))
+        assertEquals(cached, fake.bodies.size)
     }
 
     @Test

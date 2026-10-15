@@ -149,6 +149,8 @@ class JmapMailSession(
     private data class Part(val partId: String?, val blobId: String?, val type: String) {
         var bytes: ByteArray? = null
         var whole: Boolean = false
+        /** A truncated body value shorter than [JmapMaxBody] will not grow on another Email/get. */
+        var prefixFinal: Boolean = false
     }
     private val parts = HashMap<String, Map<String, Part>>()
 
@@ -377,6 +379,7 @@ class JmapMailSession(
             for (part in cached.values) {
                 part.bytes = null
                 part.whole = false
+                part.prefixFinal = false
             }
         }
         parts[id] = map
@@ -389,7 +392,7 @@ class JmapMailSession(
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
         val needEnd = offset.toLong() + length.toLong()
         val cached = part.bytes
-        if (cached != null && (part.whole || needEnd <= cached.size)) return@withLock slice(cached, offset, length)
+        if (cached != null && (part.whole || part.prefixFinal || needEnd <= cached.size)) return@withLock slice(cached, offset, length)
         val have = cached?.size ?: 0
         if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
             // The first text fetch asks for JmapMaxBody. isTruncated means this prefix is not the whole part.
@@ -400,8 +403,9 @@ class JmapMailSession(
             val fetched = text.toByteArray(Charsets.UTF_8)
             val tail = if (fetched.size > have) fetched.copyOfRange(have, fetched.size) else ByteArray(0)
             part.bytes = if (cached == null) fetched else cached + tail
-            // A truncated value can be shorter than the cap when UTF-8 stops on a character. That prefix is not the whole part.
+            // A truncated value can be shorter than the cap. It is not the whole part, and another Email/get will not grow it.
             part.whole = !truncated
+            part.prefixFinal = truncated && fetched.size < JmapMaxBody
         } else if (cached == null) {
             val blob = part.blobId ?: throw MailFailure("part $section has no content")
             part.bytes = download(blob, part.type)
