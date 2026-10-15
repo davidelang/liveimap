@@ -44,13 +44,17 @@ class JmapMailSessionTest {
     private val noKids = """{"methodResponses":[["Mailbox/get",{"list":[]},"0"]]}"""
     private val total = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":2}]},"0"]]}"""
     private val emails = """{"methodResponses":[["Email/query",{"ids":["e1","e2"]},"0"],["Email/get",{"list":[{"id":"e1","keywords":{"${'$'}seen":true},"size":10,"receivedAt":"2026-10-13T00:00:00Z","subject":"a","from":[{"email":"x@y"}]},{"id":"e2","keywords":{},"subject":"b"}]},"1"]]}"""
-    /** e1 is assigned first. e2 has no receivedAt, so it takes the next UID. */
+    /** Id query for the INBOX fixtures, e1 then e2. No Email/get. */
+    private val existingIds = """{"methodResponses":[["Email/query",{"ids":["e1","e2"],"total":2},"0"]]}"""
+    /** Numbering query with no ids. A stored total of 0 still needs this response. */
+    private val noExistingIds = """{"methodResponses":[["Email/query",{"ids":[]},"0"]]}"""
+    /** The id query lists e1 then e2, so those stay the UIDs. */
     private val e1Uid = 1L
     private val e2Uid = 2L
 
     @Test
     fun listSelectFetchUsesTheJmapPinAndNumbersUids() = runBlocking {
-        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails)))
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, emails)))
         val s = open(fake)
         val folders = s.listLevel("", null, true)
         assertEquals(listOf("INBOX", "Trash"), folders.map { it.mailbox })
@@ -58,7 +62,12 @@ class JmapMailSessionTest {
         assertEquals("Trash", s.knownTrash())
         val sel = s.select("INBOX")
         assertEquals(42L, sel.uidValidity)
+        assertEquals(3L, sel.uidNext)
         assertEquals(2, sel.exists)
+        val idOnly = fake.bodies.filter { it.contains("Email/query") && !it.contains("Email/get") }
+        assertEquals(1, idOnly.size)
+        assertTrue(idOnly[0].contains("\"receivedAt\""))
+        assertTrue(idOnly[0].contains("\"isAscending\":true"))
         val rows = s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
         assertEquals(listOf(e1Uid, e2Uid), rows.map { it.uid })
         assertEquals(setOf("\\Seen"), rows[0].flags)
@@ -68,9 +77,36 @@ class JmapMailSessionTest {
     }
 
     @Test
+    fun existingMailIsNumberedBeforeUidNextAndALateIdStaysThere() = runBlocking {
+        val numbered = """{"methodResponses":[["Email/query",{"ids":["old","new"],"total":2},"0"]]}"""
+        val newest = """{"methodResponses":[["Email/query",{"ids":["new","old"]},"0"],["Email/get",{"list":[{"id":"new","receivedAt":"2026-10-14T00:00:00Z"},{"id":"old","receivedAt":"2026-10-01T00:00:00Z"}]},"1"]]}"""
+        val late = """{"methodResponses":[["Email/query",{"ids":["late"]},"0"],["Email/get",{"list":[{"id":"late","receivedAt":"2020-01-01T00:00:00Z"}]},"1"]]}"""
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, numbered, newest, total, late)))
+        val s = open(fake)
+        s.listLevel("", null, false)
+        val sel = s.select("INBOX")
+        assertEquals(3L, sel.uidNext)
+        val queries = fake.bodies.filter { it.contains("Email/query") }
+        assertEquals(1, queries.size)
+        assertTrue(!queries[0].contains("Email/get"))
+        assertTrue(queries[0].contains("\"receivedAt\""))
+        assertTrue(queries[0].contains("\"isAscending\":true"))
+        assertTrue(queries[0].contains("\"calculateTotal\":true"))
+        assertTrue(queries[0].contains("\"limit\":120"))
+        assertTrue(!queries[0].contains("\"position\""))
+        val rows = s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
+        assertEquals(listOf(2L, 1L), rows.map { it.uid })
+        val mark = fake.bodies.size
+        s.select("INBOX")
+        assertTrue(fake.bodies.drop(mark).none { it.contains("Email/query") })
+        val arrived = s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalOldest, limit = 1))
+        assertEquals(listOf(3L), arrived.map { it.uid })
+    }
+
+    @Test
     fun flagsMapToKeywordsAndDeletedIsRefused() = runBlocking {
         val set = """{"methodResponses":[["Email/set",{"updated":{"e1":null}},"0"]]}"""
-        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails, set)))
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, emails, set)))
         val s = open(fake)
         s.listLevel("", null, false); s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
@@ -83,7 +119,7 @@ class JmapMailSessionTest {
     @Test
     fun moveRewritesMailboxIdsAndNotUpdatedFails() = runBlocking {
         val notSet = """{"methodResponses":[["Email/set",{"notUpdated":{"e1":{"type":"forbidden"}}},"0"]]}"""
-        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails, notSet)))
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, emails, notSet)))
         val s = open(fake)
         s.listLevel("", null, false); s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
@@ -94,9 +130,11 @@ class JmapMailSessionTest {
     @Test
     fun methodErrorsBadJsonAndNetworkFailuresAreMailFailures() = runBlocking {
         for (reply in listOf("""{"methodResponses":[["error",{"type":"serverFail"},"0"]]}""", "[[[", "{")) {
-            val s = open(Fake(ArrayDeque(listOf(level, noKids, reply))))
+            val fake = Fake(ArrayDeque(listOf(level, noKids, reply)))
+            val s = open(fake)
             s.listLevel("", null, false)
             try { s.select("INBOX"); fail(reply) } catch (_: MailFailure) {}
+            assertTrue(fake.bodies.none { it.contains("Email/query") })
         }
         val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, { _, _ -> { _, _, _ -> throw IOException("reset") } }, { _, _, _ -> "" })
         s.open(AccountSettings(username = "u"))
@@ -136,7 +174,7 @@ class JmapMailSessionTest {
     fun shortPageIsNotTheWholeFolder() = runBlocking {
         val one = """{"methodResponses":[["Email/query",{"ids":["a"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
         val two = """{"methodResponses":[["Email/query",{"ids":["b"],"total":2},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
-        val paged = Fake(ArrayDeque(listOf(level, noKids, total, one, two)))
+        val paged = Fake(ArrayDeque(listOf(level, noKids, total, noExistingIds, one, two)))
         val pagedSession = open(paged)
         pagedSession.listLevel("", null, false)
         pagedSession.select("INBOX")
@@ -148,7 +186,7 @@ class JmapMailSessionTest {
         assertTrue(calls[1].contains("\"position\":1"))
         assertEquals(listOf(1L, 2L), both)
         val whole = """{"methodResponses":[["Email/query",{"ids":["a","b"]},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"},{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
-        val once = Fake(ArrayDeque(listOf(level, noKids, total, whole)))
+        val once = Fake(ArrayDeque(listOf(level, noKids, total, noExistingIds, whole)))
         val onceSession = open(once)
         onceSession.listLevel("", null, false)
         onceSession.select("INBOX")
@@ -165,7 +203,7 @@ class JmapMailSessionTest {
         val total0 = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":0}]},"0"]]}"""
         val one = """{"methodResponses":[["Email/query",{"ids":["a"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
         val two = """{"methodResponses":[["Email/query",{"ids":["b"],"total":2},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
-        val paged = Fake(ArrayDeque(listOf(level, noKids, total0, one, two)))
+        val paged = Fake(ArrayDeque(listOf(level, noKids, total0, noExistingIds, one, two)))
         val s = open(paged)
         s.listLevel("", null, false)
         s.select("INBOX")
@@ -181,7 +219,7 @@ class JmapMailSessionTest {
         assertTrue(!calls[0].contains("\"position\""))
         assertTrue(calls[1].contains("\"position\":1"))
         val whole = """{"methodResponses":[["Email/query",{"ids":["a","b"],"total":2},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"},{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
-        val once = Fake(ArrayDeque(listOf(level, noKids, total0, whole)))
+        val once = Fake(ArrayDeque(listOf(level, noKids, total0, noExistingIds, whole)))
         val onceSession = open(once)
         onceSession.listLevel("", null, false)
         onceSession.select("INBOX")
@@ -209,7 +247,7 @@ class JmapMailSessionTest {
     }
 
     private fun ready(replies: List<String>, blobs: Blobs = Blobs(), upload: (String, TlsPolicy) -> (String, ByteArray, String, String) -> JmapHttpExchange = { _, _ -> error("no upload") }): Pair<JmapMailSession, Fake> {
-        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, emails) + replies))
         val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 }, blobs::getFor, upload)
         runBlocking {
             s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm"))
@@ -250,7 +288,7 @@ class JmapMailSessionTest {
     @Test
     fun textPeekAsksForJmapMaxBodyAndReusesThatPrefix() = runBlocking {
         val full = "0123456789abcdef"
-        val queued = ArrayDeque(listOf(level, noKids, total, emails, structure))
+        val queued = ArrayDeque(listOf(level, noKids, total, existingIds, emails, structure))
         val bodies = mutableListOf<String>()
         val post: (String, TlsPolicy) -> (String, String, String) -> JmapHttpExchange = { _, _ ->
             { _, body, _ ->
@@ -290,7 +328,7 @@ class JmapMailSessionTest {
 
     @Test
     fun shortTruncatedTextPrefixIsNotFetchedAgain() = runBlocking {
-        val queued = ArrayDeque(listOf(level, noKids, total, emails, structure))
+        val queued = ArrayDeque(listOf(level, noKids, total, existingIds, emails, structure))
         val bodies = mutableListOf<String>()
         val post: (String, TlsPolicy) -> (String, String, String) -> JmapHttpExchange = { _, _ ->
             { _, body, _ ->
@@ -478,7 +516,7 @@ class JmapMailSessionTest {
     }
 
     private fun watching(replies: List<String>, stream: Stream, events: String = "https://mail.example/events"): JmapMailSession {
-        val fake = Fake(ArrayDeque(listOf(level, noKids, total, emails) + replies))
+        val fake = Fake(ArrayDeque(listOf(level, noKids, total, existingIds, emails) + replies))
         val s = JmapMailSession({ _, _ -> JmapOffer.Mail(session.copy(eventSourceUrl = events)) }, { "pw" }, fake::postFor, { _, _, _ -> "" }, { 42 },
             Blobs()::getFor, { _, _ -> error("no upload") }, stream::streamFor)
         runBlocking {
@@ -608,7 +646,7 @@ class JmapMailSessionTest {
         val kidsOfW = """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":"w"}]},"0"]]}"""
         val work = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"w26","name":"2026","parentId":"w","totalEmails":4,"unreadEmails":0}]},"0"]]}"""
         val tot = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"w26","totalEmails":4}]},"0"]]}"""
-        val fake = Fake(ArrayDeque(listOf(root, kidsOfW, work, noKids, tot)))
+        val fake = Fake(ArrayDeque(listOf(root, kidsOfW, work, noKids, tot, noExistingIds)))
         val s = open(fake)
         assertEquals(4, s.select("Work/2026").exists)
         assertTrue(fake.bodies.last().contains("\"w26\""))
@@ -618,7 +656,7 @@ class JmapMailSessionTest {
     fun acceptInvalidCertIsPassedToFolderUploadSendDownloadAndPush() = runBlocking {
         val seen = mutableListOf<TlsPolicy>()
         val replies = ArrayDeque(listOf(
-            level, noKids, total, emails,
+            level, noKids, total, existingIds, emails,
             """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw1"}]},"0"]]}""",
             """{"methodResponses":[["Email/import",{"created":{"k1":{"id":"e9"}}},"0"]]}""",
             """{"methodResponses":[]}""",

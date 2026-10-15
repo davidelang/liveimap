@@ -38,7 +38,8 @@ import org.dlang.liveimap.settings.tlsPolicy
  *  - F68: network IOExceptions surface as failures (here [MailFailure]), never as crashes.
  *
  * Folder names are paths of JMAP mailbox names joined by '/'. JMAP email ids are strings; this session numbers
- * them per mailbox from receivedAt the first time it sees each id (UIDs) under an epoch chosen at [open], so a
+ * a mailbox's existing mail once, oldest receivedAt first, before it reports uidNext or assigns any other UID.
+ * An id that was not in that query takes the next UID. The epoch chosen at [open] is the UIDVALIDITY, so a
  * reopened session is a new UIDVALIDITY and every list re-reads. JMAP has no \Deleted: [storeFlags] refuses it
  * and deletes are destroy/move.
  */
@@ -79,38 +80,24 @@ class JmapMailSession(
     private var selectedPath: String? = null
 
     /**
-     * Per mailbox id: email id <-> UID. The first sight of an id keeps its UID. A new id is at least [next],
-     * and [next] becomes one past the highest UID assigned. An older epoch and the same second stay at or above
-     * [next]. A missing receivedAt uses [next] and increases it. [select] reports [next].
+     * Per mailbox id: email id <-> UID. Existing mail is numbered once, in query order, before [next] is reported.
+     * The same id keeps its UID. A new id only uses [allocFromNext], so it stays at or above the [next] already
+     * reported. [receivedAt] does not put it below that [next]. [select] reports [next].
      */
     internal class Uids {
         val byId = HashMap<String, Long>()
         val byUid = HashMap<Long, String>()
         var next = 1L
-        private val anchor = HashMap<Long, Long>()
+        /** Set after the once-only receivedAt id query for this mailbox. */
+        var existingNumbered = false
 
+        /** [receivedAt] is not used. A new id is [allocFromNext]. */
         internal fun uid(id: String, receivedAt: Long? = null): Long {
             byId[id]?.let { return it }
-            val epoch = receivedAt?.takeIf { it > 0 }
-            val assigned = when {
-                epoch == null -> allocMissing()
-                anchor.containsKey(epoch) -> allocSame(epoch)
-                newerThanAssigned(epoch) -> allocNewer(epoch)
-                else -> allocOlder(epoch)
-            }
+            val assigned = allocFromNext()
             byId[id] = assigned
             byUid[assigned] = id
             return assigned
-        }
-
-        private fun newerThanAssigned(epoch: Long): Boolean {
-            var max = Long.MIN_VALUE
-            var any = false
-            for (e in anchor.keys) {
-                any = true
-                if (e > max) max = e
-            }
-            return !any || epoch > max
         }
 
         private fun allocFromNext(): Long {
@@ -118,27 +105,6 @@ class JmapMailSession(
             while (byUid.containsKey(u)) u++
             next = u + 1
             return u
-        }
-
-        private fun allocMissing(): Long = allocFromNext()
-
-        private fun allocNewer(epoch: Long): Long {
-            val u = allocFromNext()
-            anchor[epoch] = u
-            return u
-        }
-
-        /** At or above [next]. [next] moves one past the UID. */
-        private fun allocOlder(epoch: Long): Long {
-            val u = allocFromNext()
-            anchor[epoch] = u
-            return u
-        }
-
-        /** Same second as an id already assigned. The UID is at or above [next], and [next] moves past it. */
-        private fun allocSame(epoch: Long): Long {
-            if (epoch !in anchor) anchor[epoch] = next
-            return allocFromNext()
         }
     }
     private val uids = HashMap<String, Uids>()
@@ -250,6 +216,7 @@ class JmapMailSession(
         val id = idOfLocked(mailbox)
         val total = call(mailboxGetRequest(accountId(), id)) { root -> mailboxTotal(root, id) }
         totals[id] = total
+        numberExistingLocked(id)
         selectedPath = mailbox
         SelectResult(epoch, (uids[id]?.next ?: 1L), total)
     }
@@ -260,6 +227,7 @@ class JmapMailSession(
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = lock.withLock {
         val id = idOfLocked(request.mailbox)
+        numberExistingLocked(id)
         val table = uids.getOrPut(id) { Uids() }
         val body = when (request.mode) {
             IndexMode.ArrivalNewest -> emailQueryGet(accountId(), id, 0, request.limit, newestFirst = true)
@@ -718,12 +686,47 @@ class JmapMailSession(
     private class Hit(val id: String, val uid: Long, val threadId: String)
 
     /**
+     * Once per mailbox: [Email/query] by receivedAt ascending, [MAX_WINDOW], calculateTotal, position on later pages,
+     * and no [Email/get]. Ids are assigned in the order returned. A missing total stops on a short page. A stored
+     * mailbox total of 0 does not skip the query. Call with [lock] held, before [Uids.next] is reported.
+     */
+    private suspend fun numberExistingLocked(mailboxId: String) {
+        val table = uids.getOrPut(mailboxId) { Uids() }
+        if (table.existingNumbered) return
+        var position = 0
+        var reported: Int? = null
+        val seen = HashSet<String>()
+        var counted = 0
+        while (true) {
+            val positionJson = if (position == 0) "" else ""","position":$position"""
+            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":{"inMailbox":${q(mailboxId)}},"sort":[{"property":"receivedAt","isAscending":true}]$positionJson,"limit":$MAX_WINDOW,"calculateTotal":true},"0"]]}"""
+            val (ids, total) = call(body) { root -> queryIds(root) to queryTotal(root) }
+            if (total != null) reported = total
+            var fresh = 0
+            for (id in ids) {
+                if (!seen.add(id)) continue
+                table.uid(id)
+                fresh++
+                counted++
+            }
+            if (fresh == 0) break
+            val known = reported
+            if (known != null && counted >= known) break
+            if (known == null && ids.size < MAX_WINDOW) break
+            position += ids.size
+        }
+        table.existingNumbered = true
+    }
+
+    /**
      * Pages [Email/query] by [MAX_WINDOW]. Position is omitted on the first page. Each request sets calculateTotal.
      * The query total stops the walk. A missing total stops when a page returns fewer ids than the limit.
-     * The mailbox total from [select] is not the stop. Within a page, UIDs are assigned in receivedAt order,
-     * each at least the [Uids.next] the page started with. Hits stay in query order.
+     * The mailbox total from [select] is not the stop. [numberExistingLocked] has already numbered this mailbox.
+     * Within a page, an id that was not in that query is assigned in receivedAt order, each at least the
+     * [Uids.next] the page started with. Hits stay in query order.
      */
     private suspend fun pagedHits(table: Uids, mailboxId: String, filter: String, sortJson: String?, threads: Boolean): List<Hit> {
+        numberExistingLocked(mailboxId)
         var position = 0
         var reported: Int? = null
         val seen = HashSet<String>()
