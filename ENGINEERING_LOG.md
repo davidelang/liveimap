@@ -2969,3 +2969,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md
 - Fixup: FLAGS () still emits one ShownFlags note per IDLE wake. Exists 0 sets the baseline, so the next arrival fetches the tail and raises the pill
 - No new mutex. No install
+
+## 2026-10-14 - Reconnect uses session login password
+
+- Keeper reconnect passes sessionPassword (lab hook, loggedInPassword, then store) into login; watch stop path unchanged (main IMAP stays up).
