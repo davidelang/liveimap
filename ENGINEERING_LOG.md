@@ -3048,3 +3048,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - A JMAP http origin is allowed for the account that configured it.
 
 ## 2026-10-15 - Saving a JMAP account does not probe the JMAP host over IMAP.
+
+## 2026-10-15 - JMAP UIDs follow arrival, and a short page is not the whole folder.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. A message keeps the UID from its receivedAt; sort, search, and thread page with position; peekPart reuses cached part bytes.

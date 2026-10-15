@@ -44,6 +44,9 @@ class JmapMailSessionTest {
     private val noKids = """{"methodResponses":[["Mailbox/get",{"list":[]},"0"]]}"""
     private val total = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"m1","totalEmails":2}]},"0"]]}"""
     private val emails = """{"methodResponses":[["Email/query",{"ids":["e1","e2"]},"0"],["Email/get",{"list":[{"id":"e1","keywords":{"${'$'}seen":true},"size":10,"receivedAt":"2026-10-13T00:00:00Z","subject":"a","from":[{"email":"x@y"}]},{"id":"e2","keywords":{},"subject":"b"}]},"1"]]}"""
+    /** e1's receivedAt; e2 has none, so it takes the following uidNext. */
+    private val e1Uid = 1791849600L
+    private val e2Uid = 1791849601L
 
     @Test
     fun listSelectFetchUsesTheJmapPinAndNumbersUids() = runBlocking {
@@ -57,7 +60,7 @@ class JmapMailSessionTest {
         assertEquals(42L, sel.uidValidity)
         assertEquals(2, sel.exists)
         val rows = s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
-        assertEquals(listOf(1L, 2L), rows.map { it.uid })
+        assertEquals(listOf(e1Uid, e2Uid), rows.map { it.uid })
         assertEquals(setOf("\\Seen"), rows[0].flags)
         assertEquals("x@y", rows[0].from)
         assertTrue(fake.pins.all { it == "jm" }) // F63: never the IMAP pin
@@ -71,10 +74,10 @@ class JmapMailSessionTest {
         val s = open(fake)
         s.listLevel("", null, false); s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
-        s.storeFlags(listOf(1L), setOf("\\Flagged"), setOf("\\Seen"))
+        s.storeFlags(listOf(e1Uid), setOf("\\Flagged"), setOf("\\Seen"))
         assertTrue(fake.bodies.last().contains("\"keywords/${'$'}flagged\":true"))
         assertTrue(fake.bodies.last().contains("\"keywords/${'$'}seen\":null"))
-        try { s.storeFlags(listOf(1L), setOf("\\Deleted"), emptySet()); fail() } catch (_: MailFailure) {}
+        try { s.storeFlags(listOf(e1Uid), setOf("\\Deleted"), emptySet()); fail() } catch (_: MailFailure) {}
     }
 
     @Test
@@ -84,7 +87,7 @@ class JmapMailSessionTest {
         val s = open(fake)
         s.listLevel("", null, false); s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
-        try { s.copyThenDelete(listOf(1L), "Trash"); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("forbidden")) }
+        try { s.copyThenDelete(listOf(e1Uid), "Trash"); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("forbidden")) }
         assertTrue(fake.bodies.last().contains("\"mailboxIds/m1\":null,\"mailboxIds/m2\":true"))
     }
 
@@ -111,6 +114,48 @@ class JmapMailSessionTest {
     @Test
     fun quotingEscapesControlAndQuotes() {
         assertEquals("\"a\\\"b\\\\c\\u000a\"", JmapMailSession.q("a\"b\\c\n"))
+    }
+
+    @Test
+    fun arrivalUidKeepsTheFirstAssignment() {
+        val t = JmapMailSession.Uids()
+        assertEquals(200L, t.uid("n", 200L))
+        assertEquals(100L, t.uid("o", 100L))
+        assertEquals(200L, t.uid("n", 200L))
+        assertEquals(201L, t.next)
+        val third = t.uid("p", 200L)
+        assertTrue(third != 200L && third != 100L)
+        assertEquals(201L, t.next)
+        assertEquals(201L, t.uid("q", null))
+        assertEquals(202L, t.next)
+    }
+
+    @Test
+    fun shortPageIsNotTheWholeFolder() = runBlocking {
+        val one = """{"methodResponses":[["Email/query",{"ids":["a"]},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"}]},"1"]]}"""
+        val two = """{"methodResponses":[["Email/query",{"ids":["b"]},"0"],["Email/get",{"list":[{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
+        val paged = Fake(ArrayDeque(listOf(level, noKids, total, one, two)))
+        val pagedSession = open(paged)
+        pagedSession.listLevel("", null, false)
+        pagedSession.select("INBOX")
+        val from = paged.bodies.size
+        val both = pagedSession.sort(org.dlang.liveimap.settings.SortKey.Arrival, true)
+        val calls = paged.bodies.drop(from)
+        assertEquals(2, calls.size)
+        assertTrue(!calls[0].contains("\"position\""))
+        assertTrue(calls[1].contains("\"position\":1"))
+        assertEquals(listOf(200L, 100L), both)
+        val whole = """{"methodResponses":[["Email/query",{"ids":["a","b"]},"0"],["Email/get",{"list":[{"id":"a","receivedAt":"1970-01-01T00:03:20Z"},{"id":"b","receivedAt":"1970-01-01T00:01:40Z"}]},"1"]]}"""
+        val once = Fake(ArrayDeque(listOf(level, noKids, total, whole)))
+        val onceSession = open(once)
+        onceSession.listLevel("", null, false)
+        onceSession.select("INBOX")
+        val mark = once.bodies.size
+        val all = onceSession.sort(org.dlang.liveimap.settings.SortKey.Arrival, true)
+        val sent = once.bodies.drop(mark)
+        assertEquals(1, sent.size)
+        assertTrue(!sent[0].contains("\"position\""))
+        assertEquals(2, all.size)
     }
 
     private class Blobs(val status: Int = 200, val data: ByteArray = "RAW".toByteArray()) {
@@ -144,14 +189,26 @@ class JmapMailSessionTest {
     fun structureNumbersSectionsLikeImapAndTextComesFromBodyValues() = runBlocking {
         val values = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"héllo","isTruncated":false}}}]},"0"]]}"""
         val (s, fake) = ready(listOf(structure, values))
-        val tree = s.fetchStructure(1L)
+        val tree = s.fetchStructure(e1Uid)
         assertEquals(listOf("1", "2", "3"), tree.children.map { it.section })
         assertEquals("2.1", tree.children[1].children[0].section)
         assertEquals("p.png", tree.children[2].filename)
         assertEquals("utf-8", tree.children[0].charset)
-        assertArrayEquals("éllo".toByteArray(), s.peekPart(1L, "1", 1, 100))
+        assertArrayEquals("éllo".toByteArray(), s.peekPart(e1Uid, "1", 1, 100))
         assertTrue(fake.bodies.last().contains("\"fetchAllBodyValues\":true"))
-        try { s.peekPart(1L, "9", 0, 1); fail() } catch (_: MailFailure) {}
+        try { s.peekPart(e1Uid, "9", 0, 1); fail() } catch (_: MailFailure) {}
+    }
+
+    @Test
+    fun peekPartSecondSliceUsesTheCache() = runBlocking {
+        val values = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123456789abcdef","isTruncated":false}}}]},"0"]]}"""
+        val (s, fake) = ready(listOf(structure, values))
+        s.fetchStructure(e1Uid)
+        val before = fake.bodies.size
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
+        assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
+        assertEquals(before + 1, fake.bodies.size)
+        assertTrue(fake.bodies.last().contains("Email/get"))
     }
 
     @Test
@@ -159,9 +216,9 @@ class JmapMailSessionTest {
         val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw 1"}]},"0"]]}"""
         val blobs = Blobs(data = "0123456789".toByteArray())
         val (s, _) = ready(listOf(structure, blobId), blobs)
-        s.fetchStructure(1L)
-        assertArrayEquals("2345".toByteArray(), s.peekPart(1L, "3", 2, 4))
-        assertArrayEquals("0123456789".toByteArray(), s.fetchRfc822(1L))
+        s.fetchStructure(e1Uid)
+        assertArrayEquals("2345".toByteArray(), s.peekPart(e1Uid, "3", 2, 4))
+        assertArrayEquals("0123456789".toByteArray(), s.fetchRfc822(e1Uid))
         assertEquals("https://mail.example/dl/A1/raw%201?type=message%2Frfc822", blobs.urls.last())
         assertEquals(listOf("jm", "jm"), blobs.pins)
     }
@@ -170,7 +227,7 @@ class JmapMailSessionTest {
     fun downloadOffHostOrRedirectedFails() = runBlocking {
         val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"r"}]},"0"]]}"""
         val (s, _) = ready(listOf(blobId), Blobs(status = 302))
-        try { s.fetchRfc822(1L); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("redirect")) }
+        try { s.fetchRfc822(e1Uid); fail() } catch (e: MailFailure) { assertTrue(e.text.contains("redirect")) }
         val off = session.copy(downloadUrl = "https://evil.example/{blobId}")
         try { jmapDownload(off, "r", "x/y", "a", "", { _, _ -> error("fetched") }, { _, _, _ -> "" }); fail() } catch (_: JmapFailure) {}
         val http = session.copy(downloadUrl = "http://mail.example/{blobId}")
@@ -182,8 +239,8 @@ class JmapMailSessionTest {
         val reply = """{"methodResponses":[["Email/query",{"ids":["e2","e3","e1"]},"0"],["Email/get",{"list":[{"id":"e1","threadId":"T"},{"id":"e2","threadId":"T"},{"id":"e3","threadId":"U"}]},"1"]]}"""
         val (s, _) = ready(listOf(reply))
         val tree = s.thread(org.dlang.liveimap.settings.SortKey.ThreadReferences)
-        assertEquals(listOf(2L, 3L), tree.children.map { it.uid })
-        assertEquals(listOf(1L), tree.children[0].children.map { it.uid })
+        assertEquals(listOf(e2Uid, e2Uid + 1), tree.children.map { it.uid })
+        assertEquals(listOf(e1Uid), tree.children[0].children.map { it.uid })
     }
 
     @Test
@@ -285,7 +342,7 @@ class JmapMailSessionTest {
         val seen = java.util.Collections.synchronizedList(mutableListOf<org.dlang.liveimap.session.MailboxChange>())
         s.watch("INBOX") { seen += it }
         assertTrue(stream.blocked.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        assertEquals(listOf(org.dlang.liveimap.session.MailboxChange.Flags(1L, setOf("\\Flagged")), org.dlang.liveimap.session.MailboxChange.Exists(3)), seen.toList())
+        assertEquals(listOf(org.dlang.liveimap.session.MailboxChange.Flags(e1Uid, setOf("\\Flagged")), org.dlang.liveimap.session.MailboxChange.Exists(3)), seen.toList())
         assertTrue(stream.urls.all { it.startsWith("jm https://mail.example/events?types=Email") })
         s.stopWatch() // closes the blocked long-poll and joins
         assertEquals(seen.toList().toString(), 2, seen.size)
@@ -457,7 +514,7 @@ class JmapMailSessionTest {
         s.listLevel("", null, false)
         s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
-        assertArrayEquals("RAW".toByteArray(), s.fetchRfc822(1L))
+        assertArrayEquals("RAW".toByteArray(), s.fetchRfc822(e1Uid))
         assertTrue(s.appendReturningUid("INBOX", "x".toByteArray(), emptySet()) > 0L)
         try { s.smtpSend("From: u@x\r\n\r\nhi\r\n".toByteArray(), listOf("a@b")); fail() } catch (_: MailFailure) {}
         s.watch("INBOX") { }

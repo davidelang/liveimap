@@ -38,8 +38,9 @@ import org.dlang.liveimap.settings.tlsPolicy
  *  - F68: network IOExceptions surface as failures (here [MailFailure]), never as crashes.
  *
  * Folder names are paths of JMAP mailbox names joined by '/'. JMAP email ids are strings; this session numbers
- * them per mailbox as it sees them (UIDs) under an epoch chosen at [open], so a reopened session is a new
- * UIDVALIDITY and every list re-reads. JMAP has no \Deleted: [storeFlags] refuses it and deletes are destroy/move.
+ * them per mailbox from receivedAt the first time it sees each id (UIDs) under an epoch chosen at [open], so a
+ * reopened session is a new UIDVALIDITY and every list re-reads. JMAP has no \Deleted: [storeFlags] refuses it
+ * and deletes are destroy/move.
  */
 class JmapMailSession(
     /** account, authorization (sent only if the session resource needs it) */
@@ -77,17 +78,91 @@ class JmapMailSession(
     private val roles = HashMap<String, String>()
     private var selectedPath: String? = null
 
-    /** Per mailbox id: email id <-> UID. */
-    private class Uids {
+    /**
+     * Per mailbox id: email id <-> UID. The first sight of an id keeps its UID: receivedAt epoch seconds when
+     * that number is free. A newer id is at least [next], which then moves one past it. An older id is a positive
+     * UID below the current minimum, and [next] stays. The same epoch takes the next free integer on that side.
+     * A missing receivedAt uses [next] and increases it. [select] reports [next].
+     */
+    internal class Uids {
         val byId = HashMap<String, Long>()
         val byUid = HashMap<Long, String>()
         var next = 1L
-        fun uid(id: String): Long = byId.getOrPut(id) { (next++).also { byUid[it] = id } }
+        private val anchor = HashMap<Long, Long>()
+        private val highEpoch = HashSet<Long>()
+
+        internal fun uid(id: String, receivedAt: Long? = null): Long {
+            byId[id]?.let { return it }
+            val epoch = receivedAt?.takeIf { it > 0 }
+            val assigned = when {
+                epoch == null -> allocMissing()
+                anchor.containsKey(epoch) -> allocSame(epoch)
+                newerThanAssigned(epoch) -> allocNewer(epoch)
+                else -> allocOlder(epoch)
+            }
+            byId[id] = assigned
+            byUid[assigned] = id
+            return assigned
+        }
+
+        private fun newerThanAssigned(epoch: Long): Boolean {
+            var max = Long.MIN_VALUE
+            var any = false
+            for (e in anchor.keys) {
+                any = true
+                if (e > max) max = e
+            }
+            return !any || epoch > max
+        }
+
+        private fun allocMissing(): Long {
+            var u = next
+            while (byUid.containsKey(u)) u++
+            next = u + 1
+            return u
+        }
+
+        private fun allocNewer(epoch: Long): Long {
+            var u = if (epoch > next) epoch else next
+            while (byUid.containsKey(u)) u++
+            next = u + 1
+            anchor[epoch] = u
+            highEpoch.add(epoch)
+            return u
+        }
+
+        private fun allocOlder(epoch: Long): Long {
+            val min = byUid.keys.minOrNull() ?: next
+            var u = epoch
+            if (u < 1 || u >= min || byUid.containsKey(u)) {
+                u = min - 1
+                while (u >= 1 && byUid.containsKey(u)) u--
+            }
+            if (u < 1) throw MailFailure("no free uid")
+            anchor[epoch] = u
+            return u
+        }
+
+        /** Next free integer beside the first UID of [epoch], on that epoch's side. [next] stays. */
+        private fun allocSame(epoch: Long): Long {
+            var u = anchor[epoch]!! - 1
+            if (epoch !in highEpoch) {
+                val min = byUid.keys.minOrNull()
+                if (min != null && u > min - 1) u = min - 1
+            }
+            while (u >= 1 && byUid.containsKey(u)) u--
+            if (u < 1) throw MailFailure("no free uid")
+            return u
+        }
     }
     private val uids = HashMap<String, Uids>()
+    /** Mailbox id -> totalEmails from the last Mailbox/get in [select]. */
+    private val totals = HashMap<String, Int>()
 
-    /** Per email id: IMAP-style section -> JMAP body part, from the last [fetchStructure]. */
-    private data class Part(val partId: String?, val blobId: String?, val type: String)
+    /** Per email id: IMAP-style section -> JMAP body part, from the last [fetchStructure]. [bytes] is the cached part. */
+    private data class Part(val partId: String?, val blobId: String?, val type: String) {
+        var bytes: ByteArray? = null
+    }
     private val parts = HashMap<String, Map<String, Part>>()
 
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
@@ -125,7 +200,7 @@ class JmapMailSession(
             password = loginPassword
             authorization = loginAuthorization
             epoch = epochClock().coerceAtLeast(1L) and 0x7fffffffL
-            ids.clear(); roles.clear(); uids.clear(); parts.clear(); selectedPath = null
+            ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
             connected = true
             OpenResult.Connected
         } catch (failure: JmapFailure) {
@@ -185,6 +260,7 @@ class JmapMailSession(
         ensureListedLocked(mailbox)
         val id = idOfLocked(mailbox)
         val total = call(mailboxGetRequest(accountId(), id)) { root -> mailboxTotal(root, id) }
+        totals[id] = total
         selectedPath = mailbox
         SelectResult(epoch, (uids[id]?.next ?: 1L), total)
     }
@@ -290,15 +366,17 @@ class JmapMailSession(
             SortKey.Size -> "size"
             else -> throw MailFailure("sort by ${key.name} is not available on JMAP")
         }
-        val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":{"inMailbox":${q(idOfLocked(path))}},"sort":[{"property":"$property","isAscending":${!newestFirst}}],"limit":$MAX_IDS},"0"]]}"""
-        call(body) { root -> queryIds(root).map { table.uid(it) } }
+        val mailboxId = idOfLocked(path)
+        val sortJson = """[{"property":"$property","isAscending":${!newestFirst}}]"""
+        pagedHits(table, mailboxId, """{"inMailbox":${q(mailboxId)}}""", sortJson, threads = false).map { it.uid }
     }
 
     /** Threads by JMAP threadId: one node per thread, oldest message as its head, the rest as its replies. */
     override suspend fun thread(key: SortKey): ThreadNode = lock.withLock {
         val (path, table) = selectedTable()
-        val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":{"inMailbox":${q(idOfLocked(path))}},"sort":[{"property":"receivedAt","isAscending":true}],"limit":$MAX_IDS},"0"],["Email/get",{"accountId":${q(accountId())},"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":["id","threadId"]},"1"]]}"""
-        call(body) { root -> threadTree(root, table) }
+        val mailboxId = idOfLocked(path)
+        val hits = pagedHits(table, mailboxId, """{"inMailbox":${q(mailboxId)}}""", """[{"property":"receivedAt","isAscending":true}]""", threads = true)
+        threadNodes(hits)
     }
 
     override suspend fun fetchStructure(uid: Long): MimePart = lock.withLock {
@@ -315,15 +393,20 @@ class JmapMailSession(
         if (offset < 0 || length < 0) throw MailFailure("part range is invalid")
         val id = emailIdLocked(uid)
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
-        val bytes = if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
-            val cap = (offset.toLong() + length).coerceIn(1, JmapMaxBody.toLong())
+        val needEnd = offset.toLong() + length.toLong()
+        val cached = part.bytes
+        if (cached != null && needEnd <= cached.size) return@withLock slice(cached, offset, length)
+        val have = cached?.size?.toLong() ?: 0L
+        if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
+            val cap = (needEnd - have).coerceIn(1, JmapMaxBody.toLong())
             val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["bodyValues"],"bodyProperties":["partId"],"fetchAllBodyValues":true,"maxBodyValueBytes":$cap},"0"]]}"""
-            call(body) { root -> bodyValue(firstEmail(root), part.partId) }.toByteArray(Charsets.UTF_8)
-        } else {
+            val fetched = call(body) { root -> bodyValue(firstEmail(root), part.partId) }.toByteArray(Charsets.UTF_8)
+            part.bytes = if (cached == null) fetched else cached + fetched
+        } else if (cached == null) {
             val blob = part.blobId ?: throw MailFailure("part $section has no content")
-            download(blob, part.type)
+            part.bytes = download(blob, part.type)
         }
-        slice(bytes, offset, length)
+        slice(part.bytes ?: ByteArray(0), offset, length)
     }
 
     override suspend fun fetchRfc822(uid: Long): ByteArray = lock.withLock {
@@ -588,7 +671,7 @@ class JmapMailSession(
         session = null
         authorization = ""
         password = ""
-        ids.clear(); roles.clear(); uids.clear(); parts.clear(); selectedPath = null
+        ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
     }
 
     // ---- internals (call with [lock] held) ----
@@ -623,9 +706,54 @@ class JmapMailSession(
 
     private suspend fun searchFilter(filter: String): List<Long> = lock.withLock {
         val (path, table) = selectedTable()
-        val inMailbox = """{"operator":"AND","conditions":[{"inMailbox":${q(idOfLocked(path))}},$filter]}"""
-        val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":$inMailbox,"limit":$MAX_IDS},"0"]]}"""
-        call(body) { root -> queryIds(root).map { table.uid(it) } }.sorted()
+        val mailboxId = idOfLocked(path)
+        val inMailbox = """{"operator":"AND","conditions":[{"inMailbox":${q(mailboxId)}},$filter]}"""
+        pagedHits(table, mailboxId, inMailbox, sortJson = null, threads = false).map { it.uid }.sorted()
+    }
+
+    private class Hit(val id: String, val uid: Long, val threadId: String)
+
+    /**
+     * Pages [Email/query] by [MAX_IDS]. Position is omitted on the first page. Each page also fetches receivedAt
+     * and assigns UIDs. The next page is requested when this page added fewer ids than the mailbox total still
+     * missing. A page that adds nothing stops.
+     */
+    private suspend fun pagedHits(table: Uids, mailboxId: String, filter: String, sortJson: String?, threads: Boolean): List<Hit> {
+        val total = totals[mailboxId] ?: 0
+        if (total <= 0) return emptyList()
+        var position = 0
+        var missing = total
+        val seen = HashSet<String>()
+        val hits = ArrayList<Hit>()
+        val properties = if (threads) """["id","threadId","receivedAt"]""" else """["id","receivedAt"]"""
+        while (true) {
+            val positionJson = if (position == 0) "" else ""","position":$position"""
+            val sortPart = if (sortJson == null) "" else ""","sort":$sortJson"""
+            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":$filter$sortPart$positionJson,"limit":$MAX_IDS},"0"],["Email/get",{"accountId":${q(accountId())},"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":$properties},"1"]]}"""
+            val (ids, fields) = call(body) { root -> queryIds(root) to emailsById(root) }
+            var added = 0
+            for (id in ids) {
+                if (!seen.add(id)) continue
+                val f = fields[id]
+                val uid = table.uid(id, receivedAtEpoch(f?.get("receivedAt")))
+                val threadId = (f?.get("threadId") as? Json.Str)?.text.orEmpty()
+                hits += Hit(id, uid, threadId)
+                added++
+            }
+            if (added == 0) break
+            if (added >= missing) break
+            missing -= added
+            position += ids.size
+        }
+        return hits
+    }
+
+    private fun threadNodes(hits: List<Hit>): ThreadNode {
+        val groups = LinkedHashMap<String, MutableList<Long>>()
+        for (hit in hits) groups.getOrPut(hit.threadId.ifEmpty { "solo:${hit.id}" }) { ArrayList() } += hit.uid
+        return ThreadNode(null, groups.values.map { uidsInThread ->
+            ThreadNode(uidsInThread.first(), uidsInThread.drop(1).map { ThreadNode(it, emptyList()) })
+        })
     }
 
     private suspend fun setEmails(updates: Map<String, Map<String, Any?>>) {
@@ -667,7 +795,7 @@ class JmapMailSession(
             val f = (item as? Json.Obj)?.fields ?: return@mapIndexedNotNull null
             val id = (f["id"] as? Json.Str)?.text ?: return@mapIndexedNotNull null
             IndexRow(
-                uid = table.uid(id),
+                uid = table.uid(id, receivedAtEpoch(f["receivedAt"])),
                 sequence = index + 1,
                 flags = flagsOf(f["keywords"]),
                 internalDateEpoch = epochSeconds((f["receivedAt"] as? Json.Str)?.text.orEmpty()),
@@ -777,6 +905,23 @@ class JmapMailSession(
             return list.values.map { (it as? Json.Str)?.text ?: throw MailFailure("jmap id is not text") }
         }
 
+        private fun emailsById(root: Json.Obj): Map<String, Map<String, Json>> {
+            val list = args(root, "Email/get")?.get("list") as? Json.Arr ?: throw MailFailure("jmap response lacks Email/get")
+            val out = LinkedHashMap<String, Map<String, Json>>()
+            for (item in list.values) {
+                val f = (item as? Json.Obj)?.fields ?: continue
+                val id = (f["id"] as? Json.Str)?.text ?: continue
+                out[id] = f
+            }
+            return out
+        }
+
+        private fun receivedAtEpoch(value: Json?): Long? {
+            val text = (value as? Json.Str)?.text ?: return null
+            if (text.isBlank()) return null
+            return epochSeconds(text).takeIf { it > 0 }
+        }
+
         internal fun mailboxTotal(root: Json.Obj, id: String): Int {
             val list = args(root, "Mailbox/get")?.get("list") as? Json.Arr ?: throw MailFailure("jmap response lacks Mailbox/get")
             val box = list.values.mapNotNull { (it as? Json.Obj)?.fields }.firstOrNull { (it["id"] as? Json.Str)?.text == id }
@@ -873,19 +1018,6 @@ class JmapMailSession(
                 charset = if (type == "text") "utf-8" else "",
                 encoding = "",
             )
-        }
-
-        private fun threadTree(root: Json.Obj, table: Uids): ThreadNode {
-            val order = queryIds(root)
-            val list = args(root, "Email/get")?.get("list") as? Json.Arr ?: throw MailFailure("jmap response lacks Email/get")
-            val threadOf = list.values.mapNotNull { (it as? Json.Obj)?.fields }.associate {
-                ((it["id"] as? Json.Str)?.text.orEmpty()) to ((it["threadId"] as? Json.Str)?.text.orEmpty())
-            }
-            val groups = LinkedHashMap<String, MutableList<Long>>()
-            for (id in order) groups.getOrPut(threadOf[id]?.ifEmpty { null } ?: "solo:$id") { ArrayList() } += table.uid(id)
-            return ThreadNode(null, groups.values.map { uidsInThread ->
-                ThreadNode(uidsInThread.first(), uidsInThread.drop(1).map { ThreadNode(it, emptyList()) })
-            })
         }
 
         internal fun importedId(root: Json.Obj): String {
