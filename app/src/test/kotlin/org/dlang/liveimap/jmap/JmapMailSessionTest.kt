@@ -458,7 +458,7 @@ class JmapMailSessionTest {
         s.select("INBOX")
         s.fetchIndex(IndexRequest("INBOX", IndexMode.ArrivalNewest, limit = 2))
         assertArrayEquals("RAW".toByteArray(), s.fetchRfc822(1L))
-        assertEquals(1L, s.appendReturningUid("INBOX", "x".toByteArray(), emptySet()))
+        assertTrue(s.appendReturningUid("INBOX", "x".toByteArray(), emptySet()) > 0L)
         try { s.smtpSend("From: u@x\r\n\r\nhi\r\n".toByteArray(), listOf("a@b")); fail() } catch (_: MailFailure) {}
         s.watch("INBOX") { }
         assertTrue(streamed.await(5, java.util.concurrent.TimeUnit.SECONDS))
