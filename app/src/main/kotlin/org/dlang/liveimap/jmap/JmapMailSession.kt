@@ -420,8 +420,8 @@ class JmapMailSession(
         }
         val s = need()
         val url = try { jmapEventSourceUrl(s.eventSourceUrl, accountKey) } catch (e: JmapFailure) { throw MailFailure(e.text) }
-        val host = hostOf(url) ?: throw MailFailure("jmap event source url is not https")
-        if (!host.equals(hostOf(s.apiUrl), ignoreCase = true)) throw MailFailure("jmap event source is on another host")
+        val host = hostOf(url, accountKey) ?: throw MailFailure("jmap event source url is not https")
+        if (!host.equals(hostOf(s.apiUrl, accountKey), ignoreCase = true)) throw MailFailure("jmap event source is on another host")
         val auth = authorization
         val streamPin = pin
         val accountId = accountId()
@@ -810,7 +810,7 @@ class JmapMailSession(
             return Triple(next, ids, (a["hasMoreChanges"] as? Json.Bool)?.value == true)
         }
 
-        internal fun hostOf(url: String): String? = try {
+        internal fun hostOf(url: String, accountKey: String): String? = try {
             val uri = java.net.URI(url)
             if (jmapUrlAllowed(accountKey, url)) uri.host?.removePrefix("[")?.removeSuffix("]") else null
         } catch (_: Exception) {
