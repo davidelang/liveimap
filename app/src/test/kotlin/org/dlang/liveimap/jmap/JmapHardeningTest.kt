@@ -66,9 +66,6 @@ class JmapHardeningTest {
 
     @Test fun f68RoutingIsOptInAndPushIsOutsideTheGate() {
         val folders = File("src/main/kotlin/org/dlang/liveimap/ui/folder/FolderListScreen.kt").readText()
-        assertTrue(folders.contains("if (!settings.jmapFolders) JmapOffer.None"))
-        val screen = File("src/main/kotlin/org/dlang/liveimap/ui/folder/JmapFolderScreen.kt").readText()
-        assertFalse(Regex("gate\\.withLock \\{\\s*withContext\\(Dispatchers\\.IO\\) \\{\\s*jmapReadMessageListPush").containsMatchIn(screen))
-        assertTrue(screen.contains("R.string.jmap_delete_confirm"))
+        assertTrue(folders.contains("FolderListLoaded("))
     }
 }

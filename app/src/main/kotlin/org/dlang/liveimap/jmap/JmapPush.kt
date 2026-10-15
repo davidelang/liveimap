@@ -1,6 +1,5 @@
 package org.dlang.liveimap.jmap
 
-import org.dlang.liveimap.engine.PeerTrust
 import java.net.URI
 import javax.net.ssl.HttpsURLConnection
 
@@ -106,43 +105,6 @@ fun jmapPushEmailState(data: String, accountId: String): String? {
     val email = account.fields["Email"] ?: return null
     if (email !is Json.Str) throw JmapFailure("jmap push email state is not text")
     return email.text
-}
-
-fun jmapReadPush(
-    eventSourceUrl: String,
-    pin: String,
-    open: (String) -> JmapHttpExchange,
-    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-): List<JmapPushEvent> {
-    val url = jmapEventSourceUrl(eventSourceUrl)
-    val result = JmapHttpsFetch(pin, open, trust).get(url)
-    if (result.status != 200) throw JmapFailure("jmap push status ${result.status}")
-    return parseJmapPushEvents(result.body)
-}
-
-fun jmapApplyPush(
-    session: JmapSession,
-    sinceState: String,
-    username: String,
-    password: String,
-    pin: String,
-    open: (String) -> JmapHttpExchange,
-    post: (String, String, String) -> JmapHttpExchange,
-    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-): JmapEmailChanges? {
-    val accountId = session.primaryMailAccountId
-    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    if (sinceState.isBlank()) throw JmapFailure("jmap changes state is empty")
-    jmapBasicAuthorization(username, password)
-    val events = jmapReadPush(session.eventSourceUrl, pin, open, trust)
-    var found: String? = null
-    for (event in events) {
-        val email = jmapPushEmailState(event.data, accountId) ?: continue
-        found = email
-        break
-    }
-    if (found == null || found == sinceState) return null
-    return jmapEmailChanges(session, sinceState, username, password, pin, post, trust)
 }
 
 fun platformJmapEventSource(url: String, authorization: String, pin: String): JmapHttpExchange {

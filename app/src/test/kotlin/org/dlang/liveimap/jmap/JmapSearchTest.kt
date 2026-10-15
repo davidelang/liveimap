@@ -1,7 +1,6 @@
 package org.dlang.liveimap.jmap
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -249,35 +248,6 @@ class JmapSearchTest {
         assertEquals(emptyList<String>(), post.reads)
     }
 
-    @Test
-    fun modelSearchPostsAtPositionZero() {
-        val post = JmapSearchPost(200, searchSample)
-        val model = searchModel(post)
-        val page = model.search("mb1", "hello")
-        assertEquals(listOf(jmapMessageSearchRequest("A1", "mb1", "hello", 0, 60)), post.bodies)
-        assertEquals(1L, page.total)
-        assertEquals("Hello", page.messages.single().subject)
-    }
-
-    @Test
-    fun modelSearchBlankTextDoesNotPost() {
-        val post = JmapSearchPost(200, searchSample)
-        val model = searchModel(post)
-        for (text in listOf("", " ", "\t", "\n")) {
-            assertSearchFails("jmap search text is empty") { model.search("mb1", text) }
-        }
-        assertEquals(emptyList<String>(), post.urls)
-    }
-
-    @Test
-    fun messagesStillLoadsTheWindow() {
-        val post = JmapSearchPost(200, searchSample)
-        val model = searchModel(post)
-        val page = model.messages("mb1")
-        assertEquals(listOf(jmapMessageWindowRequest("A1", "mb1", 0, 60)), post.bodies)
-        assertFalse(post.bodies.single().contains("\"text\":"))
-        assertEquals(1L, page.total)
-    }
 }
 
 private fun assertSearchFails(message: String, call: () -> Unit) {
@@ -287,17 +257,6 @@ private fun assertSearchFails(message: String, call: () -> Unit) {
     } catch (failure: JmapFailure) {
         assertEquals(message, failure.text)
     }
-}
-
-private fun searchModel(post: JmapSearchPost, account: String? = "A1"): JmapFolderScreenModel {
-    return JmapFolderScreenModel(
-        searchSession(account),
-        "user",
-        "secret",
-        "ab",
-        post::post,
-        post::trust,
-    )
 }
 
 private fun searchSession(account: String? = "A1"): JmapSession {

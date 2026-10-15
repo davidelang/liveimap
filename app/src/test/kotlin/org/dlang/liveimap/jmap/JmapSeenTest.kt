@@ -29,17 +29,11 @@ class JmapSeenTest {
                 jmapMarkSeen(seenSession(account), "e1", "user", "secret", "ab", post::post)
             }
             assertEquals(account, emptyList<String>(), post.urls)
-            val model = seenModel(post, account)
-            assertSeenFails("jmap account id is empty") { model.markSeen("e1") }
-            assertEquals(account, emptyList<String>(), post.urls)
         }
         val post = SeenMarkPost(200, seenUpdated)
         assertSeenFails("jmap account id is empty") {
             jmapMarkSeen(seenSession(null), "e1", "user", "secret", "ab", post::post)
         }
-        assertEquals(emptyList<String>(), post.urls)
-        val model = seenModel(post, null)
-        assertSeenFails("jmap account id is empty") { model.markSeen("e1") }
         assertEquals(emptyList<String>(), post.urls)
     }
 
@@ -53,9 +47,6 @@ class JmapSeenTest {
             assertSeenFails("jmap message id is empty") {
                 jmapMarkSeen(seenSession(), emailId, "user", "secret", "ab", post::post)
             }
-            assertEquals(emailId, emptyList<String>(), post.urls)
-            val model = seenModel(post)
-            assertSeenFails("jmap message id is empty") { model.markSeen(emailId) }
             assertEquals(emailId, emptyList<String>(), post.urls)
         }
     }
@@ -85,9 +76,6 @@ class JmapSeenTest {
         assertEquals("example.com", seen.host)
         assertSame(ders, seen.ders)
         assertEquals("ab", seen.pin)
-        val model = seenModel(post)
-        model.markSeen("e1")
-        assertEquals(listOf(seenRequest, seenRequest), post.bodies)
     }
 
     @Test
@@ -97,9 +85,6 @@ class JmapSeenTest {
             jmapMarkSeen(seenSession(), "e1", "user", "secret", "ab", post::post, post::trust)
         }
         assertEquals(listOf(seenRequest), post.bodies)
-        val model = seenModel(post)
-        assertSeenFails("jmap api status 401") { model.markSeen("e1") }
-        assertEquals(listOf(seenRequest, seenRequest), post.bodies)
     }
 
     @Test
@@ -109,18 +94,6 @@ class JmapSeenTest {
             jmapMarkSeen(seenSession(), "e1", "user", "secret", "ab", post::post, post::trust)
         }
         assertEquals(listOf(seenRequest), post.bodies)
-        val model = seenModel(post)
-        assertSeenFails("jmap seen was not set") { model.markSeen("e1") }
-        assertEquals(listOf(seenRequest, seenRequest), post.bodies)
-    }
-
-    @Test
-    fun markSeenOnOpenFalseDoesNotPost() {
-        val post = SeenMarkPost(200, seenUpdated)
-        val model = seenModel(post, markSeenOnOpen = false)
-        model.markSeen("e1")
-        model.markSeen("")
-        assertEquals(emptyList<String>(), post.urls)
     }
 
     @Test
@@ -153,22 +126,6 @@ private fun seenSession(account: String? = "A1"): JmapSession {
         state = "s",
         capabilityIds = setOf(JMAP_MAIL),
         primaryMailAccountId = account,
-    )
-}
-
-private fun seenModel(
-    post: SeenMarkPost,
-    account: String? = "A1",
-    markSeenOnOpen: Boolean = true,
-): JmapFolderScreenModel {
-    return JmapFolderScreenModel(
-        seenSession(account),
-        "user",
-        "secret",
-        "ab",
-        post::post,
-        post::trust,
-        markSeenOnOpen,
     )
 }
 

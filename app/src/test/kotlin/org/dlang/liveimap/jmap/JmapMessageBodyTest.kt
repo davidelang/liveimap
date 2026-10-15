@@ -27,9 +27,6 @@ class JmapMessageBodyTest {
                 jmapMessageBody(bodySession(account), "e1", "user", "secret", "ab", post::post)
             }
             assertEquals(account, emptyList<String>(), post.urls)
-            val model = bodyModel(post, account)
-            assertBodyFails("jmap account id is empty") { model.body("e1") }
-            assertEquals(account, emptyList<String>(), post.urls)
         }
         val post = BodyReadPost(200, twoPartSample)
         assertBodyFails("jmap account id is empty") {
@@ -48,9 +45,6 @@ class JmapMessageBodyTest {
             assertBodyFails("jmap message id is empty") {
                 jmapMessageBody(bodySession(), emailId, "user", "secret", "ab", post::post)
             }
-            assertEquals(emailId, emptyList<String>(), post.urls)
-            val model = bodyModel(post)
-            assertBodyFails("jmap message id is empty") { model.body(emailId) }
             assertEquals(emailId, emptyList<String>(), post.urls)
         }
     }
@@ -126,9 +120,6 @@ class JmapMessageBodyTest {
         assertEquals("example.com", seen.host)
         assertSame(ders, seen.ders)
         assertEquals("ab", seen.pin)
-        val model = bodyModel(post)
-        assertEquals("Hi there", model.body("e1"))
-        assertEquals(listOf(bodyRequest, bodyRequest), post.bodies)
     }
 
     @Test
@@ -138,9 +129,6 @@ class JmapMessageBodyTest {
             jmapMessageBody(bodySession(), "e1", "user", "secret", "ab", post::post, post::trust)
         }
         assertEquals(listOf(bodyRequest), post.bodies)
-        val model = bodyModel(post)
-        assertBodyFails("jmap api status 401") { model.body("e1") }
-        assertEquals(listOf(bodyRequest, bodyRequest), post.bodies)
     }
 
     @Test
@@ -173,17 +161,6 @@ private fun bodySession(account: String? = "A1"): JmapSession {
         state = "s",
         capabilityIds = setOf(JMAP_MAIL),
         primaryMailAccountId = account,
-    )
-}
-
-private fun bodyModel(post: BodyReadPost, account: String? = "A1"): JmapFolderScreenModel {
-    return JmapFolderScreenModel(
-        bodySession(account),
-        "user",
-        "secret",
-        "ab",
-        post::post,
-        post::trust,
     )
 }
 

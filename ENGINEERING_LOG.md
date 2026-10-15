@@ -3023,3 +3023,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/long-search-queue-20261015-0431-plan.md. The long search runs on the screen scope. Only applying its hits uses the list queue.
 - No new mutex. No install
+
+## 2026-10-15 - JMAP accounts use the same folder list as IMAP
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-drop-old-screen-tests-20261015-0550-plan.md. A jmapFolders account opens FolderListLoaded. The old folder screen, model, route, and old push helpers are gone. Protocol tests stay.

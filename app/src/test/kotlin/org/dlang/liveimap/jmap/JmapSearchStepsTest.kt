@@ -258,28 +258,6 @@ class JmapSearchStepsTest {
         assertEquals(emptyList<String>(), post.reads)
     }
 
-    @Test
-    fun modelSearchStepsPostsAtPositionZero() {
-        val post = StepsSearchPost(200, stepsSample)
-        val model = stepsModel(post)
-        val page = model.searchSteps("mb1", "OR", listOf("hello", "world"))
-        assertEquals(
-            listOf(jmapMessageSearchStepsRequest("A1", "mb1", "OR", listOf("hello", "world"), 0, 60)),
-            post.bodies,
-        )
-        assertEquals(1L, page.total)
-        assertEquals("Hello", page.messages.single().subject)
-    }
-
-    @Test
-    fun modelNotWithTwoTermsDoesNotPost() {
-        val post = StepsSearchPost(200, stepsSample)
-        val model = stepsModel(post)
-        assertStepsFails("jmap search not takes one term") {
-            model.searchSteps("mb1", "NOT", listOf("hello", "world"))
-        }
-        assertEquals(emptyList<String>(), post.urls)
-    }
 }
 
 private fun stepsRequest(filter: String): String {
@@ -295,17 +273,6 @@ private fun assertStepsFails(message: String, call: () -> Unit) {
     } catch (failure: JmapFailure) {
         assertEquals(message, failure.text)
     }
-}
-
-private fun stepsModel(post: StepsSearchPost, account: String? = "A1"): JmapFolderScreenModel {
-    return JmapFolderScreenModel(
-        stepsSession(account),
-        "user",
-        "secret",
-        "ab",
-        post::post,
-        post::trust,
-    )
 }
 
 private fun stepsSession(account: String? = "A1"): JmapSession {

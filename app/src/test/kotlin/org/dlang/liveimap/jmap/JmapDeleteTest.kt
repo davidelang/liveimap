@@ -54,9 +54,6 @@ class JmapDeleteTest {
                 )
             }
             assertEquals(account, emptyList<String>(), post.urls)
-            val model = deleteModel(post, account = account)
-            assertDeleteFails("jmap account id is empty") { model.deleteMessage("e1", "mb1") }
-            assertEquals(account, emptyList<String>(), post.urls)
         }
         val post = DeletePost(200, deleteDestroyed)
         assertDeleteFails("jmap account id is empty") {
@@ -98,9 +95,6 @@ class JmapDeleteTest {
                     post::post,
                 )
             }
-            assertEquals(emailId, emptyList<String>(), post.urls)
-            val model = deleteModel(post, DeletePolicy.MoveToTrash)
-            assertDeleteFails("jmap message id is empty") { model.deleteMessage(emailId, "mb1") }
             assertEquals(emailId, emptyList<String>(), post.urls)
         }
     }
@@ -161,9 +155,6 @@ class JmapDeleteTest {
         assertEquals("example.com", seen.host)
         assertSame(ders, seen.ders)
         assertEquals("ab", seen.pin)
-        val model = deleteModel(post, DeletePolicy.DeletePermanently)
-        model.deleteMessage("e1", "")
-        assertEquals(listOf(destroyRequest, destroyRequest), post.bodies)
     }
 
     @Test
@@ -221,9 +212,6 @@ class JmapDeleteTest {
             }
         }
         assertEquals(emptyList<String>(), post.urls)
-        val model = deleteModel(post, DeletePolicy.MoveToTrash)
-        assertDeleteFails("jmap trash is not set") { model.deleteMessage("e1", "mb1") }
-        assertEquals(emptyList<String>(), post.urls)
     }
 
     @Test
@@ -276,9 +264,6 @@ class JmapDeleteTest {
                 post::post,
             )
         }
-        assertEquals(emptyList<String>(), post.urls)
-        val model = deleteModel(post)
-        assertDeleteFails("jmap delete marks nothing") { model.deleteMessage("e1", "mb1") }
         assertEquals(emptyList<String>(), post.urls)
     }
 
@@ -339,39 +324,6 @@ class JmapDeleteTest {
     }
 
     @Test
-    fun moveToTrashUsesTheLoadedTrashRole() {
-        val post = DeletePost(
-            listOf(
-                200 to deleteMailboxes,
-                200 to deleteEmptyChildren,
-                200 to deleteUpdated,
-            ),
-        )
-        val model = deleteModel(post, DeletePolicy.MoveToTrash)
-        model.loadTop()
-        assertEquals("t1", model.rows.first { it.role == "trash" }.id)
-        val posted = post.bodies.size
-        model.deleteMessage("e1", "mb1")
-        assertEquals(moveRequest, post.bodies[posted])
-        assertEquals(posted + 1, post.bodies.size)
-    }
-
-    @Test
-    fun moveFromTheTrashMailboxPostsDestroy() {
-        val post = DeletePost(
-            listOf(
-                200 to deleteTrashMailbox,
-                200 to deleteEmptyChildren,
-                200 to deleteDestroyed,
-            ),
-        )
-        val model = deleteModel(post, DeletePolicy.MoveToTrash)
-        model.loadTop()
-        model.deleteMessage("e1", "mb1")
-        assertEquals(destroyRequest, post.bodies.last())
-    }
-
-    @Test
     fun defaultTrustIsPeerTrust() {
         val post = DeletePost(200, deleteDestroyed, ders = emptyList())
         assertDeleteFails("empty certificate chain") {
@@ -411,22 +363,6 @@ private fun deleteSession(account: String? = "A1"): JmapSession {
         state = "s",
         capabilityIds = setOf(JMAP_MAIL),
         primaryMailAccountId = account,
-    )
-}
-
-private fun deleteModel(
-    post: DeletePost,
-    policy: DeletePolicy = DeletePolicy.MarkDeleted,
-    account: String? = "A1",
-): JmapFolderScreenModel {
-    return JmapFolderScreenModel(
-        deleteSession(account),
-        "user",
-        "secret",
-        "ab",
-        post::post,
-        post::trust,
-        deletePolicy = policy,
     )
 }
 
@@ -493,9 +429,3 @@ private val deleteUpdatedObject = """{"methodResponses":[["Email/set",{"updated"
 private val deleteNotDestroyed = """{"methodResponses":[["Email/set",{"notDestroyed":{"e1":{"type":"notFound"}}},"0"]]}"""
 
 private val deleteNotUpdated = """{"methodResponses":[["Email/set",{"notUpdated":{"e1":{"type":"invalidPatch"}}},"0"]]}"""
-
-private val deleteMailboxes = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"mb1","name":"Inbox","parentId":null,"role":"inbox"},{"id":"t1","name":"Trash","parentId":null,"role":"trash"}]},"1"]]}"""
-
-private val deleteTrashMailbox = """{"methodResponses":[["Mailbox/get",{"list":[{"id":"mb1","name":"Trash","parentId":null,"role":"trash"}]},"1"]]}"""
-
-private val deleteEmptyChildren = """{"methodResponses":[["Mailbox/get",{"list":[]},"1"]]}"""

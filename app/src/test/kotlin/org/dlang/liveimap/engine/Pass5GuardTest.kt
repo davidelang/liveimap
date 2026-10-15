@@ -65,15 +65,6 @@ class Pass5GuardTest {
         assertTrue(abortLock in 0 until readFd && readFd < abortUnlock)
     }
 
-    /** F140: the JMAP long-poll's model callbacks run under the screen gate. */
-    @Test fun jmapPushUpdatesTakeTheGate() {
-        val screen = listOf("src/main/kotlin/org/dlang/liveimap/ui/folder/JmapFolderScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/ui/folder/JmapFolderScreen.kt")
-            .map(::File).first { it.exists() }.readText()
-        assertTrue(screen.contains("gate.withLock { model.applyPush(state, model.pushOpen()) }"))
-        assertTrue(screen.contains("gate.withLock { model.messages(id) }"))
-        assertFalse(screen.contains("reload = { id -> model.messages(id) }"))
-    }
-
     /** F141: an expunge ahead of the client sort walk restarts it instead of "sort failed". */
     @Test fun sortChunkPastShrunkenExistsIsDrift() {
         assertTrue(sortChunkDrift(100, 90, false))

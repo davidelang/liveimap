@@ -95,22 +95,13 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
-import org.dlang.liveimap.jmap.JmapFolderScreenModel
-import org.dlang.liveimap.jmap.JmapOffer
-import org.dlang.liveimap.jmap.folderOfferOrImap
-import org.dlang.liveimap.jmap.jmapFolderRoute
-import org.dlang.liveimap.jmap.offerForAccount
-import org.dlang.liveimap.jmap.platformJmapExchange
-import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -234,60 +225,20 @@ fun FolderListScreen(
         )
         return
     }
-    // F181: everything below (routing probe and the folder screen) reads and writes this account, never the
-    // drawer's active one.
+    // F181: everything below reads and writes this account, never the drawer's active one.
     val bound = remember(id) { store.forAccount(id) }
-    var routeReady by remember(id) { mutableStateOf(false) }
-    var jmapModel by remember(id) { mutableStateOf<JmapFolderScreenModel?>(null) }
-    var gaveUp by remember(id) { mutableStateOf(false) }
-    LaunchedEffect(id) {
-        routeReady = false
-        jmapModel = null
-        gaveUp = false
-        try {
-            val settings = bound.load()
-            // F68: JMAP browsing is opt-in; without it, never probe and never switch away from IMAP.
-            val jmapAuth = if (settings.jmapFolders) org.dlang.liveimap.jmap.jmapBasicAuthorization(settings.username, bound.password()) else ""
-            val offer = if (!settings.jmapFolders) JmapOffer.None else withContext(Dispatchers.IO) {
-                folderOfferOrImap { offerForAccount(settings, ::platformJmapExchange, authorization = jmapAuth) }
-            }
-            if (offer is JmapOffer.Mail && jmapFolderRoute(offer, settings.username)) {
-                val session = offer.session
-                jmapModel = JmapFolderScreenModel(
-                    session,
-                    settings.username,
-                    bound.password(),
-                    settings.jmapCertPin,
-                    pinnedJmapPost(settings.jmapCertPin),
-                    markSeenOnOpen = settings.markSeenOnOpen,
-                    deletePolicy = settings.deletePolicy,
-                )
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            jmapModel = null
-        }
-        routeReady = true
-    }
-    if (!routeReady) return
-    val model = jmapModel
-    if (model != null && !gaveUp) {
-        JmapFolderRoute(model = model, onGiveUp = { gaveUp = true })
-    } else {
-        FolderListLoaded(
-            accountId = id,
-            store = bound,
-            onOpenMailbox = onOpenMailbox,
-            onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
-            onOpenUnsent = onOpenUnsent,
-            onOpenHelp = onOpenHelp,
-            onCustomize = onCustomize,
-            focusMailbox = focusMailbox,
-            focusToken = focusToken,
-            onOpenDrawer = onOpenDrawer,
-        )
-    }
+    FolderListLoaded(
+        accountId = id,
+        store = bound,
+        onOpenMailbox = onOpenMailbox,
+        onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
+        onOpenUnsent = onOpenUnsent,
+        onOpenHelp = onOpenHelp,
+        onCustomize = onCustomize,
+        focusMailbox = focusMailbox,
+        focusToken = focusToken,
+        onOpenDrawer = onOpenDrawer,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
