@@ -3027,3 +3027,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - JMAP accounts use the same folder list as IMAP
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-drop-old-screen-tests-20261015-0550-plan.md. A jmapFolders account opens FolderListLoaded. The old folder screen, model, route, and old push helpers are gone. Protocol tests stay.
+
+## 2026-10-15 - The SMTP guard allows accept-invalid except when the certificate changed.

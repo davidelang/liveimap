@@ -14,7 +14,7 @@ class Pass5GuardTest {
     @Test fun smtpAcceptInvalidOnlyForTheImapHost() {
         assertFalse(jni.contains("if (!trust.empty() && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
         assertFalse(jni.contains("if (!trust.empty() && imapHostToo && session->acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
-        assertTrue(jni.contains("if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust)) trust.clear();"))
+        assertTrue(jni.contains("if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust) && trust != \"certificate changed\") {\n            trust.clear();"))
         assertFalse(jni.contains("if (imapHostToo) pin = session->certPin.c_str();"))
         assertTrue(jni.contains("if (imapHostToo) pin = certPin.c_str();"))
     }
