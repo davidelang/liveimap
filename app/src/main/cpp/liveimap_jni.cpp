@@ -1651,7 +1651,20 @@ int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvali
     uint64_t knownModseq, uint64_t * modseq, const char * command);
 
 bool wireOk(const char * text);
-static bool capabilityLineOffersCondstore(const std::string & line);
+static bool capabilityLineOffersCondstore(const std::string & line) {
+    if (line.empty()) return false;
+    size_t pos = 0;
+    while (pos < line.size()) {
+        while (pos < line.size() && line[pos] == ' ') pos++;
+        if (pos >= line.size()) break;
+        size_t end = pos;
+        while (end < line.size() && line[end] != ' ') end++;
+        const std::string token = line.substr(pos, end - pos);
+        if (strcasecmp(token.c_str(), "CONDSTORE") == 0 || strcasecmp(token.c_str(), "QRESYNC") == 0) return true;
+        pos = end;
+    }
+    return false;
+}
 
 bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bool readWrite) {
     if (!wireOk(mailbox)) {  // F42 native backstop (also covers nativeFetchIndex's own re-select)
@@ -8487,21 +8500,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jo
     live_thread_free(tree);
     unlockSession(session);
     return obj;
-}
-
-static bool capabilityLineOffersCondstore(const std::string & line) {
-    if (line.empty()) return false;
-    size_t pos = 0;
-    while (pos < line.size()) {
-        while (pos < line.size() && line[pos] == ' ') pos++;
-        if (pos >= line.size()) break;
-        size_t end = pos;
-        while (end < line.size() && line[end] != ' ') end++;
-        const std::string token = line.substr(pos, end - pos);
-        if (strcasecmp(token.c_str(), "CONDSTORE") == 0 || strcasecmp(token.c_str(), "QRESYNC") == 0) return true;
-        pos = end;
-    }
-    return false;
 }
 
 // ENABLE CONDSTORE on a watch connection. Does not touch the session or enable QRESYNC.

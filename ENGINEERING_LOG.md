@@ -2910,3 +2910,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/new-mail-20261014-1623-plan.md
 - Fixup: a failed tail fetch leaves knownExists at the previous count. A long search re-checks the mailbox and UID order inside the lock before applying hits. An expunge scrolls to the anchor's new index in the lazy list. The folder tree walk stays on the caller
 - No new mutex. No install
+
+## 2026-10-14 - Native IMAP parser, connect, and TLS (phase 4)
+
+- Refuse bad UID sets, keywords, and nested search groups; implicit TLS uses tcpConnect + SNI; PKCS#12 password masked; silent STORE; PeerTrust uses UNKNOWN.
