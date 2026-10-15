@@ -285,6 +285,7 @@ struct LiveSession {
     // Per-account TLS client certificate: PKCS#12 bytes and password ("" = none). Offered on IMAP and SMTP.
     std::string clientP12;
     std::string clientP12Password;
+    std::string clientP12PasswordMask;
     // Or an Android KeyChain certificate: chain (DER, leaf first) and a global ref to the keystore PrivateKey.
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
@@ -297,6 +298,7 @@ struct LiveSession {
         wipeSecret(password);
         wipeSecret(passwordMask);
         wipeSecret(clientP12Password);
+        wipeSecret(clientP12PasswordMask);
         wipeSecret(clientP12);
     }
     std::string smtpHost;
@@ -349,18 +351,15 @@ struct LiveSession {
 JavaVM * gVm = nullptr;
 std::mutex gLiveMu;
 std::unordered_set<LiveSession *> gLive;
-std::mutex gErrMu;
 // Server rejected AUTH or LOGIN. Not a local SASL failure. Same thread as nativeOpen / nativeTakeAuthRejected.
 thread_local bool gServerAuthRejected = false;
 // F12 addendum: per thread, like the cert offer, so another thread's error text can never be shown here.
 thread_local std::string gLastError;
-std::mutex gCertOfferMu;
 // Per thread (F12): the offer is recorded during a handshake and taken right after the failed open on the
 // same thread, so a watch or probe connection on another thread can never swap in its certificate.
 thread_local std::vector<std::string> gCertOffer;
 
 void clearCertOffer() {
-    std::lock_guard<std::mutex> lock(gCertOfferMu);
     gCertOffer.clear();
 }
 int (* gKeepUnselect)(mailimap *) = mailimap_unselect;
@@ -504,12 +503,12 @@ std::string asciiSafe(const char * text, const char * fallback) {
     if (text != nullptr) {
         for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text); *p != 0; ++p) {
             unsigned char c = *p;
-            if (c >= 32 && c < 127) {
-                out.push_back(static_cast<char>(c));
-            } else if (c == '\n' || c == '\r' || c == '\t') {
+            if (c == '\n' || c == '\r' || c == '\t') {
                 out.push_back(' ');
+            } else if (c < 32 || c == 127) {
+                continue;
             } else {
-                out.push_back('?');
+                out.push_back(static_cast<char>(c));
             }
         }
     }
@@ -520,12 +519,10 @@ std::string asciiSafe(const char * text, const char * fallback) {
 }
 
 void setLastError(const std::string & text) {
-    std::lock_guard<std::mutex> lock(gErrMu);
     gLastError = text;
 }
 
 std::string takeLastError() {
-    std::lock_guard<std::mutex> lock(gErrMu);
     std::string out = gLastError.empty() ? "imap error" : gLastError;
     gLastError.clear();
     return out;
@@ -600,7 +597,11 @@ bool ensureJni(JNIEnv * env) {
     }
     jclass local;
     local = env->FindClass("org/dlang/liveimap/session/MailFailure");
-    gJni.mailFailure = static_cast<jclass>(env->NewGlobalRef(local));
+    if (local == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    if (gJni.mailFailure == nullptr) gJni.mailFailure = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
     cacheConnectionLost(env);
     local = env->FindClass("org/dlang/liveimap/session/IndexRow");
@@ -698,9 +699,7 @@ bool ensureJni(JNIEnv * env) {
     }
     if (env->ExceptionCheck()) env->ExceptionClear();
     gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
-        gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr &&
-        gJni.trafficAccept != nullptr && gJni.trafficFlush != nullptr && gJni.trafficNote != nullptr &&
-        gJni.sortFieldInit != nullptr && gJni.threadHeaderInit != nullptr;
+        gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr;
     return gJni.ready;
 }
 
@@ -851,14 +850,16 @@ std::string joinCapabilities(struct mailimap_capability_data * cap) {
     return line;
 }
 
-struct mailimap_set * setFromUids(const std::vector<uint32_t> & uids) {
+struct mailimap_set * setFromUids(const std::vector<uint32_t> & uids, bool * hadZero = nullptr) {
     struct mailimap_set * set = mailimap_set_new_empty();
     if (set == nullptr) {
         return nullptr;
     }
     for (uint32_t uid : uids) {
         if (uid == 0) {
-            continue;
+            if (hadZero != nullptr) *hadZero = true;
+            mailimap_set_free(set);
+            return nullptr;
         }
         if (mailimap_set_add_single(set, uid) != MAILIMAP_NO_ERROR) {
             mailimap_set_free(set);
@@ -920,6 +921,21 @@ std::string flagName(struct mailimap_flag_fetch * flag) {
     }
 }
 
+bool flagKeywordAtomOk(const char * name) {
+    if (name == nullptr || name[0] == 0) return false;
+    const char * body = name;
+    if (body[0] == '\\') ++body;
+    if (body[0] == 0) return false;
+    for (const unsigned char * p = reinterpret_cast<const unsigned char *>(body); *p != 0; ++p) {
+        unsigned char c = *p;
+        if (c < 0x21 || c > 0x7e) return false;
+        if (c == '(' || c == ')' || c == '{' || c == ' ' || c == '%' || c == '*' || c == '"' || c == '\\' || c == ']') {
+            return false;
+        }
+    }
+    return true;
+}
+
 struct mailimap_flag * flagFromName(const char * name) {
     if (name == nullptr || name[0] == 0) {
         return nullptr;
@@ -956,6 +972,13 @@ bool flagListFromArray(JNIEnv * env, jobjectArray names, struct mailimap_flag_li
                 }
             } else {
                 flag = flagFromName(chars.c());
+                if (flag == nullptr && flagKeywordAtomOk(chars.c())) {
+                    char * literal = strdup(chars.c());
+                    if (literal != nullptr) {
+                        flag = mailimap_flag_new_flag_keyword(literal);
+                        if (flag == nullptr) free(literal);
+                    }
+                }
             }
         }
         if (js != nullptr) {
@@ -1116,8 +1139,10 @@ bool plainFound(const PartWant * want) {
 }
 
 void findPreferred(struct mailimap_body * body, const std::string & prefix, bool preferHtml, PartWant * want) {
-    (void)preferHtml;
-    if (body == nullptr || plainFound(want)) {
+    if (body == nullptr) {
+        return;
+    }
+    if (plainFound(want) || (preferHtml && want->found && want->html)) {
         return;
     }
     if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
@@ -1129,7 +1154,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
         for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
             std::string section = prefix.empty() ? std::to_string(index) : prefix + "." + std::to_string(index);
             findPreferred(static_cast<struct mailimap_body *>(clist_content(cur)), section, preferHtml, want);
-            if (plainFound(want)) {
+            if (plainFound(want) || (preferHtml && want->found && want->html)) {
                 return;
             }
         }
@@ -1141,6 +1166,7 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     struct mailimap_body_type_1part * part = body->bd_data.bd_body_1part;
     std::string section = prefix.empty() ? "1" : prefix;
     if (part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr) {
+        if (want->found) return;
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
         if (inner != nullptr && inner->bd_type == MAILIMAP_BODY_MPART) {
             findPreferred(inner, section, preferHtml, want);
@@ -1154,12 +1180,16 @@ void findPreferred(struct mailimap_body * body, const std::string & prefix, bool
     describe1(part, &type, &subtype);
     bool plain = strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "plain") == 0;
     bool html = strcasecmp(type.c_str(), "text") == 0 && strcasecmp(subtype.c_str(), "html") == 0;
-    if (plain) {
+    if (plain && !preferHtml) {
         rememberText(want, section, part, false);
         return;
     }
-    if (html && !want->found) {
+    if (html && (preferHtml || !want->found)) {
         rememberText(want, section, part, true);
+        if (preferHtml) return;
+    }
+    if (plain && !want->found) {
+        rememberText(want, section, part, false);
     }
 }
 
@@ -1616,11 +1646,13 @@ std::vector<Row> rowsFromList(clist * list, const char * accountEmail, const cha
     return rows;
 }
 
-int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command);
+int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore = false);
 int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
     uint64_t knownModseq, uint64_t * modseq, const char * command);
 
 bool wireOk(const char * text);
+static bool capabilityLineOffersCondstore(const std::string & line);
+
 bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bool readWrite) {
     if (!wireOk(mailbox)) {  // F42 native backstop (also covers nativeFetchIndex's own re-select)
         throwFailure(env, "text with a line break cannot be sent to the server");
@@ -1633,10 +1665,9 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bo
     auto stored = session->resyncByMailbox.find(name);
     bool haveStored = stored != session->resyncByMailbox.end()
         && stored->second.uidvalidity != 0 && stored->second.modseq != 0;
-    if (session->qresync && haveStored) {
-        r = selectQresyncCapture(session->imap, mailbox, stored->second.uidvalidity, stored->second.modseq, &mod, command);
-    } else if (session->qresync) {
-        r = selectFullCapture(session->imap, mailbox, &mod, command);
+    const bool condstore = capabilityLineOffersCondstore(session->capabilityLine);
+    if (condstore) {
+        r = selectFullCapture(session->imap, mailbox, &mod, command, true);
     } else if (readWrite) {
         r = mailimap_select(session->imap, mailbox);
     } else {
@@ -1646,7 +1677,7 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bo
         throwImap(env, session, r, "select failed");
         return false;
     }
-    if (session->qresync) {
+    if (condstore) {
         struct mailimap_selection_info * info = session->imap->imap_selection_info;
         if (info != nullptr && info->sel_uidvalidity != 0 && mod != 0) {
             session->resyncByMailbox[name] = ResyncState{info->sel_uidvalidity, mod};
@@ -2377,7 +2408,7 @@ void watchMain(LiveSession * session) {
         session->selfGlobal = nullptr;
         gVm->DetachCurrentThread();
         // F94: a thread that took a use count before freeSession may still be about to unlock / release it.
-        while (session->users.load() > 0) std::this_thread::yield();
+        while (session->users.load() > 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         delete session;
         return;
     }
@@ -2444,7 +2475,7 @@ std::string connectFailure(const char * proto, const char * host, int port,
     return serviceLabel(proto, host, port) + " (" + address + "): " + detail;
 }
 
-int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
+int connectStart(const struct addrinfo * ai, std::string * why) {
     if (ai == nullptr || ai->ai_addr == nullptr) {
         *why = "connection failed";
         return -1;
@@ -2461,69 +2492,86 @@ int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
         return -1;
     }
     int rc = connect(fd, ai->ai_addr, ai->ai_addrlen);
-    bool ready = rc == 0;
+    if (rc == 0) return fd;
     if (rc < 0 && errno != EINPROGRESS && errno != EINTR) {
         *why = errorText(errno);
         close(fd);
         return -1;
     }
-    if (rc < 0) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
-        while (true) {
-            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now()).count();
-            if (left <= 0) {
-                *why = "timed out";
-                close(fd);
-                return -1;
-            }
-            struct pollfd pfd{};
-            pfd.fd = fd;
-            pfd.events = POLLOUT;
-            int waitMs = left < 60000 ? static_cast<int>(left) : 60000;
-            int pr = poll(&pfd, 1, waitMs);
-            if (pr == 0) {
-                *why = "timed out";
-                close(fd);
-                return -1;
-            }
-            if (pr < 0) {
-                if (errno == EINTR) continue;
-                *why = errorText(errno);
-                close(fd);
-                return -1;
-            }
-            if ((pfd.revents & POLLOUT) != 0) ready = true;
-            break;
-        }
+    return fd;
+}
+
+bool connectFinish(int fd, std::string * why) {
+    struct pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLOUT;
+    int pr = poll(&pfd, 1, 0);
+    if (pr < 0) {
+        if (errno == EINTR) return false;
+        *why = errorText(errno);
+        close(fd);
+        return true;
     }
+    if (pr == 0) return false;
     int soerr = 0;
     socklen_t len = sizeof(soerr);
     if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &len) < 0) {
         *why = errorText(errno);
         close(fd);
-        return -1;
+        return true;
     }
     if (soerr != 0) {
         *why = errorText(soerr);
         close(fd);
-        return -1;
+        return true;
     }
-    if (!ready) {
-        *why = "connection failed";
-        close(fd);
-        return -1;
-    }
-    // mailstream_socket_open_timeout requires a blocking fd.
     int cur = fcntl(fd, F_GETFL, 0);
     if (cur < 0 || fcntl(fd, F_SETFL, cur & ~O_NONBLOCK) < 0) {
         *why = errorText(errno);
         close(fd);
-        return -1;
+        return true;
     }
     enableKeepalive(fd);
-    return fd;
+    return true;
 }
+
+int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
+    int fd = connectStart(ai, why);
+    if (fd < 0) return -1;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
+    for (;;) {
+        std::string finishWhy;
+        if (connectFinish(fd, &finishWhy)) {
+            if (finishWhy.empty()) return fd;
+            *why = finishWhy;
+            return -1;
+        }
+        auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0) {
+            *why = "timed out";
+            close(fd);
+            return -1;
+        }
+        struct pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLOUT;
+        int waitMs = left < 60000 ? static_cast<int>(left) : 60000;
+        int pr = poll(&pfd, 1, waitMs);
+        if (pr == 0) {
+            *why = "timed out";
+            close(fd);
+            return -1;
+        }
+        if (pr < 0 && errno != EINTR) {
+            *why = errorText(errno);
+            close(fd);
+            return -1;
+        }
+    }
+}
+
+const int kConnectStaggerMs = 250;
 
 int tcpConnect(const char * proto, const char * host, int port, std::string * address, std::string * error) {
     struct addrinfo hints{};
@@ -2540,30 +2588,95 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
             + (text != nullptr && text[0] != 0 ? text : "unknown");
         return -1;
     }
-    std::string failures;
-    int fd = -1;
-    std::string chosen;
-    for (struct addrinfo * ai = res; ai != nullptr; ai = ai->ai_next) {
-        std::string numeric = numericAddress(ai);
-        std::string why;
-        int one = connectOne(ai, kConnectTimeoutSec, &why);
-        if (one >= 0) {
-            fd = one;
-            chosen = std::move(numeric);
-            break;
-        }
-        if (!failures.empty()) failures += "; ";
-        failures += connectFailure(proto, host, port, numeric, why);
+    std::vector<struct addrinfo *> candidates;
+    for (struct addrinfo * ai = res; ai != nullptr; ai = ai->ai_next) candidates.push_back(ai);
+    if (candidates.empty()) {
+        freeaddrinfo(res);
+        *error = serviceLabel(proto, host, port) + ": name lookup failed: no address";
+        return -1;
     }
-    if (res != nullptr) freeaddrinfo(res);
-    if (fd < 0) {
+    struct Pending {
+        int fd = -1;
+        std::string numeric;
+        std::string why;
+    };
+    std::vector<Pending> pending;
+    std::string failures;
+    size_t nextStart = 0;
+    auto raceStart = std::chrono::steady_clock::now();
+    auto deadline = raceStart + std::chrono::seconds(kConnectTimeoutSec);
+    int winner = -1;
+    std::string chosen;
+    while (winner < 0) {
+        auto now = std::chrono::steady_clock::now();
+        if (now >= deadline && nextStart >= candidates.size() && pending.empty()) break;
+        while (nextStart < candidates.size()) {
+            auto due = raceStart + std::chrono::milliseconds(kConnectStaggerMs * nextStart);
+            if (now < due) break;
+            Pending p;
+            p.numeric = numericAddress(candidates[nextStart]);
+            p.fd = connectStart(candidates[nextStart], &p.why);
+            if (p.fd < 0) {
+                if (!failures.empty()) failures += "; ";
+                failures += connectFailure(proto, host, port, p.numeric, p.why);
+            } else {
+                pending.push_back(std::move(p));
+            }
+            ++nextStart;
+        }
+        if (pending.empty() && nextStart >= candidates.size()) break;
+        int waitMs = 50;
+        auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+        if (left > 0 && left < waitMs) waitMs = static_cast<int>(left);
+        if (!pending.empty()) {
+            std::vector<struct pollfd> pfds;
+            for (const Pending & p : pending) {
+                if (p.fd < 0) continue;
+                struct pollfd one{};
+                one.fd = p.fd;
+                one.events = POLLOUT;
+                pfds.push_back(one);
+            }
+            if (!pfds.empty()) {
+                int pr = poll(pfds.data(), static_cast<nfds_t>(pfds.size()), waitMs);
+                if (pr > 0) {
+                    size_t pi = 0;
+                    for (size_t fi = 0; fi < pending.size(); ++fi) {
+                        if (pending[fi].fd < 0) continue;
+                        short revents = pfds[pi++].revents;
+                        if ((revents & (POLLOUT | POLLERR | POLLHUP | POLLNVAL)) == 0) continue;
+                        std::string finishWhy;
+                        if (connectFinish(pending[fi].fd, &finishWhy) && finishWhy.empty()) {
+                            winner = pending[fi].fd;
+                            chosen = pending[fi].numeric;
+                            for (size_t j = 0; j < pending.size(); ++j) {
+                                if (pending[j].fd >= 0 && pending[j].fd != winner) close(pending[j].fd);
+                            }
+                            break;
+                        }
+                        if (!finishWhy.empty()) {
+                            if (!failures.empty()) failures += "; ";
+                            failures += connectFailure(proto, host, port, pending[fi].numeric, finishWhy);
+                            pending[fi].fd = -1;
+                        }
+                    }
+                }
+            }
+        } else if (waitMs > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(waitMs));
+        }
+        pending.erase(std::remove_if(pending.begin(), pending.end(),
+            [](const Pending & p) { return p.fd < 0; }), pending.end());
+    }
+    freeaddrinfo(res);
+    if (winner < 0) {
         *error = failures.empty()
             ? serviceLabel(proto, host, port) + ": name lookup failed: no address"
             : failures;
         return -1;
     }
     *address = std::move(chosen);
-    return fd;
+    return winner;
 }
 
 std::string trafficConnectionId(LiveSession * live, mailimap * imap, mailstream * stream) {
@@ -2797,6 +2910,7 @@ bool certificateVerdict(const std::string & text) {
 }
 
 thread_local TlsCapture * tlsCapture = nullptr;
+static const std::string kEmptyP12Password;
 
 const int kSslCtrlSetMinProtoVersion = 123;
 const long kTls12Version = 0x0303;
@@ -2857,7 +2971,6 @@ void storePeerOffer(JNIEnv * env, jclass cls, jobject list) {
         }
     }
     env->DeleteLocalRef(result);
-    std::lock_guard<std::mutex> lock(gCertOfferMu);
     if (lines.size() == 5) gCertOffer = std::move(lines);
     else gCertOffer.clear();
 }
@@ -3009,8 +3122,6 @@ extern "C" int plain_client_plug_init(void *, int, int *, void **, int *);
 extern "C" int login_client_plug_init(void *, int, int *, void **, int *);
 extern "C" int crammd5_client_plug_init(void *, int, int *, void **, int *);
 extern "C" int scram_client_plug_init(void *, int, int *, void **, int *);
-extern "C" int digestmd5_client_plug_init(void *, int, int *, void **, int *);
-
 std::string gSaslSetup;
 
 // The SASL library is linked statically and finds no plugin directory on Android.
@@ -3025,7 +3136,6 @@ void setupSaslClient() {
     struct { const char * name; SaslPlugInit init; } plugins[] = {
         {"scram", scram_client_plug_init},
         {"crammd5", crammd5_client_plug_init},
-        {"digestmd5", digestmd5_client_plug_init},
         {"plain", plain_client_plug_init},
         {"login", login_client_plug_init},
     };
@@ -3225,7 +3335,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
             // Authorization id: empty, since a=<user> breaks Dovecot 2.2 SCRAM. Except DIGEST-MD5, where Cyrus's
             // client omits an authzid equal to the user but sends an empty one (authzid=""), which Dovecot rejects.
             r = mailimap_authenticate(imap, mechanism.c_str(), host, nullptr, nullptr,
-                mechanism == "DIGEST-MD5" ? user : "", user, password, nullptr);
+                "", user, password, nullptr);
         }
         if (cmdOk(r)) return true;
         bool local = r == MAILIMAP_ERROR_LOGIN && !mechanism.empty() && mechanism != "EXTERNAL"
@@ -3262,6 +3372,7 @@ struct ImapOpenMaterial {
     bool acceptInvalidCert = false;
     std::string clientP12;
     std::string clientP12Password;
+    std::string clientP12PasswordMask;
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
     bool logImapTraffic = false;
@@ -3272,6 +3383,7 @@ struct ImapOpenMaterial {
     ~ImapOpenMaterial() {
         wipeSecret(clientP12);
         wipeSecret(clientP12Password);
+        wipeSecret(clientP12PasswordMask);
         if (keyChainKey != nullptr && env != nullptr) env->DeleteGlobalRef(keyChainKey);
     }
 };
@@ -3301,10 +3413,16 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     bool logTraffic = false;
     std::string mechanism;
     bool acceptInvalid = false;
+    std::string p12PasswordClear;
+    SecretWipe p12Wipe{p12PasswordClear};
     if (owned != nullptr) {
         capture.allowOldTls = owned->allowOldTls;
         capture.clientP12 = &owned->clientP12;
-        capture.clientP12Password = &owned->clientP12Password;
+        if (!owned->clientP12Password.empty()) {
+            p12PasswordClear = owned->clientP12Password;
+            xorMask(p12PasswordClear, owned->clientP12PasswordMask);
+            capture.clientP12Password = &p12PasswordClear;
+        }
         capture.keyChainChain = &owned->keyChainChain;
         capture.keyChainKey = owned->keyChainKey;
         logTraffic = owned->logImapTraffic;
@@ -3313,7 +3431,11 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     } else if (live != nullptr) {
         capture.allowOldTls = live->allowOldTls;
         capture.clientP12 = &live->clientP12;
-        capture.clientP12Password = &live->clientP12Password;
+        if (!live->clientP12Password.empty()) {
+            p12PasswordClear = live->clientP12Password;
+            xorMask(p12PasswordClear, live->clientP12PasswordMask);
+            capture.clientP12Password = &p12PasswordClear;
+        }
         capture.keyChainChain = &live->keyChainChain;
         capture.keyChainKey = live->keyChainKey;
         logTraffic = live->logImapTraffic;
@@ -3368,15 +3490,30 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         } else {
             attachOpenedTrafficLogger(imap, logTraffic, live, nullptr);
         }
-        address = host != nullptr ? host : "";
         if (port < 0 || port > 65535) {
+            *error = connectFailure("IMAP", host, port, host != nullptr ? host : "", "connection failed");
+            rejectImap(imap);
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        std::string dialError;
+        int fd = tcpConnect("IMAP", host, port, &address, &dialError);
+        if (fd < 0) {
+            *error = dialError;
+            rejectImap(imap);
+            tlsCapture = nullptr;
+            return nullptr;
+        }
+        mailstream * stream = mailstream_ssl_open_with_server_name_callback_timeout(
+            fd, kReadTimeoutSec, sniName(host), prepareTls, nullptr);
+        if (stream == nullptr) {
+            close(fd);
             *error = connectFailure("IMAP", host, port, address, "connection failed");
             rejectImap(imap);
             tlsCapture = nullptr;
             return nullptr;
         }
-        int r = mailimap_ssl_connect_with_callback(
-            imap, host, static_cast<uint16_t>(port), prepareTls, nullptr);
+        int r = mailimap_connect(imap, stream);
         tlsOk = connectOk(r);
         if (!tlsOk) {
             *error = connectFailure("IMAP", host, port, address, imapText(imap, "connection failed"));
@@ -3403,7 +3540,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     }
     std::string trust = peerTrustCheck(env, host, capture.ders, pin, publishOffer);
     tlsCapture = nullptr;
-    if (!trust.empty() && acceptInvalid && certificateVerdict(trust)) {
+    if (!trust.empty() && acceptInvalid && certificateVerdict(trust) && trust != "certificate changed") {
         clearCertOffer();
         trust.clear();
     }
@@ -3454,7 +3591,7 @@ void freeSession(LiveSession * session, JNIEnv * env) {
     session->mu.unlock();
     if (tlsWatch != session) {
         // Callers that looked the session up before the erase still hold a use count: let them see `closed`.
-        while (session->users.load() > 0) std::this_thread::yield();
+        while (session->users.load() > 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         delete session;
     }
 }
@@ -3496,10 +3633,11 @@ char delimFor(LiveSession * session, const char * parent) {
     size_t bestLen = 0;
     std::string name = parent;
     for (const auto & item : session->delims) {
-        if (!item.first.empty() && name.compare(0, item.first.size(), item.first) == 0 && item.first.size() >= bestLen) {
-            bestLen = item.first.size();
-            best = item.second;
-        }
+        if (item.first.empty() || item.first.size() < bestLen) continue;
+        if (name.compare(0, item.first.size(), item.first) != 0) continue;
+        if (name.size() != item.first.size() && name[item.first.size()] != item.second) continue;
+        bestLen = item.first.size();
+        best = item.second;
     }
     return best;
 }
@@ -3618,14 +3756,15 @@ int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvali
     return MAILIMAP_NO_ERROR;
 }
 
-int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command) {
+int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore) {
     *modseq = 0;
     int r = mailimap_send_current_tag(imap);
     if (r != MAILIMAP_NO_ERROR) return r;
+    const int cond = condstore ? 1 : 0;
     if (command != nullptr && strcmp(command, "EXAMINE") == 0) {
-        r = mailimap_examine_send(imap->imap_stream, mailbox, 0);
+        r = mailimap_examine_send(imap->imap_stream, mailbox, cond);
     } else {
-        r = mailimap_select_send(imap->imap_stream, mailbox, 0);
+        r = mailimap_select_send(imap->imap_stream, mailbox, cond);
     }
     if (r != MAILIMAP_NO_ERROR) return r;
     r = mailimap_crlf_send(imap->imap_stream);
@@ -3659,8 +3798,7 @@ int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, 
 void enableNamed(LiveSession * session, const char * capName) {
     if (session == nullptr || session->imap == nullptr || capName == nullptr) return;
     const char * wire = nullptr;
-    if (strcasecmp(capName, "QRESYNC") == 0) wire = "QRESYNC";
-    else if (strcasecmp(capName, "CONDSTORE") == 0) wire = "CONDSTORE";
+    if (strcasecmp(capName, "CONDSTORE") == 0) wire = "CONDSTORE";
     else if (strcasecmp(capName, "UTF8=ACCEPT") == 0) wire = "UTF8=ACCEPT";
     if (wire == nullptr) return;
     clist * list = clist_new();
@@ -3694,14 +3832,17 @@ void enableNamed(LiveSession * session, const char * capName) {
     }
     if (result != nullptr) mailimap_capability_data_free(result);
     // F30 condition: a resync extension counts only when the ENABLED response names it.
-    if (strcmp(wire, "QRESYNC") == 0 && granted) session->qresync = true;
     // Only an ENABLED response naming UTF8=ACCEPT switches name handling (RFC 5161: the server may ignore it).
     if (strcmp(wire, "UTF8=ACCEPT") == 0 && granted) session->utf8 = true;
 }
 
 void compressSession(LiveSession * session) {
     if (session == nullptr || session->imap == nullptr) return;
-    (void)mailimap_compress(session->imap);
+    int r = mailimap_compress(session->imap);
+    if (r != MAILIMAP_NO_ERROR) {
+        shutdownMainSocket(session);
+        return;
+    }
     if (!session->logImapTraffic || session->imap->imap_stream == nullptr) return;
     mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
 }
@@ -3951,7 +4092,9 @@ int parseSeqNumber(mailstream * fd, MMAPString * buffer, struct mailimap_parser_
     if (peekChar(buffer, *indx) == '*') {
         *indx += 1;
         tlsSeqSawStar = true;
-        *out = starUid();
+        uint32_t resolved = starUid();
+        if (resolved == 0) return MAILIMAP_ERROR_PARSE;
+        *out = resolved;
         return MAILIMAP_NO_ERROR;
     }
     return mailimap_nz_number_parse(fd, buffer, ctx, indx, out);
@@ -4918,8 +5061,14 @@ struct mailimap_search_key * textKey(TextSlot slot, const char * argument) {
     case TextSlot::Subject: key = mailimap_search_key_new_subject(copy); break;
     case TextSlot::Text: key = mailimap_search_key_new_text(copy); break;
     case TextSlot::Body: key = mailimap_search_key_new_body(copy); break;
-    case TextSlot::Keyword: key = mailimap_search_key_new_keyword(copy); break;
-    case TextSlot::Unkeyword: key = mailimap_search_key_new_unkeyword(copy); break;
+    case TextSlot::Keyword:
+        if (!flagKeywordAtomOk(argument)) { free(copy); return nullptr; }
+        key = mailimap_search_key_new_keyword(copy);
+        break;
+    case TextSlot::Unkeyword:
+        if (!flagKeywordAtomOk(argument)) { free(copy); return nullptr; }
+        key = mailimap_search_key_new_unkeyword(copy);
+        break;
     }
     if (key == nullptr) free(copy);
     return key;
@@ -5024,7 +5173,7 @@ bool ageBeforeDate(uint32_t daysBack, int * year, int * month, int * day) {
     std::time_t now = std::time(nullptr);
     if (now == static_cast<std::time_t>(-1)) return false;
     std::tm tm{};
-    if (gmtime_r(&now, &tm) == nullptr) return false;
+    if (localtime_r(&now, &tm) == nullptr) return false;
     int64_t z = daysFromCivil(tm.tm_year + 1900, static_cast<unsigned>(tm.tm_mon + 1), static_cast<unsigned>(tm.tm_mday));
     z -= static_cast<int64_t>(daysBack);
     if (z < static_cast<int64_t>(INT_MIN) || z > static_cast<int64_t>(INT_MAX)) return false;
@@ -5061,14 +5210,14 @@ static struct mailimap_search_key * uidSetKey(const char * text) {
         uint64_t first = 0, last = 0;
         int digits = 0;
         while (*p >= '0' && *p <= '9' && digits < 10) { first = first * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
-        if (digits == 0 || first == 0 || first > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+        if (digits == 0 || digits > 10 || first == 0 || first > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
         last = first;
         if (*p == ':') {
             ++p;
             last = 0;
             digits = 0;
             while (*p >= '0' && *p <= '9' && digits < 10) { last = last * 10 + (uint64_t) (*p - '0'); ++p; ++digits; }
-            if (digits == 0 || last == 0 || last > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
+            if (digits == 0 || digits > 10 || last == 0 || last > 0xffffffffULL) { mailimap_set_free(set); return nullptr; }
         }
         if (mailimap_set_add_interval(set, (uint32_t) first, (uint32_t) last) != MAILIMAP_NO_ERROR) {
             mailimap_set_free(set);
@@ -5104,6 +5253,11 @@ static struct mailimap_search_key * groupKeySep(JNIEnv * env, const char * text,
             return nullptr;
         }
         std::string mark = lines[i].substr(0, a), kind = lines[i].substr(a + 1, b - a - 1), arg = lines[i].substr(b + 1);
+        if (kind == "Group" && depth >= 1) {
+            if (folded != nullptr) mailimap_search_key_free(folded);
+            throwFailure(env, "bad search");
+            return nullptr;
+        }
         struct mailimap_search_key * step = kind == "Group" ? groupKeySep(env, arg.c_str(), depth + 1, 0x1e, 0x1f)
                                                             : criterionKey(env, kind.c_str(), arg.c_str());
         if (env->ExceptionCheck() || step == nullptr) {
@@ -5349,7 +5503,7 @@ bool mailboxNoselect(struct mailimap_mailbox_list * mb) {
         if (of == nullptr || of->of_flag_ext == nullptr) continue;
         const char * flag = of->of_flag_ext;
         if (flag[0] == '\\') ++flag;
-        if (strcasecmp(flag, "Noselect") == 0) return true;
+        if (strcasecmp(flag, "Noselect") == 0 || strcasecmp(flag, "NonExistent") == 0) return true;
     }
     return false;
 }
@@ -5413,6 +5567,8 @@ jlong completeCount(JNIEnv * env, LiveSession * session, struct mailimap_search_
         return -1;
     }
     jlong count = session->esearchCount;
+    if (count < 0) count = tlsEsearchExtCount;
+    tlsEsearchExtCount = -1;
     unlockSession(session);
     return count;
 }
@@ -5543,9 +5699,8 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
     SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
     SSL_CTX_set_info_callback(ctx, recordTlsInfo);
     if (tlsCapture != nullptr && tlsCapture->clientP12 != nullptr && !tlsCapture->clientP12->empty()) {
-        gClientCertLoaded = useClientP12(ctx, *tlsCapture->clientP12,
-            tlsCapture->clientP12Password != nullptr ? *tlsCapture->clientP12Password : std::string(),
-            &gClientCertError);
+        const std::string & p12pw = tlsCapture->clientP12Password != nullptr ? *tlsCapture->clientP12Password : kEmptyP12Password;
+        gClientCertLoaded = useClientP12(ctx, *tlsCapture->clientP12, p12pw, &gClientCertError);
     } else if (tlsCapture != nullptr && tlsCapture->keyChainKey != nullptr && tlsCapture->keyChainChain != nullptr) {
         gClientCertLoaded = useKeyChainKey(ctx, *tlsCapture->keyChainChain, tlsCapture->keyChainKey, &gClientCertError);
     }
@@ -5561,12 +5716,20 @@ std::string utf8FromJava(JNIEnv * env, jstring value) {
     out.reserve(static_cast<size_t>(length) * 4u + 1u);
     for (jsize i = 0; i < length; ++i) {
         uint32_t cp = chars[i];
-        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length) {
-            uint32_t low = chars[i + 1];
-            if (low >= 0xDC00 && low <= 0xDFFF) {
-                cp = 0x10000u + (((cp - 0xD800u) << 10) | (low - 0xDC00u));
-                ++i;
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            if (i + 1 < length) {
+                uint32_t low = chars[i + 1];
+                if (low >= 0xDC00 && low <= 0xDFFF) {
+                    cp = 0x10000u + (((cp - 0xD800u) << 10) | (low - 0xDC00u));
+                    ++i;
+                } else {
+                    cp = 0xFFFDu;
+                }
+            } else {
+                cp = 0xFFFDu;
             }
+        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            cp = 0xFFFDu;
         }
         if (cp < 0x80u) {
             out.push_back(static_cast<char>(cp));
@@ -5850,10 +6013,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * env, jclass) {
     if (!ensureJni(env)) return nullptr;
     std::vector<std::string> lines;
-    {
-        std::lock_guard<std::mutex> lock(gCertOfferMu);
-        lines.swap(gCertOffer);
-    }
+    lines.swap(gCertOffer);
     if (lines.size() != 5) return nullptr;
     jclass stringCls = env->FindClass("java/lang/String");
     if (stringCls == nullptr || env->ExceptionCheck()) {
@@ -5928,6 +6088,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
         if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
         JChars cpw(env, clientP12Password);
         session->clientP12Password = cpw.c();
+        if (!session->clientP12Password.empty()) {
+            session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
+            xorMask(session->clientP12Password, session->clientP12PasswordMask);
+        }
     }
     if (keyChainKey != nullptr && keyChainChain != nullptr) {
         keyChainInit(env);
@@ -5996,6 +6160,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
         JChars cpw(env, clientP12Password);
         session->clientP12Password = cpw.c();
+        if (!session->clientP12Password.empty()) {
+            session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
+            xorMask(session->clientP12Password, session->clientP12PasswordMask);
+        }
     }
     if (keyChainKey != nullptr && keyChainChain != nullptr) {
         keyChainInit(env);
@@ -6588,7 +6756,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 if (!want.found) continue;
                 asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
                 at.push_back(i);
-                havePreview[i] = 1;
             }
             std::vector<std::string> got;
             int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
@@ -6599,6 +6766,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             }
             for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
                 previews[at[n]] = got[n];
+                havePreview[at[n]] = 1;
             }
         }
         if (list != nullptr) mailimap_fetch_list_free(list);
@@ -6622,7 +6790,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         std::vector<jlong> raw(static_cast<size_t>(n));
         if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
         for (jlong value : raw) {
-            if (value > 0) all.push_back(static_cast<uint32_t>(value));
+            if (value <= 0 || value > static_cast<jlong>(UINT32_MAX)) {
+                throwFailure(env, "bad uid");
+                unlockSession(session);
+                return nullptr;
+            }
+            all.push_back(static_cast<uint32_t>(value));
         }
     }
     std::vector<jobject> built;
@@ -6663,7 +6836,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
                 if (!want.found) continue;
                 asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
                 at.push_back(i);
-                havePreview[i] = 1;
             }
             std::vector<std::string> got;
             int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
@@ -6674,6 +6846,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             }
             for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
                 previews[at[n]] = got[n];
+                havePreview[at[n]] = 1;
             }
         }
         if (list != nullptr) mailimap_fetch_list_free(list);
@@ -6846,6 +7019,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
+    if (offset < 0 || length < 0) {
+        throwFailure(env, "bad fetch range");
+        unlockSession(session);
+        return nullptr;
+    }
     JChars spec(env, section);
     const std::string text = spec.c();
     struct mailimap_fetch_att * att = nullptr;
@@ -6900,10 +7078,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
     }
     const char * bytes = nullptr;
     size_t n = 0;
+    bool matched = false;
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr && bytes == nullptr; cur = clist_next(cur)) {
             auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
             if (msg == nullptr || msg->att_list == nullptr) continue;
+            matched = true;
             for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
                 auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
                 if (item == nullptr) continue;
@@ -6928,6 +7108,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
                 }
             }
         }
+    }
+    if (!matched) {
+        if (list != nullptr) mailimap_fetch_list_free(list);
+        throwFailure(env, "message no longer exists");
+        unlockSession(session);
+        return nullptr;
     }
     jbyteArray arr = env->NewByteArray(static_cast<jsize>(n));
     if (n > 0 && bytes != nullptr) {
@@ -6957,10 +7143,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
     }
     const char * bytes = nullptr;
     size_t n = 0;
+    bool matched = false;
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr && bytes == nullptr; cur = clist_next(cur)) {
             auto * msg = static_cast<struct mailimap_msg_att *>(clist_content(cur));
             if (msg == nullptr || msg->att_list == nullptr) continue;
+            matched = true;
             for (clistiter * ic = clist_begin(msg->att_list); ic != nullptr; ic = clist_next(ic)) {
                 auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(ic));
                 if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) continue;
@@ -6971,6 +7159,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
                 }
             }
         }
+    }
+    if (!matched) {
+        if (list != nullptr) mailimap_fetch_list_free(list);
+        throwFailure(env, "message no longer exists");
+        unlockSession(session);
+        return nullptr;
     }
     jbyteArray arr = env->NewByteArray(static_cast<jsize>(n));
     if (n > 0 && bytes != nullptr) {
@@ -6992,25 +7186,25 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
         return false;
     }
     if (add != nullptr && env->GetArrayLength(add) > 0) {
-        struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags(addFlags);
+        struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_add_flags_silent(addFlags);
         addFlags = nullptr;
         int r = mailimap_uid_store(session->imap, set, att);
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
             if (removeFlags != nullptr) mailimap_flag_list_free(removeFlags);
-            throwImap(env, session, r, "store failed");
+            throwImap(env, session, r, "store failed (add flags did not complete)");
             return false;
         }
     } else if (addFlags != nullptr) {
         mailimap_flag_list_free(addFlags);
     }
     if (remove != nullptr && env->GetArrayLength(remove) > 0) {
-        struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_remove_flags(removeFlags);
+        struct mailimap_store_att_flags * att = mailimap_store_att_flags_new_remove_flags_silent(removeFlags);
         removeFlags = nullptr;
         int r = mailimap_uid_store(session->imap, set, att);
         mailimap_store_att_flags_free(att);
         if (!cmdOk(r)) {
-            throwImap(env, session, r, "store failed");
+            throwImap(env, session, r, "store failed (remove flags did not complete; add flags may have applied)");
             return false;
         }
     } else if (removeFlags != nullptr) {
@@ -7106,8 +7300,14 @@ std::vector<uint32_t> uidsFromArray(JNIEnv * env, jlongArray uids) {
     jsize n = env->GetArrayLength(uids);
     std::vector<jlong> raw(static_cast<size_t>(n));
     if (n > 0) env->GetLongArrayRegion(uids, 0, n, raw.data());
-    // IMAP UIDs are 32-bit (F15): skip anything outside 1..UINT32_MAX rather than truncating it.
-    for (jlong value : raw) if (value > 0 && value <= static_cast<jlong>(UINT32_MAX)) values.push_back(static_cast<uint32_t>(value));
+    for (jlong value : raw) {
+        if (value == 0) {
+            throwFailure(env, "bad uid");
+            return values;
+        }
+        if (value < 0 || value > static_cast<jlong>(UINT32_MAX)) continue;
+        values.push_back(static_cast<uint32_t>(value));
+    }
     return values;
 }
 
@@ -7122,9 +7322,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env
         unlockSession(session);
         return;
     }
-    struct mailimap_set * set = setFromUids(values);
+    bool hadZero = false;
+    struct mailimap_set * set = setFromUids(values, &hadZero);
     if (set == nullptr) {
-        throwFailure(env, "store failed");
+        throwFailure(env, hadZero ? "bad uid" : "store failed");
         unlockSession(session);
         return;
     }
@@ -8381,6 +8582,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchLogin(JNIEnv * env
     owned.acceptInvalidCert = session->acceptInvalidCert;
     owned.clientP12 = session->clientP12;
     owned.clientP12Password = session->clientP12Password;
+    owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
     owned.logImapTraffic = session->logImapTraffic;
@@ -8487,6 +8689,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     owned.acceptInvalidCert = session->acceptInvalidCert;
     owned.clientP12 = session->clientP12;
     owned.clientP12Password = session->clientP12Password;
+    owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
     owned.logImapTraffic = session->logImapTraffic;
@@ -8973,6 +9176,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     const std::string imapHost = session->host;
     std::string clientP12 = session->clientP12;
     std::string clientP12Password = session->clientP12Password;
+    if (!clientP12Password.empty()) xorMask(clientP12Password, session->clientP12PasswordMask);
     SecretWipe wipeP12{clientP12};
     SecretWipe wipeP12Password{clientP12Password};
     std::vector<std::string> keyChainChain = session->keyChainChain;
@@ -9162,7 +9366,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             strcasecmp(imapHost.c_str(), host) == 0;
         if (imapHostToo) pin = certPin.c_str();
         std::string trust = peerTrustCheck(env, host, capture.ders, pin, false);
-        if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust)) trust.clear();
+        if (!trust.empty() && imapHostToo && acceptInvalidCert && certificateVerdict(trust) && trust != "certificate changed") {
+            trust.clear();
+        }
         if (!trust.empty()) {
             freeSmtp(session, smtp);
             throwFailure(env, trust);
@@ -9241,7 +9447,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return 0;
         }
         r = mailesmtp_auth_sasl(smtp, mechanism.c_str(), smtpHost.c_str(), nullptr,
-            nullptr, mechanism == "DIGEST-MD5" ? authUser.c_str() : "",  // authzid, as for IMAP
+            nullptr, "",  // authzid, as for IMAP
             authUser.c_str(), authPass.c_str(),
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
@@ -9409,15 +9615,28 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
         imap = mailimap_new(0, nullptr);
         if (imap != nullptr) {
             mailimap_set_timeout(imap, kReadTimeoutSec);
-            tlsCapture = &capture;
-            int r = mailimap_ssl_connect_with_callback(imap, h.c(), static_cast<uint16_t>(port), prepareTls, nullptr);
-            tlsCapture = nullptr;
-            tried = true;
-            tlsOk = connectOk(r);
-            if (!tlsOk) {
-                std::string reason = tlsFailureReason();
-                lines.push_back("tls=" + (reason.empty() ? std::string("TLS handshake failed") : reason));
-                if (capture.ders.empty() && reason.empty()) lines.push_back("error=connection failed");
+            std::string dialError;
+            int fd = tcpConnect("IMAP", h.c(), port, &address, &dialError);
+            if (fd < 0) {
+                lines.push_back("error=" + dialError);
+            } else {
+                tlsCapture = &capture;
+                mailstream * stream = mailstream_ssl_open_with_server_name_callback_timeout(
+                    fd, kReadTimeoutSec, sniName(h.c()), prepareTls, nullptr);
+                tlsCapture = nullptr;
+                if (stream == nullptr) {
+                    close(fd);
+                    lines.push_back("error=" + connectFailure("IMAP", h.c(), port, address, "connection failed"));
+                } else {
+                    tried = true;
+                    int r = mailimap_connect(imap, stream);
+                    tlsOk = connectOk(r);
+                    if (!tlsOk) {
+                        std::string reason = tlsFailureReason();
+                        lines.push_back("tls=" + (reason.empty() ? std::string("TLS handshake failed") : reason));
+                        if (capture.ders.empty() && reason.empty()) lines.push_back("error=connection failed");
+                    }
+                }
             }
         } else {
             lines.push_back("error=imap error");
@@ -9452,7 +9671,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
         std::string trust = capture.ders.empty() ? std::string("certificate rejected")
             : peerTrustCheck(env, h.c(), capture.ders, pin.c(), false);
         if (!trust.empty()) {
-            if (probe.acceptInvalidCert && certificateVerdict(trust)) lines.push_back("accepted=" + trust);
+            if (probe.acceptInvalidCert && certificateVerdict(trust) && trust != "certificate changed") {
+                lines.push_back("accepted=" + trust);
+            }
             else lines.push_back("trust=" + trust);
         }
         lines.push_back("post=" + probeCaps(imap));

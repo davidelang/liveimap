@@ -12,10 +12,10 @@ class BoxPass5GuardTest {
     private val jni = src("cpp/liveimap_jni.cpp")
 
     @Test fun authTypeIsTheKeyExchange() {
-        assertEquals("ECDHE_RSA", tlsAuthType("RSA"))
-        assertEquals("ECDHE_ECDSA", tlsAuthType("EC"))
+        val peerTrust = src("kotlin/org/dlang/liveimap/engine/PeerTrust.kt")
+        assertTrue(peerTrust.contains("checkServerTrusted(chain, \"UNKNOWN\")"))
+        assertFalse(peerTrust.contains("tlsAuthType(leaf.publicKey.algorithm)"))
         assertEquals("UNKNOWN", tlsAuthType("Ed25519"))
-        assertFalse(src("kotlin/org/dlang/liveimap/engine/PeerTrust.kt").contains("leaf.publicKey.algorithm.ifBlank"))
     }
 
     /** F38: the watch poll sleeps until the renew when a wake fd exists. */

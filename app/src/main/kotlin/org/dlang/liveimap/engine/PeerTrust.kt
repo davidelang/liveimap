@@ -57,9 +57,8 @@ object PeerTrust {
         }
         val trust = managers.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
             ?: return "certificate rejected"
-        val auth = tlsAuthType(leaf.publicKey.algorithm)
         return try {
-            trust.checkServerTrusted(chain, auth)
+            trust.checkServerTrusted(chain, "UNKNOWN")
             ""
         } catch (_: Exception) {
             "certificate untrusted"
