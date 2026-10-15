@@ -3052,3 +3052,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - JMAP UIDs follow arrival, and a short page is not the whole folder.
 
 - Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. A message keeps the UID from its receivedAt; sort, search, and thread page with position; peekPart reuses cached part bytes.
+
+## 2026-10-15 - A text peek past the cache keeps the part bytes at that offset.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart asks for a prefix through the bytes it lacks and appends only that tail.

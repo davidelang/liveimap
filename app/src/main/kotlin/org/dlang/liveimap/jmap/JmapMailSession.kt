@@ -162,6 +162,7 @@ class JmapMailSession(
     /** Per email id: IMAP-style section -> JMAP body part, from the last [fetchStructure]. [bytes] is the cached part. */
     private data class Part(val partId: String?, val blobId: String?, val type: String) {
         var bytes: ByteArray? = null
+        var whole: Boolean = false
     }
     private val parts = HashMap<String, Map<String, Part>>()
 
@@ -395,13 +396,18 @@ class JmapMailSession(
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
         val needEnd = offset.toLong() + length.toLong()
         val cached = part.bytes
-        if (cached != null && needEnd <= cached.size) return@withLock slice(cached, offset, length)
-        val have = cached?.size?.toLong() ?: 0L
+        if (cached != null && (part.whole || needEnd <= cached.size)) return@withLock slice(cached, offset, length)
+        val have = cached?.size ?: 0
         if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
-            val cap = (needEnd - have).coerceIn(1, JmapMaxBody.toLong())
+            // A body value is a prefix of maxBodyValueBytes, so the cap reaches the missing bytes and only that tail is stored.
+            val cap = needEnd.coerceIn(1, JmapMaxBody.toLong())
+            if (have.toLong() >= cap) return@withLock slice(cached ?: ByteArray(0), offset, length)
             val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["bodyValues"],"bodyProperties":["partId"],"fetchAllBodyValues":true,"maxBodyValueBytes":$cap},"0"]]}"""
-            val fetched = call(body) { root -> bodyValue(firstEmail(root), part.partId) }.toByteArray(Charsets.UTF_8)
-            part.bytes = if (cached == null) fetched else cached + fetched
+            val (text, truncated) = call(body) { root -> bodyValue(firstEmail(root), part.partId) }
+            val fetched = text.toByteArray(Charsets.UTF_8)
+            val tail = if (fetched.size > have) fetched.copyOfRange(have, fetched.size) else ByteArray(0)
+            part.bytes = if (cached == null) fetched else cached + tail
+            part.whole = !truncated || fetched.size.toLong() < cap
         } else if (cached == null) {
             val blob = part.blobId ?: throw MailFailure("part $section has no content")
             part.bytes = download(blob, part.type)
@@ -972,10 +978,12 @@ class JmapMailSession(
             return (list.values.firstOrNull() as? Json.Obj)?.fields ?: throw MailFailure("message is gone on the server")
         }
 
-        internal fun bodyValue(email: Map<String, Json>, partId: String): String {
+        internal fun bodyValue(email: Map<String, Json>, partId: String): Pair<String, Boolean> {
             val values = (email["bodyValues"] as? Json.Obj)?.fields ?: throw MailFailure("jmap message has no body values")
             val value = (values[partId] as? Json.Obj)?.fields ?: throw MailFailure("jmap part $partId has no value")
-            return (value["value"] as? Json.Str)?.text ?: throw MailFailure("jmap part $partId has no value")
+            val text = (value["value"] as? Json.Str)?.text ?: throw MailFailure("jmap part $partId has no value")
+            val truncated = (value["isTruncated"] as? Json.Bool)?.value != false
+            return text to truncated
         }
 
         internal fun slice(bytes: ByteArray, offset: Int, length: Int): ByteArray {

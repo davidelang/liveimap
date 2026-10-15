@@ -212,6 +212,26 @@ class JmapMailSessionTest {
     }
 
     @Test
+    fun peekPartPastAShortCacheAppendsTheBytesAtThatOffset() = runBlocking {
+        val short = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123","isTruncated":true}}}]},"0"]]}"""
+        val prefix = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","bodyValues":{"1":{"value":"0123456789abcdef","isTruncated":false}}}]},"0"]]}"""
+        val (s, fake) = ready(listOf(structure, short, prefix))
+        s.fetchStructure(e1Uid)
+        val before = fake.bodies.size
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
+        assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
+        val calls = fake.bodies.drop(before)
+        assertEquals(2, calls.size)
+        assertTrue(calls[0].contains("\"maxBodyValueBytes\":4"))
+        assertTrue(calls[1].contains("\"maxBodyValueBytes\":8"))
+        val cached = fake.bodies.size
+        assertArrayEquals("89ab".toByteArray(), s.peekPart(e1Uid, "1", 8, 4))
+        assertArrayEquals("cdef".toByteArray(), s.peekPart(e1Uid, "1", 12, 8))
+        assertEquals(cached, fake.bodies.size)
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
+    }
+
+    @Test
     fun attachmentsAndRawMessagesDownloadOnTheApiHostWithTheJmapPin() = runBlocking {
         val blobId = """{"methodResponses":[["Email/get",{"list":[{"id":"e1","blobId":"raw 1"}]},"0"]]}"""
         val blobs = Blobs(data = "0123456789".toByteArray())
