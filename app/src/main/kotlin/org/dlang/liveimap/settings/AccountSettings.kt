@@ -451,6 +451,7 @@ data class AccountSettings(
     val nonAsciiDisplay: NonAsciiDisplay = NonAsciiDisplay.HighlightSuspicious,
     val sieveHost: String = "",
     val sievePort: Int = 4190,
+    val sieveTlsMode: TlsMode = TlsMode.StartTls,
     val tlsMode: TlsMode = TlsMode.None,
     val certPin: String = "",
     val sieveCertPin: String = "",
@@ -514,6 +515,16 @@ data class AccountSettings(
         if ("tlsMode" in present) return "tlsMode"
         if ("deletePolicy" in present) return "deletePolicy"
         if ("moveMethod" in present) return "moveMethod"
+        return null
+    }
+
+    /** The raw sieveTlsMode line, when it is still kept. Not a preservedSecurityKey. */
+    fun preservedSieveTlsKey(): String? {
+        for (entry in unknownSettings) {
+            val first = entry.substringBefore('\n')
+            val eq = first.indexOf('=')
+            if (eq > 0 && first.substring(0, eq) == "sieveTlsMode") return "sieveTlsMode"
+        }
         return null
     }
 
@@ -631,6 +642,7 @@ private val fieldNames = listOf(
     "nonAsciiDisplay",
     "sieveHost",
     "sievePort",
+    "sieveTlsMode",
     "tlsMode",
     "certPin",
     "sieveCertPin",
@@ -805,6 +817,7 @@ fun AccountSettings.encode(): String = buildString {
     if (viewerHeaders.isNotEmpty()) put("viewerHeaders=${percentEncode(viewerHeaders)}")
     if (sieveHost.isNotEmpty()) put("sieveHost=${percentEncode(sieveHost)}")
     if (sievePort != 4190) put("sievePort=$sievePort")
+    if (sieveTlsMode != TlsMode.StartTls) put("sieveTlsMode=${sieveTlsMode.name}")
     if (tlsMode != TlsMode.None) put("tlsMode=${tlsMode.name}")
     if (certPin.isNotBlank()) put("certPin=${percentEncode(certPin)}")
     if (sieveCertPin.isNotBlank()) put("sieveCertPin=${percentEncode(sieveCertPin)}")
@@ -953,6 +966,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "nonAsciiDisplay" ||
             key == "sieveHost" ||
             key == "sievePort" ||
+            key == "sieveTlsMode" ||
             key == "tlsMode" ||
             key == "certPin" ||
             key == "sieveCertPin" ||
@@ -1124,6 +1138,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
         previewSize = field("previewSize", d.previewSize) { values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density },
         sieveHost = field("sieveHost", d.sieveHost) { values["sieveHost"]?.let { percentDecode(it) } ?: "" },
         sievePort = field("sievePort", d.sievePort) { values["sievePort"]?.let { parseSievePort(it) } ?: 4190 },
+        sieveTlsMode = field("sieveTlsMode", d.sieveTlsMode) {
+            values["sieveTlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.StartTls
+        },
         tlsMode = field("tlsMode", d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
         certPin = field("certPin", d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
         sieveCertPin = field("sieveCertPin", d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },

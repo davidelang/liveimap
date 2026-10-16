@@ -3200,3 +3200,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: log and recording paths are absolute before the runners change directory; a missing corpus manifest is generated and a failed seed stops the run; LAB_* from the environment; a missing LAB_MAIL_DOMAIN or LAB_ZIMBRA_USER stops the runner
 - No corpus mail is committed; no androidTest APK is built; no install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Sieve reads the rest of a literal, and its TLS mode is its own
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sieve-literal-tls-20261015-2019-plan.md
+- Work: consume the CRLF after a ManageSieve literal; seed From and To as addr-specs and List-Id as a bare id tested with header :contains; an empty active script is Include; sieveTlsMode defaults to STARTTLS and Check and Upload use it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

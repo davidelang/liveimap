@@ -81,6 +81,24 @@ class SettingsBindingTest {
         assertTrue(reader.contains("onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject, accountId)"))
     }
 
+    @Test
+    fun sieveTlsIsPassedAndAPreservedLineStopsTheCall() {
+        val screen = source("kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
+        val greet = screen.indexOf("greetSieve(")
+        assertTrue(screen.indexOf("preservedSieveTlsKey()") in 0 until greet)
+        val greetCall = screen.substring(greet, screen.indexOf("persistSievePin", greet))
+        assertTrue(greetCall.contains("sieveTlsMode"))
+        val choice = screen.indexOf("settings_sieve_tls")
+        assertTrue(screen.indexOf("withoutPreserved(\"sieveTlsMode\")", choice) > choice)
+        val filter = source("kotlin/org/dlang/liveimap/ui/filter/FilterScreen.kt")
+        val upload = filter.indexOf("openAndDeliverLiveimap(")
+        assertTrue(filter.indexOf("preservedSieveTlsKey()") in 0 until upload)
+        val uploadCall = filter.substring(upload, filter.indexOf(") { plan ->", upload))
+        assertTrue(uploadCall.contains("sieveTlsMode"))
+        val reader = source("kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt")
+        assertTrue(reader.contains("onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject, accountId)"))
+    }
+
     private fun source(path: String): String =
         listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
 }

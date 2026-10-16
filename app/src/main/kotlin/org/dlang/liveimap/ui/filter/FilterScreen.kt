@@ -146,13 +146,18 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                 scope.launch {
                     try {
                         val account = store.load()
+                        val blocked = account.preservedSieveTlsKey()
+                        if (blocked != null) {
+                            uploadReport = "account settings need attention: $blocked"
+                            return@launch
+                        }
                         val password = store.password()
                         val (host, port) = sieveEndpoint(account)
                         val warning = withContext(account.tlsPolicy()) {
                             openAndDeliverLiveimap(
                                 host,
                                 port,
-                                account.tlsMode,
+                                account.sieveTlsMode,
                                 account.sieveCertPin,
                                 ::confirmMailCertificate,
                                 { fingerprint ->

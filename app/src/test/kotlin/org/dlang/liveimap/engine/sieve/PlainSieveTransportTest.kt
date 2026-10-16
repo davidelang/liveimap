@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class PlainSieveTransportTest {
@@ -162,6 +163,33 @@ class PlainSieveTransportTest {
         }
     }
 
+    @Test(timeout = 20_000)
+    fun getScriptKeepsTheLiteralAndDropsTheTail() {
+        withLocalSieve("{5}\r\nkeep;\r\nOK \"got\"\r\n") { transport ->
+            assertEquals("keep;", getScript(transport, "liveimap"))
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun failedLiteralLeavesTheNextResponse() {
+        withLocalSieve("NO {4}\r\nline\r\nOK \"next\"\r\n") { transport ->
+            try {
+                getScript(transport, "liveimap")
+                fail("expected SieveFailure")
+            } catch (failure: SieveFailure) {
+                assertEquals("line", failure.text)
+            }
+            assertEquals("OK \"next\"", transport.readLine())
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun emptyLiteralReturnsAnEmptyScript() {
+        withLocalSieve("{0}\r\n\r\nOK\r\n") { transport ->
+            assertEquals("", getScript(transport, "liveimap"))
+        }
+    }
+
     @Test
     fun sieveTlsProtocolsDropsLegacyAndKeepsOrder() {
         assertEquals(
@@ -194,6 +222,56 @@ private fun readBytes(input: InputStream, count: Int): ByteArray {
         off += n
     }
     return got.copyOf(off)
+}
+
+private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport) -> Unit) {
+    val listen = ServerSocket()
+    listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+    val failure = AtomicReference<Throwable>()
+    val thread = Thread {
+        var client: Socket? = null
+        try {
+            listen.soTimeout = 10_000
+            client = listen.accept()
+            client.tcpNoDelay = true
+            client.soTimeout = 10_000
+            val output = client.getOutputStream()
+            output.write(response.toByteArray(StandardCharsets.UTF_8))
+            output.flush()
+            drain(client.getInputStream())
+        } catch (error: Throwable) {
+            failure.set(error)
+        } finally {
+            try {
+                client?.close()
+            } catch (error: Exception) {
+            }
+        }
+    }
+    thread.isDaemon = true
+    thread.start()
+    var transport: PlainSieveTransport? = null
+    var thrown: Throwable? = null
+    try {
+        transport = openPlainSieve("127.0.0.1", listen.localPort)
+        runBlocking { block(transport) }
+    } catch (error: Throwable) {
+        thrown = error
+    } finally {
+        try {
+            transport?.close()
+        } catch (error: Exception) {
+        }
+        try {
+            listen.close()
+        } catch (error: Exception) {
+        }
+        thread.join(10_000)
+    }
+    if (thrown != null) throw thrown
+    assertFalse(thread.isAlive)
+    val error = failure.get()
+    if (error != null) throw error
 }
 
 private fun drain(input: InputStream): ByteArray {

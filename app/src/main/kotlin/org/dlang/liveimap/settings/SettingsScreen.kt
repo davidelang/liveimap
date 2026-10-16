@@ -1045,6 +1045,14 @@ private fun AccountGroup(editor: SettingsEditor) {
                 PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
                     editor.persist(editor.settings.copy(sievePort = it))
                 }
+                ChoiceField(
+                    stringResource(R.string.settings_sieve_tls),
+                    TlsMode.entries,
+                    settings.sieveTlsMode,
+                    { tlsName(it) },
+                ) { mode ->
+                    editor.persist(editor.settings.copy(sieveTlsMode = mode).withoutPreserved("sieveTlsMode"))
+                }
                 if (settings.sieveCertPin.isBlank()) {
                     Text(stringResource(R.string.settings_sieve_cert_pin_none))
                 } else {
@@ -1064,7 +1072,12 @@ private fun AccountGroup(editor: SettingsEditor) {
                             sieveReport = noSieveHost
                             return@TextButton
                         }
-                        val mode = editor.settings.tlsMode
+                        val blocked = editor.settings.preservedSieveTlsKey()
+                        if (blocked != null) {
+                            sieveReport = "account settings need attention: $blocked"
+                            return@TextButton
+                        }
+                        val sieveTlsMode = editor.settings.sieveTlsMode
                         val pin = editor.settings.sieveCertPin
                         checkingSieve = true
                         sieveReport = ""
@@ -1072,7 +1085,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                             try {
                                 sieveReport = sieveCheckText(
                                     withContext(editor.settings.tlsPolicy()) {
-                                        greetSieve(host, port, mode, pin, ::confirmMailCertificate) { fingerprint ->
+                                        greetSieve(host, port, sieveTlsMode, pin, ::confirmMailCertificate) { fingerprint ->
                                             persistSievePin(sieveStore, sieveAccount, fingerprint)
                                         }
                                     },

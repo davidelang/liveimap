@@ -85,6 +85,34 @@ class SieveScriptTest {
         )
     }
 
+    @Test
+    fun seedKeepsAddrSpecsAndABareListId() {
+        assertEquals(
+            listOf(
+                RuleCriterion(RuleField.From, "ann@example.com"),
+                RuleCriterion(RuleField.To, "a@b"),
+                RuleCriterion(RuleField.To, "b@c"),
+                RuleCriterion(RuleField.ListId, "dev.lists.example.org"),
+                RuleCriterion(RuleField.Subject, "Hello"),
+            ),
+            seedCriteria(
+                "Ann <ann@example.com>",
+                "A <a@b>, B <b@c>",
+                "Dev list <Dev.Lists.Example.org>",
+                "Hello",
+            ),
+        )
+        val script = emitSieve(
+            listOf(
+                InboundRule(
+                    criteria = listOf(RuleCriterion(RuleField.ListId, "<list.example.com>")),
+                    discard = true,
+                ),
+            ),
+        )
+        assertTrue(script.contains("header :contains \"list-id\" \"<list.example.com>\""))
+    }
+
     private fun assertClean(script: String) {
         assertFalse(script.contains("vacation"))
         assertFalse(script.contains("include"))
@@ -104,7 +132,7 @@ if allof (address :is "from" "ann@example.com", header :contains "subject" "Hell
 """.trimIndent() + "\n"
 
 private val redirectScript = """
-if allof (header :is "list-id" "<list.example.com>") {
+if allof (header :contains "list-id" "<list.example.com>") {
     redirect "other@example.com";
     discard;
 }

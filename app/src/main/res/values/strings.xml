@@ -836,6 +836,7 @@ Your version: %2$s</string>
     <string name="settings_full_screen">Full screen</string>
     <string name="settings_sieve_host">Sieve host</string>
     <string name="settings_sieve_port">Sieve port</string>
+    <string name="settings_sieve_tls">Sieve TLS</string>
     <string name="settings_sieve_cert_pin_none">No Sieve certificate is pinned.</string>
     <string name="settings_sieve_cert_pin_clear">Clear Sieve pin</string>
     <string name="settings_jmap_cert_pin_none">No JMAP certificate is pinned.</string>

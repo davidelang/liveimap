@@ -1279,6 +1279,28 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun sieveTlsModeIsSeparateFromSecurity() {
+        val defaults = AccountSettings().encode()
+        assertFalse(defaults.contains("sieveTlsMode="))
+        assertEquals(TlsMode.StartTls, decodeAccountSettings(defaults).sieveTlsMode)
+        assertNull(decodeAccountSettings(defaults).preservedSieveTlsKey())
+        val implicit = AccountSettings(sieveTlsMode = TlsMode.Implicit)
+        val text = implicit.encode()
+        assertTrue(text.contains("sieveTlsMode=Implicit"))
+        val decoded = decodeAccountSettings(text)
+        assertEquals(TlsMode.Implicit, decoded.sieveTlsMode)
+        assertTrue(decoded.encode().contains("sieveTlsMode=Implicit"))
+        val bad = decodeAccountSettings(defaults.trimEnd() + "\nsieveTlsMode=Nope\n")
+        assertEquals(TlsMode.StartTls, bad.sieveTlsMode)
+        assertTrue(bad.unknownSettings.contains("sieveTlsMode=Nope"))
+        assertEquals("sieveTlsMode", bad.preservedSieveTlsKey())
+        assertNull(bad.preservedSecurityKey())
+        val cleared = bad.withoutPreserved("sieveTlsMode")
+        assertFalse(cleared.encode().contains("sieveTlsMode=Nope"))
+        assertNull(cleared.preservedSieveTlsKey())
+    }
+
+    @Test
     fun choosingTheDefaultClearsThePreservedSecurityLine() {
         fun cleared(raw: String, choose: (AccountSettings) -> AccountSettings) {
             val decoded = decodeAccountSettings(AccountSettings().encode().trimEnd() + "\n$raw\n")

@@ -1,5 +1,8 @@
 package org.dlang.liveimap.engine.sieve
 
+import org.dlang.liveimap.ui.compose.addrSpec
+import org.dlang.liveimap.ui.compose.splitAddresses
+
 enum class RuleField {
     From,
     To,
@@ -52,11 +55,26 @@ fun deleteInboundRule(rules: List<InboundRule>, id: String): List<InboundRule> {
 
 fun seedCriteria(from: String, to: String, listId: String, subject: String): List<RuleCriterion> {
     val out = ArrayList<RuleCriterion>(4)
-    if (from.isNotBlank()) out.add(RuleCriterion(RuleField.From, from))
-    if (to.isNotBlank()) out.add(RuleCriterion(RuleField.To, to))
-    if (listId.isNotBlank()) out.add(RuleCriterion(RuleField.ListId, listId))
+    for (piece in splitAddresses(from)) {
+        val spec = addrSpec(piece).trim()
+        if (spec.isNotEmpty()) out.add(RuleCriterion(RuleField.From, spec))
+    }
+    for (piece in splitAddresses(to)) {
+        val spec = addrSpec(piece).trim()
+        if (spec.isNotEmpty()) out.add(RuleCriterion(RuleField.To, spec))
+    }
+    val bare = bareListId(listId)
+    if (bare.isNotEmpty()) out.add(RuleCriterion(RuleField.ListId, bare))
     if (subject.isNotBlank()) out.add(RuleCriterion(RuleField.Subject, subject))
     return out
+}
+
+/** Text inside the last angle brackets, or the whole value. Blank, spaced, a control, or over 255 stores nothing. */
+private fun bareListId(value: String): String {
+    val open = value.lastIndexOf('<')
+    val close = if (open >= 0) value.indexOf('>', open + 1) else -1
+    val id = (if (open >= 0 && close > open) value.substring(open + 1, close) else value).trim().lowercase()
+    return if (id.isNotEmpty() && id.length <= 255 && id.none { it.isWhitespace() || it.code < 0x20 }) id else ""
 }
 
 /** Sieve text only. Does not connect or upload. */
@@ -104,7 +122,7 @@ private fun renderTest(criterion: RuleCriterion): String {
     return when (criterion.field) {
         RuleField.From -> "address :is \"from\" $quoted"
         RuleField.To -> "address :is \"to\" $quoted"
-        RuleField.ListId -> "header :is \"list-id\" $quoted"
+        RuleField.ListId -> "header :contains \"list-id\" $quoted"
         RuleField.Subject -> "header :contains \"subject\" $quoted"
     }
 }

@@ -110,6 +110,12 @@ class PlainSieveTransport internal constructor(
         }
     }
 
+    override suspend fun readLiteralTail() {
+        withContext(Dispatchers.IO) {
+            readRawLine()
+        }
+    }
+
     override suspend fun writeBytes(bytes: ByteArray) {
         record(if (authPending) TrafficLog.LOG_PRIVATE else TrafficLog.LOG_SENT, bytes)
         withContext(Dispatchers.IO) {

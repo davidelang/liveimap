@@ -16,6 +16,8 @@ interface SieveLineTransport {
         throw SieveFailure("literal")
     }
 
+    suspend fun readLiteralTail()
+
     suspend fun writeBytes(bytes: ByteArray) {
         throw SieveFailure("literal")
     }
@@ -150,6 +152,7 @@ suspend fun getScript(transport: SieveLineTransport, name: String): String {
     }
     val count = wholeLineLiteral(header) ?: throw SieveFailure("literal")
     val text = String(transport.readBytes(count), StandardCharsets.UTF_8)
+    transport.readLiteralTail()
     commandResult(transport, transport.readLine())
     return text
 }
@@ -209,7 +212,7 @@ fun planLiveimapActivation(
     if (!extensions.any { it.equals("include", ignoreCase = true) }) {
         return LiveimapActivatePlan(LiveimapActivateAction.SetActive, activeName, "")
     }
-    if (activeText.isEmpty() || scriptHasLiveimapInclude(activeText)) {
+    if (scriptHasLiveimapInclude(activeText)) {
         return LiveimapActivatePlan(LiveimapActivateAction.None, activeName, "")
     }
     return LiveimapActivatePlan(
@@ -386,7 +389,9 @@ private suspend fun saslChallengeText(transport: SieveLineTransport, line: Strin
         return quoted.first
     }
     val count = wholeLineLiteral(line) ?: throw SieveFailure("sasl")
-    return String(transport.readBytes(count), StandardCharsets.UTF_8)
+    val text = String(transport.readBytes(count), StandardCharsets.UTF_8)
+    transport.readLiteralTail()
+    return text
 }
 
 private fun scriptHasLiveimapInclude(script: String): Boolean {
@@ -633,7 +638,9 @@ private suspend fun commandResult(transport: SieveLineTransport, line: String): 
 private suspend fun commandFailureText(transport: SieveLineTransport, line: String): String {
     val count = responseLiteralCount(line)
     if (count != null) {
-        return String(transport.readBytes(count), StandardCharsets.UTF_8)
+        val text = String(transport.readBytes(count), StandardCharsets.UTF_8)
+        transport.readLiteralTail()
+        return text
     }
     return responseHumanText(line) ?: line
 }
