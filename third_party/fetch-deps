@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # third_party/fetch-deps — consumer-side pin / rw / upgrade materialize
-# Design: dev-ai-interaction/research/third-party-fetch-deps-design-20260802.md
+# Design: @@SANDBOX_PATH@@/research/third-party-fetch-deps-design-20260802.md
 #
 # Defaults simple:
 #   fetch-deps [name…]           # ro pin @ libpin.toml git_sha (patches, then chmod a-w)
@@ -18,7 +18,7 @@
 #   with required sha256. Never git@ / scp / SSH for source rows (even with --allow-ssh).
 # Sandbox: third_party/<lib>/… plus only $GIT_HOME/<lib>/.git (never whole GIT_HOME).
 #
-# git_home=/home/dlang/git smudged from project.config; runtime export GIT_HOME.
+# git_home=@@GIT_HOME@@ smudged from project.config; runtime export GIT_HOME.
 # Override: --git-home DIR. Unsubstituted token / missing host → network clone.
 #
 # Sandbox (optional; Linux):
@@ -42,9 +42,9 @@ REF_UPGRADE=""
 VERBOSE=0
 NAMES=()
 FAILURES=0
-# Smudged LHS must be lowercase git_home= so filter-clean-config restores /home/dlang/git.
+# Smudged LHS must be lowercase git_home= so filter-clean-config restores @@GIT_HOME@@.
 # (project.config key is git_home=; do not use GIT_HOME= for the stamped line.)
-git_home=/home/dlang/git
+git_home=@@GIT_HOME@@
 WORKTREE_SEARCH="${WORKTREE_SEARCH:-}"
 
 usage() {

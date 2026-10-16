@@ -3,5 +3,5 @@
 - **Agent ID:** master
 - **Current Branch:** master
 - **Role:** Master
-- **Sandbox:** /home/dlang/git/liveimap/sandbox/
+- **Sandbox:** @@ORCH_ROOT@@/@@SANDBOX_PATH@@/
 - **Status:** ACTIVE
