@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.contacts
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -347,5 +348,71 @@ class CopyMapTest {
         assertFalse(comments.contains("bell"))
         assertFalse(comments.contains("\n"))
         assertTrue(appended.preview.contains("Phone kept in the extras block."))
+    }
+
+    @Test
+    fun pineListAlreadyThereMergesOrSkips() {
+        val source = listOf(
+            CopyContact(nickname = "team", address = "(ada@example.com, bo@example.com)"),
+        )
+        val destination = listOf(
+            CopyContact(nickname = "team", address = "(ada@example.com)"),
+        )
+        val merged = copyContacts(source, destination, intoPine = true, options = CopyOptions(mergeIntoExisting = true))
+        assertEquals(1, merged.entries.size)
+        assertEquals("team", merged.entries.single().nickname)
+        assertTrue(merged.entries.single().address.contains("ada@example.com"))
+        assertTrue(merged.entries.single().address.contains("bo@example.com"))
+        assertFalse(merged.entries.any { it.nickname.equals("team2", ignoreCase = true) })
+
+        val skipped = copyContacts(source, destination, intoPine = true, options = CopyOptions(mergeIntoExisting = false))
+        assertEquals(1, skipped.entries.size)
+        assertEquals("team", skipped.entries.single().nickname)
+        assertEquals("(ada@example.com)", skipped.entries.single().address)
+        assertTrue(skipped.preview.contains("Skipped, already there."))
+        assertFalse(skipped.entries.any { it.nickname.equals("team2", ignoreCase = true) })
+    }
+
+    @Test
+    fun androidGroupAlreadyThereMergesOrSkips() {
+        val source = listOf(
+            CopyContact(group = true, displayName = "team", members = listOf("ada@example.com", "bo@example.com")),
+        )
+        val destination = listOf(
+            CopyContact(group = true, displayName = "team", members = listOf("ada@example.com")),
+        )
+        val merged = copyContacts(source, destination, intoPine = false, options = CopyOptions(mergeIntoExisting = true))
+        val groups = merged.entries.filter { it.group }
+        assertEquals(1, groups.size)
+        assertTrue(groups.single().members.contains("ada@example.com"))
+        assertTrue(groups.single().members.contains("bo@example.com"))
+        assertFalse(merged.entries.any { it.nickname.equals("team2", ignoreCase = true) || it.displayName.equals("team2", ignoreCase = true) })
+
+        val skipped = copyContacts(source, destination, intoPine = false, options = CopyOptions(mergeIntoExisting = false))
+        val skippedGroups = skipped.entries.filter { it.group }
+        assertEquals(1, skippedGroups.size)
+        assertEquals(listOf("ada@example.com"), skippedGroups.single().members)
+        assertTrue(skipped.preview.contains("Skipped, already there."))
+    }
+
+    @Test
+    fun copyScreenKeepsProviderWorkOffTheMainThread() {
+        val src = File("src/main/kotlin/org/dlang/liveimap/ui/contacts/ContactCopyScreen.kt").readText()
+        fun assertIoCall(name: String) {
+            val pattern = Regex("withContext\\(Dispatchers\\.IO\\)\\s*\\{\\s*$name\\s*\\(")
+            assertTrue(name, pattern.containsMatchIn(src))
+        }
+        assertIoCall("loadCopyContacts")
+        assertIoCall("mergeConflicts")
+        assertIoCall("writeAndroidContacts")
+        val read = src.substring(src.indexOf("fun readAndroidContacts("), src.indexOf("private data class AccountClause"))
+        assertTrue(read.contains("rawIds.isNotEmpty()"))
+        assertTrue(read.contains("chunked(500)"))
+        assertTrue(read.contains("Data.RAW_CONTACT_ID} IN ("))
+        val memberLoop = read.substringAfter("for (rawId in memberships[groupId]")
+        assertFalse(memberLoop.contains("firstOrNull"))
+        val ops = src.substring(src.indexOf("fun mappedRowOps("), src.indexOf("private fun extraRows("))
+        assertFalse(ops.contains("newDelete"))
+        assertFalse(ops.contains("newUpdate"))
     }
 }

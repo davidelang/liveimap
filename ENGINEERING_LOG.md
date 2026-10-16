@@ -3288,3 +3288,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: pad only the scaffold snackbar that shows an expunge-on-leave failure so it clears the system navigation bar; content insets stay zero
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Contact copy merges a list and leaves the provider off the main thread
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-20261016-0043-plan.md
+- Work: a second list or group merges or is skipped; provider reads and writes run on Dispatchers.IO; the Data query is limited to this account's raw contacts; mappedRowOps only inserts
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

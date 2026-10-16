@@ -37,7 +37,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.dlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
@@ -169,21 +171,25 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
         }
     }
 
-    fun writeAndroidNow(write: AndroidWrite) {
+    suspend fun writeAndroidNow(write: AndroidWrite) {
         if (write.overwrite == null) {
-            val conflicts = mergeConflicts(appContext.contentResolver, write.entries)
+            val conflicts = withContext(Dispatchers.IO) {
+                mergeConflicts(appContext.contentResolver, write.entries)
+            }
             if (conflicts > 0) {
                 confirmOverwrite = write to conflicts // F120: ask before replacing a different name/nickname/note
                 return
             }
         }
-        writeAndroidContacts(
-            appContext.contentResolver,
-            write.accountType,
-            write.accountName,
-            write.entries,
-            write.overwrite == true,
-        )
+        withContext(Dispatchers.IO) {
+            writeAndroidContacts(
+                appContext.contentResolver,
+                write.accountType,
+                write.accountName,
+                write.entries,
+                write.overwrite == true,
+            )
+        }
         notice = context.getString(R.string.copy_done)
         finished = true
     }
@@ -283,7 +289,9 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(source.id, { sessionFor(it) }, appContext.contentResolver, context)
+                                val loaded = withContext(Dispatchers.IO) {
+                                    loadCopyContacts(source.id, { sessionFor(it) }, appContext.contentResolver, context)
+                                }
                                 contacts = loaded.contacts
                                 sourceId = source.id
                                 selected = emptySet()
@@ -328,7 +336,9 @@ private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) 
                             reading = true
                             notice = null
                             try {
-                                val loaded = loadCopyContacts(choice.id, { sessionFor(it) }, appContext.contentResolver, context)
+                                val loaded = withContext(Dispatchers.IO) {
+                                    loadCopyContacts(choice.id, { sessionFor(it) }, appContext.contentResolver, context)
+                                }
                                 destinationId = choice.id
                                 destinationContacts = loaded.contacts
                                 pineState = loaded.state
@@ -649,20 +659,25 @@ private fun readAndroidContacts(
         }
     }
     val memberships = HashMap<Long, MutableList<Long>>()
-    resolver.query(
-        ContactsContract.Data.CONTENT_URI,
-        arrayOf(
-            ContactsContract.Data.RAW_CONTACT_ID,
-            ContactsContract.Data.MIMETYPE,
-            ContactsContract.Data.DATA1,
-            ContactsContract.Data.DATA2,
-            ContactsContract.Data.DATA3,
-            ContactsContract.Data.IS_PRIMARY,
-        ),
-        null,
-        null,
-        null,
-    )?.use { cursor ->
+    val rawIds = raws.keys.toList()
+    if (rawIds.isNotEmpty()) {
+        for (chunk in rawIds.chunked(500)) {
+            val marks = chunk.joinToString(",") { "?" }
+            val selection = "${ContactsContract.Data.RAW_CONTACT_ID} IN ($marks)"
+            resolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.Data.RAW_CONTACT_ID,
+                    ContactsContract.Data.MIMETYPE,
+                    ContactsContract.Data.DATA1,
+                    ContactsContract.Data.DATA2,
+                    ContactsContract.Data.DATA3,
+                    ContactsContract.Data.IS_PRIMARY,
+                ),
+                selection,
+                chunk.map { it.toString() }.toTypedArray(),
+                null,
+            )?.use { cursor ->
         val idIndex = cursor.getColumnIndex(ContactsContract.Data.RAW_CONTACT_ID)
         val mimeIndex = cursor.getColumnIndex(ContactsContract.Data.MIMETYPE)
         val data1 = cursor.getColumnIndex(ContactsContract.Data.DATA1)
@@ -735,6 +750,8 @@ private fun readAndroidContacts(
                 }
             }
         }
+            }
+        }
     }
     val people = raws.values.map { it.freeze() }
     val linkedIds = HashMap<Long, Long>()
@@ -758,6 +775,11 @@ private fun readAndroidContacts(
         val linked = contactId != 0L && (contactCounts[contactId] ?: 0) > 1
         if (linked) contact.copy(linked = true) else contact
     }
+    val emailByRawId = HashMap<Long, String>(withLinks.size)
+    for (contact in withLinks) {
+        val email = contact.emails.firstOrNull().orEmpty()
+        if (email.isNotEmpty()) emailByRawId[contact.rawId] = email
+    }
     val groups = ArrayList<CopyContact>()
     resolver.query(
         ContactsContract.Groups.CONTENT_URI,
@@ -778,7 +800,7 @@ private fun readAndroidContacts(
             val groupId = cursor.getLong(idIndex)
             val members = ArrayList<String>()
             for (rawId in memberships[groupId].orEmpty()) {
-                val email = withLinks.firstOrNull { it.rawId == rawId }?.emails?.firstOrNull().orEmpty()
+                val email = emailByRawId[rawId].orEmpty()
                 if (email.isNotEmpty() && members.none { it.equals(email, ignoreCase = true) }) members.add(email)
             }
             groups.add(
@@ -989,38 +1011,21 @@ private fun mappedRowOps(
         else values.put(ContactsContract.Data.RAW_CONTACT_ID, rawId)
         ops += b.withValues(values).build()
     }
-    fun update(id: Long, values: ContentValues) {
-        ops += android.content.ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-            .withSelection("${ContactsContract.Data._ID}=?", arrayOf(id.toString()))
-            .withValues(values).build()
-    }
-    fun first(mime: String) = existing.firstOrNull { it.second == mime }
     val nameMime = ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE
     if (entry.displayName.isNotEmpty() || entry.givenName.isNotEmpty() || entry.familyName.isNotEmpty()) {
-        val values = ContentValues()
-        if (entry.displayName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, entry.displayName)
-        if (entry.givenName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, entry.givenName)
-        if (entry.familyName.isNotEmpty()) values.put(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, entry.familyName)
-        val row = first(nameMime)
-        if (row != null) update(row.first, values) else insert(nameMime) { putAll(values) }
+        insert(nameMime) {
+            if (entry.displayName.isNotEmpty()) put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, entry.displayName)
+            if (entry.givenName.isNotEmpty()) put(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, entry.givenName)
+            if (entry.familyName.isNotEmpty()) put(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, entry.familyName)
+        }
     }
     val nickMime = ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE
     if (entry.nickname.isNotEmpty() && existing.none { it.second == nickMime && it.third == entry.nickname }) {
-        val row = first(nickMime)
-        val values = ContentValues().apply { put(ContactsContract.CommonDataKinds.Nickname.NAME, entry.nickname) }
-        if (row != null) update(row.first, values) else insert(nickMime) { putAll(values) }
+        insert(nickMime) { put(ContactsContract.CommonDataKinds.Nickname.NAME, entry.nickname) }
     }
     val emailMime = ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE
     val wanted = entry.emails.filter { it.isNotEmpty() }
-    val wantedLower = wanted.map { it.lowercase() }.toSet()
-    val have = existing.filter { it.second == emailMime }
-    for (row in have) {
-        if (row.third.lowercase() !in wantedLower) {
-            ops += android.content.ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
-                .withSelection("${ContactsContract.Data._ID}=?", arrayOf(row.first.toString())).build()
-        }
-    }
-    val haveLower = have.map { it.third.lowercase() }.toMutableSet()
+    val haveLower = existing.filter { it.second == emailMime }.map { it.third.lowercase() }.toMutableSet()
     for (email in wanted) {
         if (!haveLower.add(email.lowercase())) continue
         insert(emailMime) {
@@ -1030,9 +1035,7 @@ private fun mappedRowOps(
     }
     val noteMime = ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE
     if (entry.note.isNotEmpty() && existing.none { it.second == noteMime && it.third == entry.note }) {
-        val row = first(noteMime)
-        val values = ContentValues().apply { put(ContactsContract.CommonDataKinds.Note.NOTE, entry.note) }
-        if (row != null) update(row.first, values) else insert(noteMime) { putAll(values) }
+        insert(noteMime) { put(ContactsContract.CommonDataKinds.Note.NOTE, entry.note) }
     }
     for ((mime, values) in extraRows(entry)) {
         val v = values.getAsString(ContactsContract.Data.DATA1)

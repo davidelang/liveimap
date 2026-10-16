@@ -118,7 +118,43 @@ private fun copyIntoPine(
 ) {
     if (contact.group || isPineListAddress(contact.address)) {
         val emails = listMembers(contact, book)
-        val nick = assignNickname(pineBase(contact), taken, current = null)
+        val base = pineBase(contact)
+        val match = if (base.isEmpty()) -1 else result.indexOfFirst { it.nickname.equals(base, ignoreCase = true) }
+        if (match >= 0) {
+            if (!options.mergeIntoExisting) {
+                preview.add("Skipped, already there.")
+                return
+            }
+            val existing = result[match]
+            val have = when {
+                isPineListAddress(existing.address) -> listMembers(existing, emptyList())
+                existing.members.isNotEmpty() -> existing.members
+                else -> existing.emails.filter { it.isNotEmpty() }
+            }
+            val combined = ArrayList(have)
+            for (email in emails) {
+                if (email.isNotEmpty() && combined.none { it.equals(email, ignoreCase = true) }) combined.add(email)
+            }
+            result[match] = if (isPineListAddress(existing.address)) {
+                val trimmed = existing.address.trim()
+                val inner = trimmed.substring(1, trimmed.length - 1).trim()
+                val extra = combined.filter { email -> have.none { it.equals(email, ignoreCase = true) } }
+                val address = when {
+                    extra.isEmpty() -> existing.address
+                    inner.isEmpty() -> extra.joinToString(", ", prefix = "(", postfix = ")")
+                    else -> "(" + inner + ", " + extra.joinToString(", ") + ")"
+                }
+                existing.copy(address = address, changed = true)
+            } else if (existing.group) {
+                existing.copy(members = combined, changed = true)
+            } else {
+                existing.copy(emails = combined, changed = true)
+            }
+            if (existing.nickname.isNotEmpty()) preview.add("Nickname: ${existing.nickname}")
+            preview.add("Group becomes a list of primary emails.")
+            return
+        }
+        val nick = assignNickname(base, taken, current = null)
         val fields = pineFields(contact, options)
         preview.add("Group becomes a list of primary emails.")
         if (nick.isNotEmpty()) preview.add("Nickname: $nick")
@@ -202,8 +238,13 @@ private fun copyIntoAndroid(
             }
             return
         }
-        preview.add("Order and the list comment are lost.")
         val name = contact.nickname.ifEmpty { contact.displayName }.ifEmpty { "Distribution list" }
+        val match = result.indexOfFirst { it.group && it.displayName.equals(name, ignoreCase = true) }
+        if (match >= 0 && !options.mergeIntoExisting) {
+            preview.add("Skipped, already there.")
+            return
+        }
+        preview.add("Order and the list comment are lost.")
         preview.add("Distribution list becomes group $name.")
         for (email in members) {
             preview.add("Member: $email")
@@ -217,15 +258,24 @@ private fun copyIntoAndroid(
                 ),
             )
         }
-        result.add(
-            CopyContact(
-                group = true,
-                nickname = contact.nickname,
-                displayName = name,
-                members = members,
-                changed = true,
-            ),
-        )
+        if (match >= 0) {
+            val existing = result[match]
+            val combined = ArrayList(existing.members)
+            for (email in members) {
+                if (combined.none { it.equals(email, ignoreCase = true) }) combined.add(email)
+            }
+            result[match] = existing.copy(members = combined, changed = true)
+        } else {
+            result.add(
+                CopyContact(
+                    group = true,
+                    nickname = contact.nickname,
+                    displayName = name,
+                    members = members,
+                    changed = true,
+                ),
+            )
+        }
         return
     }
     val email = ownEmails(contact).firstOrNull().orEmpty()
