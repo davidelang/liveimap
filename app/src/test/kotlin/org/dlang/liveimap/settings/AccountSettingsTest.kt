@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import java.io.File
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
@@ -545,15 +546,31 @@ class AccountSettingsTest {
 
     @Test
     fun labels() {
-        assertEquals("Comfortable", densityLabel(Density.Medium))
-        assertEquals("System default", themeLabel(ThemeMode.FollowSystem))
-        assertEquals("Reply all", swipeActionLabel(SwipeAction.ReplyAll))
         assertEquals("Thread", sortKeyLabel(SortKey.ThreadReferences))
         assertEquals("Ordered subject", sortKeyLabel(SortKey.ThreadOrderedSubject))
         val older = AccountSettings().encode().lineSequence()
             .filter { it.isNotEmpty() && !it.startsWith("askBeforeExpunge=") }
             .joinToString("\n")
         assertTrue(decodeAccountSettings(older).askBeforeExpunge)
+    }
+
+    @Test
+    fun unusedLabelsAreGone() {
+        val text = listOf(
+            "src/main/kotlin/org/dlang/liveimap/settings/AccountSettings.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/settings/AccountSettings.kt",
+        ).map(::File).first { it.exists() }.readText()
+        assertFalse(text.contains("fun densityLabel"))
+        assertFalse(text.contains("fun startAfterChangeLabel"))
+        assertFalse(text.contains("fun pinercStartDefaultLabel"))
+        assertFalse(text.contains("fun openAtMenuText"))
+        assertFalse(text.contains("fun swipeActionLabel"))
+        assertFalse(text.contains("fun themeLabel"))
+        assertTrue(text.contains("fun sortKeyLabel"))
+        assertTrue(text.contains("fun startRuleLabel"))
+        assertTrue(text.contains("fun dateFormatLabel"))
+        assertTrue(text.contains("fun bodyViewLabel"))
+        assertTrue(text.contains("fun favoriteLabel"))
     }
 
     @Test
@@ -627,8 +644,6 @@ class AccountSettingsTest {
         assertFalse(
             startRuleChoices(false, StartRule.FirstRecent).contains(StartRule.FirstImportantOrRecent),
         )
-        assertEquals("Open this folder at…", openAtMenuText(AccountSettings(openAtInIndexMenu = true)))
-        assertEquals(null, openAtMenuText(AccountSettings()))
     }
 
     @Test

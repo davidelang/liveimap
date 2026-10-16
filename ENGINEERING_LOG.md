@@ -3382,3 +3382,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a forced slower fallback uses the account poll interval
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The label helpers the screens do not call are removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-labels-20261016-0421-plan.md
+- Work: the label helpers the screens do not call are removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -29,7 +29,6 @@ import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartAfterChange
 import org.dlang.liveimap.settings.StartRule
-import org.dlang.liveimap.settings.openAtMenuText
 import org.dlang.liveimap.settings.startRuleChoices
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
@@ -1897,11 +1896,6 @@ class IndexWindowTest {
 
     @Test
     fun openAtMenuItem() {
-        assertNull(openAtMenuText(AccountSettings()))
-        assertEquals(
-            "Open this folder at\u2026",
-            openAtMenuText(AccountSettings(openAtInIndexMenu = true)),
-        )
         val session = folder(3)
         val store = MemorySettingsStore(AccountSettings())
         val model = IndexModel(session, store, "INBOX")

@@ -40,12 +40,6 @@ enum class Density {
     Large,
 }
 
-fun densityLabel(density: Density): String = when (density) {
-    Density.Compact -> "Compact"
-    Density.Medium -> "Comfortable"
-    Density.Large -> "Large"
-}
-
 enum class SortKey {
     Arrival,
     Date,
@@ -115,23 +109,10 @@ enum class StartAfterChange {
     KeepTopVisible,
 }
 
-fun startAfterChangeLabel(value: StartAfterChange): String = when (value) {
-    StartAfterChange.RerunRule -> "Run the start rule again"
-    StartAfterChange.KeepTopVisible -> "Keep the top visible message"
-}
-
 enum class PinercStartDefault {
     LeaveUnchanged,
     AlpineDefault,
 }
-
-fun pinercStartDefaultLabel(value: PinercStartDefault): String = when (value) {
-    PinercStartDefault.LeaveUnchanged -> "Leave unchanged"
-    PinercStartDefault.AlpineDefault -> "Use alpine's default (first unread)"
-}
-
-fun openAtMenuText(settings: AccountSettings): String? =
-    if (settings.openAtInIndexMenu) "Open this folder at…" else null
 
 fun withFolderStart(settings: AccountSettings, mailbox: String, rule: StartRule?): AccountSettings {
     val starts = if (rule == null) {
@@ -157,26 +138,10 @@ enum class SwipeAction {
     FlagScreen,
 }
 
-fun swipeActionLabel(action: SwipeAction): String = when (action) {
-    SwipeAction.Delete -> "Delete"
-    SwipeAction.Move -> "Move"
-    SwipeAction.Reply -> "Reply"
-    SwipeAction.ReplyAll -> "Reply all"
-    SwipeAction.SetFlag -> "Set flag"
-    SwipeAction.ClearFlag -> "Clear flag"
-    SwipeAction.FlagScreen -> "Flag screen"
-}
-
 enum class ThemeMode {
     Dark,
     Light,
     FollowSystem,
-}
-
-fun themeLabel(mode: ThemeMode): String = when (mode) {
-    ThemeMode.Dark -> "Dark"
-    ThemeMode.Light -> "Light"
-    ThemeMode.FollowSystem -> "System default"
 }
 
 enum class DateFormat {
