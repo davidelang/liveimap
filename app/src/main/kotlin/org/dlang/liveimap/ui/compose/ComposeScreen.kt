@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Send
 import org.dlang.liveimap.ui.AlertDialog
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1451,6 +1452,7 @@ private fun ComposeLoaded(
                                     expanded = overflow,
                                     onDismissRequest = { overflow = false },
                                 ) {
+                                    ObscuredTouchFilter()
                                     for (entry in composeMenu(account.composeBar)) {
                                         when (entry) {
                                             is ComposeMenuEntry.Action -> when (entry.action) {
@@ -1542,6 +1544,7 @@ private fun ComposeLoaded(
                 )
             }
             DropdownMenu(expanded = fromMenuOpen, onDismissRequest = { fromMenuOpen = false }) {
+                ObscuredTouchFilter()
                 val froms = (listOf(account.email) + account.altAddresses +
                     knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { it.trim().lowercase() }
                 DropdownMenuItem(

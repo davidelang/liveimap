@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import org.dlang.liveimap.ui.AlertDialog
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -335,6 +336,7 @@ private fun AdvancedSearchLoaded(
                             expanded = openRow == index,
                             onDismissRequest = { openRow = -1 },
                         ) {
+                            ObscuredTouchFilter()
                             for (field in advancedFields) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(field.labelRes)) },
@@ -523,6 +525,7 @@ private fun AdvancedSearchLoaded(
                         expanded = savedOpen,
                         onDismissRequest = { savedOpen = false },
                     ) {
+                        ObscuredTouchFilter()
                         if (savedItems.isEmpty()) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.index_search_none)) },

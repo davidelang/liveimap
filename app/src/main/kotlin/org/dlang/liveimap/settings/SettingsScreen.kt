@@ -39,6 +39,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import org.dlang.liveimap.ui.AlertDialog
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1270,6 +1271,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             onDismissRequest = { importPreview = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
+            ObscuredTouchFilter()
             Surface(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
@@ -2810,6 +2812,7 @@ private fun StartRuleField(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            ObscuredTouchFilter()
             options.forEach { option ->
                 DropdownMenuItem(
                     text = {
@@ -3051,6 +3054,7 @@ private fun <T> ReasonChoice(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            ObscuredTouchFilter()
             options.forEach { option ->
                 DropdownMenuItem(
                     text = {
@@ -3107,6 +3111,7 @@ private fun <T> ChoiceField(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            ObscuredTouchFilter()
             options.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(name(option)) },

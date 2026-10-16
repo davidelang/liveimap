@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -194,6 +195,7 @@ private fun MailboxChooserLoaded(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        ObscuredTouchFilter()
         Surface(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier

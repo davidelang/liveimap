@@ -3126,3 +3126,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a bad inbound rule, favorite, folder view, folder start, or expanded folder is skipped; a value that cannot be read stays in unknownSettings and the next save does not write the default over it
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Dialogs and menus that change settings drop obscured touches
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/guarded-popups-20261015-1812-plan.md
+- Work: the pinerc import dialog, the mailbox chooser, the debug report dialog, and the dropdown menus call ObscuredTouchFilter; AlertDialog already does
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

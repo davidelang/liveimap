@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import org.dlang.liveimap.ui.AlertDialog
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -1666,6 +1667,7 @@ private fun MessageReaderLoaded(
                     )
                 }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                ObscuredTouchFilter()
                 for (policy in alternateDeletePolicies(effectivePolicy, readerUidPlus, trashKnown)) {
                     DropdownMenuItem(
                         text = { Text(deletePolicyLabel(policy)) },

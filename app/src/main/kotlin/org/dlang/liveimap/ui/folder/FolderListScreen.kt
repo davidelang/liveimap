@@ -57,6 +57,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -707,6 +708,7 @@ private fun FolderListLoaded(
                                 expanded = moreMenu,
                                 onDismissRequest = { moreMenu = false },
                             ) {
+                                ObscuredTouchFilter()
                                 for (entry in folderMenu(folderBar, unsentCount > 0)) {
                                     when (entry) {
                                         is FolderMenuEntry.Action -> {
@@ -1190,6 +1192,7 @@ private fun FolderListRow(
             expanded = rowMenu,
             onDismissRequest = { rowMenu = false },
         ) {
+            ObscuredTouchFilter()
             DropdownMenuItem(
                 text = { Text(favoriteText) },
                 onClick = {
@@ -1280,6 +1283,7 @@ private fun NoAccountYet(
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.folders_more))
                         }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                            ObscuredTouchFilter()
                             val items = listOf(
                                 R.string.drawer_settings to onOpenSettings,
                                 R.string.folders_unsent to onOpenUnsent,

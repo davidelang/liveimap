@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import org.dlang.liveimap.ui.AlertDialog
+import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -284,6 +285,7 @@ private fun IndexFilterMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
     ) {
+        ObscuredTouchFilter()
         for (choice in filterChoices) {
             val label = stringResource(choice.labelRes)
             val enabled = when (choice.role) {
@@ -2515,6 +2517,7 @@ private fun MessageIndexLoaded(
                                 expanded = selectionMore,
                                 onDismissRequest = { selectionMore = false },
                             ) {
+                                ObscuredTouchFilter()
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.index_select_all)) },
                                     onClick = {
@@ -2738,6 +2741,7 @@ private fun MessageIndexLoaded(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                     ) {
+                        ObscuredTouchFilter()
                         // Quick filters first (easy to reach). Each narrows the list, combined with the active filters into one
                         // server search (IndexModel.setFilters).
                         val labelNew = stringResource(R.string.index_show_new)
@@ -3161,6 +3165,7 @@ private fun MessageIndexLoaded(
                             expanded = searchFieldOpen,
                             onDismissRequest = { searchFieldOpen = false },
                         ) {
+                            ObscuredTouchFilter()
                             for (field in SimpleSearchField.entries) {
                                 DropdownMenuItem(
                                     text = { Text(simpleSearchLabel(field)) },
@@ -3252,6 +3257,7 @@ private fun MessageIndexLoaded(
                             expanded = savedOpen,
                             onDismissRequest = { savedOpen = false },
                         ) {
+                            ObscuredTouchFilter()
                             if (savedItems.isEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.index_search_none)) },
