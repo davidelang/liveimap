@@ -507,10 +507,31 @@ fun dateColumnSamples(format: DateFormat, pattern: String, words: DateColumnWord
         DateFormat.Local -> listOf(localDateSample())
         DateFormat.Short -> shortDateSamples()
         DateFormat.Relative -> relativeDateSamples(words)
-        DateFormat.Custom -> listOf(
-            customIndexDate(dateSampleInstant.atZone(dateSampleZone), pattern, words.badPattern),
-        )
+        DateFormat.Custom -> customDateSamples(pattern, words.badPattern)
     }
+}
+
+private fun customDateSamples(pattern: String, badPattern: String): List<String> {
+    val out = ArrayList<String>()
+    for (month in Month.entries) addCustomDateSample(out, pattern, badPattern, month.value, 28, 23, 59)
+    for (day in 23..29) addCustomDateSample(out, pattern, badPattern, 12, day, 23, 59)
+    addCustomDateSample(out, pattern, badPattern, 12, 30, 9, 0)
+    addCustomDateSample(out, pattern, badPattern, 12, 30, 23, 59)
+    return if (out.isEmpty()) listOf(badPattern) else out
+}
+
+private fun addCustomDateSample(
+    out: MutableList<String>,
+    pattern: String,
+    badPattern: String,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+) {
+    val whenZoned = ZonedDateTime.of(dateSampleYear, month, day, hour, minute, 0, 0, dateSampleZone)
+    val text = customIndexDate(whenZoned, pattern, badPattern)
+    if (text != badPattern && text !in out) out.add(text)
 }
 
 private fun localDateSample(): String = localIndexDate.format(dateSampleInstant.atZone(dateSampleZone))

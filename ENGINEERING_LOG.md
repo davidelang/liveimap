@@ -3260,3 +3260,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: TalkBack status words come from string resources; a custom date pattern builds its formatter once; a valid pattern does not widen the date column to the error text
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A custom date column samples months, weekdays, and AM/PM
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-edit-20261015-2340-plan.md
+- Work: a custom date pattern is measured at day 28 of each month, a week of evenings, and morning and evening on Dec 30, all in 2024 UTC; the error text is the sample only when nothing formats
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

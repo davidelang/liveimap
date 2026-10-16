@@ -1041,6 +1041,12 @@ class IndexWindowTest {
             listOf("bad date pattern"),
             dateColumnSamples(DateFormat.Custom, "[", words),
         )
+        val weekdays = dateColumnSamples(DateFormat.Custom, "EEEE", words)
+        assertTrue(weekdays.contains("Wednesday"))
+        assertFalse(weekdays.contains("bad date pattern"))
+        val months = dateColumnSamples(DateFormat.Custom, "MMMM", words)
+        assertTrue(months.contains("September"))
+        assertFalse(months.contains("bad date pattern"))
         val customFn = screenSource().substringAfter("fun customIndexDate(").substringBefore("\nfun ")
         val cacheAt = customFn.indexOf("customFormatters")
         val patternAt = customFn.indexOf("DateTimeFormatter.ofPattern")
