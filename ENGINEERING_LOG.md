@@ -3165,3 +3165,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: picking TLS, including the default, drops the preserved tlsMode line on the settings Save and Test account use. Delete and move are unchanged.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Choosing TLS keeps the cleared line when the server draft matches
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Fixup: a TLS choice, including TlsMode.None, drops the preserved tlsMode line on the settings Save and Test account use when the server draft is later dropped because the other fields match. Delete and move still clear their lines. Encode still omits a default.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

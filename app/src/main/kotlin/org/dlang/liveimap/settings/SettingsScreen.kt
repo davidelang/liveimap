@@ -591,7 +591,18 @@ private fun AccountGroup(editor: SettingsEditor) {
     var discardAsk by remember { mutableStateOf(false) }
     val server = serverDraft ?: settings
     fun userServerSave(next: AccountSettings) {
-        serverDraft = if (sameServer(next, settings)) null else next
+        if (!sameServer(next, settings)) {
+            serverDraft = next
+            return
+        }
+        // sameServer ignores unknownSettings. A TLS choice, including TlsMode.None, has to drop the
+        // preserved line when this nulls the draft, or Save and Test stay on the blocked settings.
+        val kept = editor.settings
+        if (next.withoutPreserved("tlsMode") == next) {
+            val cleared = kept.withoutPreserved("tlsMode")
+            if (cleared != kept) editor.persist(cleared)
+        }
+        serverDraft = null
     }
     // withServerOf copies tlsMode and not unknownSettings. A draft that dropped the line, or a default
     // choice sameServer discards, has to clear that line on the settings Save and Test account use.
@@ -977,12 +988,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                     server.tlsMode,
                     { tlsName(it) },
                 ) { mode ->
-                    val chosen = server.withTlsMode(mode).withoutPreserved("tlsMode")
-                    if (sameServer(chosen, editor.settings)) {
-                        val cleared = editor.settings.withoutPreserved("tlsMode")
-                        if (cleared != editor.settings) editor.persist(cleared)
-                    }
-                    userServerSave(chosen)
+                    userServerSave(server.withTlsMode(mode).withoutPreserved("tlsMode"))
                 }
                 BoolField(
                     stringResource(R.string.settings_allow_plaintext),
