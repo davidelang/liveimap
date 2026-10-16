@@ -3235,3 +3235,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup 2: after noteSeen returns, pullBody and pullUnbounded compare the load token with bodyGeneration again before writing body text, offset, or carry
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A view chosen while the reader connects is the body that loads
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Work: a view tap while the first open is still connecting waits until the session is connected and loads with that tap's generation; a stale open does not write the body or charset note after bodyGeneration has moved on
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

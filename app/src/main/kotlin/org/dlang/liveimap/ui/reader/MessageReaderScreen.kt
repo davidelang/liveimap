@@ -909,8 +909,9 @@ private fun MessageReaderLoaded(
     fun requestView(view: BodyView) {
         selectedView = view
         val token = nextBodyLoad()
+        val defer = loading || !connected
         scope.launch {
-                if (!connected) return@launch
+                if (defer || token != bodyGeneration) return@launch
                 when (view) {
                     BodyView.Headers -> {
                         charsetNote = null
@@ -1093,7 +1094,6 @@ private fun MessageReaderLoaded(
         rowFlags = emptySet()
         showHtmlButton = false
         noTextPart = false
-        var initialView = BodyView.PlainOrError
         var openOk = false
         coroutineScope {
             val settings = try {
@@ -1105,8 +1105,7 @@ private fun MessageReaderLoaded(
                 return@coroutineScope
             }
             account = settings
-            selectedView = settings.bodyView
-            initialView = settings.bodyView
+            if (token == bodyGeneration) selectedView = settings.bodyView
             textLayout = settings.readerTextLayout
             try {
                 store.password()
@@ -1208,16 +1207,20 @@ private fun MessageReaderLoaded(
         loading = false
         if (openOk) {
                 if (connected) {
-                    when (initialView) {
-                        BodyView.Headers -> {
-                            charsetNote = null
-                            pullUnbounded("HEADER", markSeen = !seenStored, token)
+                    val useToken = bodyGeneration
+                    val useView = selectedView
+                    if (useToken == bodyGeneration) {
+                        when (useView) {
+                            BodyView.Headers -> {
+                                charsetNote = null
+                                pullUnbounded("HEADER", markSeen = !seenStored, useToken)
+                            }
+                            BodyView.Raw -> {
+                                charsetNote = null
+                                pullUnbounded("*", markSeen = !seenStored, useToken)
+                            }
+                            else -> loadPreferred(useView, useToken)
                         }
-                        BodyView.Raw -> {
-                            charsetNote = null
-                            pullUnbounded("*", markSeen = !seenStored, token)
-                        }
-                        else -> loadPreferred(initialView, token)
                     }
                 }
             held.ready = true
