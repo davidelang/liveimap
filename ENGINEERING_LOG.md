@@ -3368,3 +3368,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the extra-watch applier only tests called is removed
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the signature and Fcc presets the settings chips do not call
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/rule-presets-unused-20261016-0359-plan.md
+- Work: the signature and Fcc presets the chips do not call are removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

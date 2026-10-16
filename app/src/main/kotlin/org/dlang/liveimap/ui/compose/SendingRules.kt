@@ -329,14 +329,6 @@ object RulePresets {
         val tagged = a.substringBefore('@') + "+" + tag + "@" + a.substringAfter('@')
         return SendingRule("Plus $tag", RuleConditions(sentTo = listOf(tagged)), RuleActions(fromAddress = tagged, fcc = tag, sendAccount = account))
     }
-
-    /** 7: signature by context. */
-    fun signatureFor(kinds: Set<ComposeKindTag>, signature: String) = SendingRule(
-        "Signature for ${kinds.joinToString("/") { it.code }}", RuleConditions(kinds = kinds), RuleActions(signature = signature),
-    )
-
-    /** 8: Fcc per role (From). */
-    fun fccFor(from: String, fcc: String) = SendingRule("Fcc for ${addrSpec(from)}", RuleConditions(sentTo = listOf(addrSpec(from))), RuleActions(fcc = fcc))
 }
 
 // ---------- account glue ----------
