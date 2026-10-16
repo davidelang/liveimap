@@ -3242,3 +3242,14 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a view tap while the first open is still connecting waits until the session is connected and loads with that tap's generation; a stale open does not write the body or charset note after bodyGeneration has moved on
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - lab test apk build
+
+- Approved plan: sandbox/plans/lab-test-apk-20261015-2312-plan.md
+- Work: assemble x86_64 debug app and androidTest APKs from the current commit; no source edits and no commit
+- First action per standard-plan-compliance-block.md; no commit
+- Start HEAD 8ba4c7fbb6a3701656d9476a20adaaf9cd3aeffc
+
+## 2026-10-15 - lab test apk commit
+
+- This commit records the build. The APKs are built from it.
