@@ -3186,3 +3186,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a stored readerBar of Reply;ReplyAll;Forward;Delete;Move with no readerToolbar decodes to readerToolbar null; any other readerBar still migrates once
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The lab runners live next to the other test-server tools
+
+- Approved plan: sandbox/plans/lab-harness-scripts-20261015-2025-plan.md
+- Work: lab runners under tools/test-servers find smtp, sieve, jmap, and recordings from that directory; the androidTest task and APK are the x86_64 debug ones; commit is an argument, not a built-in sha
+- No androidTest APK is built; no install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

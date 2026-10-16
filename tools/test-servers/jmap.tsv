@@ -1,0 +1,7 @@
+# name	container port	scheme	recipient domain ("-": ask the server: JMAP Identity/get, else session username)
+cyrus-3124	8080	http	-
+cyrus-3137	8080	http	-
+stalwart	443	https	localhost.local
+stalwart-01625	443	https	localhost.local
+stalwart-dev	443	https	localhost.local
+stalwart-0155	443	https	-

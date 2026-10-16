@@ -14,7 +14,7 @@ import argparse, collections, os, re, socket, ssl, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 GEN = os.path.join(HERE, "generated")
-REC = os.path.join(HERE, "recordings")
+REC = os.environ.get("LAB_REC") or os.path.join(HERE, "recordings")
 SERIAL = "emulator-5554"
 
 
@@ -100,13 +100,13 @@ def head():
 def install(commit):
     # Approved emulator route: ./deploy emulator (never the Pixels), then the test APK on the emulator only.
     # The test APK must be built at HEAD too; the build check runs from it.
-    r = sh(["./build_app", "--", "assembleDebugAndroidTest"], cwd=REPO)
+    r = sh(["./build_app", "--", "assembleX86_64DebugAndroidTest"], cwd=REPO)
     if r.returncode:
         sys.exit("test apk build failed:\n" + (r.stdout + r.stderr)[-800:])
     r = sh(["./deploy", "emulator"], cwd=REPO)
     if r.returncode:
         sys.exit("deploy emulator failed:\n" + r.stderr[-800:])
-    r = adb("install", "-r", "-t", os.path.join(REPO, "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"))
+    r = adb("install", "-r", "-t", os.path.join(REPO, "app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk"))
     if r.returncode:
         sys.exit("test apk install failed: " + r.stdout[-400:] + r.stderr[-400:])
 
@@ -173,7 +173,7 @@ def mechanisms(caps):
 def smtp_args(s, tls):
     """Lab SMTP from smtp.tsv (server, TLS mode, container port, recipient domain) for the run's TLS mode: the mapped host port and a lab-account
     recipient, so test mail only ever goes to the lab server's own local account."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smtp.tsv")
+    path = os.path.join(HERE, "smtp.tsv")
     for line in open(path):
         f = line.rstrip("\n").split("\t")
         if len(f) == 4 and f[0] == s["name"] and f[1] == tls:
@@ -188,7 +188,7 @@ def smtp_args(s, tls):
 
 def sieve_args(s):
     """Lab ManageSieve from sieve.tsv (server, TLS mode, container port): mapped host port and mode."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sieve.tsv")
+    path = os.path.join(HERE, "sieve.tsv")
     for line in open(path):
         f = line.rstrip("\n").split("\t")
         if len(f) == 3 and f[0] == s["name"]:
