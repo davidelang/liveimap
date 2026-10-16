@@ -3214,3 +3214,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: an http, https, or mailto anchor is marked [n] when it is left, and a repeated href keeps the same number; javascript and data add no mark; Highlight-all and Escape mark an ASCII punycode domain; invisible also treats U+061C, U+115F, U+1160, U+3164, U+FFA0, U+2028, and U+2029 as hidden
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The reader caps HTML and does not load images from a header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-20261015-2130-plan.md
+- Work: the reader screen gate goes; HTML and HTML-as-text stop at RawViewCapBytes and say so when cut; opening a message does not turn images on from a saved trust entry
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -131,6 +131,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -243,6 +244,7 @@ internal class ReaderHeld : ViewModel() {
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
+    val bodyTruncatedState = mutableStateOf(false)
     val charsetNoteState = mutableStateOf<String?>(null)
     val bodyOffsetState = mutableIntStateOf(0)
     val bodySizeState = mutableIntStateOf(0)
@@ -283,6 +285,7 @@ internal class ReaderHeld : ViewModel() {
         selectedViewState.value = BodyView.PlainOrError
         renderedHtmlState.value = false
         bodyTextState.value = ""
+        bodyTruncatedState.value = false
         charsetNoteState.value = null
         bodyOffsetState.intValue = 0
         bodySizeState.intValue = 0
@@ -416,7 +419,6 @@ private fun MessageReaderLoaded(
         true
     }
     val scope = rememberCoroutineScope()
-    val gate = remember { Mutex() }
     val carry = held.carry
     val bridge = remember { ScrollBridge() }
     val scroll = rememberScrollState(held.scrollOffsetState.intValue)
@@ -451,6 +453,7 @@ private fun MessageReaderLoaded(
     var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
     var bodyText by held.bodyTextState
+    var bodyTruncated by held.bodyTruncatedState
     var charsetNote by held.charsetNoteState
     var bodyOffset by held.bodyOffsetState
     var bodySize by held.bodySizeState
@@ -534,7 +537,7 @@ private fun MessageReaderLoaded(
     LaunchedEffect(mailbox, account.trashMailbox, connected) {
         if (!connected) return@LaunchedEffect
         knownTrashName = try {
-            gate.withLock { session.knownTrash() }
+            session.knownTrash()
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
@@ -689,7 +692,7 @@ private fun MessageReaderLoaded(
         bodyText = built.toString()
     }
 
-    suspend fun readPart(part: MimePart, markSeen: Boolean): ByteArray? {
+    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
         val out = ByteArrayOutputStream()
         var offset = 0
         var marked = false
@@ -709,24 +712,45 @@ private fun MessageReaderLoaded(
             return chunk
         }
         if (part.size > 0) {
-            while (offset < part.size) {
-                val length = nextWireCount(offset, part.size, 4096, false)
+            val limit = minOf(part.size, cap)
+            while (offset < limit && out.size() < cap) {
+                val length = nextWireCount(offset, limit, 4096, false)
                 if (length <= 0) break
                 val chunk = take(length) ?: return null
                 if (chunk.isEmpty()) break
+                val room = cap - out.size()
+                if (chunk.size > room) {
+                    out.write(chunk, 0, room)
+                    break
+                }
                 out.write(chunk)
                 offset += chunk.size
             }
-        } else {
-            while (true) {
-                val chunk = take(4096) ?: return null
-                if (chunk.isEmpty()) break
-                out.write(chunk)
-                offset += chunk.size
-                if (chunk.size < 4096) break
-            }
+            return out.toByteArray() to (part.size > cap)
         }
-        return out.toByteArray()
+        while (out.size() < cap) {
+            val length = minOf(4096, cap - out.size())
+            val chunk = take(length) ?: return null
+            if (chunk.isEmpty()) break
+            val room = cap - out.size()
+            if (chunk.size > room) {
+                out.write(chunk, 0, room)
+                return out.toByteArray() to true
+            }
+            out.write(chunk)
+            offset += chunk.size
+            if (chunk.size < length) return out.toByteArray() to false
+        }
+        if (out.size() < cap) return out.toByteArray() to false
+        val more = try {
+            peekRef(part.section, out.size(), 1).isNotEmpty()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            postSnack(error.text)
+            true
+        }
+        return out.toByteArray() to more
     }
 
     fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
@@ -735,6 +759,7 @@ private fun MessageReaderLoaded(
         showHtmlButton = offerHtml && noText
         renderedHtml = false
         bodyText = ""
+        bodyTruncated = false
         bodySection = null
         bodyOffset = 0
         bodySize = 0
@@ -776,6 +801,7 @@ private fun MessageReaderLoaded(
                 noTextPart = false
                 missing = null
                 renderedHtml = false
+                bodyTruncated = false
                 plainFlowed = plain.format.equals("flowed", ignoreCase = true)
                 plainDelSp = plain.delSp
                 pullBody(plain, reset = true, markSeen = !seenStored)
@@ -789,17 +815,19 @@ private fun MessageReaderLoaded(
                     missing = null
                     renderedHtml = true
                     bodyText = ""
+                    bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
                     bodySize = html.size
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val bytes = readPart(html, markSeen = !seenStored) ?: return
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     val decoded = decodePart(bytes, html.charset, html.encoding)
                     bodyOffset = bytes.size
                     charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
                     bodyText = decoded.text
+                    bodyTruncated = truncated
                 }
             }
             BodyView.PlainOrText -> {
@@ -811,17 +839,19 @@ private fun MessageReaderLoaded(
                     noTextPart = false
                     missing = null
                     bodyText = ""
+                    bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
                     bodySize = html.size
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val bytes = readPart(html, markSeen = !seenStored) ?: return
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     val decoded = decodePart(bytes, html.charset, html.encoding)
                     bodyOffset = bytes.size
                     charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
                     bodyText = htmlAsText(decoded.text)
+                    bodyTruncated = truncated
                 }
             }
             BodyView.Headers, BodyView.Raw -> Unit
@@ -831,8 +861,7 @@ private fun MessageReaderLoaded(
     fun requestView(view: BodyView) {
         selectedView = view
         scope.launch {
-            gate.withLock {
-                if (!connected) return@withLock
+                if (!connected) return@launch
                 when (view) {
                     BodyView.Headers -> {
                         charsetNote = null
@@ -844,7 +873,6 @@ private fun MessageReaderLoaded(
                     }
                     else -> loadPreferred(view)
                 }
-            }
         }
     }
 
@@ -858,8 +886,7 @@ private fun MessageReaderLoaded(
     fun openNestedPart(row: AttachmentRow) {
         if (row.busy) return
         scope.launch {
-            gate.withLock {
-                if (!connected) return@withLock
+                if (!connected) return@launch
                 markAttachment(row.section, 0, done = false, busy = true)
                 try {
                     val subtree = inRef { _, s ->
@@ -873,7 +900,6 @@ private fun MessageReaderLoaded(
                     markAttachment(row.section, 0, done = false, busy = false)
                     postSnack(error.text)
                 }
-            }
         }
     }
 
@@ -884,10 +910,9 @@ private fun MessageReaderLoaded(
         }
         if (row.done || row.busy) return
         scope.launch {
-            gate.withLock {
-                if (!connected) return@withLock
-                val current = attachments.firstOrNull { it.section == row.section } ?: return@withLock
-                if (current.done || current.busy) return@withLock
+                if (!connected) return@launch
+                val current = attachments.firstOrNull { it.section == row.section } ?: return@launch
+                if (current.done || current.busy) return@launch
                 markAttachment(current.section, current.fetched, done = false, busy = true)
                 try {
                     val offset = try {
@@ -903,7 +928,7 @@ private fun MessageReaderLoaded(
                     } catch (error: java.io.IOException) {
                         markAttachment(current.section, current.fetched, done = false, busy = false)
                         postSnack(error.message ?: notConnected)
-                        return@withLock
+                        return@launch
                     }
                     markAttachment(current.section, offset, done = true, busy = false)
                 } catch (error: CancellationException) {
@@ -912,7 +937,6 @@ private fun MessageReaderLoaded(
                     markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.text)
                 }
-            }
         }
     }
 
@@ -936,9 +960,7 @@ private fun MessageReaderLoaded(
                         if (n > 0) buf.copyOf(n) else ByteArray(0)
                     }
                 } else {
-                    gate.withLock {
                         peekRef(row.section, 0, SniffBytes)
-                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -1023,14 +1045,14 @@ private fun MessageReaderLoaded(
         noTextPart = false
         var initialView = BodyView.PlainOrError
         var openOk = false
-        gate.withLock {
+        coroutineScope {
             val settings = try {
                 store.load()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 banner = error.message ?: notConnected
-                return@withLock
+                return@coroutineScope
             }
             account = settings
             selectedView = settings.bodyView
@@ -1042,7 +1064,7 @@ private fun MessageReaderLoaded(
                 throw error
             } catch (error: Exception) {
                 banner = error.message ?: notConnected
-                return@withLock
+                return@coroutineScope
             }
             val opened = try {
                 session.openBound(store, settings)
@@ -1050,16 +1072,16 @@ private fun MessageReaderLoaded(
                 throw error
             } catch (error: MailFailure) {
                 banner = error.text
-                return@withLock
+                return@coroutineScope
             }
             when (opened) {
                 is OpenResult.Rejected -> {
                     banner = opened.capabilities
-                    return@withLock
+                    return@coroutineScope
                 }
                 is OpenResult.Failed -> {
                     banner = opened.text
-                    return@withLock
+                    return@coroutineScope
                 }
                 OpenResult.Connected -> Unit
             }
@@ -1119,8 +1141,6 @@ private fun MessageReaderLoaded(
                     headerSender = fields.sender
                     headerResentTo = fields.resentTo
                     headerListId = fields.listId
-                    // "Always show images from this sender / list": open with remote images allowed.
-                    if (imagesTrusted(imageTrust, headerFrom, headerListId)) allowImages = true
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1137,7 +1157,6 @@ private fun MessageReaderLoaded(
         }
         loading = false
         if (openOk) {
-            gate.withLock {
                 if (connected) {
                     when (initialView) {
                         BodyView.Headers -> {
@@ -1151,7 +1170,6 @@ private fun MessageReaderLoaded(
                         else -> loadPreferred(initialView)
                     }
                 }
-            }
             held.ready = true
             held.openMailbox = mailbox
             held.openUid = uid
@@ -1169,29 +1187,25 @@ private fun MessageReaderLoaded(
         if (!connected) return@LaunchedEffect
         snapshotFlow { scroll.value to scroll.maxValue }.collect { (value, max) ->
             if (value > 0 && max - value <= 64) {
-                gate.withLock {
-                    if (renderedHtml) return@withLock
-                    val root = structure ?: return@withLock
-                    val part = textPart(root, "plain") ?: return@withLock
-                    if (part.section != bodySection) return@withLock
+                    if (renderedHtml) return@collect
+                    val root = structure ?: return@collect
+                    val part = textPart(root, "plain") ?: return@collect
+                    if (part.section != bodySection) return@collect
                     if (part.size > 0 && bodyOffset < part.size) {
                         pullBody(part, reset = false, markSeen = false)
                     }
-                }
             }
         }
     }
 
     bridge.onNearEnd = {
         scope.launch {
-            gate.withLock {
-                if (!renderedHtml) return@withLock
-                val root = structure ?: return@withLock
-                val part = textPart(root, "html") ?: return@withLock
-                if (part.section == bodySection && part.size > 0 && bodyOffset < part.size) {
+                if (!renderedHtml) return@launch
+                val root = structure ?: return@launch
+                val part = textPart(root, "html") ?: return@launch
+                if (part.section == bodySection && part.size > 0 && bodyOffset < part.size && bodyOffset < RawViewCapBytes) {
                     pullBody(part, reset = false, markSeen = false)
                 }
-            }
         }
     }
 
@@ -1221,14 +1235,12 @@ private fun MessageReaderLoaded(
         advanceAfterUndo = false
         undoOffer = null
         scope.launch {
-            gate.withLock {
                 val helper = IndexModel(session, store, mailbox)
                 helper.undo(offer)
                 // F98: the undo selects other folders; never trust the reader's remembered selection after it.
                 selectedMailbox = null
                 val reported = helper.notice
                 if (reported != null) postSnack(reported)
-            }
             snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
@@ -1237,7 +1249,6 @@ private fun MessageReaderLoaded(
         if (uids.isEmpty()) return
         scope.launch {
             var failed = false
-            gate.withLock {
                 try {
                     inRef { _, s -> // F43: expunge these UIDs in this folder, not wherever the session is
                         s.uidExpunge(uids)
@@ -1249,7 +1260,6 @@ private fun MessageReaderLoaded(
                     failed = true
                     postSnack(error.text)
                 }
-            }
             if (!failed) {
                 advanceAfterUndo = true
                 undoOffer = null
@@ -1299,7 +1309,6 @@ private fun MessageReaderLoaded(
 
     fun undeleteMessage() {
         scope.launch {
-            gate.withLock {
                 try {
                     inRef { _, s -> // F43: act on this folder's UID
                         s.storeFlags(listOf(uid), emptySet(), setOf("\\Deleted"))
@@ -1310,7 +1319,6 @@ private fun MessageReaderLoaded(
                 } catch (error: MailFailure) {
                     postSnack(error.text)
                 }
-            }
         }
     }
 
@@ -1359,14 +1367,14 @@ private fun MessageReaderLoaded(
                 confirmPermanent = true
                 return@launch
             }
-            gate.withLock { runReaderPolicyLocked(policy) }
+            runReaderPolicyLocked(policy)
         }
     }
 
     fun runDelete() {
         scope.launch {
             val trash = try {
-                gate.withLock { session.knownTrash() }
+                session.knownTrash()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: MailFailure) {
@@ -1384,7 +1392,7 @@ private fun MessageReaderLoaded(
                 confirmPermanent = true
                 return@launch
             }
-            gate.withLock { runReaderPolicyLocked(policy) }
+            runReaderPolicyLocked(policy)
         }
     }
 
@@ -1396,7 +1404,6 @@ private fun MessageReaderLoaded(
             return
         }
         scope.launch {
-            gate.withLock {
                 val target = nextAfterDeleteOrMove()
                 try {
                     // F116: select, act and read the COPYUID result as one unit
@@ -1414,7 +1421,6 @@ private fun MessageReaderLoaded(
                 } catch (error: MailFailure) {
                     postSnack(error.text)
                 }
-            }
         }
     }
 
@@ -1423,8 +1429,7 @@ private fun MessageReaderLoaded(
         allHeadersOpen = !allHeadersOpen
         if (!allHeadersOpen || allHeaderText != null) return
         scope.launch {
-            gate.withLock {
-                if (!connected) return@withLock
+                if (!connected) return@launch
                 try {
                     val (text, truncated) = readCappedText(RawViewCapBytes) { offset, length ->
                         peekRef("HEADER", offset, length)
@@ -1434,7 +1439,6 @@ private fun MessageReaderLoaded(
                 } catch (error: MailFailure) {
                     postSnack(error.text)
                 }
-            }
         }
     }
 
@@ -1967,6 +1971,7 @@ private fun MessageReaderLoaded(
                         Column(Modifier.weight(1f).fillMaxWidth()) {
                         val note = charsetNote
                         if (note != null) Text(note, modifier = Modifier.padding(horizontal = 8.dp))
+                        if (bodyTruncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024), modifier = Modifier.padding(horizontal = 8.dp))
                         AndroidView(
                             factory = { webContext ->
                                 object : WebView(webContext) {
@@ -2098,6 +2103,9 @@ private fun MessageReaderLoaded(
                           CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = base.fontSize * (textZoom / 100f))) {
                             val note = charsetNote
                             if (note != null) Text(note)
+                            if (bodyTruncated && selectedView == BodyView.PlainOrText) {
+                                Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+                            }
                             // Monospaced: original breaks, no wrapping; the whole body scrolls sideways together.
                             val hscroll = rememberScrollState()
                             Column(if (noWrap) Modifier.horizontalScroll(hscroll).testTag("reader-nowrap") else Modifier) {
@@ -2254,7 +2262,7 @@ private fun MessageReaderLoaded(
                 TextButton(onClick = {
                     confirmPermanent = false
                     scope.launch {
-                        gate.withLock { runReaderPolicyLocked(DeletePolicy.DeletePermanently) }
+                        runReaderPolicyLocked(DeletePolicy.DeletePermanently)
                     }
                 }) {
                     Text(
@@ -2283,7 +2291,6 @@ private fun MessageReaderLoaded(
                     postSnack("Already in ${mailboxLeaf(picked)}") // F103
                 } else if (picked.isNotEmpty()) {
                     scope.launch {
-                        gate.withLock {
                             val target = nextAfterDeleteOrMove()
                             try {
                                 // F116: select, act and read the COPYUID result as one unit
@@ -2301,7 +2308,6 @@ private fun MessageReaderLoaded(
                             } catch (error: MailFailure) {
                                 postSnack(error.text)
                             }
-                        }
                     }
                 }
             },
@@ -2313,7 +2319,6 @@ private fun MessageReaderLoaded(
         if (destination.isEmpty()) return
         scope.launch {
             var copied = false
-            gate.withLock {
                 try {
                     inRef { _, s -> // F126: copy this folder's UID, not the same number wherever the session is
                         s.copyUids(listOf(uid), destination)
@@ -2325,7 +2330,6 @@ private fun MessageReaderLoaded(
                 } catch (error: MailFailure) {
                     postSnack(error.text)
                 }
-            }
             if (!copied) return@launch
             try {
                 saveMutex.withLock {
@@ -2380,7 +2384,6 @@ private fun MessageReaderLoaded(
     }
     fun takeChosenAddress(choice: TakeAddress) {
         scope.launch {
-            gate.withLock {
                 try {
                     val book = account.addressBookMailbox
                     when (val read = readPineBook(session, book)) {
@@ -2416,7 +2419,6 @@ private fun MessageReaderLoaded(
                 } catch (error: MailFailure) {
                     postSnack(error.text)
                 }
-            }
         }
     }
     if (confirmTake) {

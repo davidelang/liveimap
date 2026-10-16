@@ -99,6 +99,36 @@ class SettingsBindingTest {
         assertTrue(reader.contains("onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject, accountId)"))
     }
 
+    @Test
+    fun readerCapsHtmlAndDoesNotTrustImagesOnOpen() {
+        val reader = source("kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt")
+        assertFalse(reader.contains("val gate"))
+        assertFalse(reader.contains("gate.withLock"))
+        assertTrue(reader.contains("saveMutex"))
+        assertTrue(reader.contains("saveMutex.withLock"))
+        assertFalse(reader.contains("imagesTrusted("))
+        assertTrue(reader.contains("allowImages = !allowImages"))
+        assertTrue(reader.contains("if (!on) allowImages = true"))
+        val html = reader.substring(reader.indexOf("BodyView.PlainOrHtml ->"), reader.indexOf("BodyView.PlainOrText ->"))
+        val text = reader.substring(reader.indexOf("BodyView.PlainOrText ->"), reader.indexOf("BodyView.Headers, BodyView.Raw ->"))
+        val call = "readPart(html, markSeen = !seenStored, RawViewCapBytes)"
+        assertTrue(html.contains(call))
+        assertTrue(text.contains(call))
+        assertTrue(html.contains("bodyTruncated = truncated"))
+        assertTrue(text.contains("bodyTruncated = truncated"))
+        val read = reader.substring(reader.indexOf("suspend fun readPart("), reader.indexOf("fun showMissing("))
+        assertTrue(read.contains("out.size() < cap"))
+        assertTrue(read.contains("cap - out.size()"))
+        val rendered = reader.substring(
+            reader.indexOf("absent == null && renderedHtml ->"),
+            reader.indexOf("absent == null && (selectedView == BodyView.Headers"),
+        )
+        assertTrue(rendered.contains("if (bodyTruncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024)"))
+        val asText = reader.substring(reader.indexOf("absent == null ->"), reader.indexOf("else -> {"))
+        assertTrue(asText.contains("if (bodyTruncated && selectedView == BodyView.PlainOrText)"))
+        assertTrue(asText.contains("stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024)"))
+    }
+
     private fun source(path: String): String =
         listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
 }
