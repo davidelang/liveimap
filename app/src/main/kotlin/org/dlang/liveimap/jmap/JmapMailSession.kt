@@ -365,7 +365,8 @@ class JmapMailSession(
             return@withLock slice(bytes, offset, length)
         }
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
-        val needEnd = offset.toLong() + length.toLong()
+        // Length 0 is the rest of the section, so a short cache is not enough.
+        val needEnd = if (length == 0) Long.MAX_VALUE else offset.toLong() + length.toLong()
         val cached = part.bytes
         if (cached != null && (part.whole || part.prefixFinal || needEnd <= cached.size)) return@withLock slice(cached, offset, length)
         val have = cached?.size ?: 0
@@ -1014,7 +1015,8 @@ class JmapMailSession(
 
         internal fun slice(bytes: ByteArray, offset: Int, length: Int): ByteArray {
             if (offset >= bytes.size) return ByteArray(0)
-            val end = (offset.toLong() + length).coerceAtMost(bytes.size.toLong()).toInt()
+            // Length 0 is from the offset through the end. A positive length stays a window.
+            val end = if (length == 0) bytes.size else (offset.toLong() + length).coerceAtMost(bytes.size.toLong()).toInt()
             return bytes.copyOfRange(offset, end)
         }
 

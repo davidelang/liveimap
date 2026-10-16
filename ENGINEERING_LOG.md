@@ -3309,3 +3309,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: copyIntoPine matches a destination nickname only when that entry is a list; a person with the same nickname stays, and the list is added as team2
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A JMAP header peek of length 0 returns the header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-header-peek-20261016-0120-plan.md
+- Work: peekPart length 0 is the rest of the section from the offset; a short cache is not the whole part; the header test peeks length 0 and the cache test reads the whole part
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

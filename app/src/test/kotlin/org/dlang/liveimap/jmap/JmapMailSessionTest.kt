@@ -284,6 +284,9 @@ class JmapMailSessionTest {
         assertArrayEquals("4567".toByteArray(), s.peekPart(e1Uid, "1", 4, 4))
         assertEquals(before + 1, fake.bodies.size)
         assertTrue(fake.bodies.last().contains("Email/get"))
+        assertArrayEquals("0123456789abcdef".toByteArray(), s.peekPart(e1Uid, "1", 0, 0))
+        assertEquals(before + 1, fake.bodies.size)
+        assertArrayEquals("0123".toByteArray(), s.peekPart(e1Uid, "1", 0, 4))
     }
 
     @Test
@@ -750,7 +753,7 @@ class JmapMailSessionTest {
         assertEquals(OpenResult.Connected, s.open(AccountSettings(username = "u", certPin = "imap", jmapCertPin = "jm")))
         s.listLevel("", null, false)
         s.select("INBOX")
-        val bytes = s.peekPart(e1Uid, "HEADER", 0, RawViewCapBytes)
+        val bytes = s.peekPart(e1Uid, "HEADER", 0, 0)
         assertTrue(bytes.toString(Charsets.UTF_8).contains("From: a@b"))
         assertEquals(0, downloads)
         try {
