@@ -708,7 +708,8 @@ private fun MessageReaderLoaded(
         bodyText = built.toString()
     }
 
-    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int, token: Int): Pair<ByteArray, Boolean>? {
+    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
+        val token = pageGeneration
         if (token != bodyGeneration) return null
         val out = ByteArrayOutputStream()
         var offset = 0
@@ -845,7 +846,7 @@ private fun MessageReaderLoaded(
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes, token) ?: return
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     if (token != bodyGeneration) return
                     val text: String
                     val unknown: Boolean
@@ -880,7 +881,7 @@ private fun MessageReaderLoaded(
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes, token) ?: return
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     if (token != bodyGeneration) return
                     val text: String
                     val unknown: Boolean
