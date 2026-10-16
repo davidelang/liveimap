@@ -129,6 +129,70 @@ class SettingsBindingTest {
         assertTrue(asText.contains("stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024)"))
     }
 
+    @Test
+    fun newerReaderViewWinsAndCutHtmlUsesTake() {
+        val reader = source("kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt")
+        for (bounds in listOf(
+            "BodyView.PlainOrHtml ->" to "BodyView.PlainOrText ->",
+            "BodyView.PlainOrText ->" to "BodyView.Headers, BodyView.Raw ->",
+        )) {
+            val section = reader.substring(reader.indexOf(bounds.first), reader.indexOf(bounds.second))
+            val mark = section.indexOf("if (truncated)")
+            assertTrue(mark > 0)
+            val truncated = section.substring(mark, section.indexOf("} else {", mark))
+            assertTrue(truncated.contains("WireTextDecoder"))
+            assertTrue(truncated.contains(".take("))
+            assertFalse(truncated.contains("decodePart("))
+            assertFalse(truncated.contains("finish"))
+            val other = section.substring(section.indexOf("} else {", mark), section.indexOf("bodyTruncated = truncated"))
+            assertTrue(other.contains("decodePart("))
+        }
+        val request = reader.substring(reader.indexOf("fun requestView("), reader.indexOf("fun markAttachment("))
+        val launch = request.indexOf("scope.launch")
+        val requested = request.indexOf("nextBodyLoad()")
+        assertTrue(requested in 0 until launch)
+        assertTrue(request.indexOf("loadPreferred(") > requested)
+        assertTrue(request.indexOf("pullUnbounded(") > requested)
+        val open = reader.substring(
+            reader.indexOf("LaunchedEffect(session, mailbox, uid, loadToken)"),
+            reader.indexOf("LaunchedEffect(scroll)"),
+        )
+        val opened = open.indexOf("nextBodyLoad()")
+        assertTrue(opened > 0)
+        assertTrue(opened == open.lastIndexOf("nextBodyLoad()"))
+        assertTrue(opened < open.indexOf("session.openBound"))
+        assertTrue(opened < open.indexOf("loadPreferred("))
+        assertTrue(opened < open.indexOf("pullUnbounded("))
+        fun afterPeek(start: String, end: String) {
+            val body = reader.substring(reader.indexOf(start), reader.indexOf(end))
+            var from = 0
+            var peeks = 0
+            while (true) {
+                val peek = body.indexOf("peekRef(", from)
+                if (peek < 0) break
+                peeks += 1
+                val next = body.indexOf("peekRef(", peek + 1)
+                val slice = body.substring(peek, if (next < 0) body.length else next)
+                assertTrue(slice.indexOf("token != bodyGeneration") > 0)
+                from = peek + "peekRef(".length
+            }
+            assertTrue(peeks > 0)
+        }
+        afterPeek("suspend fun pullBody(", "suspend fun pullUnbounded(")
+        afterPeek("suspend fun pullUnbounded(", "suspend fun readPart(")
+        afterPeek("suspend fun readPart(", "fun showMissing(")
+        val scroll = reader.substring(
+            reader.indexOf("LaunchedEffect(connected, bodySection)"),
+            reader.indexOf("fun nextAfterDeleteOrMove"),
+        )
+        assertFalse(scroll.contains("nextBodyLoad"))
+        assertTrue(scroll.contains("pageGeneration"))
+        assertTrue(scroll.contains("pullBody("))
+        assertTrue(reader.contains("pageGeneration = token"))
+        assertFalse(reader.contains("val gate"))
+        assertFalse(reader.contains("gate.withLock"))
+    }
+
     private fun source(path: String): String =
         listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
 }

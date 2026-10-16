@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui.reader
 
 import java.nio.charset.Charset
+import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -58,6 +59,18 @@ class PartTextTest {
             stream.take(byteArrayOf(shift[1])) +
             stream.finish()
         assertEquals("あ", streamed)
+    }
+
+    @Test
+    fun cutBase64StillShowsHello() {
+        val encoded = Base64.getMimeEncoder().encodeToString("<p>hello</p>".toByteArray(Charsets.UTF_8))
+        assertEquals(0, encoded.length % 4)
+        for (extra in 1..3) {
+            val cut = encoded.take(encoded.length - 4 + extra)
+            assertEquals(extra, cut.length % 4)
+            val text = WireTextDecoder("utf-8", "base64").take(cut.toByteArray(Charsets.US_ASCII))
+            assertTrue(text.contains("hello"))
+        }
     }
 
     @Test

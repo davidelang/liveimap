@@ -507,6 +507,8 @@ private fun MessageReaderLoaded(
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var moreMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
+    var bodyGeneration by remember { mutableIntStateOf(0) }
+    var pageGeneration by remember { mutableIntStateOf(0) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
@@ -607,8 +609,15 @@ private fun MessageReaderLoaded(
         }
     }
 
-    suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean) {
+    fun nextBodyLoad(): Int {
+        bodyGeneration += 1
+        return bodyGeneration
+    }
+
+    suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean, token: Int) {
+        if (token != bodyGeneration) return
         if (reset) {
+            pageGeneration = token
             bodyText = ""
             bodyOffset = 0
             bodySize = part.size
@@ -633,9 +642,11 @@ private fun MessageReaderLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
+            if (token != bodyGeneration) return
             postSnack(error.text)
             return
         }
+        if (token != bodyGeneration) return
         noteSeen(markSeen)
         val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
         if (chunk.isEmpty()) {
@@ -648,7 +659,9 @@ private fun MessageReaderLoaded(
         if (part.size <= 0 || bodyOffset >= part.size) bodyText += decoder.finish()
     }
 
-    suspend fun pullUnbounded(section: String, markSeen: Boolean) {
+    suspend fun pullUnbounded(section: String, markSeen: Boolean, token: Int) {
+        if (token != bodyGeneration) return
+        pageGeneration = token
         missing = null
         noTextPart = false
         renderedHtml = false
@@ -671,9 +684,11 @@ private fun MessageReaderLoaded(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
+                if (token != bodyGeneration) return
                 postSnack(error.text)
                 return
             }
+            if (token != bodyGeneration) return
             if (!marked) {
                 marked = true
                 noteSeen(markSeen)
@@ -685,6 +700,7 @@ private fun MessageReaderLoaded(
             built.append(text)
             if (chunk.size < length) break
         }
+        if (token != bodyGeneration) return
         if (carry.pending.isNotEmpty()) {
             built.append(carry.pending.toString(Charsets.UTF_8))
             carry.pending = ByteArray(0)
@@ -692,7 +708,8 @@ private fun MessageReaderLoaded(
         bodyText = built.toString()
     }
 
-    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
+    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int, token: Int): Pair<ByteArray, Boolean>? {
+        if (token != bodyGeneration) return null
         val out = ByteArrayOutputStream()
         var offset = 0
         var marked = false
@@ -702,9 +719,11 @@ private fun MessageReaderLoaded(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
+                if (token != bodyGeneration) return null
                 postSnack(error.text)
                 return null
             }
+            if (token != bodyGeneration) return null
             if (!marked) {
                 marked = true
                 noteSeen(markSeen)
@@ -747,9 +766,11 @@ private fun MessageReaderLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
+            if (token != bodyGeneration) return null
             postSnack(error.text)
             true
         }
+        if (token != bodyGeneration) return null
         return out.toByteArray() to more
     }
 
@@ -787,7 +808,9 @@ private fun MessageReaderLoaded(
         return out.toString()
     }
 
-    suspend fun loadPreferred(view: BodyView) {
+    suspend fun loadPreferred(view: BodyView, token: Int) {
+        if (token != bodyGeneration) return
+        pageGeneration = token
         val root = structure ?: return
         val plain = textPart(root, "plain")
         val html = textPart(root, "html")
@@ -804,7 +827,7 @@ private fun MessageReaderLoaded(
                 bodyTruncated = false
                 plainFlowed = plain.format.equals("flowed", ignoreCase = true)
                 plainDelSp = plain.delSp
-                pullBody(plain, reset = true, markSeen = !seenStored)
+                pullBody(plain, reset = true, markSeen = !seenStored, token)
             }
             BodyView.PlainOrHtml -> {
                 if (html == null) {
@@ -822,11 +845,22 @@ private fun MessageReaderLoaded(
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
-                    val decoded = decodePart(bytes, html.charset, html.encoding)
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes, token) ?: return
+                    if (token != bodyGeneration) return
+                    val text: String
+                    val unknown: Boolean
+                    if (truncated) {
+                        val decoder = WireTextDecoder(html.charset, html.encoding)
+                        text = decoder.take(bytes)
+                        unknown = decoder.unknownCharset
+                    } else {
+                        val decoded = decodePart(bytes, html.charset, html.encoding)
+                        text = decoded.text
+                        unknown = decoded.unknownCharset
+                    }
                     bodyOffset = bytes.size
-                    charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
-                    bodyText = decoded.text
+                    charsetNote = if (unknown) unknownCharsetNote else null
+                    bodyText = text
                     bodyTruncated = truncated
                 }
             }
@@ -846,11 +880,22 @@ private fun MessageReaderLoaded(
                     charsetNote = null
                     carry.pending = ByteArray(0)
                     carry.decoder = null
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
-                    val decoded = decodePart(bytes, html.charset, html.encoding)
+                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes, token) ?: return
+                    if (token != bodyGeneration) return
+                    val text: String
+                    val unknown: Boolean
+                    if (truncated) {
+                        val decoder = WireTextDecoder(html.charset, html.encoding)
+                        text = decoder.take(bytes)
+                        unknown = decoder.unknownCharset
+                    } else {
+                        val decoded = decodePart(bytes, html.charset, html.encoding)
+                        text = decoded.text
+                        unknown = decoded.unknownCharset
+                    }
                     bodyOffset = bytes.size
-                    charsetNote = if (decoded.unknownCharset) unknownCharsetNote else null
-                    bodyText = htmlAsText(decoded.text)
+                    charsetNote = if (unknown) unknownCharsetNote else null
+                    bodyText = htmlAsText(text)
                     bodyTruncated = truncated
                 }
             }
@@ -860,18 +905,19 @@ private fun MessageReaderLoaded(
 
     fun requestView(view: BodyView) {
         selectedView = view
+        val token = nextBodyLoad()
         scope.launch {
                 if (!connected) return@launch
                 when (view) {
                     BodyView.Headers -> {
                         charsetNote = null
-                        pullUnbounded("HEADER", markSeen = !seenStored)
+                        pullUnbounded("HEADER", markSeen = !seenStored, token)
                     }
                     BodyView.Raw -> {
                         charsetNote = null
-                        pullUnbounded("*", markSeen = !seenStored)
+                        pullUnbounded("*", markSeen = !seenStored, token)
                     }
-                    else -> loadPreferred(view)
+                    else -> loadPreferred(view, token)
                 }
         }
     }
@@ -1028,6 +1074,7 @@ private fun MessageReaderLoaded(
             held.recordScroll = true
             return@LaunchedEffect
         }
+        val token = nextBodyLoad()
         held.ready = false
         heading = MailboxTitle(mailbox, "")
         loading = true
@@ -1161,13 +1208,13 @@ private fun MessageReaderLoaded(
                     when (initialView) {
                         BodyView.Headers -> {
                             charsetNote = null
-                            pullUnbounded("HEADER", markSeen = !seenStored)
+                            pullUnbounded("HEADER", markSeen = !seenStored, token)
                         }
                         BodyView.Raw -> {
                             charsetNote = null
-                            pullUnbounded("*", markSeen = !seenStored)
+                            pullUnbounded("*", markSeen = !seenStored, token)
                         }
-                        else -> loadPreferred(initialView)
+                        else -> loadPreferred(initialView, token)
                     }
                 }
             held.ready = true
@@ -1192,19 +1239,21 @@ private fun MessageReaderLoaded(
                     val part = textPart(root, "plain") ?: return@collect
                     if (part.section != bodySection) return@collect
                     if (part.size > 0 && bodyOffset < part.size) {
-                        pullBody(part, reset = false, markSeen = false)
+                        val token = pageGeneration
+                        pullBody(part, reset = false, markSeen = false, token)
                     }
             }
         }
     }
 
     bridge.onNearEnd = {
+        val token = pageGeneration
         scope.launch {
                 if (!renderedHtml) return@launch
                 val root = structure ?: return@launch
                 val part = textPart(root, "html") ?: return@launch
                 if (part.section == bodySection && part.size > 0 && bodyOffset < part.size && bodyOffset < RawViewCapBytes) {
-                    pullBody(part, reset = false, markSeen = false)
+                    pullBody(part, reset = false, markSeen = false, token)
                 }
         }
     }

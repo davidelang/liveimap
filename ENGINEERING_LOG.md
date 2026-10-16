@@ -3221,3 +3221,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the reader screen gate goes; HTML and HTML-as-text stop at RawViewCapBytes and say so when cut; opening a message does not turn images on from a saved trust entry
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A newer reader view wins, and a cut base64 part still decodes
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Work: a body load keeps a generation and writes the screen only while that generation is newest; scroll continues the generation from when the page started; a truncated HTML part is decoded with WireTextDecoder.take and no finish
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
