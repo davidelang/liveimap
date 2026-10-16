@@ -696,6 +696,11 @@ Your version: %2$s</string>
     <string name="index_ago">%1$d %2$s ago</string>
     <string name="index_ahead">in %1$d %2$s</string>
     <string name="index_bad_pattern">bad date pattern</string>
+    <string name="index_status_forwarded">forwarded</string>
+    <string name="index_status_replied">replied</string>
+    <string name="index_status_flagged">flagged</string>
+    <string name="index_status_to_me">to me</string>
+    <string name="index_status_attachment">has attachment</string>
     <string name="pinerc_tls">IMAP and SMTP ask for different TLS</string>
     <string name="pinerc_local">Local path is not a mailbox</string>
     <string name="pinerc_history">Address book history is not a number.</string>

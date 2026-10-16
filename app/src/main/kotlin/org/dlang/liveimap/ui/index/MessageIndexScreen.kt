@@ -423,10 +423,12 @@ private fun relativeUnit(
     return phrase.format(count, unit)
 }
 
+private val customFormatters = mutableMapOf<String, DateTimeFormatter>()
+
 private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String, badPattern: String): String {
     if (pattern.isEmpty()) return badPattern
-    val formatter = try {
-        DateTimeFormatter.ofPattern(pattern)
+    val formatter = customFormatters[pattern] ?: try {
+        DateTimeFormatter.ofPattern(pattern).also { customFormatters[pattern] = it }
     } catch (error: IllegalArgumentException) {
         return badPattern
     }
@@ -446,16 +448,25 @@ fun indexAppearance(flags: Set<String>): IndexAppearance {
     )
 }
 
-fun indexStatusDescription(flags: Set<String>, toMe: Boolean, hasAttachment: Boolean): String {
+fun indexStatusDescription(
+    flags: Set<String>,
+    toMe: Boolean,
+    hasAttachment: Boolean,
+    statusForward: String,
+    statusAnswer: String,
+    statusFlag: String,
+    statusMine: String,
+    statusFile: String,
+): String {
     val parts = ArrayList<String>(4)
     if ("\$Forwarded" in flags) {
-        parts.add("forwarded")
+        parts.add(statusForward)
     } else if ("\\Answered" in flags) {
-        parts.add("replied")
+        parts.add(statusAnswer)
     }
-    if ("\\Flagged" in flags) parts.add("flagged")
-    if (toMe) parts.add("to me")
-    if (hasAttachment) parts.add("has attachment")
+    if ("\\Flagged" in flags) parts.add(statusFlag)
+    if (toMe) parts.add(statusMine)
+    if (hasAttachment) parts.add(statusFile)
     return parts.joinToString(", ")
 }
 
@@ -497,7 +508,6 @@ fun dateColumnSamples(format: DateFormat, pattern: String, words: DateColumnWord
         DateFormat.Relative -> relativeDateSamples(words)
         DateFormat.Custom -> listOf(
             customIndexDate(dateSampleInstant.atZone(dateSampleZone), pattern, words.badPattern),
-            words.badPattern,
         )
     }
 }
@@ -4037,7 +4047,16 @@ private fun IndexMessageRow(
                 }
             },
         ) {
-            val statusDescription = indexStatusDescription(row.flags, row.toMe, row.hasAttachment)
+            val statusDescription = indexStatusDescription(
+                row.flags,
+                row.toMe,
+                row.hasAttachment,
+                stringResource(R.string.index_status_forwarded),
+                stringResource(R.string.index_status_replied),
+                stringResource(R.string.index_status_flagged),
+                stringResource(R.string.index_status_to_me),
+                stringResource(R.string.index_status_attachment),
+            )
             val rowSelected = selected
             Column(
                 Modifier

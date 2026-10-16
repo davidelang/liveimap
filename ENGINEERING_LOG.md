@@ -3253,3 +3253,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - lab test apk commit
 
 - This commit records the build. The APKs are built from it.
+
+## 2026-10-15 - Index row text uses resources, and the date column fits the pattern
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-20261015-2315-plan.md
+- Work: TalkBack status words come from string resources; a custom date pattern builds its formatter once; a valid pattern does not widen the date column to the error text
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

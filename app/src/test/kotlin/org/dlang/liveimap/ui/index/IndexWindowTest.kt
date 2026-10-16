@@ -965,20 +965,42 @@ class IndexWindowTest {
         assertEquals(SwipeVisual("secondaryContainer", "flag"), swipeVisual(SwipeAction.FlagScreen))
     }
 
+    private fun screenSource(): String = listOf(
+        "src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
+        "app/src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
+    ).map { java.io.File(it) }.first { it.exists() }.readText()
+
     @Test
     fun indexStatusDescriptionAndSequenceWidth() {
+        val words = arrayOf("forwarded", "replied", "flagged", "to me", "has attachment")
         assertEquals(
             "forwarded, flagged",
             indexStatusDescription(
                 setOf("\$Forwarded", "\\Answered", "\\Flagged"),
                 toMe = false,
                 hasAttachment = false,
+                words[0],
+                words[1],
+                words[2],
+                words[3],
+                words[4],
             ),
         )
         assertEquals(
             "replied, to me",
-            indexStatusDescription(setOf("\\Answered"), toMe = true, hasAttachment = false),
+            indexStatusDescription(
+                setOf("\\Answered"),
+                toMe = true,
+                hasAttachment = false,
+                words[0],
+                words[1],
+                words[2],
+                words[3],
+                words[4],
+            ),
         )
+        val statusFn = screenSource().substringAfter("fun indexStatusDescription(").substringBefore("\nfun ")
+        for (phrase in words) assertFalse(statusFn.contains(phrase))
         assertEquals(2, sequenceColumnChars(listOf(4, 80, 0)))
         assertEquals(1, existsColumnChars(0))
         assertEquals(3, existsColumnChars(999))
@@ -1008,14 +1030,21 @@ class IndexWindowTest {
         assertTrue(relative.contains("23 hours ago"))
         assertTrue(relative.contains("6 days ago"))
         assertTrue(relative.containsAll(short))
+        val customYear = dateColumnSamples(DateFormat.Custom, "yyyy", words)
+        assertFalse(customYear.contains("bad date pattern"))
+        assertEquals(listOf("2024"), customYear)
         assertEquals(
-            listOf("2024", "bad date pattern"),
-            dateColumnSamples(DateFormat.Custom, "yyyy", words),
-        )
-        assertEquals(
-            listOf("bad date pattern", "bad date pattern"),
+            listOf("bad date pattern"),
             dateColumnSamples(DateFormat.Custom, "", words),
         )
+        assertEquals(
+            listOf("bad date pattern"),
+            dateColumnSamples(DateFormat.Custom, "[", words),
+        )
+        val customFn = screenSource().substringAfter("fun customIndexDate(").substringBefore("\nfun ")
+        val cacheAt = customFn.indexOf("customFormatters")
+        val patternAt = customFn.indexOf("DateTimeFormatter.ofPattern")
+        assertTrue(cacheAt >= 0 && patternAt > cacheAt)
         assertEquals(
             dateColumnSamples(DateFormat.Short, "", words),
             dateColumnSamples(DateFormat.Short, "yyyy-MM-dd", words),
