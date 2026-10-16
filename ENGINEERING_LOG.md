@@ -3302,3 +3302,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a book revision is only a message with X-Pine-Addrbook; classification peeks HEADER; the parsed revision is one fetchRfc822; a CR in a cleaned field becomes a space
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A Pine list that shares a person's nickname is copied as a new list
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-list-20261016-0108-plan.md
+- Work: copyIntoPine matches a destination nickname only when that entry is a list; a person with the same nickname stays, and the list is added as team2
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

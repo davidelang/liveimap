@@ -119,7 +119,9 @@ private fun copyIntoPine(
     if (contact.group || isPineListAddress(contact.address)) {
         val emails = listMembers(contact, book)
         val base = pineBase(contact)
-        val match = if (base.isEmpty()) -1 else result.indexOfFirst { it.nickname.equals(base, ignoreCase = true) }
+        val match = if (base.isEmpty()) -1 else result.indexOfFirst {
+            it.nickname.equals(base, ignoreCase = true) && (isPineListAddress(it.address) || it.group)
+        }
         if (match >= 0) {
             if (!options.mergeIntoExisting) {
                 preview.add("Skipped, already there.")

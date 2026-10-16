@@ -374,6 +374,31 @@ class CopyMapTest {
     }
 
     @Test
+    fun pineListSharingPersonNicknameIsCopiedAsNewList() {
+        val source = listOf(
+            CopyContact(nickname = "team", address = "(ada@example.com, bo@example.com)"),
+        )
+        val person = CopyContact(nickname = "team", emails = listOf("ada@example.com"))
+        val destination = listOf(person)
+        for (merge in listOf(true, false)) {
+            val outcome = copyContacts(
+                source,
+                destination,
+                intoPine = true,
+                options = CopyOptions(mergeIntoExisting = merge),
+            )
+            assertEquals(2, outcome.entries.size)
+            assertEquals(person, outcome.entries[0])
+            val added = outcome.entries[1]
+            assertEquals("team2", added.nickname)
+            assertTrue(added.address.contains("ada@example.com"))
+            assertTrue(added.address.contains("bo@example.com"))
+            assertFalse(outcome.entries[0].emails.contains("bo@example.com"))
+            assertFalse(outcome.preview.contains("Skipped, already there."))
+        }
+    }
+
+    @Test
     fun androidGroupAlreadyThereMergesOrSkips() {
         val source = listOf(
             CopyContact(group = true, displayName = "team", members = listOf("ada@example.com", "bo@example.com")),
