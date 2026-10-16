@@ -3335,3 +3335,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD e4917d356
+
+## 2026-10-16 - discoverAt is removed and chooseImapAuth stays

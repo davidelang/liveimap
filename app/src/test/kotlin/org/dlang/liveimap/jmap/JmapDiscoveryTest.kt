@@ -1,8 +1,8 @@
 package org.dlang.liveimap.jmap
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -118,54 +118,15 @@ class JmapDiscoveryTest {
     }
 
     @Test
-    fun discoverAtRequestsBuiltUrl() {
-        var requested: String? = null
-        val offer = discoverAt("example.com", 443) { url ->
-            requested = url
-            JmapHttpResult(200, mailBody, "https://example.com/jmap/session")
-        }
-        assertEquals("https://example.com/.well-known/jmap", requested)
-        assertMail(offer)
-    }
-
-    @Test
-    fun discoverAtRequestsNonDefaultPort() {
-        var requested: String? = null
-        var called = false
-        val offer = discoverAt("example.com", 8443) { url ->
-            called = true
-            requested = url
-            JmapHttpResult(404, "nope", url)
-        }
-        assertTrue(called)
-        assertEquals("https://example.com:8443/.well-known/jmap", requested)
-        assertEquals(JmapOffer.None, offer)
-    }
-
-    @Test
-    fun discoverAtPropagatesFetchException() {
-        val failure = IllegalStateException("fetch failed")
-        try {
-            discoverAt("example.com", 443) { throw failure }
-            throw AssertionError("expected fetch failure")
-        } catch (caught: IllegalStateException) {
-            assertSame(failure, caught)
-        }
-    }
-
-    @Test
-    fun discoverAtDoesNotFetchABadHost() {
-        var called = false
-        try {
-            discoverAt(" ", 443) {
-                called = true
-                JmapHttpResult(200, mailBody, "https://example.com/session")
-            }
-            throw AssertionError("expected JmapFailure")
-        } catch (failure: JmapFailure) {
-            assertEquals("jmap host is empty", failure.text)
-        }
-        assertFalse(called)
+    fun discoverAtIsGone() {
+        val text = listOf(
+            "src/main/kotlin/org/dlang/liveimap/jmap/JmapDiscovery.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/jmap/JmapDiscovery.kt",
+        ).map(::File).first { it.exists() }.readText()
+        assertFalse(text.contains("fun discoverAt"))
+        assertTrue(text.contains("fun jmapDiscoveryUrl"))
+        assertTrue(text.contains("fun discoverJmap"))
+        assertTrue(text.contains("fun interface JmapFetch"))
     }
 
     private fun assertMail(offer: JmapOffer) {

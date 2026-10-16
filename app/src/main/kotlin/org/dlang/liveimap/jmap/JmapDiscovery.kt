@@ -109,11 +109,6 @@ fun discoverJmap(status: Int, body: String, finalUrl: String, accountKey: String
     return JmapOffer.Mail(session)
 }
 
-fun discoverAt(host: String, port: Int, fetch: JmapFetch): JmapOffer {
-    val result = fetch.get(jmapDiscoveryUrl(host, port))
-    return discoverJmap(result.status, result.body, result.finalUrl)
-}
-
 private fun jmapHost(host: String): String {
     if (host.isBlank()) throw JmapFailure("jmap host is empty")
     if (host.contains("://") ||
