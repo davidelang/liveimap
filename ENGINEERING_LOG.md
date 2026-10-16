@@ -3327,3 +3327,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: delete unused uploadHttps, eventSourceIsHttps, httpsApi, and httpsUrl; JmapCallTest reads the four files and checks the host helpers stay
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the capability-choice wrappers only tests call
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/dead-capability-choice-20261016-0207-plan.md
+- Work: delete CapabilityChoice and JmapCapabilityChoice and their tests; PersonalityCapabilityTest reads Capabilities.parse
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e4917d356
