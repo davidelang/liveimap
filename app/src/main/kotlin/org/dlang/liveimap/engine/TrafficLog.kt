@@ -117,9 +117,7 @@ class TrafficLog(
         device: String,
         settings: AccountSettings,
     ): String {
-        val traffic = synchronized(this) {
-            if (file.isFile) file.readText() else ""
-        }
+        val traffic = synchronized(this) { trafficForReport() }
         val caps = synchronized(this) { capabilityLines.toList() }
         val history = synchronized(this) { statusHistory.toList() }
         val body = buildString {
@@ -185,7 +183,7 @@ class TrafficLog(
         raw: String,
     ) {
         val shown = printable(raw)
-        if (prefix == "S" && (shown == "+" || shown.startsWith("+ ") || shown == "334" || shown.startsWith("334 "))) {
+        if (prefix == "S" && saslChallenge(shown)) {
             conn.saslArmed = true // IMAP continuation, or SMTP AUTH challenge (F78)
         }
         val text = if (prefix == "C") redactSent(conn, shown) else shown
@@ -253,29 +251,51 @@ class TrafficLog(
             lines.removeLast()
             lines.addLast(updated)
             storedBytes += utf8Line(updated)
-            persist(rewriteLast = true)
+            // Count stays in memory. The file keeps the first copy. A trim may still writeAll.
+            if (storedBytes > maxBytes) trimToCap()
             return
         }
         val line = "${clock()} $connectionId $text"
         lines.addLast(line)
         storedBytes += utf8Line(line)
-        persist(rewriteLast = false)
+        persist()
     }
 
-    private fun persist(rewriteLast: Boolean) {
+    private fun persist() {
         if (storedBytes > maxBytes) {
-            val target = if (maxBytes > 64 * 1024) maxBytes - 64 * 1024 else 0L
-            while (lines.isNotEmpty() && storedBytes > target) {
-                storedBytes -= utf8Line(lines.removeFirst())
-            }
-            writeAll()
-            return
-        }
-        if (rewriteLast) {
-            writeAll()
+            trimToCap()
             return
         }
         appendLine(lines.last())
+    }
+
+    private fun trimToCap() {
+        val target = if (maxBytes > 64 * 1024) maxBytes - 64 * 1024 else 0L
+        while (lines.isNotEmpty() && storedBytes > target) {
+            storedBytes -= utf8Line(lines.removeFirst())
+        }
+        writeAll()
+    }
+
+    /** File text, with this session's repeat counts taken from memory. */
+    private fun trafficForReport(): String {
+        val onDisk = if (file.isFile) file.readText() else ""
+        if (lines.isEmpty()) return onDisk
+        val diskLines = onDisk.split('\n').let { parts ->
+            if (parts.isNotEmpty() && parts.last().isEmpty()) parts.dropLast(1) else parts
+        }
+        if (diskLines.size < lines.size) return lines.joinToString("\n", postfix = "\n")
+        val prefix = diskLines.size - lines.size
+        return buildString {
+            for (i in 0 until prefix) {
+                append(diskLines[i])
+                append('\n')
+            }
+            for (line in lines) {
+                append(line)
+                append('\n')
+            }
+        }
     }
 
     private fun appendLine(line: String) {
@@ -324,7 +344,7 @@ class TrafficLog(
                 deleteRotated(file)
                 return current
             }
-            val created = TrafficLog(file)
+            val created = TrafficLog(file, recording = false)
             active = created
             deleteRotated(file)
             return created
@@ -368,6 +388,9 @@ class TrafficLog(
         }
     }
 }
+
+internal fun saslChallenge(line: String): Boolean =
+    line == "+" || line.startsWith("+ ") || line == "334" || line.startsWith("334 ")
 
 internal fun imapTokens(line: String): List<String> {
     val out = ArrayList<String>()

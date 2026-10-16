@@ -1873,9 +1873,7 @@ private fun prepareTraffic(account: AccountSettings): String {
 }
 
 private fun finishTraffic(account: AccountSettings) {
-    if (!account.logImapTraffic) {
-        TrafficLog.setRecording(false)
-    }
+    // One account finishing must not turn another account's log off.
 }
 
 internal fun currentApplication(): Context? {

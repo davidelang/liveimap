@@ -106,7 +106,7 @@ class TrafficRecorder(
         if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes = bytes.copyOf(bytes.size - 1)
         val text = String(bytes, Charsets.ISO_8859_1)
         val key = conn
-        if (dir == "S" && (text == "+" || text.startsWith("+ "))) saslArmed.add(key)
+        if (dir == "S" && saslChallenge(text)) saslArmed.add(key)
         if (dir == "C") {
             // Continuation of a credential command (LOGIN user {n} / pass {m}): redact it and its literals (F10).
             if (half.secret) {

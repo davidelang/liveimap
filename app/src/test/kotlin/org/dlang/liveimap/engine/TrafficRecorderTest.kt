@@ -80,6 +80,19 @@ class TrafficRecorderTest {
     }
 
     @Test
+    fun smtpAuthLoginChallengeIsRedacted() {
+        val r = recorder()
+        r.accept("smtp", TrafficLog.LOG_SENT, "AUTH LOGIN\r\n".toByteArray())
+        r.accept("smtp", TrafficLog.LOG_RECEIVED, "334 VXNlcm5hbWU6\r\n".toByteArray())
+        r.accept("smtp", TrafficLog.LOG_SENT, "YWRh\r\n".toByteArray())
+        r.accept("smtp", TrafficLog.LOG_RECEIVED, "334 UGFzc3dvcmQ6\r\n".toByteArray())
+        r.accept("smtp", TrafficLog.LOG_SENT, "aHVudGVyMg==\r\n".toByteArray())
+        val text = r.file.readText()
+        assertFalse(text.contains("YWRh"))
+        assertFalse(text.contains("aHVudGVyMg=="))
+    }
+
+    @Test
     fun privateAuthenticateKeepsMechanismOnly() {
         val r = recorder()
         r.accept("main", TrafficLog.LOG_PRIVATE, "4 AUTHENTICATE LOGIN\r\n".toByteArray())

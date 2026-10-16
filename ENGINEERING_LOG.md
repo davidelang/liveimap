@@ -3106,3 +3106,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - Sieve pin stays on the open editor
 
 - Fixup: persistSievePin records the pin on the open editor for that account and bumps SettingsRevision, under the settings lock, so a later save does not write the old pin back. The fingerprint callback still does not call editor.persist or read editor.settings. No new mutex. No install, and no message sent.
+
+## 2026-10-15 - Unsent mail stays out of backup, and traffic logs are per connection
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-traffic-20261015-0522-plan.md
+- Work: backup rules exclude files/; a repeated traffic line keeps one file copy and counts in memory; SMTP 334 arms the recorder through saslChallenge; install starts recording off and finishTraffic does not clear it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

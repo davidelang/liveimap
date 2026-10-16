@@ -80,8 +80,15 @@ class TrafficLogTest {
         assertEquals(1, stored.size)
         assertTrue(stored[0].contains(" watch "))
         assertTrue(stored[0].contains("S * 1 EXISTS"))
-        assertTrue(stored[0].contains("(repeated 2 times)"))
+        assertFalse(file.readText().contains("repeated"))
         assertTrue(stored[0].startsWith("10 "))
+        val report = log.debugReport("v", 1, "14", "pixel", AccountSettings())
+        assertTrue(report.contains("(repeated 2 times)"))
+        log.accept("watch", TrafficLog.LOG_RECEIVED, "* 2 EXISTS\r\n".toByteArray(Charsets.US_ASCII))
+        val after = file.readText().lines().filter { it.isNotEmpty() }
+        assertEquals(2, after.size)
+        assertTrue(after[1].contains("S * 2 EXISTS"))
+        assertFalse(file.readText().contains("repeated"))
     }
 
     @Test
