@@ -1171,6 +1171,24 @@ class AccountSettingsTest {
         val encoded = decoded.encode()
         assertEquals(1, encoded.lines().count { it == "tlsMode=NotAMode" })
         assertFalse(encoded.contains("tlsMode=None"))
+        val edited = decoded.copy(tlsMode = TlsMode.StartTls)
+        val replaced = edited.encode()
+        assertEquals(1, replaced.lines().count { it == "tlsMode=StartTls" })
+        assertFalse(replaced.contains("tlsMode=NotAMode"))
+    }
+
+    @Test
+    fun editedFavoriteReplacesPreservedLine() {
+        val raw = "favorites=nope;also-bad"
+        val text = AccountSettings().encode().trimEnd() + "\n$raw\n"
+        val decoded = decodeAccountSettings(text)
+        assertEquals(emptyList<FolderFavorite>(), decoded.favorites)
+        assertTrue(decoded.unknownSettings.contains(raw))
+        val edited = decoded.copy(favorites = listOf(FolderFavorite(false, "INBOX", '/', "In")))
+        val encoded = edited.encode()
+        assertTrue(encoded.contains("favorites=0|INBOX|%2F|In"))
+        assertFalse(encoded.contains(raw))
+        assertFalse(encoded.contains("nope"))
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

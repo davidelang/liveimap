@@ -666,6 +666,14 @@ private val fieldNames = listOf(
 
 private const val HEX = "0123456789ABCDEF"
 
+// Lines a fresh account writes. A preserved key still at that line stays omitted.
+private val defaultEncodedLines: Map<String, String> by lazy {
+    AccountSettings().encode().lineSequence().filter { it.isNotEmpty() }.associate { line ->
+        val eq = line.indexOf('=')
+        line.substring(0, eq) to line
+    }
+}
+
 fun AccountSettings.encode(): String = buildString {
     val preserved = HashSet<String>()
     for (entry in unknownSettings) {
@@ -673,10 +681,16 @@ fun AccountSettings.encode(): String = buildString {
         val eq = first.indexOf('=')
         if (eq > 0) preserved.add(first.substring(0, eq))
     }
+    val written = HashSet<String>()
     fun put(line: String) {
         val first = line.substringBefore('\n')
         val eq = first.indexOf('=')
-        if (eq > 0 && first.substring(0, eq) in preserved) return
+        if (eq > 0) {
+            val key = first.substring(0, eq)
+            // A later edit replaces the raw line. The failed-decode default does not.
+            if (key in preserved && defaultEncodedLines[key] == first) return
+            written.add(key)
+        }
         appendLine(line)
     }
     put("imapHost=${percentEncode(imapHost)}")
@@ -831,7 +845,12 @@ fun AccountSettings.encode(): String = buildString {
     if (fallbackAskSkip.isNotEmpty()) {
         put("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
     }
-    for (line in unknownSettings) appendLine(line)
+    for (entry in unknownSettings) {
+        val first = entry.substringBefore('\n')
+        val eq = first.indexOf('=')
+        if (eq > 0 && first.substring(0, eq) in written) continue
+        appendLine(entry)
+    }
 }
 
 fun decodeAccountSettings(text: String): AccountSettings {

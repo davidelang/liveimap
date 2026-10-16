@@ -3133,3 +3133,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the pinerc import dialog, the mailbox chooser, the debug report dialog, and the dropdown menus call ObscuredTouchFilter; AlertDialog already does
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A later edit replaces a preserved settings value
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-decode-edit-20261015-1817-plan.md
+- Work: encode writes a non-default value for a preserved key and drops that raw line; a value still at the failed-decode default stays omitted and the raw line stays
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
