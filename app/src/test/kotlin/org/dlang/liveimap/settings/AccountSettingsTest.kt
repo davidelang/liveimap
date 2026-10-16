@@ -879,6 +879,35 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun defaultStoredReaderBarStaysNull() {
+        val stored = AccountSettings().encode().trimEnd() +
+            "\nreaderBar=Reply;ReplyAll;Forward;Delete;Move\n"
+        val decoded = decodeAccountSettings(stored)
+        assertNull(decoded.readerToolbar)
+        val encoded = decoded.encode()
+        assertFalse(encoded.contains("readerBar="))
+        assertFalse(encoded.contains("readerToolbar="))
+        assertFalse(encodePinerc(decoded).contains("# toolbar"))
+        val kept = ReaderToolbarLayout(
+            toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
+            overflow = listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
+            ),
+            hidden = emptyList(),
+        )
+        val both = "readerToolbar=T:Reply,Delete|O:Refresh,ReplyAll,Forward,Move,Spam,Bounce,Headers|H:\n" +
+            "readerBar=Reply;ReplyAll;Forward;Delete;Move\n"
+        assertEquals(kept, decodeAccountSettings(both).readerToolbar)
+        assertFalse(decodeAccountSettings(both).encode().contains("readerBar="))
+    }
+
+    @Test
     fun composeBarRoundTrip() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("composeBar"))

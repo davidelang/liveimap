@@ -1087,10 +1087,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
             values["readerToolbar"]?.let { parseReaderToolbar(it) }
         }.let { parsed ->
             // A stored readerBar is applied once, and only when readerToolbar is absent.
+            // The historical default bar stays null so the default toolbar is used.
             if (values["readerToolbar"] != null) parsed
             else {
                 val rawBar = values["readerBar"]
-                if (rawBar == null) parsed
+                if (rawBar == null || rawBar == "Reply;ReplyAll;Forward;Delete;Move") parsed
                 else try {
                     readerToolbarFromStoredBar(rawBar)
                 } catch (_: Exception) {

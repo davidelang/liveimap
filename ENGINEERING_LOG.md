@@ -3179,3 +3179,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: five bar moves share one body; a stored readerBar with no readerToolbar becomes readerToolbar at decode, then readerBar and ReaderAction are gone
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A default stored reader bar stays the default toolbar
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-bar-default-20261015-2025-plan.md
+- Work: a stored readerBar of Reply;ReplyAll;Forward;Delete;Move with no readerToolbar decodes to readerToolbar null; any other readerBar still migrates once
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
