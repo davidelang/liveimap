@@ -387,7 +387,7 @@ fun SettingsGroupScreen(
     onOpenStarts: () -> Unit,
     onCopyContacts: () -> Unit,
     onEditBook: () -> Unit = {},
-    onOpenPanel: (String) -> Unit = {},
+    onOpenPanel: (String, String) -> Unit = { _, _ -> },
 ) {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
@@ -2009,7 +2009,7 @@ private fun AppearanceGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
+private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) -> Unit) {
     val sections = rememberSectionOpen("panes")
     val settings = editor.settings
     SettingsPage {
@@ -2108,11 +2108,11 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String) -> Unit) {
             expanded = "panels" in sections.open,
             onToggle = { sections.toggle("panels") },
         ) {
-            OpenRow(stringResource(R.string.settings_panel_index)) { onOpenPanel("index") }
-            OpenRow(stringResource(R.string.settings_panel_selection)) { onOpenPanel("selection") }
-            OpenRow(stringResource(R.string.settings_panel_folders)) { onOpenPanel("folders") }
-            OpenRow(stringResource(R.string.settings_panel_reader)) { onOpenPanel("reader") }
-            OpenRow(stringResource(R.string.settings_panel_compose)) { onOpenPanel("compose") }
+            OpenRow(stringResource(R.string.settings_panel_index)) { onOpenPanel("index", editor.editingId.orEmpty()) }
+            OpenRow(stringResource(R.string.settings_panel_selection)) { onOpenPanel("selection", editor.editingId.orEmpty()) }
+            OpenRow(stringResource(R.string.settings_panel_folders)) { onOpenPanel("folders", editor.editingId.orEmpty()) }
+            OpenRow(stringResource(R.string.settings_panel_reader)) { onOpenPanel("reader", editor.editingId.orEmpty()) }
+            OpenRow(stringResource(R.string.settings_panel_compose)) { onOpenPanel("compose", editor.editingId.orEmpty()) }
         }
     }
 }

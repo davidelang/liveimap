@@ -278,6 +278,7 @@ fun LiveImapNavHost() {
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
     val composeAccount = rememberSaveable { mutableStateOf("") } // F121: the opener's account
     val composeForward = rememberSaveable { mutableStateOf("") }
+    val toolbarAccountId = rememberSaveable { mutableStateOf("") }
     val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
     val filterSeedFrom = rememberSaveable { mutableStateOf("") }
     val filterSeedTo = rememberSaveable { mutableStateOf("") }
@@ -399,6 +400,11 @@ fun LiveImapNavHost() {
         navController.navigate("compose")
     }
 
+    fun openToolbar(name: String, accountId: String) {
+        toolbarAccountId.value = accountId
+        navController.navigate("toolbar/$name")
+    }
+
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
     val folderListPane: @Composable () -> Unit = {
                     FolderListScreen(
@@ -408,7 +414,7 @@ fun LiveImapNavHost() {
                         onCompose = { seed -> openCompose(seed) },
                         onOpenUnsent = { navController.navigate("unsent") },
                         onOpenHelp = { navController.navigate("help") },
-                        onCustomize = { navController.navigate("toolbar/folders") },
+                        onCustomize = { accountId -> openToolbar("folders", accountId) },
                         focusMailbox = focusMailbox.value,
                         focusToken = focusToken.value,
                         onOpenDrawer = openDrawerState.value,
@@ -425,7 +431,7 @@ fun LiveImapNavHost() {
                     onCompose = { seed -> openCompose(seed) },
                     onOpenUnsent = { navController.navigate("unsent") },
                     onOpenHelp = { navController.navigate("help") },
-                    onCustomize = { navController.navigate("toolbar/folders") },
+                    onCustomize = { accountId -> openToolbar("folders", accountId) },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
@@ -537,8 +543,8 @@ fun LiveImapNavHost() {
                             onOpen = { uid, sequence, rowMailbox, epoch -> openMessage(uid, sequence, rowMailbox, epoch) },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { navController.popBackStack() },
-                            onCustomize = { navController.navigate("toolbar/index") },
-                            onCustomizeSelection = { navController.navigate("toolbar/selection") },
+                            onCustomize = { accountId -> openToolbar("index", accountId) },
+                            onCustomizeSelection = { accountId -> openToolbar("selection", accountId) },
                             watchMailbox = watch,
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
@@ -604,7 +610,7 @@ fun LiveImapNavHost() {
                                     },
                                     onBack = { paneUid = -1L },
                                     onFolderViewSaved = { noteFolderView() },
-                                    onCustomize = { navController.navigate("toolbar/reader") },
+                                    onCustomize = { accountId -> openToolbar("reader", accountId) },
                                     onFilterLike = { from, to, listId, subject, accountId ->
                                         openFilterEditor(-1, from, to, listId, subject, accountId, "")
                                     },
@@ -659,28 +665,33 @@ fun LiveImapNavHost() {
                 )
             }
             composable("toolbar/index") {
+                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Index)
+                    ToolbarEditorScreen(ToolbarScreen.Index, accountId)
                 }
             }
             composable("toolbar/selection") {
+                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Selection)
+                    ToolbarEditorScreen(ToolbarScreen.Selection, accountId)
                 }
             }
             composable("toolbar/folders") {
+                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Folders)
+                    ToolbarEditorScreen(ToolbarScreen.Folders, accountId)
                 }
             }
             composable("toolbar/reader") {
+                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Reader)
+                    ToolbarEditorScreen(ToolbarScreen.Reader, accountId)
                 }
             }
             composable("toolbar/compose") {
+                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Compose)
+                    ToolbarEditorScreen(ToolbarScreen.Compose, accountId)
                 }
             }
             composable(
@@ -721,7 +732,7 @@ fun LiveImapNavHost() {
                             handle["folderViewToken"] = next
                         }
                     },
-                    onCustomize = { navController.navigate("toolbar/reader") },
+                    onCustomize = { accountId -> openToolbar("reader", accountId) },
                     onFilterLike = { from, to, listId, subject, accountId ->
                         openFilterEditor(-1, from, to, listId, subject, accountId, "")
                     },
@@ -747,7 +758,7 @@ fun LiveImapNavHost() {
                     unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
                     retryOnOpen = composeRetryOnOpen.value,
                     onOpenUnsent = { navController.navigate("unsent") },
-                    onCustomize = { navController.navigate("toolbar/compose") },
+                    onCustomize = { accountId -> openToolbar("compose", accountId) },
                 )
             }
             composable("unsent") {
@@ -822,7 +833,7 @@ fun LiveImapNavHost() {
                             onOpenStarts = { navController.navigate("settings/folders/starts") },
                             onCopyContacts = { navController.navigate("contacts") },
                             onEditBook = { navController.navigate("addressbook") },
-                            onOpenPanel = { name -> navController.navigate("toolbar/$name") },
+                            onOpenPanel = { name, accountId -> openToolbar(name, accountId) },
                         )
                     }
                 }

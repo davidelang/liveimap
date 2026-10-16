@@ -226,7 +226,7 @@ fun ComposeScreen(
     unsentId: String? = null,
     retryOnOpen: Boolean = false,
     onOpenUnsent: () -> Unit = {},
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -259,7 +259,7 @@ private fun ComposeLoaded(
     unsentId: String? = null,
     retryOnOpen: Boolean = false,
     onOpenUnsent: () -> Unit = {},
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
 ) {
     val appContext = LocalContext.current.applicationContext
     val acceptedNotice = stringResource(R.string.compose_accepted)
@@ -1468,7 +1468,7 @@ private fun ComposeLoaded(
                                                 text = { Text(stringResource(R.string.toolbar_customize)) },
                                                 onClick = {
                                                     overflow = false
-                                                    onCustomize()
+                                                    onCustomize(accountId)
                                                 },
                                             )
                                         }

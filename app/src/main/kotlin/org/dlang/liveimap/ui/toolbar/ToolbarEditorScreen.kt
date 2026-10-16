@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,16 +43,28 @@ import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.R
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
-private val toolbarIo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+internal fun applyToolbarField(
+    current: AccountSettings,
+    indexBar: IndexBarLayout? = null,
+    selectionBar: SelectionBarLayout? = null,
+    folderBar: FolderBarLayout? = null,
+    readerToolbar: ReaderToolbarLayout? = null,
+    composeBar: ComposeBarLayout? = null,
+    toolbarRows: Int? = null,
+): AccountSettings = when {
+    indexBar != null -> current.copy(indexBar = indexBar)
+    selectionBar != null -> current.copy(selectionBar = selectionBar)
+    folderBar != null -> current.copy(folderBar = folderBar)
+    readerToolbar != null -> current.copy(readerToolbar = readerToolbar)
+    composeBar != null -> current.copy(composeBar = composeBar)
+    toolbarRows != null -> current.copy(toolbarRows = toolbarRows)
+    else -> current
+}
 
 enum class ToolbarScreen {
     Index,
@@ -61,76 +74,80 @@ enum class ToolbarScreen {
     Compose,
 }
 
-private class ToolbarSettings(val store: DataStoreSettingsStore) {
+private class ToolbarSettings(
+    private val accountStore: DataStoreSettingsStore?,
+    private val scope: CoroutineScope,
+) {
     var settings by mutableStateOf<AccountSettings?>(null)
-    private val gate = Mutex()
 
     suspend fun load() {
-        settings = store.load()
+        settings = accountStore?.load()
     }
 
     fun persistIndex(next: IndexBarLayout) {
         val current = settings ?: return
-        settings = current.copy(indexBar = next)
-        save()
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, indexBar = next)
+        scope.launch {
+            store.update { applyToolbarField(it, indexBar = next) }
+        }
     }
 
     fun persistSelection(next: SelectionBarLayout) {
         val current = settings ?: return
-        settings = current.copy(selectionBar = next)
-        save()
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, selectionBar = next)
+        scope.launch {
+            store.update { applyToolbarField(it, selectionBar = next) }
+        }
     }
 
     fun persistFolder(next: FolderBarLayout) {
         val current = settings ?: return
-        settings = current.copy(folderBar = next)
-        save()
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, folderBar = next)
+        scope.launch {
+            store.update { applyToolbarField(it, folderBar = next) }
+        }
     }
 
     fun persistReader(next: ReaderToolbarLayout) {
         val current = settings ?: return
-        settings = current.copy(readerToolbar = next)
-        save()
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, readerToolbar = next)
+        scope.launch {
+            store.update { applyToolbarField(it, readerToolbar = next) }
+        }
     }
 
     fun persistCompose(next: ComposeBarLayout) {
         val current = settings ?: return
-        settings = current.copy(composeBar = next)
-        save()
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, composeBar = next)
+        scope.launch {
+            store.update { applyToolbarField(it, composeBar = next) }
+        }
     }
 
     fun persistToolbarRows(next: Int) {
         val current = settings ?: return
         if (next !in 1..4 || next == current.toolbarRows) return
-        settings = current.copy(toolbarRows = next)
-        save()
-    }
-
-    private fun save() {
-        toolbarIo.launch {
-            gate.withLock {
-                val latest = settings ?: return@withLock
-                // F55: write only the toolbar fields; everything else stays as currently stored
-                store.update {
-                    it.copy(
-                        indexBar = latest.indexBar,
-                        selectionBar = latest.selectionBar,
-                        folderBar = latest.folderBar,
-                        readerToolbar = latest.readerToolbar,
-                        composeBar = latest.composeBar,
-                        toolbarRows = latest.toolbarRows,
-                    )
-                }
-            }
+        val store = accountStore ?: return
+        settings = applyToolbarField(current, toolbarRows = next)
+        scope.launch {
+            store.update { applyToolbarField(it, toolbarRows = next) }
         }
     }
 }
 
 @Composable
-fun ToolbarEditorScreen(screen: ToolbarScreen) {
+fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
     val appContext = LocalContext.current.applicationContext
-    val store = remember { DataStoreSettingsStore(appContext) }
-    val holder = remember(store) { ToolbarSettings(store) }
+    val scope = rememberCoroutineScope()
+    val accountStore = remember(accountId) {
+        if (accountId.isBlank()) null else DataStoreSettingsStore(appContext).forAccount(accountId)
+    }
+    val holder = remember(accountStore, scope) { ToolbarSettings(accountStore, scope) }
     LaunchedEffect(holder) { holder.load() }
     var announcement by remember { mutableStateOf("") }
     Column(

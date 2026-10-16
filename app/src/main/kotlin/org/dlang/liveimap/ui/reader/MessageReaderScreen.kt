@@ -333,7 +333,7 @@ fun MessageReaderScreen(
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val appContext = LocalContext.current.applicationContext
@@ -374,7 +374,7 @@ private fun MessageReaderLoaded(
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val context = LocalContext.current
@@ -1850,7 +1850,7 @@ private fun MessageReaderLoaded(
                     text = { Text(stringResource(R.string.toolbar_customize)) },
                     onClick = {
                         moreMenu = false
-                        onCustomize()
+                        onCustomize(accountId)
                     },
                 )
             }

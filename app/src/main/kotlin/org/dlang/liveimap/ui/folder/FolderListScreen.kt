@@ -180,7 +180,7 @@ fun FolderListScreen(
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
     onOpenHelp: () -> Unit,
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -206,7 +206,7 @@ fun FolderListScreen(
         }
         // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
         if (accountId != null || accountChecked) {
-            NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, onCustomize, onOpenHelp, onOpenAbout, onOpenSettings)
+            NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, { onCustomize("") }, onOpenHelp, onOpenAbout, onOpenSettings)
         }
         return
     }
@@ -250,7 +250,7 @@ private fun FolderListLoaded(
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
     onOpenHelp: () -> Unit,
-    onCustomize: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -738,7 +738,7 @@ private fun FolderListLoaded(
                                                 text = { Text(stringResource(R.string.toolbar_customize)) },
                                                 onClick = {
                                                     moreMenu = false
-                                                    onCustomize()
+                                                    onCustomize(accountId)
                                                 },
                                             )
                                         }

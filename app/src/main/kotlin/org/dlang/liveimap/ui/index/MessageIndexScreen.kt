@@ -698,8 +698,8 @@ fun MessageIndexScreen(
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
-    onCustomize: () -> Unit = {},
-    onCustomizeSelection: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
+    onCustomizeSelection: (String) -> Unit = { _ -> },
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -743,8 +743,8 @@ private fun MessageIndexLoaded(
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: () -> Unit,
-    onCustomize: () -> Unit = {},
-    onCustomizeSelection: () -> Unit = {},
+    onCustomize: (String) -> Unit = { _ -> },
+    onCustomizeSelection: (String) -> Unit = { _ -> },
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -2620,7 +2620,7 @@ private fun MessageIndexLoaded(
                                                 text = { Text(stringResource(R.string.toolbar_customize)) },
                                                 onClick = {
                                                     selectionMore = false
-                                                    onCustomizeSelection()
+                                                    onCustomizeSelection(accountId)
                                                 },
                                             )
                                         }
@@ -2988,7 +2988,7 @@ private fun MessageIndexLoaded(
                                         text = { Text(stringResource(R.string.toolbar_customize)) },
                                         onClick = {
                                             menuOpen = false
-                                            onCustomize()
+                                            onCustomize(accountId)
                                         },
                                     )
                                 }
