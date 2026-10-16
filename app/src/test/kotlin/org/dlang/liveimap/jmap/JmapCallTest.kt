@@ -2,8 +2,11 @@ package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class JmapCallTest {
     @Test
@@ -305,6 +308,21 @@ class JmapCallTest {
             )
         }
         assertEquals(1, post.urls.size)
+    }
+
+    @Test
+    fun unusedHttpsChecksAreGone() {
+        fun source(name: String): String {
+            val path = "kotlin/org/dlang/liveimap/jmap/$name"
+            return listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
+        }
+        val texts = listOf("JmapUpload.kt", "JmapPush.kt", "JmapCall.kt", "JmapHttps.kt").map { source(it) }
+        for (gone in listOf("fun uploadHttps", "fun eventSourceIsHttps", "fun httpsApi", "fun httpsUrl")) {
+            assertFalse(gone, texts.any { it.contains(gone) })
+        }
+        assertTrue(source("JmapUpload.kt").contains("uploadHost"))
+        assertTrue(source("JmapCall.kt").contains("apiHost"))
+        assertTrue(source("JmapHttps.kt").contains("jmapTrustHost"))
     }
 }
 

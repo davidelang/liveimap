@@ -142,12 +142,3 @@ fun platformJmapEventSource(url: String, authorization: String, pin: String, pol
         }
     }
 }
-
-private fun eventSourceIsHttps(url: String): Boolean {
-    val scheme = try {
-        URI(url).scheme
-    } catch (_: Exception) {
-        null
-    }
-    return scheme != null && scheme.equals("https", ignoreCase = true)
-}

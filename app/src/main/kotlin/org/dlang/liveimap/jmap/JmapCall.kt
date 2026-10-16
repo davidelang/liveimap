@@ -170,15 +170,6 @@ fun platformJmapUpload(
 
 private val apiRedirectStatuses = setOf(301, 302, 303, 307, 308)
 
-private fun httpsApi(url: String): Boolean {
-    val scheme = try {
-        URI(url).scheme
-    } catch (_: Exception) {
-        null
-    }
-    return scheme != null && scheme.equals("https", ignoreCase = true)
-}
-
 private fun apiHost(url: String): String {
     val host = try {
         URI(url).host

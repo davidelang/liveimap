@@ -94,15 +94,6 @@ private fun encodeUploadAccount(accountId: String): String {
     return out.toString()
 }
 
-private fun uploadHttps(url: String): Boolean {
-    val scheme = try {
-        URI(url).scheme
-    } catch (_: Exception) {
-        null
-    }
-    return scheme != null && scheme.equals("https", ignoreCase = true)
-}
-
 private fun uploadHost(url: String): String {
     val host = try {
         URI(url).host

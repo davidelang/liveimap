@@ -129,15 +129,6 @@ fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String)
 
 private val jmapRedirectStatuses = setOf(301, 302, 303, 307, 308)
 
-private fun httpsUrl(url: String): Boolean {
-    val scheme = try {
-        URI(url).scheme
-    } catch (_: Exception) {
-        null
-    }
-    return scheme != null && scheme.equals("https", ignoreCase = true)
-}
-
 private fun jmapTrustHost(url: String): String {
     val host = try {
         URI(url).host

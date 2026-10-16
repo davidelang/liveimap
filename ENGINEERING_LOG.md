@@ -3320,3 +3320,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-16 - phase 11 lab apk commit
 
 - This commit records the phase 11 lab APK build. The APKs are built from it.
+
+## 2026-10-16 - Remove the unused JMAP https checks
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/dead-https-helpers-20261016-0150-plan.md
+- Work: delete unused uploadHttps, eventSourceIsHttps, httpsApi, and httpsUrl; JmapCallTest reads the four files and checks the host helpers stay
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
