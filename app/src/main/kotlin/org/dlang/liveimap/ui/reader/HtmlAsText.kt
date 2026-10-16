@@ -57,6 +57,7 @@ private fun renderNode(root: Node, state: HtmlRender) {
         val breaks = lineBreaks.contains(name)
         if (frame.leaving) {
             state.quote = frame.savedQuote
+            if (name == "a") appendLinkMark(node, state)
             if (name == "tr") state.cellOpen = false
             if (breaks) breakLine(state)
             continue
@@ -77,16 +78,34 @@ private fun renderNode(root: Node, state: HtmlRender) {
                 state.cellOpen = true
             }
             "tr" -> state.cellOpen = false
-            "a" -> {
-                val href = node.attr("href")
-                if (href.isNotEmpty()) state.links.add(href)
-            }
         }
         stack.addLast(Frame(node, leaving = true, savedQuote = state.quote))
         if (name == "blockquote") state.quote = true
         val children = node.childNodes()
         for (k in children.indices.reversed()) stack.addLast(Frame(children[k], leaving = false))
     }
+}
+
+private fun webOrMailto(href: String): Boolean {
+    val colon = href.indexOf(':')
+    if (colon <= 0) return false
+    val scheme = href.substring(0, colon)
+    return scheme.equals("http", ignoreCase = true) ||
+        scheme.equals("https", ignoreCase = true) ||
+        scheme.equals("mailto", ignoreCase = true)
+}
+
+private fun appendLinkMark(node: Element, state: HtmlRender) {
+    val href = node.attr("href")
+    if (!webOrMailto(href)) return
+    val existing = state.links.indexOf(href)
+    val n = if (existing >= 0) {
+        existing + 1
+    } else {
+        state.links.add(href)
+        state.links.size
+    }
+    appendRaw(state, " [$n]")
 }
 
 private fun liNumber(element: Element): Int {

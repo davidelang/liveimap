@@ -31,7 +31,9 @@ object NonAsciiText {
 
     private fun invisible(cp: Int): Boolean =
         cp in 0x200B..0x200F || cp in 0x202A..0x202E || cp in 0x2060..0x2064 || cp in 0x2066..0x2069 ||
-            cp == 0xFEFF || cp == 0x00AD || cp == 0x034F || cp == 0x180E
+            cp == 0xFEFF || cp == 0x00AD || cp == 0x034F || cp == 0x180E ||
+            cp == 0x061C || cp == 0x115F || cp == 0x1160 || cp == 0x3164 || cp == 0xFFA0 ||
+            cp == 0x2028 || cp == 0x2029
 
     private fun script(cp: Int): Character.UnicodeScript? {
         if (!Character.isLetter(cp)) return null
@@ -119,20 +121,44 @@ object NonAsciiText {
     const val WarnMark = "\u26A0 "
 
     fun styled(text: String, mode: NonAsciiDisplay, highlight: SpanStyle): AnnotatedString {
-        if (text.all { it.code < 0x80 } && mode != NonAsciiDisplay.HighlightSuspicious && mode != NonAsciiDisplay.Warn) {
+        val idn = idnDomainRanges(text)
+        if (idn.isEmpty() && text.all { it.code < 0x80 } &&
+            mode != NonAsciiDisplay.HighlightSuspicious && mode != NonAsciiDisplay.Warn
+        ) {
             return AnnotatedString(text)
         }
         return when (mode) {
             NonAsciiDisplay.Normal -> AnnotatedString(text)
-            NonAsciiDisplay.Escape -> AnnotatedString(escaped(text))
-            NonAsciiDisplay.HighlightAll -> mark(text, nonAsciiRanges(text) + suspiciousRanges(text) + idnDomainRanges(text), highlight)
-            NonAsciiDisplay.HighlightSuspicious -> mark(text, suspiciousRanges(text) + idnDomainRanges(text), highlight)
+            NonAsciiDisplay.Escape -> if (idn.isEmpty()) AnnotatedString(escaped(text)) else markEscaped(text, idn, highlight)
+            NonAsciiDisplay.HighlightAll -> mark(text, nonAsciiRanges(text) + suspiciousRanges(text) + idn, highlight)
+            NonAsciiDisplay.HighlightSuspicious -> mark(text, suspiciousRanges(text) + idn, highlight)
             NonAsciiDisplay.Warn -> {
-                val ranges = suspiciousRanges(text) + idnDomainRanges(text)
+                val ranges = suspiciousRanges(text) + idn
                 if (ranges.isEmpty()) AnnotatedString(text)
                 else buildAnnotatedString { append(WarnMark); append(mark(text, ranges, highlight)) }
             }
         }
+    }
+
+    /** Escape text, then mark [ranges] from the original string on the escaped form. */
+    private fun markEscaped(text: String, ranges: List<IntRange>, highlight: SpanStyle): AnnotatedString {
+        val shown = StringBuilder()
+        val startAt = IntArray(text.length)
+        val endAt = IntArray(text.length)
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            val n = Character.charCount(cp)
+            val start = shown.length
+            if (cp in 0x20..0x7E || cp == '\t'.code) shown.appendCodePoint(cp) else shown.append("\\u{%04X}".format(cp))
+            val end = shown.length
+            for (k in 0 until n) {
+                startAt[i + k] = start
+                endAt[i + k] = end
+            }
+            i += n
+        }
+        return mark(shown.toString(), ranges.map { startAt[it.first] until endAt[it.last] }, highlight)
     }
 
     private fun mark(text: String, ranges: List<IntRange>, style: SpanStyle): AnnotatedString {

@@ -3207,3 +3207,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: consume the CRLF after a ManageSieve literal; seed From and To as addr-specs and List-Id as a bare id tested with header :contains; an empty active script is Include; sieveTlsMode defaults to STARTTLS and Check and Upload use it
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - HTML-as-text numbers its links, and ASCII IDNs are marked
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-text-20261015-2130-plan.md
+- Work: an http, https, or mailto anchor is marked [n] when it is left, and a repeated href keeps the same number; javascript and data add no mark; Highlight-all and Escape mark an ASCII punycode domain; invisible also treats U+061C, U+115F, U+1160, U+3164, U+FFA0, U+2028, and U+2029 as hidden
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -11,7 +11,7 @@ class HtmlAsTextTest {
             "<p>Hello &amp; world</p><li>One</li><script type=\"text/javascript\">alert(1)</script>" +
                 "<a href=\"https://example.com\">link</a>",
         )
-        assertEquals("Hello & world\n* One\nlink\n\n[1] https://example.com", text)
+        assertEquals("Hello & world\n* One\nlink [1]\n\n[1] https://example.com", text)
         assertFalse(text.contains("alert"))
         assertFalse(text.contains("script"))
     }
@@ -35,10 +35,17 @@ class HtmlAsTextTest {
         assertEquals("text", htmlAsText("<a href=\"\">text</a>"))
         assertEquals("text", htmlAsText("<a>text</a>"))
         assertEquals(
-            "link\n\n[1] https://example.com",
+            "link [1]\n\n[1] https://example.com",
             htmlAsText("<a href=\"https://example.com\"><b>link</b></a>"),
         )
-        assertEquals("t\n\n[1] https://e.com?a=1&b=2", htmlAsText("<a href=\"https://e.com?a=1&amp;b=2\">t</a>"))
+        assertEquals(
+            "a [1]b [1]\n\n[1] https://e.com",
+            htmlAsText("<a href=\"https://e.com\">a</a><a href=\"https://e.com\">b</a>"),
+        )
+        assertEquals("x", htmlAsText("<a href=\"javascript:alert(1)\">x</a>"))
+        assertEquals("y", htmlAsText("<a href=\"data:text/plain,a\">y</a>"))
+        assertEquals("m [1]\n\n[1] mailto:a@b.c", htmlAsText("<a href=\"mailto:a@b.c\">m</a>"))
+        assertEquals("t [1]\n\n[1] https://e.com?a=1&b=2", htmlAsText("<a href=\"https://e.com?a=1&amp;b=2\">t</a>"))
         assertEquals("1. a\n2. b", htmlAsText("<ol><li>a</li><li>b</li></ol>"))
         assertEquals("a b", htmlAsText("<table><tr><td>a</td><td>b</td></tr></table>"))
         assertEquals("a  b\nc", htmlAsText("<pre>a  b\nc</pre>"))

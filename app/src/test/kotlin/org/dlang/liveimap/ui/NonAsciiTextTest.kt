@@ -32,6 +32,8 @@ class NonAsciiTextTest {
     @Test fun invisibleAndBidiControls() {
         assertTrue(NonAsciiText.isSuspicious("pay\u200Bpal"))
         assertTrue(NonAsciiText.isSuspicious("invoice\u202Efdp.exe"))
+        assertFalse(NonAsciiText.suspiciousRanges("a\u061Cb").isEmpty())
+        assertFalse(NonAsciiText.suspiciousRanges("a\u2028b").isEmpty())
     }
 
     @Test fun fullWidthMixedWithLatin() {
@@ -54,6 +56,10 @@ class NonAsciiTextTest {
         assertEquals("Café", NonAsciiText.styled("Café", NonAsciiDisplay.Warn, hl).text)
         assertTrue(NonAsciiText.styled("Café", NonAsciiDisplay.HighlightSuspicious, hl).spanStyles.isEmpty())
         assertEquals(1, NonAsciiText.styled("Café", NonAsciiDisplay.HighlightAll, hl).spanStyles.size)
+        val puny = "PayPal <service@xn--pypal-4ve.com>"
+        assertFalse(NonAsciiText.styled(puny, NonAsciiDisplay.HighlightAll, hl).spanStyles.isEmpty())
+        assertFalse(NonAsciiText.styled(puny, NonAsciiDisplay.Escape, hl).spanStyles.isEmpty())
+        assertTrue(NonAsciiText.styled(puny, NonAsciiDisplay.Normal, hl).spanStyles.isEmpty())
     }
 
     @Test fun storedAccountsDefaultToHighlightSuspicious() {

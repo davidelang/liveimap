@@ -64,7 +64,7 @@ class PartTextTest {
     fun htmlQuotedPrintablePreview() {
         val raw = "=3Ca href=3D\"https://e.com\"=3Elink=3C/a=3E".toByteArray(Charsets.US_ASCII)
         val text = PartText.previewText(raw, "ISO-8859-1", "quoted-printable", true)
-        assertEquals("link\n\n[1] https://e.com", text)
+        assertEquals("link [1]\n\n[1] https://e.com", text)
         assertFalse(text.contains("<"))
         assertFalse(text.contains("="))
     }
