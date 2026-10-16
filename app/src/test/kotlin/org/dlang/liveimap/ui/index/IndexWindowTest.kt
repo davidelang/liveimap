@@ -970,6 +970,11 @@ class IndexWindowTest {
         "app/src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
     ).map { java.io.File(it) }.first { it.exists() }.readText()
 
+    private fun uiSource(name: String): String = listOf(
+        "src/main/kotlin/org/dlang/liveimap/ui/$name",
+        "app/src/main/kotlin/org/dlang/liveimap/ui/$name",
+    ).map { java.io.File(it) }.first { it.exists() }.readText()
+
     @Test
     fun indexStatusDescriptionAndSequenceWidth() {
         val words = arrayOf("forwarded", "replied", "flagged", "to me", "has attachment")
@@ -1076,9 +1081,7 @@ class IndexWindowTest {
     fun filterCountIsMatchCountAndExpungeCopyIsResources() {
         val source = screenSource()
         val count = source.substringAfter("if (filterActive || model.searchActive) {").substringBefore("if (searchVisible)")
-        assertTrue(count.contains("val shown = model.order.size"))
-        assertTrue(count.contains("\"\$shown of \$total\""))
-        assertTrue(count.contains("val total = if (folderExists > 0) folderExists else shown"))
+        assertTrue(count.contains("indexMatchCountText(model.order.size, folderExists, model.searchActive, model.searchScope)"))
         val expunge = source.substringAfter("if (confirmExpunge)").substringBefore("if (filterActive || model.searchActive)")
         assertTrue(expunge.contains("R.string.index_expunge_trash"))
         assertTrue(expunge.contains("R.string.index_expunge_body"))
@@ -1097,10 +1100,43 @@ class IndexWindowTest {
         val save = source.substringAfter("if (saveNameOpen)").substringAfter("store.update {").substringBefore("}")
         assertTrue(save.contains("saveSearch(settings.savedSearches"))
         assertFalse(save.contains("stored"))
-        val failure = source.substringAfter("fun leaveIndex()").substringAfter("catch (error: MailFailure)").substringBefore("}")
-        val snackAt = failure.indexOf("postSnack")
-        val backAt = failure.indexOf("onBack()")
-        assertTrue(snackAt >= 0 && backAt > snackAt)
+        val leave = source.substringAfter("fun leaveIndex()").substringBefore("BackHandler")
+        assertTrue(leave.substringBefore("catch (error: MailFailure)").contains("onBack(null)"))
+        val failure = leave.substringAfter("catch (error: MailFailure)").substringBefore("}")
+        assertTrue(failure.contains("onBack(error.text)"))
+        assertFalse(failure.contains("postSnack"))
+        val nav = uiSource("NavHost.kt")
+        val scaffold = uiSource("LiveImapScaffold.kt")
+        val onBack = nav.substringAfter("fun IndexBody").substringBefore("fun ListSide").substringAfter("onBack = {").substringBefore("},")
+        val reportAt = onBack.indexOf("IndexLeaveReport.report")
+        val popAt = onBack.indexOf("popBackStack()")
+        assertTrue(reportAt >= 0 && popAt > reportAt)
+        assertTrue(onBack.contains("isNullOrEmpty()"))
+        assertTrue(scaffold.contains("snackbarHost = { SnackbarHost(host) }"))
+        assertTrue(scaffold.contains("host.showSnackbar(message)"))
+        assertTrue(scaffold.contains("IndexLeaveReport"))
+        assertTrue(nav.contains("    LiveImapScaffold {"))
+    }
+
+    @Test
+    fun wideSearchCountIsTheMatchCount() {
+        assertEquals("10 of 300", indexMatchCountText(10, 300, false, SearchScope.Current))
+        assertEquals("10 of 300", indexMatchCountText(10, 300, true, SearchScope.Current))
+        assertEquals("10 of 10", indexMatchCountText(10, 0, true, SearchScope.Current))
+        assertEquals("1200", indexMatchCountText(1200, 300, true, SearchScope.Subtree))
+        assertEquals("1200", indexMatchCountText(1200, 300, true, SearchScope.Subscribed))
+        assertEquals("1200", indexMatchCountText(1200, 300, true, SearchScope.All))
+        assertEquals("10 of 300", indexMatchCountText(10, 300, false, SearchScope.All))
+        assertFalse(indexMatchCountText(1200, 300, true, SearchScope.Subtree) == "1200 of 300")
+        assertFalse(indexMatchCountText(1200, 300, true, SearchScope.Subscribed) == "1200 of 300")
+        assertFalse(indexMatchCountText(1200, 300, true, SearchScope.All) == "1200 of 300")
+    }
+
+    @Test
+    fun notConnectedFallbackUsesTheReaderString() {
+        val source = screenSource()
+        assertTrue(source.contains("R.string.reader_not_connected"))
+        assertFalse(source.contains("\"not connected\""))
     }
 
     @Test

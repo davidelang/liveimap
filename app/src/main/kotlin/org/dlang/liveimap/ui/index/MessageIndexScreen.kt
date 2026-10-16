@@ -489,6 +489,14 @@ fun sequenceColumnChars(sequences: Iterable<Int>): Int {
 
 fun existsColumnChars(exists: Int): Int = if (exists <= 0) 1 else exists.toString().length
 
+internal fun indexMatchCountText(shown: Int, folderExists: Int, searchActive: Boolean, scope: SearchScope): String {
+    if (searchActive && (scope == SearchScope.Subtree || scope == SearchScope.Subscribed || scope == SearchScope.All)) {
+        return shown.toString()
+    }
+    val total = if (folderExists > 0) folderExists else shown
+    return "$shown of $total"
+}
+
 data class DateColumnWords(
     val now: String,
     val min: String,
@@ -731,7 +739,7 @@ fun MessageIndexScreen(
     mailbox: String,
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
-    onBack: () -> Unit,
+    onBack: (String?) -> Unit,
     onCustomize: (String) -> Unit = { _ -> },
     onCustomizeSelection: (String) -> Unit = { _ -> },
     watchMailbox: Boolean = true,
@@ -776,7 +784,7 @@ private fun MessageIndexLoaded(
     mailbox: String,
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
-    onBack: () -> Unit,
+    onBack: (String?) -> Unit,
     onCustomize: (String) -> Unit = { _ -> },
     onCustomizeSelection: (String) -> Unit = { _ -> },
     watchMailbox: Boolean = true,
@@ -797,6 +805,7 @@ private fun MessageIndexLoaded(
     val indexDays = stringResource(R.string.index_days)
     val indexAgo = stringResource(R.string.index_ago)
     val indexAhead = stringResource(R.string.index_ahead)
+    val notConnected = stringResource(R.string.reader_not_connected)
     val indexBadPattern = stringResource(R.string.index_bad_pattern)
     val session = remember(accountId) { mailSession(accountId) }
     val folderList = remember { FolderListModel(session, store) }
@@ -993,14 +1002,13 @@ private fun MessageIndexLoaded(
         scope.launch {
             try {
                 session.expungeOnLeave(mailbox)
-                onBack()
+                onBack(null)
             } catch (error: CancellationException) {
                 leavingIndex = false
                 throw error
             } catch (error: MailFailure) {
                 leavingIndex = false
-                postSnack(error.text)
-                onBack()
+                onBack(error.text)
             }
         }
     }
@@ -1362,7 +1370,7 @@ private fun MessageIndexLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            postSnack(error.message ?: "not connected")
+            postSnack(error.message ?: notConnected)
             return false
         }
         try {
@@ -1370,7 +1378,7 @@ private fun MessageIndexLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            postSnack(error.message ?: "not connected")
+            postSnack(error.message ?: notConnected)
             return false
         }
         val fresh = try {
@@ -1378,7 +1386,7 @@ private fun MessageIndexLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            postSnack(error.message ?: "not connected")
+            postSnack(error.message ?: notConnected)
             return false
         }
         model.adoptAccount(fresh)
@@ -1674,7 +1682,7 @@ private fun MessageIndexLoaded(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                banner = error.message ?: "not connected"
+                banner = error.message ?: notConnected
                 return@run false
             }
             try {
@@ -1682,7 +1690,7 @@ private fun MessageIndexLoaded(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                banner = error.message ?: "not connected"
+                banner = error.message ?: notConnected
                 return@run false
             }
             val opened = try {
@@ -3129,8 +3137,6 @@ private fun MessageIndexLoaded(
                     )
                 }
             if (filterActive || model.searchActive) {
-                val shown = model.order.size
-                val total = if (folderExists > 0) folderExists else shown
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -3163,7 +3169,7 @@ private fun MessageIndexLoaded(
                         }
                     }
                     Text(
-                        text = "$shown of $total",
+                        text = indexMatchCountText(model.order.size, folderExists, model.searchActive, model.searchScope),
                         modifier = Modifier.padding(start = 8.dp),
                         maxLines = 1,
                     )

@@ -777,6 +777,7 @@ class IndexModel(
     private var activeSearch: String? = null
     private var activeAdvanced: String? = null
     private var activeScope: SearchScope = SearchScope.Current
+    val searchScope: SearchScope get() = activeScope
     private var scopeCancel: () -> Boolean = { false }
     private var scopeProgress: (Int, Int) -> Unit = { _, _ -> }
     private var activeSearchField: SimpleSearchField = SimpleSearchField.Subject

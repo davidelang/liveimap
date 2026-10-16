@@ -544,7 +544,10 @@ fun LiveImapNavHost() {
                             mailbox = mailbox,
                             onOpen = { uid, sequence, rowMailbox, epoch -> openMessage(uid, sequence, rowMailbox, epoch) },
                             onCompose = { seed -> openCompose(seed) },
-                            onBack = { navController.popBackStack() },
+                            onBack = { failure ->
+                                if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
+                                navController.popBackStack()
+                            },
                             onCustomize = { accountId -> openToolbar("index", accountId) },
                             onCustomizeSelection = { accountId -> openToolbar("selection", accountId) },
                             watchMailbox = watch,

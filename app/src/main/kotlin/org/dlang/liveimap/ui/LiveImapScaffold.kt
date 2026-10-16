@@ -13,10 +13,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.dlang.liveimap.R
@@ -60,10 +67,31 @@ internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
     )
 }
 
+internal object IndexLeaveReport {
+    var text by mutableStateOf<String?>(null)
+        private set
+
+    fun report(text: String) {
+        this.text = text
+    }
+
+    fun clear(shown: String) {
+        if (text == shown) text = null
+    }
+}
+
 @Composable
 fun LiveImapScaffold(content: @Composable () -> Unit) {
+    val host = remember { SnackbarHostState() }
+    val pending = IndexLeaveReport.text
+    LaunchedEffect(pending) {
+        val message = pending ?: return@LaunchedEffect
+        host.showSnackbar(message)
+        IndexLeaveReport.clear(message)
+    }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { SnackbarHost(host) },
     ) {
         content()
     }

@@ -3274,3 +3274,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: A notice snack does not offer Retry. Show thread uses the visible row. A quick filter does not snack twice. The filter count is the match count. Expunge copy is in string resources. Deleting or saving a search edits the current settings. Back leaves even when expunge fails.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Expunge-on-leave stays visible, and a wide search count is the match count
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-actions-edit-20261016-0018-plan.md
+- Work: an expunge failure on Back is reported on the scaffold snackbar that stays composed, then the index pops; a Subtree, Subscribed, or All search shows the match count alone; the five not-connected fallbacks use reader_not_connected
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
