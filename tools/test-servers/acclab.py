@@ -19,6 +19,8 @@ try:
     else:
         rc, out = seed(*(["--starttls"] if tls == "StartTls" else []))
     print("seed", rc, out)
+    if rc != 0:
+        sys.exit(rc)
     def smtp():
         a = lab.smtp_args(s, tls)
         if a: return a

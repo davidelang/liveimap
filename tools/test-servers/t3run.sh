@@ -5,8 +5,8 @@ set -u
 COMMIT="${1:?usage: t3run.sh COMMIT}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
-LOGDIR=${LAB_LOG:-.}
-REC=${LAB_REC:-$HERE/recordings}
+LOGDIR=$(mkdir -p "${LAB_LOG:-.}" && cd "${LAB_LOG:-.}" && pwd)
+REC=$(mkdir -p "${LAB_REC:-$HERE/recordings}" && cd "${LAB_REC:-$HERE/recordings}" && pwd)
 RUNID="t3-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOGDIR" "$REC"
 cd "$REPO"

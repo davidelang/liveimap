@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
-"""Seed corpus-v1 (beside this script, from make_corpus.generate) into one RUNNING lab server for the
+"""Seed corpus-v1 (generated/corpus-v1, from make_corpus.generate) into one RUNNING lab server for the
 liveimap account: folders created with the server's delimiter, APPEND with manifest flags and INTERNALDATE.
 Skips when INBOX already holds the seed marker. Usage: seed_corpus.py HOST PORT [--tls|--starttls] [--user U]. Lab servers only."""
 import base64, csv, imaplib, os, ssl, sys
 from datetime import datetime
+from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import make_corpus, lab
-CORPUS = os.path.join(HERE, "corpus-v1")
+CORPUS = os.path.join(HERE, "generated", "corpus-v1")
+
+def ensure_corpus():
+    manifest = os.path.join(CORPUS, "manifest.tsv")
+    if not os.path.exists(manifest):
+        accounts, folders = make_corpus.load_tables()
+        make_corpus.generate(Path(CORPUS), accounts, folders)
+    if not os.path.exists(manifest):
+        sys.exit("manifest.tsv is missing")
 
 def mutf7(s):
     out, buf = [], ""
@@ -28,6 +37,7 @@ def q(name):
     return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 def main(host, port, tls):
+    ensure_corpus()
     assert host == lab.LAB_HOST, "lab host only"
     ctx = ssl.create_default_context(cadata=open(os.path.join(lab.GEN, "ca", "ca.der"), "rb").read())
     ctx.check_hostname = False

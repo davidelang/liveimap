@@ -19,11 +19,11 @@ def derive_rcpt(base, user):
         ids = req(api, json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"], "methodCalls": [["Identity/get", {"accountId": acct}, "0"]]}).encode())
         emails = [i["email"] for i in ids["methodResponses"][0][1].get("list", []) if i.get("email")]
         if emails: return emails[0]
-        # No identity carries an address (Cyrus without a domain, Stalwart 0.15). Give the lab account one at
-        # <user>@<the container's own hostname>, both detected, and send as it; the app never guesses.
-        host = subprocess.run(["docker", "inspect", "-f", "{{.Config.Hostname}}", CONTAINER], capture_output=True, text=True).stdout.strip()
+        # No identity carries an address. Use LAB_MAIL_DOMAIN; stop when that key is missing.
         local = sess.get("username", user).split("@")[0]
-        host = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or host  # the run's mail domain when supplied
+        host = lab.HOSTENV.get("LAB_MAIL_DOMAIN")
+        if not host:
+            sys.exit("needs LAB_MAIL_DOMAIN")
         if host:
             made = req(api, json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"], "methodCalls": [["Identity/set", {"accountId": acct, "create": {"n": {"name": local, "email": f"{local}@{host}"}}}, "0"]]}).encode())
             created = made["methodResponses"][0][1].get("created") or {}
@@ -33,8 +33,10 @@ def derive_rcpt(base, user):
         print("identity lookup:", type(e).__name__)
     return sess.get("username", user)
 # JMAP_DOMAIN_USER=1: the run's domain-qualified lab account (<user>@LAB_MAIL_DOMAIN), whose Identity has an address.
+if os.environ.get("JMAP_DOMAIN_USER") and not lab.HOSTENV.get("LAB_MAIL_DOMAIN"):
+    sys.exit("needs LAB_MAIL_DOMAIN")
 RUNUSER = (lab.USER.split("@")[0] + "@" + lab.HOSTENV["LAB_MAIL_DOMAIN"]) if os.environ.get("JMAP_DOMAIN_USER") else lab.user_for(s)
-CONTAINER = s["container"]; lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
+lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], False, 300); time.sleep(5)
     hp = subprocess.run(["docker", "port", s["container"], row[1]], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()

@@ -5,8 +5,8 @@ set -u
 COMMIT="${1:?usage: t2run.sh COMMIT}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
-LOGDIR=${LAB_LOG:-.}
-REC=${LAB_REC:-$HERE/recordings}
+LOGDIR=$(mkdir -p "${LAB_LOG:-.}" && cd "${LAB_LOG:-.}" && pwd)
+REC=$(mkdir -p "${LAB_REC:-$HERE/recordings}" && cd "${LAB_REC:-$HERE/recordings}" && pwd)
 mkdir -p "$LOGDIR" "$REC"
 cd "$REPO"
 export LAB_BIND=$(ip -4 route get 1.1.1.1 | grep -o 'src [0-9.]*' | cut -d' ' -f2)

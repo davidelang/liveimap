@@ -5,7 +5,7 @@ Turns on virtdomains: userid, adds <USER>@<domain> to sasldb, creates its INBOX 
 import imaplib, os, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import lab
 name = sys.argv[1]; c = "liveimap-" + name
-domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or os.environ.get("LAB_MAIL_DOMAIN") or sys.exit("needs LAB_MAIL_DOMAIN")
+domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or sys.exit("needs LAB_MAIL_DOMAIN")
 user = lab.USER.split("@")[0] + "@" + domain
 def ex(cmd, data=None):
     return subprocess.run(["docker", "exec", "-i", c, "sh", "-c", cmd], input=data, capture_output=True, text=True)

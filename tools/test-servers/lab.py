@@ -26,6 +26,9 @@ def host_env():
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.strip().split("=", 1)
                 env[k] = v.strip().strip('"')
+    for k, v in os.environ.items():
+        if k.startswith("LAB_"):
+            env[k] = v
     return env
 
 
@@ -71,7 +74,12 @@ def servers():
 
 
 def user_for(s):
-    return "liveimap@zimbra.zcs-foss.test" if "zimbra" in s["name"] else USER
+    if "zimbra" in s["name"]:
+        user = HOSTENV.get("LAB_ZIMBRA_USER")
+        if not user:
+            sys.exit("needs LAB_ZIMBRA_USER")
+        return user
+    return USER
 
 
 def greeting(port, tls, timeout=180):

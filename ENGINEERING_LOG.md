@@ -3193,3 +3193,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: lab runners under tools/test-servers find smtp, sieve, jmap, and recordings from that directory; the androidTest task and APK are the x86_64 debug ones; commit is an argument, not a built-in sha
 - No androidTest APK is built; no install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Lab logs stay put, and a missing corpus or mail domain stops the run
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-harness-edit-20261015-2049-plan.md
+- Work: log and recording paths are absolute before the runners change directory; a missing corpus manifest is generated and a failed seed stops the run; LAB_* from the environment; a missing LAB_MAIL_DOMAIN or LAB_ZIMBRA_USER stops the runner
+- No corpus mail is committed; no androidTest APK is built; no install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
