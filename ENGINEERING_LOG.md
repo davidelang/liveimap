@@ -3375,3 +3375,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the signature and Fcc presets the chips do not call are removed
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A forced slower fallback uses the account poll interval
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/slower-poll-20261016-0411-plan.md
+- Work: a forced slower fallback uses the account poll interval
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

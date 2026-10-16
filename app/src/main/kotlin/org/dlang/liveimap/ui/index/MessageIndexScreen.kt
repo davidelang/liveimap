@@ -173,6 +173,7 @@ import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.pollIntervalSeconds
 import org.dlang.liveimap.settings.slowerClientSort
 import org.dlang.liveimap.settings.slowerClientThread
+import org.dlang.liveimap.settings.slowerPoll
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
@@ -2096,7 +2097,7 @@ private fun MessageIndexLoaded(
                         }
                         val settings = loaded ?: AccountSettings()
                         val pollSeconds = idleFallbackSeconds(
-                            settings.pollForNewMail,
+                            slowerPoll(settings),
                             pollIntervalSeconds(settings),
                         )
                         suspend fun pollLoop(fixedSeconds: Int) {
