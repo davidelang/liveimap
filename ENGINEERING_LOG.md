@@ -3281,3 +3281,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: an expunge failure on Back is reported on the scaffold snackbar that stays composed, then the index pops; a Subtree, Subscribed, or All search shows the match count alone; the five not-connected fallbacks use reader_not_connected
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The expunge-on-leave snackbar sits above the navigation bar
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-leave-snack-inset-20261016-0033-plan.md
+- Work: pad only the scaffold snackbar that shows an expunge-on-leave failure so it clears the system navigation bar; content insets stay zero
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
