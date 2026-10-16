@@ -302,8 +302,8 @@ class JmapCallTest {
 
     @Test
     fun badParentItemsThrow() {
-        val notText = """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":1}]},"1"]]}"""
-        val notObject = """{"methodResponses":[["Mailbox/get",{"list":[1]},"1"]]}"""
+        val notText = CallPost(200, """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":1}]},"1"]]}""")
+        val notObject = CallPost(200, """{"methodResponses":[["Mailbox/get",{"list":[1]},"1"]]}""")
         assertFails("jmap mailbox parentId is not text") {
             jmapMailboxChildren(
                 sampleSession(),
@@ -311,7 +311,8 @@ class JmapCallTest {
                 "user",
                 "secret",
                 "ab",
-                CallPost(200, notText)::post,
+                notText::post,
+                notText::trust,
             )
         }
         assertFails("jmap mailbox is not an object") {
@@ -321,7 +322,8 @@ class JmapCallTest {
                 "user",
                 "secret",
                 "ab",
-                CallPost(200, notObject)::post,
+                notObject::post,
+                notObject::trust,
             )
         }
     }
