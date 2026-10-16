@@ -3119,3 +3119,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The opener's account id is stored and each save writes one bar on that account. No new mutex. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
 
 ## 2026-10-15 - Older Android excludes unsent mail, and logging turns off when no account wants it.
+
+## 2026-10-15 - One bad settings entry does not wipe the field
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-decode-20261015-1751-plan.md
+- Work: a bad inbound rule, favorite, folder view, folder start, or expanded folder is skipped; a value that cannot be read stays in unknownSettings and the next save does not write the default over it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

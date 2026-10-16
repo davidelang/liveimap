@@ -1092,6 +1092,87 @@ class AccountSettingsTest {
         assertFalse(overAskThreshold(Int.MAX_VALUE, Int.MAX_VALUE))
     }
 
+    @Test
+    fun oneBadInboundRuleIsSkipped() {
+        val first = InboundRule(
+            criteria = listOf(RuleCriterion(RuleField.From, "ann@example.com")),
+            fileInto = "INBOX.lists",
+        )
+        val second = InboundRule(
+            criteria = listOf(RuleCriterion(RuleField.Subject, "x")),
+            fileInto = "Sent",
+        )
+        val text = AccountSettings().encode().trimEnd() +
+            "\ninboundRules=From=ann%40example.com\tfile=INBOX.lists\nbogus\tzz\nSubject=x\tfile=Sent\n"
+        val decoded = decodeAccountSettings(text)
+        assertEquals(listOf(first, second), decoded.inboundRules)
+        val encoded = decoded.encode()
+        assertTrue(encoded.contains("From=ann%40example.com\tfile=INBOX.lists"))
+        assertTrue(encoded.contains("Subject=x\tfile=Sent"))
+        assertFalse(encoded.contains("bogus"))
+    }
+
+    @Test
+    fun everyBrokenInboundRuleIsKeptRaw() {
+        val raw = "inboundRules=bogus\tzz\nalso\tbad"
+        val text = AccountSettings().encode().trimEnd() + "\n$raw\n"
+        val decoded = decodeAccountSettings(text)
+        assertEquals(emptyList<InboundRule>(), decoded.inboundRules)
+        assertEquals(listOf(raw), decoded.unknownSettings)
+        val encoded = decoded.encode()
+        assertTrue(encoded.contains(raw))
+        assertEquals(encoded.indexOf(raw), encoded.lastIndexOf(raw))
+        assertFalse(encoded.lines().any { it == "inboundRules=" })
+    }
+
+    @Test
+    fun duplicateListEntriesKeepTheFirst() {
+        val text = AccountSettings().encode().trimEnd() +
+            "\nfavorites=1|INBOX|/|In;nope;0|Sent|/|S;1|INBOX|/|Again" +
+            "\nfolderStarts=INBOX|First;nope;Sent|Newest;INBOX|Last" +
+            "\nfolderViews=INBOX|Arrival|newest;bad;Sent|Date|oldest;INBOX|From|newest" +
+            "\nexpandedFolders=INBOX;%;Sent;INBOX\n"
+        val decoded = decodeAccountSettings(text)
+        assertEquals(
+            listOf(
+                FolderFavorite(true, "INBOX", '/', "In"),
+                FolderFavorite(false, "Sent", '/', "S"),
+            ),
+            decoded.favorites,
+        )
+        assertEquals(
+            mapOf("INBOX" to StartRule.First, "Sent" to StartRule.Newest),
+            decoded.folderStarts,
+        )
+        assertEquals(
+            mapOf(
+                "INBOX" to FolderView(SortKey.Arrival, true),
+                "Sent" to FolderView(SortKey.Date, false),
+            ),
+            decoded.folderViews,
+        )
+        assertEquals(setOf("INBOX", "Sent"), decoded.expandedFolders)
+        val encoded = decoded.encode()
+        assertTrue(encoded.lines().contains("favorites=1|INBOX|%2F|In;0|Sent|%2F|S"))
+        assertTrue(encoded.lines().contains("folderStarts=INBOX|First;Sent|Newest"))
+        assertTrue(encoded.lines().contains("folderViews=INBOX|Arrival|newest;Sent|Date|oldest"))
+        assertTrue(encoded.lines().contains("expandedFolders=INBOX;Sent"))
+        assertFalse(encoded.contains("nope"))
+        assertFalse(encoded.contains("Again"))
+        assertFalse(encoded.contains("INBOX|From|newest"))
+    }
+
+    @Test
+    fun unreadableTlsModeIsKeptRaw() {
+        val text = AccountSettings().encode().trimEnd() + "\ntlsMode=NotAMode\n"
+        val decoded = decodeAccountSettings(text)
+        assertEquals(TlsMode.None, decoded.tlsMode)
+        assertTrue(decoded.unknownSettings.contains("tlsMode=NotAMode"))
+        val encoded = decoded.encode()
+        assertEquals(1, encoded.lines().count { it == "tlsMode=NotAMode" })
+        assertFalse(encoded.contains("tlsMode=None"))
+    }
+
     private fun assertThrowsIae(block: () -> Unit) {
         try {
             block()

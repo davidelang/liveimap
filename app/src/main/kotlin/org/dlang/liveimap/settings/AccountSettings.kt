@@ -667,157 +667,169 @@ private val fieldNames = listOf(
 private const val HEX = "0123456789ABCDEF"
 
 fun AccountSettings.encode(): String = buildString {
-    appendLine("imapHost=${percentEncode(imapHost)}")
-    appendLine("imapPort=$imapPort")
-    appendLine("smtpHost=${percentEncode(smtpHost)}")
-    appendLine("smtpPort=$smtpPort")
-    if (smtpUsername.isNotEmpty()) appendLine("smtpUsername=${percentEncode(smtpUsername)}")
-    if (smtpSameAsImap) appendLine("smtpSameAsImap=true")
-    appendLine("username=${percentEncode(username)}")
-    appendLine("displayName=${percentEncode(displayName)}")
-    appendLine("email=${percentEncode(email)}")
-    appendLine("sentMailbox=${percentEncode(sentMailbox)}")
-    appendLine("postponedMailbox=${percentEncode(postponedMailbox)}")
-    appendLine("addressBookMailbox=${percentEncode(addressBookMailbox)}")
-    appendLine("spamMailbox=${percentEncode(spamMailbox)}")
-    appendLine("markSeenOnOpen=$markSeenOnOpen")
-    appendLine("showDeleted=$showDeleted")
-    appendLine("preferHtml=$preferHtml")
-    appendLine("bodyView=${bodyView.name}")
-    appendLine("density=${density.name}")
-    appendLine("defaultView=${encodeView(defaultView)}")
-    appendLine("folderViews=${encodeFolderViews(folderViews)}")
-    appendLine("expandedFolders=${expandedFolders.joinToString(";") { percentEncode(it) }}")
-    appendLine("swipeTrailing=${encodeSwipe(swipeTrailing)}")
-    appendLine("swipeLeading=${encodeSwipe(swipeLeading)}")
-    appendLine("bounceFcc=$bounceFcc")
-    appendLine("friendlyName=${percentEncode(friendlyName)}")
-    appendLine("theme=${theme.name}")
-    appendLine("showUnreadCounts=$showUnreadCounts")
-    appendLine("dateFormat=${dateFormat.name}")
-    appendLine("datePattern=${percentEncode(datePattern)}")
-    appendLine("favorites=${encodeFavorites(favorites)}")
-    appendLine("includeForwardAttachments=$includeForwardAttachments")
-    appendLine("forwardAsAttachment=$forwardAsAttachment")
-    appendLine("replyAboveQuote=$replyAboveQuote")
-    appendLine("askBeforeExpunge=$askBeforeExpunge")
-    appendLine("pipelineCommands=$pipelineCommands")
-    appendLine("logImapTraffic=$logImapTraffic")
-    appendLine("showUserInDebugReport=$showUserInDebugReport")
-    appendLine("readerBar=${encodeReaderBar(readerBar)}")
-    appendLine("dynamicColor=$dynamicColor")
-    appendLine("inboxStart=${inboxStart.name}")
-    appendLine("folderStart=${folderStart.name}")
-    appendLine("folderStarts=${encodeFolderStarts(folderStarts)}")
-    appendLine("startAfterChange=${startAfterChange.name}")
-    appendLine("showRecentRules=$showRecentRules")
-    appendLine("openAtInIndexMenu=$openAtInIndexMenu")
-    appendLine("pinercStartDefault=${pinercStartDefault.name}")
-    if (readerTextLayout != TextLayout.Text) appendLine("readerTextLayout=${readerTextLayout.name}")
-    if (readerTextZoom != 100) appendLine("readerTextZoom=$readerTextZoom")
-    if (idleWakeSeconds != 5) appendLine("idleWakeSeconds=$idleWakeSeconds")
+    val preserved = HashSet<String>()
+    for (entry in unknownSettings) {
+        val first = entry.substringBefore('\n')
+        val eq = first.indexOf('=')
+        if (eq > 0) preserved.add(first.substring(0, eq))
+    }
+    fun put(line: String) {
+        val first = line.substringBefore('\n')
+        val eq = first.indexOf('=')
+        if (eq > 0 && first.substring(0, eq) in preserved) return
+        appendLine(line)
+    }
+    put("imapHost=${percentEncode(imapHost)}")
+    put("imapPort=$imapPort")
+    put("smtpHost=${percentEncode(smtpHost)}")
+    put("smtpPort=$smtpPort")
+    if (smtpUsername.isNotEmpty()) put("smtpUsername=${percentEncode(smtpUsername)}")
+    if (smtpSameAsImap) put("smtpSameAsImap=true")
+    put("username=${percentEncode(username)}")
+    put("displayName=${percentEncode(displayName)}")
+    put("email=${percentEncode(email)}")
+    put("sentMailbox=${percentEncode(sentMailbox)}")
+    put("postponedMailbox=${percentEncode(postponedMailbox)}")
+    put("addressBookMailbox=${percentEncode(addressBookMailbox)}")
+    put("spamMailbox=${percentEncode(spamMailbox)}")
+    put("markSeenOnOpen=$markSeenOnOpen")
+    put("showDeleted=$showDeleted")
+    put("preferHtml=$preferHtml")
+    put("bodyView=${bodyView.name}")
+    put("density=${density.name}")
+    put("defaultView=${encodeView(defaultView)}")
+    put("folderViews=${encodeFolderViews(folderViews)}")
+    put("expandedFolders=${expandedFolders.joinToString(";") { percentEncode(it) }}")
+    put("swipeTrailing=${encodeSwipe(swipeTrailing)}")
+    put("swipeLeading=${encodeSwipe(swipeLeading)}")
+    put("bounceFcc=$bounceFcc")
+    put("friendlyName=${percentEncode(friendlyName)}")
+    put("theme=${theme.name}")
+    put("showUnreadCounts=$showUnreadCounts")
+    put("dateFormat=${dateFormat.name}")
+    put("datePattern=${percentEncode(datePattern)}")
+    put("favorites=${encodeFavorites(favorites)}")
+    put("includeForwardAttachments=$includeForwardAttachments")
+    put("forwardAsAttachment=$forwardAsAttachment")
+    put("replyAboveQuote=$replyAboveQuote")
+    put("askBeforeExpunge=$askBeforeExpunge")
+    put("pipelineCommands=$pipelineCommands")
+    put("logImapTraffic=$logImapTraffic")
+    put("showUserInDebugReport=$showUserInDebugReport")
+    put("readerBar=${encodeReaderBar(readerBar)}")
+    put("dynamicColor=$dynamicColor")
+    put("inboxStart=${inboxStart.name}")
+    put("folderStart=${folderStart.name}")
+    put("folderStarts=${encodeFolderStarts(folderStarts)}")
+    put("startAfterChange=${startAfterChange.name}")
+    put("showRecentRules=$showRecentRules")
+    put("openAtInIndexMenu=$openAtInIndexMenu")
+    put("pinercStartDefault=${pinercStartDefault.name}")
+    if (readerTextLayout != TextLayout.Text) put("readerTextLayout=${readerTextLayout.name}")
+    if (readerTextZoom != 100) put("readerTextZoom=$readerTextZoom")
+    if (idleWakeSeconds != 5) put("idleWakeSeconds=$idleWakeSeconds")
     // Always written (still optional on decode), so each account stores its look-alike choice explicitly.
-    appendLine("nonAsciiDisplay=${nonAsciiDisplay.name}")
-    appendLine("altAddresses=${encodeAltAddresses(altAddresses)}")
+    put("nonAsciiDisplay=${nonAsciiDisplay.name}")
+    put("altAddresses=${encodeAltAddresses(altAddresses)}")
     // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, readerTextLayout when Text, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
-        appendLine("completionSources=${encodeCompletionSources(completionSources)}")
+        put("completionSources=${encodeCompletionSources(completionSources)}")
     }
-    if (extraAddressBooks.isNotEmpty()) appendLine("extraAddressBooks=${encodeCompletionSources(extraAddressBooks)}")
-    if (globalAddressBooks.isNotEmpty()) appendLine("globalAddressBooks=${encodeCompletionSources(globalAddressBooks)}")
-    if (addressBookHistory != 3) appendLine("addressBookHistory=$addressBookHistory")
-    if (addressBookNeverTrim) appendLine("addressBookNeverTrim=true")
-    if (clientSort) appendLine("clientSort=true")
-    if (clientThread) appendLine("clientThread=true")
-    if (pollForNewMail) appendLine("pollForNewMail=true")
-    if (pollSeconds != 60) appendLine("pollSeconds=$pollSeconds")
-    if (statusVisibleCounts) appendLine("statusVisibleCounts=true")
-    if (forceSlowerFallbacks) appendLine("forceSlowerFallbacks=true")
+    if (extraAddressBooks.isNotEmpty()) put("extraAddressBooks=${encodeCompletionSources(extraAddressBooks)}")
+    if (globalAddressBooks.isNotEmpty()) put("globalAddressBooks=${encodeCompletionSources(globalAddressBooks)}")
+    if (addressBookHistory != 3) put("addressBookHistory=$addressBookHistory")
+    if (addressBookNeverTrim) put("addressBookNeverTrim=true")
+    if (clientSort) put("clientSort=true")
+    if (clientThread) put("clientThread=true")
+    if (pollForNewMail) put("pollForNewMail=true")
+    if (pollSeconds != 60) put("pollSeconds=$pollSeconds")
+    if (statusVisibleCounts) put("statusVisibleCounts=true")
+    if (forceSlowerFallbacks) put("forceSlowerFallbacks=true")
     if (hiddenCapabilities.isNotEmpty()) {
-        appendLine("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
+        put("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
     }
-    if (autoExpunge) appendLine("autoExpunge=true")
-    if (deletePolicy != DeletePolicy.MarkDeleted) appendLine("deletePolicy=${deletePolicy.name}")
-    if (moveMethod != MoveMethod.CopyThenMarkDeleted) appendLine("moveMethod=${moveMethod.name}")
-    if (compression != Compression.On) appendLine("compression=${compression.name}")
-    if (moveAllIncludesDeleted) appendLine("moveAllIncludesDeleted=true")
-    if (trashMailbox.isNotEmpty()) appendLine("trashMailbox=${percentEncode(trashMailbox)}")
-    if (savedMailbox.isNotEmpty()) appendLine("savedMailbox=${percentEncode(savedMailbox)}")
-    if (saveNameRule != SaveNameRule.DefaultFolder) appendLine("saveNameRule=${saveNameRule.name}")
-    if (lastSaveMailbox.isNotEmpty()) appendLine("lastSaveMailbox=${percentEncode(lastSaveMailbox)}")
+    if (autoExpunge) put("autoExpunge=true")
+    if (deletePolicy != DeletePolicy.MarkDeleted) put("deletePolicy=${deletePolicy.name}")
+    if (moveMethod != MoveMethod.CopyThenMarkDeleted) put("moveMethod=${moveMethod.name}")
+    if (compression != Compression.On) put("compression=${compression.name}")
+    if (moveAllIncludesDeleted) put("moveAllIncludesDeleted=true")
+    if (trashMailbox.isNotEmpty()) put("trashMailbox=${percentEncode(trashMailbox)}")
+    if (savedMailbox.isNotEmpty()) put("savedMailbox=${percentEncode(savedMailbox)}")
+    if (saveNameRule != SaveNameRule.DefaultFolder) put("saveNameRule=${saveNameRule.name}")
+    if (lastSaveMailbox.isNotEmpty()) put("lastSaveMailbox=${percentEncode(lastSaveMailbox)}")
     if (threadIndexStyle != ThreadIndexStyle.Expanded) {
-        appendLine("threadIndexStyle=${threadIndexStyle.name}")
+        put("threadIndexStyle=${threadIndexStyle.name}")
     }
     if (indexBar != defaultIndexBar()) {
-        appendLine("indexBar=${encodeIndexBar(indexBar)}")
+        put("indexBar=${encodeIndexBar(indexBar)}")
     }
     if (selectionBar != defaultSelectionBar()) {
-        appendLine("selectionBar=${encodeSelectionBar(selectionBar)}")
+        put("selectionBar=${encodeSelectionBar(selectionBar)}")
     }
     if (folderBar != defaultFolderBar()) {
-        appendLine("folderBar=${encodeFolderBar(folderBar)}")
+        put("folderBar=${encodeFolderBar(folderBar)}")
     }
     if (readerToolbar != null) {
-        appendLine("readerToolbar=${encodeReaderToolbar(readerToolbar)}")
+        put("readerToolbar=${encodeReaderToolbar(readerToolbar)}")
     }
     if (composeBar != defaultComposeBar()) {
-        appendLine("composeBar=${encodeComposeBar(composeBar)}")
+        put("composeBar=${encodeComposeBar(composeBar)}")
     }
-    if (toolbarRows != 2) appendLine("toolbarRows=$toolbarRows")
-    if (composerWrapColumn != 74) appendLine("composerWrapColumn=$composerWrapColumn")
-    if (quellFlowed) appendLine("quellFlowed=true")
-    if (multiPane != MultiPane.Off) appendLine("multiPane=${multiPane.name}")
-    if (folderPane != LayoutChoice.Off) appendLine("folderPane=${folderPane.name}")
-    if (foldPosture != LayoutChoice.Off) appendLine("foldPosture=${foldPosture.name}")
-    if (fullScreen) appendLine("fullScreen=true")
-    if (paneArrangement != ArrangementChoice.SideBySide) appendLine("paneArrangement=${paneArrangement.name}")
-    if (previewSize != PreviewChoice.Density) appendLine("previewSize=${previewSize.name}")
-    if (folderPosition != FolderPositionChoice.Beside) appendLine("folderPosition=${folderPosition.name}")
-    if (customLayout.isNotEmpty()) appendLine("customLayout=${percentEncode(customLayout)}")
-    if (sendingRules.isNotEmpty()) appendLine("sendingRules=${percentEncode(sendingRules)}")
-    if (signature.isNotEmpty()) appendLine("signature=${percentEncode(signature)}")
-    if (!sigDashes) appendLine("sigDashes=${sigDashes}")
-    if (sigAtBottom) appendLine("sigAtBottom=${sigAtBottom}")
-    if (quotePrefix != org.dlang.liveimap.ui.compose.DefaultQuotePrefix) appendLine("quotePrefix=${percentEncode(quotePrefix)}")
-    if (replyLeadIn != org.dlang.liveimap.ui.compose.DefaultLeadIn) appendLine("replyLeadIn=${percentEncode(replyLeadIn)}")
-    if (dsnMode != org.dlang.liveimap.ui.compose.DsnMode.Off) appendLine("dsnMode=${dsnMode.name}")
-    if (composerHeaders.isNotEmpty()) appendLine("composerHeaders=${percentEncode(composerHeaders)}")
-    if (viewerHeaders.isNotEmpty()) appendLine("viewerHeaders=${percentEncode(viewerHeaders)}")
-    if (sieveHost.isNotEmpty()) appendLine("sieveHost=${percentEncode(sieveHost)}")
-    if (sievePort != 4190) appendLine("sievePort=$sievePort")
-    if (tlsMode != TlsMode.None) appendLine("tlsMode=${tlsMode.name}")
-    if (certPin.isNotBlank()) appendLine("certPin=${percentEncode(certPin)}")
-    if (sieveCertPin.isNotBlank()) appendLine("sieveCertPin=${percentEncode(sieveCertPin)}")
-    if (jmapCertPin.isNotBlank()) appendLine("jmapCertPin=${percentEncode(jmapCertPin)}")
-    if (allowPlaintextAuth) appendLine("allowPlaintextAuth=true")
-    if (acceptInvalidCert) appendLine("acceptInvalidCert=true")
-    if (allowOldTls) appendLine("allowOldTls=true")
-    if (authMechanism.isNotBlank()) appendLine("authMechanism=${percentEncode(authMechanism)}")
-    if (clientCert.isNotBlank()) appendLine("clientCert=${percentEncode(clientCert)}")
-    if (clientCertAlias.isNotBlank()) appendLine("clientCertAlias=${percentEncode(clientCertAlias)}")
-    if (inboundRules.isNotEmpty()) appendLine("inboundRules=${encodeInboundRules(inboundRules)}")
+    if (toolbarRows != 2) put("toolbarRows=$toolbarRows")
+    if (composerWrapColumn != 74) put("composerWrapColumn=$composerWrapColumn")
+    if (quellFlowed) put("quellFlowed=true")
+    if (multiPane != MultiPane.Off) put("multiPane=${multiPane.name}")
+    if (folderPane != LayoutChoice.Off) put("folderPane=${folderPane.name}")
+    if (foldPosture != LayoutChoice.Off) put("foldPosture=${foldPosture.name}")
+    if (fullScreen) put("fullScreen=true")
+    if (paneArrangement != ArrangementChoice.SideBySide) put("paneArrangement=${paneArrangement.name}")
+    if (previewSize != PreviewChoice.Density) put("previewSize=${previewSize.name}")
+    if (folderPosition != FolderPositionChoice.Beside) put("folderPosition=${folderPosition.name}")
+    if (customLayout.isNotEmpty()) put("customLayout=${percentEncode(customLayout)}")
+    if (sendingRules.isNotEmpty()) put("sendingRules=${percentEncode(sendingRules)}")
+    if (signature.isNotEmpty()) put("signature=${percentEncode(signature)}")
+    if (!sigDashes) put("sigDashes=${sigDashes}")
+    if (sigAtBottom) put("sigAtBottom=${sigAtBottom}")
+    if (quotePrefix != org.dlang.liveimap.ui.compose.DefaultQuotePrefix) put("quotePrefix=${percentEncode(quotePrefix)}")
+    if (replyLeadIn != org.dlang.liveimap.ui.compose.DefaultLeadIn) put("replyLeadIn=${percentEncode(replyLeadIn)}")
+    if (dsnMode != org.dlang.liveimap.ui.compose.DsnMode.Off) put("dsnMode=${dsnMode.name}")
+    if (composerHeaders.isNotEmpty()) put("composerHeaders=${percentEncode(composerHeaders)}")
+    if (viewerHeaders.isNotEmpty()) put("viewerHeaders=${percentEncode(viewerHeaders)}")
+    if (sieveHost.isNotEmpty()) put("sieveHost=${percentEncode(sieveHost)}")
+    if (sievePort != 4190) put("sievePort=$sievePort")
+    if (tlsMode != TlsMode.None) put("tlsMode=${tlsMode.name}")
+    if (certPin.isNotBlank()) put("certPin=${percentEncode(certPin)}")
+    if (sieveCertPin.isNotBlank()) put("sieveCertPin=${percentEncode(sieveCertPin)}")
+    if (jmapCertPin.isNotBlank()) put("jmapCertPin=${percentEncode(jmapCertPin)}")
+    if (allowPlaintextAuth) put("allowPlaintextAuth=true")
+    if (acceptInvalidCert) put("acceptInvalidCert=true")
+    if (allowOldTls) put("allowOldTls=true")
+    if (authMechanism.isNotBlank()) put("authMechanism=${percentEncode(authMechanism)}")
+    if (clientCert.isNotBlank()) put("clientCert=${percentEncode(clientCert)}")
+    if (clientCertAlias.isNotBlank()) put("clientCertAlias=${percentEncode(clientCertAlias)}")
+    if (inboundRules.isNotEmpty()) put("inboundRules=${encodeInboundRules(inboundRules)}")
     if (watchedFolders.isNotEmpty()) {
-        appendLine("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
+        put("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
     }
-    if (extraIdleBudget != 2) appendLine("extraIdleBudget=$extraIdleBudget")
-    if (maxConnections != org.dlang.liveimap.session.DefaultMaxConnections) appendLine("maxConnections=$maxConnections")
+    if (extraIdleBudget != 2) put("extraIdleBudget=$extraIdleBudget")
+    if (maxConnections != org.dlang.liveimap.session.DefaultMaxConnections) put("maxConnections=$maxConnections")
     if (savedSearches.isNotEmpty()) {
-        appendLine("savedSearches=${encodeSavedSearches(savedSearches)}")
+        put("savedSearches=${encodeSavedSearches(savedSearches)}")
     }
     if (savedAdvanced.isNotEmpty()) {
-        appendLine("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
+        put("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
     }
-    if (emailSubmission) appendLine("emailSubmission=true")
-    if (jmapFolders) appendLine("jmapFolders=true")
-    if (askSort != DefaultAskLimit) appendLine("askSort=$askSort")
-    if (askThread != DefaultAskLimit) appendLine("askThread=$askThread")
-    if (askSearch != DefaultAskLimit) appendLine("askSearch=$askSearch")
-    if (askFallback != DefaultAskLimit) appendLine("askFallback=$askFallback")
-    if (sortAskSkip.isNotEmpty()) appendLine("sortAskSkip=${encodeWatchedFolders(sortAskSkip.sorted())}")
-    if (threadAskSkip.isNotEmpty()) appendLine("threadAskSkip=${encodeWatchedFolders(threadAskSkip.sorted())}")
-    if (searchAskSkip.isNotEmpty()) appendLine("searchAskSkip=${encodeWatchedFolders(searchAskSkip.sorted())}")
+    if (emailSubmission) put("emailSubmission=true")
+    if (jmapFolders) put("jmapFolders=true")
+    if (askSort != DefaultAskLimit) put("askSort=$askSort")
+    if (askThread != DefaultAskLimit) put("askThread=$askThread")
+    if (askSearch != DefaultAskLimit) put("askSearch=$askSearch")
+    if (askFallback != DefaultAskLimit) put("askFallback=$askFallback")
+    if (sortAskSkip.isNotEmpty()) put("sortAskSkip=${encodeWatchedFolders(sortAskSkip.sorted())}")
+    if (threadAskSkip.isNotEmpty()) put("threadAskSkip=${encodeWatchedFolders(threadAskSkip.sorted())}")
+    if (searchAskSkip.isNotEmpty()) put("searchAskSkip=${encodeWatchedFolders(searchAskSkip.sorted())}")
     if (fallbackAskSkip.isNotEmpty()) {
-        appendLine("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
+        put("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
     }
     for (line in unknownSettings) appendLine(line)
 }
@@ -960,148 +972,160 @@ fun decodeAccountSettings(text: String): AccountSettings {
         // F69: a missing key takes its default (below) instead of failing the whole account
     }
     val d = AccountSettings()
-    // F69: each field falls back to its default when its stored value can't be read (version skew, hand edits)
-    fun <T> field(default: T, read: () -> T): T = try {
-        read()
-    } catch (_: Exception) {
-        default
+    fun listDroppedAll(key: String, value: Any?): Boolean = when (key) {
+        "inboundRules", "favorites" -> value is List<*> && value.isEmpty()
+        "folderViews", "folderStarts" -> value is Map<*, *> && value.isEmpty()
+        "expandedFolders" -> value is Set<*> && value.isEmpty()
+        else -> false
+    }
+    // A throw keeps the raw line. A list that skips every element of a non-empty value does too.
+    fun <T> field(key: String, default: T, read: () -> T): T {
+        val raw = values[key]
+        return try {
+            val value = read()
+            if (raw != null && raw.isNotEmpty() && listDroppedAll(key, value)) unknown += "$key=$raw"
+            value
+        } catch (_: Exception) {
+            if (raw != null) unknown += "$key=$raw"
+            default
+        }
     }
     return AccountSettings(
-        imapHost = field(d.imapHost) { percentDecode(values.getValue("imapHost")) },
-        imapPort = field(d.imapPort) { parseIntField(values.getValue("imapPort")) },
-        smtpHost = field(d.smtpHost) { percentDecode(values.getValue("smtpHost")) },
-        smtpPort = field(d.smtpPort) { parseIntField(values.getValue("smtpPort")) },
-        smtpUsername = field(d.smtpUsername) { values["smtpUsername"]?.let { percentDecode(it) } ?: "" },
-        smtpSameAsImap = field(d.smtpSameAsImap) { values["smtpSameAsImap"] == "true" },
-        username = field(d.username) { percentDecode(values.getValue("username")) },
-        displayName = field(d.displayName) { percentDecode(values.getValue("displayName")) },
-        email = field(d.email) { percentDecode(values.getValue("email")) },
-        sentMailbox = field(d.sentMailbox) { percentDecode(values.getValue("sentMailbox")) },
-        postponedMailbox = field(d.postponedMailbox) { percentDecode(values.getValue("postponedMailbox")) },
-        addressBookMailbox = field(d.addressBookMailbox) { percentDecode(values.getValue("addressBookMailbox")) },
-        spamMailbox = field(d.spamMailbox) { values["spamMailbox"]?.let { percentDecode(it) } ?: "" },
-        markSeenOnOpen = field(d.markSeenOnOpen) { parseBoolean(values.getValue("markSeenOnOpen")) },
-        showDeleted = field(d.showDeleted) { parseBoolean(values.getValue("showDeleted")) },
-        bodyView = field(d.bodyView) { decodeBodyView(values) },
-        density = field(d.density) { enumValueOf(values.getValue("density")) },
-        defaultView = field(d.defaultView) { parseView(values.getValue("defaultView")) },
-        folderViews = field(d.folderViews) { parseFolderViews(values.getValue("folderViews")) },
-        expandedFolders = field(d.expandedFolders) { parseExpanded(values.getValue("expandedFolders")) },
-        swipeTrailing = field(d.swipeTrailing) { parseSwipe(values.getValue("swipeTrailing")) },
-        swipeLeading = field(d.swipeLeading) { parseSwipe(values.getValue("swipeLeading")) },
-        bounceFcc = field(d.bounceFcc) { parseBoolean(values.getValue("bounceFcc")) },
-        friendlyName = field(d.friendlyName) { values["friendlyName"]?.let { percentDecode(it) } ?: "" },
-        theme = field(d.theme) { values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem },
-        showUnreadCounts = field(d.showUnreadCounts) { values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false },
-        dateFormat = field(d.dateFormat) { values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short },
-        datePattern = field(d.datePattern) { values["datePattern"]?.let { percentDecode(it) } ?: "" },
-        favorites = field(d.favorites) { values["favorites"]?.let { parseFavorites(it) } ?: emptyList() },
-        includeForwardAttachments = field(d.includeForwardAttachments) { values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true },
-        forwardAsAttachment = field(d.forwardAsAttachment) { values["forwardAsAttachment"]?.let { parseBoolean(it) } ?: false },
-        replyAboveQuote = field(d.replyAboveQuote) { values["replyAboveQuote"]?.let { parseBoolean(it) } ?: false },
-        askBeforeExpunge = field(d.askBeforeExpunge) { values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true },
-        pipelineCommands = field(d.pipelineCommands) { values["pipelineCommands"]?.let { parseBoolean(it) } ?: true },
-        logImapTraffic = field(d.logImapTraffic) { values["logImapTraffic"]?.let { parseBoolean(it) } ?: false },
-        showUserInDebugReport = field(d.showUserInDebugReport) { values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false },
-        readerBar = field(d.readerBar) { values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar },
-        dynamicColor = field(d.dynamicColor) { values["dynamicColor"]?.let { parseBoolean(it) } ?: true },
-        inboxStart = field(d.inboxStart) { values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
-        folderStart = field(d.folderStart) { values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
-        folderStarts = field(d.folderStarts) { values["folderStarts"]?.let { parseFolderStarts(it) } ?: emptyMap() },
-        startAfterChange = field(d.startAfterChange) { values["startAfterChange"]?.let { enumValueOf<StartAfterChange>(it) }
+        imapHost = field("imapHost", d.imapHost) { percentDecode(values.getValue("imapHost")) },
+        imapPort = field("imapPort", d.imapPort) { parseIntField(values.getValue("imapPort")) },
+        smtpHost = field("smtpHost", d.smtpHost) { percentDecode(values.getValue("smtpHost")) },
+        smtpPort = field("smtpPort", d.smtpPort) { parseIntField(values.getValue("smtpPort")) },
+        smtpUsername = field("smtpUsername", d.smtpUsername) { values["smtpUsername"]?.let { percentDecode(it) } ?: "" },
+        smtpSameAsImap = field("smtpSameAsImap", d.smtpSameAsImap) { values["smtpSameAsImap"] == "true" },
+        username = field("username", d.username) { percentDecode(values.getValue("username")) },
+        displayName = field("displayName", d.displayName) { percentDecode(values.getValue("displayName")) },
+        email = field("email", d.email) { percentDecode(values.getValue("email")) },
+        sentMailbox = field("sentMailbox", d.sentMailbox) { percentDecode(values.getValue("sentMailbox")) },
+        postponedMailbox = field("postponedMailbox", d.postponedMailbox) { percentDecode(values.getValue("postponedMailbox")) },
+        addressBookMailbox = field("addressBookMailbox", d.addressBookMailbox) { percentDecode(values.getValue("addressBookMailbox")) },
+        spamMailbox = field("spamMailbox", d.spamMailbox) { values["spamMailbox"]?.let { percentDecode(it) } ?: "" },
+        markSeenOnOpen = field("markSeenOnOpen", d.markSeenOnOpen) { parseBoolean(values.getValue("markSeenOnOpen")) },
+        showDeleted = field("showDeleted", d.showDeleted) { parseBoolean(values.getValue("showDeleted")) },
+        bodyView = field("bodyView", d.bodyView) { decodeBodyView(values) },
+        density = field("density", d.density) { enumValueOf(values.getValue("density")) },
+        defaultView = field("defaultView", d.defaultView) { parseView(values.getValue("defaultView")) },
+        folderViews = field("folderViews", d.folderViews) { parseFolderViews(values.getValue("folderViews")) },
+        expandedFolders = field("expandedFolders", d.expandedFolders) { parseExpanded(values.getValue("expandedFolders")) },
+        swipeTrailing = field("swipeTrailing", d.swipeTrailing) { parseSwipe(values.getValue("swipeTrailing")) },
+        swipeLeading = field("swipeLeading", d.swipeLeading) { parseSwipe(values.getValue("swipeLeading")) },
+        bounceFcc = field("bounceFcc", d.bounceFcc) { parseBoolean(values.getValue("bounceFcc")) },
+        friendlyName = field("friendlyName", d.friendlyName) { values["friendlyName"]?.let { percentDecode(it) } ?: "" },
+        theme = field("theme", d.theme) { values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem },
+        showUnreadCounts = field("showUnreadCounts", d.showUnreadCounts) { values["showUnreadCounts"]?.let { parseBoolean(it) } ?: false },
+        dateFormat = field("dateFormat", d.dateFormat) { values["dateFormat"]?.let { enumValueOf<DateFormat>(it) } ?: DateFormat.Short },
+        datePattern = field("datePattern", d.datePattern) { values["datePattern"]?.let { percentDecode(it) } ?: "" },
+        favorites = field("favorites", d.favorites) { values["favorites"]?.let { parseFavorites(it) } ?: emptyList() },
+        includeForwardAttachments = field("includeForwardAttachments", d.includeForwardAttachments) { values["includeForwardAttachments"]?.let { parseBoolean(it) } ?: true },
+        forwardAsAttachment = field("forwardAsAttachment", d.forwardAsAttachment) { values["forwardAsAttachment"]?.let { parseBoolean(it) } ?: false },
+        replyAboveQuote = field("replyAboveQuote", d.replyAboveQuote) { values["replyAboveQuote"]?.let { parseBoolean(it) } ?: false },
+        askBeforeExpunge = field("askBeforeExpunge", d.askBeforeExpunge) { values["askBeforeExpunge"]?.let { parseBoolean(it) } ?: true },
+        pipelineCommands = field("pipelineCommands", d.pipelineCommands) { values["pipelineCommands"]?.let { parseBoolean(it) } ?: true },
+        logImapTraffic = field("logImapTraffic", d.logImapTraffic) { values["logImapTraffic"]?.let { parseBoolean(it) } ?: false },
+        showUserInDebugReport = field("showUserInDebugReport", d.showUserInDebugReport) { values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false },
+        readerBar = field("readerBar", d.readerBar) { values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar },
+        dynamicColor = field("dynamicColor", d.dynamicColor) { values["dynamicColor"]?.let { parseBoolean(it) } ?: true },
+        inboxStart = field("inboxStart", d.inboxStart) { values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
+        folderStart = field("folderStart", d.folderStart) { values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
+        folderStarts = field("folderStarts", d.folderStarts) { values["folderStarts"]?.let { parseFolderStarts(it) } ?: emptyMap() },
+        startAfterChange = field("startAfterChange", d.startAfterChange) { values["startAfterChange"]?.let { enumValueOf<StartAfterChange>(it) }
             ?: StartAfterChange.RerunRule },
-        showRecentRules = field(d.showRecentRules) { values["showRecentRules"]?.let { parseBoolean(it) } ?: true },
-        openAtInIndexMenu = field(d.openAtInIndexMenu) { values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false },
-        pinercStartDefault = field(d.pinercStartDefault) { values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
+        showRecentRules = field("showRecentRules", d.showRecentRules) { values["showRecentRules"]?.let { parseBoolean(it) } ?: true },
+        openAtInIndexMenu = field("openAtInIndexMenu", d.openAtInIndexMenu) { values["openAtInIndexMenu"]?.let { parseBoolean(it) } ?: false },
+        pinercStartDefault = field("pinercStartDefault", d.pinercStartDefault) { values["pinercStartDefault"]?.let { enumValueOf<PinercStartDefault>(it) }
             ?: PinercStartDefault.LeaveUnchanged },
-        readerTextLayout = field(d.readerTextLayout) {
+        readerTextLayout = field("readerTextLayout", d.readerTextLayout) {
             values["readerTextLayout"]?.let { v -> TextLayout.entries.firstOrNull { it.name == v } } ?: TextLayout.Text
         },
-        readerTextZoom = field(d.readerTextZoom) { values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100 },
-        idleWakeSeconds = field(d.idleWakeSeconds) { values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5 },
-        altAddresses = field(d.altAddresses) { values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList() },
-        completionSources = field(d.completionSources) { decodeCompletionSources(values["completionSources"]) },
-        extraAddressBooks = field(d.extraAddressBooks) { values["extraAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
-        globalAddressBooks = field(d.globalAddressBooks) { values["globalAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
-        addressBookHistory = field(d.addressBookHistory) { values["addressBookHistory"]?.let { parseIntField(it) } ?: 3 },
-        addressBookNeverTrim = field(d.addressBookNeverTrim) { values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false },
-        clientSort = field(d.clientSort) { values["clientSort"]?.let { parseBoolean(it) } ?: false },
-        clientThread = field(d.clientThread) { values["clientThread"]?.let { parseBoolean(it) } ?: false },
-        pollForNewMail = field(d.pollForNewMail) { values["pollForNewMail"]?.let { parseBoolean(it) } ?: false },
-        pollSeconds = field(d.pollSeconds) { values["pollSeconds"]?.let { clampPollSeconds(parseIntField(it)) } ?: 60 },
-        statusVisibleCounts = field(d.statusVisibleCounts) { values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false },
-        forceSlowerFallbacks = field(d.forceSlowerFallbacks) { values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false },
-        hiddenCapabilities = field(d.hiddenCapabilities) { values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet() },
-        autoExpunge = field(d.autoExpunge) { values["autoExpunge"]?.let { parseBoolean(it) } ?: false },
-        deletePolicy = field(d.deletePolicy) { values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted },
-        moveMethod = field(d.moveMethod) { values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted },
-        compression = field(d.compression) { values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
+        readerTextZoom = field("readerTextZoom", d.readerTextZoom) { values["readerTextZoom"]?.toIntOrNull()?.let { clampTextZoom(it) } ?: 100 },
+        idleWakeSeconds = field("idleWakeSeconds", d.idleWakeSeconds) { values["idleWakeSeconds"]?.toIntOrNull()?.takeIf { it in IdleWakeSeconds } ?: 5 },
+        altAddresses = field("altAddresses", d.altAddresses) { values["altAddresses"]?.let { decodeAltAddresses(it) } ?: emptyList() },
+        completionSources = field("completionSources", d.completionSources) { decodeCompletionSources(values["completionSources"]) },
+        extraAddressBooks = field("extraAddressBooks", d.extraAddressBooks) { values["extraAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
+        globalAddressBooks = field("globalAddressBooks", d.globalAddressBooks) { values["globalAddressBooks"]?.let { decodeCompletionSources(it) } ?: emptyList() },
+        addressBookHistory = field("addressBookHistory", d.addressBookHistory) { values["addressBookHistory"]?.let { parseIntField(it) } ?: 3 },
+        addressBookNeverTrim = field("addressBookNeverTrim", d.addressBookNeverTrim) { values["addressBookNeverTrim"]?.let { parseBoolean(it) } ?: false },
+        clientSort = field("clientSort", d.clientSort) { values["clientSort"]?.let { parseBoolean(it) } ?: false },
+        clientThread = field("clientThread", d.clientThread) { values["clientThread"]?.let { parseBoolean(it) } ?: false },
+        pollForNewMail = field("pollForNewMail", d.pollForNewMail) { values["pollForNewMail"]?.let { parseBoolean(it) } ?: false },
+        pollSeconds = field("pollSeconds", d.pollSeconds) { values["pollSeconds"]?.let { clampPollSeconds(parseIntField(it)) } ?: 60 },
+        statusVisibleCounts = field("statusVisibleCounts", d.statusVisibleCounts) { values["statusVisibleCounts"]?.let { parseBoolean(it) } ?: false },
+        forceSlowerFallbacks = field("forceSlowerFallbacks", d.forceSlowerFallbacks) { values["forceSlowerFallbacks"]?.let { parseBoolean(it) } ?: false },
+        hiddenCapabilities = field("hiddenCapabilities", d.hiddenCapabilities) { values["hiddenCapabilities"]?.let { decodeHiddenCapabilities(it) } ?: emptySet() },
+        autoExpunge = field("autoExpunge", d.autoExpunge) { values["autoExpunge"]?.let { parseBoolean(it) } ?: false },
+        deletePolicy = field("deletePolicy", d.deletePolicy) { values["deletePolicy"]?.let { enumValueOf<DeletePolicy>(it) } ?: DeletePolicy.MarkDeleted },
+        moveMethod = field("moveMethod", d.moveMethod) { values["moveMethod"]?.let { enumValueOf<MoveMethod>(it) } ?: MoveMethod.CopyThenMarkDeleted },
+        compression = field("compression", d.compression) { values["compression"]?.let { v -> Compression.entries.firstOrNull { it.name == v } }
             ?: Compression.On },
-        moveAllIncludesDeleted = field(d.moveAllIncludesDeleted) { values["moveAllIncludesDeleted"]?.let { parseBoolean(it) } ?: false },
-        trashMailbox = field(d.trashMailbox) { values["trashMailbox"]?.let { percentDecode(it) } ?: "" },
-        savedMailbox = field(d.savedMailbox) { values["savedMailbox"]?.let { percentDecode(it) } ?: "" },
-        saveNameRule = field(d.saveNameRule) { values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder },
-        lastSaveMailbox = field(d.lastSaveMailbox) { values["lastSaveMailbox"]?.let { percentDecode(it) } ?: "" },
-        threadIndexStyle = field(d.threadIndexStyle) { values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
+        moveAllIncludesDeleted = field("moveAllIncludesDeleted", d.moveAllIncludesDeleted) { values["moveAllIncludesDeleted"]?.let { parseBoolean(it) } ?: false },
+        trashMailbox = field("trashMailbox", d.trashMailbox) { values["trashMailbox"]?.let { percentDecode(it) } ?: "" },
+        savedMailbox = field("savedMailbox", d.savedMailbox) { values["savedMailbox"]?.let { percentDecode(it) } ?: "" },
+        saveNameRule = field("saveNameRule", d.saveNameRule) { values["saveNameRule"]?.let { enumValueOf<SaveNameRule>(it) } ?: SaveNameRule.DefaultFolder },
+        lastSaveMailbox = field("lastSaveMailbox", d.lastSaveMailbox) { values["lastSaveMailbox"]?.let { percentDecode(it) } ?: "" },
+        threadIndexStyle = field("threadIndexStyle", d.threadIndexStyle) { values["threadIndexStyle"]?.let { enumValueOf<ThreadIndexStyle>(it) }
             ?: ThreadIndexStyle.Expanded },
-        indexBar = field(d.indexBar) { values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar() },
-        selectionBar = field(d.selectionBar) { values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar() },
-        folderBar = field(d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
-        readerToolbar = field(d.readerToolbar) { values["readerToolbar"]?.let { parseReaderToolbar(it) } },
-        composeBar = field(d.composeBar) { values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar() },
-        toolbarRows = field(d.toolbarRows) { (values["toolbarRows"]?.let { parseIntField(it) } ?: 2).takeIf { it in 1..4 } ?: d.toolbarRows },
-        composerWrapColumn = field(d.composerWrapColumn) { values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74 },
-        quellFlowed = field(d.quellFlowed) { values["quellFlowed"]?.let { parseBoolean(it) } ?: false },
-        multiPane = field(d.multiPane) { values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off },
-        folderPane = field(d.folderPane) { values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
-        foldPosture = field(d.foldPosture) { values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
-        fullScreen = field(d.fullScreen) { values["fullScreen"]?.let { parseBoolean(it) } ?: false },
-        paneArrangement = field(d.paneArrangement) { values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide },
-        folderPosition = field(d.folderPosition) { values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside },
-        customLayout = field(d.customLayout) { values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty() },
-        sendingRules = field(d.sendingRules) { values["sendingRules"]?.let { percentDecode(it) } ?: "" },
-        signature = field(d.signature) { values["signature"]?.let { percentDecode(it) } ?: "" },
-        sigDashes = field(d.sigDashes) { values["sigDashes"]?.let { it == "true" } ?: true },
-        sigAtBottom = field(d.sigAtBottom) { values["sigAtBottom"]?.let { it == "true" } ?: false },
-        quotePrefix = field(d.quotePrefix) { values["quotePrefix"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultQuotePrefix },
-        replyLeadIn = field(d.replyLeadIn) { values["replyLeadIn"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultLeadIn },
-        dsnMode = field(d.dsnMode) { values["dsnMode"]?.let { runCatching { enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(it) }.getOrNull() } ?: org.dlang.liveimap.ui.compose.DsnMode.Off },
-        composerHeaders = field(d.composerHeaders) { values["composerHeaders"]?.let { percentDecode(it) } ?: "" },
-        viewerHeaders = field(d.viewerHeaders) { values["viewerHeaders"]?.let { percentDecode(it) } ?: "" },
-        nonAsciiDisplay = field(d.nonAsciiDisplay) { values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious },
-        previewSize = field(d.previewSize) { values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density },
-        sieveHost = field(d.sieveHost) { values["sieveHost"]?.let { percentDecode(it) } ?: "" },
-        sievePort = field(d.sievePort) { values["sievePort"]?.let { parseSievePort(it) } ?: 4190 },
-        tlsMode = field(d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
-        certPin = field(d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
-        sieveCertPin = field(d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },
-        jmapCertPin = field(d.jmapCertPin) { values["jmapCertPin"]?.let { percentDecode(it) } ?: "" },
-        allowPlaintextAuth = field(d.allowPlaintextAuth) { values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false },
-        acceptInvalidCert = field(d.acceptInvalidCert) { values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false },
-        allowOldTls = field(d.allowOldTls) { values["allowOldTls"]?.let { parseBoolean(it) } ?: false },
-        authMechanism = field(d.authMechanism) { values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "" },
-        clientCert = field(d.clientCert) { values["clientCert"]?.let { percentDecode(it) } ?: "" },
-        clientCertAlias = field(d.clientCertAlias) { values["clientCertAlias"]?.let { percentDecode(it) } ?: "" },
-        inboundRules = field(d.inboundRules) { values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList() },
-        watchedFolders = field(d.watchedFolders) { values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList() },
-        extraIdleBudget = field(d.extraIdleBudget) { values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2 },
+        indexBar = field("indexBar", d.indexBar) { values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar() },
+        selectionBar = field("selectionBar", d.selectionBar) { values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar() },
+        folderBar = field("folderBar", d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
+        readerToolbar = field("readerToolbar", d.readerToolbar) { values["readerToolbar"]?.let { parseReaderToolbar(it) } },
+        composeBar = field("composeBar", d.composeBar) { values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar() },
+        toolbarRows = field("toolbarRows", d.toolbarRows) { (values["toolbarRows"]?.let { parseIntField(it) } ?: 2).takeIf { it in 1..4 } ?: d.toolbarRows },
+        composerWrapColumn = field("composerWrapColumn", d.composerWrapColumn) { values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74 },
+        quellFlowed = field("quellFlowed", d.quellFlowed) { values["quellFlowed"]?.let { parseBoolean(it) } ?: false },
+        multiPane = field("multiPane", d.multiPane) { values["multiPane"]?.let { enumValueOf<MultiPane>(it) } ?: MultiPane.Off },
+        folderPane = field("folderPane", d.folderPane) { values["folderPane"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
+        foldPosture = field("foldPosture", d.foldPosture) { values["foldPosture"]?.let { enumValueOf<LayoutChoice>(it) } ?: LayoutChoice.Off },
+        fullScreen = field("fullScreen", d.fullScreen) { values["fullScreen"]?.let { parseBoolean(it) } ?: false },
+        paneArrangement = field("paneArrangement", d.paneArrangement) { values["paneArrangement"]?.let { runCatching { enumValueOf<ArrangementChoice>(it) }.getOrNull() } ?: ArrangementChoice.SideBySide },
+        folderPosition = field("folderPosition", d.folderPosition) { values["folderPosition"]?.let { runCatching { enumValueOf<FolderPositionChoice>(it) }.getOrNull() } ?: FolderPositionChoice.Beside },
+        customLayout = field("customLayout", d.customLayout) { values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty() },
+        sendingRules = field("sendingRules", d.sendingRules) { values["sendingRules"]?.let { percentDecode(it) } ?: "" },
+        signature = field("signature", d.signature) { values["signature"]?.let { percentDecode(it) } ?: "" },
+        sigDashes = field("sigDashes", d.sigDashes) { values["sigDashes"]?.let { it == "true" } ?: true },
+        sigAtBottom = field("sigAtBottom", d.sigAtBottom) { values["sigAtBottom"]?.let { it == "true" } ?: false },
+        quotePrefix = field("quotePrefix", d.quotePrefix) { values["quotePrefix"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultQuotePrefix },
+        replyLeadIn = field("replyLeadIn", d.replyLeadIn) { values["replyLeadIn"]?.let { percentDecode(it) } ?: org.dlang.liveimap.ui.compose.DefaultLeadIn },
+        dsnMode = field("dsnMode", d.dsnMode) { values["dsnMode"]?.let { runCatching { enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(it) }.getOrNull() } ?: org.dlang.liveimap.ui.compose.DsnMode.Off },
+        composerHeaders = field("composerHeaders", d.composerHeaders) { values["composerHeaders"]?.let { percentDecode(it) } ?: "" },
+        viewerHeaders = field("viewerHeaders", d.viewerHeaders) { values["viewerHeaders"]?.let { percentDecode(it) } ?: "" },
+        nonAsciiDisplay = field("nonAsciiDisplay", d.nonAsciiDisplay) { values["nonAsciiDisplay"]?.let { runCatching { enumValueOf<NonAsciiDisplay>(it) }.getOrNull() } ?: NonAsciiDisplay.HighlightSuspicious },
+        previewSize = field("previewSize", d.previewSize) { values["previewSize"]?.let { runCatching { enumValueOf<PreviewChoice>(it) }.getOrNull() } ?: PreviewChoice.Density },
+        sieveHost = field("sieveHost", d.sieveHost) { values["sieveHost"]?.let { percentDecode(it) } ?: "" },
+        sievePort = field("sievePort", d.sievePort) { values["sievePort"]?.let { parseSievePort(it) } ?: 4190 },
+        tlsMode = field("tlsMode", d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
+        certPin = field("certPin", d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
+        sieveCertPin = field("sieveCertPin", d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },
+        jmapCertPin = field("jmapCertPin", d.jmapCertPin) { values["jmapCertPin"]?.let { percentDecode(it) } ?: "" },
+        allowPlaintextAuth = field("allowPlaintextAuth", d.allowPlaintextAuth) { values["allowPlaintextAuth"]?.let { parseBoolean(it) } ?: false },
+        acceptInvalidCert = field("acceptInvalidCert", d.acceptInvalidCert) { values["acceptInvalidCert"]?.let { parseBoolean(it) } ?: false },
+        allowOldTls = field("allowOldTls", d.allowOldTls) { values["allowOldTls"]?.let { parseBoolean(it) } ?: false },
+        authMechanism = field("authMechanism", d.authMechanism) { values["authMechanism"]?.let { percentDecode(it).trim().uppercase() } ?: "" },
+        clientCert = field("clientCert", d.clientCert) { values["clientCert"]?.let { percentDecode(it) } ?: "" },
+        clientCertAlias = field("clientCertAlias", d.clientCertAlias) { values["clientCertAlias"]?.let { percentDecode(it) } ?: "" },
+        inboundRules = field("inboundRules", d.inboundRules) { values["inboundRules"]?.let { decodeInboundRules(it) } ?: emptyList() },
+        watchedFolders = field("watchedFolders", d.watchedFolders) { values["watchedFolders"]?.let { decodeWatchedFolders(it) } ?: emptyList() },
+        extraIdleBudget = field("extraIdleBudget", d.extraIdleBudget) { values["extraIdleBudget"]?.let { parseIntField(it) } ?: 2 },
         // Never unlimited: a stored value outside the range is clamped to it.
-        maxConnections = field(d.maxConnections) {
+        maxConnections = field("maxConnections", d.maxConnections) {
             values["maxConnections"]?.let { parseIntField(it) }?.let { org.dlang.liveimap.session.clampMaxConnections(it) }
                 ?: org.dlang.liveimap.session.DefaultMaxConnections
         },
-        savedSearches = field(d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
-        savedAdvanced = field(d.savedAdvanced) { values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList() },
-        emailSubmission = field(d.emailSubmission) { values["emailSubmission"]?.let { parseBoolean(it) } ?: false },
-        jmapFolders = field(d.jmapFolders) { values["jmapFolders"]?.let { parseBoolean(it) } ?: false },
-        askSort = field(d.askSort) { values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
-        askThread = field(d.askThread) { values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
-        askSearch = field(d.askSearch) { values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
-        askFallback = field(d.askFallback) { values["askFallback"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
-        sortAskSkip = field(d.sortAskSkip) { values["sortAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
-        threadAskSkip = field(d.threadAskSkip) { values["threadAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
-        searchAskSkip = field(d.searchAskSkip) { values["searchAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
-        fallbackAskSkip = field(d.fallbackAskSkip) { values["fallbackAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        savedSearches = field("savedSearches", d.savedSearches) { values["savedSearches"]?.let { decodeSavedSearches(it) } ?: emptyList() },
+        savedAdvanced = field("savedAdvanced", d.savedAdvanced) { values["savedAdvanced"]?.let { decodeSavedAdvanced(it) } ?: emptyList() },
+        emailSubmission = field("emailSubmission", d.emailSubmission) { values["emailSubmission"]?.let { parseBoolean(it) } ?: false },
+        jmapFolders = field("jmapFolders", d.jmapFolders) { values["jmapFolders"]?.let { parseBoolean(it) } ?: false },
+        askSort = field("askSort", d.askSort) { values["askSort"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askThread = field("askThread", d.askThread) { values["askThread"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askSearch = field("askSearch", d.askSearch) { values["askSearch"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        askFallback = field("askFallback", d.askFallback) { values["askFallback"]?.let { parseAskLimit(it) } ?: DefaultAskLimit },
+        sortAskSkip = field("sortAskSkip", d.sortAskSkip) { values["sortAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        threadAskSkip = field("threadAskSkip", d.threadAskSkip) { values["threadAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        searchAskSkip = field("searchAskSkip", d.searchAskSkip) { values["searchAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
+        fallbackAskSkip = field("fallbackAskSkip", d.fallbackAskSkip) { values["fallbackAskSkip"]?.let { decodeWatchedFolders(it).toSet() } ?: emptySet() },
         unknownSettings = unknown,
     )
 }
@@ -1243,7 +1267,16 @@ private fun encodeInboundRule(rule: InboundRule): String {
 
 private fun decodeInboundRules(value: String): List<InboundRule> {
     if (value.isEmpty()) return emptyList()
-    return value.split('\n').map { decodeInboundRule(it) }
+    val out = ArrayList<InboundRule>()
+    for (line in value.split('\n')) {
+        val rule = try {
+            decodeInboundRule(line)
+        } catch (_: Exception) {
+            continue
+        }
+        out.add(rule)
+    }
+    return out
 }
 
 private fun decodeInboundRule(value: String): InboundRule {
@@ -1389,6 +1422,12 @@ fun emailDefaultedFromUsername(username: String, email: String): String {
     return email
 }
 
+private fun delimiterText(value: String): String = try {
+    percentDecode(value)
+} catch (_: IllegalArgumentException) {
+    if (value.length == 1) value else throw IllegalArgumentException("bad favorites")
+}
+
 private fun encodeFavorite(favorite: FolderFavorite): String =
     "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}|${percentEncode(favorite.label)}"
 
@@ -1400,19 +1439,24 @@ private fun parseFavorites(value: String): List<FolderFavorite> {
     val out = mutableListOf<FolderFavorite>()
     val seen = mutableSetOf<Pair<Boolean, String>>()
     for (part in value.split(';')) {
-        val bits = part.split('|')
-        if (bits.size != 3 && bits.size != 4) throw IllegalArgumentException("bad favorites")
-        val node = when (bits[0]) {
-            "1" -> true
-            "0" -> false
-            else -> throw IllegalArgumentException("bad favorites")
+        val favorite = try {
+            val bits = part.split('|')
+            if (bits.size != 3 && bits.size != 4) throw IllegalArgumentException("bad favorites")
+            val node = when (bits[0]) {
+                "1" -> true
+                "0" -> false
+                else -> throw IllegalArgumentException("bad favorites")
+            }
+            val mailbox = percentDecode(bits[1])
+            val delimText = delimiterText(bits[2])
+            if (delimText.length != 1) throw IllegalArgumentException("bad favorites")
+            val label = if (bits.size == 4) percentDecode(bits[3]) else ""
+            FolderFavorite(node, mailbox, delimText[0], label)
+        } catch (_: Exception) {
+            continue
         }
-        val mailbox = percentDecode(bits[1])
-        val delimText = percentDecode(bits[2])
-        if (delimText.length != 1) throw IllegalArgumentException("bad favorites")
-        val label = if (bits.size == 4) percentDecode(bits[3]) else ""
-        if (!seen.add(node to mailbox)) throw IllegalArgumentException("duplicate favorite")
-        out += FolderFavorite(node, mailbox, delimText[0], label)
+        if (!seen.add(favorite.node to favorite.mailbox)) continue
+        out += favorite
     }
     return out
 }
@@ -1453,16 +1497,17 @@ private fun parseFolderStarts(value: String): Map<String, StartRule> {
     if (value.isEmpty()) return emptyMap()
     val out = linkedMapOf<String, StartRule>()
     for (part in value.split(';')) {
-        val bits = part.split('|')
-        if (bits.size != 2) throw IllegalArgumentException("bad folderStarts")
-        val mailbox = percentDecode(bits[0])
-        if (out.containsKey(mailbox)) throw IllegalArgumentException("duplicate folder start")
-        val rule = try {
-            enumValueOf<StartRule>(bits[1])
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad folderStarts")
+        val parsed = try {
+            val bits = part.split('|')
+            if (bits.size != 2) throw IllegalArgumentException("bad folderStarts")
+            val mailbox = percentDecode(bits[0])
+            val rule = enumValueOf<StartRule>(bits[1])
+            mailbox to rule
+        } catch (_: Exception) {
+            continue
         }
-        out[mailbox] = rule
+        if (out.containsKey(parsed.first)) continue
+        out[parsed.first] = parsed.second
     }
     return out
 }
@@ -1480,11 +1525,16 @@ private fun parseFolderViews(value: String): Map<String, FolderView> {
     if (value.isEmpty()) return emptyMap()
     val out = linkedMapOf<String, FolderView>()
     for (part in value.split(';')) {
-        val bits = part.split('|')
-        if (bits.size != 3) throw IllegalArgumentException("bad folderViews")
-        val mailbox = percentDecode(bits[0])
-        if (out.containsKey(mailbox)) throw IllegalArgumentException("duplicate folder view")
-        out[mailbox] = FolderView(enumValueOf(bits[1]), parseNewest(bits[2]))
+        val parsed = try {
+            val bits = part.split('|')
+            if (bits.size != 3) throw IllegalArgumentException("bad folderViews")
+            val mailbox = percentDecode(bits[0])
+            mailbox to FolderView(enumValueOf(bits[1]), parseNewest(bits[2]))
+        } catch (_: Exception) {
+            continue
+        }
+        if (out.containsKey(parsed.first)) continue
+        out[parsed.first] = parsed.second
     }
     return out
 }
@@ -1493,8 +1543,12 @@ private fun parseExpanded(value: String): Set<String> {
     if (value.isEmpty()) return emptySet()
     val out = linkedSetOf<String>()
     for (part in value.split(';')) {
-        val mailbox = percentDecode(part)
-        if (!out.add(mailbox)) throw IllegalArgumentException("duplicate expanded folder")
+        val mailbox = try {
+            percentDecode(part)
+        } catch (_: Exception) {
+            continue
+        }
+        out.add(mailbox)
     }
     return out
 }
