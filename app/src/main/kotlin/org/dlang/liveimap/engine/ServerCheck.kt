@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine
 
+import org.dlang.liveimap.session.imapAuthOrder
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.TlsMode
 
@@ -43,9 +44,6 @@ data class ServerCheck(
     val notes: List<String> = emptyList(),
 )
 
-private val supportedSasl = setOf("PLAIN", "LOGIN", "CRAM-MD5", "SCRAM-SHA-1", "SCRAM-SHA-256")
-private val challengeSasl = setOf("CRAM-MD5", "SCRAM-SHA-1", "SCRAM-SHA-256")
-
 /**
  * Judges a probe against the account's settings. oldTlsWorks is the result of a second probe with
  * allowOldTls on, made only when the first TLS attempt failed with the setting off (null when not tried).
@@ -81,17 +79,19 @@ fun checkServer(settings: AccountSettings, probe: ServerProbe, oldTlsWorks: Bool
     if ("IMAP4REV1" !in words && "IMAP4REV2" !in words) conflicts.add("server does not advertise IMAP4rev1")
     val mechanisms = words.filter { it.startsWith("AUTH=") }.map { it.removePrefix("AUTH=") }.toSet()
     val loginDisabled = "LOGINDISABLED" in words
-    val usable = mechanisms.intersect(supportedSasl)
     val secure = settings.tlsMode != TlsMode.None
-    if (loginDisabled && usable.isEmpty()) {
+    val hasClientCert = settings.clientCert.isNotBlank() || settings.clientCertAlias.isNotBlank()
+    val couldUse = imapAuthOrder(caps, tls = secure, plaintextOk = true, channelBinding = secure, clientMechanisms = "", clientCert = hasClientCert)
+    val withoutPlaintext = imapAuthOrder(caps, tls = secure, plaintextOk = false, channelBinding = secure, clientMechanisms = "", clientCert = hasClientCert)
+    if (loginDisabled && couldUse.isEmpty()) {
         conflicts.add(
             if (!secure) "plaintext login disabled by the server; use STARTTLS or implicit TLS"
             else "no supported login method (server offers: ${mechanisms.sorted().joinToString(" ").ifEmpty { "none" }})",
         )
-    } else if (!secure && !settings.allowPlaintextAuth && usable.intersect(challengeSasl).isEmpty()) {
+    } else if (!secure && !settings.allowPlaintextAuth && withoutPlaintext.isEmpty()) {
         conflicts.add("plaintext connection: login needs Allow plaintext authentication (or use TLS)")
     }
-    if (mechanisms.isNotEmpty() && usable.isEmpty() && !loginDisabled) {
+    if (mechanisms.isNotEmpty() && couldUse.isEmpty() && !loginDisabled) {
         notes.add("server offers no SASL mechanism the app supports (${mechanisms.sorted().joinToString(" ")}); LOGIN is used")
     }
     return ServerCheck(reachable = true, conflicts = conflicts, notes = notes)

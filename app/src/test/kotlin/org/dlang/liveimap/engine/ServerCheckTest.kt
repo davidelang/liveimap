@@ -76,4 +76,36 @@ class ServerCheckTest {
         val check = checkServer(base, ServerProbe(post = "IMAP4rev1 LOGINDISABLED AUTH=GSSAPI"))
         assertEquals(listOf("no supported login method (server offers: GSSAPI)"), check.conflicts)
     }
+
+    @Test
+    fun externalWithClientCert() {
+        val probe = ServerProbe(post = "IMAP4rev1 LOGINDISABLED AUTH=EXTERNAL")
+        assertEquals(emptyList<String>(), checkServer(base.copy(clientCert = "cert.p12"), probe).conflicts)
+        assertEquals(emptyList<String>(), checkServer(base.copy(clientCertAlias = "alias"), probe).conflicts)
+    }
+
+    @Test
+    fun externalWithoutClientCert() {
+        val check = checkServer(base, ServerProbe(post = "IMAP4rev1 LOGINDISABLED AUTH=EXTERNAL"))
+        assertEquals(listOf("no supported login method (server offers: EXTERNAL)"), check.conflicts)
+    }
+
+    @Test
+    fun scramPlusAloneOnTls() {
+        val check = checkServer(base, ServerProbe(post = "IMAP4rev1 LOGINDISABLED AUTH=SCRAM-SHA-256-PLUS"))
+        assertEquals(emptyList<String>(), check.conflicts)
+    }
+
+    @Test
+    fun plaintextLoginDisabledAndPlain() {
+        val plain = base.copy(tlsMode = TlsMode.None, allowPlaintextAuth = false)
+        assertEquals(
+            listOf("plaintext connection: login needs Allow plaintext authentication (or use TLS)"),
+            checkServer(plain, ServerProbe(pre = "IMAP4rev1 LOGINDISABLED AUTH=PLAIN")).conflicts,
+        )
+        assertEquals(
+            listOf("plaintext login disabled by the server; use STARTTLS or implicit TLS"),
+            checkServer(plain, ServerProbe(pre = "IMAP4rev1 STARTTLS LOGINDISABLED")).conflicts,
+        )
+    }
 }

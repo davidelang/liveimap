@@ -3344,3 +3344,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: orderedSubjectThreads groups by baseSubject(decodeHeaderWords(subject)) and orders by dateHeaderEpoch then uid; ThreadHeader.dateHeader is the last field; the JNI fetch asks for Date; normalizedSubject is removed; referenceThreads is unchanged
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The server check uses the same SASL order as login
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/server-check-auth-20261016-0238-plan.md
+- Work: the server check uses imapAuthOrder for couldUse and withoutPlaintext; supportedSasl and challengeSasl are deleted
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
