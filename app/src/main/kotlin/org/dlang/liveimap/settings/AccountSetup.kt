@@ -20,6 +20,7 @@ import org.dlang.liveimap.jmap.jmapMailboxLevel
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.platformJmapExchange
+import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SerialMailSession
@@ -55,6 +56,8 @@ internal fun imapAuthenticationFailure(error: Throwable?): Boolean =
  * makes one authenticated JMAP call; SMTP sending logs in to SMTP and quits without sending anything.
  */
 suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes): List<String> {
+    val blocked = settings.preservedSecurityKey()
+    if (blocked != null) return listOf("FAIL account settings need attention: $blocked")
     val lines = ArrayList<String>()
     var imapAuthFailed = false
     suspend fun step(name: String, block: suspend () -> String) {
@@ -159,6 +162,8 @@ internal fun testAccountProbes(
             }
         },
         jmapLogin = {
+            val key = candidate.preservedSecurityKey()
+            if (key != null) throw MailFailure("FAIL account settings need attention: $key")
             withContext(Dispatchers.IO) {
                 val probeKey = java.util.UUID.randomUUID().toString()
                 try {

@@ -3151,3 +3151,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: preservedSecurityKey is tlsMode, deletePolicy, or moveMethod when that raw line is kept; IMAP open, SMTP send, and JMAP open stop with "account settings need attention" before a password or SMTP
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Choosing a security setting clears the block, and Test account stops first
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Work: withoutPreserved drops the tlsMode, deletePolicy, or moveMethod line when that choice is saved, including the default; Test account, smtpLoginCheck, and the JMAP probe stop with account settings need attention before a probe or SMTP
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

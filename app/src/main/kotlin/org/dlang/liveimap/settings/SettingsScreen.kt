@@ -971,7 +971,7 @@ private fun AccountGroup(editor: SettingsEditor) {
                     server.tlsMode,
                     { tlsName(it) },
                 ) { mode ->
-                    userServerSave(server.withTlsMode(mode))
+                    userServerSave(server.withTlsMode(mode).withoutPreserved("tlsMode"))
                 }
                 BoolField(
                     stringResource(R.string.settings_allow_plaintext),
@@ -1611,7 +1611,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 settings.deletePolicy,
                 { deletePolicyName(it) },
             ) { policy ->
-                editor.persist(editor.settings.copy(deletePolicy = policy))
+                editor.persist(editor.settings.copy(deletePolicy = policy).withoutPreserved("deletePolicy"))
             }
             ReasonChoice(
                 stringResource(R.string.settings_move_method),
@@ -1626,7 +1626,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 settings.moveMethod,
                 { moveMethodName(it) },
             ) { method ->
-                editor.persist(editor.settings.copy(moveMethod = method))
+                editor.persist(editor.settings.copy(moveMethod = method).withoutPreserved("moveMethod"))
             }
             BoolField(
                 stringResource(R.string.settings_move_all_deleted),

@@ -547,6 +547,18 @@ data class AccountSettings(
         if ("moveMethod" in present) return "moveMethod"
         return null
     }
+
+    /** A chosen value, including the default, drops every kept line for [key]. */
+    fun withoutPreserved(key: String): AccountSettings {
+        val kept = ArrayList<String>()
+        for (entry in unknownSettings) {
+            val first = entry.substringBefore('\n')
+            val eq = first.indexOf('=')
+            if (eq > 0 && first.substring(0, eq) == key) continue
+            kept.add(entry)
+        }
+        return copy(unknownSettings = kept)
+    }
 }
 
 private val fieldNames = listOf(

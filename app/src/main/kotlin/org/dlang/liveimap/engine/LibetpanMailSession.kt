@@ -1350,6 +1350,8 @@ class LibetpanMailSession : MailSession {
         val probe = smtpProbe
         val acct = account ?: probe?.settings ?: credentials?.settings
             ?: throw MailFailure("not connected")
+        val key = acct.preservedSecurityKey()
+        if (key != null) throw MailFailure("FAIL account settings need attention: $key")
         val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password.orEmpty()
         val ownSmtpPassword = probe?.smtpPassword ?: credentials?.smtpPassword ?: ""
         val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword)

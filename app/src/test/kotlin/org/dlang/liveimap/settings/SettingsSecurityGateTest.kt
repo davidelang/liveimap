@@ -1,7 +1,11 @@
 package org.dlang.liveimap.settings
 
 import java.io.File
+import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.session.SmtpLoginCheck
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class SettingsSecurityGateTest {
@@ -18,6 +22,34 @@ class SettingsSecurityGateTest {
         val jopen = functionBody(jmap, "fun open(account: AccountSettings)")
         assertBefore(jopen, "preservedSecurityKey", "passwordOf")
         assertTrue(jopen.contains("account settings need attention:"))
+    }
+
+    @Test
+    fun testAccountStopsWhenASecurityLineIsPreserved() = runBlocking {
+        val settings = AccountSettings(unknownSettings = listOf("tlsMode=NotAMode"))
+        val probes = AccountProbes(
+            imapLogin = { fail("imap") },
+            smtpLogin = { fail("smtp"); SmtpLoginCheck.LoggedIn },
+            jmapLogin = { fail("jmap") },
+        )
+        val lines = testAccountLogins(settings, probes)
+        assertEquals(listOf("FAIL account settings need attention: tlsMode"), lines)
+    }
+
+    @Test
+    fun choiceAndProbesClearOrStopOnThePreservedLine() {
+        val imap = text("kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt")
+        val smtp = functionBody(imap, "fun smtpLoginCheck(")
+        assertBefore(smtp, "preservedSecurityKey", "stageSmtp")
+        assertTrue(smtp.contains("account settings need attention:"))
+        val setup = text("kotlin/org/dlang/liveimap/settings/AccountSetup.kt")
+        val jmapStart = setup.indexOf("jmapLogin = {")
+        val jmap = setup.substring(jmapStart, setup.indexOf("offerForAccount", jmapStart))
+        assertTrue(jmap.contains("preservedSecurityKey"))
+        val screen = text("kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
+        assertTrue(screen.contains("withoutPreserved(\"tlsMode\")"))
+        assertTrue(screen.contains("withoutPreserved(\"deletePolicy\")"))
+        assertTrue(screen.contains("withoutPreserved(\"moveMethod\")"))
     }
 
     private fun assertBefore(body: String, earlier: String, later: String) {

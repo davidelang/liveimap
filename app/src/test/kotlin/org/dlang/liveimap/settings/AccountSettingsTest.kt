@@ -1197,6 +1197,27 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun choosingTheDefaultClearsThePreservedSecurityLine() {
+        fun cleared(raw: String, choose: (AccountSettings) -> AccountSettings) {
+            val decoded = decodeAccountSettings(AccountSettings().encode().trimEnd() + "\n$raw\n")
+            val chosen = choose(decoded)
+            val text = chosen.encode()
+            val again = decodeAccountSettings(text)
+            assertNull(again.preservedSecurityKey())
+            assertFalse(text.contains(raw))
+        }
+        cleared("deletePolicy=Nope") {
+            it.copy(deletePolicy = DeletePolicy.MarkDeleted).withoutPreserved("deletePolicy")
+        }
+        cleared("moveMethod=Nope") {
+            it.copy(moveMethod = MoveMethod.CopyThenMarkDeleted).withoutPreserved("moveMethod")
+        }
+        cleared("tlsMode=NotAMode") {
+            it.copy(tlsMode = TlsMode.None).withoutPreserved("tlsMode")
+        }
+    }
+
+    @Test
     fun editedFavoriteReplacesPreservedLine() {
         val raw = "favorites=nope;also-bad"
         val text = AccountSettings().encode().trimEnd() + "\n$raw\n"
