@@ -593,6 +593,12 @@ private fun AccountGroup(editor: SettingsEditor) {
     fun userServerSave(next: AccountSettings) {
         serverDraft = if (sameServer(next, settings)) null else next
     }
+    // withServerOf copies tlsMode and not unknownSettings. A draft that dropped the line, or a default
+    // choice sameServer discards, has to clear that line on the settings Save and Test account use.
+    fun savedServer(chosen: AccountSettings): AccountSettings {
+        val merged = editor.settings.withServerOf(chosen)
+        return if (chosen.withoutPreserved("tlsMode") == chosen) merged.withoutPreserved("tlsMode") else merged
+    }
     // Navigation waiting on the unsaved-edits answer (drawer); runs after Save or Discard, dropped on Keep editing.
     var leaveAfter by remember { mutableStateOf<(() -> Unit)?>(null) }
     DisposableEffect(hasDraft) {
@@ -623,7 +629,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             }
             val review = serverSaveReview(draft, result)
             if (review.quiet) {
-                editor.persist(editor.settings.withServerOf(draft))
+                editor.persist(savedServer(draft))
                 commitPasswords() // after the server: a moved host clears the old password, then the typed one is stored
                 serverDraft = null
             } else {
@@ -646,7 +652,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     serverReview = null
-                    serverDraft?.let { editor.persist(editor.settings.withServerOf(it)) }
+                    serverDraft?.let { editor.persist(savedServer(it)) }
                     commitPasswords()
                     serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
@@ -971,7 +977,12 @@ private fun AccountGroup(editor: SettingsEditor) {
                     server.tlsMode,
                     { tlsName(it) },
                 ) { mode ->
-                    userServerSave(server.withTlsMode(mode).withoutPreserved("tlsMode"))
+                    val chosen = server.withTlsMode(mode).withoutPreserved("tlsMode")
+                    if (sameServer(chosen, editor.settings)) {
+                        val cleared = editor.settings.withoutPreserved("tlsMode")
+                        if (cleared != editor.settings) editor.persist(cleared)
+                    }
+                    userServerSave(chosen)
                 }
                 BoolField(
                     stringResource(R.string.settings_allow_plaintext),
@@ -1209,7 +1220,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             TextButton(
                 onClick = {
                     if (!probing) {
-                        val candidate = editor.settings.withServerOf(server)
+                        val candidate = savedServer(server)
                         probing = true
                         serverReport = emptyList()
                         editor.ui.launch {

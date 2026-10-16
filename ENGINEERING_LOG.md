@@ -3158,3 +3158,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: withoutPreserved drops the tlsMode, deletePolicy, or moveMethod line when that choice is saved, including the default; Test account, smtpLoginCheck, and the JMAP probe stop with account settings need attention before a probe or SMTP
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Picking TLS drops the preserved line on the saved settings
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Fixup: picking TLS, including the default, drops the preserved tlsMode line on the settings Save and Test account use. Delete and move are unchanged.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
