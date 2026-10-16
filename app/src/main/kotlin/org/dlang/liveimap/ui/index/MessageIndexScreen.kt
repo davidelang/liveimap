@@ -433,7 +433,8 @@ private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String, badPatter
         return badPattern
     }
     return try {
-        formatter.format(whenZoned)
+        val formatted = formatter.format(whenZoned)
+        if (formatted.isEmpty()) badPattern else formatted
     } catch (error: DateTimeException) {
         badPattern
     }
