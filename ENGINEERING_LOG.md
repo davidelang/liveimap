@@ -3361,3 +3361,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
 - Start HEAD 483c826a5
+
+## 2026-10-16 - The extra-watch applier only tests called is removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-watch-apply-20261016-0346-plan.md
+- Work: the extra-watch applier only tests called is removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

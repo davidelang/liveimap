@@ -12,8 +12,10 @@ import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.io.File
 
 class WatchedFoldersTest {
     @Test
@@ -62,46 +64,15 @@ class WatchedFoldersTest {
     }
 
     @Test
-    fun freshApplyOpensIdleThenStatus() = runBlocking {
-        val link = RecordingLink()
-        val apply = ExtraWatchApply()
-        apply.apply(WatchPlan(listOf("A", "B"), listOf("C")), link)
-        assertEquals(listOf("openIdle A", "openIdle B", "status C"), link.calls)
-        assertEquals(listOf("A", "B"), apply.openNames())
-    }
-
-    @Test
-    fun secondApplyClosesDroppedIdleThenStatus() = runBlocking {
-        val link = RecordingLink()
-        val apply = ExtraWatchApply()
-        apply.apply(WatchPlan(listOf("A", "B"), listOf("C")), link)
-        link.calls.clear()
-        apply.apply(WatchPlan(listOf("A"), listOf("B", "C")), link)
-        assertEquals(listOf("closeIdle B", "status B", "status C"), link.calls)
-        assertEquals(listOf("A"), apply.openNames())
-    }
-
-    @Test
-    fun stopClosesRemainingOpenName() = runBlocking {
-        val link = RecordingLink()
-        val apply = ExtraWatchApply()
-        apply.apply(WatchPlan(listOf("A", "B"), listOf("C")), link)
-        apply.apply(WatchPlan(listOf("A"), listOf("B", "C")), link)
-        link.calls.clear()
-        apply.stop(link)
-        assertEquals(listOf("closeIdle A"), link.calls)
-        assertEquals(emptyList<String>(), apply.openNames())
-    }
-
-    @Test
-    fun emptyPlanClosesOpenNamesWithoutStatus() = runBlocking {
-        val link = RecordingLink()
-        val apply = ExtraWatchApply()
-        apply.apply(WatchPlan(listOf("A"), emptyList()), link)
-        link.calls.clear()
-        apply.apply(WatchPlan(emptyList(), emptyList()), link)
-        assertEquals(listOf("closeIdle A"), link.calls)
-        assertEquals(emptyList<String>(), apply.openNames())
+    fun extraWatchApplyIsGone() {
+        val text = listOf(
+            "src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/session/WatchedFolders.kt",
+        ).map(::File).first { it.exists() }.readText()
+        assertFalse(text.contains("class ExtraWatchApply"))
+        assertFalse(text.contains("interface ExtraWatchLink"))
+        assertTrue(text.contains("fun applyStoredIdle"))
+        assertTrue(text.contains("fun extraWatchPlan"))
     }
 
     @Test
@@ -151,15 +122,6 @@ class WatchedFoldersTest {
         assertEquals(null, extraIdleBudgetFromText("-1")) // F81: 0..MaxExtraIdle only
         assertEquals(null, extraIdleBudgetFromText(""))
         assertEquals(null, extraIdleBudgetFromText("x"))
-    }
-
-    @Test
-    fun statusOnlyDoesNotOpenIdle() = runBlocking {
-        val link = RecordingLink()
-        val apply = ExtraWatchApply()
-        apply.apply(WatchPlan(emptyList(), listOf("Sent")), link)
-        assertEquals(listOf("status Sent"), link.calls)
-        assertEquals(emptyList<String>(), apply.openNames())
     }
 
     @Test
@@ -859,22 +821,6 @@ class WatchedFoldersTest {
         }
 
         private fun unused(): Nothing = throw MailFailure("not used")
-    }
-
-    private class RecordingLink : ExtraWatchLink {
-        val calls = ArrayList<String>()
-
-        override suspend fun openIdle(mailbox: String) {
-            calls.add("openIdle $mailbox")
-        }
-
-        override suspend fun closeIdle(mailbox: String) {
-            calls.add("closeIdle $mailbox")
-        }
-
-        override suspend fun status(mailbox: String) {
-            calls.add("status $mailbox")
-        }
     }
 
     @Test
