@@ -224,7 +224,7 @@ class AccountStore private constructor(private val context: Context) {
                 val stored = storedPreference(accountId)
                 if (!manager.removeAccountExplicitly(account)) return@withContext false
                 JmapPlainHttp.drop(accountId)
-                removeAccountFiles(context, accountId, stored)
+                removeAccountFiles(context.filesDir, accountId, stored)
                 deleteUnsentAccount(context.filesDir, accountId)
                 AndroidAccountCipher().delete(accountId)
                 context.accountSettingsDataStore.edit { prefs ->
@@ -580,7 +580,7 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             dropMailSession(accountId)
             val stored = appContext.accountSettingsDataStore.data.first()[stringPreferencesKey(accountId)]
-            removeAccountFiles(appContext, accountId, stored)
+            removeAccountFiles(appContext.filesDir, accountId, stored)
             AccountStore.shared(appContext).forgetSmtpPassword(accountId)
         }
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
@@ -610,13 +610,13 @@ class AccountCredentials(
  * F29: files and keys one account leaves outside AccountManager and DataStore. Both removal paths (in-app and
  * Settings > Accounts) call this. [stored] is the account's encoded settings, read before they are deleted.
  */
-internal fun removeAccountFiles(context: Context, accountId: String, stored: String?) {
+internal fun removeAccountFiles(filesDir: File, accountId: String, stored: String?) {
     val settings = stored?.let { runCatching { decodeAccountSettings(it) }.getOrNull() }
     if (settings != null) {
         if (settings.clientCert.isNotBlank()) runCatching { org.dlang.liveimap.engine.ClientCertStore.remove(settings.clientCert) }
         if (settings.clientCertAlias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(settings.clientCertAlias)
     }
-    org.dlang.liveimap.ui.reader.imageTrustFile(context.filesDir, accountId)?.delete()
+    org.dlang.liveimap.ui.reader.imageTrustFile(filesDir, accountId)?.delete()
 }
 
 

@@ -3353,3 +3353,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-16 - mailbox parent ids are read from the parsed list
+
+## 2026-10-16 - Removing an account deletes that account's cert and image-trust files
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/remove-account-files-20261016-0300-plan.md
+- Work: removing an account deletes that account's cert and image-trust files
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 483c826a5
