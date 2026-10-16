@@ -35,7 +35,7 @@ fun parseJmapMailboxes(text: String): List<JmapMailbox> {
     return list.map { parseMailbox(it) }
 }
 
-fun parentIdsOf(list: Json.Arr): Set<String> {
+internal fun parentIdsOf(list: Json.Arr): Set<String> {
     val ids = linkedSetOf<String>()
     for (item in list.values) {
         if (item !is Json.Obj) throw JmapFailure("jmap mailbox is not an object")
