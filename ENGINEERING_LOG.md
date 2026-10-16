@@ -3351,3 +3351,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the server check uses imapAuthOrder for couldUse and withoutPlaintext; supportedSasl and challengeSasl are deleted
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - mailbox parent ids are read from the parsed list

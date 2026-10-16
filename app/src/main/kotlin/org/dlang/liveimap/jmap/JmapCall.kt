@@ -78,7 +78,25 @@ fun jmapMailboxChildren(
     val authorization = jmapBasicAuthorization(username, password)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy, accountKey)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
-    return jmapMailboxParentIds(parentListText(result.body))
+    val root = try {
+        JsonParser(result.body).parseDocument()
+    } catch (_: JsonBroken) {
+        throw JmapFailure("jmap mailbox response is not an object")
+    }
+    if (root !is Json.Obj) throw JmapFailure("jmap mailbox response is not an object")
+    val responses = root.fields["methodResponses"]
+    if (responses !is Json.Arr) throw JmapFailure("jmap mailbox response lacks get")
+    for (item in responses.values) {
+        if (item !is Json.Arr || item.values.size < 2) continue
+        val name = item.values[0]
+        if (name !is Json.Str || name.text != "Mailbox/get") continue
+        val args = item.values[1]
+        if (args !is Json.Obj) throw JmapFailure("jmap mailbox response lacks list")
+        val list = args.fields["list"] ?: throw JmapFailure("jmap mailbox response lacks list")
+        if (list !is Json.Arr) throw JmapFailure("jmap mailbox list is not an array")
+        return parentIdsOf(list)
+    }
+    throw JmapFailure("jmap mailbox response lacks get")
 }
 
 fun platformJmapPost(url: String, body: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapHttpExchange {
@@ -180,64 +198,4 @@ private fun apiHost(url: String): String {
         return host.substring(1, host.length - 1)
     }
     return host
-}
-
-// jmapMailboxParentIds reads a JSON array. The parser does not keep source spans.
-private fun parentListText(text: String): String {
-    val root = try {
-        JsonParser(text).parseDocument()
-    } catch (_: JsonBroken) {
-        throw JmapFailure("jmap mailbox response is not an object")
-    }
-    if (root !is Json.Obj) throw JmapFailure("jmap mailbox response is not an object")
-    val responses = root.fields["methodResponses"]
-    if (responses !is Json.Arr) throw JmapFailure("jmap mailbox response lacks get")
-    for (item in responses.values) {
-        if (item !is Json.Arr || item.values.size < 2) continue
-        val name = item.values[0]
-        if (name !is Json.Str || name.text != "Mailbox/get") continue
-        val args = item.values[1]
-        if (args !is Json.Obj) throw JmapFailure("jmap mailbox response lacks list")
-        val list = args.fields["list"] ?: throw JmapFailure("jmap mailbox response lacks list")
-        if (list !is Json.Arr) throw JmapFailure("jmap mailbox list is not an array")
-        return renderParentList(list)
-    }
-    throw JmapFailure("jmap mailbox response lacks get")
-}
-
-private fun renderParentList(list: Json.Arr): String {
-    val parts = list.values.map { item ->
-        if (item !is Json.Obj) return@map "1"
-        if (!item.fields.containsKey("parentId")) return@map "{}"
-        when (val parent = item.fields["parentId"]) {
-            Json.Null -> """{"parentId":null}"""
-            is Json.Str -> """{"parentId":${jsonQuote(parent.text)}}"""
-            else -> """{"parentId":1}"""
-        }
-    }
-    return parts.joinToString(prefix = "[", postfix = "]", separator = ",")
-}
-
-private fun jsonQuote(text: String): String {
-    val out = StringBuilder(text.length + 2)
-    out.append('"')
-    for (c in text) {
-        when (c) {
-            '"' -> out.append("\\\"")
-            '\\' -> out.append("\\\\")
-            '\b' -> out.append("\\b")
-            '\u000C' -> out.append("\\f")
-            '\n' -> out.append("\\n")
-            '\r' -> out.append("\\r")
-            '\t' -> out.append("\\t")
-            else -> if (c.code < 0x20) {
-                out.append("\\u")
-                out.append(c.code.toString(16).padStart(4, '0'))
-            } else {
-                out.append(c)
-            }
-        }
-    }
-    out.append('"')
-    return out.toString()
 }

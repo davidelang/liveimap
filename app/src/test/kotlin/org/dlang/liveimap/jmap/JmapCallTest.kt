@@ -285,6 +285,58 @@ class JmapCallTest {
     }
 
     @Test
+    fun quotedParentIdIsTheParsedText() {
+        val body = """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":"a\"b"}]},"1"]]}"""
+        val post = CallPost(200, body)
+        val parents = jmapMailboxChildren(
+            sampleSession(),
+            listOf("mb1"),
+            "user",
+            "secret",
+            "ab",
+            post::post,
+            post::trust,
+        )
+        assertEquals(setOf("a\"b"), parents)
+    }
+
+    @Test
+    fun badParentItemsThrow() {
+        val notText = """{"methodResponses":[["Mailbox/get",{"list":[{"parentId":1}]},"1"]]}"""
+        val notObject = """{"methodResponses":[["Mailbox/get",{"list":[1]},"1"]]}"""
+        assertFails("jmap mailbox parentId is not text") {
+            jmapMailboxChildren(
+                sampleSession(),
+                listOf("mb1"),
+                "user",
+                "secret",
+                "ab",
+                CallPost(200, notText)::post,
+            )
+        }
+        assertFails("jmap mailbox is not an object") {
+            jmapMailboxChildren(
+                sampleSession(),
+                listOf("mb1"),
+                "user",
+                "secret",
+                "ab",
+                CallPost(200, notObject)::post,
+            )
+        }
+    }
+
+    @Test
+    fun parentListRenderersAreGone() {
+        val path = "kotlin/org/dlang/liveimap/jmap/JmapCall.kt"
+        val text = listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
+        for (gone in listOf("fun parentListText", "fun renderParentList", "fun jsonQuote")) {
+            assertFalse(gone, text.contains(gone))
+        }
+        assertTrue(text.contains("fun jmapMailboxChildren"))
+    }
+
+    @Test
     fun emptyMailboxIdsDoNotPost() {
         val post = CallPost(200, sampleChildren)
         assertFails("jmap mailbox ids are empty") {

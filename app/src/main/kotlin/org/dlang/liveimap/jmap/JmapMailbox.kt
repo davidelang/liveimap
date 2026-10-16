@@ -35,16 +35,9 @@ fun parseJmapMailboxes(text: String): List<JmapMailbox> {
     return list.map { parseMailbox(it) }
 }
 
-fun jmapMailboxParentIds(listText: String): Set<String> {
-    if (listText.isBlank()) throw JmapFailure("jmap mailbox list is not an array")
-    val root = try {
-        JsonParser(listText).parseDocument()
-    } catch (_: JsonBroken) {
-        throw JmapFailure("jmap mailbox list is not an array")
-    }
-    if (root !is Json.Arr) throw JmapFailure("jmap mailbox list is not an array")
+fun parentIdsOf(list: Json.Arr): Set<String> {
     val ids = linkedSetOf<String>()
-    for (item in root.values) {
+    for (item in list.values) {
         if (item !is Json.Obj) throw JmapFailure("jmap mailbox is not an object")
         when (val parent = item.fields["parentId"]) {
             null, Json.Null -> Unit
@@ -53,6 +46,17 @@ fun jmapMailboxParentIds(listText: String): Set<String> {
         }
     }
     return ids
+}
+
+fun jmapMailboxParentIds(listText: String): Set<String> {
+    if (listText.isBlank()) throw JmapFailure("jmap mailbox list is not an array")
+    val root = try {
+        JsonParser(listText).parseDocument()
+    } catch (_: JsonBroken) {
+        throw JmapFailure("jmap mailbox list is not an array")
+    }
+    if (root !is Json.Arr) throw JmapFailure("jmap mailbox list is not an array")
+    return parentIdsOf(root)
 }
 
 private fun levelRequest(account: String, parent: String): String {
