@@ -1017,6 +1017,8 @@ class IndexWindowTest {
         assertFalse(index.contains("fun sequenceColumnChars"))
         assertTrue(index.contains("fun existsColumnChars"))
         assertFalse(reader.contains("fun saveMailboxView"))
+        assertFalse(reader.contains("import org.dlang.liveimap.settings.FolderView"))
+        assertTrue(reader.contains("onFolderViewSaved"))
         assertTrue(reader.contains("saveMutex.withLock"))
     }
 

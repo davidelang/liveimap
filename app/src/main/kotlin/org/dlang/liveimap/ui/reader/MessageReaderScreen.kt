@@ -159,7 +159,6 @@ import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DeletePolicy
-import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.contacts.AlpineEntry

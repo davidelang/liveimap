@@ -3396,3 +3396,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The sequence-width helper and the unused reader view save are removed.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The unused FolderView import is dropped from the reader
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-folder-view-import-20261016-0448-plan.md
+- The unused FolderView import is dropped from the reader.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
