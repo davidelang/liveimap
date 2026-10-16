@@ -3117,3 +3117,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - The toolbar editor writes one bar on the account that opened it.
 
 - The opener's account id is stored and each save writes one bar on that account. No new mutex. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-10-15 - Older Android excludes unsent mail, and logging turns off when no account wants it.

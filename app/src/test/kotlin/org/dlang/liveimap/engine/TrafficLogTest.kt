@@ -9,6 +9,13 @@ import org.junit.Test
 
 class TrafficLogTest {
     @Test
+    fun recordingWantedIsAnyFlag() {
+        assertFalse(recordingWanted(emptyList()))
+        assertFalse(recordingWanted(listOf(false, false)))
+        assertTrue(recordingWanted(listOf(false, true)))
+    }
+
+    @Test
     fun passwordBytesAreRedacted() {
         val file = tempLog()
         val log = TrafficLog(file, clock = { 1_700_000_000_000L })

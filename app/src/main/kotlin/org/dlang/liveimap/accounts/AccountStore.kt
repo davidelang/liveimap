@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.engine.recordingWanted
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapPlainHttp
 import org.dlang.liveimap.jmap.jmapServerTarget
@@ -60,6 +62,7 @@ class AccountStore private constructor(private val context: Context) {
         gate.withLock {
             val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
             writePreferences()
+            TrafficLog.setRecording(recordingWanted(logImapTrafficFlags()))
         }
     }
 
@@ -73,6 +76,7 @@ class AccountStore private constructor(private val context: Context) {
                 stageSave(updated, updated.encode())
             }
             writePreferences()
+            TrafficLog.setRecording(recordingWanted(logImapTrafficFlags()))
         }
         return next!!
     }
@@ -208,7 +212,7 @@ class AccountStore private constructor(private val context: Context) {
 
     suspend fun removeAccount(accountId: String): Boolean {
         return gate.withLock {
-            withContext(Dispatchers.IO) {
+            val removed = withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val selected = selectedId()
                 val decision = accountRemoval(accounts, accountId, selected)
@@ -240,6 +244,8 @@ class AccountStore private constructor(private val context: Context) {
                 if (!saved) error("smtp password not removed")
                 true
             }
+            TrafficLog.setRecording(recordingWanted(logImapTrafficFlags()))
+            removed
         }
     }
 
@@ -465,6 +471,18 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    /** Remaining accounts' log flags. Does not take [gate]; callers already inside it must not re-enter. */
+    internal suspend fun logImapTrafficFlags(): List<Boolean> {
+        return withContext(Dispatchers.IO) {
+            readAccounts().mapNotNull { account ->
+                val id = account.userData[userAccountId]
+                if (id.isNullOrEmpty()) return@mapNotNull null
+                val text = storedPreference(id) ?: return@mapNotNull null
+                runCatching { decodeAccountSettings(text).logImapTraffic }.getOrNull()
+            }
+        }
+    }
+
     /** Drops one account's SMTP password (system-initiated removal, F29). */
     internal fun forgetSmtpPassword(accountId: String) {
         secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
@@ -569,6 +587,9 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
             appContext.accountSettingsDataStore.edit { prefs ->
                 prefs.remove(stringPreferencesKey(accountId))
             }
+            TrafficLog.setRecording(
+                recordingWanted(AccountStore.shared(appContext).logImapTrafficFlags()),
+            )
         }
         deleteUnsentAccount(appContext.filesDir, accountId)
     }

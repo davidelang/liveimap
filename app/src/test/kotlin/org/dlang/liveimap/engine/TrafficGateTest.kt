@@ -24,6 +24,21 @@ class TrafficGateTest {
         assertTrue(install.contains("recording = false"))
     }
 
+    @Test
+    fun recordingFollowsWhetherAnyAccountWantsIt() {
+        val store = text("kotlin/org/dlang/liveimap/accounts/AccountStore.kt")
+        for (name in listOf("save", "update", "removeAccount", "deleteAccountArtifacts")) {
+            assertTrue(name, functionBody(store, name).contains("setRecording"))
+        }
+        val removal = functionBody(store, "deleteAccountArtifacts")
+        val removed = removal.indexOf("prefs.remove")
+        assertTrue(removal.indexOf("setRecording") > removed)
+        val flags = functionBody(store, "logImapTrafficFlags")
+        assertFalse(flags.contains("gate"))
+        val session = text("kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt")
+        assertFalse(functionBody(session, "finishTraffic").contains("setRecording"))
+    }
+
     private fun text(path: String) =
         listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()
 

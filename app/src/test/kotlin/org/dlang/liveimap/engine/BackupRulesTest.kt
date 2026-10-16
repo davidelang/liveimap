@@ -15,6 +15,14 @@ class BackupRulesTest {
             assertTrue(section.contains("liveimap_secret.xml"))
         }
         assertTrue(text("src/main/AndroidManifest.xml").contains("allowBackup=\"true\""))
+        val older = text("src/main/res/xml/full_backup_content.xml")
+        assertTrue(older.contains("<full-backup-content>"))
+        assertTrue(older.contains("domain=\"file\" path=\".\""))
+        assertTrue(older.contains("domain=\"sharedpref\" path=\"liveimap_secret.xml\""))
+        val manifest = text("src/main/AndroidManifest.xml")
+        assertTrue(manifest.contains("android:fullBackupContent=\"@xml/full_backup_content\""))
+        assertTrue(manifest.contains("android:dataExtractionRules=\"@xml/backup_rules\""))
+        assertTrue(manifest.contains("allowBackup=\"true\""))
     }
 
     private fun text(path: String) =

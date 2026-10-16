@@ -389,6 +389,8 @@ class TrafficLog(
     }
 }
 
+internal fun recordingWanted(flags: List<Boolean>): Boolean = flags.any { it }
+
 internal fun saslChallenge(line: String): Boolean =
     line == "+" || line.startsWith("+ ") || line == "334" || line.startsWith("334 ")
 
