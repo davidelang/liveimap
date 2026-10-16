@@ -224,7 +224,7 @@ private fun readBytes(input: InputStream, count: Int): ByteArray {
     return got.copyOf(off)
 }
 
-private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport) -> Unit) {
+private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport) -> Unit) = runBlocking {
     val listen = ServerSocket()
     listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
     val failure = AtomicReference<Throwable>()
@@ -254,7 +254,7 @@ private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport
     var thrown: Throwable? = null
     try {
         transport = openPlainSieve("127.0.0.1", listen.localPort)
-        runBlocking { block(transport) }
+        block(transport)
     } catch (error: Throwable) {
         thrown = error
     } finally {
