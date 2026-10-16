@@ -1,6 +1,7 @@
 package org.dlang.liveimap.accounts
 
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
