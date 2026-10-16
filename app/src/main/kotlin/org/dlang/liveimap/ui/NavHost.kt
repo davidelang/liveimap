@@ -73,8 +73,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -779,7 +781,7 @@ fun LiveImapNavHost() {
                 }
             }
             composable("settings") {
-                UpPage("Settings", onUp = { navController.navigateUp() }) {
+                UpPage(stringResource(R.string.drawer_settings), onUp = { navController.navigateUp() }) {
                     if (settingsSplitNow.value) {
                         // The list is in the left pane; this pane waits for a group.
                         Text(
@@ -794,21 +796,21 @@ fun LiveImapNavHost() {
                 }
             }
             composable("settings/folders/expanded") {
-                UpPage("Expanded folders", onUp = {
+                UpPage(stringResource(R.string.settings_expanded_folders), onUp = {
                     navController.popBackStack("settings/{group}", inclusive = false)
                 }) {
                     ExpandedFoldersScreen()
                 }
             }
             composable("settings/folders/views") {
-                UpPage("Folder views", onUp = {
+                UpPage(stringResource(R.string.settings_folder_views), onUp = {
                     navController.popBackStack("settings/{group}", inclusive = false)
                 }) {
                     FolderViewsScreen()
                 }
             }
             composable("settings/folders/starts") {
-                UpPage("Start position per folder", onUp = {
+                UpPage(stringResource(R.string.settings_start_per_folder), onUp = {
                     navController.popBackStack("settings/{group}", inclusive = false)
                 }) {
                     FolderStartsScreen()
@@ -844,7 +846,7 @@ fun LiveImapNavHost() {
                 }
             }
             composable("contacts") {
-                UpPage("Copy contacts", onUp = { navController.popBackStack() }) {
+                UpPage(stringResource(R.string.settings_copy_contacts), onUp = { navController.popBackStack() }) {
                     ContactCopyScreen()
                 }
             }
@@ -1263,7 +1265,7 @@ fun LiveImapNavHost() {
                     settingsListDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
                 },
                 leading = {
-                    UpPage("Settings", onUp = { UnsavedEdits.guard { navController.popBackStack("settings", inclusive = true) } }) {
+                    UpPage(stringResource(R.string.drawer_settings), onUp = { UnsavedEdits.guard { navController.popBackStack("settings", inclusive = true) } }) {
                         SettingsGroupList(selected = openGroup, onOpen = { group ->
                             UnsavedEdits.guard {
                                 navController.navigate("settings/${group.route}") {
@@ -1619,15 +1621,15 @@ internal enum class PaneAxis {
     TopBottom,
 }
 
+/** Settings routes, which get the list/detail split (no drawer) in two-pane layouts. */
+internal fun settingsSplitRoute(route: String?): Boolean =
+    route == "settings" || route?.startsWith("settings/") == true
+
 /**
  * The account drawer is a hidden (openable) drawer when a folder column shows, or in Auto when there is no
  * room for it. In Auto the folder list screen counts as folders shown: the app starts there before it opens
  * the start folder, and a drawer pane beside the folder list flashed on the Boox before the list appeared.
  */
-/** Settings routes, which get the list/detail split (no drawer) in two-pane layouts. */
-internal fun settingsSplitRoute(route: String?): Boolean =
-    route == "settings" || route?.startsWith("settings/") == true
-
 internal fun drawerHiddenFor(folderColumn: Boolean, route: String?, multiPane: MultiPane, autoDrawerPane: Boolean): Boolean =
     folderColumn || (multiPane == MultiPane.Auto && (!autoDrawerPane || route == "folders"))
 
@@ -1671,6 +1673,8 @@ private fun DragSplit(
         val density = LocalDensity.current
         val densityNow = rememberUpdatedState(density)
         val label = stringResource(R.string.pane_resize)
+        val wider = stringResource(R.string.pane_wider)
+        val narrower = stringResource(R.string.pane_narrower)
         Box(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxSize()) {
                 if (width > 0.dp) {
@@ -1709,7 +1713,19 @@ private fun DragSplit(
                         }
                     }
                     .focusable()
-                    .semantics { contentDescription = label },
+                    .semantics {
+                        contentDescription = label
+                        customActions = listOf(
+                            CustomAccessibilityAction(wider) {
+                                onDrag(48f, span)
+                                true
+                            },
+                            CustomAccessibilityAction(narrower) {
+                                onDrag(-48f, span)
+                                true
+                            },
+                        )
+                    },
             )
         }
     }
@@ -1735,6 +1751,8 @@ private fun StackSplit(
         val density = LocalDensity.current
         val densityNow = rememberUpdatedState(density)
         val label = stringResource(R.string.pane_resize)
+        val taller = stringResource(R.string.pane_taller)
+        val shorter = stringResource(R.string.pane_shorter)
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 if (height > 0.dp) {
@@ -1772,7 +1790,19 @@ private fun StackSplit(
                         }
                     }
                     .focusable()
-                    .semantics { contentDescription = label },
+                    .semantics {
+                        contentDescription = label
+                        customActions = listOf(
+                            CustomAccessibilityAction(taller) {
+                                onDrag(48f, span)
+                                true
+                            },
+                            CustomAccessibilityAction(shorter) {
+                                onDrag(-48f, span)
+                                true
+                            },
+                        )
+                    },
             )
         }
     }
@@ -1793,11 +1823,6 @@ private fun AxisSplit(
     } else {
         StackSplit(leadingDp, fallback, onSpan, onDrag, leading, trailing)
     }
-}
-
-internal fun drawerInboxes(choices: List<AccountChoice>): List<AccountChoice> {
-    if (choices.size < 2) return emptyList()
-    return choices
 }
 
 internal fun drawerBlocks(rows: List<DrawerAccount>): List<DrawerAccount> {
@@ -1829,17 +1854,6 @@ private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> U
         ) {
             content()
         }
-    }
-}
-
-@Composable
-private fun InsetPage(content: @Composable () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(mailScreenInsets()),
-    ) {
-        content()
     }
 }
 

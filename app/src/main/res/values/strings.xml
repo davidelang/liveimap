@@ -561,6 +561,10 @@ Your version: %2$s</string>
     <string name="settings_panel_reader">Reader toolbar</string>
     <string name="settings_panel_compose">Compose toolbar</string>
     <string name="pane_resize">Resize pane</string>
+    <string name="pane_wider">Wider</string>
+    <string name="pane_narrower">Narrower</string>
+    <string name="pane_taller">Taller</string>
+    <string name="pane_shorter">Shorter</string>
     <string name="settings_density">Density</string>
     <string name="settings_date_format">Date format</string>
     <string name="settings_date_pattern">Date pattern</string>

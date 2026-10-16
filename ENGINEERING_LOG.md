@@ -3140,3 +3140,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: encode writes a non-default value for a preserved key and drops that raw line; a value still at the failed-decode default stays omitted and the raw line stays
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The pane splitter can be used without touch
+
+- InsetPage and drawerInboxes are removed, the Boox comment sits on drawerHiddenFor, the five route titles use string resources, and each pane handle offers wider/narrower or taller/shorter. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
