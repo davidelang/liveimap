@@ -3389,3 +3389,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the label helpers the screens do not call are removed
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the sequence-width helper and the unused reader view save
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-index-reader-20261016-0440-plan.md
+- The sequence-width helper and the unused reader view save are removed.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

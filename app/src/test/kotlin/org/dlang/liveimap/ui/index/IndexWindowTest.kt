@@ -1005,10 +1005,19 @@ class IndexWindowTest {
         )
         val statusFn = screenSource().substringAfter("fun indexStatusDescription(").substringBefore("\nfun ")
         for (phrase in words) assertFalse(statusFn.contains(phrase))
-        assertEquals(2, sequenceColumnChars(listOf(4, 80, 0)))
         assertEquals(1, existsColumnChars(0))
         assertEquals(3, existsColumnChars(999))
         assertEquals(4, existsColumnChars(1000))
+    }
+
+    @Test
+    fun unusedHelpersAreGone() {
+        val index = uiSource("index/MessageIndexScreen.kt")
+        val reader = uiSource("reader/MessageReaderScreen.kt")
+        assertFalse(index.contains("fun sequenceColumnChars"))
+        assertTrue(index.contains("fun existsColumnChars"))
+        assertFalse(reader.contains("fun saveMailboxView"))
+        assertTrue(reader.contains("saveMutex.withLock"))
     }
 
     @Test

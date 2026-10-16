@@ -478,16 +478,6 @@ fun indexStatusDescription(
  */
 fun rowPosition(anchorPage: Int, indexInWindow: Int): Int = anchorPage * IndexPageSize + indexInWindow + 1
 
-fun sequenceColumnChars(sequences: Iterable<Int>): Int {
-    var digits = 0
-    for (sequence in sequences) {
-        if (sequence == 0) continue
-        val count = sequence.toString().length
-        if (count > digits) digits = count
-    }
-    return if (digits == 0) 1 else digits
-}
-
 fun existsColumnChars(exists: Int): Int = if (exists <= 0) 1 else exists.toString().length
 
 internal fun indexMatchCountText(shown: Int, folderExists: Int, searchActive: Boolean, scope: SearchScope): String {

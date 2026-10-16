@@ -1515,25 +1515,6 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun saveMailboxView(transform: (FolderView) -> FolderView) {
-        scope.launch {
-            try {
-                saveMutex.withLock {
-                    val updated = store.update { loaded ->
-                        val current = loaded.folderViews[mailbox] ?: loaded.defaultView
-                        loaded.copy(folderViews = loaded.folderViews + (mailbox to transform(current)))
-                    }
-                    account = updated
-                }
-                onFolderViewSaved()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                postSnack(error.message ?: notConnected)
-            }
-        }
-    }
-
     val systemDark = isSystemInDarkTheme()
     val dark = when (account.theme) {
         ThemeMode.Dark -> true
