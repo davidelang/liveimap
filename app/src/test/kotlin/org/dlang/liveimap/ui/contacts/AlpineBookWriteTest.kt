@@ -17,6 +17,7 @@ import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
 import org.dlang.liveimap.settings.previewPinerc
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -166,6 +167,43 @@ class AlpineBookWriteTest {
         assertEquals(null, session.expunged)
         assertEquals(0, session.deletedExpunges)
     }
+
+    @Test
+    fun scanAndTrimPeekHeaderAndTheParsedRevisionIsFetched() {
+        val text = listOf(
+            "src/main/kotlin/org/dlang/liveimap/ui/contacts/AlpineBook.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/ui/contacts/AlpineBook.kt",
+        ).map(::File).first { it.exists() }.readText()
+        val read = functionBody(text, "suspend fun readPineBook")
+        val write = functionBody(text, "suspend fun writePineBook")
+        val load = functionBody(text, "suspend fun loadAlpineBook")
+        val scan = read.substring(read.indexOf("for (row in ordered.asReversed()"))
+        val trim = write.substring(write.indexOf("candidates.filter"))
+        assertTrue(scan.contains("peekPart(") && scan.contains("\"HEADER\""))
+        assertTrue(trim.contains("peekPart(") && trim.contains("\"HEADER\""))
+        assertTrue(load.contains("peekPart(") && load.contains("\"HEADER\""))
+        assertTrue(read.contains("fetchRfc822("))
+        assertTrue(load.contains("fetchRfc822("))
+        assertFalse(functionBody(text, "fun headerSubject").contains("Regex("))
+        assertFalse(functionBody(text, "fun hasPineAddrbookHeader").contains("Regex("))
+    }
+}
+
+private fun functionBody(text: String, signature: String): String {
+    val start = text.indexOf(signature)
+    check(start >= 0) { signature }
+    val brace = text.indexOf('{', start)
+    var depth = 0
+    var i = brace
+    while (i < text.length) {
+        if (text[i] == '{') depth++
+        if (text[i] == '}') {
+            depth--
+            if (depth == 0) return text.substring(brace, i + 1)
+        }
+        i++
+    }
+    error(signature)
 }
 
 class BookFreshViewTest {
@@ -235,7 +273,10 @@ private class WriteBookSession(uidPlus: Boolean) : MailSession {
 
     override suspend fun fetchStructure(uid: Long): MimePart = unused()
 
-    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray {
+        if (section != "HEADER") return unused()
+        return headerThroughBlank(bytes[uid] ?: ByteArray(0))
+    }
 
     override suspend fun fetchRfc822(uid: Long): ByteArray = bytes[uid] ?: ByteArray(0)
 
@@ -281,4 +322,26 @@ private class WriteBookSession(uidPlus: Boolean) : MailSession {
     override fun close() = Unit
 
     private fun unused(): Nothing = throw MailFailure("not used")
+}
+
+private fun headerThroughBlank(stored: ByteArray): ByteArray {
+    var i = 0
+    while (i < stored.size) {
+        if (i + 3 < stored.size &&
+            stored[i] == '\r'.code.toByte() &&
+            stored[i + 1] == '\n'.code.toByte() &&
+            stored[i + 2] == '\r'.code.toByte() &&
+            stored[i + 3] == '\n'.code.toByte()
+        ) {
+            return stored.copyOfRange(0, i + 4)
+        }
+        if (i + 1 < stored.size &&
+            stored[i] == '\n'.code.toByte() &&
+            stored[i + 1] == '\n'.code.toByte()
+        ) {
+            return stored.copyOfRange(0, i + 2)
+        }
+        i++
+    }
+    return stored
 }

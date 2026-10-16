@@ -46,10 +46,10 @@ fun applyBookEdit(entries: List<AlpineEntry>, edit: BookEdit): EditOutcome {
     val clean: (AlpineEntry) -> AlpineEntry = { e ->
         e.copy(
             nickname = e.nickname.trim(),
-            fullname = e.fullname.replace('\t', ' ').replace('\n', ' ').trim(),
-            address = e.address.replace('\t', ' ').replace('\n', ' ').trim(),
-            fcc = e.fcc.replace('\t', ' ').replace('\n', ' ').trim(),
-            comments = e.comments.replace('\t', ' ').replace('\n', ' ').trim(),
+            fullname = e.fullname.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim(),
+            address = e.address.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim(),
+            fcc = e.fcc.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim(),
+            comments = e.comments.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim(),
         )
     }
     return when (edit) {

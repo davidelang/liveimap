@@ -3295,3 +3295,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a second list or group merges or is skipped; provider reads and writes run on Dispatchers.IO; the Data query is limited to this account's raw contacts; mappedRowOps only inserts
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - An Alpine book revision requires the addrbook header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-book-20261016-0046-plan.md
+- Work: a book revision is only a message with X-Pine-Addrbook; classification peeks HEADER; the parsed revision is one fetchRfc822; a CR in a cleaned field becomes a space
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

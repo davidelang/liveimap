@@ -16,6 +16,15 @@ class AlpineEditTest {
         assertTrue(applyBookEdit(book, BookEdit.Add(e("z", ""))) is EditOutcome.Refused)
         assertEquals(4, done(applyBookEdit(book, BookEdit.Add(e("zed", "z@x\t")))).entries.size)
         assertEquals("z@x", done(applyBookEdit(book, BookEdit.Add(e("zed", "z@x\t")))).entries.last().address)
+        val cr = done(
+            applyBookEdit(
+                book,
+                BookEdit.Add(AlpineEntry("zed", "Line\rName", "z@x\r", "", "c\rd")),
+            ),
+        ).entries.last()
+        assertEquals("Line Name", cr.fullname)
+        assertEquals("z@x", cr.address)
+        assertEquals("c d", cr.comments)
     }
 
     @Test fun renameUpdatesLists() {

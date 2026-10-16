@@ -50,18 +50,19 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
         if (first == null || last == null) {
             return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
         }
-        val firstText = s.fetchRfc822(first.uid)
-        val lastText = if (last.uid == first.uid) firstText else s.fetchRfc822(last.uid)
-        if (!hasPineAddrbookHeader(firstText)) {
+        val firstHeader = s.peekPart(first.uid, "HEADER", 0, 0)
+        if (!hasPineAddrbookHeader(firstHeader)) {
             return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
         }
-        if (!isBookRevision(lastText, headerSubject(firstText))) {
+        val lastHeader = if (last.uid == first.uid) firstHeader else s.peekPart(last.uid, "HEADER", 0, 0)
+        if (!isBookRevision(lastHeader, headerSubject(firstHeader))) {
             // F85: the newest message is not a revision; take the newest one that is.
             return@inFolder when (val read = readPineBook(s, mailbox)) {
                 is PineRead.NotBook -> AlpineBookLoad(read.notice, emptyList())
                 is PineRead.Ready -> AlpineBookLoad(null, read.state.entries)
             }
         }
+        val lastText = s.fetchRfc822(last.uid)
         val body = rfc822BodyText(lastText)
             ?: return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
         return@inFolder AlpineBookLoad(null, parseAlpineBook(body))
@@ -181,23 +182,21 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
         if (rows.isEmpty()) return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         val ordered = rows.sortedBy { it.sequence }
         val header = ordered.first()
-        val headerMessage = s.fetchRfc822(header.uid)
-        if (!hasPineAddrbookHeader(headerMessage)) {
+        val headerPeek = s.peekPart(header.uid, "HEADER", 0, 0)
+        if (!hasPineAddrbookHeader(headerPeek)) {
             return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         }
-        val bookSubject = headerSubject(headerMessage)
+        val bookSubject = headerSubject(headerPeek)
         // F85: the newest message that is a real revision (scan back a little past stray messages).
         var last = header
-        var lastMessage = headerMessage
         for (row in ordered.asReversed().take(RevisionScan)) {
             if (row.uid == header.uid) break
-            val bytes = s.fetchRfc822(row.uid)
-            if (isBookRevision(bytes, bookSubject)) {
+            if (isBookRevision(s.peekPart(row.uid, "HEADER", 0, 0), bookSubject)) {
                 last = row
-                lastMessage = bytes
                 break
             }
         }
+        val lastMessage = s.fetchRfc822(last.uid)
         val split = headerAndSeparator(lastMessage)
             ?: return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         if (!looksLikeHeaders(split.header)) {
@@ -250,7 +249,9 @@ suspend fun writePineBook(
     val candidates = revisionsToExpunge(uids, state.headerUid, history, neverTrim, uidPlus)
     // F85: only messages that are themselves book revisions are ever trimmed.
     val expunge = session.inFolder(FolderAt(mailbox, state.uidValidity)) { _, s ->
-        val revisions = candidates.filter { uid -> isBookRevision(s.fetchRfc822(uid), after.state.bookSubject) }
+        val revisions = candidates.filter { uid ->
+            isBookRevision(s.peekPart(uid, "HEADER", 0, 0), after.state.bookSubject)
+        }
         if (revisions.isNotEmpty()) {
             s.storeFlags(revisions, setOf("\\Deleted"), emptySet())
             s.uidExpunge(revisions)
@@ -418,29 +419,35 @@ private fun logicalLines(body: String): List<String> {
     return lines
 }
 
+private val SubjectHeader = Regex("(?im)^subject[ \\t]*:[ \\t]*(.*)$")
+
 private fun headerSubject(rfc822: ByteArray): String {
-    val split = splitRfc822(rfc822) ?: return ""
-    val header = split.first.toString(Charsets.ISO_8859_1)
-    return Regex("(?im)^subject[ \\t]*:[ \\t]*(.*)$").find(header)?.groupValues?.get(1)?.trim().orEmpty()
+    val header = headerText(rfc822)
+    if (header.isEmpty()) return ""
+    return SubjectHeader.find(header)?.groupValues?.get(1)?.trim().orEmpty()
 }
 
-/**
- * F85: a message counts as a book revision only when it carries the Pine address-book header, or the same
- * (non-empty) Subject as the book's header message. Anything else that lands in the folder is not the book
- * and is never expunged by a trim.
- */
+/** A message is a book revision only when it has X-Pine-Addrbook. The subject alone does not count. */
 internal fun isBookRevision(rfc822: ByteArray, bookSubject: String): Boolean {
-    if (hasPineAddrbookHeader(rfc822)) return true
-    if (bookSubject.isEmpty()) return false
-    return headerSubject(rfc822) == bookSubject
+    return hasPineAddrbookHeader(rfc822)
 }
 
 private const val RevisionScan = 12
 
+private val PineAddrbookHeader = Regex("(?im)^[ \\t]*x-pine-addrbook\\s*:")
+
 private fun hasPineAddrbookHeader(rfc822: ByteArray): Boolean {
-    val split = splitRfc822(rfc822) ?: return false
-    val header = split.first.toString(Charsets.ISO_8859_1)
-    return Regex("(?im)^[ \\t]*x-pine-addrbook\\s*:").containsMatchIn(header)
+    val header = headerText(rfc822)
+    if (header.isEmpty()) return false
+    return PineAddrbookHeader.containsMatchIn(header)
+}
+
+/** A HEADER peek has no separating blank line. A full message is split before that line. */
+private fun headerText(bytes: ByteArray): String {
+    if (bytes.isEmpty()) return ""
+    val split = splitRfc822(bytes)
+    val header = if (split == null) bytes else split.first
+    return header.toString(Charsets.ISO_8859_1)
 }
 
 private fun rfc822BodyText(rfc822: ByteArray): String? {

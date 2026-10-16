@@ -52,7 +52,7 @@ class AlpineBookTest {
         val loaded = runImmediate { loadAlpineBook(session, "INBOX") }
         assertEquals("This mailbox is not an Alpine address book", loaded.notice)
         assertTrue(loaded.entries.isEmpty())
-        assertEquals(listOf(4L, 8L), session.rfc822Uids)
+        assertTrue(session.rfc822Uids.isEmpty())
     }
 
     @Test
@@ -122,7 +122,7 @@ class AlpineBookTest {
         session.bytes[1] = ascii("X-Pine-Addrbook: 1\r\nSubject: data\r\n\r\nfirst\tFirst\tfirst@example.com\r\n")
         session.bytes[2] = ascii("Subject: old\r\n\r\nold\tOld\told@example.com\r\n")
         session.bytes[5] = ascii(
-            "Subject: data\r\n\r\n\tAda Lovelace\tada@example.com\t\tkeep [plaintext]\r\n",
+            "X-Pine-Addrbook: 1\r\nSubject: data\r\n\r\n\tAda Lovelace\tada@example.com\t\tkeep [plaintext]\r\n",
         )
         val loaded = runImmediate { loadAlpineBook(session, "abook") }
         assertNull(loaded.notice)
@@ -132,7 +132,7 @@ class AlpineBookTest {
         assertEquals("ada@example.com", entry.address)
         assertTrue(entry.comments.contains("[plaintext]"))
         assertFalse(pickedAddresses(entry).single().email.contains("[plaintext]"))
-        assertEquals(listOf(1L, 5L), session.rfc822Uids)
+        assertEquals(listOf(5L), session.rfc822Uids)
         assertEquals(IndexMode.ArrivalOldest, session.fetchRequests[0].mode)
         assertEquals(1, session.fetchRequests[0].limit)
         assertEquals(0, session.fetchRequests[0].prefetch)
@@ -198,6 +198,28 @@ class AlpineBookTest {
 
 private fun ascii(text: String): ByteArray = text.toByteArray(Charsets.US_ASCII)
 
+private fun headerThroughBlank(stored: ByteArray): ByteArray {
+    var i = 0
+    while (i < stored.size) {
+        if (i + 3 < stored.size &&
+            stored[i] == '\r'.code.toByte() &&
+            stored[i + 1] == '\n'.code.toByte() &&
+            stored[i + 2] == '\r'.code.toByte() &&
+            stored[i + 3] == '\n'.code.toByte()
+        ) {
+            return stored.copyOfRange(0, i + 4)
+        }
+        if (i + 1 < stored.size &&
+            stored[i] == '\n'.code.toByte() &&
+            stored[i + 1] == '\n'.code.toByte()
+        ) {
+            return stored.copyOfRange(0, i + 2)
+        }
+        i++
+    }
+    return stored
+}
+
 private fun row(uid: Long) = IndexRow(
     uid = uid,
     sequence = uid.toInt(),
@@ -251,7 +273,10 @@ private class FakeBookSession : MailSession {
 
     override suspend fun fetchStructure(uid: Long): MimePart = unused()
 
-    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray {
+        if (section != "HEADER") return unused()
+        return headerThroughBlank(bytes[uid] ?: ByteArray(0))
+    }
 
     override suspend fun fetchRfc822(uid: Long): ByteArray {
         throwIfArmed()
