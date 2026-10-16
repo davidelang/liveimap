@@ -3337,3 +3337,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Start HEAD e4917d356
 
 ## 2026-10-16 - discoverAt is removed and chooseImapAuth stays
+
+## 2026-10-16 - Client ordered-subject threads use the RFC 5256 base subject and date
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/ordered-subject-20261016-0224-plan.md
+- Work: orderedSubjectThreads groups by baseSubject(decodeHeaderWords(subject)) and orders by dateHeaderEpoch then uid; ThreadHeader.dateHeader is the last field; the JNI fetch asks for Date; normalizedSubject is removed; referenceThreads is unchanged
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

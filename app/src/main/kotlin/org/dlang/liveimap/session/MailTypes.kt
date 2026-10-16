@@ -225,6 +225,7 @@ data class ThreadHeader(
     val references: String,
     val inReplyTo: String,
     val subject: String,
+    val dateHeader: String = "",
 )
 
 enum class ComposeKind {

@@ -1,9 +1,9 @@
 package org.dlang.liveimap.session
 
 import org.dlang.liveimap.settings.SortKey
+import org.dlang.liveimap.ui.compose.decodeHeaderWords
 
 private val messageIdPattern = Regex("<[^>]+>")
-private val leadingReply = Regex("(?i)^(re|fwd):\\s*")
 
 fun clientThreads(rows: List<ThreadHeader>, key: SortKey): ThreadNode {
     return when (key) {
@@ -18,33 +18,37 @@ private fun orderedSubjectThreads(rows: List<ThreadHeader>): ThreadNode {
     val blanks = ArrayList<ThreadHeader>()
     for (row in rows) {
         if (row.uid <= 0L) continue
-        val subject = normalizedSubject(row.subject)
+        val subject = baseSubject(decodeHeaderWords(row.subject))
         if (subject.isEmpty()) {
             blanks.add(row)
         } else {
-            groups.getOrPut(subject.lowercase()) { ArrayList() }.add(row)
+            groups.getOrPut(subject) { ArrayList() }.add(row)
         }
     }
-    val roots = ArrayList<ThreadNode>()
+    val threads = ArrayList<Pair<ThreadHeader, List<ThreadHeader>>>()
     for (group in groups.values) {
-        val sorted = group.sortedBy { it.uid }
-        val children = sorted.drop(1).map { ThreadNode(it.uid, emptyList()) }
-        roots.add(ThreadNode(sorted.first().uid, children))
+        val sorted = group.sortedWith { a, b -> compareDateThenUid(a, b) }
+        threads.add(sorted.first() to sorted.drop(1))
     }
-    for (row in blanks) {
-        roots.add(ThreadNode(row.uid, emptyList()))
+    for (row in blanks) threads.add(row to emptyList())
+    threads.sortWith { a, b -> compareDateThenUid(a.first, b.first) }
+    val roots = threads.map { (root, kids) ->
+        ThreadNode(root.uid, kids.map { ThreadNode(it.uid, emptyList()) })
     }
-    roots.sortBy { it.uid ?: Long.MAX_VALUE }
     return ThreadNode(null, roots)
 }
 
-private fun normalizedSubject(subject: String): String {
-    var rest = subject.trim()
-    while (true) {
-        val next = leadingReply.replace(rest, "").trim()
-        if (next == rest) return rest
-        rest = next
+/** A blank or unparsable date sorts after every parsed date. Equal dates order by uid ascending. */
+private fun compareDateThenUid(a: ThreadHeader, b: ThreadHeader): Int {
+    val ae = dateHeaderEpoch(a.dateHeader)
+    val be = dateHeaderEpoch(b.dateHeader)
+    if (ae == null && be != null) return 1
+    if (ae != null && be == null) return -1
+    if (ae != null && be != null) {
+        val byDate = ae.compareTo(be)
+        if (byDate != 0) return byDate
     }
+    return a.uid.compareTo(b.uid)
 }
 
 private fun referenceThreads(rows: List<ThreadHeader>): ThreadNode {

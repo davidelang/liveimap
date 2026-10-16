@@ -724,7 +724,7 @@ bool ensureJni(JNIEnv * env) {
         gJni.threadHeaderInit = env->GetMethodID(
             gJni.threadHeader,
             "<init>",
-            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     }
     if (env->ExceptionCheck()) env->ExceptionClear();
     if (holdGlobal(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) {
@@ -8419,6 +8419,7 @@ struct HeaderRow {
     std::string references;
     std::string inReplyTo;
     std::string subject;
+    std::string date;
 };
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -8426,8 +8427,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIE
     if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
-    const char * names[] = { "Message-ID", "References", "In-Reply-To", "Subject" };
-    clist * list = uidFetchAll(env, session, uidPlusExtra(peekHeaderFields(names, 4)));
+    const char * names[] = { "Message-ID", "References", "In-Reply-To", "Subject", "Date" };
+    clist * list = uidFetchAll(env, session, uidPlusExtra(peekHeaderFields(names, 5)));
     if (env->ExceptionCheck()) {
         unlockSession(session);
         return nullptr;
@@ -8445,6 +8446,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIE
             row.references = headerField(block, "References");
             row.inReplyTo = headerField(block, "In-Reply-To");
             row.subject = headerField(block, "Subject");
+            row.date = headerField(block, "Date");
             rows.push_back(row);
         }
         mailimap_fetch_list_free(list);
@@ -8463,6 +8465,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIE
         jstring references = jStringOrEmpty(env, rows[i].references);
         jstring inReplyTo = jStringOrEmpty(env, rows[i].inReplyTo);
         jstring subject = jStringOrEmpty(env, rows[i].subject);
+        jstring date = jStringOrEmpty(env, rows[i].date);
         jobject obj = env->NewObject(
             gJni.threadHeader,
             gJni.threadHeaderInit,
@@ -8470,7 +8473,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIE
             messageId,
             references,
             inReplyTo,
-            subject);
+            subject,
+            date);
         if (obj == nullptr) {
             env->PopLocalFrame(nullptr);
             unlockSession(session);
