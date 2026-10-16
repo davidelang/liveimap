@@ -228,6 +228,8 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun open(account: AccountSettings): OpenResult {
+        val key = account.preservedSecurityKey()
+        if (key != null) return OpenResult.Failed("account settings need attention: $key")
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
         val owner = credentials?.accountId
             ?: kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
@@ -1316,6 +1318,8 @@ class LibetpanMailSession : MailSession {
         smtpSendFrom(rfc822, recipients, dsnNotify, "")
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
+        val key = account?.preservedSecurityKey()
+        if (key != null) throw MailFailure("account settings need attention: $key")
         val context = currentApplication()
         val ownSmtpPassword = credentials?.smtpPassword
             ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""

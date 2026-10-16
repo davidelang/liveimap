@@ -533,6 +533,20 @@ data class AccountSettings(
         if (toolbarRows !in 1..4) throw IllegalArgumentException("bad toolbarRows")
         if (composerWrapColumn !in 0..998) throw IllegalArgumentException("bad composerWrapColumn")
     }
+
+    /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
+    fun preservedSecurityKey(): String? {
+        val present = HashSet<String>()
+        for (entry in unknownSettings) {
+            val first = entry.substringBefore('\n')
+            val eq = first.indexOf('=')
+            if (eq > 0) present.add(first.substring(0, eq))
+        }
+        if ("tlsMode" in present) return "tlsMode"
+        if ("deletePolicy" in present) return "deletePolicy"
+        if ("moveMethod" in present) return "moveMethod"
+        return null
+    }
 }
 
 private val fieldNames = listOf(

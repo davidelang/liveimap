@@ -1178,6 +1178,25 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun preservedSecurityKeyNamesTheUnreadableLine() {
+        assertEquals("tlsMode", AccountSettings(unknownSettings = listOf("tlsMode=NotAMode")).preservedSecurityKey())
+        assertEquals("deletePolicy", AccountSettings(unknownSettings = listOf("deletePolicy=Nope")).preservedSecurityKey())
+        assertEquals("moveMethod", AccountSettings(unknownSettings = listOf("moveMethod=Nope")).preservedSecurityKey())
+        assertEquals(
+            "tlsMode",
+            AccountSettings(
+                unknownSettings = listOf("moveMethod=Nope", "deletePolicy=Nope", "tlsMode=NotAMode"),
+            ).preservedSecurityKey(),
+        )
+        assertEquals(
+            "deletePolicy",
+            AccountSettings(unknownSettings = listOf("moveMethod=Nope", "deletePolicy=Nope")).preservedSecurityKey(),
+        )
+        assertNull(AccountSettings(unknownSettings = listOf("futureOption=1")).preservedSecurityKey())
+        assertNull(AccountSettings().preservedSecurityKey())
+    }
+
+    @Test
     fun editedFavoriteReplacesPreservedLine() {
         val raw = "favorites=nope;also-bad"
         val text = AccountSettings().encode().trimEnd() + "\n$raw\n"

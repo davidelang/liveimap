@@ -123,6 +123,8 @@ class JmapMailSession(
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
 
     override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
+        val key = account.preservedSecurityKey()
+        if (key != null) return@withLock OpenResult.Failed("account settings need attention: $key")
         val previousKey = accountKey
         var connected = false
         try {

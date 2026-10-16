@@ -3144,3 +3144,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-15 - The pane splitter can be used without touch
 
 - InsetPage and drawerInboxes are removed, the Boox comment sits on drawerHiddenFor, the five route titles use string resources, and each pane handle offers wider/narrower or taller/shorter. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-10-15 - An unreadable security setting refuses to connect
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-20261015-1850-plan.md
+- Work: preservedSecurityKey is tlsMode, deletePolicy, or moveMethod when that raw line is kept; IMAP open, SMTP send, and JMAP open stop with "account settings need attention" before a password or SMTP
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
