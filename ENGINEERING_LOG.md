@@ -3316,3 +3316,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: peekPart length 0 is the rest of the section from the offset; a short cache is not the whole part; the header test peeks length 0 and the cache test reads the whole part
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - phase 11 lab apk commit
+
+- This commit records the phase 11 lab APK build. The APKs are built from it.
