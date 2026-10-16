@@ -7,6 +7,13 @@ import org.dlang.liveimap.ui.compose.RuleConditions
 import org.dlang.liveimap.ui.compose.SendingRule
 import org.dlang.liveimap.ui.compose.decodeRules
 import org.dlang.liveimap.ui.compose.encodeRules
+import org.dlang.liveimap.ui.toolbar.BarSection
+import org.dlang.liveimap.ui.toolbar.IndexBarAction
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarLayout
+import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar
+import org.dlang.liveimap.ui.toolbar.moveIndexAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -123,5 +130,27 @@ class PinercSendingImportTest {
         assertEquals("", rules[0].conditions.listId)
         assertEquals("me@x", rules[0].actions.fromAddress)
         assertNull(rules[0].actions.sendAccount)
+    }
+
+    @Test
+    fun toolbarCommentFollowsReaderToolbar() {
+        val custom = ReaderToolbarLayout(
+            toolbar = listOf(ReaderToolbarAction.Refresh, ReaderToolbarAction.Reply),
+            overflow = listOf(
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
+            ),
+            hidden = emptyList(),
+        )
+        assertTrue(encodePinerc(AccountSettings(readerToolbar = custom)).contains("# toolbar"))
+        assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
+        assertFalse(encodePinerc(AccountSettings(readerToolbar = defaultReaderToolbar())).contains("# toolbar"))
+        val index = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
+        assertTrue(encodePinerc(AccountSettings(indexBar = index)).contains("# toolbar"))
     }
 }

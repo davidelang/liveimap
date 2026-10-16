@@ -159,7 +159,6 @@ import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.FolderView
-import org.dlang.liveimap.settings.ReaderAction
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.contacts.AlpineEntry
@@ -1439,20 +1438,21 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun runReaderAction(action: ReaderAction) {
+    fun runReaderAction(action: ReaderToolbarAction) {
         when (action) {
-            ReaderAction.Reply ->
+            ReaderToolbarAction.Refresh -> if (!loading) loadToken += 1
+            ReaderToolbarAction.Reply ->
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
-            ReaderAction.ReplyAll ->
+            ReaderToolbarAction.ReplyAll ->
                 onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch))
-            ReaderAction.Forward ->
+            ReaderToolbarAction.Forward ->
                 onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
-            ReaderAction.Delete -> runDelete()
-            ReaderAction.Move -> choosingMove = true
-            ReaderAction.Spam -> runSpam()
-            ReaderAction.Bounce ->
+            ReaderToolbarAction.Delete -> runDelete()
+            ReaderToolbarAction.Move -> choosingMove = true
+            ReaderToolbarAction.Spam -> runSpam()
+            ReaderToolbarAction.Bounce ->
                 onCompose(ComposeSeed(ComposeKind.Bounce, mailbox, listOf(uid), readerEpoch))
-            ReaderAction.Headers -> toggleAllHeaders()
+            ReaderToolbarAction.Headers -> toggleAllHeaders()
         }
     }
 
@@ -1594,7 +1594,7 @@ private fun MessageReaderLoaded(
                     for (action in barActions) {
                         if (action == ReaderToolbarAction.Refresh) {
                             readerIcons.add {
-                                IconButton(onClick = { if (!loading) loadToken += 1 }) {
+                                IconButton(onClick = { runReaderAction(action) }) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
                                         contentDescription = stringResource(R.string.reader_refresh),
@@ -1602,48 +1602,45 @@ private fun MessageReaderLoaded(
                                 }
                             }
                         } else {
-                            val reader = action.readerAction()
-                            if (reader != null) {
-                                readerIcons.add {
-                                    val label = if (reader == ReaderAction.Delete) {
-                                        deletePolicyLabel(effectivePolicy)
-                                    } else {
-                                        readerActionName(reader)
+                            readerIcons.add {
+                                val label = if (action == ReaderToolbarAction.Delete) {
+                                    deletePolicyLabel(effectivePolicy)
+                                } else {
+                                    readerActionName(action)
+                                }
+                                val helpRes = when (action) {
+                                    ReaderToolbarAction.Reply -> R.string.help_reader_reply
+                                    ReaderToolbarAction.ReplyAll -> R.string.help_reader_reply_all
+                                    ReaderToolbarAction.Forward -> R.string.help_reader_forward
+                                    ReaderToolbarAction.Delete -> R.string.help_reader_delete
+                                    else -> null
+                                }
+                                val helpPage = when (action) {
+                                    ReaderToolbarAction.Reply,
+                                    ReaderToolbarAction.ReplyAll,
+                                    ReaderToolbarAction.Forward,
+                                    -> "reading.html#reply"
+                                    ReaderToolbarAction.Delete -> "reading.html#delete"
+                                    else -> null
+                                }
+                                if (helpRes != null && helpPage != null) {
+                                    HelpIconButton(
+                                        label = label,
+                                        help = stringResource(helpRes),
+                                        page = helpPage,
+                                        onClick = { runReaderAction(action) },
+                                    ) {
+                                        Icon(
+                                            imageVector = readerActionImage(action),
+                                            contentDescription = label,
+                                        )
                                     }
-                                    val helpRes = when (reader) {
-                                        ReaderAction.Reply -> R.string.help_reader_reply
-                                        ReaderAction.ReplyAll -> R.string.help_reader_reply_all
-                                        ReaderAction.Forward -> R.string.help_reader_forward
-                                        ReaderAction.Delete -> R.string.help_reader_delete
-                                        else -> null
-                                    }
-                                    val helpPage = when (reader) {
-                                        ReaderAction.Reply,
-                                        ReaderAction.ReplyAll,
-                                        ReaderAction.Forward,
-                                        -> "reading.html#reply"
-                                        ReaderAction.Delete -> "reading.html#delete"
-                                        else -> null
-                                    }
-                                    if (helpRes != null && helpPage != null) {
-                                        HelpIconButton(
-                                            label = label,
-                                            help = stringResource(helpRes),
-                                            page = helpPage,
-                                            onClick = { runReaderAction(reader) },
-                                        ) {
-                                            Icon(
-                                                imageVector = readerActionImage(reader),
-                                                contentDescription = label,
-                                            )
-                                        }
-                                    } else {
-                                        IconButton(onClick = { runReaderAction(reader) }) {
-                                            Icon(
-                                                imageVector = readerActionImage(reader),
-                                                contentDescription = label,
-                                            )
-                                        }
+                                } else {
+                                    IconButton(onClick = { runReaderAction(action) }) {
+                                        Icon(
+                                            imageVector = readerActionImage(action),
+                                            contentDescription = label,
+                                        )
                                     }
                                 }
                             }
@@ -1683,25 +1680,22 @@ private fun MessageReaderLoaded(
                             text = { Text(stringResource(R.string.reader_refresh)) },
                             onClick = {
                                 moreMenu = false
-                                if (!loading) loadToken += 1
+                                runReaderAction(action)
                             },
                         )
                     } else {
-                        val reader = action.readerAction()
-                        if (reader != null) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (reader == ReaderAction.Delete) deletePolicyLabel(effectivePolicy)
-                                        else readerActionName(reader),
-                                    )
-                                },
-                                onClick = {
-                                    moreMenu = false
-                                    runReaderAction(reader)
-                                },
-                            )
-                        }
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (action == ReaderToolbarAction.Delete) deletePolicyLabel(effectivePolicy)
+                                    else readerActionName(action),
+                                )
+                            },
+                            onClick = {
+                                moreMenu = false
+                                runReaderAction(action)
+                            },
+                        )
                     }
                 }
                 DropdownMenuItem(
@@ -2486,21 +2480,6 @@ private fun applyHtmlDark(settings: WebSettings) {
     }
 }
 
-internal fun readerBarActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {
-    return saved.filter { action ->
-        action != ReaderAction.Spam || spamMailbox.isNotEmpty()
-    }.take(4)
-}
-
-internal fun readerMenuActions(saved: List<ReaderAction>, spamMailbox: String): List<ReaderAction> {
-    val onBar = readerBarActions(saved, spamMailbox).toSet()
-    val overflow = saved.filter { action ->
-        action !in onBar && (action != ReaderAction.Spam || spamMailbox.isNotEmpty())
-    }
-    val off = ReaderAction.entries.filter { action -> action !in saved }
-    return overflow + off
-}
-
 @Composable
 private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
     when (policy) {
@@ -2511,16 +2490,17 @@ private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
 )
 
 @Composable
-private fun readerActionName(action: ReaderAction): String = stringResource(
+private fun readerActionName(action: ReaderToolbarAction): String = stringResource(
     when (action) {
-        ReaderAction.Reply -> R.string.compose_reply
-        ReaderAction.ReplyAll -> R.string.compose_reply_all
-        ReaderAction.Forward -> R.string.compose_forward
-        ReaderAction.Delete -> R.string.drawer_delete
-        ReaderAction.Move -> R.string.label_move
-        ReaderAction.Spam -> R.string.label_spam
-        ReaderAction.Bounce -> R.string.compose_bounce
-        ReaderAction.Headers -> R.string.reader_all_headers
+        ReaderToolbarAction.Refresh -> R.string.reader_refresh
+        ReaderToolbarAction.Reply -> R.string.compose_reply
+        ReaderToolbarAction.ReplyAll -> R.string.compose_reply_all
+        ReaderToolbarAction.Forward -> R.string.compose_forward
+        ReaderToolbarAction.Delete -> R.string.drawer_delete
+        ReaderToolbarAction.Move -> R.string.label_move
+        ReaderToolbarAction.Spam -> R.string.label_spam
+        ReaderToolbarAction.Bounce -> R.string.compose_bounce
+        ReaderToolbarAction.Headers -> R.string.reader_all_headers
     },
 )
 
@@ -2542,27 +2522,16 @@ private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLab
     asAttachment,
 )
 
-private fun ReaderToolbarAction.readerAction(): ReaderAction? = when (this) {
-    ReaderToolbarAction.Refresh -> null
-    ReaderToolbarAction.Reply -> ReaderAction.Reply
-    ReaderToolbarAction.ReplyAll -> ReaderAction.ReplyAll
-    ReaderToolbarAction.Forward -> ReaderAction.Forward
-    ReaderToolbarAction.Delete -> ReaderAction.Delete
-    ReaderToolbarAction.Move -> ReaderAction.Move
-    ReaderToolbarAction.Spam -> ReaderAction.Spam
-    ReaderToolbarAction.Bounce -> ReaderAction.Bounce
-    ReaderToolbarAction.Headers -> ReaderAction.Headers
-}
-
-private fun readerActionImage(action: ReaderAction) = when (action) {
-    ReaderAction.Reply -> Icons.AutoMirrored.Filled.Reply
-    ReaderAction.ReplyAll -> Icons.AutoMirrored.Filled.ReplyAll
-    ReaderAction.Forward -> Icons.AutoMirrored.Filled.Forward
-    ReaderAction.Delete -> Icons.Filled.Delete
-    ReaderAction.Move -> moveImage
-    ReaderAction.Spam -> spamImage
-    ReaderAction.Bounce -> Icons.AutoMirrored.Filled.Redo
-    ReaderAction.Headers -> Icons.Filled.Code
+private fun readerActionImage(action: ReaderToolbarAction) = when (action) {
+    ReaderToolbarAction.Refresh -> Icons.Filled.Refresh
+    ReaderToolbarAction.Reply -> Icons.AutoMirrored.Filled.Reply
+    ReaderToolbarAction.ReplyAll -> Icons.AutoMirrored.Filled.ReplyAll
+    ReaderToolbarAction.Forward -> Icons.AutoMirrored.Filled.Forward
+    ReaderToolbarAction.Delete -> Icons.Filled.Delete
+    ReaderToolbarAction.Move -> moveImage
+    ReaderToolbarAction.Spam -> spamImage
+    ReaderToolbarAction.Bounce -> Icons.AutoMirrored.Filled.Redo
+    ReaderToolbarAction.Headers -> Icons.Filled.Code
 }
 
 @Composable

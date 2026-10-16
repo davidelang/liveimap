@@ -16,6 +16,7 @@ import org.dlang.liveimap.ui.index.SimpleSearchField
 import org.dlang.liveimap.ui.toolbar.ComposeBarLayout
 import org.dlang.liveimap.ui.toolbar.FolderBarLayout
 import org.dlang.liveimap.ui.toolbar.IndexBarLayout
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarLayout
 import org.dlang.liveimap.ui.toolbar.SelectionBarLayout
 import org.dlang.liveimap.ui.toolbar.defaultComposeBar
@@ -243,37 +244,6 @@ fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
     return if (node) "$mailbox$delimiter[]" else mailbox
 }
 
-enum class ReaderAction {
-    Reply,
-    ReplyAll,
-    Forward,
-    Delete,
-    Move,
-    Spam,
-    Bounce,
-    /** Toggle the raw header view (Pine's H): BODY.PEEK[HEADER] shown unparsed. */
-    Headers,
-}
-
-fun readerActionLabel(action: ReaderAction): String = when (action) {
-    ReaderAction.Reply -> "Reply"
-    ReaderAction.ReplyAll -> "Reply all"
-    ReaderAction.Forward -> "Forward"
-    ReaderAction.Delete -> "Delete"
-    ReaderAction.Move -> "Move"
-    ReaderAction.Spam -> "Spam"
-    ReaderAction.Bounce -> "Bounce"
-    ReaderAction.Headers -> "Headers"
-}
-
-val defaultReaderBar: List<ReaderAction> = listOf(
-    ReaderAction.Reply,
-    ReaderAction.ReplyAll,
-    ReaderAction.Forward,
-    ReaderAction.Delete,
-    ReaderAction.Move,
-)
-
 const val pineSourceId: String = "pine"
 
 /** Auto: chosen from the screen's size in dp and inches ([classifyScreen]); the default for new accounts. */
@@ -413,7 +383,6 @@ data class AccountSettings(
     val pipelineCommands: Boolean = true,
     val logImapTraffic: Boolean = false,
     val showUserInDebugReport: Boolean = false,
-    val readerBar: List<ReaderAction> = defaultReaderBar,
     val inboxStart: StartRule = StartRule.Newest,
     val folderStart: StartRule = StartRule.Newest,
     val folderStarts: Map<String, StartRule> = emptyMap(),
@@ -756,7 +725,6 @@ fun AccountSettings.encode(): String = buildString {
     put("pipelineCommands=$pipelineCommands")
     put("logImapTraffic=$logImapTraffic")
     put("showUserInDebugReport=$showUserInDebugReport")
-    put("readerBar=${encodeReaderBar(readerBar)}")
     put("dynamicColor=$dynamicColor")
     put("inboxStart=${inboxStart.name}")
     put("folderStart=${folderStart.name}")
@@ -1072,7 +1040,6 @@ fun decodeAccountSettings(text: String): AccountSettings {
         pipelineCommands = field("pipelineCommands", d.pipelineCommands) { values["pipelineCommands"]?.let { parseBoolean(it) } ?: true },
         logImapTraffic = field("logImapTraffic", d.logImapTraffic) { values["logImapTraffic"]?.let { parseBoolean(it) } ?: false },
         showUserInDebugReport = field("showUserInDebugReport", d.showUserInDebugReport) { values["showUserInDebugReport"]?.let { parseBoolean(it) } ?: false },
-        readerBar = field("readerBar", d.readerBar) { values["readerBar"]?.let { parseReaderBar(it) } ?: defaultReaderBar },
         dynamicColor = field("dynamicColor", d.dynamicColor) { values["dynamicColor"]?.let { parseBoolean(it) } ?: true },
         inboxStart = field("inboxStart", d.inboxStart) { values["inboxStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
         folderStart = field("folderStart", d.folderStart) { values["folderStart"]?.let { enumValueOf<StartRule>(it) } ?: StartRule.Newest },
@@ -1116,7 +1083,22 @@ fun decodeAccountSettings(text: String): AccountSettings {
         indexBar = field("indexBar", d.indexBar) { values["indexBar"]?.let { parseIndexBar(it) } ?: defaultIndexBar() },
         selectionBar = field("selectionBar", d.selectionBar) { values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar() },
         folderBar = field("folderBar", d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
-        readerToolbar = field("readerToolbar", d.readerToolbar) { values["readerToolbar"]?.let { parseReaderToolbar(it) } },
+        readerToolbar = field("readerToolbar", d.readerToolbar) {
+            values["readerToolbar"]?.let { parseReaderToolbar(it) }
+        }.let { parsed ->
+            // A stored readerBar is applied once, and only when readerToolbar is absent.
+            if (values["readerToolbar"] != null) parsed
+            else {
+                val rawBar = values["readerBar"]
+                if (rawBar == null) parsed
+                else try {
+                    readerToolbarFromStoredBar(rawBar)
+                } catch (_: Exception) {
+                    unknown += "readerBar=$rawBar"
+                    parsed
+                }
+            }
+        },
         composeBar = field("composeBar", d.composeBar) { values["composeBar"]?.let { parseComposeBar(it) } ?: defaultComposeBar() },
         toolbarRows = field("toolbarRows", d.toolbarRows) { (values["toolbarRows"]?.let { parseIntField(it) } ?: 2).takeIf { it in 1..4 } ?: d.toolbarRows },
         composerWrapColumn = field("composerWrapColumn", d.composerWrapColumn) { values["composerWrapColumn"]?.let { parseIntField(it).coerceIn(0, 998) } ?: 74 },
@@ -1506,23 +1488,45 @@ private fun parseFavorites(value: String): List<FolderFavorite> {
     return out
 }
 
-private fun encodeReaderBar(actions: List<ReaderAction>): String =
-    actions.joinToString(";") { it.name }
+private val storedReaderBarOrder = listOf(
+    "Reply",
+    "ReplyAll",
+    "Forward",
+    "Delete",
+    "Move",
+    "Spam",
+    "Bounce",
+    "Headers",
+)
 
-private fun parseReaderBar(value: String): List<ReaderAction> {
-    if (value.isEmpty()) return emptyList()
-    val out = mutableListOf<ReaderAction>()
-    val seen = mutableSetOf<ReaderAction>()
-    for (part in value.split(';')) {
-        val action = try {
-            enumValueOf<ReaderAction>(part)
-        } catch (_: IllegalArgumentException) {
-            throw IllegalArgumentException("bad readerBar")
-        }
-        if (!seen.add(action)) throw IllegalArgumentException("bad readerBar")
-        out += action
+private fun storedReaderAction(name: String): ReaderToolbarAction = when (name) {
+    "Reply" -> ReaderToolbarAction.Reply
+    "ReplyAll" -> ReaderToolbarAction.ReplyAll
+    "Forward" -> ReaderToolbarAction.Forward
+    "Delete" -> ReaderToolbarAction.Delete
+    "Move" -> ReaderToolbarAction.Move
+    "Spam" -> ReaderToolbarAction.Spam
+    "Bounce" -> ReaderToolbarAction.Bounce
+    "Headers" -> ReaderToolbarAction.Headers
+    else -> throw IllegalArgumentException("bad readerBar")
+}
+
+/** Today's readerToolbarFrom: Refresh plus the first four saved actions, then the rest, then the missing ones. */
+private fun readerToolbarFromStoredBar(value: String): ReaderToolbarLayout {
+    val shown = if (value.isEmpty()) emptyList() else value.split(';')
+    val seen = HashSet<String>()
+    val mapped = ArrayList<ReaderToolbarAction>(shown.size)
+    for (part in shown) {
+        val action = storedReaderAction(part)
+        if (!seen.add(part)) throw IllegalArgumentException("bad readerBar")
+        mapped += action
     }
-    return out
+    val missing = storedReaderBarOrder.filter { it !in seen }.map { storedReaderAction(it) }
+    return ReaderToolbarLayout(
+        toolbar = listOf(ReaderToolbarAction.Refresh) + mapped.take(4),
+        overflow = mapped.drop(4) + missing,
+        hidden = emptyList(),
+    )
 }
 
 private fun encodeView(view: FolderView): String =

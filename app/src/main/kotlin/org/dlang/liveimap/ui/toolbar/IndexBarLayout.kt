@@ -1,8 +1,6 @@
 package org.dlang.liveimap.ui.toolbar
 
 import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.ReaderAction
-import org.dlang.liveimap.settings.defaultReaderBar
 
 enum class IndexBarAction {
     Refresh,
@@ -87,6 +85,76 @@ fun <A> dragLanding(
     return moved to section
 }
 
+private fun <A> moveSection(
+    toolbar: List<A>,
+    overflow: List<A>,
+    hidden: List<A>,
+    action: A,
+    section: BarSection,
+): Triple<List<A>, List<A>, List<A>>? {
+    val current = when {
+        action in toolbar -> BarSection.Toolbar
+        action in overflow -> BarSection.Overflow
+        action in hidden -> BarSection.Hidden
+        else -> return null
+    }
+    if (current == section) return Triple(toolbar, overflow, hidden)
+    val nextToolbar = toolbar.filterNot { it == action }
+    val nextOverflow = overflow.filterNot { it == action }
+    val nextHidden = hidden.filterNot { it == action }
+    return when (section) {
+        BarSection.Toolbar -> Triple(nextToolbar + action, nextOverflow, nextHidden)
+        BarSection.Overflow -> Triple(nextToolbar, nextOverflow + action, nextHidden)
+        BarSection.Hidden -> Triple(nextToolbar, nextOverflow, nextHidden + action)
+    }
+}
+
+private fun <A> moveByDelta(
+    toolbar: List<A>,
+    overflow: List<A>,
+    hidden: List<A>,
+    action: A,
+    delta: Int,
+): Triple<List<A>, List<A>, List<A>>? {
+    if (delta != -1 && delta != 1) return Triple(toolbar, overflow, hidden)
+    val section = when {
+        action in toolbar -> BarSection.Toolbar
+        action in overflow -> BarSection.Overflow
+        action in hidden -> BarSection.Hidden
+        else -> return null
+    }
+    val list = when (section) {
+        BarSection.Toolbar -> toolbar
+        BarSection.Overflow -> overflow
+        BarSection.Hidden -> hidden
+    }
+    val index = list.indexOf(action)
+    if (index < 0) return null
+    val target = index + delta
+    if (target !in list.indices) return Triple(toolbar, overflow, hidden)
+    val next = list.toMutableList()
+    next.removeAt(index)
+    next.add(target, action)
+    return when (section) {
+        BarSection.Toolbar -> Triple(next, overflow, hidden)
+        BarSection.Overflow -> Triple(toolbar, next, hidden)
+        BarSection.Hidden -> Triple(toolbar, overflow, next)
+    }
+}
+
+private fun <A, L> applyMove(
+    layout: L,
+    toolbar: List<A>,
+    overflow: List<A>,
+    hidden: List<A>,
+    moved: Triple<List<A>, List<A>, List<A>>?,
+    build: (List<A>, List<A>, List<A>) -> L,
+): L {
+    if (moved == null) return layout
+    if (moved.first === toolbar && moved.second === overflow && moved.third === hidden) return layout
+    return build(moved.first, moved.second, moved.third)
+}
+
 data class IndexBarLayout(
     val toolbar: List<IndexBarAction>,
     val overflow: List<IndexBarAction>,
@@ -107,30 +175,15 @@ fun defaultIndexBar(): IndexBarLayout = IndexBarLayout(
 
 fun resetIndexBar(): IndexBarLayout = defaultIndexBar()
 
-fun moveIndexAction(layout: IndexBarLayout, action: IndexBarAction, section: BarSection): IndexBarLayout {
-    val current = layout.sectionOf(action) ?: return layout
-    if (current == section) return layout
-    val cleared = layout.copy(
-        toolbar = layout.toolbar.filterNot { it == action },
-        overflow = layout.overflow.filterNot { it == action },
-        hidden = layout.hidden.filterNot { it == action },
-    )
-    return cleared.withSection(section, cleared.section(section) + action)
-}
+fun moveIndexAction(layout: IndexBarLayout, action: IndexBarAction, section: BarSection): IndexBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
+        IndexBarLayout(toolbar, overflow, hidden)
+    }
 
-fun moveIndexActionBy(layout: IndexBarLayout, action: IndexBarAction, delta: Int): IndexBarLayout {
-    if (delta != -1 && delta != 1) return layout
-    val section = layout.sectionOf(action) ?: return layout
-    val list = layout.section(section)
-    val index = list.indexOf(action)
-    if (index < 0) return layout
-    val target = index + delta
-    if (target !in list.indices) return layout
-    val next = list.toMutableList()
-    next.removeAt(index)
-    next.add(target, action)
-    return layout.withSection(section, next)
-}
+fun moveIndexActionBy(layout: IndexBarLayout, action: IndexBarAction, delta: Int): IndexBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
+        IndexBarLayout(toolbar, overflow, hidden)
+    }
 
 fun dragIndexLayout(layout: IndexBarLayout, from: Int, to: Int): IndexBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
@@ -183,26 +236,6 @@ private fun parseIndexNames(text: String): List<IndexBarAction> {
     }
 }
 
-private fun IndexBarLayout.sectionOf(action: IndexBarAction): BarSection? = when {
-    action in toolbar -> BarSection.Toolbar
-    action in overflow -> BarSection.Overflow
-    action in hidden -> BarSection.Hidden
-    else -> null
-}
-
-private fun IndexBarLayout.section(section: BarSection): List<IndexBarAction> = when (section) {
-    BarSection.Toolbar -> toolbar
-    BarSection.Overflow -> overflow
-    BarSection.Hidden -> hidden
-}
-
-private fun IndexBarLayout.withSection(section: BarSection, actions: List<IndexBarAction>): IndexBarLayout =
-    when (section) {
-        BarSection.Toolbar -> copy(toolbar = actions)
-        BarSection.Overflow -> copy(overflow = actions)
-        BarSection.Hidden -> copy(hidden = actions)
-    }
-
 enum class SelectionBarAction {
     Seen,
     Flag,
@@ -238,30 +271,15 @@ fun moveSelectionAction(
     layout: SelectionBarLayout,
     action: SelectionBarAction,
     section: BarSection,
-): SelectionBarLayout {
-    val current = layout.sectionOf(action) ?: return layout
-    if (current == section) return layout
-    val cleared = layout.copy(
-        toolbar = layout.toolbar.filterNot { it == action },
-        overflow = layout.overflow.filterNot { it == action },
-        hidden = layout.hidden.filterNot { it == action },
-    )
-    return cleared.withSection(section, cleared.section(section) + action)
-}
+): SelectionBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
+        SelectionBarLayout(toolbar, overflow, hidden)
+    }
 
-fun moveSelectionActionBy(layout: SelectionBarLayout, action: SelectionBarAction, delta: Int): SelectionBarLayout {
-    if (delta != -1 && delta != 1) return layout
-    val section = layout.sectionOf(action) ?: return layout
-    val list = layout.section(section)
-    val index = list.indexOf(action)
-    if (index < 0) return layout
-    val target = index + delta
-    if (target !in list.indices) return layout
-    val next = list.toMutableList()
-    next.removeAt(index)
-    next.add(target, action)
-    return layout.withSection(section, next)
-}
+fun moveSelectionActionBy(layout: SelectionBarLayout, action: SelectionBarAction, delta: Int): SelectionBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
+        SelectionBarLayout(toolbar, overflow, hidden)
+    }
 
 fun dragSelectionLayout(layout: SelectionBarLayout, from: Int, to: Int): SelectionBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
@@ -314,28 +332,6 @@ private fun parseSelectionNames(text: String): List<SelectionBarAction> {
     }
 }
 
-private fun SelectionBarLayout.sectionOf(action: SelectionBarAction): BarSection? = when {
-    action in toolbar -> BarSection.Toolbar
-    action in overflow -> BarSection.Overflow
-    action in hidden -> BarSection.Hidden
-    else -> null
-}
-
-private fun SelectionBarLayout.section(section: BarSection): List<SelectionBarAction> = when (section) {
-    BarSection.Toolbar -> toolbar
-    BarSection.Overflow -> overflow
-    BarSection.Hidden -> hidden
-}
-
-private fun SelectionBarLayout.withSection(
-    section: BarSection,
-    actions: List<SelectionBarAction>,
-): SelectionBarLayout = when (section) {
-    BarSection.Toolbar -> copy(toolbar = actions)
-    BarSection.Overflow -> copy(overflow = actions)
-    BarSection.Hidden -> copy(hidden = actions)
-}
-
 enum class FolderBarAction {
     Refresh,
     CollapseAll,
@@ -372,30 +368,15 @@ fun moveFolderAction(
     layout: FolderBarLayout,
     action: FolderBarAction,
     section: BarSection,
-): FolderBarLayout {
-    val current = layout.sectionOf(action) ?: return layout
-    if (current == section) return layout
-    val cleared = layout.copy(
-        toolbar = layout.toolbar.filterNot { it == action },
-        overflow = layout.overflow.filterNot { it == action },
-        hidden = layout.hidden.filterNot { it == action },
-    )
-    return cleared.withSection(section, cleared.section(section) + action)
-}
+): FolderBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
+        FolderBarLayout(toolbar, overflow, hidden)
+    }
 
-fun moveFolderActionBy(layout: FolderBarLayout, action: FolderBarAction, delta: Int): FolderBarLayout {
-    if (delta != -1 && delta != 1) return layout
-    val section = layout.sectionOf(action) ?: return layout
-    val list = layout.section(section)
-    val index = list.indexOf(action)
-    if (index < 0) return layout
-    val target = index + delta
-    if (target !in list.indices) return layout
-    val next = list.toMutableList()
-    next.removeAt(index)
-    next.add(target, action)
-    return layout.withSection(section, next)
-}
+fun moveFolderActionBy(layout: FolderBarLayout, action: FolderBarAction, delta: Int): FolderBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
+        FolderBarLayout(toolbar, overflow, hidden)
+    }
 
 fun dragFolderLayout(layout: FolderBarLayout, from: Int, to: Int): FolderBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
@@ -446,28 +427,6 @@ private fun parseFolderNames(text: String): List<FolderBarAction> {
     }
 }
 
-private fun FolderBarLayout.sectionOf(action: FolderBarAction): BarSection? = when {
-    action in toolbar -> BarSection.Toolbar
-    action in overflow -> BarSection.Overflow
-    action in hidden -> BarSection.Hidden
-    else -> null
-}
-
-private fun FolderBarLayout.section(section: BarSection): List<FolderBarAction> = when (section) {
-    BarSection.Toolbar -> toolbar
-    BarSection.Overflow -> overflow
-    BarSection.Hidden -> hidden
-}
-
-private fun FolderBarLayout.withSection(
-    section: BarSection,
-    actions: List<FolderBarAction>,
-): FolderBarLayout = when (section) {
-    BarSection.Toolbar -> copy(toolbar = actions)
-    BarSection.Overflow -> copy(overflow = actions)
-    BarSection.Hidden -> copy(hidden = actions)
-}
-
 enum class ReaderToolbarAction {
     Refresh,
     Reply,
@@ -486,18 +445,6 @@ data class ReaderToolbarLayout(
     val hidden: List<ReaderToolbarAction>,
 )
 
-fun readerToolbarFrom(saved: List<ReaderAction>): ReaderToolbarLayout {
-    val shown = saved.map { it.toToolbarAction() }
-    val missing = ReaderAction.entries
-        .filter { it !in saved }
-        .map { it.toToolbarAction() }
-    return ReaderToolbarLayout(
-        toolbar = listOf(ReaderToolbarAction.Refresh) + shown.take(4),
-        overflow = shown.drop(4) + missing,
-        hidden = emptyList(),
-    )
-}
-
 fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
     toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
     overflow = listOf(
@@ -514,12 +461,8 @@ fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
 
 fun resetReaderToolbar(): ReaderToolbarLayout = defaultReaderToolbar()
 
-fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout {
-    val saved = settings.readerToolbar
-    if (saved != null) return saved
-    if (settings.readerBar == defaultReaderBar) return defaultReaderToolbar()
-    return readerToolbarFrom(settings.readerBar)
-}
+fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout =
+    settings.readerToolbar ?: defaultReaderToolbar()
 
 fun visibleReaderActions(
     actions: List<ReaderToolbarAction>,
@@ -535,34 +478,19 @@ fun moveReaderAction(
     layout: ReaderToolbarLayout,
     action: ReaderToolbarAction,
     section: BarSection,
-): ReaderToolbarLayout {
-    val current = layout.sectionOf(action) ?: return layout
-    if (current == section) return layout
-    val cleared = layout.copy(
-        toolbar = layout.toolbar.filterNot { it == action },
-        overflow = layout.overflow.filterNot { it == action },
-        hidden = layout.hidden.filterNot { it == action },
-    )
-    return cleared.withSection(section, cleared.section(section) + action)
-}
+): ReaderToolbarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
+        ReaderToolbarLayout(toolbar, overflow, hidden)
+    }
 
 fun moveReaderActionBy(
     layout: ReaderToolbarLayout,
     action: ReaderToolbarAction,
     delta: Int,
-): ReaderToolbarLayout {
-    if (delta != -1 && delta != 1) return layout
-    val section = layout.sectionOf(action) ?: return layout
-    val list = layout.section(section)
-    val index = list.indexOf(action)
-    if (index < 0) return layout
-    val target = index + delta
-    if (target !in list.indices) return layout
-    val next = list.toMutableList()
-    next.removeAt(index)
-    next.add(target, action)
-    return layout.withSection(section, next)
-}
+): ReaderToolbarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
+        ReaderToolbarLayout(toolbar, overflow, hidden)
+    }
 
 fun dragReaderLayout(layout: ReaderToolbarLayout, from: Int, to: Int): ReaderToolbarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
@@ -604,39 +532,6 @@ private fun parseReaderToolbarNames(text: String): List<ReaderToolbarAction> {
     }
 }
 
-private fun ReaderAction.toToolbarAction(): ReaderToolbarAction = when (this) {
-    ReaderAction.Reply -> ReaderToolbarAction.Reply
-    ReaderAction.ReplyAll -> ReaderToolbarAction.ReplyAll
-    ReaderAction.Forward -> ReaderToolbarAction.Forward
-    ReaderAction.Delete -> ReaderToolbarAction.Delete
-    ReaderAction.Move -> ReaderToolbarAction.Move
-    ReaderAction.Spam -> ReaderToolbarAction.Spam
-    ReaderAction.Bounce -> ReaderToolbarAction.Bounce
-    ReaderAction.Headers -> ReaderToolbarAction.Headers
-}
-
-private fun ReaderToolbarLayout.sectionOf(action: ReaderToolbarAction): BarSection? = when {
-    action in toolbar -> BarSection.Toolbar
-    action in overflow -> BarSection.Overflow
-    action in hidden -> BarSection.Hidden
-    else -> null
-}
-
-private fun ReaderToolbarLayout.section(section: BarSection): List<ReaderToolbarAction> = when (section) {
-    BarSection.Toolbar -> toolbar
-    BarSection.Overflow -> overflow
-    BarSection.Hidden -> hidden
-}
-
-private fun ReaderToolbarLayout.withSection(
-    section: BarSection,
-    actions: List<ReaderToolbarAction>,
-): ReaderToolbarLayout = when (section) {
-    BarSection.Toolbar -> copy(toolbar = actions)
-    BarSection.Overflow -> copy(overflow = actions)
-    BarSection.Hidden -> copy(hidden = actions)
-}
-
 enum class ComposeBarAction {
     Postpone,
 }
@@ -665,34 +560,19 @@ fun moveComposeAction(
     layout: ComposeBarLayout,
     action: ComposeBarAction,
     section: BarSection,
-): ComposeBarLayout {
-    val current = layout.sectionOf(action) ?: return layout
-    if (current == section) return layout
-    val cleared = layout.copy(
-        toolbar = layout.toolbar.filterNot { it == action },
-        overflow = layout.overflow.filterNot { it == action },
-        hidden = layout.hidden.filterNot { it == action },
-    )
-    return cleared.withSection(section, cleared.section(section) + action)
-}
+): ComposeBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
+        ComposeBarLayout(toolbar, overflow, hidden)
+    }
 
 fun moveComposeActionBy(
     layout: ComposeBarLayout,
     action: ComposeBarAction,
     delta: Int,
-): ComposeBarLayout {
-    if (delta != -1 && delta != 1) return layout
-    val section = layout.sectionOf(action) ?: return layout
-    val list = layout.section(section)
-    val index = list.indexOf(action)
-    if (index < 0) return layout
-    val target = index + delta
-    if (target !in list.indices) return layout
-    val next = list.toMutableList()
-    next.removeAt(index)
-    next.add(target, action)
-    return layout.withSection(section, next)
-}
+): ComposeBarLayout =
+    applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
+        ComposeBarLayout(toolbar, overflow, hidden)
+    }
 
 fun dragComposeLayout(layout: ComposeBarLayout, from: Int, to: Int): ComposeBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
@@ -740,28 +620,6 @@ private fun parseComposeNames(text: String): List<ComposeBarAction> {
     return text.split(',').mapNotNull { name ->
         ComposeBarAction.entries.firstOrNull { it.name == name } // F69: an unknown (newer) action is dropped
     }
-}
-
-private fun ComposeBarLayout.sectionOf(action: ComposeBarAction): BarSection? = when {
-    action in toolbar -> BarSection.Toolbar
-    action in overflow -> BarSection.Overflow
-    action in hidden -> BarSection.Hidden
-    else -> null
-}
-
-private fun ComposeBarLayout.section(section: BarSection): List<ComposeBarAction> = when (section) {
-    BarSection.Toolbar -> toolbar
-    BarSection.Overflow -> overflow
-    BarSection.Hidden -> hidden
-}
-
-private fun ComposeBarLayout.withSection(
-    section: BarSection,
-    actions: List<ComposeBarAction>,
-): ComposeBarLayout = when (section) {
-    BarSection.Toolbar -> copy(toolbar = actions)
-    BarSection.Overflow -> copy(overflow = actions)
-    BarSection.Hidden -> copy(hidden = actions)
 }
 
 data class ToolbarPack(

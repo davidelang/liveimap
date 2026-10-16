@@ -1702,17 +1702,6 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 settings.swipeLeading,
                 { picking = MailboxPick.LeadingMove },
             ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
-            Text(stringResource(R.string.settings_message_bar))
-            ReaderAction.entries.forEach { action ->
-                BoolField(readerActionName(action), settings.readerBar.contains(action)) { enabled ->
-                    val next = if (enabled) {
-                        ReaderAction.entries.filter { it == action || editor.settings.readerBar.contains(it) }
-                    } else {
-                        editor.settings.readerBar.filterNot { it == action }
-                    }
-                    editor.persist(editor.settings.copy(readerBar = next))
-                }
-            }
         }
     }
     if (warnUnread) {
@@ -2992,20 +2981,6 @@ private fun bodyViewName(view: BodyView): String = stringResource(
         BodyView.PlainOrText -> R.string.label_html_text
         BodyView.Headers -> R.string.label_headers
         BodyView.Raw -> R.string.label_raw
-    },
-)
-
-@Composable
-private fun readerActionName(action: ReaderAction): String = stringResource(
-    when (action) {
-        ReaderAction.Reply -> R.string.compose_reply
-        ReaderAction.ReplyAll -> R.string.compose_reply_all
-        ReaderAction.Forward -> R.string.compose_forward
-        ReaderAction.Delete -> R.string.drawer_delete
-        ReaderAction.Move -> R.string.label_move
-        ReaderAction.Spam -> R.string.label_spam
-        ReaderAction.Bounce -> R.string.compose_bounce
-        ReaderAction.Headers -> R.string.reader_all_headers
     },
 )
 

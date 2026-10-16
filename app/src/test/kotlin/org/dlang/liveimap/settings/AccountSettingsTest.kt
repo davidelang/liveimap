@@ -12,6 +12,7 @@ import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
+import org.dlang.liveimap.ui.toolbar.ReaderToolbarLayout
 import org.dlang.liveimap.ui.toolbar.SelectionBarAction
 import org.dlang.liveimap.ui.toolbar.defaultComposeBar
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
@@ -22,7 +23,6 @@ import org.dlang.liveimap.ui.toolbar.moveFolderAction
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
 import org.dlang.liveimap.ui.toolbar.moveReaderAction
 import org.dlang.liveimap.ui.toolbar.moveSelectionAction
-import org.dlang.liveimap.ui.toolbar.readerToolbarFrom
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -103,7 +103,6 @@ class AccountSettingsTest {
                 "pipelineCommands",
                 "logImapTraffic",
                 "showUserInDebugReport",
-                "readerBar",
                 "dynamicColor",
                 "inboxStart",
                 "folderStart",
@@ -132,7 +131,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("askBeforeExpunge=true"))
         assertTrue(text.lines().contains("pipelineCommands=true"))
         assertTrue(text.lines().contains("logImapTraffic=false"))
-        assertTrue(text.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
+        assertFalse(text.contains("readerBar="))
         assertTrue(text.lines().contains("forwardAsAttachment=false"))
         assertTrue(text.lines().contains("showUserInDebugReport=false"))
         assertTrue(text.lines().contains("dynamicColor=true"))
@@ -519,7 +518,7 @@ class AccountSettingsTest {
         val missingBar = AccountSettings().encode().lineSequence()
             .filter { it.isNotEmpty() && !it.startsWith("readerBar=") }
             .joinToString("\n")
-        assertEquals(defaultReaderBar, decodeAccountSettings(missingBar).readerBar)
+        assertNull(decodeAccountSettings(missingBar).readerToolbar)
     }
 
     @Test
@@ -800,9 +799,24 @@ class AccountSettingsTest {
     fun readerToolbarRoundTrip() {
         val text = AccountSettings().encode()
         assertFalse(text.contains("readerToolbar"))
+        assertFalse(text.contains("readerBar="))
         assertNull(decodeAccountSettings(text).readerToolbar)
-        assertTrue(text.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
-        val layout = readerToolbarFrom(defaultReaderBar)
+        val layout = ReaderToolbarLayout(
+            toolbar = listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.Reply,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+            ),
+            overflow = listOf(
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
+            ),
+            hidden = emptyList(),
+        )
         val saved = AccountSettings(readerToolbar = layout)
         val encoded = saved.encode()
         assertTrue(
@@ -810,7 +824,7 @@ class AccountSettingsTest {
                 "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete|O:Move,Spam,Bounce,Headers|H:",
             ),
         )
-        assertTrue(encoded.lines().contains("readerBar=Reply;ReplyAll;Forward;Delete;Move"))
+        assertFalse(encoded.contains("readerBar="))
         assertEquals(layout, decodeAccountSettings(encoded).readerToolbar)
         assertEquals(encoded, decodeAccountSettings(encoded).encode())
         val moved = moveReaderAction(layout, ReaderToolbarAction.Bounce, BarSection.Toolbar)
@@ -823,6 +837,45 @@ class AccountSettingsTest {
         assertEquals(moved, decodeAccountSettings(movedText).readerToolbar)
         val bad = text.trimEnd() + "\nreaderToolbar=T:Refresh|O:Reply,Reply|H:\n"
         decodeAccountSettings(bad) // F69: duplicates are tolerated (first place kept)
+    }
+
+    @Test
+    fun readerBarMigratesOnceWhenToolbarIsAbsent() {
+        val replyOnly = ReaderToolbarLayout(
+            toolbar = listOf(ReaderToolbarAction.Refresh, ReaderToolbarAction.Reply),
+            overflow = listOf(
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Delete,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
+            ),
+            hidden = emptyList(),
+        )
+        val stored = AccountSettings().encode().trimEnd() + "\nreaderBar=Reply\n"
+        val decoded = decodeAccountSettings(stored)
+        assertEquals(replyOnly, decoded.readerToolbar)
+        val encoded = decoded.encode()
+        assertFalse(encoded.contains("readerBar="))
+        assertEquals(replyOnly, decodeAccountSettings(encoded).readerToolbar)
+        val kept = ReaderToolbarLayout(
+            toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
+            overflow = listOf(
+                ReaderToolbarAction.Refresh,
+                ReaderToolbarAction.ReplyAll,
+                ReaderToolbarAction.Forward,
+                ReaderToolbarAction.Move,
+                ReaderToolbarAction.Spam,
+                ReaderToolbarAction.Bounce,
+                ReaderToolbarAction.Headers,
+            ),
+            hidden = emptyList(),
+        )
+        val both = "readerToolbar=T:Reply,Delete|O:Refresh,ReplyAll,Forward,Move,Spam,Bounce,Headers|H:\nreaderBar=Reply\n"
+        assertEquals(kept, decodeAccountSettings(both).readerToolbar)
+        assertFalse(decodeAccountSettings(both).encode().contains("readerBar="))
     }
 
     @Test

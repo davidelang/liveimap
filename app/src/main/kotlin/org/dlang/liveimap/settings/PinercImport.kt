@@ -7,6 +7,7 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.ui.toolbar.defaultComposeBar
 import org.dlang.liveimap.ui.toolbar.defaultFolderBar
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
+import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 
 data class PinercPreview(
@@ -388,11 +389,10 @@ fun encodePinerc(settings: AccountSettings): String {
     if (settings.dateFormat != DateFormat.Local) {
         lines.add("# date format: ${dateFormatLabel(settings.dateFormat)}")
     }
-    if (settings.readerBar != defaultReaderBar ||
+    if ((settings.readerToolbar != null && settings.readerToolbar != defaultReaderToolbar()) ||
         settings.indexBar != defaultIndexBar() ||
         settings.selectionBar != defaultSelectionBar() ||
         settings.folderBar != defaultFolderBar() ||
-        settings.readerToolbar != null ||
         settings.composeBar != defaultComposeBar() ||
         settings.toolbarRows != 2
     ) {
