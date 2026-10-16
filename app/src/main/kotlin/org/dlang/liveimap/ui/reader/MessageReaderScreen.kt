@@ -648,6 +648,7 @@ private fun MessageReaderLoaded(
         }
         if (token != bodyGeneration) return
         noteSeen(markSeen)
+        if (token != bodyGeneration) return
         val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
         if (chunk.isEmpty()) {
             bodyOffset = if (part.size > 0) part.size else bodyOffset + length
@@ -692,6 +693,7 @@ private fun MessageReaderLoaded(
             if (!marked) {
                 marked = true
                 noteSeen(markSeen)
+                if (token != bodyGeneration) return
             }
             if (chunk.isEmpty()) break
             bodyOffset += chunk.size

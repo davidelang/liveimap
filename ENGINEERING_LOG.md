@@ -3228,3 +3228,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a body load keeps a generation and writes the screen only while that generation is newest; scroll continues the generation from when the page started; a truncated HTML part is decoded with WireTextDecoder.take and no finish
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A stale body load does not write after mark-seen (fixup 2)
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Fixup 2: after noteSeen returns, pullBody and pullUnbounded compare the load token with bodyGeneration again before writing body text, offset, or carry
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
