@@ -789,7 +789,6 @@ private fun MessageIndexLoaded(
     val appContext = LocalContext.current.applicationContext
     val emptyIndexSentence = stringResource(R.string.index_empty)
     val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
-    val retryLabel = stringResource(R.string.index_retry)
     val indexNow = stringResource(R.string.index_now)
     val indexMin = stringResource(R.string.index_min)
     val indexHour = stringResource(R.string.index_hour)
@@ -1001,6 +1000,7 @@ private fun MessageIndexLoaded(
             } catch (error: MailFailure) {
                 leavingIndex = false
                 postSnack(error.text)
+                onBack()
             }
         }
     }
@@ -1618,18 +1618,7 @@ private fun MessageIndexLoaded(
     LaunchedEffect(snackEvent) {
         if (snackEvent == 0) return@LaunchedEffect
         snackMode = "retry"
-        val result = snackbarHostState.showSnackbar(
-            message = snackMessage,
-            actionLabel = retryLabel,
-        )
-        if (result == SnackbarResult.ActionPerformed) {
-            lastReported = null
-            onModelQueue {
-                model.loadWindow()
-                pull()
-                if (model.rows.isNotEmpty()) scrollToStart()
-            }
-        }
+        snackbarHostState.showSnackbar(message = snackMessage)
     }
 
     LaunchedEffect(undoToken) {
@@ -2783,7 +2772,7 @@ private fun MessageIndexLoaded(
                             labelNew to { model.showNew(labelNew) },
                             labelUndeleted to { model.showNotDeleted(labelUndeleted) },
                             labelThread to {
-                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(model.startIndex)?.uid
+                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex))?.uid
                                 if (uid != null) model.showThreadOf(uid, labelThread)
                             },
                         )) {
@@ -2798,7 +2787,6 @@ private fun MessageIndexLoaded(
                                         run()
                                         pull()
                                     
-                                        model.notice?.let { postSnack(it) }
                                     }
                                 },
                             )
@@ -3094,14 +3082,19 @@ private fun MessageIndexLoaded(
         if (connected) {
                 if (confirmExpunge) {
                     val uidPlus = session.featureCaps.uidPlus
+                    val trashLine = stringResource(R.string.index_expunge_trash, knownTrashName)
+                    val bodyLine = stringResource(R.string.index_expunge_body)
+                    val othersLine = stringResource(R.string.index_expunge_others)
                     val body = buildString {
                         // F90: say plainly when this folder is the (detected or configured) Trash.
                         if (knownTrashName.isNotEmpty() && sameMailbox(mailbox, knownTrashName)) {
-                            append("This folder is your Trash ($knownTrashName). ")
+                            append(trashLine)
+                            append(" ")
                         }
-                        append("Permanently removes messages marked deleted in this folder. This cannot be undone.")
+                        append(bodyLine)
                         if (!uidPlus) {
-                            append(" This includes messages marked deleted by other clients.")
+                            append(" ")
+                            append(othersLine)
                         }
                     }
                     AlertDialog(
@@ -3135,8 +3128,8 @@ private fun MessageIndexLoaded(
                         },
                     )
                 }
-            if (filterActive && filters.isNotEmpty()) {
-                val shown = indexEntries.count { it is IndexEntry.Message }
+            if (filterActive || model.searchActive) {
+                val shown = model.order.size
                 val total = if (folderExists > 0) folderExists else shown
                 Row(
                     Modifier
@@ -3321,24 +3314,16 @@ private fun MessageIndexLoaded(
                                         )
                                         TextButton(onClick = {
                                             scope.launch {
-                                                val stored = try {
-                                                    store.load()
+                                                val updated = try {
+                                                    store.update { settings ->
+                                                        settings.copy(savedSearches = deleteSavedSearch(settings.savedSearches, item.name))
+                                                    }
                                                 } catch (error: CancellationException) {
                                                     throw error
                                                 } catch (_: Exception) {
                                                     return@launch
                                                 }
-                                                val next = deleteSavedSearch(stored.savedSearches, item.name)
-                                                if (next != stored.savedSearches) {
-                                                    try {
-                                                        store.update { it.copy(savedSearches = next) }
-                                                    } catch (error: CancellationException) {
-                                                        throw error
-                                                    } catch (_: Exception) {
-                                                        return@launch
-                                                    }
-                                                    savedItems = next
-                                                }
+                                                savedItems = updated.savedSearches
                                             }
                                         }) {
                                             Text(stringResource(R.string.index_search_remove))
@@ -3717,22 +3702,14 @@ private fun MessageIndexLoaded(
                     val name = saveName
                     saveNameOpen = false
                     scope.launch {
-                        val stored = try {
-                            store.load()
+                        try {
+                            store.update { settings ->
+                                settings.copy(savedSearches = saveSearch(settings.savedSearches, name, query, held.searchField))
+                            }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: Exception) {
                             return@launch
-                        }
-                        val next = saveSearch(stored.savedSearches, name, query, held.searchField)
-                        if (next != stored.savedSearches) {
-                            try {
-                                store.update { it.copy(savedSearches = next) }
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (_: Exception) {
-                                return@launch
-                            }
                         }
                     }
                 }) { Text(stringResource(R.string.index_ok)) }

@@ -3267,3 +3267,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a custom date pattern is measured at day 28 of each month, a week of evenings, and morning and evening on Dec 30, all in 2024 UTC; the error text is the sample only when nothing formats
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Index snacks, thread, counts, and Back
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-actions-20261015-2315-plan.md
+- Work: A notice snack does not offer Retry. Show thread uses the visible row. A quick filter does not snack twice. The filter count is the match count. Expunge copy is in string resources. Deleting or saving a search edits the current settings. Back leaves even when expunge fails.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -156,6 +156,9 @@
     <string name="index_not_advertised">%1$s Not advertised</string>
     <string name="index_expunge">Expunge</string>
     <string name="index_expunge_title">Expunge?</string>
+    <string name="index_expunge_trash">This folder is your Trash (%1$s).</string>
+    <string name="index_expunge_body">Permanently removes messages marked deleted in this folder. This cannot be undone.</string>
+    <string name="index_expunge_others">This includes messages marked deleted by other clients.</string>
     <string name="index_cancel">Cancel</string>
     <string name="index_flags">Flags</string>
     <string name="index_set_flag">Set %1$s</string>

@@ -1058,6 +1058,52 @@ class IndexWindowTest {
     }
 
     @Test
+    fun noticeSnackHasNoRetryAndThreadUsesVisibleRow() {
+        val source = screenSource()
+        val snack = source.substringAfter("LaunchedEffect(snackEvent)").substringBefore("LaunchedEffect(undoToken)")
+        assertFalse(snack.contains("loadWindow"))
+        assertFalse(snack.contains("actionLabel"))
+        val thread = source.substringAfter("labelThread to {").substringBefore("HorizontalDivider()")
+        assertTrue(thread.contains("selected.firstOrNull()"))
+        assertTrue(thread.contains("rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex)"))
+        assertFalse(thread.contains("model.startIndex"))
+        assertFalse(thread.substringAfter("pull()").contains("postSnack"))
+        val undo = source.substringAfter("LaunchedEffect(undoToken)").substringBefore("LaunchedEffect(session, mailbox, loadToken)")
+        assertTrue(undo.contains("snackMode = \"undo\""))
+    }
+
+    @Test
+    fun filterCountIsMatchCountAndExpungeCopyIsResources() {
+        val source = screenSource()
+        val count = source.substringAfter("if (filterActive || model.searchActive) {").substringBefore("if (searchVisible)")
+        assertTrue(count.contains("val shown = model.order.size"))
+        assertTrue(count.contains("\"\$shown of \$total\""))
+        assertTrue(count.contains("val total = if (folderExists > 0) folderExists else shown"))
+        val expunge = source.substringAfter("if (confirmExpunge)").substringBefore("if (filterActive || model.searchActive)")
+        assertTrue(expunge.contains("R.string.index_expunge_trash"))
+        assertTrue(expunge.contains("R.string.index_expunge_body"))
+        assertTrue(expunge.contains("R.string.index_expunge_others"))
+        assertTrue(expunge.contains("sameMailbox"))
+        assertFalse(expunge.contains("This folder is your Trash"))
+        assertFalse(expunge.contains("Permanently removes"))
+    }
+
+    @Test
+    fun savedSearchEditsCurrentSettingsAndBackLeavesOnExpungeFailure() {
+        val source = screenSource()
+        val remove = source.substringBefore("R.string.index_search_remove").substringAfterLast("store.update {").substringBefore("}")
+        assertTrue(remove.contains("deleteSavedSearch(settings.savedSearches"))
+        assertFalse(remove.contains("stored"))
+        val save = source.substringAfter("if (saveNameOpen)").substringAfter("store.update {").substringBefore("}")
+        assertTrue(save.contains("saveSearch(settings.savedSearches"))
+        assertFalse(save.contains("stored"))
+        val failure = source.substringAfter("fun leaveIndex()").substringAfter("catch (error: MailFailure)").substringBefore("}")
+        val snackAt = failure.indexOf("postSnack")
+        val backAt = failure.indexOf("onBack()")
+        assertTrue(snackAt >= 0 && backAt > snackAt)
+    }
+
+    @Test
     fun filterChipsNarrowAndDrop() {
         val session = FakeMailSession()
         session.searchUids = listOf(1L, 2L)
