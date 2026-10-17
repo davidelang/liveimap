@@ -80,3 +80,7 @@
   the index indents up to 6 levels and shows the depth number beyond. Needed: a way to open a subthread as its own
   view (entry point on deep rows, filter-in-place vs. new screen, back navigation, how the depth number resets).
   Owner: David to decide the UX; then implement in MessageIndexScreen/IndexModel. (2026-10-11)
+
+- Add attachments for sending and for receiving. The reader already lists and opens received parts, and a forward can resend those parts; the user still cannot attach a new file. Also check the plain-text version of an HTML message on send: compose sends text/plain only and does not add a text/html part with a text/plain alternative.
+
+- Internationalize the app so the UI can be translated. Moving the strings into strings.xml is the existing separate item and comes first.
