@@ -3462,3 +3462,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/regress-greeting-20261016-2248-plan.md
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - lab TLS checks read client commands, and a preserved key stops JMAP, SMTP login, and test-account probes.

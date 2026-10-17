@@ -18,4 +18,14 @@ class SettingsSecurityGateTest {
         val lines = testAccountLogins(settings, probes)
         assertEquals(listOf("FAIL account settings need attention: tlsMode"), lines)
     }
+
+    @Test
+    fun withoutPreservedDropsTlsModeAndLeavesOtherSettings() {
+        val broken = AccountSettings(unknownSettings = listOf("tlsMode=NotAMode"))
+        val cleared = broken.withoutPreserved("tlsMode")
+        assertEquals(emptyList<String>(), cleared.unknownSettings)
+        assertEquals(null, cleared.preservedSecurityKey())
+        val plain = AccountSettings(username = "ada", imapHost = "imap.example")
+        assertEquals(plain, plain.withoutPreserved("tlsMode"))
+    }
 }

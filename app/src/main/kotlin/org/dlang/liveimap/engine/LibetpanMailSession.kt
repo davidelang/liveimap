@@ -1354,11 +1354,13 @@ class LibetpanMailSession : MailSession {
      * [SmtpLoginCheck]; failures throw [MailFailure] with the server's text.
      */
     override suspend fun smtpLoginCheck(): org.dlang.liveimap.session.SmtpLoginCheck {
+        val key = refusedSecurityKey ?: account?.preservedSecurityKey()
+        if (key != null) throw MailFailure("account settings need attention: $key")
         val probe = smtpProbe
         val acct = account ?: probe?.settings ?: credentials?.settings
             ?: throw MailFailure("not connected")
-        val key = acct.preservedSecurityKey()
-        if (key != null) throw MailFailure("FAIL account settings need attention: $key")
+        val preserved = acct.preservedSecurityKey()
+        if (preserved != null) throw MailFailure("FAIL account settings need attention: $preserved")
         val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password.orEmpty()
         val ownSmtpPassword = probe?.smtpPassword ?: credentials?.smtpPassword ?: ""
         val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword)

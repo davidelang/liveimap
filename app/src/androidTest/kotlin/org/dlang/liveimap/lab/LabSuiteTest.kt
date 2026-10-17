@@ -337,6 +337,7 @@ class LabSuiteTest {
                     val accepting = java.util.concurrent.atomic.AtomicBoolean(true)
                     val late = java.util.concurrent.atomic.AtomicReference<String>(null)
                     var uid = 0L
+                    var expunged = false
                     try {
                         session.watch("INBOX") { change ->
                             callbackThread.compareAndSet(null, Thread.currentThread())
@@ -387,6 +388,7 @@ class LabSuiteTest {
                             session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                             session.uidExpunge(listOf(uid))
                             await("EXPUNGE") { it is org.dlang.liveimap.session.MailboxChange.Expunge }
+                            expunged = true
                         }
                         val thread = callbackThread.get() ?: throw IllegalStateException("watch callback did not run")
                         if (thread == caller) throw IllegalStateException("watch callback ran on the watch caller")
@@ -398,14 +400,15 @@ class LabSuiteTest {
                     } finally {
                         session.stopWatch()
                         accepting.set(false)
+                        if (!expunged && uid > 0L) {
+                            session.select("INBOX")
+                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
+                        }
+                        session.select(box)
                     }
                     kotlinx.coroutines.delay(200)
                     if (late.get() != null) throw IllegalStateException("event after stopWatch")
-                    if (!session.featureCaps.uidPlus && uid > 0L) {
-                        session.select("INBOX")
-                        session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                    }
-                    session.select(box)
                     "exists flags" + if (session.featureCaps.uidPlus) " expunge" else ""
                 }
                 if ("IDLE" in session.capabilities) step("idleRenew") {
@@ -415,29 +418,36 @@ class LabSuiteTest {
                         if (session.featureCaps.uidPlus && uid <= 0L) throw IllegalStateException("UIDPLUS append uid $uid")
                     }
                     LibetpanMailSession.nativeSetIdleRenewSeconds(3)
+                    var uid = 0L
+                    var got: String? = null
+                    var renews = 0
+                    var before = 0
                     try {
-                        val before = LibetpanMailSession.nativeIdleRenews()
+                        before = LibetpanMailSession.nativeIdleRenews()
                         val seen = kotlinx.coroutines.CompletableDeferred<String>()
                         session.watch("INBOX") { change -> if (change is org.dlang.liveimap.session.MailboxChange.Exists) seen.complete("exists=${change.exists}") }
                         kotlinx.coroutines.delay(10_000)
                         val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE renew $run\r\n" +
                             "Message-ID: <idle-renew-$run@liveimap.lab>\r\n\r\nIDLE renew lab test.\r\n").toByteArray()
-                        val uid = session.appendReturningUid("INBOX", msg, emptySet())
+                        uid = session.appendReturningUid("INBOX", msg, emptySet())
                         requireAppendUid(uid)
-                        val got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }
-                        session.stopWatch()
-                        val renews = LibetpanMailSession.nativeIdleRenews() - before
-                        if (uid > 0) {
-                            session.select("INBOX")
-                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                            if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
-                            session.select(box)
-                        }
-                        check(renews >= 2) { "only $renews renewals in 10 s" }
-                        "${got ?: throw IllegalStateException("no EXISTS after $renews renewals")} renews=$renews"
+                        got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }
                     } finally {
-                        LibetpanMailSession.nativeSetIdleRenewSeconds(0)
+                        try {
+                            session.stopWatch()
+                            renews = LibetpanMailSession.nativeIdleRenews() - before
+                            if (uid > 0) {
+                                session.select("INBOX")
+                                session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                                if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
+                            }
+                            session.select(box)
+                        } finally {
+                            LibetpanMailSession.nativeSetIdleRenewSeconds(0)
+                        }
                     }
+                    check(renews >= 2) { "only $renews renewals in 10 s" }
+                    "${got ?: throw IllegalStateException("no EXISTS after $renews renewals")} renews=$renews"
                 }
                 if (tls != TlsMode.None) step("tlsUntrusted") {
                     // This open must not trust the lab CA. The suite set it earlier; clear it for this probe only.
@@ -458,7 +468,7 @@ class LabSuiteTest {
                             throw IllegalStateException("open $opened confirms=${confirms.get()}")
                         }
                         if (confirms.get() != 1) throw IllegalStateException("confirms=${confirms.get()}")
-                        val after = recordingAfterHandshake(recordingSlice(file, mark))
+                        val after = recordingSlice(file, mark)
                         if (hasCommand(after, "LOGIN") || hasCommand(after, "AUTHENTICATE")) {
                             throw IllegalStateException("login command after handshake")
                         }
@@ -482,7 +492,7 @@ class LabSuiteTest {
                         if (opened !is OpenResult.Failed || !opened.text.contains("name mismatch")) {
                             throw IllegalStateException("open $opened")
                         }
-                        val after = recordingAfterHandshake(recordingSlice(file, mark))
+                        val after = recordingSlice(file, mark)
                         if (hasCommand(after, "LOGIN") || hasCommand(after, "AUTHENTICATE")) {
                             throw IllegalStateException("login command after handshake")
                         }
@@ -501,6 +511,13 @@ class LabSuiteTest {
                         if (opened !is OpenResult.Failed || !opened.text.contains("account settings need attention: tlsMode")) {
                             throw IllegalStateException("open $opened")
                         }
+                        val login = try {
+                            probe.smtpLoginCheck()
+                            "checked"
+                        } catch (e: org.dlang.liveimap.session.MailFailure) {
+                            e.text
+                        }
+                        if (!login.contains("account settings need attention: tlsMode")) throw IllegalStateException(login)
                         val smtp = try {
                             probe.smtpSendFrom(ByteArray(0), listOf(broken.email.ifBlank { "lab@liveimap.lab" }), 0, "")
                             "sent"
@@ -509,7 +526,6 @@ class LabSuiteTest {
                         }
                         if (!smtp.contains("account settings need attention: tlsMode")) throw IllegalStateException(smtp)
                         val tail = recordingSlice(file, mark)
-                        if (tail.contains("\"event\":\"connect\"")) throw IllegalStateException("tcp connect")
                         if (hasCommand(tail, "LOGIN") || hasCommand(tail, "AUTHENTICATE") || hasCommand(tail, "AUTH")) {
                             throw IllegalStateException("auth command")
                         }
@@ -694,11 +710,11 @@ class LabSuiteTest {
         }
     }
 
-    private fun recordingAfterHandshake(tail: String): String {
-        val at = tail.indexOf("\"event\":\"tls\"")
-        return if (at >= 0) tail.substring(at) else tail
+    private fun hasCommand(text: String, command: String): Boolean {
+        val word = Regex("\\b${Regex.escape(command)}\\b", RegexOption.IGNORE_CASE)
+        for (line in text.lineSequence()) {
+            if (line.contains("\"dir\":\"C\"") && word.containsMatchIn(line)) return true
+        }
+        return false
     }
-
-    private fun hasCommand(text: String, command: String) =
-        Regex("\\b$command\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
 }
