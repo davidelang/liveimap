@@ -214,35 +214,197 @@ def acquire_lock():
     hold_lock = True
 
 
-def parse_meta(text):
-    if "liveimap.gitCommit" not in (text or ""):
-        return None
-    m = re.search(r"liveimap\.gitCommit=([0-9a-fA-F]+)", text)
-    if m:
-        return m.group(1)
-    idx = text.find("liveimap.gitCommit")
-    window = text[idx:idx + 500]
-    m = re.search(r'android:value(?:\([^)]*\))?="([0-9a-fA-F]+)"', window)
-    if m:
-        return m.group(1)
+def unescape_prop(s):
+    out = []
+    i = 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            n = s[i + 1]
+            if n == "u" and i + 5 < len(s):
+                try:
+                    out.append(chr(int(s[i + 2:i + 6], 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+            out.append({"n": "\n", "t": "\t", "r": "\r"}.get(n, n))
+            i += 2
+            continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
+def sdk_dir():
+    path = os.path.join(REPO, "local.properties")
+    try:
+        lines = open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        if line.startswith("sdk.dir"):
+            raw = line[len("sdk.dir"):].lstrip("=:").strip()
+            return unescape_prop(raw)
+    return ""
+
+
+def version_key(name):
+    parts = []
+    for piece in name.split("."):
+        num = ""
+        for ch in piece:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        parts.append(int(num) if num else -1)
+    return tuple(parts)
+
+
+def newest_aapt():
+    sdk = sdk_dir()
+    if not sdk:
+        return ""
+    root = os.path.join(sdk, "build-tools")
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return ""
+    found = []
+    for name in names:
+        path = os.path.join(root, name, "aapt")
+        if os.path.isfile(path):
+            found.append((version_key(name), path))
+    if not found:
+        return ""
+    found.sort()
+    return found[-1][1]
+
+
+def git_commit_from_xmltree(text):
+    """android:value of the meta-data whose android:name is liveimap.gitCommit."""
+    in_meta = False
+    meta_indent = 0
+    name = ""
+    value = ""
+
+    def finish():
+        if name == "liveimap.gitCommit" and value:
+            return value
+        return ""
+
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = line.strip()
+        if in_meta and indent <= meta_indent:
+            got = finish()
+            if got:
+                return got
+            in_meta = False
+        if stripped.startswith("E:"):
+            if in_meta:
+                got = finish()
+                if got:
+                    return got
+            in_meta = stripped.startswith("E: meta-data")
+            meta_indent = indent
+            name = ""
+            value = ""
+            continue
+        if not in_meta:
+            continue
+        m = re.match(r"A:\s+android:name(?:\([^)]*\))?=\"([^\"]*)\"", stripped)
+        if m:
+            name = m.group(1)
+            continue
+        m = re.match(r"A:\s+android:value(?:\([^)]*\))?=\"([^\"]*)\"", stripped)
+        if m:
+            value = m.group(1)
+    if in_meta:
+        got = finish()
+        if got:
+            return got
     return None
 
 
-def package_commit(pkg):
+def device_apk_path(pkg):
     try:
-        r = subprocess.run(["adb", "-s", SERIAL, "shell", "dumpsys", "package", pkg],
+        r = subprocess.run(["adb", "-s", SERIAL, "shell", "pm", "path", pkg],
                            capture_output=True, text=True, errors="replace", timeout=20)
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    if r.returncode != 0:
+        return ""
+    paths = []
+    for line in (r.stdout or "").splitlines():
+        line = line.strip()
+        if line.startswith("package:"):
+            remote = line[len("package:"):].strip()
+            if remote:
+                paths.append(remote)
+    for remote in paths:
+        if remote.endswith("/base.apk") or remote.endswith("base.apk"):
+            return remote
+    return paths[0] if paths else ""
+
+
+def copy_device_apk(remote, dest):
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as out:
+            r = subprocess.run(["adb", "-s", SERIAL, "exec-out", "cat", remote],
+                               stdout=out, stderr=subprocess.PIPE, timeout=120)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if r.returncode != 0:
+        return False
+    try:
+        if os.path.getsize(dest) < 4:
+            return False
+        with open(dest, "rb") as f:
+            if f.read(2) != b"PK":
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def package_commit(pkg, aapt):
+    if not aapt or not run_log:
+        return None
+    remote = device_apk_path(pkg)
+    if not remote:
+        return None
+    local = os.path.join(run_log, pkg + ".apk")
+    if not copy_device_apk(remote, local):
+        return None
+    try:
+        r = subprocess.run([aapt, "dump", "xmltree", local, "AndroidManifest.xml"],
+                           capture_output=True, text=True, errors="replace", timeout=60)
     except (subprocess.TimeoutExpired, OSError):
         return None
     if r.returncode != 0:
         return None
-    return parse_meta(r.stdout)
+    return git_commit_from_xmltree(r.stdout)
 
 
 def commit_stop(expect):
-    vals = {PKG: package_commit(PKG), TEST_PKG: package_commit(TEST_PKG)}
-    if vals[PKG] is None or vals[TEST_PKG] is None:
-        return "VERDICT BLOCKED liveimap.gitCommit missing"
+    aapt = newest_aapt()
+    vals = {}
+    missing = []
+    for pkg in (PKG, TEST_PKG):
+        val = package_commit(pkg, aapt)
+        if not val:
+            missing.append(pkg)
+        else:
+            vals[pkg] = val
+    if missing:
+        return "VERDICT BLOCKED liveimap.gitCommit missing " + " ".join(missing)
     if vals[PKG] != expect or vals[TEST_PKG] != expect:
         detail = " ".join(f"{pkg}={vals[pkg]}" for pkg in (PKG, TEST_PKG))
         return f"VERDICT BLOCKED liveimap.gitCommit {detail} != {expect}"
@@ -897,12 +1059,13 @@ def run_jmap(names, force):
                 total[bucket] += 1
             if status == "FAIL" and not failing:
                 failing, err = check, detail
-        if known_match(name, "jmap", "identity") and "identity" not in seen:
-            if overall == "OK":
-                statuses.append("unexpected pass")
-            elif identity_failed(text):
-                statuses.append("KNOWN")
-                total["known"] += 1
+        # The suite OK line is not the identity check. Empty identity stays KNOWN.
+        # unexpected pass only when that check itself passed (it is in seen).
+        if known_match(name, "jmap", "identity") and "identity" not in seen and identity_failed(text):
+            statuses.append("KNOWN")
+            total["known"] += 1
+            if not failing:
+                failing = "identity"
         if not overall and rc != 0:
             statuses.append("FAIL")
             total["fail"] += 1
