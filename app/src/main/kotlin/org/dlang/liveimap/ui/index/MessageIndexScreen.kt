@@ -1158,28 +1158,27 @@ private fun MessageIndexLoaded(
     }
 
     fun selectAllMessages() {
-        if (model.order !is WindowedOrder && blocksFolderSelection(model.orderMailboxes, mailbox)) {
-            // F105: every hit, each by its own folder (home-folder hits as plain UIDs)
-            val boxes = model.orderMailboxes
-            val own = ArrayList<Long>()
-            val hits = LinkedHashSet<Pair<String, Long>>()
-            for ((i, uid) in model.order.withIndex()) {
-                val box = boxes.getOrNull(i).orEmpty()
-                if (box.isEmpty() || box == mailbox) own += uid else hits += box to uid
-            }
-            allMailbox = false
-            selected = own
-            selectedHits = hits
-            multiSelect = true
-            return
-        }
-        when (val target = selectAllTarget(filterActive || model.searchActive, model.order)) {
-            is SelectAllTarget.Uids -> {
+        when (
+            val plan = selectAllSplit(
+                mailbox,
+                model.order,
+                model.orderMailboxes,
+                filterActive || model.searchActive,
+                model.order is WindowedOrder,
+            )
+        ) {
+            is SelectAllPlan.Folders -> {
                 allMailbox = false
-                selected = target.uids
+                selected = plan.homeUids
+                selectedHits = plan.foreign.toSet()
                 multiSelect = true
             }
-            SelectAllTarget.EntireMailbox -> {
+            is SelectAllPlan.Uids -> {
+                allMailbox = false
+                selected = plan.uids
+                multiSelect = true
+            }
+            SelectAllPlan.EntireMailbox -> {
                 enqueueModel {
                     // F107: freeze "entire folder" at UIDNEXT now; mail arriving before the confirm is not included.
                     try {

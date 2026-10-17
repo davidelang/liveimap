@@ -694,6 +694,61 @@ class IndexWindowTest {
     }
 
     @Test
+    fun multiSelectAcrossFoldersMoveUndoesByFolder() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        session.epochs["Saved"] = session.targetEpoch
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("INBOX", 1L)
+        model.noteFolderEpoch("Archive", 1L)
+        model.noteFolderEpoch("Old", 1L)
+        val hits = listOf("Archive" to 4L, "Old" to 7L)
+        var copyUid = 31L
+        runImmediate {
+            model.acrossFolders(listOf(4L), hits, false) { u, e, folder ->
+                session.copiedUids = listOf(copyUid)
+                copyUid += 1
+                model.moveMessages(u, "Saved", e, folder)
+            }
+        }
+        assertEquals(
+            listOf(
+                CopyWrite(listOf(4L), "Saved"),
+                CopyWrite(listOf(4L), "Saved"),
+                CopyWrite(listOf(7L), "Saved"),
+            ),
+            session.copies,
+        )
+        assertEquals(listOf("INBOX", "Archive", "Old"), session.selects)
+        val undo = model.mailUndo!!
+        assertEquals(listOf("INBOX", "Archive", "Old"), undo.source.map { it.mailbox })
+        session.selects.clear()
+        session.storeFolders.clear()
+        session.stores.clear()
+        runImmediate { model.undo(undo) }
+        assertEquals(listOf("INBOX", "Archive", "Old"), session.selects.take(3))
+        assertEquals(listOf("INBOX", "Archive", "Old"), session.storeFolders.take(3))
+        assertEquals(listOf(4L, 4L, 7L), session.stores.take(3).map { it.uids.single() })
+        assertTrue(session.stores.take(3).all { it.remove == setOf("\\Deleted") })
+        assertNull(model.notice)
+    }
+
+    @Test
+    fun crossFolderMoveRefusesAChangedEpoch() {
+        val session = FakeMailSession(capabilities = setOf("UIDPLUS"))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        model.noteFolderEpoch("Archive", 5L)
+        session.epochs["Archive"] = 6L
+        session.copiedUids = listOf(90L)
+        runImmediate {
+            model.acrossFolders(emptyList(), listOf("Archive" to 9L), false) { u, e, folder ->
+                model.moveMessages(u, "Saved", e, folder)
+            }
+        }
+        assertTrue(session.copies.isEmpty())
+        assertTrue(model.notice!!.contains("UIDVALIDITY"))
+    }
+
+    @Test
     fun draftsHitResumesInItsOwnFolder() {
         // F124: searching from INBOX, a Drafts hit resumes Drafts UID 5 (not INBOX 5); from Drafts, an INBOX hit opens
         val session = FakeMailSession()
@@ -1244,6 +1299,29 @@ class IndexWindowTest {
         val filtered = selectAllTarget(true, listOf(2L, 5L))
         assertEquals(listOf(2L, 5L), (filtered as SelectAllTarget.Uids).uids)
         assertEquals(SelectAllTarget.EntireMailbox, selectAllTarget(false, emptyList()))
+    }
+
+    @Test
+    fun selectAllSplitNamesEachFolderOrTheWholeMailbox() {
+        val order = listOf(7L, 7L, 8L)
+        val split = selectAllSplit("INBOX", order, listOf("INBOX", "Sent", "Sent"), false, false)
+        val folders = split as SelectAllPlan.Folders
+        assertEquals(listOf(7L), folders.homeUids)
+        assertEquals(listOf("Sent" to 7L, "Sent" to 8L), folders.foreign)
+        assertEquals(
+            SelectAllPlan.EntireMailbox,
+            selectAllSplit("INBOX", order, listOf("INBOX", "INBOX", "INBOX"), false, false),
+        )
+        assertEquals(
+            SelectAllPlan.EntireMailbox,
+            selectAllSplit("INBOX", order, emptyList(), false, false),
+        )
+        val filtered = selectAllSplit("INBOX", listOf(5L, 6L), emptyList(), true, false)
+        assertEquals(listOf(5L, 6L), (filtered as SelectAllPlan.Uids).uids)
+        assertEquals(
+            SelectAllPlan.EntireMailbox,
+            selectAllSplit("INBOX", order, listOf("INBOX", "Sent", "Sent"), false, true),
+        )
     }
 
     @Test

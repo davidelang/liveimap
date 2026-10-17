@@ -3464,3 +3464,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-16 - lab TLS checks read client commands, and a preserved key stops JMAP, SMTP login, and test-account probes.
+
+## 2026-10-16 - Select-all names each folder, and a cross-folder move undoes by folder.
+
+- select-all names each folder and a cross-folder move undoes by folder.
+- Approved plan: sandbox/plans/f40-index-actions-20261016-1512-plan.md
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

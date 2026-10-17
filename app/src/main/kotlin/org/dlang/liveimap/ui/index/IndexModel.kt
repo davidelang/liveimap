@@ -519,6 +519,35 @@ fun selectAllTarget(filterActive: Boolean, order: List<Long>): SelectAllTarget {
     return SelectAllTarget.Uids(order)
 }
 
+sealed class SelectAllPlan {
+    data class Folders(val homeUids: List<Long>, val foreign: List<Pair<String, Long>>) : SelectAllPlan()
+    data class Uids(val uids: List<Long>) : SelectAllPlan()
+    data object EntireMailbox : SelectAllPlan()
+}
+
+fun selectAllSplit(
+    home: String,
+    order: List<Long>,
+    orderMailboxes: List<String>,
+    filterActive: Boolean,
+    windowed: Boolean,
+): SelectAllPlan {
+    if (!windowed && blocksFolderSelection(orderMailboxes, home)) {
+        val own = ArrayList<Long>()
+        val hits = LinkedHashSet<Pair<String, Long>>()
+        for ((i, uid) in order.withIndex()) {
+            val box = orderMailboxes.getOrNull(i).orEmpty()
+            if (box.isEmpty() || box == home) own += uid else hits += box to uid
+        }
+        return SelectAllPlan.Folders(own, hits.toList())
+    }
+    if (!filterActive) return SelectAllPlan.EntireMailbox
+    return when (val target = selectAllTarget(true, order)) {
+        is SelectAllTarget.Uids -> SelectAllPlan.Uids(target.uids)
+        SelectAllTarget.EntireMailbox -> SelectAllPlan.EntireMailbox
+    }
+}
+
 data class MailUndo(
     val delete: Boolean,
     val targetMailbox: String = "",
