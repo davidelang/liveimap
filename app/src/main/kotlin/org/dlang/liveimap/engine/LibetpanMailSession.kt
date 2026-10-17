@@ -229,11 +229,7 @@ class LibetpanMailSession : MailSession {
 
     override suspend fun open(account: AccountSettings): OpenResult {
         val key = account.preservedSecurityKey()
-        if (key != null) {
-            // A refused open still carries the settings, so a later send fails the same way and does not dial.
-            if (handle == 0L) this.account = account
-            return OpenResult.Failed("account settings need attention: $key")
-        }
+        if (key != null) return OpenResult.Failed("account settings need attention: $key")
         val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
         val owner = credentials?.accountId
             ?: kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
