@@ -3403,3 +3403,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The unused FolderView import is dropped from the reader.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The default build assembles the x86_64 androidTest APK and stamps the commit on both packages
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/androidtest-commit-apk-20261016-1512-plan.md
+- The default build assembles the x86_64 androidTest APK and stamps the commit on both packages.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

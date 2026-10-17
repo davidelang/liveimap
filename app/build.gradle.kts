@@ -26,6 +26,7 @@ android {
             isIgnoreExitValue = true
         }.standardOutput.asText.orNull?.trim().orEmpty()
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+        manifestPlaceholders["gitCommit"] = gitCommit
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // One APK per device ABI (as VehicleExpenses): app-arm64-<type>.apk for the Pixels, app-x86_64-<type>.apk

@@ -37,7 +37,7 @@ class LabSafetyTest {
         val host = arg("labHost")
         assumeTrue("no labHost argument", host.isNotEmpty())
         val expect = arg("labCommit")
-        if (expect.isNotEmpty()) assertEquals("installed build is not master HEAD", expect, appCommit())
+        if (expect.isNotEmpty()) assertEquals("installed app commit is not labCommit", expect, appCommit())
         val port = arg("labPort").toInt()
         val run = arg("labRun", "safety")
         val box = arg("labFolder", "LiveIMAP-Test")
