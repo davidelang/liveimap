@@ -3471,3 +3471,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/f40-index-actions-20261016-1512-plan.md
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A preserved-key probe fails when the recording shows an IMAP or SMTP dial.

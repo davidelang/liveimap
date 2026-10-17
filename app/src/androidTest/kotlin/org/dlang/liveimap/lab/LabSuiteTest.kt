@@ -529,6 +529,9 @@ class LabSuiteTest {
                         if (hasCommand(tail, "LOGIN") || hasCommand(tail, "AUTHENTICATE") || hasCommand(tail, "AUTH")) {
                             throw IllegalStateException("auth command")
                         }
+                        if (tail.contains("\"event\":\"connect\"") || tail.contains("\"conn\":\"smtp\"")) {
+                            throw IllegalStateException("dial")
+                        }
                         opened.text
                     } finally {
                         probe.close()
