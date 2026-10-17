@@ -327,28 +327,93 @@ class LabSuiteTest {
                     }
                 }
                 if ("IDLE" in session.capabilities) step("idle") {
-                    // Watch connection (EXAMINE + IDLE) on INBOX; the main connection appends one message there,
-                    // and the watch must report it. The message is removed again with UID EXPUNGE of exactly its
-                    // UID where UIDPLUS allows (lab account only), else it stays marked \Deleted.
-                    val seen = kotlinx.coroutines.CompletableDeferred<String>()
-                    session.watch("INBOX") { change -> if (change is org.dlang.liveimap.session.MailboxChange.Exists) seen.complete("exists=${change.exists}") }
-                    kotlinx.coroutines.delay(1500)
-                    val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE $run\r\n" +
-                        "Message-ID: <idle-$run@liveimap.lab>\r\n\r\nIDLE lab test.\r\n").toByteArray()
-                    val uid = session.appendReturningUid("INBOX", msg, emptySet())
-                    val got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }  // Cyrus without idled polls every 60 s (imapidlepoll)
-                    session.stopWatch()
-                    if (uid > 0) {
+                    // Watch connection (EXAMINE + IDLE) on INBOX. The main connection appends, flags, and
+                    // expunges; each event must arrive on the watch thread within 75 s, then nothing after stop.
+                    val caller = Thread.currentThread()
+                    val callbackThread = java.util.concurrent.atomic.AtomicReference<Thread>(null)
+                    val callbackLooper = java.util.concurrent.atomic.AtomicReference<Any>(null)
+                    val noLooper = Any()
+                    val changes = java.util.concurrent.ConcurrentLinkedQueue<org.dlang.liveimap.session.MailboxChange>()
+                    val accepting = java.util.concurrent.atomic.AtomicBoolean(true)
+                    val late = java.util.concurrent.atomic.AtomicReference<String>(null)
+                    var uid = 0L
+                    try {
+                        session.watch("INBOX") { change ->
+                            callbackThread.compareAndSet(null, Thread.currentThread())
+                            callbackLooper.compareAndSet(null, android.os.Looper.myLooper() ?: noLooper)
+                            if (!accepting.get()) {
+                                late.compareAndSet(null, change.javaClass.simpleName)
+                                return@watch
+                            }
+                            changes.add(change)
+                        }
+                        kotlinx.coroutines.delay(1500)
+                        val subject = "LiveIMAP IDLE $run"
+                        val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: $subject\r\n" +
+                            "Message-ID: <idle-$run@liveimap.lab>\r\n\r\nIDLE lab test.\r\n").toByteArray()
+                        uid = session.appendReturningUid("INBOX", msg, emptySet())
+                        if (session.featureCaps.uidPlus && uid <= 0L) throw IllegalStateException("UIDPLUS append uid $uid")
+                        if (uid <= 0L) {
+                            session.select("INBOX")
+                            uid = session.searchCriterion("Subject", subject).maxOrNull() ?: 0L
+                        }
+                        suspend fun await(what: String, match: (org.dlang.liveimap.session.MailboxChange) -> Boolean) {
+                            val deadline = System.currentTimeMillis() + 75_000 // Cyrus without idled polls every 60 s
+                            while (System.currentTimeMillis() < deadline) {
+                                val change = changes.poll()
+                                if (change == null) {
+                                    kotlinx.coroutines.delay(50)
+                                    continue
+                                }
+                                if (match(change)) return
+                            }
+                            throw IllegalStateException("no $what from the watch connection within 75 s")
+                        }
+                        await("EXISTS") { it is org.dlang.liveimap.session.MailboxChange.Exists }
+                        if (uid <= 0L) throw IllegalStateException("no append uid")
+                        changes.clear()
+                        session.select("INBOX")
+                        session.storeFlags(listOf(uid), setOf("\\Flagged"), emptySet())
+                        await("FLAGS") { change ->
+                            when (change) {
+                                is org.dlang.liveimap.session.MailboxChange.Flags ->
+                                    change.uid == uid && change.flags.any { it.equals("\\Flagged", ignoreCase = true) }
+                                org.dlang.liveimap.session.MailboxChange.ShownFlags -> true
+                                else -> false
+                            }
+                        }
+                        if (session.featureCaps.uidPlus) {
+                            changes.clear()
+                            session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            session.uidExpunge(listOf(uid))
+                            await("EXPUNGE") { it is org.dlang.liveimap.session.MailboxChange.Expunge }
+                        }
+                        val thread = callbackThread.get() ?: throw IllegalStateException("watch callback did not run")
+                        if (thread == caller) throw IllegalStateException("watch callback ran on the watch caller")
+                        val looper = callbackLooper.get()
+                        val main = android.os.Looper.getMainLooper()
+                        if (looper != null && looper !== noLooper && looper == main) {
+                            throw IllegalStateException("watch callback on the main looper")
+                        }
+                    } finally {
+                        session.stopWatch()
+                        accepting.set(false)
+                    }
+                    kotlinx.coroutines.delay(200)
+                    if (late.get() != null) throw IllegalStateException("event after stopWatch")
+                    if (!session.featureCaps.uidPlus && uid > 0L) {
                         session.select("INBOX")
                         session.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                        if (session.featureCaps.uidPlus) session.uidExpunge(listOf(uid))
-                        session.select(box)
                     }
-                    got ?: throw IllegalStateException("no EXISTS from the watch connection within 75 s")
+                    session.select(box)
+                    "exists flags" + if (session.featureCaps.uidPlus) " expunge" else ""
                 }
                 if ("IDLE" in session.capabilities) step("idleRenew") {
                     // IDLE renewed every 3 s here (9 min in the app): after several DONE/IDLE cycles the watch
                     // must still report a new message.
+                    fun requireAppendUid(uid: Long) {
+                        if (session.featureCaps.uidPlus && uid <= 0L) throw IllegalStateException("UIDPLUS append uid $uid")
+                    }
                     LibetpanMailSession.nativeSetIdleRenewSeconds(3)
                     try {
                         val before = LibetpanMailSession.nativeIdleRenews()
@@ -358,6 +423,7 @@ class LabSuiteTest {
                         val msg = ("From: lab@liveimap.lab\r\nTo: lab@liveimap.lab\r\nSubject: LiveIMAP IDLE renew $run\r\n" +
                             "Message-ID: <idle-renew-$run@liveimap.lab>\r\n\r\nIDLE renew lab test.\r\n").toByteArray()
                         val uid = session.appendReturningUid("INBOX", msg, emptySet())
+                        requireAppendUid(uid)
                         val got = kotlinx.coroutines.withTimeoutOrNull(75_000) { seen.await() }
                         session.stopWatch()
                         val renews = LibetpanMailSession.nativeIdleRenews() - before
@@ -371,6 +437,85 @@ class LabSuiteTest {
                         "${got ?: throw IllegalStateException("no EXISTS after $renews renewals")} renews=$renews"
                     } finally {
                         LibetpanMailSession.nativeSetIdleRenewSeconds(0)
+                    }
+                }
+                if (tls != TlsMode.None) step("tlsUntrusted") {
+                    // This open must not trust the lab CA. The suite set it earlier; clear it for this probe only.
+                    val ca = arg("labCa")
+                    val pass = arg("labPass")
+                    val max12 = arg("labMaxTls12") == "true"
+                    LabTestHooks.clear()
+                    LabTestHooks.set(host, pass)
+                    LabTestHooks.setMaxTls12(max12)
+                    val probe = LibetpanMailSession()
+                    try {
+                        val confirms = java.util.concurrent.atomic.AtomicInteger()
+                        probe.setCertConfirmer { confirms.incrementAndGet(); false }
+                        val file = File(dir, "$run.jsonl")
+                        val mark = file.length()
+                        val opened = probe.open(account)
+                        if (opened !is OpenResult.Failed || !opened.text.contains("certificate untrusted")) {
+                            throw IllegalStateException("open $opened confirms=${confirms.get()}")
+                        }
+                        if (confirms.get() != 1) throw IllegalStateException("confirms=${confirms.get()}")
+                        val after = recordingAfterHandshake(recordingSlice(file, mark))
+                        if (hasCommand(after, "LOGIN") || hasCommand(after, "AUTHENTICATE")) {
+                            throw IllegalStateException("login command after handshake")
+                        }
+                        "certificate untrusted confirms=1"
+                    } finally {
+                        probe.close()
+                        LabTestHooks.set(host, pass)
+                        LabTestHooks.setMaxTls12(max12)
+                        if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
+                    }
+                }
+                step("tlsNameMismatch") {
+                    val alt = arg("labAltHost")
+                    if (alt.isEmpty()) return@step "LAB_ALT_HOST unset"
+                    if (tls == TlsMode.None) return@step "cleartext"
+                    val probe = LibetpanMailSession()
+                    try {
+                        val file = File(dir, "$run.jsonl")
+                        val mark = file.length()
+                        val opened = probe.open(account.copy(imapHost = alt))
+                        if (opened !is OpenResult.Failed || !opened.text.contains("name mismatch")) {
+                            throw IllegalStateException("open $opened")
+                        }
+                        val after = recordingAfterHandshake(recordingSlice(file, mark))
+                        if (hasCommand(after, "LOGIN") || hasCommand(after, "AUTHENTICATE")) {
+                            throw IllegalStateException("login command after handshake")
+                        }
+                        opened.text
+                    } finally {
+                        probe.close()
+                    }
+                }
+                step("preservedSecurityLine") {
+                    val broken = account.copy(unknownSettings = listOf("tlsMode=NotAMode"))
+                    val probe = LibetpanMailSession()
+                    val file = File(dir, "$run.jsonl")
+                    val mark = file.length()
+                    try {
+                        val opened = probe.open(broken)
+                        if (opened !is OpenResult.Failed || !opened.text.contains("account settings need attention: tlsMode")) {
+                            throw IllegalStateException("open $opened")
+                        }
+                        val smtp = try {
+                            probe.smtpSendFrom(ByteArray(0), listOf(broken.email.ifBlank { "lab@liveimap.lab" }), 0, "")
+                            "sent"
+                        } catch (e: org.dlang.liveimap.session.MailFailure) {
+                            e.text
+                        }
+                        if (!smtp.contains("account settings need attention: tlsMode")) throw IllegalStateException(smtp)
+                        val tail = recordingSlice(file, mark)
+                        if (tail.contains("\"event\":\"connect\"")) throw IllegalStateException("tcp connect")
+                        if (hasCommand(tail, "LOGIN") || hasCommand(tail, "AUTHENTICATE") || hasCommand(tail, "AUTH")) {
+                            throw IllegalStateException("auth command")
+                        }
+                        opened.text
+                    } finally {
+                        probe.close()
                     }
                 }
                 // LAB_DEEP=1 seeds <box>/Deep with 100- and 5000-level MIME messages. Walk each one the way the
@@ -538,4 +683,22 @@ class LabSuiteTest {
         }
         assertEquals("failed steps:\n$steps", 0, failed)
     }
+
+    private fun recordingSlice(file: File, start: Long): String {
+        if (!file.isFile || file.length() <= start) return ""
+        java.io.RandomAccessFile(file, "r").use { raf ->
+            raf.seek(start)
+            val buf = ByteArray((raf.length() - start).toInt())
+            raf.readFully(buf)
+            return String(buf, Charsets.UTF_8)
+        }
+    }
+
+    private fun recordingAfterHandshake(tail: String): String {
+        val at = tail.indexOf("\"event\":\"tls\"")
+        return if (at >= 0) tail.substring(at) else tail
+    }
+
+    private fun hasCommand(text: String, command: String) =
+        Regex("\\b$command\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
 }

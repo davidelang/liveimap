@@ -62,7 +62,7 @@ class AcceptanceLabTest {
             current = raw
             val a = variantAccount(account, v)
             when (val r = raw.open(a)) {
-                OpenResult.Connected -> AcceptanceContext(variantSession(raw, v), a) { raw.open(a) } to ""
+                OpenResult.Connected -> AcceptanceContext(variantSession(raw, v), a, raw.capabilities) { raw.open(a) } to ""
                 is OpenResult.Failed -> null to r.text
                 is OpenResult.Rejected -> null to r.capabilities
             }
@@ -91,7 +91,7 @@ class AcceptanceLabTest {
         raw.setPlaintextConfirmer { true }
         try {
             check(raw.open(account) == OpenResult.Connected) { "open failed" }
-            val row = runAcceptance(AcceptanceContext(raw, account) { raw.open(account) }, listOf(smtpAcceptTest), readOnly = false, writeHosts = parseWriteHosts(arg("labWriteHosts"))).single()
+            val row = runAcceptance(AcceptanceContext(raw, account, raw.capabilities) { raw.open(account) }, listOf(smtpAcceptTest), readOnly = false, writeHosts = parseWriteHosts(arg("labWriteHosts"))).single()
             android.util.Log.i("AcceptanceLab", "smtp: ${row.result} ${row.reason}")
             check(row.result == "pass") { "smtp accepts message: ${row.result} ${row.reason}" }
         } finally {

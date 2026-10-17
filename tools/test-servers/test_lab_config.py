@@ -7,8 +7,9 @@ sys.path.insert(0, HERE)
 import lab
 
 lab_py = open(os.path.join(HERE, "lab.py"), encoding="utf-8").read()
-assert "assembleX86_64DebugAndroidTest" in lab_py
+assert "lab does not build" in lab_py
 assert "app-x86_64-debug-androidTest.apk" in lab_py
+assert "assembleX86_64DebugAndroidTest" not in lab_py
 assert "HERE = os.path.dirname(os.path.abspath(__file__))" in lab_py
 needles = (
     "sandbox" + "/" + "test-servers",

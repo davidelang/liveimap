@@ -24,6 +24,8 @@ class AcceptanceSkip(reason: String) : Exception(reason)
 class AcceptanceContext(
     val session: MailSession,
     val account: AccountSettings,
+    /** Capabilities before a variant hides any. Defaults to the session, so existing callers stay correct. */
+    val serverCapabilities: Set<String> = session.capabilities,
     /** Re-opens the session (reconnect test). */
     val reopen: suspend () -> OpenResult,
 ) {
@@ -32,6 +34,7 @@ class AcceptanceContext(
     /** The acceptance folder as this server names it (top level, or under the personal namespace prefix). */
     var testFolder: String = AcceptanceFolder
     fun has(name: String) = session.capabilities.any { it.equals(name, ignoreCase = true) }
+    fun serverHas(name: String) = serverCapabilities.any { it.equals(name, ignoreCase = true) }
     /** [mailbox] as one folder-scoped view, in the epoch the server has now (pass 5: nothing runs unscoped). */
     suspend fun folder(mailbox: String): MailSession =
         session.at(FolderAt(mailbox, session.folderInfo(FolderAt(mailbox)).uidValidity))
@@ -46,6 +49,40 @@ private fun testMessage(account: AccountSettings, subject: String): ByteArray {
     val from = account.email.ifBlank { account.username }
     return ("From: $from\r\nTo: $from\r\nSubject: $subject\r\nMessage-ID: <acc-${System.nanoTime()}@liveimap.test>\r\n" +
         "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nLiveIMAP acceptance run.\r\n").toByteArray()
+}
+
+/** 5120-byte body of one repeated line, plus the headers. */
+private fun fiveKbMessage(account: AccountSettings, subject: String): ByteArray {
+    val from = account.email.ifBlank { account.username }
+    val headers = "From: $from\r\nTo: $from\r\nSubject: $subject\r\nMessage-ID: <acc-${System.nanoTime()}@liveimap.test>\r\n" +
+        "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\n"
+    val line = "LiveIMAP 5 KB line\r\n".toByteArray(Charsets.US_ASCII)
+    val copies = 5120 / line.size
+    val body = ByteArray(line.size * copies)
+    var offset = 0
+    while (offset < body.size) {
+        line.copyInto(body, offset)
+        offset += line.size
+    }
+    check(body.size == 5120)
+    return headers.toByteArray(Charsets.US_ASCII) + body
+}
+
+/** CRLF, bare CR, and bare LF each count as two bytes, so a server's line endings still match the sent size. */
+private fun crlfNormalisedLength(bytes: ByteArray): Int {
+    var n = 0
+    var i = 0
+    while (i < bytes.size) {
+        val b = bytes[i]
+        if (b == '\r'.code.toByte() || b == '\n'.code.toByte()) {
+            n += 2
+            if (b == '\r'.code.toByte() && i + 1 < bytes.size && bytes[i + 1] == '\n'.code.toByte()) i++
+        } else {
+            n++
+        }
+        i++
+    }
+    return n
 }
 
 /** The registry: every acceptance test, in run order (later tests use state set by earlier ones). */
@@ -90,10 +127,39 @@ val acceptanceTests: List<AcceptanceTest> = listOf(
             ?: throw AcceptanceSkip("$AcceptanceFolder missing (server not reset)")
         val subject = "Acceptance append ${System.nanoTime()}"
         appendedUid = session.appendReturningUid(testFolder, testMessage(account, subject))
-        if (appendedUid > 0) return@t "uid $appendedUid"
-        // No UIDPLUS (no APPENDUID): find the message by its unique subject, as the app would after a save.
-        appendedUid = folder(testFolder).searchCriterion("Subject", subject).maxOrNull() ?: 0L
-        if (appendedUid > 0) "uid $appendedUid (found by search, no UIDPLUS)" else throw MailFailure("appended message not found")
+        if (serverHas("UIDPLUS")) {
+            val want = folder(testFolder).searchCriterion("Subject", subject).single()
+            if (appendedUid <= 0L || appendedUid != want) throw MailFailure("APPENDUID $appendedUid != searched $want")
+            "uid $appendedUid"
+        } else {
+            // No UIDPLUS (no APPENDUID): find the message by its unique subject, as the app would after a save.
+            if (appendedUid <= 0L) appendedUid = folder(testFolder).searchCriterion("Subject", subject).maxOrNull() ?: 0L
+            if (appendedUid > 0) "uid $appendedUid (found by search, no UIDPLUS)" else throw MailFailure("appended message not found")
+        }
+    },
+    t("append 5 KB to test folder", "smtp-submission", writes = true) {
+        val subject = "Acceptance 5 KB ${System.nanoTime()}"
+        val msg = fiveKbMessage(account, subject)
+        val uid = session.appendReturningUid(testFolder, msg)
+        val kept = if (serverHas("UIDPLUS")) {
+            val want = folder(testFolder).searchCriterion("Subject", subject).single()
+            if (uid <= 0L || uid != want) throw MailFailure("APPENDUID $uid != searched $want")
+            uid
+        } else {
+            if (uid > 0L) uid else folder(testFolder).searchCriterion("Subject", subject).maxOrNull() ?: 0L
+        }
+        if (kept <= 0L) throw MailFailure("appended message not found")
+        val fetched = folder(testFolder).fetchRfc822(kept)
+        val sentSize = crlfNormalisedLength(msg)
+        val gotSize = crlfNormalisedLength(fetched)
+        if (gotSize != sentSize) throw MailFailure("fetched $gotSize != sent $sentSize")
+        if (!fetched.toString(Charsets.ISO_8859_1).contains(subject)) throw MailFailure("subject missing")
+        if (serverHas("UIDPLUS")) {
+            val box = folder(testFolder)
+            box.storeFlags(listOf(kept), setOf("\\Deleted"), emptySet())
+            box.uidExpunge(listOf(kept))
+        }
+        "uid $kept bytes $gotSize"
     },
     t("flag and delete appended", "delete-and-expunge", writes = true) {
         if (appendedUid <= 0) throw AcceptanceSkip("no appended UID")

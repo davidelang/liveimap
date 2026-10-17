@@ -230,6 +230,7 @@ def instrument(s, port, tls, run, commit, mech="", side=None):
          *(side if side is not None else [*smtp_args(s, tls), *(sieve_args(s) if tls != "None" else [])]),
          *client_cert_args(tls),
          *(["-e", "labSteps", os.environ["LAB_STEPS"]] if os.environ.get("LAB_STEPS") else []),
+         *(["-e", "labAltHost", HOSTENV["LAB_ALT_HOST"]] if HOSTENV.get("LAB_ALT_HOST") else []),
          "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout

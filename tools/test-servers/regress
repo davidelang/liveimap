@@ -926,7 +926,31 @@ def run_imap(names, variants, force):
             cache_store("imap", name, variant_key, "PASS", {"pass": 1, "fail": 0, "skip": 0, "known": 0})
 
 
-def run_lab_suite(suite, names, args, checks, force, mech=False):
+def host_env_value(key):
+    """One key from tools/test-servers/host.env. Empty when the file or the key is absent."""
+    path = os.path.join(HERE, "host.env")
+    if not os.path.isfile(path):
+        return ""
+    for line in open(path, encoding="utf-8", errors="replace"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        if name.strip() == key:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+def imap_idle_steps():
+    """idle, idleRenew, tlsUntrusted, preservedSecurityLine, plus tlsNameMismatch when LAB_ALT_HOST is set."""
+    steps = ["idle", "idleRenew", "tlsUntrusted", "preservedSecurityLine"]
+    alt = host_env_value("LAB_ALT_HOST")
+    if alt:
+        steps.append("tlsNameMismatch")
+    return steps, alt
+
+
+def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None):
     todo = []
     for name in names:
         if not force and cache_pass(suite, name, ""):
@@ -942,7 +966,7 @@ def run_lab_suite(suite, names, args, checks, force, mech=False):
     for name in todo:
         cmd.extend(["--server", name])
     t0 = time.time()
-    rc, text = run_cmd(cmd, f"{suite}.log", child_env())
+    rc, text = run_cmd(cmd, f"{suite}.log", child_env(extra_env))
     duration = int(time.time() - t0)
     parsed = parse_lab_summary(text)
     by = {}
@@ -1311,7 +1335,10 @@ def main():
     if "imap" in suites:
         run_imap(names, a.variants, a.force)
     if "imap-idle" in suites:
-        run_lab_suite("imap-idle", names, "idle,idleRenew", ["idle", "idleRenew"], a.force)
+        idle_steps, alt_host = imap_idle_steps()
+        # lab.py forwards LAB_ALT_HOST as -e labAltHost. Pass it only when host.env sets the key.
+        idle_env = {"LAB_ALT_HOST": alt_host} if alt_host else None
+        run_lab_suite("imap-idle", names, ",".join(idle_steps), idle_steps, a.force, extra_env=idle_env)
     if "imap-mechs" in suites:
         run_lab_suite("imap-mechs", names, "open", ["open"], a.force, mech=True)
     if "jmap" in suites:

@@ -3417,3 +3417,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - One lab command runs the suites, IDLE events, and per-mechanism login.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Append uid, a 5 KB append, IDLE events, and a refused TLS open are checked against the server
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/f40-suite-steps-20261016-1512-plan.md
+- Append uid, a 5 KB append, IDLE events, and a refused TLS open are checked against the server.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
