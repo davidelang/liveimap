@@ -20,9 +20,10 @@ for n in cyrus-3124 cyrus-3137 stalwart stalwart-01625 stalwart-dev stalwart-015
   timeout 1200 python3 "$HERE/jmaprun.py" $n ${RUNID}-$n > "$LOGDIR/t3-$n.log" 2>&1
   rc=$?
   head -20 "$LOGDIR/t3-$n.log" | tee -a "$LOGDIR/t3-master.log"
-  if grep -q '^OK$' "$LOGDIR/t3-$n.log"; then
+  # jmaprun prints "<name> <url> OK|FAIL", not a bare OK/FAIL line.
+  if grep -q "^$n .* OK$" "$LOGDIR/t3-$n.log"; then
     echo -e "$n\tok\trc$rc" >> "$SUM"
-  elif grep -q '^FAIL$' "$LOGDIR/t3-$n.log"; then
+  elif grep -q "^$n .* FAIL$" "$LOGDIR/t3-$n.log"; then
     echo -e "$n\tfail\trc$rc" >> "$SUM"
   else
     echo -e "$n\tunknown\trc$rc" >> "$SUM"

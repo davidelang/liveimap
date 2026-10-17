@@ -2,7 +2,7 @@
 """LiveIMAP lab runner. Lab servers only; emulator-5554 only.
 
   lab.py list                       servers from generated/local-ports.tsv
-  lab.py run [--server S ...] [--skip-install]
+  lab.py run --commit SHA [--server S ...] [--skip-install]
 
 For each server: docker start, wait for the greeting, record CAPABILITY before and
 after login (lab_imap.py), run LabSuiteTest on emulator-5554 for each TLS mode the
@@ -106,15 +106,11 @@ def head():
 
 
 def install(commit):
-    # Approved emulator route: ./deploy emulator (never the Pixels), then the test APK on the emulator only.
-    # The test APK must be built at HEAD too; the build check runs from it.
-    r = sh(["./build_app", "--", "assembleX86_64DebugAndroidTest"], cwd=REPO)
-    if r.returncode:
-        sys.exit("test apk build failed:\n" + (r.stdout + r.stderr)[-800:])
-    r = sh(["./deploy", "emulator"], cwd=REPO)
-    if r.returncode:
-        sys.exit("deploy emulator failed:\n" + r.stderr[-800:])
-    r = adb("install", "-r", "-t", os.path.join(REPO, "app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk"))
+    # The lab does not build or deploy. The test APK is already built; install that file only.
+    apk = os.path.join(REPO, "app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk")
+    if not os.path.exists(apk):
+        sys.exit("test apk missing; lab does not build")
+    r = adb("install", "-r", "-t", apk)
     if r.returncode:
         sys.exit("test apk install failed: " + r.stdout[-400:] + r.stderr[-400:])
 
@@ -369,6 +365,7 @@ def main():
     p.add_argument("action", choices=["list", "run"])
     p.add_argument("--server", action="append", default=[])
     p.add_argument("--skip-install", action="store_true")
+    p.add_argument("--commit", default="", help="installed commit; required for run")
     p.add_argument("--steps", default="", help="comma list: run only these LabSuiteTest steps (open/select always run)")
     p.add_argument("--mechs", action="store_true", help="one app run per advertised mechanism plus LOGIN")
     a = p.parse_args()
@@ -379,9 +376,11 @@ def main():
         for s in ss:
             print("\t".join(f"{k}={v}" for k, v in s.items()))
         return
+    if not a.commit:
+        sys.exit("lab.py run requires --commit")
     if a.server:
         ss = [s for s in ss if s["name"] in a.server]
-    commit = head()
+    commit = a.commit
     global MECHS
     MECHS = a.mechs
     if not a.skip_install:

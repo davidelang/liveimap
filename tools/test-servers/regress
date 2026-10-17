@@ -1,0 +1,1178 @@
+#!/usr/bin/env python3
+"""One lab command. It does not build, deploy, or edit app code.
+
+Preflight and seed failures stop with one reason. Suite failures are collected.
+Recordings and logs go under the repo sandbox symlink. The host address is never
+written into summary.md, results.json, or the RESULTS body.
+"""
+import argparse, atexit, json, os, re, shutil, signal, socket, ssl, subprocess, sys, time, urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+SANDBOX = os.path.join(REPO, "sandbox")
+REC_ROOT = os.path.join(SANDBOX, "test-servers", "recordings")
+LOG_ROOT = os.path.join(SANDBOX, "test-servers", "logs")
+LOCK_PATH = os.path.join(SANDBOX, "test-servers", "lab-run.lock")
+CACHE_PATH = os.path.join(REC_ROOT, "regress-cache.json")
+PKG = "org.dlang.liveimap"
+TEST_PKG = "org.dlang.liveimap.test"
+SERIAL = "emulator-5554"
+SUITES = ["imap", "imap-idle", "imap-mechs", "jmap", "smtp", "sieve", "contacts", "ui"]
+JMAP_SERVERS = ["cyrus-3124", "cyrus-3137", "stalwart", "stalwart-01625", "stalwart-dev", "stalwart-0155"]
+FAKE_SMTP_PORT = 2525
+UNTESTED = [
+    "two accounts and a pin dialog",
+    "changed pin with accept-invalid",
+    "IP-address host",
+    "implicit TLS UI",
+    "advanced search hit counts",
+    "windowed select-all",
+    "flag then the same search",
+    "Sieve activate",
+    "pinerc export/import",
+    "password field after process death",
+    "filter messages like this",
+    "T6 reader UI",
+    "ambiguous post-send failure",
+    "multi-message bounce",
+    "quoted-printable forward",
+    "non-ASCII attachment name on a resumed draft",
+    "format=flowed spaces",
+]
+RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
+
+hold_lock = False
+cleaned = False
+dry_run = False
+fake_proc = None
+fake_started = False
+secrets = []
+rows = []
+run_id = ""
+run_rec = ""
+run_log = ""
+commit = ""
+cache = {}
+
+
+def source_address():
+    r = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"], capture_output=True, text=True, errors="replace")
+    m = re.search(r"\bsrc\s+(\d+\.\d+\.\d+\.\d+)\b", r.stdout or "")
+    if r.returncode != 0 or not m:
+        return ""
+    return m.group(1)
+
+
+def load_secrets():
+    found = []
+    try:
+        import lab
+        if getattr(lab, "PASS", ""):
+            found.append(lab.PASS)
+    except Exception:
+        pass
+    path = os.path.join(HERE, "seed", "accounts.tsv")
+    if os.path.exists(path):
+        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+        if lines:
+            hdr = lines[0].split("\t")
+            pi = hdr.index("password") if "password" in hdr else 1
+            for line in lines[1:]:
+                f = line.split("\t")
+                if len(f) > pi and f[pi]:
+                    found.append(f[pi])
+    return [s for s in found if s]
+
+
+def redact(text):
+    text = "" if text is None else str(text)
+    for secret in secrets:
+        if secret and secret in text:
+            text = text.replace(secret, "redacted")
+    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "redacted", text)
+    return text.replace("\n", " ").replace("|", "/").strip()
+
+
+def first_line(text):
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return "no error line"
+
+
+def write_log(name, text):
+    if not run_log:
+        return
+    try:
+        os.makedirs(run_log, exist_ok=True)
+        path = os.path.join(run_log, name)
+        open(path, "w", encoding="utf-8", errors="replace").write(redact(text) + "\n")
+    except OSError:
+        pass
+
+
+def run_cmd(args, log_name, env, timeout=None):
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, errors="replace", env=env, cwd=REPO, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        text = (e.stdout or "") + "\n" + (e.stderr or "") + "\ntimeout"
+        write_log(log_name, text)
+        return 124, text
+    except OSError as e:
+        text = str(e)
+        write_log(log_name, text)
+        return 127, text
+    text = (r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")
+    write_log(log_name, text)
+    return r.returncode, text
+
+
+def child_env(extra=None):
+    env = os.environ.copy()
+    env["LAB_REC"] = run_rec
+    env["LAB_LOG"] = run_log
+    if extra:
+        env.update(extra)
+    return env
+
+
+def cleanup():
+    global cleaned, fake_proc, fake_started, hold_lock
+    if cleaned:
+        return
+    cleaned = True
+    if fake_started and fake_proc is not None:
+        fake_proc.terminate()
+        try:
+            fake_proc.wait(timeout=5)
+        except Exception:
+            try:
+                fake_proc.kill()
+            except Exception:
+                pass
+    if hold_lock and not dry_run:
+        try:
+            subprocess.run(["adb", "-s", SERIAL, "shell", "am", "force-stop", PKG],
+                           capture_output=True, text=True, errors="replace", timeout=20)
+        except Exception:
+            pass
+    if hold_lock:
+        try:
+            os.remove(LOCK_PATH)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
+def on_signal(signum, frame):
+    cleanup()
+    sys.exit(1)
+
+
+def pid_alive(pid):
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def write_lock(state):
+    parent = os.path.dirname(LOCK_PATH)
+    os.makedirs(parent, exist_ok=True)
+    tmp = LOCK_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(f"{os.getpid()}\n{state}\n")
+    os.replace(tmp, LOCK_PATH)
+
+
+def acquire_lock():
+    global hold_lock
+    if os.path.exists(LOCK_PATH):
+        try:
+            lines = open(LOCK_PATH, encoding="utf-8", errors="replace").read().splitlines()
+        except OSError:
+            lines = []
+        pid = 0
+        if lines:
+            try:
+                pid = int(lines[0].strip())
+            except ValueError:
+                pid = 0
+        if pid_alive(pid):
+            print(f"BLOCKED lock held by {pid}")
+            sys.exit(1)
+    write_lock("starting")
+    hold_lock = True
+
+
+def parse_meta(text):
+    if "liveimap.gitCommit" not in (text or ""):
+        return None
+    m = re.search(r"liveimap\.gitCommit=([0-9a-fA-F]+)", text)
+    if m:
+        return m.group(1)
+    idx = text.find("liveimap.gitCommit")
+    window = text[idx:idx + 500]
+    m = re.search(r'android:value(?:\([^)]*\))?="([0-9a-fA-F]+)"', window)
+    if m:
+        return m.group(1)
+    return None
+
+
+def package_commit(pkg):
+    try:
+        r = subprocess.run(["adb", "-s", SERIAL, "shell", "dumpsys", "package", pkg],
+                           capture_output=True, text=True, errors="replace", timeout=20)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if r.returncode != 0:
+        return None
+    return parse_meta(r.stdout)
+
+
+def commit_stop(expect):
+    vals = {PKG: package_commit(PKG), TEST_PKG: package_commit(TEST_PKG)}
+    if vals[PKG] is None or vals[TEST_PKG] is None:
+        return "VERDICT BLOCKED liveimap.gitCommit missing"
+    if vals[PKG] != expect or vals[TEST_PKG] != expect:
+        detail = " ".join(f"{pkg}={vals[pkg]}" for pkg in (PKG, TEST_PKG))
+        return f"VERDICT BLOCKED liveimap.gitCommit {detail} != {expect}"
+    return ""
+
+
+def emulator_in_use():
+    try:
+        r = subprocess.run(["adb", "-s", SERIAL, "shell", "dumpsys", "activity", "activities"],
+                           capture_output=True, text=True, errors="replace", timeout=20)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if r.returncode != 0:
+        return False
+    for line in (r.stdout or "").splitlines():
+        if "ResumedActivity" in line and PKG in line:
+            return True
+    return False
+
+
+def mem_available_mb():
+    try:
+        for line in open("/proc/meminfo", encoding="utf-8", errors="replace"):
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
+
+def ensure_dirs():
+    try:
+        os.makedirs(run_rec, exist_ok=True)
+        os.makedirs(run_log, exist_ok=True)
+    except OSError as e:
+        return f"VERDICT BLOCKED recordings or logs not writable: {e.strerror or e}"
+    if not os.access(run_rec, os.W_OK) or not os.access(run_log, os.W_OK):
+        return "VERDICT BLOCKED recordings or logs not writable"
+    return ""
+
+
+def load_cache():
+    if not os.path.exists(CACHE_PATH):
+        return {}
+    try:
+        data = json.load(open(CACHE_PATH, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_cache():
+    try:
+        os.makedirs(REC_ROOT, exist_ok=True)
+        tmp = CACHE_PATH + ".tmp"
+        json.dump(cache, open(tmp, "w", encoding="utf-8"), indent=2, sort_keys=True)
+        os.replace(tmp, CACHE_PATH)
+    except OSError:
+        pass
+
+
+def cache_key(suite, server, variant):
+    return f"{commit}|{suite}|{server}|{variant}"
+
+
+def cache_pass(suite, server, variant):
+    v = cache.get(cache_key(suite, server, variant))
+    if isinstance(v, dict):
+        return v.get("result") == "PASS"
+    return v == "PASS"
+
+
+def cache_store(suite, server, variant, result, counts):
+    k = cache_key(suite, server, variant)
+    if result == "PASS":
+        cache[k] = {"result": "PASS", **counts}
+    else:
+        cache.pop(k, None)
+
+
+def cached_counts(suite, server, variant):
+    v = cache.get(cache_key(suite, server, variant))
+    if isinstance(v, dict):
+        return {"pass": int(v.get("pass", 1)), "fail": int(v.get("fail", 0)),
+                "skip": int(v.get("skip", 0)), "known": int(v.get("known", 0))}
+    return {"pass": 1, "fail": 0, "skip": 0, "known": 0}
+
+
+def known_limits():
+    path = os.path.join(HERE, "known-limits.tsv")
+    out = []
+    if not os.path.exists(path):
+        return out
+    for line in open(path, encoding="utf-8", errors="replace"):
+        if not line.strip() or line.startswith("#"):
+            continue
+        f = line.rstrip("\n").split("\t")
+        if not f or f[0] == "server":
+            continue
+        while len(f) < 5:
+            f.append("")
+        out.append(f[:5])
+    return out
+
+
+LIMITS = None
+
+
+def limits():
+    global LIMITS
+    if LIMITS is None:
+        LIMITS = known_limits()
+    return LIMITS
+
+
+def known_match(server, suite, check):
+    for row in limits():
+        if row[0] == server and row[1] == suite and row[2] == check:
+            return row
+    return None
+
+
+def classify(server, suite, check, step_result, detail=""):
+    row = known_match(server, suite, check)
+    if step_result == "skip":
+        return "SKIP"
+    if step_result == "ok":
+        return "unexpected pass" if row else "PASS"
+    if row:
+        return "KNOWN"
+    return "FAIL"
+
+
+def worst(statuses):
+    best = "SKIP"
+    for status in statuses:
+        if RANK.get(status, 0) > RANK.get(best, 0):
+            best = status
+    return best
+
+
+def add_row(server, suite, variant, counts, result, failing, error, duration):
+    rows.append({
+        "server": server,
+        "suite": suite,
+        "variant": variant,
+        "pass": counts.get("pass", 0),
+        "fail": counts.get("fail", 0),
+        "skip": counts.get("skip", 0),
+        "known": counts.get("known", 0),
+        "result": result,
+        "failing_check": failing,
+        "first_error": redact(error)[:300],
+        "duration_s": int(duration),
+    })
+
+
+def counts_for(status):
+    c = {"pass": 0, "fail": 0, "skip": 0, "known": 0}
+    if status == "PASS":
+        c["pass"] = 1
+    elif status == "FAIL":
+        c["fail"] = 1
+    elif status == "SKIP":
+        c["skip"] = 1
+    elif status == "KNOWN":
+        c["known"] = 1
+    return c
+
+
+def tsv_map(path):
+    out = {}
+    if not path or not os.path.isfile(path):
+        return out
+    lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    for line in lines[1:]:
+        f = line.split("\t")
+        if len(f) >= 2 and f[0] and f[0] != "step":
+            out[f[0]] = (f[1], f[2] if len(f) > 2 else "")
+    return out
+
+
+def parse_lab_summary(text):
+    path = ""
+    for line in reversed((text or "").splitlines()):
+        line = line.strip()
+        if line.endswith("-summary.tsv") or line.endswith("summary.tsv"):
+            path = line
+            break
+    parsed = []
+    if path and os.path.isfile(path):
+        for line in open(path, encoding="utf-8", errors="replace"):
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 7 or f[0] == "server":
+                continue
+            parsed.append({
+                "server": f[0], "protocol": f[1], "tls": f[2], "result": f[3],
+                "detail": f[4], "seconds": int(f[5]) if f[5].isdigit() else 0, "dest": f[6],
+            })
+    return parsed
+
+
+def steps_for(row):
+    proto, mech = row["protocol"], ""
+    if "/" in proto:
+        mech = proto.split("/", 1)[1]
+    run = f"{row['server']}-{row['tls']}" + (f"-{mech}" if mech else "")
+    path = os.path.join(row["dest"], f"{run}.steps.tsv")
+    got = tsv_map(path)
+    if got:
+        return got
+    bad = re.search(r"bad=([^\s]+)", row["detail"] or "")
+    if not bad:
+        return {}
+    return {name: ("fail", row["detail"]) for name in bad.group(1).split(",") if name}
+
+
+def step_status(steps, check, summary_result):
+    """A step the suite never ran (no IDLE, no sieve port) is a skip. A failed open is a fail."""
+    if check in steps:
+        res = steps[check][0]
+        if res == "ok":
+            return "ok", steps[check][1]
+        return "fail", steps[check][1]
+    if summary_result in ("skip", "assumption", "pass", "expected"):
+        return "skip", "step not run"
+    if "open" in steps and steps["open"][0] != "ok":
+        return "fail", steps["open"][1]
+    if summary_result == "fail":
+        return "fail", ""
+    return "skip", "step not run"
+
+
+def lab_servers_by_name():
+    import lab
+    return {s["name"]: s for s in lab.servers()}
+
+
+def selected_servers(spec, by_name):
+    names = list(by_name)
+    if spec == "all":
+        return names, ""
+    wanted = [n.strip() for n in spec.split(",") if n.strip()]
+    missing = [n for n in wanted if n not in by_name]
+    if missing:
+        return None, missing[0]
+    return wanted, ""
+
+
+def selected_suites(spec):
+    if spec == "all":
+        return list(SUITES), ""
+    wanted = [n.strip() for n in spec.split(",") if n.strip()]
+    missing = [n for n in wanted if n not in SUITES]
+    if missing:
+        return None, missing[0]
+    return [n for n in SUITES if n in wanted], ""
+
+
+def read_tsv_rows(path, width):
+    out = []
+    if not os.path.exists(path):
+        return out
+    for line in open(path, encoding="utf-8", errors="replace"):
+        if not line.strip() or line.startswith("#"):
+            continue
+        f = line.rstrip("\n").split("\t")
+        if len(f) >= width:
+            out.append(f)
+    return out
+
+
+def docker_port(container, cport):
+    r = subprocess.run(["docker", "port", container, str(cport)], capture_output=True, text=True, errors="replace")
+    line = (r.stdout or "").split("\n")[0].strip()
+    hp = line.rsplit(":", 1)[-1].strip() if line else ""
+    if hp.isdigit():
+        return int(hp), ""
+    return 0, first_line(r.stderr or r.stdout or "no mapped port")
+
+
+def imap_greeting(host, port):
+    try:
+        c = socket.create_connection((host, port), 5)
+        c.settimeout(5)
+        g = c.recv(200)
+        c.close()
+    except Exception as e:
+        return first_line(str(e))
+    if g.startswith(b"* OK") or g.startswith(b"* PREAUTH"):
+        return ""
+    return first_line(g.decode("utf-8", "replace"))
+
+
+def smtp_banner(host, port):
+    try:
+        c = socket.create_connection((host, port), 5)
+        c.settimeout(5)
+        g = c.recv(200)
+        c.close()
+    except Exception as e:
+        return first_line(str(e))
+    if g.startswith(b"220"):
+        return ""
+    return first_line(g.decode("utf-8", "replace"))
+
+
+def sieve_greeting(host, port):
+    try:
+        c = socket.create_connection((host, port), 5)
+        c.settimeout(5)
+        g = c.recv(200)
+        c.close()
+    except Exception as e:
+        return first_line(str(e))
+    if g.strip():
+        return ""
+    return "empty sieve greeting"
+
+
+def jmap_session(host, port, scheme):
+    url = f"{scheme}://{host}:{port}/.well-known/jmap"
+    try:
+        ctx = ssl._create_unverified_context() if scheme == "https" else None
+        with urllib.request.urlopen(url, context=ctx, timeout=8) as resp:
+            body = resp.read(4000)
+    except Exception as e:
+        return first_line(str(e))
+    if b"apiUrl" in body or b"capabilities" in body:
+        return ""
+    return "not a JMAP session"
+
+
+def servers_used(names, suites):
+    used = []
+    def add(name):
+        if name in names and name not in used:
+            used.append(name)
+    if any(s in suites for s in ("imap", "imap-idle", "imap-mechs")):
+        for name in names:
+            add(name)
+    if "jmap" in suites:
+        for name in JMAP_SERVERS:
+            add(name)
+    if "smtp" in suites:
+        add("greenmail-dev")
+    if "sieve" in suites:
+        for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3):
+            add(row[0])
+    if "contacts" in suites:
+        add("dovecot-245")
+    return used
+
+
+def probe_servers(used, by_name):
+    import lab
+    host = lab.LAB_HOST
+    jmap = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "jmap.tsv"), 4)}
+    smtp = {}
+    for row in read_tsv_rows(os.path.join(HERE, "smtp.tsv"), 4):
+        smtp.setdefault(row[0], row)
+    sieve = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3)}
+    for name in used:
+        s = by_name.get(name)
+        if not s or "imap" not in s:
+            return f"{name}: no imap port"
+        err = imap_greeting(host, s["imap"])
+        if err:
+            return f"{name}: {err}"
+        if name in jmap:
+            row = jmap[name]
+            hp, derr = docker_port(s["container"], row[1])
+            if derr:
+                return f"{name}: {derr}"
+            err = jmap_session(host, hp, row[2])
+            if err:
+                return f"{name}: {err}"
+        if name in smtp:
+            row = smtp[name]
+            hp, derr = docker_port(s["container"], row[2])
+            if derr:
+                return f"{name}: {derr}"
+            err = smtp_banner(host, hp)
+            if err:
+                return f"{name}: {err}"
+        if name in sieve:
+            row = sieve[name]
+            hp, derr = docker_port(s["container"], row[2])
+            if derr:
+                return f"{name}: {derr}"
+            err = sieve_greeting(host, hp)
+            if err:
+                return f"{name}: {err}"
+    return ""
+
+
+def port_open(port):
+    c = socket.socket()
+    c.settimeout(2)
+    try:
+        c.connect(("127.0.0.1", port))
+        c.close()
+        return True
+    except Exception:
+        return False
+
+
+def start_fake_smtp():
+    global fake_proc, fake_started
+    if port_open(FAKE_SMTP_PORT):
+        return ""
+    log_path = os.path.join(run_log, "ai-fake-smtp.log")
+    env = os.environ.copy()
+    env["LAB_LOG"] = log_path
+    try:
+        log = open(log_path, "a", encoding="utf-8", errors="replace")
+        fake_proc = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), str(FAKE_SMTP_PORT)],
+                                     stdout=log, stderr=log, env=env, cwd=HERE)
+    except OSError as e:
+        return first_line(str(e))
+    fake_started = True
+    time.sleep(0.3)
+    if fake_proc.poll() is not None:
+        fake_started = False
+        return "fake smtp exited"
+    return ""
+
+
+def seed_one(s):
+    """seed_corpus.py the way acclab.py does, including the STARTTLS retry. Acceptance is the imap suite."""
+    import lab
+    cmd = [sys.executable, os.path.join(HERE, "seed_corpus.py"),
+           lab.LAB_HOST, str(s["imap"]), "--user", lab.user_for(s)]
+    if shutil.which("timeout"):
+        cmd = ["timeout", "900", *cmd]
+    rc, text = run_cmd(cmd, f"seed-{s['name']}.log", child_env(), timeout=960)
+    if rc != 0 and any(k in text for k in ("PRIVACYREQUIRED", "LOGINDISABLED", "Cleartext", "Plaintext", "disabled")):
+        rc, text = run_cmd(cmd + ["--starttls"], f"seed-{s['name']}.log", child_env(), timeout=960)
+    if rc != 0:
+        return rc, redact(first_line(text))
+    return 0, ""
+
+
+def record_cached(suite, server, variant):
+    counts = cached_counts(suite, server, variant)
+    add_row(server, suite, variant, counts, "PASS", "", "", 0)
+
+
+def acceptance_rows(server, run):
+    path = os.path.join(run_rec, server, run, "acceptance.txt")
+    parsed = []
+    if not os.path.isfile(path):
+        return parsed
+    for line in open(path, encoding="utf-8", errors="replace"):
+        f = line.rstrip("\n").split("\t")
+        if len(f) >= 4 and f[3] in ("pass", "fail", "skip", "known"):
+            parsed.append({"variant": f[1], "check": f[2], "result": f[3], "detail": f[4] if len(f) > 4 else ""})
+    return parsed
+
+
+def run_imap(names, variants, force):
+    env = child_env()
+    if variants:
+        env["ACC_VARIANTS"] = variants
+    variant_key = variants or ""
+    for name in names:
+        write_lock(f"suite imap {name}")
+        if not force and cache_pass("imap", name, variant_key):
+            record_cached("imap", name, variant_key)
+            continue
+        t0 = time.time()
+        rc, text = run_cmd([sys.executable, os.path.join(HERE, "acclab.py"), name, "auto", run_id],
+                           f"imap-{name}.log", env)
+        duration = int(time.time() - t0)
+        parsed = acceptance_rows(name, run_id)
+        if not parsed:
+            m = re.search(r"# summary:\s*(\d+) pass,\s*(\d+) fail,\s*(\d+) skip", text)
+            status = "FAIL" if rc != 0 or "\nFAIL" in "\n" + text or text.strip().endswith("FAIL") else "PASS"
+            if m and int(m.group(2)) > 0:
+                status = "FAIL"
+            counts = {"pass": int(m.group(1)) if m else (1 if status == "PASS" else 0),
+                      "fail": int(m.group(2)) if m else (1 if status == "FAIL" else 0),
+                      "skip": int(m.group(3)) if m else 0, "known": 0}
+            err = "" if status == "PASS" else redact(first_line(text))
+            add_row(name, "imap", variant_key, counts, status, "" if status == "PASS" else "acceptance", err, duration)
+            cache_store("imap", name, variant_key, status, counts)
+            continue
+        by = {}
+        for item in parsed:
+            by.setdefault(item["variant"], []).append(item)
+        server_fail = False
+        for variant, items in by.items():
+            counts = {"pass": 0, "fail": 0, "skip": 0, "known": 0}
+            failing, err = "", ""
+            for item in items:
+                if item["result"] == "pass":
+                    counts["pass"] += 1
+                elif item["result"] == "fail":
+                    counts["fail"] += 1
+                    if not failing:
+                        failing, err = item["check"], item["detail"]
+                elif item["result"] == "skip":
+                    counts["skip"] += 1
+                else:
+                    counts["known"] += 1
+            status = "FAIL" if counts["fail"] else "PASS"
+            if status == "FAIL":
+                server_fail = True
+            add_row(name, "imap", variant, counts, status, failing, err, duration)
+            cache_store("imap", name, variant, status, counts)
+        overall = "FAIL" if server_fail or rc != 0 else "PASS"
+        if not variant_key:
+            total = {"pass": 0, "fail": 0, "skip": 0, "known": 0}
+            for item in parsed:
+                key = "pass" if item["result"] == "pass" else "fail" if item["result"] == "fail" else "skip" if item["result"] == "skip" else "known"
+                total[key] += 1
+            cache_store("imap", name, "", overall, total)
+        elif overall == "PASS":
+            cache_store("imap", name, variant_key, "PASS", {"pass": 1, "fail": 0, "skip": 0, "known": 0})
+
+
+def run_lab_suite(suite, names, args, checks, force, mech=False):
+    todo = []
+    for name in names:
+        if not force and cache_pass(suite, name, ""):
+            record_cached(suite, name, "")
+        else:
+            todo.append(name)
+    if not todo:
+        return
+    write_lock(f"suite {suite}")
+    cmd = [sys.executable, os.path.join(HERE, "lab.py"), "run", "--skip-install", "--commit", commit, "--steps", args]
+    if mech:
+        cmd.append("--mechs")
+    for name in todo:
+        cmd.extend(["--server", name])
+    t0 = time.time()
+    rc, text = run_cmd(cmd, f"{suite}.log", child_env())
+    duration = int(time.time() - t0)
+    parsed = parse_lab_summary(text)
+    by = {}
+    for row in parsed:
+        by.setdefault(row["server"], []).append(row)
+    for name in todo:
+        server_rows = by.get(name, [])
+        if not server_rows:
+            err = redact(first_line(text)) if rc != 0 else "no lab result"
+            add_row(name, suite, "", counts_for("FAIL"), "FAIL", checks[0] if checks else suite, err, duration)
+            cache_store(suite, name, "", "FAIL", counts_for("FAIL"))
+            continue
+        per_check = {check: ("skip", "") for check in checks}
+        mech_results = {}
+        seconds = 0
+        for row in server_rows:
+            seconds += row["seconds"]
+            steps = steps_for(row)
+            proto = row["protocol"]
+            if mech and "/" in proto:
+                mechanism = proto.split("/", 1)[1]
+                res, detail = step_status(steps, "open", row["result"])
+                if "open" not in steps and row["result"] == "pass":
+                    res, detail = "ok", ""
+                elif "open" not in steps and row["result"] == "fail":
+                    res, detail = "fail", row["detail"]
+                prev = mech_results.get(mechanism)
+                status = classify(mechanism, "imap-mechs", "open", res, detail)
+                if prev is None or RANK[status] > RANK[prev[0]]:
+                    mech_results[mechanism] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN") else "")
+            else:
+                for check in checks:
+                    res, detail = step_status(steps, check, row["result"])
+                    if row["result"] == "fail" and check not in steps and not steps:
+                        res, detail = "fail", row["detail"]
+                    status = classify(name, suite, check, res, detail)
+                    prev = per_check.get(check, ("SKIP", ""))
+                    if RANK[status] >= RANK.get(prev[0], 0):
+                        per_check[check] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN") else "")
+        if mech:
+            if not mech_results:
+                add_row(name, suite, "", counts_for("FAIL"), "FAIL", "open", "no mechanism result", seconds or duration)
+                cache_store(suite, name, "", "FAIL", counts_for("FAIL"))
+                continue
+            statuses = []
+            for mechanism, (status, detail) in sorted(mech_results.items()):
+                statuses.append(status)
+                add_row(name, suite, mechanism, counts_for(status), status,
+                        "open" if status in ("FAIL", "unexpected pass", "KNOWN") else "", detail, seconds or duration)
+            overall = worst(statuses)
+            cache_store(suite, name, "", "PASS" if overall == "PASS" else overall, counts_for(overall))
+        else:
+            # One row per check so a KNOWN idle step is not hidden by another step's FAIL.
+            statuses = []
+            for check in checks:
+                status, detail = per_check[check]
+                if status == "skip":
+                    status = "SKIP"
+                statuses.append(status)
+                add_row(name, suite, check, counts_for(status), status,
+                        check if status in ("FAIL", "unexpected pass", "KNOWN") else "",
+                        detail, seconds or duration)
+            overall = worst(statuses)
+            cache_store(suite, name, "", "PASS" if overall == "PASS" else overall, counts_for(overall))
+
+
+def jmap_steps(text):
+    steps = {}
+    for line in (text or "").splitlines():
+        f = line.split("\t")
+        if len(f) >= 2 and f[1] in ("ok", "fail") and f[0] not in ("step",):
+            steps[f[0]] = (f[1], f[2] if len(f) > 2 else "")
+    return steps
+
+
+def jmap_result_line(name, text):
+    for line in (text or "").splitlines():
+        m = re.match(r"^" + re.escape(name) + r"\s+\S+\s+(OK|FAIL)\s*$", line.strip())
+        if m:
+            return m.group(1)
+    return ""
+
+
+def identity_failed(text):
+    low = (text or "").lower()
+    return any(k in low for k in ("identity create:", "identity lookup:", "no jmap identity", "empty identity", "notcreated"))
+
+
+def run_jmap(names, force):
+    wanted = [n for n in JMAP_SERVERS if n in names]
+    for name in wanted:
+        write_lock(f"suite jmap {name}")
+        if not force and cache_pass("jmap", name, ""):
+            record_cached("jmap", name, "")
+            continue
+        t0 = time.time()
+        rc, text = run_cmd([sys.executable, os.path.join(HERE, "jmaprun.py"), name, run_id],
+                           f"jmap-{name}.log", child_env())
+        duration = int(time.time() - t0)
+        overall = jmap_result_line(name, text)
+        steps = jmap_steps(text)
+        statuses = []
+        failing, err = "", ""
+        total = {"pass": 0, "fail": 0, "skip": 0, "known": 0}
+        seen = set()
+        for check, (res, detail) in steps.items():
+            seen.add(check)
+            status = classify(name, "jmap", check, "ok" if res == "ok" else "fail", detail)
+            if check == "submit" and known_match(name, "jmap", "identity") and identity_failed(text) and status == "FAIL":
+                status = "KNOWN"
+            statuses.append(status)
+            bucket = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "KNOWN": "known"}.get(status)
+            if bucket:
+                total[bucket] += 1
+            if status == "FAIL" and not failing:
+                failing, err = check, detail
+        if known_match(name, "jmap", "identity") and "identity" not in seen:
+            if overall == "OK":
+                statuses.append("unexpected pass")
+            elif identity_failed(text):
+                statuses.append("KNOWN")
+                total["known"] += 1
+        if not overall and rc != 0:
+            statuses.append("FAIL")
+            total["fail"] += 1
+            if not failing:
+                failing, err = "jmap", first_line(text)
+        if overall == "FAIL" and not any(s == "FAIL" for s in statuses):
+            if not statuses:
+                statuses.append("FAIL")
+                total["fail"] += 1
+                failing, err = failing or "jmap", first_line(text)
+        if overall == "OK" and not statuses:
+            statuses.append("PASS")
+            total["pass"] += 1
+        result = worst(statuses) if statuses else "FAIL"
+        if result == "unexpected pass":
+            failing = failing or "identity"
+        if result == "FAIL" and not total["fail"]:
+            total["fail"] = 1
+        add_row(name, "jmap", "", total, result, failing, err, duration)
+        cache_store("jmap", name, "", "PASS" if result == "PASS" else result, total)
+
+
+def run_smtp(force):
+    name = "greenmail-dev"
+    write_lock("suite smtp")
+    if not force and cache_pass("smtp", name, ""):
+        record_cached("smtp", name, "")
+        return
+    t0 = time.time()
+    rc, text = run_cmd([sys.executable, os.path.join(HERE, "t4smtp.py"), commit], "smtp.log", child_env())
+    duration = int(time.time() - t0)
+    ok = any(line.strip() == "OK" for line in text.splitlines())
+    bad = any(line.strip() == "FAIL" for line in text.splitlines())
+    status = "PASS" if ok and not bad else "FAIL"
+    err = "" if status == "PASS" else redact(first_line(text))
+    add_row(name, "smtp", "", counts_for(status), status, "" if status == "PASS" else "smtpAccepts", err, duration)
+    cache_store("smtp", name, "", status, counts_for(status))
+
+
+def sieve_names(selected):
+    names = []
+    for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3):
+        if row[0] in selected and row[0] not in names:
+            names.append(row[0])
+    return names
+
+
+def failing_names(items):
+    out = []
+    for row in items:
+        if row.get("result") == "FAIL" and row.get("failing_check"):
+            variant = row.get("variant") or ""
+            out.append(" ".join(p for p in (row.get("server", ""), row.get("suite", ""), variant, row.get("failing_check", "")) if p))
+    return out
+
+
+def previous_results():
+    if not os.path.isdir(REC_ROOT):
+        return None
+    best, best_m = None, -1
+    for name in os.listdir(REC_ROOT):
+        if name == run_id:
+            continue
+        path = os.path.join(REC_ROOT, name, "results.json")
+        if os.path.isfile(path):
+            try:
+                m = os.path.getmtime(path)
+            except OSError:
+                continue
+            if m > best_m:
+                best, best_m = path, m
+    return best
+
+
+def regressions(current):
+    prev_path = previous_results()
+    if not prev_path:
+        return "none"
+    try:
+        prev = json.load(open(prev_path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "none"
+    before = set(prev.get("failing_checks") or failing_names(prev.get("rows") or []))
+    after = set(current)
+    if before == after:
+        return "none"
+    parts = [f"+ {n}" for n in sorted(after - before)] + [f"- {n}" for n in sorted(before - after)]
+    return ", ".join(parts) if parts else "none"
+
+
+def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
+    fails = failing_names(rows)
+    body_rows = []
+    for row in rows:
+        body_rows.append({k: redact(v) if isinstance(v, str) else v for k, v in row.items()})
+    payload = {
+        "run_id": run_id,
+        "commit": commit,
+        "rows": body_rows,
+        "failing_checks": [redact(n) for n in fails],
+        "unseeded_servers": unseeded,
+        "untested": [{"name": name, "reason": "no instrumented test"} for name in (UNTESTED if "ui" in suites else [])],
+    }
+    try:
+        os.makedirs(run_rec, exist_ok=True)
+    except OSError:
+        print(redact(blocked_reason or verdict))
+        return
+    json.dump(payload, open(os.path.join(run_rec, "results.json"), "w", encoding="utf-8"), indent=2, sort_keys=True)
+    lines = ["| server | suite | variant | pass | fail | skip | known | result | failing check | first error | seconds |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for row in body_rows:
+        lines.append("| " + " | ".join(str(row[k]) for k in (
+            "server", "suite", "variant", "pass", "fail", "skip", "known", "result", "failing_check", "first_error", "duration_s")) + " |")
+    if payload["untested"]:
+        lines.append("")
+        lines.append("## untested")
+        for item in payload["untested"]:
+            lines.append(f"- {item['name']}: {item['reason']}")
+    if unseeded:
+        lines.append("")
+        lines.append("## unseeded")
+        for name in unseeded:
+            lines.append(f"- {name}")
+    open(os.path.join(run_rec, "summary.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    findings = ", ".join(payload["failing_checks"]) if payload["failing_checks"] else "none"
+    if verdict == "BLOCKED":
+        findings = redact(blocked_reason)
+    reg = "none" if verdict == "BLOCKED" else regressions(payload["failing_checks"])
+    matrix = "suites: " + ",".join(suites) + " servers: " + ",".join(servers)
+    logs = os.path.join("sandbox", "test-servers", "logs", run_id)
+    reason = redact(blocked_reason) if blocked_reason else "none"
+    body = "\n".join([
+        f"STATUS: {'blocked' if verdict == 'BLOCKED' else 'complete'}",
+        "RESPONDING-TO: 0024",
+        f"COMMIT: {commit}",
+        f"VERDICT: {verdict}",
+        f"FINDINGS: {findings}",
+        f"REGRESSIONS: {reg}",
+        f"MATRIX: {matrix}",
+        f"LOGS: {logs}",
+        f"BLOCKED-REASON: {reason}",
+        "",
+    ])
+    open(os.path.join(run_rec, "results-body.txt"), "w", encoding="utf-8").write(body)
+
+
+def stop(msg, suites, servers, unseeded):
+    line = redact(msg).replace("\n", " ").strip()
+    if dry_run or not run_rec:
+        print(line)
+        sys.exit(1)
+    write_outputs("BLOCKED", line, unseeded, suites, servers)
+    print(line)
+    sys.exit(1)
+
+
+def main():
+    global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock
+    p = argparse.ArgumentParser(description="Run the lab suites, IDLE events, and per-mechanism login.")
+    p.add_argument("--commit", required=True)
+    p.add_argument("--servers", default="all")
+    p.add_argument("--suites", default="all")
+    p.add_argument("--variants", default="")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+    a = p.parse_args()
+    dry_run = a.dry_run
+    commit = a.commit
+    sha8 = commit[:8]
+    run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + sha8
+    run_rec = os.path.join(REC_ROOT, run_id)
+    run_log = os.path.join(LOG_ROOT, run_id)
+    bind = source_address()
+    if not bind:
+        print("VERDICT BLOCKED no source address")
+        sys.exit(1)
+    os.environ["LAB_BIND"] = bind
+    os.environ["LAB_HOST"] = bind
+    os.environ["LAB_REC"] = run_rec
+    os.environ["LAB_LOG"] = run_log
+    sys.path.insert(0, HERE)
+    try:
+        import lab
+    except SystemExit as e:
+        print(redact(f"VERDICT BLOCKED {e}"))
+        sys.exit(1)
+    secrets = load_secrets()
+    by_name = lab_servers_by_name()
+    names, bad_server = selected_servers(a.servers, by_name)
+    if bad_server:
+        print(f"VERDICT BLOCKED unknown server {bad_server}")
+        sys.exit(1)
+    suites, bad_suite = selected_suites(a.suites)
+    if bad_suite:
+        print(f"VERDICT BLOCKED unknown suite {bad_suite}")
+        sys.exit(1)
+    if not dry_run:
+        try:
+            acquire_lock()
+        except SystemExit:
+            raise
+        except OSError as e:
+            print(redact(f"VERDICT BLOCKED lock: {e.strerror or e}"))
+            sys.exit(1)
+    reason = commit_stop(commit)
+    if reason:
+        stop(reason, suites, names, [])
+    if dry_run:
+        print("servers: " + " ".join(names))
+        print("suites: " + " ".join(suites))
+        return
+    write_lock("preflight")
+    if emulator_in_use():
+        stop("BLOCKED emulator in use", suites, names, [])
+    mb = mem_available_mb()
+    if mb < 2048:
+        stop(f"VERDICT BLOCKED MemAvailable {mb} MB is below 2048 MB", suites, names, [])
+    err = ensure_dirs()
+    if err:
+        stop(err, suites, names, [])
+    used = servers_used(names, suites)
+    err = probe_servers(used, by_name)
+    if err:
+        stop(f"VERDICT BLOCKED {err}", suites, names, [])
+    if "smtp" in suites:
+        err = start_fake_smtp()
+        if err:
+            stop(f"VERDICT BLOCKED fake smtp: {err}", suites, names, [])
+    unseeded = []
+    write_lock("seed")
+    pending = list(names)
+    for name in names:
+        pending.pop(0)
+        rc, line = seed_one(by_name[name])
+        if rc != 0:
+            unseeded = [name] + pending
+            stop(f"VERDICT BLOCKED {name}: {line}", suites, names, unseeded)
+    cache.update(load_cache())
+    if "imap" in suites:
+        run_imap(names, a.variants, a.force)
+    if "imap-idle" in suites:
+        run_lab_suite("imap-idle", names, "idle,idleRenew", ["idle", "idleRenew"], a.force)
+    if "imap-mechs" in suites:
+        run_lab_suite("imap-mechs", names, "open", ["open"], a.force, mech=True)
+    if "jmap" in suites:
+        run_jmap(names, a.force)
+    if "smtp" in suites:
+        run_smtp(a.force)
+    if "sieve" in suites:
+        run_lab_suite("sieve", sieve_names(names), "sieveDeliver", ["sieveDeliver"], a.force)
+    if "contacts" in suites:
+        if "dovecot-245" in names:
+            run_lab_suite("contacts", ["dovecot-245"], "alpineBook", ["alpineBook"], a.force)
+    save_cache()
+    verdict = "FAIL" if any(row["result"] == "FAIL" for row in rows) else "PASS"
+    write_lock("cleanup")
+    write_outputs(verdict, "", [], suites, names)
+    print(f"VERDICT {verdict}")
+    print(os.path.join("sandbox", "test-servers", "recordings", run_id, "summary.md"))
+
+
+if __name__ == "__main__":
+    atexit.register(cleanup)
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(redact(f"VERDICT BLOCKED {type(e).__name__}: {e}"))
+        sys.exit(1)

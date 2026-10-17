@@ -1,0 +1,12 @@
+server	suite	check	reason	expires
+stalwart-dev	imap-idle	idle	no IDLE events, from the 10-10 run	
+stalwart-01625	imap-idle	idle	no IDLE events, from the 10-10 run	
+stalwart-0155	imap-idle	idle	no IDLE events, from the 10-10 run	
+uwimap	imap-idle	idle	no IDLE events, from the 10-10 run	
+NTLM	imap-mechs	open	no lab credentials	
+XOAUTH2	imap-mechs	open	no lab credentials	
+OAUTHBEARER	imap-mechs	open	no lab credentials	
+EXTERNAL	imap-mechs	open	no lab credentials	
+stalwart-0155	jmap	identity	empty identity	
+cyrus-3124	jmap	push	EventSource, F151	
+cyrus-3137	jmap	push	EventSource, F151	

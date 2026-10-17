@@ -3410,3 +3410,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The default build assembles the x86_64 androidTest APK and stamps the commit on both packages.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - One lab command runs the suites, IDLE events, and per-mechanism login
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-regress-20261016-1512-plan.md
+- One lab command runs the suites, IDLE events, and per-mechanism login.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
