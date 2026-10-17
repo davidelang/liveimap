@@ -25,7 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 @Composable

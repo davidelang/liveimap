@@ -14,7 +14,7 @@ RUNID="t2-$(date +%Y%m%d-%H%M%S)"
 echo "LAB_BIND=$LAB_BIND RUNID=$RUNID commit=$COMMIT start $(date +%H:%M:%S)" | tee "$LOGDIR/t2-master.log"
 ./deploy emulator 2>&1 | tee -a "$LOGDIR/t2-master.log" | tail -5
 adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk 2>&1 | tee -a "$LOGDIR/t2-master.log" | tail -2
-adb -s emulator-5554 shell dumpsys package org.dlang.liveimap | grep -E 'versionName|lastUpdateTime' | head -4 | tee -a "$LOGDIR/t2-master.log"
+adb -s emulator-5554 shell dumpsys package com.davidlang.liveimap | grep -E 'versionName|lastUpdateTime' | head -4 | tee -a "$LOGDIR/t2-master.log"
 SUM="$REC/${RUNID}-${COMMIT}-summary.tsv"
 echo -e "server\tpass\tfail\tskip\tstatus" > "$SUM"
 for n in $(PYTHONPATH="$HERE" python3 -c "import lab; print(' '.join(s['name'] for s in lab.servers()))"); do

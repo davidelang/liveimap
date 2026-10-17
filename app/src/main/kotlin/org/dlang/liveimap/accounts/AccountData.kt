@@ -4,7 +4,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
 
-internal const val liveimapAccountType: String = "org.dlang.liveimap"
+internal const val liveimapAccountType: String = "com.davidlang.liveimap"
 internal const val accountSchemaValue: String = "1"
 internal const val smtpPasswordKey: String = "smtpPassword"
 internal const val selectedAccountIdKey: String = "selectedAccountId"

@@ -36,7 +36,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.assignInboundIds
 import org.dlang.liveimap.engine.sieve.deleteInboundRule

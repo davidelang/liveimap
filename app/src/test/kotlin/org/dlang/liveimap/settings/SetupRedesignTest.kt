@@ -2,7 +2,7 @@ package org.dlang.liveimap.settings
 
 import java.io.File
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.SmtpLoginCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

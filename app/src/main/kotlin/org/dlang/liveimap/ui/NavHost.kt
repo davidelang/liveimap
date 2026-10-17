@@ -96,7 +96,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind

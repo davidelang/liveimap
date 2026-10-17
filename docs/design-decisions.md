@@ -658,7 +658,7 @@ trivial, complex things are possible, and roles are built on the same rules.
   real older servers, and slower fallbacks forced on.
 * Each run writes a JSON report and a text summary to
   the app-private `files/acceptance/` directory (F46; read it with
-  `adb exec-out run-as org.dlang.liveimap cat files/acceptance/<name>` on a debug build),
+  `adb exec-out run-as com.davidlang.liveimap cat files/acceptance/<name>` on a debug build),
   with build, device, servers, seed profiles, capabilities and per-test
   results, so runs and builds can be compared.
 

@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 
 @Composable
 fun LicensesScreen() {

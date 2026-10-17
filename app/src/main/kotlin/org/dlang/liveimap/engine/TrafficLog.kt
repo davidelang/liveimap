@@ -330,7 +330,7 @@ class TrafficLog(
         const val LOG_RECEIVED = 5
         const val LOG_SENT = 6
         const val LOG_PRIVATE = 7
-        const val SHARE_AUTHORITY = "org.dlang.liveimap.trafficlog"
+        const val SHARE_AUTHORITY = "com.davidlang.liveimap.trafficlog"
 
         private val statusFlow = MutableStateFlow("")
         val debugStatus: StateFlow<String> = statusFlow

@@ -29,8 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import org.dlang.liveimap.BuildConfig
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.BuildConfig
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.TlsMode
 import org.dlang.liveimap.ui.help.PRIVACY_URL

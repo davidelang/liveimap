@@ -4,10 +4,10 @@ plugins {
 }
 
 android {
-    namespace = "org.dlang.liveimap"
+    namespace = "com.davidlang.liveimap"
     compileSdk = 36
     defaultConfig {
-        applicationId = "org.dlang.liveimap"
+        applicationId = "com.davidlang.liveimap"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

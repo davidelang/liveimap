@@ -143,7 +143,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.Capabilities

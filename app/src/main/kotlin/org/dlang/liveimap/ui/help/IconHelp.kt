@@ -21,7 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 
 const val MANUAL_URL = "https://davidelang.github.io/liveimap/manual/"
 const val PRIVACY_URL = "https://liveimap.lang.hm/privacy/"

@@ -109,8 +109,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.BuildConfig
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.BuildConfig
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.ClientCertStore
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
@@ -1262,7 +1262,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             Text(text = line, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
         }
         // F46: the acceptance runner is a developer tool; release builds do not show it.
-        if (org.dlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
+        if (com.davidlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
     }
     val removing = removingId
     if (removing != null) {

@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.ImapServerAuthenticationRejected
 import org.dlang.liveimap.engine.SmtpProbeMaterial
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.accounts.AccountCredentials
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.jmap.JmapOffer

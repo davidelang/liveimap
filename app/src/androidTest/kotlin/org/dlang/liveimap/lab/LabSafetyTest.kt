@@ -4,7 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.BuildConfig
+import com.davidlang.liveimap.BuildConfig
 import org.dlang.liveimap.engine.LabTestHooks
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.TrafficRecorder

@@ -28,7 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 
 object UiDims {
     val expanderWidth = 30.dp

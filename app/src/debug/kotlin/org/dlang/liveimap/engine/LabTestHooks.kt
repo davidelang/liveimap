@@ -3,7 +3,7 @@ package org.dlang.liveimap.engine
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import org.dlang.liveimap.BuildConfig
+import com.davidlang.liveimap.BuildConfig
 
 /**
  * Lab-runner hooks (debug source set only; release has a stub that never overrides or trusts anything).

@@ -63,7 +63,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import java.util.UUID
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpIconButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch

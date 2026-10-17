@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ConnectionLost

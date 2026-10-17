@@ -25,7 +25,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import org.dlang.liveimap.BuildConfig
+import com.davidlang.liveimap.BuildConfig
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.applyExtraIdle
 import org.dlang.liveimap.session.launchExtraIdleStop

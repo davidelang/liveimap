@@ -1,6 +1,6 @@
 package org.dlang.liveimap.ui.about
 
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

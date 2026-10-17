@@ -33,7 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 
 @Composable
 fun DebugReportReview(

@@ -33,8 +33,8 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.BuildConfig
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.BuildConfig
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.debug.DebugReportReview

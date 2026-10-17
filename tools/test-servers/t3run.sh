@@ -10,7 +10,7 @@ REC=$(mkdir -p "${LAB_REC:-$HERE/recordings}" && cd "${LAB_REC:-$HERE/recordings
 RUNID="t3-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOGDIR" "$REC"
 cd "$REPO"
-echo "T3 RUNID=$RUNID commit=$COMMIT start $(date +%H:%M:%S) emu=$(adb -s emulator-5554 shell dumpsys package org.dlang.liveimap | grep versionName | head -1)" | tee "$LOGDIR/t3-master.log"
+echo "T3 RUNID=$RUNID commit=$COMMIT start $(date +%H:%M:%S) emu=$(adb -s emulator-5554 shell dumpsys package com.davidlang.liveimap | grep versionName | head -1)" | tee "$LOGDIR/t3-master.log"
 adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk 2>&1 | tee -a "$LOGDIR/t3-master.log" | tail -2
 SUM="$REC/${RUNID}-${COMMIT}-jmap-summary.tsv"
 echo -e "server\tresult\tnote" > "$SUM"

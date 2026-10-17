@@ -2,7 +2,7 @@ package org.dlang.liveimap.smoke
 
 import android.content.Intent
 
-const val SMOKE_EXTRA = "org.dlang.liveimap.SMOKE"
+const val SMOKE_EXTRA = "com.davidlang.liveimap.SMOKE"
 
 fun smokeLaunch(intent: Intent?): Boolean =
     SmokeAllowed && intent?.getBooleanExtra(SMOKE_EXTRA, false) == true

@@ -254,7 +254,7 @@ internal fun setupCallerDecision(caller: String?, ownPackage: String, verifiedTo
 
 /** One-time, short-lived setup tokens, held only in this process. */
 internal object SetupTokens {
-    const val EXTRA = "org.dlang.liveimap.SETUP_TOKEN"
+    const val EXTRA = "com.davidlang.liveimap.SETUP_TOKEN"
     private const val LIFE_MS = 10 * 60 * 1000L
     private val issued = HashMap<String, Long>()
     private val random = java.security.SecureRandom()

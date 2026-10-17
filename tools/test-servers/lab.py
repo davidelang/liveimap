@@ -47,7 +47,7 @@ def up_commands():
         name, cmd = line.rstrip("\n").split("\t", 1)
         cmds[name] = cmd
     return cmds
-PKG = "org.dlang.liveimap"
+PKG = "com.davidlang.liveimap"
 RUNNER = f"{PKG}.test/androidx.test.runner.AndroidJUnitRunner"
 USER, PASS = "liveimap", "liveimap-test"
 ALONE = {"liveimap-zimbra-883"}

@@ -7,17 +7,17 @@ import org.junit.Test
 /** F03 (David, 2026-10-12): setup only from our own app or a verified system AccountManager flow. */
 class SetupCallerTest {
     @Test fun ownAppAlwaysAllowed() {
-        assertTrue(setupCallerDecision("org.dlang.liveimap", "org.dlang.liveimap", verifiedToken = false))
+        assertTrue(setupCallerDecision("com.davidlang.liveimap", "com.davidlang.liveimap", verifiedToken = false))
     }
 
     @Test fun extrasAloneNeverEnough() {
-        assertFalse(setupCallerDecision(null, "org.dlang.liveimap", verifiedToken = false))
-        assertFalse(setupCallerDecision("com.android.settings", "org.dlang.liveimap", verifiedToken = false))
-        assertFalse(setupCallerDecision("evil.app", "org.dlang.liveimap", verifiedToken = false))
+        assertFalse(setupCallerDecision(null, "com.davidlang.liveimap", verifiedToken = false))
+        assertFalse(setupCallerDecision("com.android.settings", "com.davidlang.liveimap", verifiedToken = false))
+        assertFalse(setupCallerDecision("evil.app", "com.davidlang.liveimap", verifiedToken = false))
     }
 
     @Test fun verifiedSystemFlowAllowed() {
-        assertTrue(setupCallerDecision(null, "org.dlang.liveimap", verifiedToken = true))
+        assertTrue(setupCallerDecision(null, "com.davidlang.liveimap", verifiedToken = true))
     }
 
     @Test fun tokensOnlyForOwnOrSystemCallers() {

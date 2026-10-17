@@ -135,7 +135,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.ui.compose.oppositeForwardLabel
@@ -2791,7 +2791,7 @@ internal fun attachmentCacheName(token: String, uid: Long, section: String): Str
     return "liveimap-$token-$uid-$safe"
 }
 
-private fun attachmentUri(name: String): Uri = Uri.parse("content://org.dlang.liveimap.attachments/$name")
+private fun attachmentUri(name: String): Uri = Uri.parse("content://com.davidlang.liveimap.attachments/$name")
 
 private val staleCacheCleared = java.util.concurrent.atomic.AtomicBoolean(false)
 

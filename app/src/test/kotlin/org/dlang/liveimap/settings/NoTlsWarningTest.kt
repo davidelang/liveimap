@@ -1,6 +1,6 @@
 package org.dlang.liveimap.settings
 
-import org.dlang.liveimap.R
+import com.davidlang.liveimap.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

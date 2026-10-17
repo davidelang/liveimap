@@ -7,7 +7,7 @@
 - Launch: `./run-grok-*` via `.grok/lib/grok-launch-common.sh` + `agent-landlock`
 - Groups: source `./env` (refresh-shell setuid)
 - `./build_app` compiles and moves `builds`. `./deploy` installs `app/build/outputs/apk/debug/app-debug.apk` and moves `deployed`. Agents do not deploy.
-- Package `org.@@PRIMARY_USER@@.liveimap`.
+- Package `com.davidlang.liveimap`.
 - App versionName comes from git describe (annotated tag v0.1 on master; <branch>-start when that tag exists). versionCode stays 1. About shows that version. Support mail is david+liveimap@lang.hm.
 
 ## Build and commit
