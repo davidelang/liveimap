@@ -12,20 +12,61 @@ apk_for_abi() {
   esac
 }
 APK="$(apk_for_abi x86_64)"
-PKG="org.dlang.liveimap"
+
+# The app id comes from one place: the APK being installed, read with the SDK aapt2 that
+# build_app uses (ve_aapt2_from_sdk, sdk.dir in local.properties). Nothing is hard-coded and
+# there is no other source; if it cannot be read, deploy stops.
+_DEPLOY_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$_DEPLOY_HERE/ve-resolve-orch" ]; then
+  echo "ERROR: $_DEPLOY_HERE/ve-resolve-orch missing (needed to locate the SDK aapt2)" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$_DEPLOY_HERE/ve-resolve-orch"
+AAPT2=""
+apk_package() {
+  local apk="$1" out
+  if [ -z "$AAPT2" ]; then
+    AAPT2=$(ve_aapt2_from_sdk "$_DEPLOY_HERE") || { echo "ERROR: cannot locate SDK aapt2 to read the app id of $apk" >&2; return 1; }
+  fi
+  if ! out=$("$AAPT2" dump packagename "$apk"); then
+    echo "ERROR: $AAPT2 dump packagename $apk failed; cannot determine the app id" >&2
+    return 1
+  fi
+  if ! [[ "$out" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]]; then
+    echo "ERROR: $AAPT2 dump packagename $apk printed '$out', not one application id" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
+# True when package $2 is installed on device $1 (exact name; pm list filters by substring).
+pkg_installed() {
+  local list
+  if ! list=$(adb -s "$1" shell pm list packages "$2"); then
+    echo "ERROR: adb -s $1 shell pm list packages $2 failed" >&2
+    return 2
+  fi
+  printf '%s\n' "$list" | tr -d '\r' | grep -qx -- "package:$2"
+}
 
 usage() {
   cat <<'EOF'
 Usage: ./deploy [-h|--help] [--clean] [--rebuild] [device...] [-- gradle-flag...]
 
-Install app/build/outputs/apk/debug/app-debug.apk (org.dlang.liveimap)
-with adb install -r. The default path does not recompile. When every
+Install the per-ABI debug APK (app/build/outputs/apk/<abi>/debug/app-<abi>-debug.apk;
+arm64 or x86_64, chosen by each device's ro.product.cpu.abi) with adb install -r.
+The app id is read from that APK (SDK aapt2 dump packagename); deploy stops if it
+cannot be read, if the two ABI APKs name different apps, or if the app is not
+installed under that id afterwards. The default path does not recompile. When every
 selected install succeeds, move deployed (deployed on master, otherwise
 <branch>/deployed).
 
   -h, --help   Print this usage and exit
-  --clean      Uninstall org.dlang.liveimap before install (UNINSTALL_FIRST=1).
-               Uninstall removes the app's data. Uninstall failure is ignored.
+  --clean      Uninstall the APK's own app id before install (UNINSTALL_FIRST=1).
+               Uninstall removes that app's data; no other package is touched.
+               An app that is not installed is reported and skipped; a failed
+               uninstall stops that device.
   --rebuild    Call ./build_app once before install (REBUILD=1).
                Gradle flags after -- are passed to ./build_app.
   tablet, emulator
@@ -108,6 +149,21 @@ if [ ! -f "$APK" ] && [ ! -f "$(apk_for_abi arm64-v8a)" ]; then
   echo "Run ./build_app to produce it." >&2
   exit 1
 fi
+
+# One app id for this deploy: every ABI APK present must name the same app.
+PKG=""
+for _abi in arm64-v8a x86_64; do
+  _apk="$(apk_for_abi "$_abi")"
+  [ -f "$_apk" ] || continue
+  _pkg=$(apk_package "$_apk") || exit 1
+  if [ -z "$PKG" ]; then
+    PKG="$_pkg"; PKG_FROM="$_apk"
+  elif [ "$_pkg" != "$PKG" ]; then
+    echo "ERROR: $PKG_FROM is $PKG but $_apk is $_pkg; rebuild (./build_app) so both name the same app" >&2
+    exit 1
+  fi
+done
+echo "App id: $PKG (from $PKG_FROM)"
 
 if ! devices_text=$(adb devices); then
   echo "ERROR: adb devices failed" >&2
@@ -193,11 +249,26 @@ for serial in "${selected[@]}"; do
   fi
 
   if [ "$uninstall_first" -eq 1 ]; then
-    adb -s "$serial" uninstall "$PKG" || true
+    if pkg_installed "$serial" "$PKG"; then
+      if ! adb -s "$serial" uninstall "$PKG"; then
+        echo "ERROR: adb uninstall $PKG failed on $serial" >&2
+        failed=1
+        continue
+      fi
+    else
+      rc=$?
+      if [ "$rc" -ne 1 ]; then failed=1; continue; fi
+      echo "$PKG is not installed on $serial; nothing to uninstall"
+    fi
   fi
 
   if ! adb -s "$serial" install -r "$APK"; then
     echo "ERROR: adb install -r failed on $serial" >&2
+    failed=1
+    continue
+  fi
+  if ! pkg_installed "$serial" "$PKG"; then
+    echo "ERROR: after installing $APK, $PKG is not installed on $serial (app id mismatch)" >&2
     failed=1
     continue
   fi
