@@ -3448,3 +3448,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-16 - regress bringup
 
 - regress starts each lab server for probe and seed, and the RESULTS body is sendable.
+
+## 2026-10-16 - deploy reads the app id from the APKs again
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/deploy-apk-id-20261016-2221-plan.md
+- deploy reads the app id from the APKs again.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
