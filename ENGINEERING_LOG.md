@@ -3455,3 +3455,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - deploy reads the app id from the APKs again.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - regress waits for the IMAP greeting before it probes
+
+- regress waits for the IMAP greeting before it probes.
+- Approved plan: sandbox/plans/regress-greeting-20261016-2248-plan.md
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

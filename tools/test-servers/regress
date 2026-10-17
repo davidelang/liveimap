@@ -760,10 +760,19 @@ def start_lab_container(s):
     import lab
     cont = s["container"]
     lab.only_one(cont)
-    subprocess.run(["docker", "start", cont], capture_output=True)
+    r = subprocess.run(["docker", "start", cont], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return first_line(r.stderr or r.stdout)
     upcmd = lab.up_commands().get(cont)
     if upcmd:
-        subprocess.run(["docker", "exec", cont, "sh", "-c", upcmd], capture_output=True)
+        r = subprocess.run(["docker", "exec", cont, "sh", "-c", upcmd], capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            return first_line(r.stderr or r.stdout)
+    n = 900 if cont in lab.ALONE else 300
+    if not lab.greeting(s["imap"], False, timeout=n):
+        return f"no IMAP greeting after {n}s"
+    time.sleep(5)
+    return ""
 
 
 def stop_lab_container(s):
@@ -1364,7 +1373,9 @@ def main():
         s = by_name.get(name)
         try:
             if s and s.get("container"):
-                start_lab_container(s)
+                err = start_lab_container(s)
+                if err:
+                    stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
             err = probe_servers([name], by_name)
             if err:
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
