@@ -766,7 +766,7 @@ class JmapMailSessionTest {
 
     @Test
     fun preservedTlsModeFailsOpenWithoutDiscover() = runBlocking {
-        val s = JmapMailSession({ _, _ -> fail("discover") }, { "pw" })
+        val s = JmapMailSession({ _, _ -> fail("discover"); JmapOffer.None }, { "pw" })
         val opened = s.open(AccountSettings(unknownSettings = listOf("tlsMode=NotAMode")))
         assertTrue(opened is OpenResult.Failed)
         assertTrue((opened as OpenResult.Failed).text.contains("account settings need attention: tlsMode"))
