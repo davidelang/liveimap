@@ -19,7 +19,7 @@ try:
     say("seed", sr.returncode, (sr.stdout + sr.stderr).strip().splitlines()[-1:])
     if sr.returncode != 0:
         sys.exit(sr.returncode)
-    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.PKG}.lab.AcceptanceLabTest#smtpAccepts",
+    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#smtpAccepts",
                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", "None",
                 "-e", "labSmtpPort", PORT, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@lab.test",
                 "-e", "labWriteHosts", lab.LAB_HOST, "-e", "labCa", lab.lab_ca(),

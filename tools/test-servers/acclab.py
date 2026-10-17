@@ -32,7 +32,7 @@ try:
                 if hp: return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@{f[3]}"]
         return []
     print("smtp", smtp())
-    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.PKG}.lab.AcceptanceLabTest#acceptanceMatrix",
+    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#acceptanceMatrix",
                 "-e", "accServer", name, "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", tls,
                 "-e", "labRun", run, *smtp(), *(["-e", "accVariants", os.environ["ACC_VARIANTS"]] if os.environ.get("ACC_VARIANTS") else []), "-e", "labWriteHosts", lab.LAB_HOST, "-e", "labCa", lab.lab_ca(),
                 "-e", "labUser", lab.user_for(s), "-e", "labPass", lab.PASS, lab.RUNNER, timeout=1500)

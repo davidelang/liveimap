@@ -3437,3 +3437,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The installed package is com.davidlang.liveimap.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Lab class filters use the Kotlin package, and deploy and ProGuard use the new id.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-class-filter-20261016-2056-plan.md
+- Lab class filters use the Kotlin package, and deploy and ProGuard use the new id.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -48,6 +48,7 @@ def up_commands():
         cmds[name] = cmd
     return cmds
 PKG = "com.davidlang.liveimap"
+LAB_PKG = "org.dlang.liveimap.lab"
 RUNNER = f"{PKG}.test/androidx.test.runner.AndroidJUnitRunner"
 USER, PASS = "liveimap", "liveimap-test"
 ALONE = {"liveimap-zimbra-883"}
@@ -219,7 +220,7 @@ def client_cert_args(tls):
 def instrument(s, port, tls, run, commit, mech="", side=None):
     """side: replacement SMTP/ManageSieve extras (fake runs); None uses smtp.tsv / sieve.tsv."""
     a = ["shell", "am", "instrument", "-w", "-r",
-         "-e", "class", "org.dlang.liveimap.lab.LabSuiteTest#imapSuite",
+         "-e", "class", f"{LAB_PKG}.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
          "-e", "labServer", s["name"], "-e", "labRun", run, "-e", "labCommit", commit,
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),

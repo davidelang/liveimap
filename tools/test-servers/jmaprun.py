@@ -43,7 +43,7 @@ try:
     field = f"{row[2]}://{lab.EMU_HOST}:{hp}"
     rcpt = f"{RUNUSER.split('@')[0]}@{row[3]}" if row[3] != "-" else derive_rcpt(f"{row[2]}://{lab.LAB_HOST}:{hp}", RUNUSER)
     print("rcpt", rcpt)
-    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.PKG}.lab.JmapLabSuiteTest#jmapSuite",
+    r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.JmapLabSuiteTest#jmapSuite",
                 "-e", "jmapServer", field, "-e", "jmapRcpt", rcpt, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),
                 "-e", "labUser", RUNUSER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=900)
     out = lab.adb("exec-out", "run-as", lab.PKG, "cat", f"cache/recordings/{run}.steps.tsv").stdout

@@ -30,7 +30,7 @@
 -keep class org.dlang.liveimap.ui.reader.PartText** { *; }
 
 # Reflection: BuildConfig.GIT_COMMIT is read with getField by the lab instrumentation (LabSuiteTest).
--keep class org.dlang.liveimap.BuildConfig { *; }
+-keep class com.davidlang.liveimap.BuildConfig { *; }
 
 # Readable release stack traces (David reads them from logcat); the mapping file is kept in build/outputs.
 -keepattributes SourceFile,LineNumberTable

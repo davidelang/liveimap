@@ -117,7 +117,7 @@ def main():
                                   stdout=subprocess.DEVNULL, stderr=open(flog + ".err", "w"), env=env)
             time.sleep(0.7)
             run = f"{name}-safety-{case}"
-            a = ["shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.PKG}.lab.LabSafetyTest#safety",
+            a = ["shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.LabSafetyTest#safety",
                  "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(port), "-e", "labServer", name,
                  "-e", "labRun", run, "-e", "labCommit", commit, "-e", "labFolder", folder,
                  "-e", "labScenario", scenario, "-e", "labAutoExpunge", "true" if cfg.get("auto") else "false",
