@@ -3424,3 +3424,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Append uid, a 5 KB append, IDLE events, and a refused TLS open are checked against the server.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A preserved security line fails SMTP send without storing the account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/preserved-smtp-20261016-2020-plan.md
+- A preserved security line fails SMTP send without storing the account.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
