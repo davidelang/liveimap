@@ -19,7 +19,6 @@ TEST_PKG = "com.davidlang.liveimap.test"
 SERIAL = "emulator-5554"
 SUITES = ["imap", "imap-idle", "imap-mechs", "jmap", "smtp", "sieve", "contacts", "ui"]
 JMAP_SERVERS = ["cyrus-3124", "cyrus-3137", "stalwart", "stalwart-01625", "stalwart-dev", "stalwart-0155"]
-FAKE_SMTP_PORT = 2525
 UNTESTED = [
     "two accounts and a pin dialog",
     "changed pin with accept-invalid",
@@ -44,8 +43,8 @@ RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
 hold_lock = False
 cleaned = False
 dry_run = False
-fake_proc = None
-fake_started = False
+suites_started = False
+responding_to = "none"
 secrets = []
 rows = []
 run_id = ""
@@ -138,20 +137,12 @@ def child_env(extra=None):
 
 
 def cleanup():
-    global cleaned, fake_proc, fake_started, hold_lock
+    global cleaned, hold_lock
     if cleaned:
         return
     cleaned = True
-    if fake_started and fake_proc is not None:
-        fake_proc.terminate()
-        try:
-            fake_proc.wait(timeout=5)
-        except Exception:
-            try:
-                fake_proc.kill()
-            except Exception:
-                pass
-    if hold_lock and not dry_run:
+    # Force-stop only after a suite function has been entered. The lock is not that mark.
+    if hold_lock and suites_started and not dry_run:
         try:
             subprocess.run(["adb", "-s", SERIAL, "shell", "am", "force-stop", PKG],
                            capture_output=True, text=True, errors="replace", timeout=20)
@@ -759,6 +750,29 @@ def servers_used(names, suites):
     return used
 
 
+def mark_suite_started():
+    global suites_started
+    suites_started = True
+
+
+def start_lab_container(s):
+    """Stop every other liveimap-* container, start this one, and run its up command."""
+    import lab
+    cont = s["container"]
+    lab.only_one(cont)
+    subprocess.run(["docker", "start", cont], capture_output=True)
+    upcmd = lab.up_commands().get(cont)
+    if upcmd:
+        subprocess.run(["docker", "exec", cont, "sh", "-c", upcmd], capture_output=True)
+
+
+def stop_lab_container(s):
+    cont = s.get("container") if isinstance(s, dict) else ""
+    if not cont:
+        return
+    subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
+
+
 def probe_servers(used, by_name):
     import lab
     host = lab.LAB_HOST
@@ -801,38 +815,6 @@ def probe_servers(used, by_name):
     return ""
 
 
-def port_open(port):
-    c = socket.socket()
-    c.settimeout(2)
-    try:
-        c.connect(("127.0.0.1", port))
-        c.close()
-        return True
-    except Exception:
-        return False
-
-
-def start_fake_smtp():
-    global fake_proc, fake_started
-    if port_open(FAKE_SMTP_PORT):
-        return ""
-    log_path = os.path.join(run_log, "ai-fake-smtp.log")
-    env = os.environ.copy()
-    env["LAB_LOG"] = log_path
-    try:
-        log = open(log_path, "a", encoding="utf-8", errors="replace")
-        fake_proc = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), str(FAKE_SMTP_PORT)],
-                                     stdout=log, stderr=log, env=env, cwd=HERE)
-    except OSError as e:
-        return first_line(str(e))
-    fake_started = True
-    time.sleep(0.3)
-    if fake_proc.poll() is not None:
-        fake_started = False
-        return "fake smtp exited"
-    return ""
-
-
 def seed_one(s):
     """seed_corpus.py the way acclab.py does, including the STARTTLS retry. Acceptance is the imap suite."""
     import lab
@@ -866,6 +848,7 @@ def acceptance_rows(server, run):
 
 
 def run_imap(names, variants, force):
+    mark_suite_started()
     env = child_env()
     if variants:
         env["ACC_VARIANTS"] = variants
@@ -951,6 +934,7 @@ def imap_idle_steps():
 
 
 def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None):
+    mark_suite_started()
     todo = []
     for name in names:
         if not force and cache_pass(suite, name, ""):
@@ -1056,6 +1040,7 @@ def identity_failed(text):
 
 
 def run_jmap(names, force):
+    mark_suite_started()
     wanted = [n for n in JMAP_SERVERS if n in names]
     for name in wanted:
         write_lock(f"suite jmap {name}")
@@ -1086,13 +1071,16 @@ def run_jmap(names, force):
                 failing, err = check, detail
             elif status == "unexpected pass" and not up_check:
                 up_check = check
-        # The suite OK line is not the identity check. Empty identity stays KNOWN.
-        # unexpected pass of identity only when that check itself passed.
+        # Empty identity stays KNOWN. No identity step and no identity_failed text is an unexpected pass.
         if known_match(name, "jmap", "identity") and "identity" not in seen and identity_failed(text):
             statuses.append("KNOWN")
             total["known"] += 1
             if not failing:
                 failing = "identity"
+        elif known_match(name, "jmap", "identity") and "identity" not in seen and not identity_failed(text):
+            statuses.append("unexpected pass")
+            if not up_check:
+                up_check = "identity"
         if not overall and rc != 0:
             statuses.append("FAIL")
             total["fail"] += 1
@@ -1116,6 +1104,7 @@ def run_jmap(names, force):
 
 
 def run_smtp(force):
+    mark_suite_started()
     name = "greenmail-dev"
     write_lock("suite smtp")
     if not force and cache_pass("smtp", name, ""):
@@ -1150,24 +1139,63 @@ def failing_names(items):
 
 
 def previous_results():
+    """Newest older results.json that is not BLOCKED and has rows."""
     if not os.path.isdir(REC_ROOT):
         return None
-    best, best_m = None, -1
+    found = []
     for name in os.listdir(REC_ROOT):
         if name == run_id:
             continue
         path = os.path.join(REC_ROOT, name, "results.json")
-        if os.path.isfile(path):
-            try:
-                m = os.path.getmtime(path)
-            except OSError:
-                continue
-            if m > best_m:
-                best, best_m = path, m
-    return best
+        if not os.path.isfile(path):
+            continue
+        try:
+            found.append((os.path.getmtime(path), path))
+        except OSError:
+            continue
+    found.sort(reverse=True)
+    for _, path in found:
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("verdict") == "BLOCKED" or not data.get("rows"):
+            continue
+        return path
+    return None
 
 
-def regressions(current):
+def check_ran(rows, key):
+    """True when this run covered that server, suite, variant, and check."""
+    server, suite, variant, check = key
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if (row.get("server") or "", row.get("suite") or "", row.get("variant") or "") != (server, suite, variant):
+            continue
+        named = row.get("failing_check") or ""
+        # An unnamed row means that slot ran, so a check of the same slot was covered.
+        if named == check or named == "":
+            return True
+    return False
+
+
+def failing_map(items):
+    found = {}
+    for row in items or []:
+        if not isinstance(row, dict) or row.get("result") != "FAIL":
+            continue
+        check = row.get("failing_check") or ""
+        if not check:
+            continue
+        key = (row.get("server") or "", row.get("suite") or "", row.get("variant") or "", check)
+        found[key] = " ".join(p for p in key if p)
+    return found
+
+
+def regressions(current_rows):
     prev_path = previous_results()
     if not prev_path:
         return "none"
@@ -1175,12 +1203,22 @@ def regressions(current):
         prev = json.load(open(prev_path, encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return "none"
-    before = set(prev.get("failing_checks") or failing_names(prev.get("rows") or []))
-    after = set(current)
-    if before == after:
+    if not isinstance(prev, dict):
         return "none"
-    parts = [f"+ {n}" for n in sorted(after - before)] + [f"- {n}" for n in sorted(before - after)]
-    return ", ".join(parts) if parts else "none"
+    prev_rows = prev.get("rows") or []
+    before = failing_map(prev_rows)
+    after = failing_map(current_rows)
+    plus, minus = [], []
+    for key, label in after.items():
+        if key not in before and check_ran(prev_rows, key):
+            plus.append(label)
+    for key, label in before.items():
+        if key not in after and check_ran(current_rows, key):
+            minus.append(label)
+    if not plus and not minus:
+        return "none"
+    parts = [f"+ {n}" for n in sorted(plus)] + [f"- {n}" for n in sorted(minus)]
+    return ", ".join(parts)
 
 
 def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
@@ -1191,6 +1229,7 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
     payload = {
         "run_id": run_id,
         "commit": commit,
+        "verdict": verdict,
         "rows": body_rows,
         "failing_checks": [redact(n) for n in fails],
         "unseeded_servers": unseeded,
@@ -1221,13 +1260,13 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
     findings = ", ".join(payload["failing_checks"]) if payload["failing_checks"] else "none"
     if verdict == "BLOCKED":
         findings = redact(blocked_reason)
-    reg = "none" if verdict == "BLOCKED" else regressions(payload["failing_checks"])
+    reg = "none" if verdict == "BLOCKED" else regressions(body_rows)
     matrix = "suites: " + ",".join(suites) + " servers: " + ",".join(servers)
     logs = os.path.join("sandbox", "test-servers", "logs", run_id)
     reason = redact(blocked_reason) if blocked_reason else "none"
     body = "\n".join([
-        f"STATUS: {'blocked' if verdict == 'BLOCKED' else 'complete'}",
-        "RESPONDING-TO: 0024",
+        "STATUS: RESULTS",
+        f"RESPONDING-TO: {responding_to}",
         f"COMMIT: {commit}",
         f"VERDICT: {verdict}",
         f"FINDINGS: {findings}",
@@ -1251,16 +1290,18 @@ def stop(msg, suites, servers, unseeded):
 
 
 def main():
-    global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock
+    global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to
     p = argparse.ArgumentParser(description="Run the lab suites, IDLE events, and per-mechanism login.")
     p.add_argument("--commit", required=True)
     p.add_argument("--servers", default="all")
     p.add_argument("--suites", default="all")
     p.add_argument("--variants", default="")
+    p.add_argument("--responding-to", default="")
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     dry_run = a.dry_run
+    responding_to = a.responding_to or "none"
     commit = a.commit
     sha8 = commit[:8]
     run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + sha8
@@ -1315,22 +1356,25 @@ def main():
     if err:
         stop(err, suites, names, [])
     used = servers_used(names, suites)
-    err = probe_servers(used, by_name)
-    if err:
-        stop(f"VERDICT BLOCKED {err}", suites, names, [])
-    if "smtp" in suites:
-        err = start_fake_smtp()
-        if err:
-            stop(f"VERDICT BLOCKED fake smtp: {err}", suites, names, [])
     unseeded = []
     write_lock("seed")
-    pending = list(names)
-    for name in names:
+    pending = list(used)
+    for name in used:
         pending.pop(0)
-        rc, line = seed_one(by_name[name])
-        if rc != 0:
-            unseeded = [name] + pending
-            stop(f"VERDICT BLOCKED {name}: {line}", suites, names, unseeded)
+        s = by_name.get(name)
+        try:
+            if s and s.get("container"):
+                start_lab_container(s)
+            err = probe_servers([name], by_name)
+            if err:
+                stop(f"VERDICT BLOCKED {err}", suites, names, [])
+            rc, line = seed_one(s)
+            if rc != 0:
+                unseeded = [name] + pending
+                stop(f"VERDICT BLOCKED {name}: {line}", suites, names, unseeded)
+        finally:
+            if s and s.get("container"):
+                stop_lab_container(s)
     cache.update(load_cache())
     if "imap" in suites:
         run_imap(names, a.variants, a.force)

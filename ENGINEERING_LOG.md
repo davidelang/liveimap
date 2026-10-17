@@ -3444,3 +3444,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Lab class filters use the Kotlin package, and deploy and ProGuard use the new id.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - regress bringup
+
+- regress starts each lab server for probe and seed, and the RESULTS body is sendable.
