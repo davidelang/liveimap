@@ -38,7 +38,7 @@
         <meta-data android:name="liveimap.gitCommit" android:value="${gitCommit}" />
 
         <activity
-            android:name=".MainActivity"
+            android:name="org.dlang.liveimap.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,19 +47,19 @@
         </activity>
 
         <provider
-            android:name=".engine.TrafficFileProvider"
+            android:name="org.dlang.liveimap.engine.TrafficFileProvider"
             android:authorities="com.davidlang.liveimap.trafficlog"
             android:exported="false"
             android:grantUriPermissions="true" />
 
         <provider
-            android:name=".ui.reader.AttachmentFileProvider"
+            android:name="org.dlang.liveimap.ui.reader.AttachmentFileProvider"
             android:authorities="com.davidlang.liveimap.attachments"
             android:exported="false"
             android:grantUriPermissions="true" />
 
         <service
-            android:name=".accounts.AuthenticatorService"
+            android:name="org.dlang.liveimap.accounts.AuthenticatorService"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.accounts.AccountAuthenticator" />
@@ -70,7 +70,7 @@
         </service>
 
         <activity
-            android:name=".accounts.AccountSetupActivity"
+            android:name="org.dlang.liveimap.accounts.AccountSetupActivity"
             android:excludeFromRecents="true"
             android:exported="true" />
     </application>
