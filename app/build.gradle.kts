@@ -10,7 +10,9 @@ android {
         applicationId = "com.davidlang.liveimap"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // Must increase on every Play upload: raise app/versionCode.txt before each ./build_app --play.
+        // A missing or non-numeric file fails the build.
+        versionCode = file("versionCode.txt").readText().trim().toInt()
         val rawVersion = providers.exec {
             workingDir = project.rootDir
             commandLine(
@@ -30,7 +32,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // One APK per device ABI (as VehicleExpenses): app-arm64-<type>.apk for the Pixels, app-x86_64-<type>.apk
-    // for the emulator. versionCode stays 1 for every ABI, as there.
+    // for the emulator. Every ABI shares the versionCode from app/versionCode.txt.
     flavorDimensions += "abi"
     productFlavors {
         create("arm64") {
@@ -40,6 +42,12 @@ android {
         create("x86_64") {
             dimension = "abi"
             ndk { abiFilters += "x86_64" }
+        }
+        // Play bundle only (./build_app --play runs bundlePlayRelease): every shipped ABI in one
+        // AAB; Play delivers per-device splits. Its debug variant is disabled below.
+        create("play") {
+            dimension = "abi"
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
     }
     androidResources {
@@ -81,6 +89,11 @@ android {
             version = "3.22.1"
         }
     }
+}
+
+// The play flavor is for the release bundle only; debug builds stay one APK per ABI.
+androidComponents {
+    beforeVariants(selector().withFlavor("abi" to "play").withBuildType("debug")) { it.enable = false }
 }
 
 kotlin {
