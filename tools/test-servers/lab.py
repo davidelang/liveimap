@@ -219,7 +219,7 @@ def client_cert_args(tls):
 def instrument(s, port, tls, run, commit, mech="", side=None):
     """side: replacement SMTP/ManageSieve extras (fake runs); None uses smtp.tsv / sieve.tsv."""
     a = ["shell", "am", "instrument", "-w", "-r",
-         "-e", "class", f"{PKG}.lab.LabSuiteTest#imapSuite",
+         "-e", "class", "org.dlang.liveimap.lab.LabSuiteTest#imapSuite",
          "-e", "labHost", EMU_HOST, "-e", "labPort", str(port), "-e", "labTls", tls,
          "-e", "labServer", s["name"], "-e", "labRun", run, "-e", "labCommit", commit,
          "-e", "labFolder", s.get("folder", "LiveIMAP-Test"),
