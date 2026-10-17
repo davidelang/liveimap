@@ -1046,6 +1046,7 @@ def run_jmap(names, force):
         steps = jmap_steps(text)
         statuses = []
         failing, err = "", ""
+        up_check = ""
         total = {"pass": 0, "fail": 0, "skip": 0, "known": 0}
         seen = set()
         for check, (res, detail) in steps.items():
@@ -1059,8 +1060,10 @@ def run_jmap(names, force):
                 total[bucket] += 1
             if status == "FAIL" and not failing:
                 failing, err = check, detail
+            elif status == "unexpected pass" and not up_check:
+                up_check = check
         # The suite OK line is not the identity check. Empty identity stays KNOWN.
-        # unexpected pass only when that check itself passed (it is in seen).
+        # unexpected pass of identity only when that check itself passed.
         if known_match(name, "jmap", "identity") and "identity" not in seen and identity_failed(text):
             statuses.append("KNOWN")
             total["known"] += 1
@@ -1081,7 +1084,7 @@ def run_jmap(names, force):
             total["pass"] += 1
         result = worst(statuses) if statuses else "FAIL"
         if result == "unexpected pass":
-            failing = failing or "identity"
+            failing = up_check
         if result == "FAIL" and not total["fail"]:
             total["fail"] = 1
         add_row(name, "jmap", "", total, result, failing, err, duration)
