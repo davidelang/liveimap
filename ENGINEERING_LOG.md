@@ -3493,3 +3493,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - The lab no longer targets GreenMail.
 
 ## 2026-10-20 - A lab reset creates a container from the published seed image.
+
+## 2026-10-20 - The seed image no longer starts through the reseed hook, and the Dovecot relay port comes from the saved sink row.

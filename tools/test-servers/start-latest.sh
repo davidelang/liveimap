@@ -432,11 +432,11 @@ sink_port() {
 }
 
 # Dovecot 2.4.5: users, auth, submission relay to the fake SMTP sink on the docker bridge gateway, and the
-# container with IMAP ($1 -> 31143) and submission ($2 -> 31587) published; relay to the sink on host port $3.
+# container with IMAP ($1 -> 31143) and submission ($2 -> 31587) published. The sink host port is sink_port.
 create_dovecot_245() {
   dv_imap=$1
   dv_sub=$2
-  relay_port=$3
+  relay_port=$(sink_port)
   gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
   if [ -z "$gateway" ]; then
     echo "ERROR: no gateway on the docker bridge network" >&2
@@ -489,6 +489,7 @@ setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf" "$GEN
 create_from_seed dovecot-245 \
   -p "${dv_imap}:31143" \
   -p "${dv_sub}:31587"
+docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"
 }
 
 # --recreate-dovecot-245 is the same replace as --recreate dovecot-245.
@@ -501,6 +502,17 @@ if [ "${1:-}" = --reset ]; then
     exit 1
   fi
   reset_from_seed "$2"
+  if [ "$2" = dovecot-245 ]; then
+    gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+    if [ -z "$gateway" ]; then
+      echo "ERROR: no gateway on the docker bridge network" >&2
+      exit 1
+    fi
+    relay_port=$(sink_port)
+    mkdir -p "$GEN/dovecot-245"
+    printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$GEN/dovecot-245/relay.conf"
+    docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"
+  fi
   exit 0
 fi
 if [ "${1:-}" = --recreate ]; then
@@ -550,15 +562,13 @@ if [ "${1:-}" = --recreate ]; then
       # shellcheck disable=SC2046
       set -- $(pick_ports \
         dovecot245-imap:31143:liveimap-dovecot-245 \
-        dovecot245-submission:31587:liveimap-dovecot-245 \
-        fake-smtp-sink:*:host)
-      create_dovecot_245 "$1" "$2" "$3"
+        dovecot245-submission:31587:liveimap-dovecot-245)
+      create_dovecot_245 "$1" "$2"
       {
         printf 'dovecot245-imap\t%s\t31143\tliveimap-dovecot-245\n' "$1"
         printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$2"
-        printf 'fake-smtp-sink\t%s\t%s\thost\n' "$3" "$3"
       } > "$rows"
-      replace_port_rows liveimap-dovecot-245 fake-smtp-sink "$rows"
+      replace_port_rows liveimap-dovecot-245 "" "$rows"
       ;;
     cyrus-3124)
       # shellcheck disable=SC2046
@@ -1097,7 +1107,7 @@ echo "building courier image"
 docker build -t liveimap-courier-606:phase1 "$CO_BUILD"
 
 echo "drawing ports"
-PORTS=$(draw_ports 11)
+PORTS=$(draw_ports 10)
 
 # shellcheck disable=SC2086
 set -- $PORTS
@@ -1112,10 +1122,9 @@ CY_IMAP=$2
 CY_HTTP=$3
 CO_IMAP=$4
 DV_SUB=$5
-SINK=$6
 
 echo "starting dovecot stalwart"
-create_dovecot_245 "$DV_IMAP" "$DV_SUB" "$SINK"
+create_dovecot_245 "$DV_IMAP" "$DV_SUB"
 
 umask 007
 ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
@@ -1558,14 +1567,13 @@ PY
   printf 'stalwart01625-submission\t%s\t587\tliveimap-stalwart-01625\n' "$ST_SUB"
   printf 'dovecot245-imap\t%s\t31143\tliveimap-dovecot-245\n' "$DV_IMAP"
   printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$DV_SUB"
-  printf 'fake-smtp-sink\t%s\t%s\thost\n' "$SINK" "$SINK"
   printf 'cyrus3124-imap\t%s\t143\tliveimap-cyrus-3124\n' "$CY_IMAP"
   printf 'cyrus3124-http\t%s\t8080\tliveimap-cyrus-3124\n' "$CY_HTTP"
   printf 'courier606-imap\t%s\t143\tliveimap-courier-606\n' "$CO_IMAP"
 } > "$GEN/port-rows.new"
 replace_port_rows \
   "liveimap-stalwart-01625,liveimap-dovecot-245,liveimap-cyrus-3124,liveimap-courier-606" \
-  fake-smtp-sink \
+  "" \
   "$GEN/port-rows.new"
 rm -f "$GEN/port-rows.new"
 
@@ -1588,7 +1596,6 @@ echo "stalwart01625-https $ST_HTTPS"
 echo "stalwart01625-submission $ST_SUB"
 echo "dovecot245-imap $DV_IMAP"
 echo "dovecot245-submission $DV_SUB"
-echo "fake-smtp-sink $SINK"
 echo "cyrus3124-imap $CY_IMAP"
 echo "cyrus3124-http $CY_HTTP"
 echo "courier606-imap $CO_IMAP"

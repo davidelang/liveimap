@@ -184,4 +184,51 @@ assert "stalwartlabs/stalwart" not in reset_body
 assert 'tools/test-servers/seed-snapshot.sh $server' in seed_body
 assert 'reset_from_seed "$2"' in latest
 assert "stalwart-01625)" in latest or "stalwart-01625|" in latest
+
+# Follow-up edges 1-3. Text only; this does not run docker.
+up = open(os.path.join(HERE, "up.tsv"), encoding="utf-8").read()
+assert "/liveimap-reseed" not in up
+nine = (
+    "liveimap-cyrus-22",
+    "liveimap-cyrus-24",
+    "liveimap-cyrus-25",
+    "liveimap-cyrus-36",
+    "liveimap-dovecot-10",
+    "liveimap-dovecot-12",
+    "liveimap-dovecot-22",
+    "liveimap-courier-50",
+    "liveimap-uwimap",
+)
+rows = {}
+for line in up.splitlines():
+    if line.startswith("#") or "\t" not in line:
+        continue
+    name, cmd = line.split("\t", 1)
+    rows[name] = cmd
+for name in nine:
+    assert name in rows, name
+    assert not rows[name].lstrip().startswith("{"), name
+assert "cyrmaster" in rows["liveimap-cyrus-22"]
+assert "cyrmaster" in rows["liveimap-cyrus-24"]
+assert "cyrmaster" in rows["liveimap-cyrus-25"]
+assert "cyrmaster" in rows["liveimap-cyrus-36"]
+assert "setsid dovecot" in rows["liveimap-dovecot-10"]
+assert "setsid dovecot" in rows["liveimap-dovecot-12"]
+assert "setsid dovecot" in rows["liveimap-dovecot-22"]
+assert "courier-imap" in rows["liveimap-courier-50"]
+assert "inetd" in rows["liveimap-uwimap"]
+commit_at = snap.find('docker commit "$name"')
+assert commit_at != -1
+before_commit = snap[:commit_at]
+assert "Config.Entrypoint" in before_commit
+assert "Config.Cmd" in before_commit
+assert "Config.Env" in before_commit
+assert "/liveimap-reseed" in before_commit
+assert "LIVEIMAP_" in before_commit
+assert "/entrypoint.sh" in before_commit
+assert "|| true" not in snap
+assert "draw_ports 10" in latest
+assert "draw_ports 11" not in latest
+assert 'docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"' in latest
+assert "fake-smtp-sink:*:host" not in latest
 print("ok")

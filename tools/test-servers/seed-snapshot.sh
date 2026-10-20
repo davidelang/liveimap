@@ -57,4 +57,29 @@ if [ -n "$bad" ]; then
   exit 1
 fi
 
+entry=$(docker inspect -f '{{json .Config.Entrypoint}}' "$name")
+cmd=$(docker inspect -f '{{json .Config.Cmd}}' "$name")
+env=$(docker inspect -f '{{json .Config.Env}}' "$name")
+case "$entry$cmd$env" in
+  *"/liveimap-reseed"*|*"LIVEIMAP_"*)
+    echo "Config.Entrypoint, Config.Cmd, or Config.Env contains /liveimap-reseed or LIVEIMAP_ in $name" >&2
+    exit 1
+    ;;
+esac
+
+tmp=$(mktemp -d)
+if docker cp "$name:/liveimap-reseed" "$tmp/reseed" >/dev/null 2>&1; then
+  rm -rf "$tmp"
+  echo "/liveimap-reseed is in $name" >&2
+  exit 1
+fi
+if docker cp "$name:/entrypoint.sh" "$tmp/entrypoint.sh" >/dev/null 2>&1; then
+  if grep -F -q '/liveimap-reseed' "$tmp/entrypoint.sh"; then
+    rm -rf "$tmp"
+    echo "/entrypoint.sh contains /liveimap-reseed in $name" >&2
+    exit 1
+  fi
+fi
+rm -rf "$tmp"
+
 docker commit "$name" "liveimap-seed-$server" >/dev/null
