@@ -933,6 +933,29 @@ def container_running(cont):
     return r.returncode == 0 and (r.stdout or "").strip() == "true"
 
 
+def container_logs(cont):
+    logs = subprocess.run(["docker", "logs", cont], capture_output=True, text=True, errors="replace")
+    return (logs.stdout or "") + "\n" + (logs.stderr or "")
+
+
+GREENMAIL_SERVERS = {"greenmail", "greenmail-16", "greenmail-214", "greenmail-dev"}
+
+
+def wait_greenmail_ready(cont, timeout):
+    """The IMAP greeting is before the localhost seed. Ready is /tmp/liveimap-greenmail-ready."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not container_running(cont):
+            text = container_logs(cont)
+            return snapshot_line(text) or first_line(text)
+        r = subprocess.run(["docker", "exec", cont, "test", "-f", "/tmp/liveimap-greenmail-ready"],
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode == 0:
+            return ""
+        time.sleep(1)
+    return "greenmail seed did not finish"
+
+
 def start_lab_container(s, skip=False):
     """Stop every other liveimap-* container, start this one, and run its up command."""
     import lab
@@ -948,8 +971,7 @@ def start_lab_container(s, skip=False):
     if r.returncode != 0:
         return snapshot_line(r.stderr or r.stdout) or first_line(r.stderr or r.stdout)
     if not container_running(cont):
-        logs = subprocess.run(["docker", "logs", cont], capture_output=True, text=True, errors="replace")
-        text = (logs.stdout or "") + "\n" + (logs.stderr or "")
+        text = container_logs(cont)
         return snapshot_line(text) or first_line(text)
     upcmd = lab.up_commands().get(cont)
     if upcmd:
@@ -958,12 +980,13 @@ def start_lab_container(s, skip=False):
             text = (r.stderr or "") + "\n" + (r.stdout or "")
             return snapshot_line(text) or first_line(text)
         if not container_running(cont):
-            logs = subprocess.run(["docker", "logs", cont], capture_output=True, text=True, errors="replace")
-            text = (logs.stdout or "") + "\n" + (logs.stderr or "")
+            text = container_logs(cont)
             return snapshot_line(text) or first_line(text)
     n = 900 if cont in lab.ALONE else 300
     if not lab.greeting(s["imap"], False, timeout=n):
         return f"no IMAP greeting after {n}s"
+    if s["name"] in GREENMAIL_SERVERS:
+        return wait_greenmail_ready(cont, 900)
     time.sleep(5)
     return ""
 

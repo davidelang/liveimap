@@ -176,7 +176,9 @@ do_restore() {
 
 # GreenMail has no tar. Seed localhost only after port 3143 accepts.
 seed_greenmail() {
+  rm -f /tmp/liveimap-greenmail-ready
   seed_greenmail_run
+  touch /tmp/liveimap-greenmail-ready
 }
 
 seed_greenmail_run() {
@@ -192,12 +194,14 @@ tag_n=1
 imap_send() { printf '%s\r\n' "$1" >&3; }
 imap_until() {
   want=$1
+  : > /tmp/liveimap-untagged
   while IFS= read -r line <&3; do
     line=${line%$'\r'}
     case $line in
       "$want "*) printf '%s\n' "$line"; return 0 ;;
       "+ "*) printf '%s\n' "$line"; return 0 ;;
       "+"*) printf '%s\n' "$line"; return 0 ;;
+      \**) printf '%s\n' "$line" >> /tmp/liveimap-untagged ;;
     esac
   done
   echo "greenmail imap stalled" >&2
@@ -292,8 +296,20 @@ while IFS=$(printf '\t') read -r user pass profile; do
   [ "$profile" = "base" ] || continue
   [ -n "$pass" ] || continue
   login_user "$user" "$pass"
-  line=$(run_tag 'LIST "" "INBOX"')
-  delim=$(printf '%s\n' "$line" | sed -n 's/.*"\(.\)".*/\1/p' | head -n 1)
+  run_tag 'LIST "" "INBOX"' >/dev/null
+  delim=
+  while IFS= read -r line; do
+    case $line in
+      "* LIST "*) ;;
+      *) continue ;;
+    esac
+    rest=${line#*\"}
+    one=${rest%%\"*}
+    if [ "${#one}" -eq 1 ]; then
+      delim=$one
+      break
+    fi
+  done < /tmp/liveimap-untagged
   [ -n "$delim" ] || delim=/
   while IFS=$(printf '\t') read -r fuser folder count _special _sub; do
     [ "$fuser" = "$user" ] || continue
@@ -373,6 +389,7 @@ if [ "${1:-}" = "--greenmail" ]; then
     echo "greenmail command missing" >&2
     exit 1
   fi
+  rm -f /tmp/liveimap-greenmail-ready
   "$@" &
   pid=$!
   if ! wait_imap; then
@@ -387,6 +404,7 @@ if [ "${1:-}" = "--greenmail" ]; then
       exit 1
     fi
   fi
+  touch /tmp/liveimap-greenmail-ready
   wait "$pid"
   exit $?
 fi
