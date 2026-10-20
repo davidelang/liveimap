@@ -372,6 +372,7 @@ def launch_zimbra(imap_port, https_port, admin_port):
         fail("docker start failed")
 
 def reset_zimbra():
+    require_seed_image()
     if name in container_names():
         proc = run(["docker", "rm", "-f", name])
         if proc.returncode != 0:
