@@ -27,6 +27,351 @@ container_running() {
   docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -qx true
 }
 
+expected_ports() {
+  case "$1" in
+    liveimap-greenmail) echo "3143 3993 3025 8080" ;;
+    liveimap-stalwart) echo "143 993 4190 443 587" ;;
+    *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
+  esac
+}
+
+server_owner() {
+  case "$1" in
+    greenmail-214|stalwart-01625|dovecot-245|cyrus-3124|courier-606)
+      printf '%s\n' "$DIR/start-latest.sh" ;;
+    greenmail-dev|stalwart-dev|dovecot-dev|cyrus-3137)
+      printf '%s\n' "$DIR/start-dev.sh" ;;
+    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|greenmail-16|stalwart-0155)
+      printf '%s\n' "$DIR/start-older.sh" ;;
+    greenmail|stalwart)
+      printf '%s\n' "$DIR/start-local.sh" ;;
+    zimbra-883)
+      printf '%s\n' "$DIR/zimbra-883.sh" ;;
+    *)
+      return 1 ;;
+  esac
+}
+
+require_owned() {
+  server=$1
+  owner=$(server_owner "$server" || true)
+  if [ -z "$owner" ]; then
+    echo "ERROR: $server is not a lab server" >&2
+    exit 1
+  fi
+  if [ "$owner" != "$SCRIPT" ]; then
+    echo "ERROR: $server belongs to $owner" >&2
+    exit 1
+  fi
+}
+
+stop_for_recreate() {
+  echo "$SCRIPT --recreate $1" >&2
+  exit 1
+}
+
+container_ok() {
+  name=$1
+  shift
+  python3 - "$name" "$GEN" "$SEED" "$@" <<'PY'
+import os
+import subprocess
+import sys
+
+name, gen, seed = sys.argv[1], sys.argv[2], sys.argv[3]
+want = set(sys.argv[4:])
+gen_real = os.path.realpath(gen)
+seed_real = os.path.realpath(seed)
+roots = (gen_real + os.sep, seed_real + os.sep)
+
+def under(path):
+    real = os.path.realpath(path)
+    if real == gen_real or real == seed_real:
+        return True
+    return real.startswith(roots)
+
+fmt_ports = "{{range $p, $b := .HostConfig.PortBindings}}{{$p}}\n{{end}}"
+proc = subprocess.run(
+    ["docker", "inspect", "-f", fmt_ports, name],
+    capture_output=True,
+    text=True,
+)
+if proc.returncode != 0:
+    sys.exit(1)
+got = set()
+for line in proc.stdout.splitlines():
+    port = line.split("/", 1)[0]
+    if port:
+        got.add(port)
+if got != want:
+    sys.exit(1)
+fmt_mounts = "{{range .Mounts}}{{.Type}}\t{{.Source}}\n{{end}}"
+proc = subprocess.run(
+    ["docker", "inspect", "-f", fmt_mounts, name],
+    capture_output=True,
+    text=True,
+)
+if proc.returncode != 0:
+    sys.exit(1)
+for line in proc.stdout.splitlines():
+    if not line.strip():
+        continue
+    kind, sep, source = line.partition("\t")
+    if kind != "bind":
+        continue
+    if not sep or not source or not os.path.exists(source) or not under(source):
+        sys.exit(1)
+sys.exit(0)
+PY
+}
+
+check_existing_name() {
+  name=$1
+  if ! container_exists "$name"; then
+    return 0
+  fi
+  server=${name#liveimap-}
+  # shellcheck disable=SC2046
+  if ! container_ok "$name" $(expected_ports "$name"); then
+    stop_for_recreate "$server"
+  fi
+}
+
+replace_port_rows() {
+  mkdir -p "$GEN"
+  python3 - "$PORTS_FILE" "$1" "$2" "$3" <<'PY'
+import os
+import sys
+
+path, containers, services, rows_path = sys.argv[1:]
+containers = set(item for item in containers.split(",") if item)
+services = set(item for item in services.split(",") if item)
+with open(rows_path, encoding="utf-8") as handle:
+    new = handle.read()
+if new and not new.endswith("\n"):
+    new += "\n"
+old = ""
+if os.path.exists(path):
+    with open(path, encoding="utf-8") as handle:
+        old = handle.read()
+kept = []
+for line in old.splitlines(keepends=True):
+    parts = line.rstrip("\n").split("\t")
+    if parts and parts[0] in services:
+        continue
+    if len(parts) >= 4 and parts[3] in containers:
+        continue
+    if not line.endswith("\n"):
+        line += "\n"
+    kept.append(line)
+text = "".join(kept) + new
+parent = os.path.dirname(path)
+os.makedirs(parent, exist_ok=True)
+tmp = path + ".new"
+with open(tmp, "w", encoding="utf-8") as handle:
+    handle.write(text)
+PY
+  mv "$PORTS_FILE.new" "$PORTS_FILE"
+}
+
+pick_ports() {
+  python3 - "$PORTS_FILE" "$@" <<'PY'
+import os
+import random
+import socket
+import subprocess
+import sys
+
+ports_file = sys.argv[1]
+specs = []
+for item in sys.argv[2:]:
+    service, _cport, _owner = item.split(":")
+    specs.append(service)
+
+rows = []
+if os.path.exists(ports_file):
+    with open(ports_file, encoding="utf-8") as handle:
+        for line in handle:
+            rows.append(line.rstrip("\n").split("\t"))
+
+old_of = {}
+for parts in rows:
+    if parts and parts[0] in set(specs) and len(parts) >= 2 and parts[1].isdigit():
+        old_of[parts[0]] = int(parts[1])
+
+def host_of(parts):
+    if len(parts) >= 2 and parts[1].isdigit():
+        return int(parts[1])
+    return None
+
+ss = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
+listening_set = set()
+for line in ss.splitlines():
+    parts = line.split()
+    if len(parts) < 4:
+        continue
+    _host, sep, got = parts[3].rpartition(":")
+    if sep and got.isdigit():
+        listening_set.add(int(got))
+
+bind_host = os.environ.get("PICK_BIND_HOST", "")
+
+def bindable(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((bind_host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+chosen = []
+
+def blocked(port, service):
+    for parts in rows:
+        if not parts or parts[0] == service:
+            continue
+        if host_of(parts) == port:
+            return True
+    return False
+
+def free(port, service):
+    if port in chosen or blocked(port, service):
+        return False
+    if port in listening_set:
+        return False
+    return bindable(port)
+
+def draw(service):
+    seen = set()
+    draws = 0
+    while draws < 400:
+        draws += 1
+        port = random.randint(20000, 39999)
+        if port in seen:
+            continue
+        seen.add(port)
+        if free(port, service):
+            return port
+    sys.stderr.write("could not draw free ports\n")
+    sys.exit(1)
+
+for service in specs:
+    old = old_of.get(service)
+    if old is not None and free(old, service):
+        host = old
+    else:
+        host = draw(service)
+    chosen.append(host)
+    print(host)
+PY
+}
+
+remove_one() {
+  if container_exists "$1"; then
+    docker rm -f "$1" >/dev/null
+  fi
+}
+
+finish_recreate() {
+  name=$1
+  server=$2
+  # shellcheck disable=SC2046
+  if ! container_ok "$name" $(expected_ports "$name"); then
+    docker stop "$name" >/dev/null 2>&1 || true
+    stop_for_recreate "$server"
+  fi
+  docker stop "$name" >/dev/null
+}
+
+if [ "${1:-}" = --recreate ]; then
+  if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
+    echo "ERROR: usage: $SCRIPT --recreate <server>" >&2
+    exit 1
+  fi
+  require_owned "$2"
+  server=$2
+  name=liveimap-$server
+  remove_one "$name"
+  rows="$GEN/port-rows.new"
+  case "$server" in
+    greenmail)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports \
+        greenmail-imap:3143:liveimap-greenmail \
+        greenmail-imaps:3993:liveimap-greenmail \
+        greenmail-smtp:3025:liveimap-greenmail \
+        greenmail-api:8080:liveimap-greenmail)
+      docker pull greenmail/standalone:2.1.13
+      docker run -d --name liveimap-greenmail \
+        -p "${1}:3143" \
+        -p "${2}:3993" \
+        -p "${3}:3025" \
+        -p "${4}:8080" \
+        greenmail/standalone:2.1.13
+      {
+        printf 'greenmail-imap\t%s\t3143\tliveimap-greenmail\n' "$1"
+        printf 'greenmail-imaps\t%s\t3993\tliveimap-greenmail\n' "$2"
+        printf 'greenmail-smtp\t%s\t3025\tliveimap-greenmail\n' "$3"
+        printf 'greenmail-api\t%s\t8080\tliveimap-greenmail\n' "$4"
+      } > "$rows"
+      replace_port_rows liveimap-greenmail "" "$rows"
+      ;;
+    stalwart)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports \
+        stalwart-imap:143:liveimap-stalwart \
+        stalwart-imaps:993:liveimap-stalwart \
+        stalwart-managesieve:4190:liveimap-stalwart \
+        stalwart-https:443:liveimap-stalwart \
+        stalwart-submission:587:liveimap-stalwart)
+      docker pull stalwartlabs/stalwart:v0.16
+      if ! docker volume inspect liveimap-stalwart-etc >/dev/null 2>&1; then
+        docker volume create liveimap-stalwart-etc >/dev/null
+      fi
+      if ! docker volume inspect liveimap-stalwart-data >/dev/null 2>&1; then
+        docker volume create liveimap-stalwart-data >/dev/null
+      fi
+      if ! docker run --rm --user 0 --entrypoint /bin/sh \
+        -v liveimap-stalwart-etc:/etc/stalwart \
+        stalwartlabs/stalwart:v0.16 \
+        -c 'test -s /etc/stalwart/config.json'; then
+        docker run --rm --user 0 --entrypoint /bin/sh \
+          -v liveimap-stalwart-etc:/etc/stalwart \
+          stalwartlabs/stalwart:v0.16 \
+          -c 'umask 077; printf %s "{\"@type\":\"RocksDb\",\"path\":\"/var/lib/stalwart/\"}" > /etc/stalwart/config.json; chown 2000:2000 /etc/stalwart/config.json'
+      fi
+      ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+      docker run -d --name liveimap-stalwart \
+        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
+        -p "${1}:143" \
+        -p "${2}:993" \
+        -p "${3}:4190" \
+        -p "${4}:443" \
+        -p "${5}:587" \
+        -v liveimap-stalwart-etc:/etc/stalwart \
+        -v liveimap-stalwart-data:/var/lib/stalwart \
+        stalwartlabs/stalwart:v0.16
+      unset ST_ADMIN_PASS
+      {
+        printf 'stalwart-imap\t%s\t143\tliveimap-stalwart\n' "$1"
+        printf 'stalwart-imaps\t%s\t993\tliveimap-stalwart\n' "$2"
+        printf 'stalwart-managesieve\t%s\t4190\tliveimap-stalwart\n' "$3"
+        printf 'stalwart-https\t%s\t443\tliveimap-stalwart\n' "$4"
+        printf 'stalwart-submission\t%s\t587\tliveimap-stalwart\n' "$5"
+      } > "$rows"
+      replace_port_rows liveimap-stalwart "" "$rows"
+      ;;
+  esac
+  rm -f "$rows"
+  finish_recreate "$name" "$server"
+  exit 0
+fi
+
+for name in liveimap-greenmail liveimap-stalwart; do
+  check_existing_name "$name"
+done
 present=0
 for name in liveimap-greenmail liveimap-stalwart; do
   if container_exists "$name"; then
@@ -313,7 +658,9 @@ if command -v ip >/dev/null 2>&1; then
 fi
 
 {
-  printf 'service\thost_port\tcontainer_port\tcontainer\n'
+  if [ ! -s "$PORTS_FILE" ]; then
+    printf 'service\thost_port\tcontainer_port\tcontainer\n'
+  fi
   printf 'greenmail-imap\t%s\t3143\tliveimap-greenmail\n' "$GM_IMAP"
   printf 'greenmail-imaps\t%s\t3993\tliveimap-greenmail\n' "$GM_IMAPS"
   printf 'greenmail-smtp\t%s\t3025\tliveimap-greenmail\n' "$GM_SMTP"
@@ -324,7 +671,9 @@ fi
   printf 'stalwart-https\t%s\t443\tliveimap-stalwart\n' "$ST_HTTPS"
   printf 'stalwart-submission\t%s\t587\tliveimap-stalwart\n' "$ST_SUB"
   printf 'lan_ipv4\t%s\n' "$lan_ipv4"
-} >"$PORTS_FILE"
+} > "$GEN/port-rows.new"
+replace_port_rows "liveimap-greenmail,liveimap-stalwart" lan_ipv4 "$GEN/port-rows.new"
+rm -f "$GEN/port-rows.new"
 
 docker logs liveimap-stalwart 2>&1 | head -n 80 >"$ADMIN_FILE"
 

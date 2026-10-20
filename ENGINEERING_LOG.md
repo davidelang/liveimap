@@ -3473,3 +3473,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-16 - A preserved-key probe fails when the recording shows an IMAP or SMTP dial.
+
+## 2026-10-19 - Each lab start script can recreate one server and leaves it stopped.

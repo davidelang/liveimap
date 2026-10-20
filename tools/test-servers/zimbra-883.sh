@@ -25,7 +25,7 @@ export LDAP_ROOT_PW=zimbra
 export LDAP_BES_PW=zimbra
 export LDAP_NGINX_PW=zimbra
 
-python3 - "$ROOT" <<'PY'
+python3 - "$ROOT" "$@" <<'PY'
 import csv
 import os
 import re
@@ -201,23 +201,36 @@ def draw_ports(used):
             return chosen
     fail("no free ports")
 
-def append_rows(imap_port, https_port, admin_port):
-    with open(ports_path, "rb") as handle:
-        handle.seek(0, os.SEEK_END)
-        size = handle.tell()
-        if size:
-            handle.seek(-1, os.SEEK_END)
-            last = handle.read(1)
-        else:
-            last = b"\n"
-    prefix = b"" if last == b"\n" else b"\n"
-    payload = (
+def replace_rows(imap_port, https_port, admin_port):
+    new = (
         "zimbra883-imap\t%d\t143\t%s\n"
         "zimbra883-https\t%d\t443\t%s\n"
         "zimbra883-admin\t%d\t7071\t%s\n"
     ) % (imap_port, name, https_port, name, admin_port, name)
-    with open(ports_path, "ab") as handle:
-        handle.write(prefix + payload.encode("ascii"))
+    services = ("zimbra883-imap", "zimbra883-https", "zimbra883-admin")
+    old = ""
+    if os.path.exists(ports_path):
+        with open(ports_path, encoding="utf-8") as handle:
+            old = handle.read()
+    kept = []
+    for line in old.splitlines(keepends=True):
+        parts = line.rstrip("\n").split("\t")
+        if parts and parts[0] in services:
+            continue
+        if len(parts) >= 4 and parts[3] == name:
+            continue
+        if not line.endswith("\n"):
+            line += "\n"
+        kept.append(line)
+    text = "".join(kept) + new
+    parent = os.path.dirname(ports_path)
+    os.makedirs(parent, exist_ok=True)
+    tmp = os.path.join(parent, "local-ports.tsv.new")
+    with open(tmp, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    proc = run(["mv", tmp, ports_path])
+    if proc.returncode != 0:
+        fail("mv failed")
 
 def docker_logs(tail=None):
     cmd = ["docker", "logs"]
@@ -251,9 +264,173 @@ def record_timeout(marker, logs):
     stop_now()
     sys.exit(0)
 
+script = os.path.join(root, "tools/test-servers/zimbra-883.sh")
+mount_gen = os.path.join(root, "tools/test-servers/generated")
+mount_seed = os.path.join(root, "tools/test-servers/seed")
+want_ports = {"143", "443", "7071"}
+
+def lab_owner(server):
+    owners = {
+        "greenmail-214": "start-latest.sh",
+        "stalwart-01625": "start-latest.sh",
+        "dovecot-245": "start-latest.sh",
+        "cyrus-3124": "start-latest.sh",
+        "courier-606": "start-latest.sh",
+        "greenmail-dev": "start-dev.sh",
+        "stalwart-dev": "start-dev.sh",
+        "dovecot-dev": "start-dev.sh",
+        "cyrus-3137": "start-dev.sh",
+        "cyrus-22": "start-older.sh",
+        "cyrus-24": "start-older.sh",
+        "cyrus-25": "start-older.sh",
+        "cyrus-36": "start-older.sh",
+        "dovecot-10": "start-older.sh",
+        "dovecot-12": "start-older.sh",
+        "dovecot-22": "start-older.sh",
+        "courier-50": "start-older.sh",
+        "uwimap": "start-older.sh",
+        "greenmail-16": "start-older.sh",
+        "stalwart-0155": "start-older.sh",
+        "greenmail": "start-local.sh",
+        "stalwart": "start-local.sh",
+        "zimbra-883": "zimbra-883.sh",
+    }
+    return owners.get(server)
+
+def container_bad(want):
+    proc = run(
+        [
+            "docker",
+            "inspect",
+            "-f",
+            "{{range $p, $b := .HostConfig.PortBindings}}{{$p}}\n{{end}}",
+            name,
+        ]
+    )
+    if proc.returncode != 0:
+        return True
+    got = set()
+    for line in proc.stdout.splitlines():
+        port = line.split("/", 1)[0]
+        if port:
+            got.add(port)
+    if got != want:
+        return True
+    proc = run(
+        [
+            "docker",
+            "inspect",
+            "-f",
+            "{{range .Mounts}}{{.Type}}\t{{.Source}}\n{{end}}",
+            name,
+        ]
+    )
+    if proc.returncode != 0:
+        return True
+    gen_real = os.path.realpath(mount_gen)
+    seed_real = os.path.realpath(mount_seed)
+    roots = (gen_real + os.sep, seed_real + os.sep)
+
+    def under(path):
+        real = os.path.realpath(path)
+        return real == gen_real or real == seed_real or real.startswith(roots)
+
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        kind, sep, source = line.partition("\t")
+        if kind != "bind":
+            continue
+        if not sep or not source or not os.path.exists(source) or not under(source):
+            return True
+    return False
+
+def recreate_zimbra():
+    if name in container_names():
+        proc = run(["docker", "rm", "-f", name])
+        if proc.returncode != 0:
+            fail("docker rm failed")
+    rows_now = []
+    if os.path.exists(ports_path):
+        with open(ports_path, encoding="utf-8") as handle:
+            rows_now = handle.read().splitlines()
+    own = ("zimbra883-imap", "zimbra883-https", "zimbra883-admin")
+    old = {}
+    for line in rows_now:
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[0] in own and parts[1].isdigit():
+            old[parts[0]] = int(parts[1])
+    listening = listening_ports()
+    chosen = []
+
+    def other_uses(port):
+        for line in rows_now:
+            parts = line.split("\t")
+            if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) == port and parts[0] not in own:
+                return True
+        return False
+
+    def free(port):
+        if port in chosen or other_uses(port) or port in listening:
+            return False
+        return bindable(port)
+
+    def draw_one():
+        for port in range(20000, 40000):
+            if free(port):
+                return port
+        fail("no free ports")
+
+    got = {}
+    for key in own:
+        previous = old.get(key)
+        if previous is not None and free(previous):
+            got[key] = previous
+        else:
+            got[key] = draw_one()
+        chosen.append(got[key])
+    cmd = [
+        "docker", "run", "-d",
+        "--name", name,
+        "--hostname", domain,
+        "--restart", "no",
+        "--entrypoint", "/zimbra/init",
+        "-p", "%s:%d:143" % (host, got["zimbra883-imap"]),
+        "-p", "%s:%d:443" % (host, got["zimbra883-https"]),
+        "-p", "%s:%d:7071" % (host, got["zimbra883-admin"]),
+        "-v", "%s:/opt/zimbra" % volume,
+    ]
+    for key in setup_keys:
+        cmd.extend(["-e", key])
+    cmd.append(image)
+    proc = run(cmd, timeout=600, env=os.environ.copy())
+    if proc.returncode != 0:
+        err = redact((proc.stderr or "") + (proc.stdout or ""))
+        fail("docker run failed: %s" % err[-500:])
+    replace_rows(got["zimbra883-imap"], got["zimbra883-https"], got["zimbra883-admin"])
+    if container_bad(want_ports):
+        run(["docker", "stop", name], timeout=60)
+        fail(script + " --recreate zimbra-883")
+    run(["docker", "stop", name], timeout=60)
+
+args = sys.argv[2:]
+if args and args[0] == "--recreate":
+    if len(args) != 2 or not args[1]:
+        fail("usage: %s --recreate <server>" % script)
+    owner = lab_owner(args[1])
+    if owner is None:
+        fail("%s is not a lab server" % args[1])
+    owner_path = os.path.join(root, "tools/test-servers", owner)
+    if owner_path != script:
+        fail("%s belongs to %s" % (args[1], owner_path))
+    recreate_zimbra()
+    sys.exit(0)
+
 rows = read_port_rows()
 ports = mapped_ports(rows)
 exists = name in container_names()
+if exists and container_bad(want_ports):
+    fail(script + " --recreate zimbra-883")
 seen_setup = docker_logs().count("SETUP COMPLETE") if exists else 0
 if exists:
     if len(ports) < 3:
@@ -264,7 +441,7 @@ if exists:
 else:
     if len(ports) < 3:
         imap_port, https_port, admin_port = draw_ports(used_host_ports(rows))
-        append_rows(imap_port, https_port, admin_port)
+        replace_rows(imap_port, https_port, admin_port)
         ports = {
             "zimbra883-imap": imap_port,
             "zimbra883-https": https_port,

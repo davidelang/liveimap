@@ -960,6 +960,425 @@ stop_owned() {
   done
 }
 
+expected_ports() {
+  case "$1" in
+    liveimap-cyrus-22|liveimap-cyrus-24|liveimap-cyrus-25|liveimap-dovecot-10|liveimap-dovecot-12|liveimap-dovecot-22|liveimap-courier-50|liveimap-uwimap)
+      echo "143" ;;
+    liveimap-cyrus-36) echo "143 8080" ;;
+    liveimap-greenmail-16) echo "3143 3993 3025 8080" ;;
+    liveimap-stalwart-0155) echo "143 993 4190 443 587" ;;
+    *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
+  esac
+}
+
+server_owner() {
+  case "$1" in
+    greenmail-214|stalwart-01625|dovecot-245|cyrus-3124|courier-606)
+      printf '%s\n' "$DIR/start-latest.sh" ;;
+    greenmail-dev|stalwart-dev|dovecot-dev|cyrus-3137)
+      printf '%s\n' "$DIR/start-dev.sh" ;;
+    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|greenmail-16|stalwart-0155)
+      printf '%s\n' "$DIR/start-older.sh" ;;
+    greenmail|stalwart)
+      printf '%s\n' "$DIR/start-local.sh" ;;
+    zimbra-883)
+      printf '%s\n' "$DIR/zimbra-883.sh" ;;
+    *)
+      return 1 ;;
+  esac
+}
+
+require_owned() {
+  server=$1
+  owner=$(server_owner "$server" || true)
+  if [ -z "$owner" ]; then
+    echo "ERROR: $server is not a lab server" >&2
+    exit 1
+  fi
+  if [ "$owner" != "$SCRIPT" ]; then
+    echo "ERROR: $server belongs to $owner" >&2
+    exit 1
+  fi
+}
+
+stop_for_recreate() {
+  echo "$SCRIPT --recreate $1" >&2
+  exit 1
+}
+
+container_ok() {
+  name=$1
+  shift
+  python3 - "$name" "$GEN" "$SEED" "$@" <<'PY'
+import os
+import subprocess
+import sys
+
+name, gen, seed = sys.argv[1], sys.argv[2], sys.argv[3]
+want = set(sys.argv[4:])
+gen_real = os.path.realpath(gen)
+seed_real = os.path.realpath(seed)
+roots = (gen_real + os.sep, seed_real + os.sep)
+
+def under(path):
+    real = os.path.realpath(path)
+    if real == gen_real or real == seed_real:
+        return True
+    return real.startswith(roots)
+
+fmt_ports = "{{range $p, $b := .HostConfig.PortBindings}}{{$p}}\n{{end}}"
+proc = subprocess.run(
+    ["docker", "inspect", "-f", fmt_ports, name],
+    capture_output=True,
+    text=True,
+)
+if proc.returncode != 0:
+    sys.exit(1)
+got = set()
+for line in proc.stdout.splitlines():
+    port = line.split("/", 1)[0]
+    if port:
+        got.add(port)
+if got != want:
+    sys.exit(1)
+fmt_mounts = "{{range .Mounts}}{{.Type}}\t{{.Source}}\n{{end}}"
+proc = subprocess.run(
+    ["docker", "inspect", "-f", fmt_mounts, name],
+    capture_output=True,
+    text=True,
+)
+if proc.returncode != 0:
+    sys.exit(1)
+for line in proc.stdout.splitlines():
+    if not line.strip():
+        continue
+    kind, sep, source = line.partition("\t")
+    if kind != "bind":
+        continue
+    if not sep or not source or not os.path.exists(source) or not under(source):
+        sys.exit(1)
+sys.exit(0)
+PY
+}
+
+check_existing_name() {
+  name=$1
+  if ! container_exists "$name"; then
+    return 0
+  fi
+  server=${name#liveimap-}
+  # shellcheck disable=SC2046
+  if ! container_ok "$name" $(expected_ports "$name"); then
+    stop_for_recreate "$server"
+  fi
+}
+
+replace_port_rows() {
+  mkdir -p "$GEN"
+  python3 - "$PORTS_FILE" "$1" "$2" "$3" <<'PY'
+import os
+import sys
+
+path, containers, services, rows_path = sys.argv[1:]
+containers = set(item for item in containers.split(",") if item)
+services = set(item for item in services.split(",") if item)
+with open(rows_path, encoding="utf-8") as handle:
+    new = handle.read()
+if new and not new.endswith("\n"):
+    new += "\n"
+old = ""
+if os.path.exists(path):
+    with open(path, encoding="utf-8") as handle:
+        old = handle.read()
+kept = []
+for line in old.splitlines(keepends=True):
+    parts = line.rstrip("\n").split("\t")
+    if parts and parts[0] in services:
+        continue
+    if len(parts) >= 4 and parts[3] in containers:
+        continue
+    if not line.endswith("\n"):
+        line += "\n"
+    kept.append(line)
+text = "".join(kept) + new
+parent = os.path.dirname(path)
+os.makedirs(parent, exist_ok=True)
+tmp = path + ".new"
+with open(tmp, "w", encoding="utf-8") as handle:
+    handle.write(text)
+PY
+  mv "$PORTS_FILE.new" "$PORTS_FILE"
+}
+
+pick_ports() {
+  python3 - "$PORTS_FILE" "$@" <<'PY'
+import os
+import random
+import socket
+import subprocess
+import sys
+
+ports_file = sys.argv[1]
+specs = []
+for item in sys.argv[2:]:
+    service, _cport, _owner = item.split(":")
+    specs.append(service)
+
+rows = []
+if os.path.exists(ports_file):
+    with open(ports_file, encoding="utf-8") as handle:
+        for line in handle:
+            rows.append(line.rstrip("\n").split("\t"))
+
+old_of = {}
+for parts in rows:
+    if parts and parts[0] in set(specs) and len(parts) >= 2 and parts[1].isdigit():
+        old_of[parts[0]] = int(parts[1])
+
+def host_of(parts):
+    if len(parts) >= 2 and parts[1].isdigit():
+        return int(parts[1])
+    return None
+
+ss = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
+listening_set = set()
+for line in ss.splitlines():
+    parts = line.split()
+    if len(parts) < 4:
+        continue
+    _host, sep, got = parts[3].rpartition(":")
+    if sep and got.isdigit():
+        listening_set.add(int(got))
+
+bind_host = os.environ.get("PICK_BIND_HOST", "")
+
+def bindable(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((bind_host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+chosen = []
+
+def blocked(port, service):
+    for parts in rows:
+        if not parts or parts[0] == service:
+            continue
+        if host_of(parts) == port:
+            return True
+    return False
+
+def free(port, service):
+    if port in chosen or blocked(port, service):
+        return False
+    if port in listening_set:
+        return False
+    return bindable(port)
+
+def draw(service):
+    seen = set()
+    draws = 0
+    while draws < 400:
+        draws += 1
+        port = random.randint(20000, 39999)
+        if port in seen:
+            continue
+        seen.add(port)
+        if free(port, service):
+            return port
+    sys.stderr.write("could not draw free ports\n")
+    sys.exit(1)
+
+for service in specs:
+    old = old_of.get(service)
+    if old is not None and free(old, service):
+        host = old
+    else:
+        host = draw(service)
+    chosen.append(host)
+    print(host)
+PY
+}
+
+remove_one() {
+  if container_exists "$1"; then
+    docker rm -f "$1" >/dev/null
+  fi
+}
+
+finish_recreate() {
+  name=$1
+  server=$2
+  # shellcheck disable=SC2046
+  if ! container_ok "$name" $(expected_ports "$name"); then
+    docker stop "$name" >/dev/null 2>&1 || true
+    stop_for_recreate "$server"
+  fi
+  docker stop "$name" >/dev/null
+}
+
+if [ "${1:-}" = --recreate ]; then
+  if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
+    echo "ERROR: usage: $SCRIPT --recreate <server>" >&2
+    exit 1
+  fi
+  require_owned "$2"
+  server=$2
+  name=liveimap-$server
+  remove_one "$name"
+  rows="$GEN/port-rows.new"
+  case "$server" in
+    cyrus-22)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports cyrus22-imap:143:liveimap-cyrus-22)
+      start_cyrus liveimap-cyrus-22 debian/eol:lenny cyrus-imapd-2.2 "$1" "" "." no ""
+      printf 'cyrus22-imap\t%s\t143\tliveimap-cyrus-22\n' "$1" > "$rows"
+      replace_port_rows liveimap-cyrus-22 "" "$rows"
+      ;;
+    cyrus-24)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports cyrus24-imap:143:liveimap-cyrus-24)
+      start_cyrus liveimap-cyrus-24 debian/eol:wheezy cyrus-imapd-2.4 "$1" "" "." no ""
+      printf 'cyrus24-imap\t%s\t143\tliveimap-cyrus-24\n' "$1" > "$rows"
+      replace_port_rows liveimap-cyrus-24 "" "$rows"
+      ;;
+    cyrus-25)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports cyrus25-imap:143:liveimap-cyrus-25)
+      start_cyrus liveimap-cyrus-25 debian/eol:stretch cyrus-imapd "$1" "" "/" no ""
+      printf 'cyrus25-imap\t%s\t143\tliveimap-cyrus-25\n' "$1" > "$rows"
+      replace_port_rows liveimap-cyrus-25 "" "$rows"
+      ;;
+    cyrus-36)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports cyrus36-imap:143:liveimap-cyrus-36 cyrus36-http:8080:liveimap-cyrus-36)
+      start_cyrus liveimap-cyrus-36 debian:bookworm cyrus-imapd "$1" "$2" "/" yes "3.6."
+      {
+        printf 'cyrus36-imap\t%s\t143\tliveimap-cyrus-36\n' "$1"
+        printf 'cyrus36-http\t%s\t8080\tliveimap-cyrus-36\n' "$2"
+      } > "$rows"
+      replace_port_rows liveimap-cyrus-36 "" "$rows"
+      ;;
+    dovecot-10)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports dovecot10-imap:143:liveimap-dovecot-10)
+      start_dovecot liveimap-dovecot-10 debian/eol:lenny "$1" v10
+      printf 'dovecot10-imap\t%s\t143\tliveimap-dovecot-10\n' "$1" > "$rows"
+      replace_port_rows liveimap-dovecot-10 "" "$rows"
+      ;;
+    dovecot-12)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports dovecot12-imap:143:liveimap-dovecot-12)
+      start_dovecot liveimap-dovecot-12 debian/eol:squeeze "$1" v12
+      printf 'dovecot12-imap\t%s\t143\tliveimap-dovecot-12\n' "$1" > "$rows"
+      replace_port_rows liveimap-dovecot-12 "" "$rows"
+      ;;
+    dovecot-22)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports dovecot22-imap:143:liveimap-dovecot-22)
+      start_dovecot liveimap-dovecot-22 debian/eol:jessie "$1" v22
+      printf 'dovecot22-imap\t%s\t143\tliveimap-dovecot-22\n' "$1" > "$rows"
+      replace_port_rows liveimap-dovecot-22 "" "$rows"
+      ;;
+    courier-50)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports courier50-imap:143:liveimap-courier-50)
+      CO=$1
+      start_courier
+      printf 'courier50-imap\t%s\t143\tliveimap-courier-50\n' "$CO" > "$rows"
+      replace_port_rows liveimap-courier-50 "" "$rows"
+      ;;
+    uwimap)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports uwimap-imap:143:liveimap-uwimap)
+      UW=$1
+      if ! probe_uw; then
+        exit 1
+      fi
+      if ! start_uw; then
+        exit 1
+      fi
+      printf 'uwimap-imap\t%s\t143\tliveimap-uwimap\n' "$UW" > "$rows"
+      replace_port_rows liveimap-uwimap "" "$rows"
+      ;;
+    greenmail-16)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports \
+        greenmail16-imap:3143:liveimap-greenmail-16 \
+        greenmail16-imaps:3993:liveimap-greenmail-16 \
+        greenmail16-smtp:3025:liveimap-greenmail-16 \
+        greenmail16-http:8080:liveimap-greenmail-16)
+      GM_IMAP=$1
+      GM_IMAPS=$2
+      GM_SMTP=$3
+      GM_API=$4
+      start_greenmail
+      {
+        printf 'greenmail16-imap\t%s\t3143\tliveimap-greenmail-16\n' "$GM_IMAP"
+        printf 'greenmail16-imaps\t%s\t3993\tliveimap-greenmail-16\n' "$GM_IMAPS"
+        printf 'greenmail16-smtp\t%s\t3025\tliveimap-greenmail-16\n' "$GM_SMTP"
+        printf 'greenmail16-http\t%s\t8080\tliveimap-greenmail-16\n' "$GM_API"
+      } > "$rows"
+      replace_port_rows liveimap-greenmail-16 "" "$rows"
+      ;;
+    stalwart-0155)
+      # shellcheck disable=SC2046
+      set -- $(pick_ports \
+        stalwart015-imap:143:liveimap-stalwart-0155 \
+        stalwart015-imaps:993:liveimap-stalwart-0155 \
+        stalwart015-managesieve:4190:liveimap-stalwart-0155 \
+        stalwart015-http:443:liveimap-stalwart-0155 \
+        stalwart015-submission:587:liveimap-stalwart-0155)
+      docker volume create liveimap-stalwart-0155-etc >/dev/null
+      docker volume create liveimap-stalwart-0155-data >/dev/null
+      admin="$GEN/stalwart-0155-admin.txt"
+      if [ ! -s "$admin" ]; then
+        umask 007
+        python3 -c 'import secrets; print(secrets.token_hex(16))' > "$admin"
+        umask 022
+      fi
+      ST_ADMIN_PASS=$(cat "$admin")
+      docker run -d --name liveimap-stalwart-0155 \
+        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
+        -p "${1}:143" \
+        -p "${2}:993" \
+        -p "${3}:4190" \
+        -p "${4}:443" \
+        -p "${5}:587" \
+        -v liveimap-stalwart-0155-etc:/etc/stalwart \
+        -v liveimap-stalwart-0155-etc:/opt/stalwart/etc \
+        -v liveimap-stalwart-0155-data:/var/lib/stalwart \
+        -v liveimap-stalwart-0155-data:/opt/stalwart/data \
+        stalwartlabs/stalwart:v0.15.5
+      unset ST_ADMIN_PASS
+      {
+        printf 'stalwart015-imap\t%s\t143\tliveimap-stalwart-0155\n' "$1"
+        printf 'stalwart015-imaps\t%s\t993\tliveimap-stalwart-0155\n' "$2"
+        printf 'stalwart015-managesieve\t%s\t4190\tliveimap-stalwart-0155\n' "$3"
+        printf 'stalwart015-http\t%s\t443\tliveimap-stalwart-0155\n' "$4"
+        printf 'stalwart015-submission\t%s\t587\tliveimap-stalwart-0155\n' "$5"
+      } > "$rows"
+      replace_port_rows liveimap-stalwart-0155 "" "$rows"
+      ;;
+  esac
+  rm -f "$rows"
+  finish_recreate "$name" "$server"
+  exit 0
+fi
+
+for name in \
+  liveimap-cyrus-22 liveimap-cyrus-24 liveimap-cyrus-25 liveimap-cyrus-36 \
+  liveimap-dovecot-10 liveimap-dovecot-12 liveimap-dovecot-22 \
+  liveimap-courier-50 liveimap-uwimap liveimap-greenmail-16 \
+  liveimap-stalwart-0155
+do
+  check_existing_name "$name"
+done
+
 echo "keeping older containers"
 keep_running liveimap-cyrus-22
 keep_running liveimap-cyrus-24
@@ -1476,7 +1895,9 @@ append_port() {
   if [ -f "$PORTS_FILE" ] && awk -F '\t' -v svc="$svc" '$1 == svc { found = 1 } END { exit !found }' "$PORTS_FILE"; then
     return 0
   fi
-  printf '%s\t%s\t%s\t%s\n' "$svc" "$host_port" "$container_port" "$cname" >> "$PORTS_FILE"
+  printf '%s\t%s\t%s\t%s\n' "$svc" "$host_port" "$container_port" "$cname" > "$GEN/port-rows.new"
+  replace_port_rows "" "$svc" "$GEN/port-rows.new"
+  rm -f "$GEN/port-rows.new"
 }
 
 append_port cyrus22-imap "$CY22" 143 liveimap-cyrus-22
