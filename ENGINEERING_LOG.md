@@ -3487,3 +3487,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A reseed tar keeps ancestor directories and a dead container is reported at once.
 
 ## 2026-10-20 - The snapshot generator does not wipe accounts.
+
+## 2026-10-20 - A lab reseed restores one tar of the server's data.
