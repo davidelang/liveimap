@@ -474,16 +474,13 @@ def ensure_dirs():
 # copy (a deleted or moved path) stops here, not later as docker's "not a directory".
 MOUNT_ROOTS = [os.path.join(HERE, "generated"), os.path.join(HERE, "seed")]
 RECREATE_HINTS = {
-    "liveimap-greenmail-214": "tools/test-servers/start-latest.sh --recreate greenmail-214",
     "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
     "liveimap-dovecot-245": "tools/test-servers/start-latest.sh --recreate dovecot-245",
     "liveimap-cyrus-3124": "tools/test-servers/start-latest.sh --recreate cyrus-3124",
     "liveimap-courier-606": "tools/test-servers/start-latest.sh --recreate courier-606",
-    "liveimap-greenmail-dev": "tools/test-servers/start-dev.sh --recreate greenmail-dev",
     "liveimap-stalwart-dev": "tools/test-servers/start-dev.sh --recreate stalwart-dev",
     "liveimap-dovecot-dev": "tools/test-servers/start-dev.sh --recreate dovecot-dev",
     "liveimap-cyrus-3137": "tools/test-servers/start-dev.sh --recreate cyrus-3137",
-    "liveimap-greenmail": "tools/test-servers/start-local.sh --recreate greenmail",
     "liveimap-stalwart": "tools/test-servers/start-local.sh --recreate stalwart",
     "liveimap-cyrus-22": "tools/test-servers/start-older.sh --recreate cyrus-22",
     "liveimap-cyrus-24": "tools/test-servers/start-older.sh --recreate cyrus-24",
@@ -494,7 +491,6 @@ RECREATE_HINTS = {
     "liveimap-dovecot-22": "tools/test-servers/start-older.sh --recreate dovecot-22",
     "liveimap-courier-50": "tools/test-servers/start-older.sh --recreate courier-50",
     "liveimap-uwimap": "tools/test-servers/start-older.sh --recreate uwimap",
-    "liveimap-greenmail-16": "tools/test-servers/start-older.sh --recreate greenmail-16",
     "liveimap-stalwart-0155": "tools/test-servers/start-older.sh --recreate stalwart-0155",
     "liveimap-zimbra-883": "tools/test-servers/zimbra-883.sh --recreate zimbra-883",
 }
@@ -840,7 +836,7 @@ def servers_used(names, suites):
         for name in JMAP_SERVERS:
             add(name)
     if "smtp" in suites:
-        add("greenmail-dev")
+        add("dovecot-dev")
     if "sieve" in suites:
         for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3):
             add(row[0])
@@ -938,24 +934,6 @@ def container_logs(cont):
     return (logs.stdout or "") + "\n" + (logs.stderr or "")
 
 
-GREENMAIL_SERVERS = {"greenmail", "greenmail-16", "greenmail-214", "greenmail-dev"}
-
-
-def wait_greenmail_ready(cont, timeout):
-    """The IMAP greeting is before the localhost seed. Ready is /tmp/liveimap-greenmail-ready."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if not container_running(cont):
-            text = container_logs(cont)
-            return snapshot_line(text) or first_line(text)
-        r = subprocess.run(["docker", "exec", cont, "test", "-f", "/tmp/liveimap-greenmail-ready"],
-                           capture_output=True, text=True, errors="replace")
-        if r.returncode == 0:
-            return ""
-        time.sleep(1)
-    return "greenmail seed did not finish"
-
-
 def start_lab_container(s, skip=False):
     """Stop every other liveimap-* container, start this one, and run its up command."""
     import lab
@@ -999,8 +977,6 @@ def start_lab_container(s, skip=False):
             text = container_logs(cont)
             return snapshot_line(text) or first_line(text)
         return f"no IMAP greeting after {n}s"
-    if s["name"] in GREENMAIL_SERVERS:
-        return wait_greenmail_ready(cont, 900)
     time.sleep(5)
     return ""
 
@@ -1600,7 +1576,7 @@ def run_jmap(names, force):
 
 def run_smtp(force):
     mark_suite_started()
-    name = "greenmail-dev"
+    name = "dovecot-dev"
     write_lock("suite smtp")
     if not force and cache_pass("smtp", name, ""):
         record_cached("smtp", name, "")

@@ -72,6 +72,8 @@ exit_at = t4.find("sys.exit", seed_at)
 smtp_at = t4.find("smtpAccepts", seed_at)
 assert seed_at != -1 and exit_at != -1 and smtp_at != -1 and exit_at < smtp_at
 assert "returncode" in t4[seed_at:exit_at]
+assert 'NAME = "dovecot-dev"' in t4
+assert 'PORT = "2525"' in t4
 
 # Edge 3: LAB_* overlay, no baked zimbra address, missing domain or user stops the run.
 assert 'startswith("LAB_")' in lab_py
@@ -116,6 +118,31 @@ assert "requires" in example
 for key in ("LAB_MAIL_DOMAIN", "LAB_ZIMBRA_USER"):
     values = [line.split("=", 1)[1] for line in example.splitlines() if line.startswith(key + "=")]
     assert values and values[0].strip().strip('"') == ""
+
+# servers() skips greenmail, greenmail-16, greenmail-214, and greenmail-dev.
+ports_dir = tempfile.mkdtemp()
+assert os.path.abspath(ports_dir) != os.path.abspath(os.path.join(HERE, "generated"))
+saved_gen = lab.GEN
+try:
+    lab.GEN = ports_dir
+    with open(os.path.join(ports_dir, "local-ports.tsv"), "w", encoding="utf-8") as handle:
+        handle.write("service\thost_port\tcontainer_port\tcontainer\n")
+        handle.write("dovecot-dev-imap\t21001\t143\tliveimap-dovecot-dev\n")
+        handle.write("greenmail-dev-imap\t21002\t3143\tliveimap-greenmail-dev\n")
+    got = [row["name"] for row in lab.servers()]
+    assert got == ["dovecot-dev"], got
+finally:
+    lab.GEN = saved_gen
+
+no_greenmail = (
+    "start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh",
+    "reseed.sh", "regress", "seed-snapshot.sh", "zimbra-883.sh",
+    "tls-install.sh", "lab-ca.sh", "smtp.tsv", "smtp-extra.tsv", "t4smtp.py",
+)
+for name in no_greenmail:
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    assert "greenmail" not in text.lower(), name
+
 jmap = open(os.path.join(HERE, "jmaprun.py"), encoding="utf-8").read()
 assert "Config.Hostname" not in jmap
 assert jmap.count('sys.exit("needs LAB_MAIL_DOMAIN")') >= 2

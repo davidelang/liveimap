@@ -3489,3 +3489,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - The snapshot generator does not wipe accounts.
 
 ## 2026-10-20 - A lab reseed restores one tar of the server's data.
+
+## 2026-10-20 - The lab no longer targets GreenMail.

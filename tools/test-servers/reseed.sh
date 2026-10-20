@@ -1,5 +1,5 @@
 #!/bin/sh
-# Restore one lab datastore from /liveimap-seed, or seed GreenMail after IMAP accepts.
+# Restore one lab datastore from /liveimap-seed.
 # Installed as /liveimap-reseed. Does not call an admin API, reconstruct, or ctl_mboxlist.
 set -eu
 
@@ -167,207 +167,16 @@ do_restore() {
       restore_tar "/var/lib/stalwart" "2000:2000" ;;
     zimbra-883)
       restore_tar "/opt/zimbra/store /opt/zimbra/index /opt/zimbra/db/data /opt/zimbra/data/ldap/mdb/db /opt/zimbra/redolog" "1000:1000" ;;
-    greenmail|greenmail-16|greenmail-214|greenmail-dev)
-      seed_greenmail ;;
     *)
       bad ;;
   esac
-}
-
-# GreenMail has no tar. Seed localhost only after port 3143 accepts.
-seed_greenmail() {
-  rm -f /tmp/liveimap-greenmail-ready
-  seed_greenmail_run
-  touch /tmp/liveimap-greenmail-ready
-}
-
-seed_greenmail_run() {
-  if ! command -v bash >/dev/null 2>&1; then
-    echo "greenmail seed needs bash" >&2
-    exit 1
-  fi
-  bash <<'BASH'
-set -eu
-exec 3<>/dev/tcp/127.0.0.1/3143
-IFS= read -r _greeting <&3 || { echo "greenmail greeting missing" >&2; exit 1; }
-tag_n=1
-imap_send() { printf '%s\r\n' "$1" >&3; }
-imap_until() {
-  want=$1
-  : > /tmp/liveimap-untagged
-  while IFS= read -r line <&3; do
-    line=${line%$'\r'}
-    case $line in
-      "$want "*) printf '%s\n' "$line"; return 0 ;;
-      "+ "*) printf '%s\n' "$line"; return 0 ;;
-      "+"*) printf '%s\n' "$line"; return 0 ;;
-      \**) printf '%s\n' "$line" >> /tmp/liveimap-untagged ;;
-    esac
-  done
-  echo "greenmail imap stalled" >&2
-  return 1
-}
-mutf7() {
-  rest=$1
-  out=
-  buf=
-  flush_buf() {
-    [ -n "$buf" ] || return 0
-    enc=$(printf '%s' "$buf" | iconv -f UTF-8 -t UTF-16BE | base64 | tr -d '\n=')
-    enc=$(printf '%s' "$enc" | tr '/' ',')
-    out="${out}&${enc}-"
-    buf=
-  }
-  while [ -n "$rest" ]; do
-    ch=${rest:0:1}
-    rest=${rest:1}
-    cp=$(printf '%d' "'$ch")
-    if [ "$cp" -ge 32 ] && [ "$cp" -le 126 ]; then
-      flush_buf
-      if [ "$ch" = "&" ]; then out="${out}&-"; else out="${out}${ch}"; fi
-    else
-      buf="${buf}${ch}"
-    fi
-  done
-  flush_buf
-  printf '%s' "$out"
-}
-qname() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
-run_tag() {
-  tag="a$tag_n"
-  tag_n=$((tag_n + 1))
-  imap_send "$tag $1"
-  imap_until "$tag"
-}
-
-login_user() {
-  user=$1
-  pass=$2
-  tag="a$tag_n"
-  tag_n=$((tag_n + 1))
-  plen=$(printf '%s' "$pass" | wc -c | tr -d ' ')
-  imap_send "$tag LOGIN $(qname "$user") {$plen}"
-  imap_until "+" >/dev/null
-  printf '%s\r\n' "$pass" >&3
-  line=$(imap_until "$tag")
-  case $line in
-    *" OK "*) return 0 ;;
-  esac
-  echo "greenmail login failed" >&2
-  return 1
-}
-
-pass_for() {
-  awk -F '\t' -v u="$1" 'NR > 1 && $1 == u { print $2; exit }' /liveimap-check/accounts.tsv
-}
-
-create_mailbox() {
-  name=$1
-  run_tag "CREATE $(qname "$name")" >/dev/null || true
-}
-
-append_file() {
-  mbox=$1
-  flags=$2
-  path=$3
-  size=$(wc -c < "$path" | tr -d ' ')
-  tag="a$tag_n"
-  tag_n=$((tag_n + 1))
-  if [ "$flags" = "-" ]; then
-    imap_send "$tag APPEND $(qname "$mbox") {$size}"
-  else
-    imap_send "$tag APPEND $(qname "$mbox") ($flags) {$size}"
-  fi
-  imap_until "+" >/dev/null
-  cat "$path" >&3
-  printf '\r\n' >&3
-  line=$(imap_until "$tag")
-  case $line in
-    *" OK "*) return 0 ;;
-  esac
-  echo "greenmail append failed" >&2
-  return 1
-}
-
-slug() { printf '%s' "$1" | tr '/' '_'; }
-
-while IFS=$(printf '\t') read -r user pass profile; do
-  [ "$user" = "user" ] && continue
-  [ "$profile" = "base" ] || continue
-  [ -n "$pass" ] || continue
-  login_user "$user" "$pass"
-  run_tag 'LIST "" "INBOX"' >/dev/null
-  delim=
-  while IFS= read -r line; do
-    case $line in
-      "* LIST "*) ;;
-      *) continue ;;
-    esac
-    rest=${line#*\"}
-    one=${rest%%\"*}
-    if [ "${#one}" -eq 1 ]; then
-      delim=$one
-      break
-    fi
-  done < /tmp/liveimap-untagged
-  [ -n "$delim" ] || delim=/
-  while IFS=$(printf '\t') read -r fuser folder count _special _sub; do
-    [ "$fuser" = "$user" ] || continue
-    [ "$folder" = "INBOX" ] && continue
-    parts=
-    rest=$folder
-    while [ -n "$rest" ]; do
-      seg=${rest%%/*}
-      if [ -z "$parts" ]; then parts=$seg; else parts="$parts/$seg"; fi
-      enc=$(mutf7 "$parts")
-      enc=$(printf '%s' "$enc" | tr '/' "$delim")
-      create_mailbox "$enc"
-      case $rest in
-        */*) rest=${rest#*/} ;;
-        *) rest= ;;
-      esac
-    done
-  done < /liveimap-check/folders.tsv
-  while IFS=$(printf '\t') read -r muser mfolder file flags _date _sum; do
-    [ "$muser" = "$user" ] || continue
-    if [ "$mfolder" = "INBOX" ]; then
-      mbox=INBOX
-    else
-      enc=$(mutf7 "$mfolder")
-      mbox=$(printf '%s' "$enc" | tr '/' "$delim")
-    fi
-    append_file "$mbox" "$flags" "/liveimap-corpus/$user/$(slug "$mfolder")/$file"
-  done < /liveimap-check/manifest.tsv
-  run_tag LOGOUT >/dev/null || true
-  exec 3<&-
-  exec 3<>/dev/tcp/127.0.0.1/3143
-  IFS= read -r _greeting <&3 || true
-done < /liveimap-check/accounts.tsv
-exec 3<&- || true
-BASH
-}
-
-wait_imap() {
-  i=0
-  while [ "$i" -lt 180 ]; do
-    if bash -c 'echo >/dev/tcp/127.0.0.1/3143' >/dev/null 2>&1; then
-      return 0
-    fi
-    i=$((i + 1))
-    sleep 1
-  done
-  echo "greenmail imap did not open" >&2
-  return 1
 }
 
 run_restore_unless_skipped() {
   if skip_restore; then
     return 0
   fi
-  case "$SERVER" in
-    greenmail|greenmail-16|greenmail-214|greenmail-dev) ;;
-    *) check_stamp ;;
-  esac
+  check_stamp
   do_restore
 }
 
@@ -378,35 +187,6 @@ if [ "${1:-}" = "--before" ]; then
   fi
   run_restore_unless_skipped
   exec "$@"
-fi
-
-if [ "${1:-}" = "--greenmail" ]; then
-  shift
-  if [ "${1:-}" = "--" ]; then
-    shift
-  fi
-  if [ "$#" -lt 1 ]; then
-    echo "greenmail command missing" >&2
-    exit 1
-  fi
-  rm -f /tmp/liveimap-greenmail-ready
-  "$@" &
-  pid=$!
-  if ! wait_imap; then
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    exit 1
-  fi
-  if ! skip_restore; then
-    if ! seed_greenmail_run; then
-      kill "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
-      exit 1
-    fi
-  fi
-  touch /tmp/liveimap-greenmail-ready
-  wait "$pid"
-  exit $?
 fi
 
 run_restore_unless_skipped

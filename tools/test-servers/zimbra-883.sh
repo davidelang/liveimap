@@ -272,12 +272,10 @@ want_ports = {"143", "443", "7071"}
 
 def lab_owner(server):
     owners = {
-        "greenmail-214": "start-latest.sh",
         "stalwart-01625": "start-latest.sh",
         "dovecot-245": "start-latest.sh",
         "cyrus-3124": "start-latest.sh",
         "courier-606": "start-latest.sh",
-        "greenmail-dev": "start-dev.sh",
         "stalwart-dev": "start-dev.sh",
         "dovecot-dev": "start-dev.sh",
         "cyrus-3137": "start-dev.sh",
@@ -290,9 +288,7 @@ def lab_owner(server):
         "dovecot-22": "start-older.sh",
         "courier-50": "start-older.sh",
         "uwimap": "start-older.sh",
-        "greenmail-16": "start-older.sh",
         "stalwart-0155": "start-older.sh",
-        "greenmail": "start-local.sh",
         "stalwart": "start-local.sh",
         "zimbra-883": "zimbra-883.sh",
     }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One SMTP send to the lab fake SMTP sink (AcceptanceLabTest#smtpAccepts), IMAP open via greenmail-dev (None TLS). No build, no deploy. The commit is the first argument; it is not checked against a built-in sha."""
+"""One SMTP send to the lab fake SMTP sink (AcceptanceLabTest#smtpAccepts), IMAP open via dovecot-dev (None TLS). No build, no deploy. The commit is the first argument; it is not checked against a built-in sha."""
 import sys, subprocess, os, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); import lab
-COMMIT = sys.argv[1]; RUN = COMMIT; NAME = "greenmail-dev"; PORT = "2525"
+COMMIT = sys.argv[1]; RUN = COMMIT; NAME = "dovecot-dev"; PORT = "2525"
 LOGDIR = os.environ.get("LAB_LOG") or os.getcwd()
 os.makedirs(LOGDIR, exist_ok=True)
 log = open(os.path.join(LOGDIR, f"{RUN}.log"), "w", buffering=1)

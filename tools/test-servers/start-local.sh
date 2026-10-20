@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start GreenMail and Stalwart on nine free high ports. No install, no app.
+# Start Stalwart on five free high ports. No install, no app.
 set -eu
 
 SCRIPT=$(readlink -f "$0")
@@ -121,7 +121,6 @@ container_running() {
 
 expected_ports() {
   case "$1" in
-    liveimap-greenmail) echo "3143 3993 3025 8080" ;;
     liveimap-stalwart) echo "143 993 4190 443 587" ;;
     *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
   esac
@@ -129,13 +128,13 @@ expected_ports() {
 
 server_owner() {
   case "$1" in
-    greenmail-214|stalwart-01625|dovecot-245|cyrus-3124|courier-606)
+    stalwart-01625|dovecot-245|cyrus-3124|courier-606)
       printf '%s\n' "$DIR/start-latest.sh" ;;
-    greenmail-dev|stalwart-dev|dovecot-dev|cyrus-3137)
+    stalwart-dev|dovecot-dev|cyrus-3137)
       printf '%s\n' "$DIR/start-dev.sh" ;;
-    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|greenmail-16|stalwart-0155)
+    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|stalwart-0155)
       printf '%s\n' "$DIR/start-older.sh" ;;
-    greenmail|stalwart)
+    stalwart)
       printf '%s\n' "$DIR/start-local.sh" ;;
     zimbra-883)
       printf '%s\n' "$DIR/zimbra-883.sh" ;;
@@ -390,35 +389,6 @@ if [ "${1:-}" = --recreate ]; then
   remove_one "$name"
   rows="$GEN/port-rows.new"
   case "$server" in
-    greenmail)
-      # shellcheck disable=SC2046
-      set -- $(pick_ports \
-        greenmail-imap:3143:liveimap-greenmail \
-        greenmail-imaps:3993:liveimap-greenmail \
-        greenmail-smtp:3025:liveimap-greenmail \
-        greenmail-api:8080:liveimap-greenmail)
-      docker pull greenmail/standalone:2.1.13
-      reseed_prepare greenmail greenmail/standalone:2.1.13
-      # shellcheck disable=SC2046
-      docker create --name liveimap-greenmail \
-        $(reseed_mount_words greenmail) \
-        --entrypoint /liveimap-reseed \
-        -p "${1}:3143" \
-        -p "${2}:3993" \
-        -p "${3}:3025" \
-        -p "${4}:8080" \
-        greenmail/standalone:2.1.13 \
-        $(reseed_exec_words greenmail/standalone:2.1.13 --greenmail)
-      install_reseed liveimap-greenmail
-      docker start liveimap-greenmail
-      {
-        printf 'greenmail-imap\t%s\t3143\tliveimap-greenmail\n' "$1"
-        printf 'greenmail-imaps\t%s\t3993\tliveimap-greenmail\n' "$2"
-        printf 'greenmail-smtp\t%s\t3025\tliveimap-greenmail\n' "$3"
-        printf 'greenmail-api\t%s\t8080\tliveimap-greenmail\n' "$4"
-      } > "$rows"
-      replace_port_rows liveimap-greenmail "" "$rows"
-      ;;
     stalwart)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
@@ -477,11 +447,11 @@ if [ "${1:-}" = --recreate ]; then
   exit 0
 fi
 
-for name in liveimap-greenmail liveimap-stalwart; do
+for name in liveimap-stalwart; do
   check_existing_name "$name"
 done
 present=0
-for name in liveimap-greenmail liveimap-stalwart; do
+for name in liveimap-stalwart; do
   if container_exists "$name"; then
     present=1
     if ! container_running "$name"; then
@@ -522,7 +492,7 @@ def bindable(port):
 chosen = []
 seen = set()
 draws = 0
-while len(chosen) < 9 and draws < 200:
+while len(chosen) < 5 and draws < 200:
     draws += 1
     port = random.randint(20000, 39999)
     if port in seen:
@@ -532,7 +502,7 @@ while len(chosen) < 9 and draws < 200:
         continue
     chosen.append(port)
 
-if len(chosen) < 9:
+if len(chosen) < 5:
     sys.exit(1)
 print(" ".join(str(p) for p in chosen))
 PY
@@ -540,32 +510,13 @@ PY
 
 # shellcheck disable=SC2086
 set -- $PORTS
-GM_IMAP=$1
-GM_IMAPS=$2
-GM_SMTP=$3
-GM_API=$4
-ST_IMAP=$5
-ST_IMAPS=$6
-ST_SIEVE=$7
-ST_HTTPS=$8
-ST_SUB=$9
+ST_IMAP=$1
+ST_IMAPS=$2
+ST_SIEVE=$3
+ST_HTTPS=$4
+ST_SUB=$5
 
-docker pull greenmail/standalone:2.1.13
 docker pull stalwartlabs/stalwart:v0.16
-
-reseed_prepare greenmail greenmail/standalone:2.1.13
-# shellcheck disable=SC2046
-docker create --name liveimap-greenmail \
-  $(reseed_mount_words greenmail) \
-  --entrypoint /liveimap-reseed \
-  -p "${GM_IMAP}:3143" \
-  -p "${GM_IMAPS}:3993" \
-  -p "${GM_SMTP}:3025" \
-  -p "${GM_API}:8080" \
-  greenmail/standalone:2.1.13 \
-  $(reseed_exec_words greenmail/standalone:2.1.13 --greenmail)
-install_reseed liveimap-greenmail
-docker start liveimap-greenmail
 
 if ! docker volume inspect liveimap-stalwart-etc >/dev/null 2>&1; then
   docker volume create liveimap-stalwart-etc >/dev/null
@@ -637,13 +588,13 @@ unset listener_json
 
 docker restart liveimap-stalwart >/dev/null
 
-python3 - "$GM_IMAP" "$ST_IMAP" "$ST_SIEVE" "$ST_HTTPS" <<'PY'
+python3 - "$ST_IMAP" "$ST_SIEVE" "$ST_HTTPS" <<'PY'
 import socket
 import subprocess
 import sys
 import time
 
-gm_imap, st_imap, st_sieve, st_https = (int(x) for x in sys.argv[1:5])
+st_imap, st_sieve, st_https = (int(x) for x in sys.argv[1:4])
 HOST = "127.0.0.1"
 
 def read_line(port, timeout):
@@ -681,7 +632,6 @@ def has_ok(line):
 def nonempty(line):
     return line != ""
 
-wait_line(gm_imap, 60, has_ok)
 wait_line(st_imap, 60, has_ok)
 wait_line(st_sieve, 60, nonempty)
 
@@ -716,54 +666,10 @@ while time.time() < deadline:
 if not cert_ok:
     sys.stderr.write("https certificate missing\n")
     sys.exit(1)
-print("IMAP_OK greenmail")
 print("IMAP_OK stalwart")
 print("SIEVE_OK")
 print("HTTPS_CERT_OK")
 PY
-
-HTTP_CODE=$(python3 - "$SEED" "$GM_API" <<'PY'
-import csv
-import json
-import sys
-import urllib.error
-import urllib.request
-
-seed, port = sys.argv[1], sys.argv[2]
-password = None
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("user") == "liveimap":
-            password = row.get("password")
-            break
-if not password:
-    sys.stderr.write("liveimap user missing\n")
-    sys.exit(1)
-body = json.dumps(
-    {
-        "email": "liveimap@localhost",
-        "login": "liveimap",
-        "password": password,
-    }
-).encode("utf-8")
-req = urllib.request.Request(
-    "http://127.0.0.1:%s/api/user" % port,
-    data=body,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-try:
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        code = resp.status
-        resp.read()
-except urllib.error.HTTPError as err:
-    code = err.code
-    err.read()
-print(code)
-if code not in (200, 201):
-    sys.exit(1)
-PY
-)
 
 mkdir -p "$GEN"
 
@@ -783,10 +689,6 @@ fi
   if [ ! -s "$PORTS_FILE" ]; then
     printf 'service\thost_port\tcontainer_port\tcontainer\n'
   fi
-  printf 'greenmail-imap\t%s\t3143\tliveimap-greenmail\n' "$GM_IMAP"
-  printf 'greenmail-imaps\t%s\t3993\tliveimap-greenmail\n' "$GM_IMAPS"
-  printf 'greenmail-smtp\t%s\t3025\tliveimap-greenmail\n' "$GM_SMTP"
-  printf 'greenmail-api\t%s\t8080\tliveimap-greenmail\n' "$GM_API"
   printf 'stalwart-imap\t%s\t143\tliveimap-stalwart\n' "$ST_IMAP"
   printf 'stalwart-imaps\t%s\t993\tliveimap-stalwart\n' "$ST_IMAPS"
   printf 'stalwart-managesieve\t%s\t4190\tliveimap-stalwart\n' "$ST_SIEVE"
@@ -794,25 +696,20 @@ fi
   printf 'stalwart-submission\t%s\t587\tliveimap-stalwart\n' "$ST_SUB"
   printf 'lan_ipv4\t%s\n' "$lan_ipv4"
 } > "$GEN/port-rows.new"
-replace_port_rows "liveimap-greenmail,liveimap-stalwart" lan_ipv4 "$GEN/port-rows.new"
+replace_port_rows "liveimap-stalwart" lan_ipv4 "$GEN/port-rows.new"
 rm -f "$GEN/port-rows.new"
 
 docker logs liveimap-stalwart 2>&1 | head -n 80 >"$ADMIN_FILE"
 
-echo "POST $HTTP_CODE"
-echo "greenmail-imap $GM_IMAP"
-echo "greenmail-imaps $GM_IMAPS"
-echo "greenmail-smtp $GM_SMTP"
-echo "greenmail-api $GM_API"
 echo "stalwart-imap $ST_IMAP"
 echo "stalwart-imaps $ST_IMAPS"
 echo "stalwart-managesieve $ST_SIEVE"
 echo "stalwart-https $ST_HTTPS"
 echo "stalwart-submission $ST_SUB"
 docker inspect -f '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
-  liveimap-greenmail liveimap-stalwart
+  liveimap-stalwart
 fi
-for name in liveimap-greenmail liveimap-stalwart; do
+for name in liveimap-stalwart; do
   if container_exists "$name"; then
     docker stop "$name"
   fi

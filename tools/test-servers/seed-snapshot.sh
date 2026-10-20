@@ -1,6 +1,6 @@
 #!/bin/sh
 # Write generated/<server>/seed-snapshot.tar and seed-snapshot.stamp.
-# GreenMail has no tar. This script is not run by the reseed commit.
+# This script is not run by the reseed commit.
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -10,13 +10,6 @@ if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
   exit 1
 fi
 server=$1
-
-case "$server" in
-  greenmail|greenmail-16|greenmail-214|greenmail-dev)
-    echo "no seed-snapshot.tar for $server" >&2
-    exit 0
-    ;;
-esac
 
 case "$server" in
   cyrus-22|cyrus-25|cyrus-24|cyrus-36)

@@ -775,22 +775,6 @@ EOF
   wait_port "$name" "$port"
 }
 
-start_greenmail() {
-  reseed_prepare greenmail-16 greenmail/standalone:1.6.15
-  # shellcheck disable=SC2046
-  docker create --name liveimap-greenmail-16 \
-    $(reseed_mount_words greenmail-16) \
-    --entrypoint /liveimap-reseed \
-    -p "${GM_IMAP}:3143" \
-    -p "${GM_IMAPS}:3993" \
-    -p "${GM_SMTP}:3025" \
-    -p "${GM_API}:8080" \
-    greenmail/standalone:1.6.15 \
-    $(reseed_exec_words greenmail/standalone:1.6.15 --greenmail)
-  install_reseed liveimap-greenmail-16
-  docker start liveimap-greenmail-16
-}
-
 stalwart_accounts() {
   name=liveimap-stalwart-0155
   if ! docker exec "$name" /bin/sh -c 'command -v curl >/dev/null 2>&1'; then
@@ -1068,7 +1052,7 @@ stop_owned() {
   for name in \
     liveimap-cyrus-22 liveimap-cyrus-24 liveimap-cyrus-25 liveimap-cyrus-36 \
     liveimap-dovecot-10 liveimap-dovecot-12 liveimap-dovecot-22 \
-    liveimap-courier-50 liveimap-uwimap liveimap-greenmail-16 \
+    liveimap-courier-50 liveimap-uwimap \
     liveimap-stalwart-0155
   do
     if container_exists "$name"; then
@@ -1082,7 +1066,6 @@ expected_ports() {
     liveimap-cyrus-22|liveimap-cyrus-24|liveimap-cyrus-25|liveimap-dovecot-10|liveimap-dovecot-12|liveimap-dovecot-22|liveimap-courier-50|liveimap-uwimap)
       echo "143" ;;
     liveimap-cyrus-36) echo "143 8080" ;;
-    liveimap-greenmail-16) echo "3143 3993 3025 8080" ;;
     liveimap-stalwart-0155) echo "143 993 4190 443 587" ;;
     *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
   esac
@@ -1090,13 +1073,13 @@ expected_ports() {
 
 server_owner() {
   case "$1" in
-    greenmail-214|stalwart-01625|dovecot-245|cyrus-3124|courier-606)
+    stalwart-01625|dovecot-245|cyrus-3124|courier-606)
       printf '%s\n' "$DIR/start-latest.sh" ;;
-    greenmail-dev|stalwart-dev|dovecot-dev|cyrus-3137)
+    stalwart-dev|dovecot-dev|cyrus-3137)
       printf '%s\n' "$DIR/start-dev.sh" ;;
-    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|greenmail-16|stalwart-0155)
+    cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|stalwart-0155)
       printf '%s\n' "$DIR/start-older.sh" ;;
-    greenmail|stalwart)
+    stalwart)
       printf '%s\n' "$DIR/start-local.sh" ;;
     zimbra-883)
       printf '%s\n' "$DIR/zimbra-883.sh" ;;
@@ -1424,26 +1407,6 @@ if [ "${1:-}" = --recreate ]; then
       printf 'uwimap-imap\t%s\t143\tliveimap-uwimap\n' "$UW" > "$rows"
       replace_port_rows liveimap-uwimap "" "$rows"
       ;;
-    greenmail-16)
-      # shellcheck disable=SC2046
-      set -- $(pick_ports \
-        greenmail16-imap:3143:liveimap-greenmail-16 \
-        greenmail16-imaps:3993:liveimap-greenmail-16 \
-        greenmail16-smtp:3025:liveimap-greenmail-16 \
-        greenmail16-http:8080:liveimap-greenmail-16)
-      GM_IMAP=$1
-      GM_IMAPS=$2
-      GM_SMTP=$3
-      GM_API=$4
-      start_greenmail
-      {
-        printf 'greenmail16-imap\t%s\t3143\tliveimap-greenmail-16\n' "$GM_IMAP"
-        printf 'greenmail16-imaps\t%s\t3993\tliveimap-greenmail-16\n' "$GM_IMAPS"
-        printf 'greenmail16-smtp\t%s\t3025\tliveimap-greenmail-16\n' "$GM_SMTP"
-        printf 'greenmail16-http\t%s\t8080\tliveimap-greenmail-16\n' "$GM_API"
-      } > "$rows"
-      replace_port_rows liveimap-greenmail-16 "" "$rows"
-      ;;
     stalwart-0155)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
@@ -1499,7 +1462,7 @@ fi
 for name in \
   liveimap-cyrus-22 liveimap-cyrus-24 liveimap-cyrus-25 liveimap-cyrus-36 \
   liveimap-dovecot-10 liveimap-dovecot-12 liveimap-dovecot-22 \
-  liveimap-courier-50 liveimap-uwimap liveimap-greenmail-16 \
+  liveimap-courier-50 liveimap-uwimap \
   liveimap-stalwart-0155
 do
   check_existing_name "$name"
@@ -1514,7 +1477,6 @@ keep_running liveimap-dovecot-10
 keep_running liveimap-dovecot-12
 keep_running liveimap-dovecot-22
 keep_running liveimap-courier-50
-keep_running liveimap-greenmail-16
 keep_running liveimap-stalwart-0155
 
 CY22=$(published_port liveimap-cyrus-22 143)
@@ -1526,10 +1488,6 @@ DV10=$(published_port liveimap-dovecot-10 143)
 DV12=$(published_port liveimap-dovecot-12 143)
 DV22=$(published_port liveimap-dovecot-22 143)
 CO=$(published_port liveimap-courier-50 143)
-GM_IMAP=$(published_port liveimap-greenmail-16 3143)
-GM_IMAPS=$(published_port liveimap-greenmail-16 3993)
-GM_SMTP=$(published_port liveimap-greenmail-16 3025)
-GM_API=$(published_port liveimap-greenmail-16 8080)
 ST_IMAP=$(published_port liveimap-stalwart-0155 143)
 ST_IMAPS=$(published_port liveimap-stalwart-0155 993)
 ST_SIEVE=$(published_port liveimap-stalwart-0155 4190)
@@ -1549,7 +1507,6 @@ else
   echo "drawing uw port"
   UW=$(draw_port "$CY22" "$CY24" "$CY25" "$CY36" "$CY36_HTTP" \
     "$DV10" "$DV12" "$DV22" "$CO" \
-    "$GM_IMAP" "$GM_IMAPS" "$GM_SMTP" "$GM_API" \
     "$ST_IMAP" "$ST_IMAPS" "$ST_SIEVE" "$ST_HTTPS" "$ST_SUB")
   echo "pulling uw image"
   if ! docker pull debian/eol:squeeze; then
@@ -1570,7 +1527,7 @@ fi
 echo "login append jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" "$HOST" \
   "$CY22" "$CY24" "$CY25" "$CY36" "$DV10" "$DV12" "$DV22" "$CO" \
-  "$GM_IMAP" "$GM_API" "$ST_IMAP" "$ST_HTTPS" "$CY36_HTTP" \
+  "$ST_IMAP" "$ST_HTTPS" "$CY36_HTTP" \
   "$UW" "$UW_ABSENT" <<'PY'
 import base64
 import csv
@@ -1597,8 +1554,6 @@ import urllib.request
     dv12,
     dv22,
     co,
-    gm_imap,
-    gm_api,
     st_imap,
     st_https,
     cy_http,
@@ -1614,7 +1569,6 @@ ports = {
     "dovecot12": int(dv12),
     "dovecot22": int(dv22),
     "courier50": int(co),
-    "greenmail16": int(gm_imap),
     "stalwart015": int(st_imap),
 }
 if uw_absent != "1":
@@ -1628,7 +1582,6 @@ order = [
     "dovecot12",
     "dovecot22",
     "courier50",
-    "greenmail16",
     "stalwart015",
 ]
 if uw_absent != "1":
@@ -1742,34 +1695,6 @@ def ok_lines(lines):
             return True
     return False
 
-def post_greenmail(api_port):
-    deadline = time.time() + 90
-    while time.time() < deadline:
-        if wait_tcp(api_port, 2):
-            break
-        time.sleep(0.5)
-    for user, password in users:
-        body = json.dumps(
-            {"email": "%s@test" % user, "login": user, "password": password}
-        ).encode("utf-8")
-        req = urllib.request.Request(
-            "http://%s:%s/api/user" % (host, api_port),
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                code = resp.status
-                resp.read()
-        except urllib.error.HTTPError as err:
-            code = err.code
-            err.read()
-        if code not in (200, 201):
-            sys.stderr.write("greenmail user create failed %s\n" % code)
-            sys.exit(1)
-
-post_greenmail(int(gm_api))
 account_lines = []
 fetch_lines = []
 failed = False
@@ -1973,7 +1898,6 @@ for server in (
     "dovecot12",
     "dovecot22",
     "courier50",
-    "greenmail16",
 ):
     account_lines.append("jmap %s no JMAP listener\n" % server)
 if uw_absent != "1":
@@ -2038,10 +1962,6 @@ if [ "$UW_ABSENT" -eq 0 ]; then
   append_port uwimap-imap "$UW" 143 liveimap-uwimap
 fi
 append_port cyrus36-http "$CY36_HTTP" 8080 liveimap-cyrus-36
-append_port greenmail16-imap "$GM_IMAP" 3143 liveimap-greenmail-16
-append_port greenmail16-imaps "$GM_IMAPS" 3993 liveimap-greenmail-16
-append_port greenmail16-smtp "$GM_SMTP" 3025 liveimap-greenmail-16
-append_port greenmail16-http "$GM_API" 8080 liveimap-greenmail-16
 append_port stalwart015-imap "$ST_IMAP" 143 liveimap-stalwart-0155
 append_port stalwart015-imaps "$ST_IMAPS" 993 liveimap-stalwart-0155
 append_port stalwart015-managesieve "$ST_SIEVE" 4190 liveimap-stalwart-0155
@@ -2053,12 +1973,12 @@ if [ "$UW_ABSENT" -eq 0 ]; then
   docker inspect -f '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
     liveimap-cyrus-22 liveimap-cyrus-24 liveimap-cyrus-25 liveimap-cyrus-36 \
     liveimap-dovecot-10 liveimap-dovecot-12 liveimap-dovecot-22 \
-    liveimap-courier-50 liveimap-uwimap liveimap-greenmail-16 liveimap-stalwart-0155
+    liveimap-courier-50 liveimap-uwimap liveimap-stalwart-0155
 else
   docker inspect -f '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
     liveimap-cyrus-22 liveimap-cyrus-24 liveimap-cyrus-25 liveimap-cyrus-36 \
     liveimap-dovecot-10 liveimap-dovecot-12 liveimap-dovecot-22 \
-    liveimap-courier-50 liveimap-greenmail-16 liveimap-stalwart-0155
+    liveimap-courier-50 liveimap-stalwart-0155
 fi
 echo "ports"
 echo "cyrus22-imap $CY22"
@@ -2073,10 +1993,6 @@ echo "courier50-imap $CO"
 if [ "$UW_ABSENT" -eq 0 ]; then
   echo "uwimap-imap $UW"
 fi
-echo "greenmail16-imap $GM_IMAP"
-echo "greenmail16-imaps $GM_IMAPS"
-echo "greenmail16-smtp $GM_SMTP"
-echo "greenmail16-http $GM_API"
 echo "stalwart015-imap $ST_IMAP"
 echo "stalwart015-imaps $ST_IMAPS"
 echo "stalwart015-managesieve $ST_SIEVE"
@@ -2094,7 +2010,6 @@ append_pin() {
   fi
   printf '%s\n' "$row" >> "$PINS_OUT"
 }
-append_pin 'image	greenmail/standalone:1.6.15'
 append_pin 'image	stalwartlabs/stalwart:v0.15.5'
 stop_owned
 if [ "$UW_ABSENT" -eq 1 ]; then

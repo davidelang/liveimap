@@ -64,13 +64,17 @@ def adb(*a, **kw):
 
 def servers():
     by = collections.OrderedDict()
+    skip = {"greenmail", "greenmail-16", "greenmail-214", "greenmail-dev"}
     for line in open(os.path.join(GEN, "local-ports.tsv")):
         f = line.rstrip("\n").split("\t")
         if len(f) != 4 or f[0] == "service":
             continue
         svc, hport, cport, cont = f
+        name = cont.replace("liveimap-", "")
+        if name in skip:
+            continue
         kind = svc.rsplit("-", 1)[-1]
-        by.setdefault(cont, {"container": cont, "name": cont.replace("liveimap-", "")})[kind] = int(hport)
+        by.setdefault(cont, {"container": cont, "name": name})[kind] = int(hport)
     return [s for s in by.values() if "imap" in s]
 
 
