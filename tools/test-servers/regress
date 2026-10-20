@@ -365,40 +365,60 @@ def copy_device_apk(remote, dest):
     return True
 
 
+APK_OUT = {
+    PKG: "app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk",
+    TEST_PKG: "app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk",
+}
+INSTALL_HINT = {
+    PKG: "./deploy emulator",
+    TEST_PKG: "adb -s " + SERIAL + " install -r -t " + APK_OUT[TEST_PKG],
+}
+
+
 def package_commit(pkg, aapt):
-    if not aapt or not run_log:
-        return None
+    """(commit, "") from the installed APK's liveimap.gitCommit, or (None, why)."""
+    if not aapt:
+        return None, "no aapt under the Android SDK build-tools"
+    if not run_log:
+        return None, "no run log dir"
     remote = device_apk_path(pkg)
     if not remote:
-        return None
+        return None, f"{pkg} is not installed on {SERIAL}"
     local = os.path.join(run_log, pkg + ".apk")
     if not copy_device_apk(remote, local):
-        return None
+        return None, f"cannot copy {pkg} {remote} from {SERIAL}"
     try:
         r = subprocess.run([aapt, "dump", "xmltree", local, "AndroidManifest.xml"],
                            capture_output=True, text=True, errors="replace", timeout=60)
-    except (subprocess.TimeoutExpired, OSError):
-        return None
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return None, f"aapt failed on {pkg}: {e}"
     if r.returncode != 0:
-        return None
-    return git_commit_from_xmltree(r.stdout)
+        return None, f"aapt exit {r.returncode} on {pkg}"
+    val = git_commit_from_xmltree(r.stdout)
+    if not val:
+        return None, f"{pkg} manifest has no liveimap.gitCommit meta-data"
+    return val, ""
 
 
 def commit_stop(expect):
     aapt = newest_aapt()
-    vals = {}
-    missing = []
+    full = expect
+    try:
+        r = subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", expect + "^{commit}"],
+                           capture_output=True, text=True, timeout=20)
+        if r.returncode == 0:
+            full = r.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    problems = []
     for pkg in (PKG, TEST_PKG):
-        val = package_commit(pkg, aapt)
+        val, why = package_commit(pkg, aapt)
         if not val:
-            missing.append(pkg)
-        else:
-            vals[pkg] = val
-    if missing:
-        return "VERDICT BLOCKED liveimap.gitCommit missing " + " ".join(missing)
-    if vals[PKG] != expect or vals[TEST_PKG] != expect:
-        detail = " ".join(f"{pkg}={vals[pkg]}" for pkg in (PKG, TEST_PKG))
-        return f"VERDICT BLOCKED liveimap.gitCommit {detail} != {expect}"
+            problems.append(f"{why}; run: {INSTALL_HINT[pkg]} (built at {expect})")
+        elif not (val == full or val.startswith(expect) or full.startswith(val)):
+            problems.append(f"{pkg} liveimap.gitCommit={val[:12]} != {expect}; run: {INSTALL_HINT[pkg]} (built at {expect})")
+    if problems:
+        return "VERDICT BLOCKED " + " | ".join(problems)
     return ""
 
 
