@@ -1219,7 +1219,8 @@ def verify_one(s, skipped):
             users.append(row["user"])
     for user in users:
         password = accounts.get(user, "")
-        mail, err = imap_login(lab.LAB_HOST, s["imap"], user, password)
+        login_user = user + "@zimbra.zcs-foss.test" if server == "zimbra-883" else user
+        mail, err = imap_login(lab.LAB_HOST, s["imap"], login_user, password)
         if mail is None:
             problems.append(f"{server} INBOX: login failed")
             continue

@@ -129,6 +129,8 @@ def q(text):
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 def login(user, password):
+    if server == "zimbra-883":
+        user = user + "@zimbra.zcs-foss.test"
     ctx = ssl.create_default_context()
     ca = os.path.join(gen, "ca", "ca.der")
     if os.path.isfile(ca):
