@@ -3495,3 +3495,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A lab reset creates a container from the published seed image.
 
 ## 2026-10-20 - The seed image no longer starts through the reseed hook, and the Dovecot relay port comes from the saved sink row.
+
+## 2026-10-20 - A missing sink port is drawn once, and a publish checks the reseed file without hiding other errors.

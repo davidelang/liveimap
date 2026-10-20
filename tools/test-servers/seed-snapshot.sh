@@ -67,16 +67,50 @@ case "$entry$cmd$env" in
     ;;
 esac
 
-tmp=$(mktemp -d)
-if docker cp "$name:/liveimap-reseed" "$tmp/reseed" >/dev/null 2>&1; then
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+mkdir -p "$here/generated"
+tmp=$(mktemp -d "$here/generated/seed-snapshot.XXXXXX")
+reseed_missing=0
+err=$(docker cp "$name:/liveimap-reseed" "$tmp/reseed" 2>&1) || {
+  case "$err" in
+    *"Could not find the file"*)
+      reseed_missing=1
+      ;;
+    *)
+      printf '%s\n' "$err" >&2
+      rm -rf "$tmp"
+      exit 1
+      ;;
+  esac
+}
+if [ "$reseed_missing" -eq 0 ]; then
   rm -rf "$tmp"
   echo "/liveimap-reseed is in $name" >&2
   exit 1
 fi
-if docker cp "$name:/entrypoint.sh" "$tmp/entrypoint.sh" >/dev/null 2>&1; then
-  if grep -F -q '/liveimap-reseed' "$tmp/entrypoint.sh"; then
+entry_missing=0
+err=$(docker cp "$name:/entrypoint.sh" "$tmp/entrypoint.sh" 2>&1) || {
+  case "$err" in
+    *"Could not find the file"*)
+      entry_missing=1
+      ;;
+    *)
+      printf '%s\n' "$err" >&2
+      rm -rf "$tmp"
+      exit 1
+      ;;
+  esac
+}
+if [ "$entry_missing" -eq 0 ]; then
+  grep_status=0
+  grep -F -q '/liveimap-reseed' "$tmp/entrypoint.sh" || grep_status=$?
+  if [ "$grep_status" -eq 0 ]; then
     rm -rf "$tmp"
     echo "/entrypoint.sh contains /liveimap-reseed in $name" >&2
+    exit 1
+  fi
+  if [ "$grep_status" -ne 1 ]; then
+    rm -rf "$tmp"
     exit 1
   fi
 fi

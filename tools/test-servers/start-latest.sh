@@ -422,11 +422,29 @@ print(" ".join(str(p) for p in chosen))
 PY
 }
 
-# Port of the lab fake SMTP sink: the fake-smtp-sink row of local-ports.tsv (the only definition).
+# Port of the lab fake SMTP sink. The only writer of the fake-smtp-sink row.
 sink_port() {
-  port=$(awk -F '\t' '$1 == "fake-smtp-sink" { n++; p = $2 } END { if (n == 1) print p }' "$PORTS_FILE")
+  count=0
+  if [ -f "$PORTS_FILE" ]; then
+    count=$(awk -F '\t' '$1 == "fake-smtp-sink" { n++ } END { print n + 0 }' "$PORTS_FILE")
+  fi
+  if [ "$count" -eq 0 ]; then
+    port=$(draw_ports 1)
+    case "$port" in
+      ''|*[!0-9]*) echo "ERROR: no single fake-smtp-sink row in $PORTS_FILE; run $SCRIPT --recreate dovecot-245" >&2; exit 1 ;;
+    esac
+    mkdir -p "$GEN"
+    printf 'fake-smtp-sink\t%s\t%s\thost\n' "$port" "$port" >> "$PORTS_FILE"
+    echo "$port"
+    return
+  fi
+  if [ "$count" -ne 1 ]; then
+    echo "ERROR: no single fake-smtp-sink row in $PORTS_FILE; run $SCRIPT --recreate dovecot-245" >&2
+    exit 1
+  fi
+  port=$(awk -F '\t' '$1 == "fake-smtp-sink" { print $2; exit }' "$PORTS_FILE")
   case "$port" in
-    ''|*[!0-9]*) echo "ERROR: no single fake-smtp-sink row in $PORTS_FILE; run $SCRIPT --recreate-dovecot-245" >&2; exit 1 ;;
+    ''|*[!0-9]*) echo "ERROR: no single fake-smtp-sink row in $PORTS_FILE; run $SCRIPT --recreate dovecot-245" >&2; exit 1 ;;
   esac
   echo "$port"
 }

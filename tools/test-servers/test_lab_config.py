@@ -231,4 +231,38 @@ assert "draw_ports 10" in latest
 assert "draw_ports 11" not in latest
 assert 'docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"' in latest
 assert "fake-smtp-sink:*:host" not in latest
+
+# Follow-up 2 edges. Text only; this does not run docker or a start script.
+sink_body = function_body(latest, "sink_port")
+zero_at = sink_body.find('[ "$count" -eq 0 ]')
+draw_at = sink_body.find("draw_ports 1)")
+write_at = sink_body.find("printf 'fake-smtp-sink\\t%s\\t%s\\thost\\n'")
+other_at = sink_body.find('[ "$count" -ne 1 ]')
+assert zero_at != -1 and draw_at != -1 and write_at != -1 and other_at != -1
+assert zero_at < draw_at < write_at < other_at
+assert "draw_ports" not in sink_body[other_at:]
+assert "exit 1" in sink_body[other_at:]
+assert "--recreate dovecot-245" in sink_body
+assert sink_body.count("draw_ports") == 1
+assert latest.count("draw_ports 1)") == 1
+assert latest.count("draw_ports 10") == 1
+pick_body = function_body(latest, "pick_ports")
+assert "draw_ports" not in pick_body
+assert "fake-smtp-sink" not in pick_body
+tail = latest[latest.find('echo "drawing ports"'):]
+assert "draw_ports 10" in tail
+assert "draw_ports 1)" not in tail
+assert "fake-smtp-sink" not in tail
+assert "Could not find the file" in snap
+assert snap.count("Could not find the file") == 2
+assert 'mktemp -d "$here/generated/seed-snapshot.XXXXXX"' in snap
+assert "/tmp" not in snap
+assert 'docker cp "$name:/liveimap-reseed" "$tmp/reseed" 2>&1' in snap
+assert 'docker cp "$name:/entrypoint.sh" "$tmp/entrypoint.sh" 2>&1' in snap
+for line in snap.splitlines():
+    if "docker cp " in line:
+        assert "/dev/null" not in line, line
+assert '[ "$grep_status" -eq 0 ]' in snap
+assert '[ "$grep_status" -ne 1 ]' in snap
+assert ">/dev/null 2>&1" not in snap.split('docker cp "$name:/liveimap-reseed"', 1)[1]
 print("ok")
