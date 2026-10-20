@@ -6,7 +6,7 @@
 - git_home: @@GIT_HOME@@
 - Launch: `./run-grok-*` via `.grok/lib/grok-launch-common.sh` + `agent-landlock`
 - Groups: source `./env` (refresh-shell setuid)
-- `./build_app` compiles and moves `builds`. `./deploy` installs the per-ABI APK (project.config `apk_outputs`; `--test`: `apk_test_outputs`) and moves `deployed`. Agents do not deploy.
+- `./build_app` compiles and moves `builds`. `./deploy` installs the per-ABI APK (the APKs the last `./build_app` recorded from Gradle's output-metadata.json; `--test`: the debug x86_64 app plus its androidTest APK) and moves `deployed`. Agents do not deploy.
 - Package `com.davidlang.liveimap`.
 - App versionName comes from git describe (annotated tag v0.1 on master; <branch>-start when that tag exists). versionCode stays 1. About shows that version. Support mail is david+liveimap@lang.hm.
 
