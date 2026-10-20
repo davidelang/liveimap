@@ -8,7 +8,8 @@
 # the same keys build_app builds. Each device gets the APK whose native code matches the
 # device's ro.product.cpu.abilist (first match in the device's preference order).
 # --test also installs the androidTest APKs in apk_test_outputs (adb install -r -t) on every
-# device, each verified by its own package id; default mode skips androidTest APKs.
+# device, each verified by its own package id; --test with no androidTest APK listed, or a
+# listed one missing, fails before any adb call. Default mode skips androidTest APKs.
 # The app id comes from one place: the APKs themselves (SDK aapt2 dump packagename). Nothing
 # is hard-coded. Everything about the APKs is checked before the first adb call.
 
@@ -84,8 +85,10 @@ apps, or if they mix ABI-specific and universal APKs. After each install it chec
 (deployed / <branch>/deployed; deployed-test for --test) moves only when every device
 succeeded. androidTest APKs (paths under */androidTest/*) in apk_test_outputs are installed
 with --test on every device (adb install -r -t) after the app, each verified by its own
-package id; a missing, unreadable or not-installed androidTest APK fails that device. In the
-default mode androidTest APKs in apk_outputs are not installed.
+package id (aapt2 dump packagename; pm list packages, exact match). --test stops before any
+adb call if apk_test_outputs lists no androidTest APK or a listed one is missing or unreadable;
+a not-installed androidTest package fails that device. In the default mode androidTest APKs
+in apk_outputs are not installed.
 USAGE
 }
 
@@ -229,6 +232,10 @@ for apk in "${outputs[@]}"; do
 done
 if [ "${#apk_paths[@]}" -eq 0 ]; then
   echo "ERROR: no installable APK in the $mode outputs (${outputs[*]})" >&2
+  exit 1
+fi
+if [ "$mode" = test ] && [ "${#test_paths[@]}" -eq 0 ]; then
+  echo "ERROR: --test: apk_test_outputs lists no androidTest APK (a path under */androidTest/*); add it in project.config" >&2
   exit 1
 fi
 n_universal=0
