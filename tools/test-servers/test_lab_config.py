@@ -150,4 +150,38 @@ assert "JMAP_DOMAIN_USER" in jmap
 cyrus = open(os.path.join(HERE, "cyrus_domain_user.py"), encoding="utf-8").read()
 assert 'lab.HOSTENV.get("LAB_MAIL_DOMAIN")' in cyrus
 assert 'sys.exit("needs LAB_MAIL_DOMAIN")' in cyrus
+
+# Seed-image edges 1-4. Text only; this does not run docker.
+start_names = (
+    "start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh", "zimbra-883.sh",
+)
+for name in start_names:
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    assert "docker volume create" not in text, name
+    assert "-v liveimap-" not in text, name
+snap = open(os.path.join(HERE, "seed-snapshot.sh"), encoding="utf-8").read()
+assert "docker commit" in snap and "liveimap-seed-" in snap
+assert "seed-snapshot.tar" not in snap
+regress = open(os.path.join(HERE, "regress"), encoding="utf-8").read()
+assert "--reset" in regress
+assert "/liveimap-reseed" not in regress
+
+def function_body(text, name):
+    at = text.find("\n" + name + "() {")
+    assert at != -1, name
+    end = text.find("\n}\n", at)
+    assert end != -1, name
+    return text[at:end + 2]
+
+latest = open(os.path.join(HERE, "start-latest.sh"), encoding="utf-8").read()
+reset_body = function_body(latest, "reset_from_seed")
+seed_body = function_body(latest, "require_seed_image")
+assert "liveimap-seed-$server" in reset_body
+assert "local-ports.tsv" in reset_body
+assert "require_seed_image" in reset_body
+assert "pick_ports" not in reset_body
+assert "stalwartlabs/stalwart" not in reset_body
+assert 'tools/test-servers/seed-snapshot.sh $server' in seed_body
+assert 'reset_from_seed "$2"' in latest
+assert "stalwart-01625)" in latest or "stalwart-01625|" in latest
 print("ok")

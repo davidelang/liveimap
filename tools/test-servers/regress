@@ -857,69 +857,18 @@ def snapshot_line(text):
     return ""
 
 
-def reseed_hook_problem(cont):
-    """Empty when /liveimap-reseed exists and an entrypoint, its script, or up.tsv calls it."""
-    hint = RECREATE_HINTS.get(cont) or f"{cont}: no recreate script"
-    fd, copied = tempfile.mkstemp(prefix="liveimap-reseed-")
-    os.close(fd)
-    try:
-        r = subprocess.run(["docker", "cp", f"{cont}:/liveimap-reseed", copied],
-                           capture_output=True, text=True, errors="replace")
-        if r.returncode != 0:
-            return hint
-    finally:
-        try:
-            os.unlink(copied)
-        except OSError:
-            pass
-    import lab
-    upcmd = lab.up_commands().get(cont) or ""
-    if "/liveimap-reseed" in upcmd:
-        return ""
-    r = subprocess.run(
-        ["docker", "inspect", "-f", "{{json .Config.Entrypoint}}\n{{json .Config.Cmd}}", cont],
-        capture_output=True, text=True, errors="replace")
-    inspected = r.stdout or ""
-    if "/liveimap-reseed" in inspected:
-        return ""
-    entry = []
-    try:
-        entry = json.loads(inspected.splitlines()[0]) if inspected.splitlines() else []
-    except (json.JSONDecodeError, IndexError):
-        entry = []
-    if isinstance(entry, list) and entry and str(entry[0]).startswith("/"):
-        fd, body_path = tempfile.mkstemp(prefix="liveimap-entry-")
-        os.close(fd)
-        try:
-            c = subprocess.run(["docker", "cp", f"{cont}:{entry[0]}", body_path],
-                               capture_output=True, text=True, errors="replace")
-            if c.returncode == 0 and "/liveimap-reseed" in open(body_path, encoding="utf-8", errors="replace").read():
-                return ""
-        finally:
-            try:
-                os.unlink(body_path)
-            except OSError:
-                pass
-    return hint
-
-
-def write_reseed_flag(cont, skip):
-    fd, path = tempfile.mkstemp(prefix="liveimap-no-reseed-")
-    try:
-        os.write(fd, b"no\n" if skip else b"yes\n")
-        os.close(fd)
-        fd = None
-        r = subprocess.run(["docker", "cp", path, f"{cont}:/.liveimap-no-reseed"],
-                           capture_output=True, text=True, errors="replace")
-        if r.returncode != 0:
-            return first_line(r.stderr or r.stdout)
-    finally:
-        if fd is not None:
-            os.close(fd)
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+def reset_lab_server(s):
+    """Replace the container from its published seed image. Empty on success."""
+    cont = s["container"]
+    hint = RECREATE_HINTS.get(cont)
+    if not hint:
+        return f"{cont}: no reset script"
+    rel = hint.split()[0]
+    script = os.path.join(REPO, rel)
+    r = subprocess.run([script, "--reset", s["name"]], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        text = (r.stderr or "") + "\n" + (r.stdout or "")
+        return snapshot_line(text) or first_line(text)
     return ""
 
 
@@ -939,16 +888,14 @@ def start_lab_container(s, skip=False):
     import lab
     cont = s["container"]
     lab.only_one(cont)
-    missing = reseed_hook_problem(cont)
-    if missing:
-        return missing
+    if not skip:
+        err = reset_lab_server(s)
+        if err:
+            return err
     if container_running(cont):
         r = subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True, text=True, errors="replace")
         if r.returncode != 0 or container_running(cont):
             return first_line(r.stderr or r.stdout)
-    err = write_reseed_flag(cont, skip)
-    if err:
-        return err
     r = subprocess.run(["docker", "start", cont], capture_output=True, text=True, errors="replace")
     if r.returncode != 0:
         return snapshot_line(r.stderr or r.stdout) or first_line(r.stderr or r.stdout)

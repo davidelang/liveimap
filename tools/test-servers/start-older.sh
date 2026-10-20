@@ -23,96 +23,57 @@ command -v docker >/dev/null
 command -v python3 >/dev/null
 command -v ss >/dev/null
 
-reseed_prepare() {
+require_seed_image() {
   server=$1
-  image=$2
-  mkdir -p "$GEN/$server"
-  if [ ! -f "$GEN/corpus-v1/manifest.tsv" ] || [ ! -f "$DIR/seed/accounts.tsv" ] \
-    || [ ! -f "$DIR/seed/folders.tsv" ] || [ ! -f "$DIR/seed/corpus-v1.sums" ]; then
-    echo "missing seed inputs for $server" >&2
+  if ! docker image inspect "liveimap-seed-$server" >/dev/null 2>&1; then
+    echo "tools/test-servers/seed-snapshot.sh $server" >&2
     exit 1
   fi
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
-    docker pull "$image"
-  fi
-  LIVEIMAP_IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$image")
-  chmod a+r "$GEN/corpus-v1/manifest.tsv" "$DIR/seed/accounts.tsv" \
-    "$DIR/seed/folders.tsv" "$DIR/seed/corpus-v1.sums"
-  chmod a+rx "$GEN/$server" "$GEN/corpus-v1" "$DIR/seed"
 }
 
-reseed_mount_words() {
+reset_from_seed() {
   server=$1
-  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' \
-    -v "$GEN/$server:/liveimap-seed:ro" \
-    -v "$GEN/corpus-v1/manifest.tsv:/liveimap-check/manifest.tsv:ro" \
-    -v "$DIR/seed/accounts.tsv:/liveimap-check/accounts.tsv:ro" \
-    -v "$DIR/seed/folders.tsv:/liveimap-check/folders.tsv:ro" \
-    -v "$DIR/seed/corpus-v1.sums:/liveimap-check/corpus-v1.sums:ro" \
-    -v "$GEN/corpus-v1:/liveimap-corpus:ro" \
-    -e "LIVEIMAP_SERVER=$server" \
-    -e "LIVEIMAP_IMAGE_ID=$LIVEIMAP_IMAGE_ID"
-}
-
-reseed_exec_words() {
-  image=$1
-  mode=$2
-  python3 - "$image" "$mode" <<'PY'
-import json, shlex, subprocess, sys
-image, mode = sys.argv[1], sys.argv[2]
-cfg = json.loads(subprocess.check_output(["docker", "image", "inspect", image]))[0]["Config"]
-args = list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or [])
-sys.stdout.write(mode + " -- " + " ".join(shlex.quote(a) for a in args))
-PY
-}
-
-install_reseed() {
-  name=$1
-  flag=$(mktemp)
-  printf 'no\n' > "$flag"
-  docker cp "$DIR/reseed.sh" "$name":/liveimap-reseed
-  docker cp "$flag" "$name":/.liveimap-no-reseed
-  rm -f "$flag"
-}
-
-patch_saved_entrypoint() {
-  name=$1
-  kind=$2
-  tmp=$(mktemp)
-  if ! docker cp "$name":/entrypoint.sh "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    return 0
+  require_owned "$server"
+  require_seed_image "$server"
+  name=liveimap-$server
+  if container_exists "$name"; then
+    docker rm -f "$name" >/dev/null
   fi
-  python3 - "$tmp" "$kind" <<'PY'
+  ports_file="$GEN/local-ports.tsv"
+  port_flags=$(python3 - "$ports_file" "$name" <<'PY'
 import sys
-path, kind = sys.argv[1], sys.argv[2]
-text = open(path, encoding="utf-8", errors="replace").read()
-orig = text
-if kind == "cyrus":
-    needle = 'su -s /bin/sh cyrus -c "$CTL -r"'
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-    mark = "if [ ! -f /tmp/liveimap-restored ]; then\n"
-    start = "awk -F '\\t' 'NR > 1 && $3 == \"base\" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names\n"
-    if "/tmp/liveimap-restored" not in text and start in text:
-        text = text.replace(start, mark + start, 1)
-        end = "rm -f /tmp/base-names /tmp/imtest.out /tmp/create-cmd\n"
-        if end in text:
-            text = text.replace(end, end + "fi\n", 1)
-elif kind == "courier":
-    needle = '"$MAKEUSERDB"\n'
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-elif kind == "dovecot":
-    needle = "exec /usr/local/sbin/dovecot -F\n"
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-if text != orig:
-    open(path, "w", encoding="utf-8").write(text)
+path, name = sys.argv[1], sys.argv[2]
+found = []
+try:
+    handle = open(path, encoding="utf-8")
+except OSError:
+    sys.stderr.write("no saved ports for %s\n" % name)
+    sys.exit(1)
+with handle:
+    for line in handle:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) < 4 or parts[3] != name:
+            continue
+        if not parts[1].isdigit() or not parts[2].isdigit():
+            continue
+        found.append("-p")
+        found.append("%s:%s" % (parts[1], parts[2]))
+if not found:
+    sys.stderr.write("no saved ports for %s\n" % name)
+    sys.exit(1)
+sys.stdout.write(" ".join(found))
 PY
-  chmod 755 "$tmp"
-  docker cp "$tmp" "$name":/entrypoint.sh
-  rm -f "$tmp"
+)
+  # shellcheck disable=SC2086
+  docker create --name "$name" $port_flags "liveimap-seed-$server" >/dev/null
+}
+
+create_from_seed() {
+  server=$1
+  shift
+  require_seed_image "$server"
+  docker create --name "liveimap-$server" "$@" "liveimap-seed-$server"
+  docker start "liveimap-$server"
 }
 
 container_exists() {
@@ -527,22 +488,14 @@ start_cyrus() {
   version_prefix=$8
   admin="$ADMIN_DIR/${name}.txt"
   write_admin "$admin"
-  reseed_prepare "${name#liveimap-}" "$image"
   if [ -n "$http_port" ]; then
-    # shellcheck disable=SC2046
-    docker run -d --name "$name" \
-      $(reseed_mount_words "${name#liveimap-}") \
+    create_from_seed "${name#liveimap-}" \
       -p "${port}:143" \
-      -p "${http_port}:8080" \
-      "$image" sh -c 'while :; do sleep 3600; done'
+      -p "${http_port}:8080"
   else
-    # shellcheck disable=SC2046
-    docker run -d --name "$name" \
-      $(reseed_mount_words "${name#liveimap-}") \
-      -p "${port}:143" \
-      "$image" sh -c 'while :; do sleep 3600; done'
+    create_from_seed "${name#liveimap-}" \
+      -p "${port}:143"
   fi
-  install_reseed "$name"
   docker exec "$name" apt-get update
   if [ "$caldav" = yes ]; then
     docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
@@ -681,13 +634,8 @@ start_dovecot() {
   style=$4
   passfile="$GEN/${name#liveimap-}/passwd"
   write_passwd "$passfile"
-  reseed_prepare "${name#liveimap-}" "$image"
-  # shellcheck disable=SC2046
-  docker run -d --name "$name" \
-    $(reseed_mount_words "${name#liveimap-}") \
-    -p "${port}:143" \
-    "$image" sh -c 'while :; do sleep 3600; done'
-  install_reseed "$name"
+  create_from_seed "${name#liveimap-}" \
+    -p "${port}:143"
   docker exec "$name" apt-get update
   docker exec -e DEBIAN_FRONTEND=noninteractive "$name" apt-get install -y dovecot-imapd
   pin_packages "$name" dovecot-imapd
@@ -730,13 +678,8 @@ EOF
 start_courier() {
   name=liveimap-courier-50
   port=$CO
-  reseed_prepare courier-50 debian:bookworm
-  # shellcheck disable=SC2046
-  docker run -d --name "$name" \
-    $(reseed_mount_words courier-50) \
-    -p "${port}:143" \
-    debian:bookworm sh -c 'while :; do sleep 3600; done'
-  install_reseed "$name"
+  create_from_seed courier-50 \
+    -p "${port}:143"
   docker exec "$name" apt-get update
   docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
     apt-get install -y courier-imap courier-authlib-userdb
@@ -949,15 +892,15 @@ probe_uw() {
 start_uw() {
   name=liveimap-uwimap
   port=$UW
-  reseed_prepare uwimap debian/eol:squeeze
-  # shellcheck disable=SC2046
-  if ! docker run -d --name "$name" \
-    $(reseed_mount_words uwimap) \
+  require_seed_image uwimap
+  if ! docker create --name "$name" \
     -p "${port}:143" \
-    debian/eol:squeeze sh -c 'while :; do sleep 3600; done'; then
+    liveimap-seed-uwimap; then
     return 1
   fi
-  install_reseed "$name"
+  if ! docker start "$name"; then
+    return 1
+  fi
   if ! docker exec "$name" apt-get update; then
     return 1
   fi
@@ -1323,6 +1266,14 @@ finish_recreate() {
   docker stop "$name" >/dev/null
 }
 
+if [ "${1:-}" = --reset ]; then
+  if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
+    echo "ERROR: usage: $SCRIPT --reset <server>" >&2
+    exit 1
+  fi
+  reset_from_seed "$2"
+  exit 0
+fi
 if [ "${1:-}" = --recreate ]; then
   if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
     echo "ERROR: usage: $SCRIPT --recreate <server>" >&2
@@ -1330,6 +1281,7 @@ if [ "${1:-}" = --recreate ]; then
   fi
   require_owned "$2"
   server=$2
+  require_seed_image "$server"
   name=liveimap-$server
   remove_one "$name"
   rows="$GEN/port-rows.new"
@@ -1337,28 +1289,28 @@ if [ "${1:-}" = --recreate ]; then
     cyrus-22)
       # shellcheck disable=SC2046
       set -- $(pick_ports cyrus22-imap:143:liveimap-cyrus-22)
-      start_cyrus liveimap-cyrus-22 debian/eol:lenny cyrus-imapd-2.2 "$1" "" "." no ""
+      create_from_seed cyrus-22 -p "${1}:143"
       printf 'cyrus22-imap\t%s\t143\tliveimap-cyrus-22\n' "$1" > "$rows"
       replace_port_rows liveimap-cyrus-22 "" "$rows"
       ;;
     cyrus-24)
       # shellcheck disable=SC2046
       set -- $(pick_ports cyrus24-imap:143:liveimap-cyrus-24)
-      start_cyrus liveimap-cyrus-24 debian/eol:wheezy cyrus-imapd-2.4 "$1" "" "." no ""
+      create_from_seed cyrus-24 -p "${1}:143"
       printf 'cyrus24-imap\t%s\t143\tliveimap-cyrus-24\n' "$1" > "$rows"
       replace_port_rows liveimap-cyrus-24 "" "$rows"
       ;;
     cyrus-25)
       # shellcheck disable=SC2046
       set -- $(pick_ports cyrus25-imap:143:liveimap-cyrus-25)
-      start_cyrus liveimap-cyrus-25 debian/eol:stretch cyrus-imapd "$1" "" "/" no ""
+      create_from_seed cyrus-25 -p "${1}:143"
       printf 'cyrus25-imap\t%s\t143\tliveimap-cyrus-25\n' "$1" > "$rows"
       replace_port_rows liveimap-cyrus-25 "" "$rows"
       ;;
     cyrus-36)
       # shellcheck disable=SC2046
       set -- $(pick_ports cyrus36-imap:143:liveimap-cyrus-36 cyrus36-http:8080:liveimap-cyrus-36)
-      start_cyrus liveimap-cyrus-36 debian:bookworm cyrus-imapd "$1" "$2" "/" yes "3.6."
+      create_from_seed cyrus-36 -p "${1}:143" -p "${2}:8080"
       {
         printf 'cyrus36-imap\t%s\t143\tliveimap-cyrus-36\n' "$1"
         printf 'cyrus36-http\t%s\t8080\tliveimap-cyrus-36\n' "$2"
@@ -1368,43 +1320,36 @@ if [ "${1:-}" = --recreate ]; then
     dovecot-10)
       # shellcheck disable=SC2046
       set -- $(pick_ports dovecot10-imap:143:liveimap-dovecot-10)
-      start_dovecot liveimap-dovecot-10 debian/eol:lenny "$1" v10
+      create_from_seed dovecot-10 -p "${1}:143"
       printf 'dovecot10-imap\t%s\t143\tliveimap-dovecot-10\n' "$1" > "$rows"
       replace_port_rows liveimap-dovecot-10 "" "$rows"
       ;;
     dovecot-12)
       # shellcheck disable=SC2046
       set -- $(pick_ports dovecot12-imap:143:liveimap-dovecot-12)
-      start_dovecot liveimap-dovecot-12 debian/eol:squeeze "$1" v12
+      create_from_seed dovecot-12 -p "${1}:143"
       printf 'dovecot12-imap\t%s\t143\tliveimap-dovecot-12\n' "$1" > "$rows"
       replace_port_rows liveimap-dovecot-12 "" "$rows"
       ;;
     dovecot-22)
       # shellcheck disable=SC2046
       set -- $(pick_ports dovecot22-imap:143:liveimap-dovecot-22)
-      start_dovecot liveimap-dovecot-22 debian/eol:jessie "$1" v22
+      create_from_seed dovecot-22 -p "${1}:143"
       printf 'dovecot22-imap\t%s\t143\tliveimap-dovecot-22\n' "$1" > "$rows"
       replace_port_rows liveimap-dovecot-22 "" "$rows"
       ;;
     courier-50)
       # shellcheck disable=SC2046
       set -- $(pick_ports courier50-imap:143:liveimap-courier-50)
-      CO=$1
-      start_courier
-      printf 'courier50-imap\t%s\t143\tliveimap-courier-50\n' "$CO" > "$rows"
+      create_from_seed courier-50 -p "${1}:143"
+      printf 'courier50-imap\t%s\t143\tliveimap-courier-50\n' "$1" > "$rows"
       replace_port_rows liveimap-courier-50 "" "$rows"
       ;;
     uwimap)
       # shellcheck disable=SC2046
       set -- $(pick_ports uwimap-imap:143:liveimap-uwimap)
-      UW=$1
-      if ! probe_uw; then
-        exit 1
-      fi
-      if ! start_uw; then
-        exit 1
-      fi
-      printf 'uwimap-imap\t%s\t143\tliveimap-uwimap\n' "$UW" > "$rows"
+      create_from_seed uwimap -p "${1}:143"
+      printf 'uwimap-imap\t%s\t143\tliveimap-uwimap\n' "$1" > "$rows"
       replace_port_rows liveimap-uwimap "" "$rows"
       ;;
     stalwart-0155)
@@ -1415,8 +1360,6 @@ if [ "${1:-}" = --recreate ]; then
         stalwart015-managesieve:4190:liveimap-stalwart-0155 \
         stalwart015-http:443:liveimap-stalwart-0155 \
         stalwart015-submission:587:liveimap-stalwart-0155)
-      docker volume create liveimap-stalwart-0155-etc >/dev/null
-      docker volume create liveimap-stalwart-0155-data >/dev/null
       admin="$GEN/stalwart-0155-admin.txt"
       if [ ! -s "$admin" ]; then
         umask 007
@@ -1424,25 +1367,13 @@ if [ "${1:-}" = --recreate ]; then
         umask 022
       fi
       ST_ADMIN_PASS=$(cat "$admin")
-      reseed_prepare stalwart-0155 stalwartlabs/stalwart:v0.15.5
-      # shellcheck disable=SC2046
-      docker create --name liveimap-stalwart-0155 \
-        $(reseed_mount_words stalwart-0155) \
-        --entrypoint /liveimap-reseed \
+      create_from_seed stalwart-0155 \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:143" \
         -p "${2}:993" \
         -p "${3}:4190" \
         -p "${4}:443" \
-        -p "${5}:587" \
-        -v liveimap-stalwart-0155-etc:/etc/stalwart \
-        -v liveimap-stalwart-0155-etc:/opt/stalwart/etc \
-        -v liveimap-stalwart-0155-data:/var/lib/stalwart \
-        -v liveimap-stalwart-0155-data:/opt/stalwart/data \
-        stalwartlabs/stalwart:v0.15.5 \
-        $(reseed_exec_words stalwartlabs/stalwart:v0.15.5 --before)
-      install_reseed liveimap-stalwart-0155
-      docker start liveimap-stalwart-0155
+        -p "${5}:587"
       unset ST_ADMIN_PASS
       {
         printf 'stalwart015-imap\t%s\t143\tliveimap-stalwart-0155\n' "$1"
@@ -1509,6 +1440,7 @@ else
     "$DV10" "$DV12" "$DV22" "$CO" \
     "$ST_IMAP" "$ST_IMAPS" "$ST_SIEVE" "$ST_HTTPS" "$ST_SUB")
   echo "pulling uw image"
+  require_seed_image uwimap
   if ! docker pull debian/eol:squeeze; then
     echo "uw image pull failed" >&2
     UW_ABSENT=1

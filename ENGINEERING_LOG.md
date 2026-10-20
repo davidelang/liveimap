@@ -3491,3 +3491,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A lab reseed restores one tar of the server's data.
 
 ## 2026-10-20 - The lab no longer targets GreenMail.
+
+## 2026-10-20 - A lab reset creates a container from the published seed image.

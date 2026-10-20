@@ -33,13 +33,11 @@ import socket
 import ssl
 import subprocess
 import sys
-import tempfile
 import time
 
 root = sys.argv[1]
 name = "liveimap-zimbra-883"
-volume = "liveimap-zimbra-883-opt"
-image = "zimbra/zcs-foss:8.8.3"
+image = "liveimap-seed-zimbra-883"
 host = "127.0.0.1"
 domain = os.environ.get("ZIMBRA_DEFAULT_DOMAIN") or ""
 gen = os.path.join(root, "sandbox/test-servers/generated")
@@ -342,88 +340,53 @@ def container_bad(want):
             return True
     return False
 
-def with_reseed(cmd):
-    image_name = cmd[-1]
-    gen_server = os.path.join(mount_gen, "zimbra-883")
-    os.makedirs(gen_server, exist_ok=True)
-    corpus = os.path.join(mount_gen, "corpus-v1")
-    sources = [
-        os.path.join(corpus, "manifest.tsv"),
-        os.path.join(mount_seed, "accounts.tsv"),
-        os.path.join(mount_seed, "folders.tsv"),
-        os.path.join(mount_seed, "corpus-v1.sums"),
-        corpus,
-        mount_seed,
-        gen_server,
-    ]
-    for path in sources:
-        try:
-            mode = os.stat(path).st_mode
-            extra_mode = 0o444 if os.path.isfile(path) else 0o555
-            os.chmod(path, mode | extra_mode)
-        except OSError as exc:
-            fail("%s: %s" % (path, exc))
-    proc = run(["docker", "image", "inspect", "-f", "{{.Id}}", image_name])
+def require_seed_image():
+    proc = run(["docker", "image", "inspect", "-f", "{{.Id}}", image])
     if proc.returncode != 0:
-        fail("docker image inspect failed")
-    image_id = (proc.stdout or "").strip()
-    extra = [
-        "-v", gen_server + ":/liveimap-seed:ro",
-        "-v", os.path.join(corpus, "manifest.tsv") + ":/liveimap-check/manifest.tsv:ro",
-        "-v", os.path.join(mount_seed, "accounts.tsv") + ":/liveimap-check/accounts.tsv:ro",
-        "-v", os.path.join(mount_seed, "folders.tsv") + ":/liveimap-check/folders.tsv:ro",
-        "-v", os.path.join(mount_seed, "corpus-v1.sums") + ":/liveimap-check/corpus-v1.sums:ro",
-        "-v", corpus + ":/liveimap-corpus:ro",
-        "-e", "LIVEIMAP_SERVER=zimbra-883",
-        "-e", "LIVEIMAP_IMAGE_ID=" + image_id,
+        fail("tools/test-servers/seed-snapshot.sh zimbra-883")
+
+def zimbra_create(imap_port, https_port, admin_port):
+    require_seed_image()
+    cmd = [
+        "docker", "create",
+        "--name", name,
+        "--hostname", domain,
+        "--restart", "no",
+        "--entrypoint", "/zimbra/init",
+        "-p", "%s:%d:143" % (host, imap_port),
+        "-p", "%s:%d:443" % (host, https_port),
+        "-p", "%s:%d:7071" % (host, admin_port),
     ]
-    out = []
-    i = 0
-    while i < len(cmd):
-        if cmd[i] == "run":
-            out.append("create")
-            i += 1
-            if i < len(cmd) and cmd[i] == "-d":
-                i += 1
-            continue
-        if cmd[i] == "--entrypoint":
-            out.extend(["--entrypoint", "/liveimap-reseed"])
-            i += 2
-            continue
-        out.append(cmd[i])
-        i += 1
-    image_name = out[-1]
-    return out[:-1] + extra + [image_name, "--before", "--", "/zimbra/init"]
-
-def install_reseed_flag():
-    flag = tempfile.NamedTemporaryFile("w", delete=False)
-    try:
-        flag.write("no\n")
-        flag.close()
-        reseed = os.path.join(root, "tools/test-servers/reseed.sh")
-        proc = run(["docker", "cp", reseed, name + ":/liveimap-reseed"])
-        if proc.returncode != 0:
-            fail("docker cp reseed failed")
-        proc = run(["docker", "cp", flag.name, name + ":/.liveimap-no-reseed"])
-        if proc.returncode != 0:
-            fail("docker cp flag failed")
-    finally:
-        try:
-            os.unlink(flag.name)
-        except OSError:
-            pass
-
-def launch_zimbra(cmd):
-    proc = run(with_reseed(cmd), timeout=600, env=os.environ.copy())
+    for key in setup_keys:
+        cmd.extend(["-e", key])
+    cmd.append(image)
+    proc = run(cmd, timeout=600, env=os.environ.copy())
     if proc.returncode != 0:
         err = redact((proc.stderr or "") + (proc.stdout or ""))
-        fail("docker run failed: %s" % err[-500:])
-    install_reseed_flag()
+        fail("docker create failed: %s" % err[-500:])
+
+def launch_zimbra(imap_port, https_port, admin_port):
+    zimbra_create(imap_port, https_port, admin_port)
     proc = run(["docker", "start", name], timeout=180)
     if proc.returncode != 0:
         fail("docker start failed")
 
+def reset_zimbra():
+    if name in container_names():
+        proc = run(["docker", "rm", "-f", name])
+        if proc.returncode != 0:
+            fail("docker rm failed")
+    rows_now = []
+    if os.path.exists(ports_path):
+        with open(ports_path, encoding="utf-8") as handle:
+            rows_now = handle.read().splitlines()
+    ports = mapped_ports(rows_now)
+    if len(ports) < 3:
+        fail("missing saved ports")
+    zimbra_create(ports["zimbra883-imap"], ports["zimbra883-https"], ports["zimbra883-admin"])
+
 def recreate_zimbra():
+    require_seed_image()
     if name in container_names():
         proc = run(["docker", "rm", "-f", name])
         if proc.returncode != 0:
@@ -467,21 +430,7 @@ def recreate_zimbra():
         else:
             got[key] = draw_one()
         chosen.append(got[key])
-    cmd = [
-        "docker", "run", "-d",
-        "--name", name,
-        "--hostname", domain,
-        "--restart", "no",
-        "--entrypoint", "/zimbra/init",
-        "-p", "%s:%d:143" % (host, got["zimbra883-imap"]),
-        "-p", "%s:%d:443" % (host, got["zimbra883-https"]),
-        "-p", "%s:%d:7071" % (host, got["zimbra883-admin"]),
-        "-v", "%s:/opt/zimbra" % volume,
-    ]
-    for key in setup_keys:
-        cmd.extend(["-e", key])
-    cmd.append(image)
-    launch_zimbra(cmd)
+    launch_zimbra(got["zimbra883-imap"], got["zimbra883-https"], got["zimbra883-admin"])
     replace_rows(got["zimbra883-imap"], got["zimbra883-https"], got["zimbra883-admin"])
     if container_bad(want_ports):
         proc = run(["docker", "stop", name], timeout=60)
@@ -495,16 +444,19 @@ def recreate_zimbra():
         fail("docker stop failed: %s %s --recreate zimbra-883" % (err[-500:], script))
 
 args = sys.argv[2:]
-if args and args[0] == "--recreate":
+if args and args[0] in ("--recreate", "--reset"):
     if len(args) != 2 or not args[1]:
-        fail("usage: %s --recreate <server>" % script)
+        fail("usage: %s %s <server>" % (script, args[0]))
     owner = lab_owner(args[1])
     if owner is None:
         fail("%s is not a lab server" % args[1])
     owner_path = os.path.join(root, "tools/test-servers", owner)
     if owner_path != script:
         fail("%s belongs to %s" % (args[1], owner_path))
-    recreate_zimbra()
+    if args[0] == "--reset":
+        reset_zimbra()
+    else:
+        recreate_zimbra()
     sys.exit(0)
 
 rows = read_port_rows()
@@ -532,21 +484,7 @@ else:
         imap_port = ports["zimbra883-imap"]
         https_port = ports["zimbra883-https"]
         admin_port = ports["zimbra883-admin"]
-    cmd = [
-        "docker", "run", "-d",
-        "--name", name,
-        "--hostname", domain,
-        "--restart", "no",
-        "--entrypoint", "/zimbra/init",
-        "-p", "%s:%d:143" % (host, ports["zimbra883-imap"]),
-        "-p", "%s:%d:443" % (host, ports["zimbra883-https"]),
-        "-p", "%s:%d:7071" % (host, ports["zimbra883-admin"]),
-        "-v", "%s:/opt/zimbra" % volume,
-    ]
-    for key in setup_keys:
-        cmd.extend(["-e", key])
-    cmd.append(image)
-    launch_zimbra(cmd)
+    launch_zimbra(imap_port, https_port, admin_port)
 
 deadline = time.time() + 30 * 60
 stable = None

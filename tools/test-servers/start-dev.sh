@@ -35,96 +35,57 @@ command -v openssl >/dev/null
 command -v setfacl >/dev/null
 command -v git >/dev/null
 
-reseed_prepare() {
+require_seed_image() {
   server=$1
-  image=$2
-  mkdir -p "$GEN/$server"
-  if [ ! -f "$GEN/corpus-v1/manifest.tsv" ] || [ ! -f "$DIR/seed/accounts.tsv" ] \
-    || [ ! -f "$DIR/seed/folders.tsv" ] || [ ! -f "$DIR/seed/corpus-v1.sums" ]; then
-    echo "missing seed inputs for $server" >&2
+  if ! docker image inspect "liveimap-seed-$server" >/dev/null 2>&1; then
+    echo "tools/test-servers/seed-snapshot.sh $server" >&2
     exit 1
   fi
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
-    docker pull "$image"
-  fi
-  LIVEIMAP_IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$image")
-  chmod a+r "$GEN/corpus-v1/manifest.tsv" "$DIR/seed/accounts.tsv" \
-    "$DIR/seed/folders.tsv" "$DIR/seed/corpus-v1.sums"
-  chmod a+rx "$GEN/$server" "$GEN/corpus-v1" "$DIR/seed"
 }
 
-reseed_mount_words() {
+reset_from_seed() {
   server=$1
-  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' \
-    -v "$GEN/$server:/liveimap-seed:ro" \
-    -v "$GEN/corpus-v1/manifest.tsv:/liveimap-check/manifest.tsv:ro" \
-    -v "$DIR/seed/accounts.tsv:/liveimap-check/accounts.tsv:ro" \
-    -v "$DIR/seed/folders.tsv:/liveimap-check/folders.tsv:ro" \
-    -v "$DIR/seed/corpus-v1.sums:/liveimap-check/corpus-v1.sums:ro" \
-    -v "$GEN/corpus-v1:/liveimap-corpus:ro" \
-    -e "LIVEIMAP_SERVER=$server" \
-    -e "LIVEIMAP_IMAGE_ID=$LIVEIMAP_IMAGE_ID"
-}
-
-reseed_exec_words() {
-  image=$1
-  mode=$2
-  python3 - "$image" "$mode" <<'PY'
-import json, shlex, subprocess, sys
-image, mode = sys.argv[1], sys.argv[2]
-cfg = json.loads(subprocess.check_output(["docker", "image", "inspect", image]))[0]["Config"]
-args = list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or [])
-sys.stdout.write(mode + " -- " + " ".join(shlex.quote(a) for a in args))
-PY
-}
-
-install_reseed() {
-  name=$1
-  flag=$(mktemp)
-  printf 'no\n' > "$flag"
-  docker cp "$DIR/reseed.sh" "$name":/liveimap-reseed
-  docker cp "$flag" "$name":/.liveimap-no-reseed
-  rm -f "$flag"
-}
-
-patch_saved_entrypoint() {
-  name=$1
-  kind=$2
-  tmp=$(mktemp)
-  if ! docker cp "$name":/entrypoint.sh "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    return 0
+  require_owned "$server"
+  require_seed_image "$server"
+  name=liveimap-$server
+  if container_exists "$name"; then
+    docker rm -f "$name" >/dev/null
   fi
-  python3 - "$tmp" "$kind" <<'PY'
+  ports_file="$GEN/local-ports.tsv"
+  port_flags=$(python3 - "$ports_file" "$name" <<'PY'
 import sys
-path, kind = sys.argv[1], sys.argv[2]
-text = open(path, encoding="utf-8", errors="replace").read()
-orig = text
-if kind == "cyrus":
-    needle = 'su -s /bin/sh cyrus -c "$CTL -r"'
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-    mark = "if [ ! -f /tmp/liveimap-restored ]; then\n"
-    start = "awk -F '\\t' 'NR > 1 && $3 == \"base\" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names\n"
-    if "/tmp/liveimap-restored" not in text and start in text:
-        text = text.replace(start, mark + start, 1)
-        end = "rm -f /tmp/base-names /tmp/imtest.out /tmp/create-cmd\n"
-        if end in text:
-            text = text.replace(end, end + "fi\n", 1)
-elif kind == "courier":
-    needle = '"$MAKEUSERDB"\n'
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-elif kind == "dovecot":
-    needle = "exec /usr/local/sbin/dovecot -F\n"
-    if "/liveimap-reseed" not in text and needle in text:
-        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
-if text != orig:
-    open(path, "w", encoding="utf-8").write(text)
+path, name = sys.argv[1], sys.argv[2]
+found = []
+try:
+    handle = open(path, encoding="utf-8")
+except OSError:
+    sys.stderr.write("no saved ports for %s\n" % name)
+    sys.exit(1)
+with handle:
+    for line in handle:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) < 4 or parts[3] != name:
+            continue
+        if not parts[1].isdigit() or not parts[2].isdigit():
+            continue
+        found.append("-p")
+        found.append("%s:%s" % (parts[1], parts[2]))
+if not found:
+    sys.stderr.write("no saved ports for %s\n" % name)
+    sys.exit(1)
+sys.stdout.write(" ".join(found))
 PY
-  chmod 755 "$tmp"
-  docker cp "$tmp" "$name":/entrypoint.sh
-  rm -f "$tmp"
+)
+  # shellcheck disable=SC2086
+  docker create --name "$name" $port_flags "liveimap-seed-$server" >/dev/null
+}
+
+create_from_seed() {
+  server=$1
+  shift
+  require_seed_image "$server"
+  docker create --name "liveimap-$server" "$@" "liveimap-seed-$server"
+  docker start "liveimap-$server"
 }
 
 container_exists() {
@@ -442,6 +403,14 @@ PY
   setfacl -m u:1000:r "$DV_CONF/passwd" "$DV_CONF/auth.conf"
 }
 
+if [ "${1:-}" = --reset ]; then
+  if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
+    echo "ERROR: usage: $SCRIPT --reset <server>" >&2
+    exit 1
+  fi
+  reset_from_seed "$2"
+  exit 0
+fi
 if [ "${1:-}" = --recreate ]; then
   if [ $# -ne 2 ] || [ -z "${2:-}" ]; then
     echo "ERROR: usage: $SCRIPT --recreate <server>" >&2
@@ -449,6 +418,7 @@ if [ "${1:-}" = --recreate ]; then
   fi
   require_owned "$2"
   server=$2
+  require_seed_image "$server"
   name=liveimap-$server
   remove_one "$name"
   rows="$GEN/port-rows.new"
@@ -461,40 +431,19 @@ if [ "${1:-}" = --recreate ]; then
         stalwart-dev-managesieve:4190:liveimap-stalwart-dev \
         stalwart-dev-https:443:liveimap-stalwart-dev \
         stalwart-dev-submission:587:liveimap-stalwart-dev)
-      docker volume create liveimap-stalwart-dev-etc >/dev/null
-      docker volume create liveimap-stalwart-dev-data >/dev/null
-      if ! docker run --rm --user 0 --entrypoint /bin/sh \
-        -v liveimap-stalwart-dev-etc:/etc/stalwart \
-        liveimap-stalwart-dev:phase1 \
-        -c 'test -s /etc/stalwart/config.json'; then
-        docker run --rm --user 0 --entrypoint /bin/sh \
-          -v liveimap-stalwart-dev-etc:/etc/stalwart \
-          liveimap-stalwart-dev:phase1 \
-          -c 'umask 077; printf %s "{\"@type\":\"RocksDb\",\"path\":\"/var/lib/stalwart/\"}" > /etc/stalwart/config.json; chown 2000:2000 /etc/stalwart/config.json'
-      fi
       if [ ! -s "$ST_ADMIN_FILE" ]; then
         umask 007
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$ST_ADMIN_FILE"
         umask 022
       fi
       ST_ADMIN_PASS=$(cat "$ST_ADMIN_FILE")
-      reseed_prepare stalwart-dev liveimap-stalwart-dev:phase1
-      # shellcheck disable=SC2046
-      docker create --name liveimap-stalwart-dev \
-        $(reseed_mount_words stalwart-dev) \
-        --entrypoint /liveimap-reseed \
+      create_from_seed stalwart-dev \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:143" \
         -p "${2}:993" \
         -p "${3}:4190" \
         -p "${4}:443" \
-        -p "${5}:587" \
-        -v liveimap-stalwart-dev-etc:/etc/stalwart \
-        -v liveimap-stalwart-dev-data:/var/lib/stalwart \
-        liveimap-stalwart-dev:phase1 \
-        $(reseed_exec_words liveimap-stalwart-dev:phase1 --before)
-      install_reseed liveimap-stalwart-dev
-      docker start liveimap-stalwart-dev
+        -p "${5}:587"
       unset ST_ADMIN_PASS
       {
         printf 'stalwart-dev-imap\t%s\t143\tliveimap-stalwart-dev\n' "$1"
@@ -509,19 +458,8 @@ if [ "${1:-}" = --recreate ]; then
       # shellcheck disable=SC2046
       set -- $(pick_ports dovecot-dev-imap:143:liveimap-dovecot-dev)
       write_dovecot_dev_files
-      docker volume create liveimap-dovecot-dev-mail >/dev/null
-      reseed_prepare dovecot-dev liveimap-dovecot-dev:phase1
-      # shellcheck disable=SC2046
-      docker create --name liveimap-dovecot-dev \
-        $(reseed_mount_words dovecot-dev) \
-        -p "${1}:143" \
-        -v "$DV_CONF/passwd":/etc/dovecot/passwd:ro \
-        -v "$DV_CONF/auth.conf":/etc/dovecot/conf.d/auth.conf:ro \
-        -v liveimap-dovecot-dev-mail:/srv/vmail \
-        liveimap-dovecot-dev:phase1
-      install_reseed liveimap-dovecot-dev
-      patch_saved_entrypoint liveimap-dovecot-dev dovecot
-      docker start liveimap-dovecot-dev
+      create_from_seed dovecot-dev \
+        -p "${1}:143"
       {
         printf 'dovecot-dev-imap\t%s\t143\tliveimap-dovecot-dev\n' "$1"
       } > "$rows"
@@ -532,21 +470,9 @@ if [ "${1:-}" = --recreate ]; then
       set -- $(pick_ports \
         cyrus3137-imap:143:liveimap-cyrus-3137 \
         cyrus3137-http:8080:liveimap-cyrus-3137)
-      umask 007
-      python3 -c 'import secrets; print(secrets.token_hex(16))' > "$CY_ADMIN_FILE"
-      umask 022
-      reseed_prepare cyrus-3137 liveimap-cyrus-3137:phase2
-      # shellcheck disable=SC2046
-      docker create --name liveimap-cyrus-3137 \
-        $(reseed_mount_words cyrus-3137) \
+      create_from_seed cyrus-3137 \
         -p "${1}:143" \
-        -p "${2}:8080" \
-        -v "$SEED":/run/liveimap/accounts.tsv:ro \
-        -v "$CY_ADMIN_FILE":/run/liveimap/admin:ro \
-        liveimap-cyrus-3137:phase2
-      install_reseed liveimap-cyrus-3137
-      patch_saved_entrypoint liveimap-cyrus-3137 cyrus
-      docker start liveimap-cyrus-3137
+        -p "${2}:8080"
       {
         printf 'cyrus3137-imap\t%s\t143\tliveimap-cyrus-3137\n' "$1"
         printf 'cyrus3137-http\t%s\t8080\tliveimap-cyrus-3137\n' "$2"
@@ -575,6 +501,9 @@ for name in liveimap-stalwart-dev liveimap-dovecot-dev \
 done
 if [ "$present" -eq 0 ]; then
 
+require_seed_image stalwart-dev
+require_seed_image dovecot-dev
+require_seed_image cyrus-3137
 mkdir -p "$GEN" "$SRC"
 umask 022
 cat > "$PINS_OUT" <<EOF
@@ -725,7 +654,6 @@ done < /tmp/base-users
 rm -f /tmp/base-users
 chown cyrus:cyrus /etc/sasldb2
 chmod 640 /etc/sasldb2
-/liveimap-reseed
 su -s /bin/sh cyrus -c "$CTL -r" || su -s /bin/sh cyrus -c "$CTL -r"
 "$MASTER" -d -p /run/cyrus/master.pid
 ready=0
@@ -861,7 +789,6 @@ cat > "$DV_SRC/entrypoint.sh" <<'EOF'
 set -eu
 mkdir -p /srv/vmail /run/dovecot /usr/local/var/run/dovecot
 chown vmail:vmail /srv/vmail
-/liveimap-reseed
 exec /usr/local/sbin/dovecot -F
 EOF
 chmod 755 "$DV_SRC/entrypoint.sh"
@@ -1040,47 +967,20 @@ with open(dest, "w", encoding="utf-8") as handle:
 PY
 umask 022
 setfacl -m u:1000:r "$DV_CONF/passwd" "$DV_CONF/auth.conf"
-docker volume create liveimap-dovecot-dev-mail >/dev/null
-reseed_prepare dovecot-dev liveimap-dovecot-dev:phase1
-# shellcheck disable=SC2046
-docker create --name liveimap-dovecot-dev \
-  $(reseed_mount_words dovecot-dev) \
-  -p "${DV_IMAP}:143" \
-  -v "$DV_CONF/passwd":/etc/dovecot/passwd:ro \
-  -v "$DV_CONF/auth.conf":/etc/dovecot/conf.d/auth.conf:ro \
-  -v liveimap-dovecot-dev-mail:/srv/vmail \
-  liveimap-dovecot-dev:phase1
-install_reseed liveimap-dovecot-dev
-patch_saved_entrypoint liveimap-dovecot-dev dovecot
-docker start liveimap-dovecot-dev
+create_from_seed dovecot-dev \
+  -p "${DV_IMAP}:143"
 
-docker volume create liveimap-stalwart-dev-etc >/dev/null
-docker volume create liveimap-stalwart-dev-data >/dev/null
-docker run --rm --user 0 --entrypoint /bin/sh \
-  -v liveimap-stalwart-dev-etc:/etc/stalwart \
-  liveimap-stalwart-dev:phase1 \
-  -c 'umask 077; printf %s "{\"@type\":\"RocksDb\",\"path\":\"/var/lib/stalwart/\"}" > /etc/stalwart/config.json; chown 2000:2000 /etc/stalwart/config.json'
 umask 007
 ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 printf '%s\n' "$ST_ADMIN_PASS" > "$ST_ADMIN_FILE"
 umask 022
-reseed_prepare stalwart-dev liveimap-stalwart-dev:phase1
-# shellcheck disable=SC2046
-docker create --name liveimap-stalwart-dev \
-  $(reseed_mount_words stalwart-dev) \
-  --entrypoint /liveimap-reseed \
+create_from_seed stalwart-dev \
   -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
   -p "${ST_IMAP}:143" \
   -p "${ST_IMAPS}:993" \
   -p "${ST_SIEVE}:4190" \
   -p "${ST_HTTPS}:443" \
-  -p "${ST_SUB}:587" \
-  -v liveimap-stalwart-dev-etc:/etc/stalwart \
-  -v liveimap-stalwart-dev-data:/var/lib/stalwart \
-  liveimap-stalwart-dev:phase1 \
-  $(reseed_exec_words liveimap-stalwart-dev:phase1 --before)
-install_reseed liveimap-stalwart-dev
-docker start liveimap-stalwart-dev
+  -p "${ST_SUB}:587"
 unset ST_ADMIN_PASS
 
 ready=0
@@ -1199,21 +1099,9 @@ PY
 esac
 unset st_code st_body
 
-umask 007
-python3 -c 'import secrets; print(secrets.token_hex(16))' > "$CY_ADMIN_FILE"
-umask 022
-reseed_prepare cyrus-3137 liveimap-cyrus-3137:phase2
-# shellcheck disable=SC2046
-docker create --name liveimap-cyrus-3137 \
-  $(reseed_mount_words cyrus-3137) \
+create_from_seed cyrus-3137 \
   -p "${CY_IMAP}:143" \
-  -p "${CY_HTTP}:8080" \
-  -v "$SEED":/run/liveimap/accounts.tsv:ro \
-  -v "$CY_ADMIN_FILE":/run/liveimap/admin:ro \
-  liveimap-cyrus-3137:phase2
-install_reseed liveimap-cyrus-3137
-patch_saved_entrypoint liveimap-cyrus-3137 cyrus
-docker start liveimap-cyrus-3137
+  -p "${CY_HTTP}:8080"
 
 echo "login append jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" \
