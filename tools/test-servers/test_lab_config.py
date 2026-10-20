@@ -317,4 +317,50 @@ for name in start_names:
     for arg in p_arguments(text):
         for suffix in suffixes:
             assert not arg.endswith(suffix), (name, arg)
+
+# Port-verdict edges 1 and 2. Text only; this does not run docker.
+def py_function(text, name):
+    at = text.find("\ndef " + name + "(")
+    assert at != -1, name
+    nxt = text.find("\ndef ", at + 1)
+    assert nxt != -1, name
+    return text[at:nxt]
+
+published = py_function(lab_py, "check_published")
+assert "sys.exit" not in published
+assert 'return ""' in published
+assert "not published" in published
+assert "no local-ports.tsv row" in published
+checked = regress.find('err = lab.check_published(s["container"])')
+assert checked != -1
+window = regress[checked:checked + 220]
+assert 'if err:' in window
+stop_line = 'stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])'
+assert stop_line in window
+assert window.find("if err:") < window.find(stop_line)
+
+def whole_cport(line):
+    code = line.strip()
+    if "=$(cport " not in code:
+        return False
+    name, rhs = code.split("=", 1)
+    if not name or not name.replace("_", "").isalnum():
+        return False
+    if not rhs.startswith("$(cport ") or not rhs.endswith(")"):
+        return False
+    if rhs.count("$(") != 1:
+        return False
+    return True
+
+for name in ("start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh"):
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    saw = False
+    for line in text.splitlines():
+        if "$(cport" not in line:
+            continue
+        saw = True
+        assert whole_cport(line), (name, line)
+        for bad in ("-p", "printf", "pick_ports", "expected_ports", "published_port"):
+            assert bad not in line, (name, line)
+    assert saw, name
 print("ok")

@@ -211,13 +211,14 @@ def sieve_args(s):
 
 
 def check_published(container):
-    """Each servers.tsv listen port must be published on the local-ports.tsv host port for that service. A miss exits 1."""
+    """Each servers.tsv listen port must be published on the local-ports.tsv host port for that service. A miss returns one string."""
     server = container.split("liveimap-", 1)[-1]
-    wanted = []
+    servers_path = os.path.join(HERE, "servers.tsv")
     try:
-        handle = open(os.path.join(HERE, "servers.tsv"), encoding="utf-8")
+        handle = open(servers_path, encoding="utf-8")
     except OSError:
-        sys.exit(1)
+        return "cannot read " + servers_path
+    wanted = []
     with handle:
         for line in handle:
             if not line.strip() or line.startswith("#"):
@@ -226,12 +227,13 @@ def check_published(container):
             if len(fields) == 3 and fields[2].isdigit() and fields[0] == server:
                 wanted.append((fields[1], int(fields[2])))
     if not wanted:
-        sys.exit(1)
-    saved = {}
+        return server + " no servers.tsv row"
+    ports_path = os.path.join(GEN, "local-ports.tsv")
     try:
-        handle = open(os.path.join(GEN, "local-ports.tsv"), encoding="utf-8")
+        handle = open(ports_path, encoding="utf-8")
     except OSError:
-        sys.exit(1)
+        return "cannot read " + ports_path
+    saved = {}
     with handle:
         for line in handle:
             fields = line.rstrip("\n").split("\t")
@@ -247,8 +249,17 @@ def check_published(container):
         # stalwart-0155 records its https listener as stalwart015-http.
         if service == "https" and "https" not in saved and "http" in saved:
             kind = "http"
-        if not hp.isdigit() or saved.get(kind) != int(hp):
-            sys.exit(1)
+        if hp.isdigit():
+            published = hp
+        else:
+            published = "not published"
+        if kind in saved:
+            local = str(saved[kind])
+        else:
+            local = "no local-ports.tsv row"
+        if published == "not published" or local == "no local-ports.tsv row" or saved.get(kind) != int(hp):
+            return f"{server} {service} {cport} {published} {local}"
+    return ""
 
 
 def client_cert_args(tls):

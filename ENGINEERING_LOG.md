@@ -3501,3 +3501,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - The full start records the sink port before it draws the other host ports.
 
 ## 2026-10-20 - Container listen ports come from servers.tsv.
+
+## 2026-10-20 - A port mismatch records a blocked verdict, and a missing servers.tsv row stops the start script.

@@ -1816,7 +1816,9 @@ def main():
                 err = start_lab_container(s, skipped)
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-                lab.check_published(s["container"])
+                err = lab.check_published(s["container"])
+                if err:
+                    stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
             reseed_notes.append(f"{name} reseeded: {'no' if skipped else 'yes'}")
             if skipped:
                 any_skip = True
