@@ -3475,3 +3475,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-16 - A preserved-key probe fails when the recording shows an IMAP or SMTP dial.
 
 ## 2026-10-19 - Each lab start script can recreate one server and leaves it stopped.
+
+## 2026-10-19 - A recreate exits 0 only when the container is stopped.

@@ -409,9 +409,15 @@ def recreate_zimbra():
         fail("docker run failed: %s" % err[-500:])
     replace_rows(got["zimbra883-imap"], got["zimbra883-https"], got["zimbra883-admin"])
     if container_bad(want_ports):
-        run(["docker", "stop", name], timeout=60)
+        proc = run(["docker", "stop", name], timeout=60)
+        if proc.returncode != 0:
+            err = redact((proc.stderr or "") + (proc.stdout or ""))
+            fail("docker stop failed: %s %s --recreate zimbra-883" % (err[-500:], script))
         fail(script + " --recreate zimbra-883")
-    run(["docker", "stop", name], timeout=60)
+    proc = run(["docker", "stop", name], timeout=60)
+    if proc.returncode != 0:
+        err = redact((proc.stderr or "") + (proc.stdout or ""))
+        fail("docker stop failed: %s %s --recreate zimbra-883" % (err[-500:], script))
 
 args = sys.argv[2:]
 if args and args[0] == "--recreate":

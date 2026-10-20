@@ -279,8 +279,9 @@ finish_recreate() {
   server=$2
   # shellcheck disable=SC2046
   if ! container_ok "$name" $(expected_ports "$name"); then
-    docker stop "$name" >/dev/null 2>&1 || true
-    stop_for_recreate "$server"
+    echo "$SCRIPT --recreate $server" >&2
+    docker stop "$name"
+    exit 1
   fi
   docker stop "$name" >/dev/null
 }
