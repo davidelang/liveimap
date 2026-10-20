@@ -23,6 +23,98 @@ command -v docker >/dev/null
 command -v python3 >/dev/null
 command -v ss >/dev/null
 
+reseed_prepare() {
+  server=$1
+  image=$2
+  mkdir -p "$GEN/$server"
+  if [ ! -f "$GEN/corpus-v1/manifest.tsv" ] || [ ! -f "$DIR/seed/accounts.tsv" ] \
+    || [ ! -f "$DIR/seed/folders.tsv" ] || [ ! -f "$DIR/seed/corpus-v1.sums" ]; then
+    echo "missing seed inputs for $server" >&2
+    exit 1
+  fi
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
+    docker pull "$image"
+  fi
+  LIVEIMAP_IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$image")
+  chmod a+r "$GEN/corpus-v1/manifest.tsv" "$DIR/seed/accounts.tsv" \
+    "$DIR/seed/folders.tsv" "$DIR/seed/corpus-v1.sums" 2>/dev/null || true
+  chmod a+rx "$GEN/$server" "$GEN/corpus-v1" "$DIR/seed" 2>/dev/null || true
+}
+
+reseed_mount_words() {
+  server=$1
+  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' \
+    -v "$GEN/$server:/liveimap-seed:ro" \
+    -v "$GEN/corpus-v1/manifest.tsv:/liveimap-check/manifest.tsv:ro" \
+    -v "$DIR/seed/accounts.tsv:/liveimap-check/accounts.tsv:ro" \
+    -v "$DIR/seed/folders.tsv:/liveimap-check/folders.tsv:ro" \
+    -v "$DIR/seed/corpus-v1.sums:/liveimap-check/corpus-v1.sums:ro" \
+    -v "$GEN/corpus-v1:/liveimap-corpus:ro" \
+    -e "LIVEIMAP_SERVER=$server" \
+    -e "LIVEIMAP_IMAGE_ID=$LIVEIMAP_IMAGE_ID"
+}
+
+reseed_exec_words() {
+  image=$1
+  mode=$2
+  python3 - "$image" "$mode" <<'PY'
+import json, shlex, subprocess, sys
+image, mode = sys.argv[1], sys.argv[2]
+cfg = json.loads(subprocess.check_output(["docker", "image", "inspect", image]))[0]["Config"]
+args = list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or [])
+sys.stdout.write(mode + " -- " + " ".join(shlex.quote(a) for a in args))
+PY
+}
+
+install_reseed() {
+  name=$1
+  flag=$(mktemp)
+  printf 'no\n' > "$flag"
+  docker cp "$DIR/reseed.sh" "$name":/liveimap-reseed
+  docker cp "$flag" "$name":/.liveimap-no-reseed
+  rm -f "$flag"
+}
+
+patch_saved_entrypoint() {
+  name=$1
+  kind=$2
+  tmp=$(mktemp)
+  if ! docker cp "$name":/entrypoint.sh "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    return 0
+  fi
+  python3 - "$tmp" "$kind" <<'PY'
+import sys
+path, kind = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+orig = text
+if kind == "cyrus":
+    needle = 'su -s /bin/sh cyrus -c "$CTL -r"'
+    if "/liveimap-reseed" not in text and needle in text:
+        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
+    mark = "if [ ! -f /tmp/liveimap-restored ]; then\n"
+    start = "awk -F '\\t' 'NR > 1 && $3 == \"base\" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names\n"
+    if "/tmp/liveimap-restored" not in text and start in text:
+        text = text.replace(start, mark + start, 1)
+        end = "rm -f /tmp/base-names /tmp/imtest.out /tmp/create-cmd\n"
+        if end in text:
+            text = text.replace(end, end + "fi\n", 1)
+elif kind == "courier":
+    needle = '"$MAKEUSERDB"\n'
+    if "/liveimap-reseed" not in text and needle in text:
+        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
+elif kind == "dovecot":
+    needle = "exec /usr/local/sbin/dovecot -F\n"
+    if "/liveimap-reseed" not in text and needle in text:
+        text = text.replace(needle, "/liveimap-reseed\n" + needle, 1)
+if text != orig:
+    open(path, "w", encoding="utf-8").write(text)
+PY
+  chmod 755 "$tmp"
+  docker cp "$tmp" "$name":/entrypoint.sh
+  rm -f "$tmp"
+}
+
 container_exists() {
   docker ps -a --format '{{.Names}}' | grep -qx "$1"
 }
@@ -435,16 +527,22 @@ start_cyrus() {
   version_prefix=$8
   admin="$ADMIN_DIR/${name}.txt"
   write_admin "$admin"
+  reseed_prepare "${name#liveimap-}" "$image"
   if [ -n "$http_port" ]; then
+    # shellcheck disable=SC2046
     docker run -d --name "$name" \
+      $(reseed_mount_words "${name#liveimap-}") \
       -p "${port}:143" \
       -p "${http_port}:8080" \
       "$image" sh -c 'while :; do sleep 3600; done'
   else
+    # shellcheck disable=SC2046
     docker run -d --name "$name" \
+      $(reseed_mount_words "${name#liveimap-}") \
       -p "${port}:143" \
       "$image" sh -c 'while :; do sleep 3600; done'
   fi
+  install_reseed "$name"
   docker exec "$name" apt-get update
   if [ "$caldav" = yes ]; then
     docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
@@ -583,9 +681,13 @@ start_dovecot() {
   style=$4
   passfile="$GEN/${name#liveimap-}/passwd"
   write_passwd "$passfile"
+  reseed_prepare "${name#liveimap-}" "$image"
+  # shellcheck disable=SC2046
   docker run -d --name "$name" \
+    $(reseed_mount_words "${name#liveimap-}") \
     -p "${port}:143" \
     "$image" sh -c 'while :; do sleep 3600; done'
+  install_reseed "$name"
   docker exec "$name" apt-get update
   docker exec -e DEBIAN_FRONTEND=noninteractive "$name" apt-get install -y dovecot-imapd
   pin_packages "$name" dovecot-imapd
@@ -628,9 +730,13 @@ EOF
 start_courier() {
   name=liveimap-courier-50
   port=$CO
+  reseed_prepare courier-50 debian:bookworm
+  # shellcheck disable=SC2046
   docker run -d --name "$name" \
+    $(reseed_mount_words courier-50) \
     -p "${port}:143" \
     debian:bookworm sh -c 'while :; do sleep 3600; done'
+  install_reseed "$name"
   docker exec "$name" apt-get update
   docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
     apt-get install -y courier-imap courier-authlib-userdb
@@ -670,12 +776,19 @@ EOF
 }
 
 start_greenmail() {
-  docker run -d --name liveimap-greenmail-16 \
+  reseed_prepare greenmail-16 greenmail/standalone:1.6.15
+  # shellcheck disable=SC2046
+  docker create --name liveimap-greenmail-16 \
+    $(reseed_mount_words greenmail-16) \
+    --entrypoint /liveimap-reseed \
     -p "${GM_IMAP}:3143" \
     -p "${GM_IMAPS}:3993" \
     -p "${GM_SMTP}:3025" \
     -p "${GM_API}:8080" \
-    greenmail/standalone:1.6.15
+    greenmail/standalone:1.6.15 \
+    $(reseed_exec_words greenmail/standalone:1.6.15 --greenmail)
+  install_reseed liveimap-greenmail-16
+  docker start liveimap-greenmail-16
 }
 
 stalwart_accounts() {
@@ -852,11 +965,15 @@ probe_uw() {
 start_uw() {
   name=liveimap-uwimap
   port=$UW
+  reseed_prepare uwimap debian/eol:squeeze
+  # shellcheck disable=SC2046
   if ! docker run -d --name "$name" \
+    $(reseed_mount_words uwimap) \
     -p "${port}:143" \
     debian/eol:squeeze sh -c 'while :; do sleep 3600; done'; then
     return 1
   fi
+  install_reseed "$name"
   if ! docker exec "$name" apt-get update; then
     return 1
   fi
@@ -1018,11 +1135,12 @@ name, gen, seed = sys.argv[1], sys.argv[2], sys.argv[3]
 want = set(sys.argv[4:])
 gen_real = os.path.realpath(gen)
 seed_real = os.path.realpath(seed)
-roots = (gen_real + os.sep, seed_real + os.sep)
+seed_dir = seed_real if os.path.isdir(seed_real) else os.path.dirname(seed_real)
+roots = (gen_real + os.sep, seed_dir + os.sep)
 
 def under(path):
     real = os.path.realpath(path)
-    if real == gen_real or real == seed_real:
+    if real == gen_real or real == seed_real or real == seed_dir:
         return True
     return real.startswith(roots)
 
@@ -1343,7 +1461,11 @@ if [ "${1:-}" = --recreate ]; then
         umask 022
       fi
       ST_ADMIN_PASS=$(cat "$admin")
-      docker run -d --name liveimap-stalwart-0155 \
+      reseed_prepare stalwart-0155 stalwartlabs/stalwart:v0.15.5
+      # shellcheck disable=SC2046
+      docker create --name liveimap-stalwart-0155 \
+        $(reseed_mount_words stalwart-0155) \
+        --entrypoint /liveimap-reseed \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:143" \
         -p "${2}:993" \
@@ -1354,7 +1476,10 @@ if [ "${1:-}" = --recreate ]; then
         -v liveimap-stalwart-0155-etc:/opt/stalwart/etc \
         -v liveimap-stalwart-0155-data:/var/lib/stalwart \
         -v liveimap-stalwart-0155-data:/opt/stalwart/data \
-        stalwartlabs/stalwart:v0.15.5
+        stalwartlabs/stalwart:v0.15.5 \
+        $(reseed_exec_words stalwartlabs/stalwart:v0.15.5 --before)
+      install_reseed liveimap-stalwart-0155
+      docker start liveimap-stalwart-0155
       unset ST_ADMIN_PASS
       {
         printf 'stalwart015-imap\t%s\t143\tliveimap-stalwart-0155\n' "$1"

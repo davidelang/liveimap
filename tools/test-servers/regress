@@ -5,7 +5,7 @@ Preflight and seed failures stop with one reason. Suite failures are collected.
 Recordings and logs go under the repo sandbox symlink. The host address is never
 written into summary.md, results.json, or the RESULTS body.
 """
-import argparse, atexit, json, os, re, shutil, signal, socket, ssl, subprocess, sys, time, urllib.request
+import argparse, atexit, base64, csv, hashlib, imaplib, json, os, re, shutil, signal, socket, ssl, subprocess, sys, tempfile, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -56,6 +56,9 @@ run_rec = ""
 run_log = ""
 commit = ""
 cache = {}
+reseed_notes = []
+drift_lines = []
+any_skip = False
 
 
 def source_address():
@@ -851,19 +854,113 @@ def mark_suite_started():
     suites_started = True
 
 
-def start_lab_container(s):
+def snapshot_line(text):
+    for line in (text or "").splitlines():
+        if "seed-snapshot.sh" in line:
+            return line.strip()
+    return ""
+
+
+def reseed_hook_problem(cont):
+    """Empty when /liveimap-reseed exists and an entrypoint, its script, or up.tsv calls it."""
+    hint = RECREATE_HINTS.get(cont) or f"{cont}: no recreate script"
+    fd, copied = tempfile.mkstemp(prefix="liveimap-reseed-")
+    os.close(fd)
+    try:
+        r = subprocess.run(["docker", "cp", f"{cont}:/liveimap-reseed", copied],
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            return hint
+    finally:
+        try:
+            os.unlink(copied)
+        except OSError:
+            pass
+    import lab
+    upcmd = lab.up_commands().get(cont) or ""
+    if "/liveimap-reseed" in upcmd:
+        return ""
+    r = subprocess.run(
+        ["docker", "inspect", "-f", "{{json .Config.Entrypoint}}\n{{json .Config.Cmd}}", cont],
+        capture_output=True, text=True, errors="replace")
+    inspected = r.stdout or ""
+    if "/liveimap-reseed" in inspected:
+        return ""
+    entry = []
+    try:
+        entry = json.loads(inspected.splitlines()[0]) if inspected.splitlines() else []
+    except (json.JSONDecodeError, IndexError):
+        entry = []
+    if isinstance(entry, list) and entry and str(entry[0]).startswith("/"):
+        fd, body_path = tempfile.mkstemp(prefix="liveimap-entry-")
+        os.close(fd)
+        try:
+            c = subprocess.run(["docker", "cp", f"{cont}:{entry[0]}", body_path],
+                               capture_output=True, text=True, errors="replace")
+            if c.returncode == 0 and "/liveimap-reseed" in open(body_path, encoding="utf-8", errors="replace").read():
+                return ""
+        finally:
+            try:
+                os.unlink(body_path)
+            except OSError:
+                pass
+    return hint
+
+
+def write_reseed_flag(cont, skip):
+    fd, path = tempfile.mkstemp(prefix="liveimap-no-reseed-")
+    try:
+        os.write(fd, b"no\n" if skip else b"yes\n")
+        os.close(fd)
+        fd = None
+        r = subprocess.run(["docker", "cp", path, f"{cont}:/.liveimap-no-reseed"],
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            return first_line(r.stderr or r.stdout)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return ""
+
+
+def container_running(cont):
+    r = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", cont],
+                       capture_output=True, text=True, errors="replace")
+    return r.returncode == 0 and (r.stdout or "").strip() == "true"
+
+
+def start_lab_container(s, skip=False):
     """Stop every other liveimap-* container, start this one, and run its up command."""
     import lab
     cont = s["container"]
     lab.only_one(cont)
+    missing = reseed_hook_problem(cont)
+    if missing:
+        return missing
+    err = write_reseed_flag(cont, skip)
+    if err:
+        return err
     r = subprocess.run(["docker", "start", cont], capture_output=True, text=True, errors="replace")
     if r.returncode != 0:
-        return first_line(r.stderr or r.stdout)
+        return snapshot_line(r.stderr or r.stdout) or first_line(r.stderr or r.stdout)
+    if not container_running(cont):
+        logs = subprocess.run(["docker", "logs", cont], capture_output=True, text=True, errors="replace")
+        text = (logs.stdout or "") + "\n" + (logs.stderr or "")
+        return snapshot_line(text) or first_line(text)
     upcmd = lab.up_commands().get(cont)
     if upcmd:
         r = subprocess.run(["docker", "exec", cont, "sh", "-c", upcmd], capture_output=True, text=True, errors="replace")
         if r.returncode != 0:
-            return first_line(r.stderr or r.stdout)
+            text = (r.stderr or "") + "\n" + (r.stdout or "")
+            return snapshot_line(text) or first_line(text)
+        if not container_running(cont):
+            logs = subprocess.run(["docker", "logs", cont], capture_output=True, text=True, errors="replace")
+            text = (logs.stdout or "") + "\n" + (logs.stderr or "")
+            return snapshot_line(text) or first_line(text)
     n = 900 if cont in lab.ALONE else 300
     if not lab.greeting(s["imap"], False, timeout=n):
         return f"no IMAP greeting after {n}s"
@@ -988,6 +1085,186 @@ def probe_servers(used, by_name):
             if err:
                 return f"{name}: {err}"
     return ""
+
+
+def mutf7(text):
+    out, buf = [], ""
+
+    def flush():
+        nonlocal buf
+        if buf:
+            out.append("&" + base64.b64encode(buf.encode("utf-16-be")).decode().rstrip("=").replace("/", ",") + "-")
+            buf = ""
+
+    for ch in text:
+        if 0x20 <= ord(ch) <= 0x7e:
+            flush()
+            out.append("&-" if ch == "&" else ch)
+        else:
+            buf += ch
+    flush()
+    return "".join(out)
+
+
+def read_seed_table(name):
+    path = os.path.join(HERE, "seed", name)
+    with open(path, newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle, delimiter="\t"))
+
+
+def imap_login(host, port, user, password):
+    ctx = ssl.create_default_context(cadata=open(os.path.join(HERE, "generated", "ca", "ca.der"), "rb").read())
+    ctx.check_hostname = False
+    last = ""
+    for starttls in (False, True):
+        try:
+            mail = imaplib.IMAP4(host, port, timeout=30)
+            if starttls:
+                mail.starttls(ssl_context=ctx)
+            mail.login(user, password)
+            return mail, ""
+        except Exception as exc:
+            last = str(exc)
+    return None, last
+
+
+def listed_names(mail):
+    typ, data = mail.list()
+    found = set()
+    delim = "/"
+    if typ != "OK":
+        return found, delim
+    for row in data or []:
+        if not row:
+            continue
+        line = row.decode("utf-8", "replace") if isinstance(row, bytes) else str(row)
+        parts = line.split('"')
+        if len(parts) >= 3 and len(parts[1]) == 1:
+            delim = parts[1]
+            found.add(parts[-2])
+        else:
+            bits = line.split()
+            if bits:
+                found.add(bits[-1])
+    return found, delim
+
+
+def mailbox_for(folder, user, delim, found):
+    if folder == "INBOX":
+        cands = ["INBOX"]
+    else:
+        enc = mutf7(folder.replace("/", delim))
+        cands = [
+            enc,
+            "INBOX" + delim + enc,
+            "user" + delim + user + delim + enc,
+        ]
+    for cand in cands:
+        if cand in found:
+            return cand
+    return ""
+
+
+def flag_key(words):
+    kept = [w for w in words if w.lower() != "\\recent"]
+    return tuple(sorted(kept, key=str.lower))
+
+
+def fetched_messages(mail):
+    typ, data = mail.uid("fetch", "1:*", "(UID FLAGS BODY.PEEK[])")
+    if typ != "OK" or not data or data == [None]:
+        return []
+    msgs = []
+    for item in data:
+        if item is None or item == b")":
+            continue
+        if isinstance(item, tuple):
+            meta, body = item[0], item[1] if len(item) > 1 else b""
+        else:
+            meta, body = item, b""
+        meta_s = meta.decode("utf-8", "replace") if isinstance(meta, bytes) else str(meta)
+        uid_m = re.search(r"\bUID (\d+)", meta_s)
+        flags_m = re.search(r"FLAGS \(([^)]*)\)", meta_s)
+        uid = int(uid_m.group(1)) if uid_m else 0
+        flags = flags_m.group(1).split() if flags_m else []
+        if not isinstance(body, (bytes, bytearray)):
+            body = str(body).encode()
+        body = bytes(body).replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        msgs.append((uid, flags, body))
+    msgs.sort(key=lambda row: row[0])
+    return msgs
+
+
+def verify_one(s, skipped):
+    """Folder counts, flags, and corpus-v1.sums. Returns (blocked, drift lines)."""
+    import lab
+    server = s["name"]
+    accounts = {row["user"]: row["password"] for row in read_seed_table("accounts.tsv")}
+    folders = [row for row in read_seed_table("folders.tsv")]
+    sums = {}
+    for line in open(os.path.join(HERE, "seed", "corpus-v1.sums"), encoding="utf-8"):
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) >= 4:
+            sums[(fields[0], fields[1])] = fields[3]
+    manifest = os.path.join(HERE, "generated", "corpus-v1", "manifest.tsv")
+    flags_by = {}
+    with open(manifest, newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            words = [] if row.get("flags") == "-" else (row.get("flags") or "").split()
+            flags_by.setdefault((row["user"], row["folder"]), []).append(flag_key(words))
+    problems = []
+    users = []
+    for row in folders:
+        if row["user"] not in users:
+            users.append(row["user"])
+    for user in users:
+        password = accounts.get(user, "")
+        mail, err = imap_login(lab.LAB_HOST, s["imap"], user, password)
+        if mail is None:
+            problems.append(f"{server} INBOX: login failed")
+            continue
+        try:
+            found, delim = listed_names(mail)
+            for row in folders:
+                if row["user"] != user:
+                    continue
+                folder = row["folder"]
+                label = f"{server} {folder}"
+                box = mailbox_for(folder, user, delim, found)
+                if not box:
+                    problems.append(f"{label}: missing")
+                    continue
+                typ, data = mail.select(box, readonly=True)
+                if typ != "OK":
+                    problems.append(f"{label}: missing")
+                    continue
+                try:
+                    got_count = int(data[0])
+                except (TypeError, ValueError, IndexError):
+                    got_count = -1
+                want_count = int(row["count"])
+                if got_count != want_count:
+                    problems.append(f"{label}: count {got_count} != {want_count}")
+                msgs = fetched_messages(mail) if got_count else []
+                want_flags = flags_by.get((user, folder), [])
+                got_flags = [flag_key(flags) for _uid, flags, _body in msgs]
+                if sorted(got_flags) != sorted(want_flags):
+                    problems.append(f"{label}: flags")
+                joined = "\n".join(hashlib.sha256(body).hexdigest() for _uid, _flags, body in msgs)
+                digest = hashlib.sha256(joined.encode()).hexdigest()
+                want_digest = sums.get((user, folder), "")
+                if digest != want_digest:
+                    problems.append(f"{label}: corpus-v1.sums")
+        finally:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+    if skipped:
+        return "", [f"drift: {line}" for line in problems]
+    if problems:
+        return problems[0], []
+    return "", []
 
 
 def seed_one(s):
@@ -1408,6 +1685,8 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
         "rows": body_rows,
         "failing_checks": [redact(n) for n in fails],
         "unseeded_servers": unseeded,
+        "reseed": reseed_notes,
+        "drift": drift_lines,
         "untested": [{"name": name, "reason": "no instrumented test"} for name in (UNTESTED if "ui" in suites else [])],
     }
     try:
@@ -1431,6 +1710,16 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
         lines.append("## unseeded")
         for name in unseeded:
             lines.append(f"- {name}")
+    if reseed_notes:
+        lines.append("")
+        lines.append("## reseed")
+        for note in reseed_notes:
+            lines.append(f"- {note}")
+    if drift_lines:
+        lines.append("")
+        lines.append("## drift")
+        for note in drift_lines:
+            lines.append(f"- {note}")
     open(os.path.join(run_rec, "summary.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     findings = ", ".join(payload["failing_checks"]) if payload["failing_checks"] else "none"
     if verdict == "BLOCKED":
@@ -1465,7 +1754,7 @@ def stop(msg, suites, servers, unseeded):
 
 
 def main():
-    global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to
+    global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to, any_skip
     p = argparse.ArgumentParser(description="Run the lab suites, IDLE events, and per-mechanism login.")
     p.add_argument("--commit", required=True)
     p.add_argument("--servers", default="all")
@@ -1474,6 +1763,7 @@ def main():
     p.add_argument("--responding-to", default="")
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--no-reseed", action="append", default=[])
     a = p.parse_args()
     dry_run = a.dry_run
     responding_to = a.responding_to or "none"
@@ -1502,6 +1792,10 @@ def main():
     if bad_server:
         print(f"VERDICT BLOCKED unknown server {bad_server}")
         sys.exit(1)
+    for token in a.no_reseed:
+        if token != "all" and token not in by_name:
+            print(f"VERDICT BLOCKED unknown server {token}")
+            sys.exit(1)
     suites, bad_suite = selected_suites(a.suites)
     if bad_suite:
         print(f"VERDICT BLOCKED unknown suite {bad_suite}")
@@ -1541,22 +1835,27 @@ def main():
         if err:
             stop(f"VERDICT BLOCKED {err}", suites, names, [])
     write_lock("seed")
+    skip_all = os.environ.get("LAB_NO_RESEED") == "1" or "all" in a.no_reseed
     pending = list(used)
     for name in used:
         pending.pop(0)
         s = by_name.get(name)
+        skipped = skip_all or name in a.no_reseed
         try:
             if s and s.get("container"):
-                err = start_lab_container(s)
+                err = start_lab_container(s, skipped)
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
+            reseed_notes.append(f"{name} reseeded: {'no' if skipped else 'yes'}")
+            if skipped:
+                any_skip = True
             err = probe_servers([name], by_name)
             if err:
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
-            rc, line = seed_one(s)
-            if rc != 0:
-                unseeded = [name] + pending
-                stop(f"VERDICT BLOCKED {name}: {line}", suites, names, unseeded)
+            blocked, drifted = verify_one(s, skipped)
+            if blocked:
+                stop(f"VERDICT BLOCKED {blocked}", suites, names, [])
+            drift_lines.extend(drifted)
         finally:
             if s and s.get("container"):
                 stop_lab_container(s)
@@ -1579,7 +1878,8 @@ def main():
     if "contacts" in suites:
         if "dovecot-245" in names:
             run_lab_suite("contacts", ["dovecot-245"], "alpineBook", ["alpineBook"], a.force)
-    save_cache()
+    if not any_skip:
+        save_cache()
     verdict = "FAIL" if any(row["result"] == "FAIL" for row in rows) else "PASS"
     write_lock("cleanup")
     write_outputs(verdict, "", [], suites, names)

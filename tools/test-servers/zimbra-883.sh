@@ -33,6 +33,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import tempfile
 import time
 
 root = sys.argv[1]
@@ -345,6 +346,87 @@ def container_bad(want):
             return True
     return False
 
+def with_reseed(cmd):
+    image_name = cmd[-1]
+    gen_server = os.path.join(mount_gen, "zimbra-883")
+    os.makedirs(gen_server, exist_ok=True)
+    corpus = os.path.join(mount_gen, "corpus-v1")
+    sources = [
+        os.path.join(corpus, "manifest.tsv"),
+        os.path.join(mount_seed, "accounts.tsv"),
+        os.path.join(mount_seed, "folders.tsv"),
+        os.path.join(mount_seed, "corpus-v1.sums"),
+        corpus,
+        mount_seed,
+        gen_server,
+    ]
+    for path in sources:
+        try:
+            mode = os.stat(path).st_mode
+            extra_mode = 0o444 if os.path.isfile(path) else 0o555
+            os.chmod(path, mode | extra_mode)
+        except OSError:
+            pass
+    proc = run(["docker", "image", "inspect", "-f", "{{.Id}}", image_name])
+    if proc.returncode != 0:
+        fail("docker image inspect failed")
+    image_id = (proc.stdout or "").strip()
+    extra = [
+        "-v", gen_server + ":/liveimap-seed:ro",
+        "-v", os.path.join(corpus, "manifest.tsv") + ":/liveimap-check/manifest.tsv:ro",
+        "-v", os.path.join(mount_seed, "accounts.tsv") + ":/liveimap-check/accounts.tsv:ro",
+        "-v", os.path.join(mount_seed, "folders.tsv") + ":/liveimap-check/folders.tsv:ro",
+        "-v", os.path.join(mount_seed, "corpus-v1.sums") + ":/liveimap-check/corpus-v1.sums:ro",
+        "-v", corpus + ":/liveimap-corpus:ro",
+        "-e", "LIVEIMAP_SERVER=zimbra-883",
+        "-e", "LIVEIMAP_IMAGE_ID=" + image_id,
+    ]
+    out = []
+    i = 0
+    while i < len(cmd):
+        if cmd[i] == "run":
+            out.append("create")
+            i += 1
+            if i < len(cmd) and cmd[i] == "-d":
+                i += 1
+            continue
+        if cmd[i] == "--entrypoint":
+            out.extend(["--entrypoint", "/liveimap-reseed"])
+            i += 2
+            continue
+        out.append(cmd[i])
+        i += 1
+    image_name = out[-1]
+    return out[:-1] + extra + [image_name, "--before", "--", "/zimbra/init"]
+
+def install_reseed_flag():
+    flag = tempfile.NamedTemporaryFile("w", delete=False)
+    try:
+        flag.write("no\n")
+        flag.close()
+        reseed = os.path.join(root, "tools/test-servers/reseed.sh")
+        proc = run(["docker", "cp", reseed, name + ":/liveimap-reseed"])
+        if proc.returncode != 0:
+            fail("docker cp reseed failed")
+        proc = run(["docker", "cp", flag.name, name + ":/.liveimap-no-reseed"])
+        if proc.returncode != 0:
+            fail("docker cp flag failed")
+    finally:
+        try:
+            os.unlink(flag.name)
+        except OSError:
+            pass
+
+def launch_zimbra(cmd):
+    proc = run(with_reseed(cmd), timeout=600, env=os.environ.copy())
+    if proc.returncode != 0:
+        err = redact((proc.stderr or "") + (proc.stdout or ""))
+        fail("docker run failed: %s" % err[-500:])
+    install_reseed_flag()
+    proc = run(["docker", "start", name], timeout=180)
+    if proc.returncode != 0:
+        fail("docker start failed")
+
 def recreate_zimbra():
     if name in container_names():
         proc = run(["docker", "rm", "-f", name])
@@ -403,10 +485,7 @@ def recreate_zimbra():
     for key in setup_keys:
         cmd.extend(["-e", key])
     cmd.append(image)
-    proc = run(cmd, timeout=600, env=os.environ.copy())
-    if proc.returncode != 0:
-        err = redact((proc.stderr or "") + (proc.stdout or ""))
-        fail("docker run failed: %s" % err[-500:])
+    launch_zimbra(cmd)
     replace_rows(got["zimbra883-imap"], got["zimbra883-https"], got["zimbra883-admin"])
     if container_bad(want_ports):
         proc = run(["docker", "stop", name], timeout=60)
@@ -471,10 +550,7 @@ else:
     for key in setup_keys:
         cmd.extend(["-e", key])
     cmd.append(image)
-    proc = run(cmd, timeout=600, env=os.environ.copy())
-    if proc.returncode != 0:
-        err = redact((proc.stderr or "") + (proc.stdout or ""))
-        fail("docker run failed: %s" % err[-500:])
+    launch_zimbra(cmd)
 
 deadline = time.time() + 30 * 60
 stable = None

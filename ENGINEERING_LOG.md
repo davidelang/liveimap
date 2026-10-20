@@ -3479,3 +3479,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-19 - A recreate exits 0 only when the container is stopped.
 
 ## 2026-10-20 - regress stops when a lab container is bound outside this repo.
+
+## 2026-10-20 - Each lab server reseeds from one snapshot.
