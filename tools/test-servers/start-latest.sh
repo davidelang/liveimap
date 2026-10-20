@@ -35,6 +35,218 @@ container_running() {
   docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -qx true
 }
 
+# Container ports each lab container must publish. A container created before a port was added is stale:
+# stop loudly with the recreate command; never reuse it silently.
+expected_ports() {
+  case "$1" in
+    liveimap-greenmail-214) echo "3143 3993 3025 8080" ;;
+    liveimap-stalwart-01625) echo "143 993 4190 443 587" ;;
+    liveimap-dovecot-245) echo "31143 31587" ;;
+    liveimap-cyrus-3124) echo "143 8080" ;;
+    liveimap-courier-606) echo "143" ;;
+    *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
+  esac
+}
+
+check_published() {
+  bindings=$(docker inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{$p}} {{end}}' "$1")
+  for cport in $(expected_ports "$1"); do
+    case " $bindings " in
+      *" $cport/tcp "*) ;;
+      *)
+        echo "ERROR: $1 does not publish $cport/tcp (stale container)." >&2
+        if [ "$1" = liveimap-dovecot-245 ]; then
+          echo "  Recreate it (mail volume kept): $SCRIPT --recreate-dovecot-245" >&2
+        else
+          echo "  Remove it and its volumes, then rerun $SCRIPT" >&2
+        fi
+        exit 1
+        ;;
+    esac
+  done
+}
+
+# draw_ports N: N free host ports (20000-39999) not listening, bindable, and not already in local-ports.tsv.
+draw_ports() {
+python3 - "$PORTS_FILE" "$1" <<'PY'
+import random
+import socket
+import subprocess
+import sys
+
+ports_file = sys.argv[1]
+want = int(sys.argv[2])
+used = set()
+try:
+    with open(ports_file, encoding="utf-8") as handle:
+        for line in handle:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) >= 2 and parts[1].isdigit():
+                used.add(int(parts[1]))
+except FileNotFoundError:
+    pass
+
+def listening(port):
+    out = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        local = parts[3]
+        _host, sep, got = local.rpartition(":")
+        if sep and got == str(port):
+            return True
+    return False
+
+def bindable(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+chosen = []
+seen = set()
+draws = 0
+while len(chosen) < want and draws < 400:
+    draws += 1
+    port = random.randint(20000, 39999)
+    if port in seen or port in used:
+        seen.add(port)
+        continue
+    seen.add(port)
+    if listening(port) or not bindable(port):
+        continue
+    chosen.append(port)
+
+if len(chosen) < want:
+    sys.exit(1)
+print(" ".join(str(p) for p in chosen))
+PY
+}
+
+# Port of the lab fake SMTP sink: the fake-smtp-sink row of local-ports.tsv (the only definition).
+sink_port() {
+  port=$(awk -F '\t' '$1 == "fake-smtp-sink" { n++; p = $2 } END { if (n == 1) print p }' "$PORTS_FILE")
+  case "$port" in
+    ''|*[!0-9]*) echo "ERROR: no single fake-smtp-sink row in $PORTS_FILE; run $SCRIPT --recreate-dovecot-245" >&2; exit 1 ;;
+  esac
+  echo "$port"
+}
+
+# Dovecot 2.4.5: users, auth, submission relay to the fake SMTP sink on the docker bridge gateway, and the
+# container with IMAP ($1 -> 31143) and submission ($2 -> 31587) published; relay to the sink on host port $3.
+create_dovecot_245() {
+  dv_imap=$1
+  dv_sub=$2
+  relay_port=$3
+  gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+  if [ -z "$gateway" ]; then
+    echo "ERROR: no gateway on the docker bridge network" >&2
+    exit 1
+  fi
+  mkdir -p "$GEN/dovecot-245"
+  umask 007
+  cat > "$GEN/dovecot-245/auth.conf" <<'EOF'
+import_environment {
+  DOVEADM_PASSWORD = %{env:DOVEADM_PASSWORD | default}
+  USER_PASSWORD = %{env:USER_PASSWORD | default('{CRYPT}*')}
+}
+passdb passwd-file {
+  passwd_file_path = /etc/dovecot/passwd
+}
+userdb static {
+  fields {
+    uid = vmail
+    gid = vmail
+    home = /srv/vmail/%{user}
+  }
+}
+EOF
+python3 - "$SEED" "$GEN/dovecot-245/passwd" <<'PY'
+import csv
+import sys
+
+seed, dest = sys.argv[1], sys.argv[2]
+lines = []
+with open(seed, newline="") as handle:
+    for row in csv.DictReader(handle, delimiter="\t"):
+        if row.get("profile") != "base":
+            continue
+        user = row.get("user") or ""
+        password = row.get("password") or ""
+        if not user or not password:
+            sys.exit(1)
+        lines.append("%s:{PLAIN}%s\n" % (user, password))
+want = ["liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8"]
+got = [line.split(":", 1)[0] for line in lines]
+if got != want:
+    sys.stderr.write("unexpected base users\n")
+    sys.exit(1)
+with open(dest, "w", encoding="utf-8") as handle:
+    handle.writelines(lines)
+PY
+umask 022
+printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$GEN/dovecot-245/relay.conf"
+setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf" "$GEN/dovecot-245/relay.conf"
+docker volume create liveimap-dovecot-245-mail >/dev/null
+docker run -d --name liveimap-dovecot-245 \
+  -p "${dv_imap}:31143" \
+  -p "${dv_sub}:31587" \
+  -v "$GEN/dovecot-245/relay.conf":/etc/dovecot/conf.d/relay.conf:ro \
+  -v "$GEN/dovecot-245/passwd":/etc/dovecot/passwd:ro \
+  -v "$GEN/dovecot-245/auth.conf":/etc/dovecot/conf.d/auth.conf:ro \
+  -v liveimap-dovecot-245-mail:/srv/vmail \
+  dovecot/dovecot:2.4.5
+}
+
+# --recreate-dovecot-245: replace a stale liveimap-dovecot-245 (mail volume kept, same IMAP host port).
+if [ "${1:-}" = --recreate-dovecot-245 ]; then
+  dv_imap_old=$(awk -F '\t' '$1 == "dovecot245-imap" { p = $2 } END { print p }' "$PORTS_FILE")
+  if [ -z "$dv_imap_old" ]; then
+    echo "ERROR: no dovecot245-imap row in $PORTS_FILE" >&2
+    exit 1
+  fi
+  dv_sub_old=$(awk -F '\t' '$1 == "dovecot245-submission" { p = $2 } END { print p }' "$PORTS_FILE")
+  if [ -z "$dv_sub_old" ]; then
+    set -- $(draw_ports 2)
+    dv_sub_old=${1:-}
+    sink=${2:-}
+  else
+    set -- $(draw_ports 1)
+    sink=${1:-}
+  fi
+  if [ -z "$dv_sub_old" ] || [ -z "$sink" ]; then
+    echo "ERROR: could not draw free ports" >&2
+    exit 1
+  fi
+  # Record first (one fake-smtp-sink row, one dovecot245-submission row), then replace the container.
+  awk -F '\t' '$1 != "fake-smtp-sink" && $1 != "dovecot245-submission"' "$PORTS_FILE" > "$PORTS_FILE.new"
+  printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$dv_sub_old" >> "$PORTS_FILE.new"
+  printf 'fake-smtp-sink\t%s\t%s\thost\n' "$sink" "$sink" >> "$PORTS_FILE.new"
+  mv "$PORTS_FILE.new" "$PORTS_FILE"
+  if container_exists liveimap-dovecot-245; then
+    docker rm -f liveimap-dovecot-245 >/dev/null
+  fi
+  create_dovecot_245 "$dv_imap_old" "$dv_sub_old" "$(sink_port)"
+  check_published liveimap-dovecot-245
+  echo "dovecot245-imap $dv_imap_old"
+  echo "dovecot245-submission $dv_sub_old"
+  echo "fake-smtp-sink $sink"
+  docker stop liveimap-dovecot-245 >/dev/null
+  exit 0
+fi
+
+# Check every existing container before starting any, so a stale one stops the script with nothing started.
+for name in liveimap-greenmail-214 liveimap-stalwart-01625 liveimap-dovecot-245 \
+  liveimap-cyrus-3124 liveimap-courier-606; do
+  if container_exists "$name"; then
+    check_published "$name"
+  fi
+done
 present=0
 for name in liveimap-greenmail-214 liveimap-stalwart-01625 liveimap-dovecot-245 \
   liveimap-cyrus-3124 liveimap-courier-606; do
@@ -532,64 +744,7 @@ echo "building courier image"
 docker build -t liveimap-courier-606:phase1 "$CO_BUILD"
 
 echo "drawing ports"
-PORTS=$(python3 - "$PORTS_FILE" <<'PY'
-import random
-import socket
-import subprocess
-import sys
-
-ports_file = sys.argv[1]
-used = set()
-try:
-    with open(ports_file, encoding="utf-8") as handle:
-        for line in handle:
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) >= 2 and parts[1].isdigit():
-                used.add(int(parts[1]))
-except FileNotFoundError:
-    pass
-
-def listening(port):
-    out = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        local = parts[3]
-        _host, sep, got = local.rpartition(":")
-        if sep and got == str(port):
-            return True
-    return False
-
-def bindable(port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("", port))
-        return True
-    except OSError:
-        return False
-    finally:
-        sock.close()
-
-chosen = []
-seen = set()
-draws = 0
-while len(chosen) < 13 and draws < 400:
-    draws += 1
-    port = random.randint(20000, 39999)
-    if port in seen or port in used:
-        seen.add(port)
-        continue
-    seen.add(port)
-    if listening(port) or not bindable(port):
-        continue
-    chosen.append(port)
-
-if len(chosen) < 13:
-    sys.exit(1)
-print(" ".join(str(p) for p in chosen))
-PY
-)
+PORTS=$(draw_ports 15)
 
 # shellcheck disable=SC2086
 set -- $PORTS
@@ -607,6 +762,8 @@ DV_IMAP=$1
 CY_IMAP=$2
 CY_HTTP=$3
 CO_IMAP=$4
+DV_SUB=$5
+SINK=$6
 
 echo "starting greenmail dovecot stalwart"
 docker run -d --name liveimap-greenmail-214 \
@@ -616,56 +773,7 @@ docker run -d --name liveimap-greenmail-214 \
   -p "${GM_API}:8080" \
   greenmail/standalone:2.1.14
 
-mkdir -p "$GEN/dovecot-245"
-umask 007
-cat > "$GEN/dovecot-245/auth.conf" <<'EOF'
-import_environment {
-  DOVEADM_PASSWORD = %{env:DOVEADM_PASSWORD | default}
-  USER_PASSWORD = %{env:USER_PASSWORD | default('{CRYPT}*')}
-}
-passdb passwd-file {
-  passwd_file_path = /etc/dovecot/passwd
-}
-userdb static {
-  fields {
-    uid = vmail
-    gid = vmail
-    home = /srv/vmail/%{user}
-  }
-}
-EOF
-python3 - "$SEED" "$GEN/dovecot-245/passwd" <<'PY'
-import csv
-import sys
-
-seed, dest = sys.argv[1], sys.argv[2]
-lines = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        user = row.get("user") or ""
-        password = row.get("password") or ""
-        if not user or not password:
-            sys.exit(1)
-        lines.append("%s:{PLAIN}%s\n" % (user, password))
-want = ["liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8"]
-got = [line.split(":", 1)[0] for line in lines]
-if got != want:
-    sys.stderr.write("unexpected base users\n")
-    sys.exit(1)
-with open(dest, "w", encoding="utf-8") as handle:
-    handle.writelines(lines)
-PY
-umask 022
-setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf"
-docker volume create liveimap-dovecot-245-mail >/dev/null
-docker run -d --name liveimap-dovecot-245 \
-  -p "${DV_IMAP}:31143" \
-  -v "$GEN/dovecot-245/passwd":/etc/dovecot/passwd:ro \
-  -v "$GEN/dovecot-245/auth.conf":/etc/dovecot/conf.d/auth.conf:ro \
-  -v liveimap-dovecot-245-mail:/srv/vmail \
-  dovecot/dovecot:2.4.5
+create_dovecot_245 "$DV_IMAP" "$DV_SUB" "$SINK"
 
 docker volume create liveimap-stalwart-01625-etc >/dev/null
 docker volume create liveimap-stalwart-01625-data >/dev/null
@@ -1160,6 +1268,8 @@ PY
   printf 'stalwart01625-https\t%s\t443\tliveimap-stalwart-01625\n' "$ST_HTTPS"
   printf 'stalwart01625-submission\t%s\t587\tliveimap-stalwart-01625\n' "$ST_SUB"
   printf 'dovecot245-imap\t%s\t31143\tliveimap-dovecot-245\n' "$DV_IMAP"
+  printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$DV_SUB"
+  printf 'fake-smtp-sink\t%s\t%s\thost\n' "$SINK" "$SINK"
   printf 'cyrus3124-imap\t%s\t143\tliveimap-cyrus-3124\n' "$CY_IMAP"
   printf 'cyrus3124-http\t%s\t8080\tliveimap-cyrus-3124\n' "$CY_HTTP"
   printf 'courier606-imap\t%s\t143\tliveimap-courier-606\n' "$CO_IMAP"
@@ -1188,6 +1298,8 @@ echo "stalwart01625-managesieve $ST_SIEVE"
 echo "stalwart01625-https $ST_HTTPS"
 echo "stalwart01625-submission $ST_SUB"
 echo "dovecot245-imap $DV_IMAP"
+echo "dovecot245-submission $DV_SUB"
+echo "fake-smtp-sink $SINK"
 echo "cyrus3124-imap $CY_IMAP"
 echo "cyrus3124-http $CY_HTTP"
 echo "courier606-imap $CO_IMAP"

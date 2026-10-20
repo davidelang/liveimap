@@ -42,6 +42,10 @@ RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
 
 hold_lock = False
 cleaned = False
+fake_smtp = None  # ai-fake-smtp.py started by this run (relay sink for RELAY_SERVERS)
+# Servers whose submission relays to the lab fake SMTP sink (start-latest.sh relay.conf; port = the
+# fake-smtp-sink row of generated/local-ports.tsv).
+RELAY_SERVERS = {"dovecot-245"}
 dry_run = False
 suites_started = False
 responding_to = "none"
@@ -141,6 +145,12 @@ def cleanup():
     if cleaned:
         return
     cleaned = True
+    if fake_smtp is not None and fake_smtp.poll() is None:
+        fake_smtp.terminate()
+        try:
+            fake_smtp.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            fake_smtp.kill()
     # Force-stop only after a suite function has been entered. The lock is not that mark.
     if hold_lock and suites_started and not dry_run:
         try:
@@ -802,13 +812,80 @@ def stop_lab_container(s):
     subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
 
 
+RECREATE_DOVECOT = "tools/test-servers/start-latest.sh --recreate-dovecot-245"
+
+
+def fake_smtp_port():
+    """(port, "") from the single fake-smtp-sink row of generated/local-ports.tsv, else (0, why)."""
+    import lab
+    path = os.path.join(lab.GEN, "local-ports.tsv")
+    try:
+        rows = [l.rstrip("\n").split("\t") for l in open(path, encoding="utf-8")]
+    except OSError as e:
+        return 0, f"cannot read {path}: {e.strerror or e}"
+    got = [r[1] for r in rows if len(r) == 4 and r[0] == "fake-smtp-sink"]
+    if len(got) != 1 or not got[0].isdigit():
+        return 0, f"{len(got)} fake-smtp-sink rows in {path} (want one); run {RECREATE_DOVECOT}"
+    return int(got[0]), ""
+
+
+def relay_check(cont):
+    """The container's submission relay is the fake SMTP sink: docker gateway : fake-smtp-sink port, and it answers."""
+    port, err = fake_smtp_port()
+    if err:
+        return err
+    r = subprocess.run(["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}", cont],
+                       capture_output=True, text=True, errors="replace")
+    gw = (r.stdout or "").split()
+    if r.returncode != 0 or len(gw) != 1:
+        return f"cannot read the docker gateway of {cont}: {first_line(r.stderr or r.stdout or 'none')}"
+    r = subprocess.run(["docker", "exec", cont, "doveconf", "-h", "submission_relay_host", "submission_relay_port"],
+                       capture_output=True, text=True, errors="replace")
+    got = (r.stdout or "").split()
+    if r.returncode != 0 or got != [gw[0], str(port)]:
+        return (f"submission relay is {' '.join(got) or first_line(r.stderr or 'unset')}, want {gw[0]} {port} "
+                f"(recreate: {RECREATE_DOVECOT})")
+    err = smtp_banner(gw[0], port)
+    if err:
+        return f"fake SMTP sink on {gw[0]}:{port}: {err}"
+    return ""
+
+
+def start_fake_smtp():
+    """Start ai-fake-smtp.py on the fake-smtp-sink port for this run. A port in use is an error, not a reuse."""
+    global fake_smtp
+    port, err = fake_smtp_port()
+    if err:
+        return err
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # TIME_WAIT from a past run is not "in use"
+    try:
+        probe.bind(("", port))
+    except OSError as e:
+        return (f"fake-smtp-sink port {port} (generated/local-ports.tsv) is in use ({e.strerror or e}); "
+                f"draw a new one: {RECREATE_DOVECOT}")
+    finally:
+        probe.close()
+    os.makedirs(run_log, exist_ok=True)
+    fake_smtp = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), str(port)],
+                                 env=child_env({"LAB_LOG": os.path.join(run_log, "fake-smtp.log")}),
+                                 stdout=subprocess.DEVNULL, stderr=open(os.path.join(run_log, "fake-smtp.err"), "w"))
+    for _ in range(50):
+        if fake_smtp.poll() is not None:
+            return f"ai-fake-smtp.py exited {fake_smtp.returncode} (see {run_log}/fake-smtp.err)"
+        if not smtp_banner("127.0.0.1", port):
+            return ""
+        time.sleep(0.1)
+    return f"ai-fake-smtp.py gave no banner on {port} in 5s"
+
+
 def probe_servers(used, by_name):
     import lab
     host = lab.LAB_HOST
     jmap = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "jmap.tsv"), 4)}
     smtp = {}
     for row in read_tsv_rows(os.path.join(HERE, "smtp.tsv"), 4):
-        smtp.setdefault(row[0], row)
+        smtp.setdefault(row[0], []).append(row)
     sieve = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3)}
     for name in used:
         s = by_name.get(name)
@@ -825,12 +902,15 @@ def probe_servers(used, by_name):
             err = jmap_session(host, hp, row[2])
             if err:
                 return f"{name}: {err}"
-        if name in smtp:
-            row = smtp[name]
+        for row in smtp.get(name, []):
             hp, derr = docker_port(s["container"], row[2])
             if derr:
-                return f"{name}: {derr}"
+                return f"{name}: SMTP {row[1]} container port {row[2]}: {derr} (smtp.tsv row; the start script must publish it)"
             err = smtp_banner(host, hp)
+            if err:
+                return f"{name}: SMTP {row[1]} port {hp}: {err}"
+        if name in RELAY_SERVERS:
+            err = relay_check(s["container"])
             if err:
                 return f"{name}: {err}"
         if name in sieve:
@@ -1386,6 +1466,10 @@ def main():
         stop(err, suites, names, [])
     used = servers_used(names, suites)
     unseeded = []
+    if any(n in RELAY_SERVERS for n in used):
+        err = start_fake_smtp()
+        if err:
+            stop(f"VERDICT BLOCKED {err}", suites, names, [])
     write_lock("seed")
     pending = list(used)
     for name in used:

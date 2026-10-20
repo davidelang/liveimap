@@ -37,11 +37,8 @@ passdb lab-cert {
 }
 # end lab-clientcert
 CONF
-    # LAB_SUBMISSION_RELAY=host:port: relay submission to that sink (submission-proxy.py), for AUTH EXTERNAL
-    # on SMTP. Without a relay Dovecot's submission refuses every session.
-    if [ -n "${LAB_SUBMISSION_RELAY:-}" ]; then
-      sed -i '/^# end lab-clientcert/i submission_relay_host = '"${LAB_SUBMISSION_RELAY%:*}"'\nsubmission_relay_port = '"${LAB_SUBMISSION_RELAY##*:}"'\nsubmission_relay_trusted = yes' "$tmp"
-    fi
+    # Submission relay: not set here. start-latest.sh mounts generated/dovecot-245/relay.conf
+    # (the fake-smtp-sink port of generated/local-ports.tsv, via the docker bridge gateway) when it creates the container.
     docker cp "$tmp" "$c:$conf" >/dev/null
     # LAB_TLS_MAX=1.2 caps the server at TLS 1.2 (Dovecot has no max-protocol setting, so it goes into the
     # container's system OpenSSL config, which Dovecot loads); unset restores the original (TLS 1.3).
