@@ -467,6 +467,72 @@ def ensure_dirs():
     return ""
 
 
+# Bind mounts must be real paths under this repo's lab dirs. A container created from a sandbox
+# copy (a deleted or moved path) stops here, not later as docker's "not a directory".
+MOUNT_ROOTS = [os.path.join(HERE, "generated"), os.path.join(HERE, "seed")]
+RECREATE_HINTS = {
+    "liveimap-greenmail-214": "tools/test-servers/start-latest.sh --recreate greenmail-214",
+    "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
+    "liveimap-dovecot-245": "tools/test-servers/start-latest.sh --recreate dovecot-245",
+    "liveimap-cyrus-3124": "tools/test-servers/start-latest.sh --recreate cyrus-3124",
+    "liveimap-courier-606": "tools/test-servers/start-latest.sh --recreate courier-606",
+    "liveimap-greenmail-dev": "tools/test-servers/start-dev.sh --recreate greenmail-dev",
+    "liveimap-stalwart-dev": "tools/test-servers/start-dev.sh --recreate stalwart-dev",
+    "liveimap-dovecot-dev": "tools/test-servers/start-dev.sh --recreate dovecot-dev",
+    "liveimap-cyrus-3137": "tools/test-servers/start-dev.sh --recreate cyrus-3137",
+    "liveimap-greenmail": "tools/test-servers/start-local.sh --recreate greenmail",
+    "liveimap-stalwart": "tools/test-servers/start-local.sh --recreate stalwart",
+    "liveimap-cyrus-22": "tools/test-servers/start-older.sh --recreate cyrus-22",
+    "liveimap-cyrus-24": "tools/test-servers/start-older.sh --recreate cyrus-24",
+    "liveimap-cyrus-25": "tools/test-servers/start-older.sh --recreate cyrus-25",
+    "liveimap-cyrus-36": "tools/test-servers/start-older.sh --recreate cyrus-36",
+    "liveimap-dovecot-10": "tools/test-servers/start-older.sh --recreate dovecot-10",
+    "liveimap-dovecot-12": "tools/test-servers/start-older.sh --recreate dovecot-12",
+    "liveimap-dovecot-22": "tools/test-servers/start-older.sh --recreate dovecot-22",
+    "liveimap-courier-50": "tools/test-servers/start-older.sh --recreate courier-50",
+    "liveimap-uwimap": "tools/test-servers/start-older.sh --recreate uwimap",
+    "liveimap-greenmail-16": "tools/test-servers/start-older.sh --recreate greenmail-16",
+    "liveimap-stalwart-0155": "tools/test-servers/start-older.sh --recreate stalwart-0155",
+    "liveimap-zimbra-883": "tools/test-servers/zimbra-883.sh --recreate zimbra-883",
+}
+
+
+def lab_mount_errors():
+    """Bind sources on every liveimap-* container must exist under MOUNT_ROOTS. Named volumes are skipped."""
+    r = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}"],
+                       capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return [f"docker ps -a failed: {first_line(r.stderr or r.stdout)}"]
+    roots = [os.path.realpath(p) + os.sep for p in MOUNT_ROOTS]
+    errs = []
+    for cont in sorted(n for n in (r.stdout or "").split() if n.startswith("liveimap-")):
+        q = subprocess.run(["docker", "inspect", "-f", "{{json .Mounts}}", cont],
+                           capture_output=True, text=True, errors="replace")
+        if q.returncode != 0:
+            errs.append(f"{cont}: docker inspect failed: {first_line(q.stderr or q.stdout)}")
+            continue
+        hint = RECREATE_HINTS.get(cont)
+        for m in json.loads(q.stdout) or []:
+            if m.get("Type") != "bind":
+                continue
+            src = m.get("Source") or ""
+            real = os.path.realpath(src)
+            outside = not any(real.startswith(root) for root in roots)
+            missing = not os.path.exists(src)
+            if not outside and not missing:
+                continue
+            if not hint:
+                msg = f"{cont}: no recreate script"
+                if msg not in errs:
+                    errs.append(msg)
+                continue
+            if outside:
+                errs.append(f"{cont}: bind {src} is outside {' or '.join(MOUNT_ROOTS)}; recreate: {hint}")
+            else:
+                errs.append(f"{cont}: bind source {src} is missing; recreate: {hint}")
+    return errs
+
+
 def load_cache():
     if not os.path.exists(CACHE_PATH):
         return {}
@@ -812,7 +878,7 @@ def stop_lab_container(s):
     subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
 
 
-RECREATE_DOVECOT = "tools/test-servers/start-latest.sh --recreate-dovecot-245"
+RECREATE_DOVECOT = "tools/test-servers/start-latest.sh --recreate dovecot-245"
 
 
 def fake_smtp_port():
@@ -1462,6 +1528,10 @@ def main():
     if mb < 2048:
         stop(f"VERDICT BLOCKED MemAvailable {mb} MB is below 2048 MB", suites, names, [])
     err = ensure_dirs()
+    if not err:
+        bad = lab_mount_errors()
+        if bad:
+            err = "VERDICT BLOCKED lab container mounts: " + " | ".join(bad)
     if err:
         stop(err, suites, names, [])
     used = servers_used(names, suites)
