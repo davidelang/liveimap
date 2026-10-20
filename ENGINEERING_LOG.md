@@ -3485,3 +3485,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - LIST verify keeps the mailbox name.
 
 ## 2026-10-20 - A reseed tar keeps ancestor directories and a dead container is reported at once.
+
+## 2026-10-20 - The snapshot generator does not wipe accounts.

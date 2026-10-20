@@ -58,26 +58,6 @@ if docker inspect -f '{{.State.Running}}' "$name" | grep -qx true; then
   docker stop -t 60 "$name" >/dev/null
 fi
 docker start "$name" >/dev/null
-# shellcheck disable=SC2086
-docker exec "$name" sh -c '
-wipe_one() {
-  p=$1
-  if [ -d "$p" ]; then
-    find "$p" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  elif [ -e "$p" ]; then
-    rm -rf "$p"
-    mkdir -p "$p"
-  else
-    mkdir -p "$p"
-  fi
-}
-for p in "$@"; do
-  wipe_one "$p"
-done
-' sh $paths
-# SIGKILL so a shutdown checkpoint cannot rewrite the wiped store.
-docker kill "$name" >/dev/null
-docker start "$name" >/dev/null
 up=$(awk -F '\t' -v c="$name" '$1 == c { print $2; exit }' "$DIR/up.tsv")
 if [ -n "$up" ]; then
   docker exec "$name" sh -c "$up"
@@ -188,51 +168,52 @@ folder_rows = list(csv.DictReader(open(folders, encoding="utf-8"), delimiter="\t
 def slug(folder):
     return folder.replace("/", "_")
 
-for user, password in users:
-    m = login(user, password)
-    try:
-        m.select("INBOX")
-        delim = "/"
-        typ, listed = m.list('""', '"INBOX"')
-        if listed and listed[0]:
-            parts = listed[0].decode(errors="replace").split('"')
-            if len(parts) >= 3 and len(parts[1]) == 1:
-                delim = parts[1]
-        made = set()
-        for row in folder_rows:
-            if row["user"] != user or row["folder"] == "INBOX":
-                continue
-            segs = row["folder"].split("/")
-            for i in range(1, len(segs) + 1):
-                p = mutf7(delim.join(segs[:i]))
-                if p in made:
+def append_corpus():
+    for user, password in users:
+        m = login(user, password)
+        try:
+            m.select("INBOX")
+            delim = "/"
+            typ, listed = m.list('""', '"INBOX"')
+            if listed and listed[0]:
+                parts = listed[0].decode(errors="replace").split('"')
+                if len(parts) >= 3 and len(parts[1]) == 1:
+                    delim = parts[1]
+            made = set()
+            for row in folder_rows:
+                if row["user"] != user or row["folder"] == "INBOX":
                     continue
-                try:
-                    m.create(q(p))
-                except imaplib.IMAP4.error:
-                    pass
-                made.add(p)
-        try:
-            m.create("LiveIMAP-Test")
-        except imaplib.IMAP4.error:
-            pass
-        for row in manifest:
-            if row["user"] != user:
-                continue
-            folder = row["folder"]
-            name_box = "INBOX" if folder == "INBOX" else mutf7(folder.replace("/", delim))
-            path = os.path.join(corpus, user, slug(folder), row["file"])
-            data = open(path, "rb").read().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-            flags = None if row["flags"] == "-" else "(" + row["flags"] + ")"
-            when = datetime.fromisoformat(row["internaldate"].replace("Z", "+00:00"))
-            typ, resp = m.append(q(name_box), flags, imaplib.Time2Internaldate(when), data)
-            if typ != "OK":
-                sys.exit("append failed " + user + " " + folder)
-    finally:
-        try:
-            m.logout()
-        except Exception:
-            pass
+                segs = row["folder"].split("/")
+                for i in range(1, len(segs) + 1):
+                    p = mutf7(delim.join(segs[:i]))
+                    if p in made:
+                        continue
+                    try:
+                        m.create(q(p))
+                    except imaplib.IMAP4.error:
+                        pass
+                    made.add(p)
+            try:
+                m.create("LiveIMAP-Test")
+            except imaplib.IMAP4.error:
+                pass
+            for row in manifest:
+                if row["user"] != user:
+                    continue
+                folder = row["folder"]
+                name_box = "INBOX" if folder == "INBOX" else mutf7(folder.replace("/", delim))
+                path = os.path.join(corpus, user, slug(folder), row["file"])
+                data = open(path, "rb").read().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+                flags = None if row["flags"] == "-" else "(" + row["flags"] + ")"
+                when = datetime.fromisoformat(row["internaldate"].replace("Z", "+00:00"))
+                typ, resp = m.append(q(name_box), flags, imaplib.Time2Internaldate(when), data)
+                if typ != "OK":
+                    sys.exit("append failed " + user + " " + folder)
+        finally:
+            try:
+                m.logout()
+            except Exception:
+                pass
 
 def listed_names(mail):
     typ, data = mail.list()
@@ -366,10 +347,52 @@ def verify_seed():
                 m.logout()
             except Exception:
                 pass
-    if problems:
-        sys.exit(problems[0])
+    return problems
 
-verify_seed()
+recreate_scripts = {
+    "greenmail-214": "start-latest.sh",
+    "stalwart-01625": "start-latest.sh",
+    "dovecot-245": "start-latest.sh",
+    "cyrus-3124": "start-latest.sh",
+    "courier-606": "start-latest.sh",
+    "greenmail-dev": "start-dev.sh",
+    "stalwart-dev": "start-dev.sh",
+    "dovecot-dev": "start-dev.sh",
+    "cyrus-3137": "start-dev.sh",
+    "cyrus-22": "start-older.sh",
+    "cyrus-24": "start-older.sh",
+    "cyrus-25": "start-older.sh",
+    "cyrus-36": "start-older.sh",
+    "dovecot-10": "start-older.sh",
+    "dovecot-12": "start-older.sh",
+    "dovecot-22": "start-older.sh",
+    "courier-50": "start-older.sh",
+    "uwimap": "start-older.sh",
+    "greenmail-16": "start-older.sh",
+    "stalwart-0155": "start-older.sh",
+    "greenmail": "start-local.sh",
+    "stalwart": "start-local.sh",
+    "zimbra-883": "zimbra-883.sh",
+}
+
+def recreate_line():
+    script = recreate_scripts[server]
+    return "tools/test-servers/" + script + " --recreate " + server
+
+def fail_seed(problems):
+    for problem in problems:
+        sys.stderr.write(problem + "\n")
+    sys.stderr.write(recreate_line() + "\n")
+    sys.exit(1)
+
+problems = verify_seed()
+if problems:
+    if any("login failed" in item for item in problems):
+        fail_seed(problems)
+    append_corpus()
+    problems = verify_seed()
+    if problems:
+        fail_seed(problems)
 PY
 
 docker stop -t 60 "$name" >/dev/null
