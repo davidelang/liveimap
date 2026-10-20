@@ -1124,6 +1124,7 @@ fi
 echo "building courier image"
 docker build -t liveimap-courier-606:phase1 "$CO_BUILD"
 
+sink_port >/dev/null
 echo "drawing ports"
 PORTS=$(draw_ports 10)
 

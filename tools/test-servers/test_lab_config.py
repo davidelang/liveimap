@@ -253,6 +253,9 @@ tail = latest[latest.find('echo "drawing ports"'):]
 assert "draw_ports 10" in tail
 assert "draw_ports 1)" not in tail
 assert "fake-smtp-sink" not in tail
+sink_at = latest.find("sink_port >/dev/null")
+draw10_at = latest.find("PORTS=$(draw_ports 10)")
+assert sink_at != -1 and draw10_at != -1 and sink_at < draw10_at
 assert "Could not find the file" in snap
 assert snap.count("Could not find the file") == 2
 assert 'mktemp -d "$here/generated/seed-snapshot.XXXXXX"' in snap
