@@ -1,6 +1,6 @@
 import sys, subprocess, os, time
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); import lab
+sys.path.insert(0, HERE); import lab, ports
 name, tls, run = sys.argv[1], sys.argv[2], sys.argv[3]
 s = [x for x in lab.servers() if x["name"] == name][0]
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
@@ -27,9 +27,10 @@ try:
         # smtp-extra.tsv: same columns as smtp.tsv, for servers smtp.tsv lacks
         for line in open(os.path.join(HERE, "smtp-extra.tsv")):
             f = line.rstrip("\n").split("\t")
-            if len(f) == 4 and f[0] == name and f[1] == tls:
-                hp = subprocess.run(["docker", "port", s["container"], f[2]], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
-                if hp: return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@{f[3]}"]
+            if len(f) == 3 and f[0] == name and f[1] == tls:
+                cport = ports.container_port(name, "submission")
+                hp = subprocess.run(["docker", "port", s["container"], str(cport)], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
+                if hp: return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@{f[2]}"]
         return []
     print("smtp", smtp())
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#acceptanceMatrix",

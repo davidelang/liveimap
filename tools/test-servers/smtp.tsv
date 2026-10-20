@@ -1,6 +1,6 @@
-stalwart-dev	None	587	localhost.local
-stalwart-dev	StartTls	587	localhost.local
-stalwart	StartTls	587	localhost.local
-stalwart-0155	StartTls	587	localhost.local
-stalwart-01625	StartTls	587	localhost.local
-dovecot-245	StartTls	31587	lab.test
+stalwart-dev	None	localhost.local
+stalwart-dev	StartTls	localhost.local
+stalwart	StartTls	localhost.local
+stalwart-0155	StartTls	localhost.local
+stalwart-01625	StartTls	localhost.local
+dovecot-245	StartTls	lab.test

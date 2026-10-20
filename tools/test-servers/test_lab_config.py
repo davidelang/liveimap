@@ -268,4 +268,53 @@ for line in snap.splitlines():
 assert '[ "$grep_status" -eq 0 ]' in snap
 assert '[ "$grep_status" -ne 1 ]' in snap
 assert ">/dev/null 2>&1" not in snap.split('docker cp "$name:/liveimap-reseed"', 1)[1]
+
+# servers.tsv edges 1 and 2. Text only; this does not run docker.
+import ports
+assert ports.container_port("dovecot-245", "submission") == 31587
+assert ports.container_port("dovecot-245", "imap") == 31143
+try:
+    ports.container_port("no-such", "imap")
+    raise AssertionError("missing servers.tsv row should exit")
+except SystemExit as e:
+    text = e.code if isinstance(e.code, str) else ""
+    assert e.code != 0
+    assert "no-such" in text and "imap" in text
+
+def p_arguments(text):
+    found = []
+    for line in text.splitlines():
+        tokens = []
+        buf = []
+        quote = ""
+        for ch in line:
+            if quote:
+                buf.append(ch)
+                if ch == quote:
+                    quote = ""
+                continue
+            if ch in "\"'":
+                quote = ch
+                buf.append(ch)
+                continue
+            if ch.isspace():
+                if buf:
+                    tokens.append("".join(buf))
+                    buf = []
+                continue
+            buf.append(ch)
+        if buf:
+            tokens.append("".join(buf))
+        for i, tok in enumerate(tokens):
+            bare = tok.strip("\"',")
+            if bare == "-p" and i + 1 < len(tokens):
+                found.append(tokens[i + 1].strip("\"'\\,"))
+    return found
+
+suffixes = (":143", ":993", ":4190", ":443", ":587", ":8080", ":31143", ":31587", ":7071")
+for name in start_names:
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    for arg in p_arguments(text):
+        for suffix in suffixes:
+            assert not arg.endswith(suffix), (name, arg)
 print("ok")

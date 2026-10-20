@@ -36,6 +36,8 @@ import sys
 import time
 
 root = sys.argv[1]
+sys.path.insert(0, os.path.join(root, "tools", "test-servers"))
+import ports as listen_ports
 name = "liveimap-zimbra-883"
 image = "liveimap-seed-zimbra-883"
 host = "127.0.0.1"
@@ -201,11 +203,13 @@ def draw_ports(used):
     fail("no free ports")
 
 def replace_rows(imap_port, https_port, admin_port):
+    imap_c = listen_ports.container_port("zimbra-883", "imap")
+    admin_c = listen_ports.container_port("zimbra-883", "admin")
     new = (
-        "zimbra883-imap\t%d\t143\t%s\n"
+        "zimbra883-imap\t%d\t%d\t%s\n"
         "zimbra883-https\t%d\t443\t%s\n"
-        "zimbra883-admin\t%d\t7071\t%s\n"
-    ) % (imap_port, name, https_port, name, admin_port, name)
+        "zimbra883-admin\t%d\t%d\t%s\n"
+    ) % (imap_port, imap_c, name, https_port, name, admin_port, admin_c, name)
     services = ("zimbra883-imap", "zimbra883-https", "zimbra883-admin")
     old = ""
     if os.path.exists(ports_path):
@@ -347,15 +351,17 @@ def require_seed_image():
 
 def zimbra_create(imap_port, https_port, admin_port):
     require_seed_image()
+    imap_c = listen_ports.container_port("zimbra-883", "imap")
+    admin_c = listen_ports.container_port("zimbra-883", "admin")
     cmd = [
         "docker", "create",
         "--name", name,
         "--hostname", domain,
         "--restart", "no",
         "--entrypoint", "/zimbra/init",
-        "-p", "%s:%d:143" % (host, imap_port),
-        "-p", "%s:%d:443" % (host, https_port),
-        "-p", "%s:%d:7071" % (host, admin_port),
+        "-p", "%s:%d:%d" % (host, imap_port, imap_c),
+        "-p", "%s:%d:%d" % (host, https_port, 443),
+        "-p", "%s:%d:%d" % (host, admin_port, admin_c),
     ]
     for key in setup_keys:
         cmd.extend(["-e", key])

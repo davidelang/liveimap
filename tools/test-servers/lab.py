@@ -180,30 +180,75 @@ def mechanisms(caps):
 
 
 def smtp_args(s, tls):
-    """Lab SMTP from smtp.tsv (server, TLS mode, container port, recipient domain) for the run's TLS mode: the mapped host port and a lab-account
+    """Lab SMTP from smtp.tsv (server, TLS mode, recipient domain) for the run's TLS mode: the mapped host port and a lab-account
     recipient, so test mail only ever goes to the lab server's own local account."""
+    import ports
     path = os.path.join(HERE, "smtp.tsv")
     for line in open(path):
         f = line.rstrip("\n").split("\t")
-        if len(f) == 4 and f[0] == s["name"] and f[1] == tls:
-            out = subprocess.run(["docker", "port", "liveimap-" + f[0], f[2]], capture_output=True, text=True).stdout
+        if len(f) == 3 and f[0] == s["name"] and f[1] == tls:
+            cport = ports.container_port(f[0], "submission")
+            out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
             hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
             if hp:
-                return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{user_for(s).split('@')[0]}@{f[3]}"]
+                return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{user_for(s).split('@')[0]}@{f[2]}"]
     return []
 
 
 def sieve_args(s):
-    """Lab ManageSieve from sieve.tsv (server, TLS mode, container port): mapped host port and mode."""
+    """Lab ManageSieve from sieve.tsv (server, TLS mode): mapped host port and mode."""
+    import ports
     path = os.path.join(HERE, "sieve.tsv")
     for line in open(path):
         f = line.rstrip("\n").split("\t")
-        if len(f) == 3 and f[0] == s["name"]:
-            out = subprocess.run(["docker", "port", "liveimap-" + f[0], f[2]], capture_output=True, text=True).stdout
+        if len(f) == 2 and f[0] == s["name"]:
+            cport = ports.container_port(f[0], "managesieve")
+            out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
             hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
             if hp:
                 return ["-e", "labSievePort", hp, "-e", "labSieveTls", f[1]]
     return []
+
+
+def check_published(container):
+    """Each servers.tsv listen port must be published on the local-ports.tsv host port for that service. A miss exits 1."""
+    server = container.split("liveimap-", 1)[-1]
+    wanted = []
+    try:
+        handle = open(os.path.join(HERE, "servers.tsv"), encoding="utf-8")
+    except OSError:
+        sys.exit(1)
+    with handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) == 3 and fields[2].isdigit() and fields[0] == server:
+                wanted.append((fields[1], int(fields[2])))
+    if not wanted:
+        sys.exit(1)
+    saved = {}
+    try:
+        handle = open(os.path.join(GEN, "local-ports.tsv"), encoding="utf-8")
+    except OSError:
+        sys.exit(1)
+    with handle:
+        for line in handle:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 4 or fields[3] != container or not fields[1].isdigit():
+                continue
+            kind = fields[0].rsplit("-", 1)[-1]
+            saved.setdefault(kind, int(fields[1]))
+    for service, cport in wanted:
+        proc = subprocess.run(["docker", "port", container, str(cport)], capture_output=True, text=True)
+        line = (proc.stdout or "").split("\n")[0].strip()
+        hp = line.rsplit(":", 1)[-1].strip() if line else ""
+        kind = service
+        # stalwart-0155 records its https listener as stalwart015-http.
+        if service == "https" and "https" not in saved and "http" in saved:
+            kind = "http"
+        if not hp.isdigit() or saved.get(kind) != int(hp):
+            sys.exit(1)
 
 
 def client_cert_args(tls):

@@ -5,6 +5,9 @@ set -eu
 
 SCRIPT=$(readlink -f "$0")
 DIR=$(dirname "$SCRIPT")
+cport() {
+  python3 "$DIR/cport.py" "$1" "$2" || exit 1
+}
 SEED="$DIR/seed/accounts.tsv"
 GEN="$DIR/generated"
 PORTS_FILE="$GEN/local-ports.tsv"
@@ -92,10 +95,10 @@ container_running() {
 # stop loudly with the recreate command; never reuse it silently.
 expected_ports() {
   case "$1" in
-    liveimap-stalwart-01625) echo "143 993 4190 443 587" ;;
-    liveimap-dovecot-245) echo "31143 31587" ;;
-    liveimap-cyrus-3124) echo "143 8080" ;;
-    liveimap-courier-606) echo "143" ;;
+    liveimap-stalwart-01625) echo "$(cport stalwart-01625 imap) $(cport stalwart-01625 imaps) $(cport stalwart-01625 managesieve) $(cport stalwart-01625 https) $(cport stalwart-01625 submission)" ;;
+    liveimap-dovecot-245) echo "$(cport dovecot-245 imap) $(cport dovecot-245 submission)" ;;
+    liveimap-cyrus-3124) echo "$(cport cyrus-3124 imap) $(cport cyrus-3124 http)" ;;
+    liveimap-courier-606) echo "$(cport courier-606 imap)" ;;
     *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
   esac
 }
@@ -450,7 +453,7 @@ sink_port() {
 }
 
 # Dovecot 2.4.5: users, auth, submission relay to the fake SMTP sink on the docker bridge gateway, and the
-# container with IMAP ($1 -> 31143) and submission ($2 -> 31587) published. The sink host port is sink_port.
+# container with IMAP ($1) and submission ($2) published. The sink host port is sink_port.
 create_dovecot_245() {
   dv_imap=$1
   dv_sub=$2
@@ -505,8 +508,8 @@ umask 022
 printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$GEN/dovecot-245/relay.conf"
 setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf" "$GEN/dovecot-245/relay.conf"
 create_from_seed dovecot-245 \
-  -p "${dv_imap}:31143" \
-  -p "${dv_sub}:31587"
+  -p "${dv_imap}:$(cport dovecot-245 imap)" \
+  -p "${dv_sub}:$(cport dovecot-245 submission)"
 docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"
 }
 
@@ -548,11 +551,11 @@ if [ "${1:-}" = --recreate ]; then
     stalwart-01625)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        stalwart01625-imap:143:liveimap-stalwart-01625 \
-        stalwart01625-imaps:993:liveimap-stalwart-01625 \
-        stalwart01625-managesieve:4190:liveimap-stalwart-01625 \
-        stalwart01625-https:443:liveimap-stalwart-01625 \
-        stalwart01625-submission:587:liveimap-stalwart-01625)
+        stalwart01625-imap:$(cport stalwart-01625 imap):liveimap-stalwart-01625 \
+        stalwart01625-imaps:$(cport stalwart-01625 imaps):liveimap-stalwart-01625 \
+        stalwart01625-managesieve:$(cport stalwart-01625 managesieve):liveimap-stalwart-01625 \
+        stalwart01625-https:$(cport stalwart-01625 https):liveimap-stalwart-01625 \
+        stalwart01625-submission:$(cport stalwart-01625 submission):liveimap-stalwart-01625)
       if [ ! -s "$ST_ADMIN_FILE" ]; then
         umask 007
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$ST_ADMIN_FILE"
@@ -561,54 +564,54 @@ if [ "${1:-}" = --recreate ]; then
       ST_ADMIN_PASS=$(cat "$ST_ADMIN_FILE")
       create_from_seed stalwart-01625 \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-        -p "${1}:143" \
-        -p "${2}:993" \
-        -p "${3}:4190" \
-        -p "${4}:443" \
-        -p "${5}:587"
+        -p "${1}:$(cport stalwart-01625 imap)" \
+        -p "${2}:$(cport stalwart-01625 imaps)" \
+        -p "${3}:$(cport stalwart-01625 managesieve)" \
+        -p "${4}:$(cport stalwart-01625 https)" \
+        -p "${5}:$(cport stalwart-01625 submission)"
       unset ST_ADMIN_PASS
       {
-        printf 'stalwart01625-imap\t%s\t143\tliveimap-stalwart-01625\n' "$1"
-        printf 'stalwart01625-imaps\t%s\t993\tliveimap-stalwart-01625\n' "$2"
-        printf 'stalwart01625-managesieve\t%s\t4190\tliveimap-stalwart-01625\n' "$3"
-        printf 'stalwart01625-https\t%s\t443\tliveimap-stalwart-01625\n' "$4"
-        printf 'stalwart01625-submission\t%s\t587\tliveimap-stalwart-01625\n' "$5"
+        printf 'stalwart01625-imap\t%s\t%s\tliveimap-stalwart-01625\n' "$1" "$(cport stalwart-01625 imap)"
+        printf 'stalwart01625-imaps\t%s\t%s\tliveimap-stalwart-01625\n' "$2" "$(cport stalwart-01625 imaps)"
+        printf 'stalwart01625-managesieve\t%s\t%s\tliveimap-stalwart-01625\n' "$3" "$(cport stalwart-01625 managesieve)"
+        printf 'stalwart01625-https\t%s\t%s\tliveimap-stalwart-01625\n' "$4" "$(cport stalwart-01625 https)"
+        printf 'stalwart01625-submission\t%s\t%s\tliveimap-stalwart-01625\n' "$5" "$(cport stalwart-01625 submission)"
       } > "$rows"
       replace_port_rows liveimap-stalwart-01625 "" "$rows"
       ;;
     dovecot-245)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        dovecot245-imap:31143:liveimap-dovecot-245 \
-        dovecot245-submission:31587:liveimap-dovecot-245)
+        dovecot245-imap:$(cport dovecot-245 imap):liveimap-dovecot-245 \
+        dovecot245-submission:$(cport dovecot-245 submission):liveimap-dovecot-245)
       create_dovecot_245 "$1" "$2"
       {
-        printf 'dovecot245-imap\t%s\t31143\tliveimap-dovecot-245\n' "$1"
-        printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$2"
+        printf 'dovecot245-imap\t%s\t%s\tliveimap-dovecot-245\n' "$1" "$(cport dovecot-245 imap)"
+        printf 'dovecot245-submission\t%s\t%s\tliveimap-dovecot-245\n' "$2" "$(cport dovecot-245 submission)"
       } > "$rows"
       replace_port_rows liveimap-dovecot-245 "" "$rows"
       ;;
     cyrus-3124)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        cyrus3124-imap:143:liveimap-cyrus-3124 \
-        cyrus3124-http:8080:liveimap-cyrus-3124)
+        cyrus3124-imap:$(cport cyrus-3124 imap):liveimap-cyrus-3124 \
+        cyrus3124-http:$(cport cyrus-3124 http):liveimap-cyrus-3124)
       create_from_seed cyrus-3124 \
-        -p "${1}:143" \
-        -p "${2}:8080"
+        -p "${1}:$(cport cyrus-3124 imap)" \
+        -p "${2}:$(cport cyrus-3124 http)"
       {
-        printf 'cyrus3124-imap\t%s\t143\tliveimap-cyrus-3124\n' "$1"
-        printf 'cyrus3124-http\t%s\t8080\tliveimap-cyrus-3124\n' "$2"
+        printf 'cyrus3124-imap\t%s\t%s\tliveimap-cyrus-3124\n' "$1" "$(cport cyrus-3124 imap)"
+        printf 'cyrus3124-http\t%s\t%s\tliveimap-cyrus-3124\n' "$2" "$(cport cyrus-3124 http)"
       } > "$rows"
       replace_port_rows liveimap-cyrus-3124 "" "$rows"
       ;;
     courier-606)
       # shellcheck disable=SC2046
-      set -- $(pick_ports courier606-imap:143:liveimap-courier-606)
+      set -- $(pick_ports courier606-imap:$(cport courier-606 imap):liveimap-courier-606)
       create_from_seed courier-606 \
-        -p "${1}:143"
+        -p "${1}:$(cport courier-606 imap)"
       {
-        printf 'courier606-imap\t%s\t143\tliveimap-courier-606\n' "$1"
+        printf 'courier606-imap\t%s\t%s\tliveimap-courier-606\n' "$1" "$(cport courier-606 imap)"
       } > "$rows"
       replace_port_rows liveimap-courier-606 "" "$rows"
       ;;
@@ -1151,11 +1154,11 @@ printf '%s\n' "$ST_ADMIN_PASS" > "$ST_ADMIN_FILE"
 umask 022
 create_from_seed stalwart-01625 \
   -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-  -p "${ST_IMAP}:143" \
-  -p "${ST_IMAPS}:993" \
-  -p "${ST_SIEVE}:4190" \
-  -p "${ST_HTTPS}:443" \
-  -p "${ST_SUB}:587"
+  -p "${ST_IMAP}:$(cport stalwart-01625 imap)" \
+  -p "${ST_IMAPS}:$(cport stalwart-01625 imaps)" \
+  -p "${ST_SIEVE}:$(cport stalwart-01625 managesieve)" \
+  -p "${ST_HTTPS}:$(cport stalwart-01625 https)" \
+  -p "${ST_SUB}:$(cport stalwart-01625 submission)"
 unset ST_ADMIN_PASS
 
 ready=0
@@ -1279,10 +1282,10 @@ unset st_code st_body
 
 echo "starting cyrus and courier"
 create_from_seed cyrus-3124 \
-  -p "${CY_IMAP}:143" \
-  -p "${CY_HTTP}:8080"
+  -p "${CY_IMAP}:$(cport cyrus-3124 imap)" \
+  -p "${CY_HTTP}:$(cport cyrus-3124 http)"
 create_from_seed courier-606 \
-  -p "${CO_IMAP}:143"
+  -p "${CO_IMAP}:$(cport courier-606 imap)"
 
 echo "login append jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" \
@@ -1579,16 +1582,16 @@ if failed:
 PY
 
 {
-  printf 'stalwart01625-imap\t%s\t143\tliveimap-stalwart-01625\n' "$ST_IMAP"
-  printf 'stalwart01625-imaps\t%s\t993\tliveimap-stalwart-01625\n' "$ST_IMAPS"
-  printf 'stalwart01625-managesieve\t%s\t4190\tliveimap-stalwart-01625\n' "$ST_SIEVE"
-  printf 'stalwart01625-https\t%s\t443\tliveimap-stalwart-01625\n' "$ST_HTTPS"
-  printf 'stalwart01625-submission\t%s\t587\tliveimap-stalwart-01625\n' "$ST_SUB"
-  printf 'dovecot245-imap\t%s\t31143\tliveimap-dovecot-245\n' "$DV_IMAP"
-  printf 'dovecot245-submission\t%s\t31587\tliveimap-dovecot-245\n' "$DV_SUB"
-  printf 'cyrus3124-imap\t%s\t143\tliveimap-cyrus-3124\n' "$CY_IMAP"
-  printf 'cyrus3124-http\t%s\t8080\tliveimap-cyrus-3124\n' "$CY_HTTP"
-  printf 'courier606-imap\t%s\t143\tliveimap-courier-606\n' "$CO_IMAP"
+  printf 'stalwart01625-imap\t%s\t%s\tliveimap-stalwart-01625\n' "$ST_IMAP" "$(cport stalwart-01625 imap)"
+  printf 'stalwart01625-imaps\t%s\t%s\tliveimap-stalwart-01625\n' "$ST_IMAPS" "$(cport stalwart-01625 imaps)"
+  printf 'stalwart01625-managesieve\t%s\t%s\tliveimap-stalwart-01625\n' "$ST_SIEVE" "$(cport stalwart-01625 managesieve)"
+  printf 'stalwart01625-https\t%s\t%s\tliveimap-stalwart-01625\n' "$ST_HTTPS" "$(cport stalwart-01625 https)"
+  printf 'stalwart01625-submission\t%s\t%s\tliveimap-stalwart-01625\n' "$ST_SUB" "$(cport stalwart-01625 submission)"
+  printf 'dovecot245-imap\t%s\t%s\tliveimap-dovecot-245\n' "$DV_IMAP" "$(cport dovecot-245 imap)"
+  printf 'dovecot245-submission\t%s\t%s\tliveimap-dovecot-245\n' "$DV_SUB" "$(cport dovecot-245 submission)"
+  printf 'cyrus3124-imap\t%s\t%s\tliveimap-cyrus-3124\n' "$CY_IMAP" "$(cport cyrus-3124 imap)"
+  printf 'cyrus3124-http\t%s\t%s\tliveimap-cyrus-3124\n' "$CY_HTTP" "$(cport cyrus-3124 http)"
+  printf 'courier606-imap\t%s\t%s\tliveimap-courier-606\n' "$CO_IMAP" "$(cport courier-606 imap)"
 } > "$GEN/port-rows.new"
 replace_port_rows \
   "liveimap-stalwart-01625,liveimap-dovecot-245,liveimap-cyrus-3124,liveimap-courier-606" \

@@ -1,6 +1,6 @@
 import sys, subprocess, os, time
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); import lab
+sys.path.insert(0, HERE); import lab, ports
 name, run = sys.argv[1], sys.argv[2]
 row = [l.rstrip("\n").split("\t") for l in open(os.path.join(HERE, "jmap.tsv")) if not l.startswith("#") and l.split("\t")[0] == name][0]
 s = [x for x in lab.servers() if x["name"] == name][0]
@@ -39,9 +39,10 @@ RUNUSER = (lab.USER.split("@")[0] + "@" + lab.HOSTENV["LAB_MAIL_DOMAIN"]) if os.
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], False, 300); time.sleep(5)
-    hp = subprocess.run(["docker", "port", s["container"], row[1]], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
-    field = f"{row[2]}://{lab.EMU_HOST}:{hp}"
-    rcpt = f"{RUNUSER.split('@')[0]}@{row[3]}" if row[3] != "-" else derive_rcpt(f"{row[2]}://{lab.LAB_HOST}:{hp}", RUNUSER)
+    cport = ports.container_port(name, row[1])
+    hp = subprocess.run(["docker", "port", s["container"], str(cport)], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
+    field = f"{row[1]}://{lab.EMU_HOST}:{hp}"
+    rcpt = f"{RUNUSER.split('@')[0]}@{row[2]}" if row[2] != "-" else derive_rcpt(f"{row[1]}://{lab.LAB_HOST}:{hp}", RUNUSER)
     print("rcpt", rcpt)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.JmapLabSuiteTest#jmapSuite",
                 "-e", "jmapServer", field, "-e", "jmapRcpt", rcpt, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),

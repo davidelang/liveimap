@@ -5,6 +5,9 @@ set -eu
 
 SCRIPT=$(readlink -f "$0")
 DIR=$(dirname "$SCRIPT")
+cport() {
+  python3 "$DIR/cport.py" "$1" "$2" || exit 1
+}
 SEED="$DIR/seed/accounts.tsv"
 GEN="$DIR/generated"
 PORTS_FILE="$GEN/local-ports.tsv"
@@ -98,9 +101,9 @@ container_running() {
 
 expected_ports() {
   case "$1" in
-    liveimap-stalwart-dev) echo "143 993 4190 443 587" ;;
-    liveimap-dovecot-dev) echo "143" ;;
-    liveimap-cyrus-3137) echo "143 8080" ;;
+    liveimap-stalwart-dev) echo "$(cport stalwart-dev imap) $(cport stalwart-dev imaps) $(cport stalwart-dev managesieve) $(cport stalwart-dev https) $(cport stalwart-dev submission)" ;;
+    liveimap-dovecot-dev) echo "$(cport dovecot-dev imap)" ;;
+    liveimap-cyrus-3137) echo "$(cport cyrus-3137 imap) $(cport cyrus-3137 http)" ;;
     *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
   esac
 }
@@ -426,11 +429,11 @@ if [ "${1:-}" = --recreate ]; then
     stalwart-dev)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        stalwart-dev-imap:143:liveimap-stalwart-dev \
-        stalwart-dev-imaps:993:liveimap-stalwart-dev \
-        stalwart-dev-managesieve:4190:liveimap-stalwart-dev \
-        stalwart-dev-https:443:liveimap-stalwart-dev \
-        stalwart-dev-submission:587:liveimap-stalwart-dev)
+        stalwart-dev-imap:$(cport stalwart-dev imap):liveimap-stalwart-dev \
+        stalwart-dev-imaps:$(cport stalwart-dev imaps):liveimap-stalwart-dev \
+        stalwart-dev-managesieve:$(cport stalwart-dev managesieve):liveimap-stalwart-dev \
+        stalwart-dev-https:$(cport stalwart-dev https):liveimap-stalwart-dev \
+        stalwart-dev-submission:$(cport stalwart-dev submission):liveimap-stalwart-dev)
       if [ ! -s "$ST_ADMIN_FILE" ]; then
         umask 007
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$ST_ADMIN_FILE"
@@ -439,43 +442,43 @@ if [ "${1:-}" = --recreate ]; then
       ST_ADMIN_PASS=$(cat "$ST_ADMIN_FILE")
       create_from_seed stalwart-dev \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-        -p "${1}:143" \
-        -p "${2}:993" \
-        -p "${3}:4190" \
-        -p "${4}:443" \
-        -p "${5}:587"
+        -p "${1}:$(cport stalwart-dev imap)" \
+        -p "${2}:$(cport stalwart-dev imaps)" \
+        -p "${3}:$(cport stalwart-dev managesieve)" \
+        -p "${4}:$(cport stalwart-dev https)" \
+        -p "${5}:$(cport stalwart-dev submission)"
       unset ST_ADMIN_PASS
       {
-        printf 'stalwart-dev-imap\t%s\t143\tliveimap-stalwart-dev\n' "$1"
-        printf 'stalwart-dev-imaps\t%s\t993\tliveimap-stalwart-dev\n' "$2"
-        printf 'stalwart-dev-managesieve\t%s\t4190\tliveimap-stalwart-dev\n' "$3"
-        printf 'stalwart-dev-https\t%s\t443\tliveimap-stalwart-dev\n' "$4"
-        printf 'stalwart-dev-submission\t%s\t587\tliveimap-stalwart-dev\n' "$5"
+        printf 'stalwart-dev-imap\t%s\t%s\tliveimap-stalwart-dev\n' "$1" "$(cport stalwart-dev imap)"
+        printf 'stalwart-dev-imaps\t%s\t%s\tliveimap-stalwart-dev\n' "$2" "$(cport stalwart-dev imaps)"
+        printf 'stalwart-dev-managesieve\t%s\t%s\tliveimap-stalwart-dev\n' "$3" "$(cport stalwart-dev managesieve)"
+        printf 'stalwart-dev-https\t%s\t%s\tliveimap-stalwart-dev\n' "$4" "$(cport stalwart-dev https)"
+        printf 'stalwart-dev-submission\t%s\t%s\tliveimap-stalwart-dev\n' "$5" "$(cport stalwart-dev submission)"
       } > "$rows"
       replace_port_rows liveimap-stalwart-dev "" "$rows"
       ;;
     dovecot-dev)
       # shellcheck disable=SC2046
-      set -- $(pick_ports dovecot-dev-imap:143:liveimap-dovecot-dev)
+      set -- $(pick_ports dovecot-dev-imap:$(cport dovecot-dev imap):liveimap-dovecot-dev)
       write_dovecot_dev_files
       create_from_seed dovecot-dev \
-        -p "${1}:143"
+        -p "${1}:$(cport dovecot-dev imap)"
       {
-        printf 'dovecot-dev-imap\t%s\t143\tliveimap-dovecot-dev\n' "$1"
+        printf 'dovecot-dev-imap\t%s\t%s\tliveimap-dovecot-dev\n' "$1" "$(cport dovecot-dev imap)"
       } > "$rows"
       replace_port_rows liveimap-dovecot-dev "" "$rows"
       ;;
     cyrus-3137)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        cyrus3137-imap:143:liveimap-cyrus-3137 \
-        cyrus3137-http:8080:liveimap-cyrus-3137)
+        cyrus3137-imap:$(cport cyrus-3137 imap):liveimap-cyrus-3137 \
+        cyrus3137-http:$(cport cyrus-3137 http):liveimap-cyrus-3137)
       create_from_seed cyrus-3137 \
-        -p "${1}:143" \
-        -p "${2}:8080"
+        -p "${1}:$(cport cyrus-3137 imap)" \
+        -p "${2}:$(cport cyrus-3137 http)"
       {
-        printf 'cyrus3137-imap\t%s\t143\tliveimap-cyrus-3137\n' "$1"
-        printf 'cyrus3137-http\t%s\t8080\tliveimap-cyrus-3137\n' "$2"
+        printf 'cyrus3137-imap\t%s\t%s\tliveimap-cyrus-3137\n' "$1" "$(cport cyrus-3137 imap)"
+        printf 'cyrus3137-http\t%s\t%s\tliveimap-cyrus-3137\n' "$2" "$(cport cyrus-3137 http)"
       } > "$rows"
       replace_port_rows liveimap-cyrus-3137 "" "$rows"
       ;;
@@ -968,7 +971,7 @@ PY
 umask 022
 setfacl -m u:1000:r "$DV_CONF/passwd" "$DV_CONF/auth.conf"
 create_from_seed dovecot-dev \
-  -p "${DV_IMAP}:143"
+  -p "${DV_IMAP}:$(cport dovecot-dev imap)"
 
 umask 007
 ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
@@ -976,11 +979,11 @@ printf '%s\n' "$ST_ADMIN_PASS" > "$ST_ADMIN_FILE"
 umask 022
 create_from_seed stalwart-dev \
   -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-  -p "${ST_IMAP}:143" \
-  -p "${ST_IMAPS}:993" \
-  -p "${ST_SIEVE}:4190" \
-  -p "${ST_HTTPS}:443" \
-  -p "${ST_SUB}:587"
+  -p "${ST_IMAP}:$(cport stalwart-dev imap)" \
+  -p "${ST_IMAPS}:$(cport stalwart-dev imaps)" \
+  -p "${ST_SIEVE}:$(cport stalwart-dev managesieve)" \
+  -p "${ST_HTTPS}:$(cport stalwart-dev https)" \
+  -p "${ST_SUB}:$(cport stalwart-dev submission)"
 unset ST_ADMIN_PASS
 
 ready=0
@@ -1100,8 +1103,8 @@ esac
 unset st_code st_body
 
 create_from_seed cyrus-3137 \
-  -p "${CY_IMAP}:143" \
-  -p "${CY_HTTP}:8080"
+  -p "${CY_IMAP}:$(cport cyrus-3137 imap)" \
+  -p "${CY_HTTP}:$(cport cyrus-3137 http)"
 
 echo "login append jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" \
@@ -1413,14 +1416,14 @@ if failed:
 PY
 
 {
-  printf 'stalwart-dev-imap\t%s\t143\tliveimap-stalwart-dev\n' "$ST_IMAP"
-  printf 'stalwart-dev-imaps\t%s\t993\tliveimap-stalwart-dev\n' "$ST_IMAPS"
-  printf 'stalwart-dev-managesieve\t%s\t4190\tliveimap-stalwart-dev\n' "$ST_SIEVE"
-  printf 'stalwart-dev-https\t%s\t443\tliveimap-stalwart-dev\n' "$ST_HTTPS"
-  printf 'stalwart-dev-submission\t%s\t587\tliveimap-stalwart-dev\n' "$ST_SUB"
-  printf 'dovecot-dev-imap\t%s\t143\tliveimap-dovecot-dev\n' "$DV_IMAP"
-  printf 'cyrus3137-imap\t%s\t143\tliveimap-cyrus-3137\n' "$CY_IMAP"
-  printf 'cyrus3137-http\t%s\t8080\tliveimap-cyrus-3137\n' "$CY_HTTP"
+  printf 'stalwart-dev-imap\t%s\t%s\tliveimap-stalwart-dev\n' "$ST_IMAP" "$(cport stalwart-dev imap)"
+  printf 'stalwart-dev-imaps\t%s\t%s\tliveimap-stalwart-dev\n' "$ST_IMAPS" "$(cport stalwart-dev imaps)"
+  printf 'stalwart-dev-managesieve\t%s\t%s\tliveimap-stalwart-dev\n' "$ST_SIEVE" "$(cport stalwart-dev managesieve)"
+  printf 'stalwart-dev-https\t%s\t%s\tliveimap-stalwart-dev\n' "$ST_HTTPS" "$(cport stalwart-dev https)"
+  printf 'stalwart-dev-submission\t%s\t%s\tliveimap-stalwart-dev\n' "$ST_SUB" "$(cport stalwart-dev submission)"
+  printf 'dovecot-dev-imap\t%s\t%s\tliveimap-dovecot-dev\n' "$DV_IMAP" "$(cport dovecot-dev imap)"
+  printf 'cyrus3137-imap\t%s\t%s\tliveimap-cyrus-3137\n' "$CY_IMAP" "$(cport cyrus-3137 imap)"
+  printf 'cyrus3137-http\t%s\t%s\tliveimap-cyrus-3137\n' "$CY_HTTP" "$(cport cyrus-3137 http)"
 } > "$GEN/port-rows.new"
 replace_port_rows \
   "liveimap-stalwart-dev,liveimap-dovecot-dev,liveimap-cyrus-3137" \

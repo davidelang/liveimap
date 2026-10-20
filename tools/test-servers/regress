@@ -838,7 +838,7 @@ def servers_used(names, suites):
     if "smtp" in suites:
         add("dovecot-dev")
     if "sieve" in suites:
-        for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3):
+        for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 2):
             add(row[0])
     if "contacts" in suites:
         add("dovecot-245")
@@ -1004,12 +1004,13 @@ def start_fake_smtp():
 
 def probe_servers(used, by_name):
     import lab
+    import ports
     host = lab.LAB_HOST
-    jmap = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "jmap.tsv"), 4)}
+    jmap = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "jmap.tsv"), 3)}
     smtp = {}
-    for row in read_tsv_rows(os.path.join(HERE, "smtp.tsv"), 4):
+    for row in read_tsv_rows(os.path.join(HERE, "smtp.tsv"), 3):
         smtp.setdefault(row[0], []).append(row)
-    sieve = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3)}
+    sieve = {row[0]: row for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 2)}
     for name in used:
         s = by_name.get(name)
         if not s or "imap" not in s:
@@ -1019,16 +1020,18 @@ def probe_servers(used, by_name):
             return f"{name}: {err}"
         if name in jmap:
             row = jmap[name]
-            hp, derr = docker_port(s["container"], row[1])
+            cport = ports.container_port(name, row[1])
+            hp, derr = docker_port(s["container"], cport)
             if derr:
                 return f"{name}: {derr}"
-            err = jmap_session(host, hp, row[2])
+            err = jmap_session(host, hp, row[1])
             if err:
                 return f"{name}: {err}"
         for row in smtp.get(name, []):
-            hp, derr = docker_port(s["container"], row[2])
+            cport = ports.container_port(name, "submission")
+            hp, derr = docker_port(s["container"], cport)
             if derr:
-                return f"{name}: SMTP {row[1]} container port {row[2]}: {derr} (smtp.tsv row; the start script must publish it)"
+                return f"{name}: SMTP {row[1]} container port {cport}: {derr} (smtp.tsv row; the start script must publish it)"
             err = smtp_banner(host, hp)
             if err:
                 return f"{name}: SMTP {row[1]} port {hp}: {err}"
@@ -1038,7 +1041,8 @@ def probe_servers(used, by_name):
                 return f"{name}: {err}"
         if name in sieve:
             row = sieve[name]
-            hp, derr = docker_port(s["container"], row[2])
+            cport = ports.container_port(name, "managesieve")
+            hp, derr = docker_port(s["container"], cport)
             if derr:
                 return f"{name}: {derr}"
             err = sieve_greeting(host, hp)
@@ -1541,7 +1545,7 @@ def run_smtp(force):
 
 def sieve_names(selected):
     names = []
-    for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 3):
+    for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 2):
         if row[0] in selected and row[0] not in names:
             names.append(row[0])
     return names
@@ -1812,6 +1816,7 @@ def main():
                 err = start_lab_container(s, skipped)
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
+                lab.check_published(s["container"])
             reseed_notes.append(f"{name} reseeded: {'no' if skipped else 'yes'}")
             if skipped:
                 any_skip = True

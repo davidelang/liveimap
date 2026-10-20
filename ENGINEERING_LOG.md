@@ -3499,3 +3499,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A missing sink port is drawn once, and a publish checks the reseed file without hiding other errors.
 
 ## 2026-10-20 - The full start records the sink port before it draws the other host ports.
+
+## 2026-10-20 - Container listen ports come from servers.tsv.

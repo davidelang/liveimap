@@ -4,6 +4,9 @@ set -eu
 
 SCRIPT=$(readlink -f "$0")
 DIR=$(dirname "$SCRIPT")
+cport() {
+  python3 "$DIR/cport.py" "$1" "$2" || exit 1
+}
 SEED="$DIR/seed/accounts.tsv"
 GEN="$DIR/generated"
 PORTS_FILE="$GEN/local-ports.tsv"
@@ -82,7 +85,7 @@ container_running() {
 
 expected_ports() {
   case "$1" in
-    liveimap-stalwart) echo "143 993 4190 443 587" ;;
+    liveimap-stalwart) echo "$(cport stalwart imap) $(cport stalwart imaps) $(cport stalwart managesieve) $(cport stalwart https) $(cport stalwart submission)" ;;
     *) echo "expected_ports: unknown container $1" >&2; exit 1 ;;
   esac
 }
@@ -362,26 +365,26 @@ if [ "${1:-}" = --recreate ]; then
     stalwart)
       # shellcheck disable=SC2046
       set -- $(pick_ports \
-        stalwart-imap:143:liveimap-stalwart \
-        stalwart-imaps:993:liveimap-stalwart \
-        stalwart-managesieve:4190:liveimap-stalwart \
-        stalwart-https:443:liveimap-stalwart \
-        stalwart-submission:587:liveimap-stalwart)
+        stalwart-imap:$(cport stalwart imap):liveimap-stalwart \
+        stalwart-imaps:$(cport stalwart imaps):liveimap-stalwart \
+        stalwart-managesieve:$(cport stalwart managesieve):liveimap-stalwart \
+        stalwart-https:$(cport stalwart https):liveimap-stalwart \
+        stalwart-submission:$(cport stalwart submission):liveimap-stalwart)
       ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
       create_from_seed stalwart \
         -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-        -p "${1}:143" \
-        -p "${2}:993" \
-        -p "${3}:4190" \
-        -p "${4}:443" \
-        -p "${5}:587"
+        -p "${1}:$(cport stalwart imap)" \
+        -p "${2}:$(cport stalwart imaps)" \
+        -p "${3}:$(cport stalwart managesieve)" \
+        -p "${4}:$(cport stalwart https)" \
+        -p "${5}:$(cport stalwart submission)"
       unset ST_ADMIN_PASS
       {
-        printf 'stalwart-imap\t%s\t143\tliveimap-stalwart\n' "$1"
-        printf 'stalwart-imaps\t%s\t993\tliveimap-stalwart\n' "$2"
-        printf 'stalwart-managesieve\t%s\t4190\tliveimap-stalwart\n' "$3"
-        printf 'stalwart-https\t%s\t443\tliveimap-stalwart\n' "$4"
-        printf 'stalwart-submission\t%s\t587\tliveimap-stalwart\n' "$5"
+        printf 'stalwart-imap\t%s\t%s\tliveimap-stalwart\n' "$1" "$(cport stalwart imap)"
+        printf 'stalwart-imaps\t%s\t%s\tliveimap-stalwart\n' "$2" "$(cport stalwart imaps)"
+        printf 'stalwart-managesieve\t%s\t%s\tliveimap-stalwart\n' "$3" "$(cport stalwart managesieve)"
+        printf 'stalwart-https\t%s\t%s\tliveimap-stalwart\n' "$4" "$(cport stalwart https)"
+        printf 'stalwart-submission\t%s\t%s\tliveimap-stalwart\n' "$5" "$(cport stalwart submission)"
       } > "$rows"
       replace_port_rows liveimap-stalwart "" "$rows"
       ;;
@@ -464,11 +467,11 @@ require_seed_image stalwart
 ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 create_from_seed stalwart \
   -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
-  -p "${ST_IMAP}:143" \
-  -p "${ST_IMAPS}:993" \
-  -p "${ST_SIEVE}:4190" \
-  -p "${ST_HTTPS}:443" \
-  -p "${ST_SUB}:587"
+  -p "${ST_IMAP}:$(cport stalwart imap)" \
+  -p "${ST_IMAPS}:$(cport stalwart imaps)" \
+  -p "${ST_SIEVE}:$(cport stalwart managesieve)" \
+  -p "${ST_HTTPS}:$(cport stalwart https)" \
+  -p "${ST_SUB}:$(cport stalwart submission)"
 unset ST_ADMIN_PASS
 
 ready=0
@@ -602,11 +605,11 @@ fi
   if [ ! -s "$PORTS_FILE" ]; then
     printf 'service\thost_port\tcontainer_port\tcontainer\n'
   fi
-  printf 'stalwart-imap\t%s\t143\tliveimap-stalwart\n' "$ST_IMAP"
-  printf 'stalwart-imaps\t%s\t993\tliveimap-stalwart\n' "$ST_IMAPS"
-  printf 'stalwart-managesieve\t%s\t4190\tliveimap-stalwart\n' "$ST_SIEVE"
-  printf 'stalwart-https\t%s\t443\tliveimap-stalwart\n' "$ST_HTTPS"
-  printf 'stalwart-submission\t%s\t587\tliveimap-stalwart\n' "$ST_SUB"
+  printf 'stalwart-imap\t%s\t%s\tliveimap-stalwart\n' "$ST_IMAP" "$(cport stalwart imap)"
+  printf 'stalwart-imaps\t%s\t%s\tliveimap-stalwart\n' "$ST_IMAPS" "$(cport stalwart imaps)"
+  printf 'stalwart-managesieve\t%s\t%s\tliveimap-stalwart\n' "$ST_SIEVE" "$(cport stalwart managesieve)"
+  printf 'stalwart-https\t%s\t%s\tliveimap-stalwart\n' "$ST_HTTPS" "$(cport stalwart https)"
+  printf 'stalwart-submission\t%s\t%s\tliveimap-stalwart\n' "$ST_SUB" "$(cport stalwart submission)"
   printf 'lan_ipv4\t%s\n' "$lan_ipv4"
 } > "$GEN/port-rows.new"
 replace_port_rows "liveimap-stalwart" lan_ipv4 "$GEN/port-rows.new"
