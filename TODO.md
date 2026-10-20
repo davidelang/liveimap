@@ -84,3 +84,5 @@
 - Add attachments for sending and for receiving. The reader already lists and opens received parts, and a forward can resend those parts; the user still cannot attach a new file. Also check the plain-text version of an HTML message on send: compose sends text/plain only and does not add a text/html part with a text/plain alternative.
 
 - Internationalize the app so the UI can be translated. Moving the strings into strings.xml is the existing separate item and comes first.
+
+- One Compose button for the whole screen in a multi-panel layout. The folder list and the message index each draw their own Compose button, so a side-by-side layout shows more than one. Reply, reply-all, forward, and bounce on an open message stay message actions.
