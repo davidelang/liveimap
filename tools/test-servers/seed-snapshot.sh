@@ -54,6 +54,29 @@ flag=$(mktemp)
 printf 'no\n' > "$flag"
 docker cp "$flag" "$name":/.liveimap-no-reseed
 rm -f "$flag"
+if docker inspect -f '{{.State.Running}}' "$name" | grep -qx true; then
+  docker stop -t 60 "$name" >/dev/null
+fi
+docker start "$name" >/dev/null
+# shellcheck disable=SC2086
+docker exec "$name" sh -c '
+wipe_one() {
+  p=$1
+  if [ -d "$p" ]; then
+    find "$p" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  elif [ -e "$p" ]; then
+    rm -rf "$p"
+    mkdir -p "$p"
+  else
+    mkdir -p "$p"
+  fi
+}
+for p in "$@"; do
+  wipe_one "$p"
+done
+' sh $paths
+# SIGKILL so a shutdown checkpoint cannot rewrite the wiped store.
+docker kill "$name" >/dev/null
 docker start "$name" >/dev/null
 up=$(awk -F '\t' -v c="$name" '$1 == c { print $2; exit }' "$DIR/up.tsv")
 if [ -n "$up" ]; then
@@ -61,7 +84,7 @@ if [ -n "$up" ]; then
 fi
 
 python3 - "$DIR" "$server" "$name" <<'PY'
-import csv, os, socket, ssl, subprocess, sys, time
+import csv, hashlib, os, re, socket, ssl, subprocess, sys, time
 import imaplib
 from datetime import datetime
 from pathlib import Path
@@ -169,9 +192,6 @@ for user, password in users:
     m = login(user, password)
     try:
         m.select("INBOX")
-        typ, data = m.search(None, "SUBJECT", '"LiveIMAP seed corpus-v1"')
-        if data and data[0].split():
-            continue
         delim = "/"
         typ, listed = m.list('""', '"INBOX"')
         if listed and listed[0]:
@@ -213,6 +233,143 @@ for user, password in users:
             m.logout()
         except Exception:
             pass
+
+def listed_names(mail):
+    typ, data = mail.list()
+    found = set()
+    delim = "/"
+    if typ != "OK":
+        return found, delim
+    for row in data or []:
+        if not row:
+            continue
+        line = row.decode("utf-8", "replace") if isinstance(row, bytes) else str(row)
+        parts = line.split('"')
+        if len(parts) >= 3 and len(parts[1]) == 1:
+            delim = parts[1]
+            if len(parts) > 3:
+                found.add(parts[-2])
+            else:
+                name = parts[-1].strip()
+                if name:
+                    found.add(name)
+        else:
+            bits = line.split()
+            if bits:
+                found.add(bits[-1])
+    return found, delim
+
+def mailbox_for(folder, user, delim, found):
+    if folder == "INBOX":
+        cands = ["INBOX"]
+    else:
+        enc = mutf7(folder.replace("/", delim))
+        cands = [
+            enc,
+            "INBOX" + delim + enc,
+            "user" + delim + user + delim + enc,
+        ]
+    for cand in cands:
+        if cand in found:
+            return cand
+    return ""
+
+def flag_key(words):
+    kept = [w for w in words if w.lower() != "\\recent"]
+    return tuple(sorted(kept, key=str.lower))
+
+def fetched_messages(mail):
+    typ, data = mail.uid("fetch", "1:*", "(UID FLAGS BODY.PEEK[])")
+    if typ != "OK" or not data or data == [None]:
+        return []
+    msgs = []
+    for item in data:
+        if item is None or item == b")":
+            continue
+        if isinstance(item, tuple):
+            meta, body = item[0], item[1] if len(item) > 1 else b""
+        else:
+            meta, body = item, b""
+        meta_s = meta.decode("utf-8", "replace") if isinstance(meta, bytes) else str(meta)
+        uid_m = re.search(r"\bUID (\d+)", meta_s)
+        flags_m = re.search(r"FLAGS \(([^)]*)\)", meta_s)
+        uid = int(uid_m.group(1)) if uid_m else 0
+        flags = flags_m.group(1).split() if flags_m else []
+        if not isinstance(body, (bytes, bytearray)):
+            body = str(body).encode()
+        body = bytes(body).replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        msgs.append((uid, flags, body))
+    msgs.sort(key=lambda row: row[0])
+    return msgs
+
+def verify_seed():
+    passwords = {}
+    with open(accounts, newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            if row.get("user"):
+                passwords[row["user"]] = row.get("password") or ""
+    sums = {}
+    for line in open(os.path.join(here, "seed", "corpus-v1.sums"), encoding="utf-8"):
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) >= 4:
+            sums[(fields[0], fields[1])] = fields[3]
+    flags_by = {}
+    for row in manifest:
+        words = [] if row.get("flags") == "-" else (row.get("flags") or "").split()
+        flags_by.setdefault((row["user"], row["folder"]), []).append(flag_key(words))
+    problems = []
+    seen = []
+    for row in folder_rows:
+        if row["user"] not in seen:
+            seen.append(row["user"])
+    for user in seen:
+        password = passwords.get(user, "")
+        try:
+            m = login(user, password)
+        except Exception:
+            problems.append(server + " INBOX: login failed")
+            continue
+        try:
+            found, delim = listed_names(m)
+            for row in folder_rows:
+                if row["user"] != user:
+                    continue
+                folder = row["folder"]
+                label = server + " " + folder
+                box = mailbox_for(folder, user, delim, found)
+                if not box:
+                    problems.append(label + ": missing")
+                    continue
+                typ, data = m.select(box, readonly=True)
+                if typ != "OK":
+                    problems.append(label + ": missing")
+                    continue
+                try:
+                    got_count = int(data[0])
+                except (TypeError, ValueError, IndexError):
+                    got_count = -1
+                want_count = int(row["count"])
+                if got_count != want_count:
+                    problems.append(label + ": count " + str(got_count) + " != " + str(want_count))
+                msgs = fetched_messages(m) if got_count else []
+                want_flags = flags_by.get((user, folder), [])
+                got_flags = [flag_key(flags) for _uid, flags, _body in msgs]
+                if sorted(got_flags) != sorted(want_flags):
+                    problems.append(label + ": flags")
+                joined = "\n".join(hashlib.sha256(body).hexdigest() for _uid, _flags, body in msgs)
+                digest = hashlib.sha256(joined.encode()).hexdigest()
+                want_digest = sums.get((user, folder), "")
+                if digest != want_digest:
+                    problems.append(label + ": corpus-v1.sums")
+        finally:
+            try:
+                m.logout()
+            except Exception:
+                pass
+    if problems:
+        sys.exit(problems[0])
+
+verify_seed()
 PY
 
 docker stop -t 60 "$name" >/dev/null
@@ -226,8 +383,13 @@ for p in $paths; do
 done
 mkdir -p "$GEN/$server"
 out="$GEN/$server/seed-snapshot.tar"
-# shellcheck disable=SC2046
-tar -C "$stage" -cf "$out" $(find "$stage" -mindepth 1 -maxdepth 1 -printf '%P\n')
+rels=
+# shellcheck disable=SC2086
+for p in $paths; do
+  rels="$rels ${p#/}"
+done
+# shellcheck disable=SC2086
+tar -C "$stage" -cf "$out" $rels
 rm -rf "$stage"
 if [ "$server" = "zimbra-883" ]; then
   if tar -tf "$out" | grep -E '(^|/)opt/zimbra/bin(/|$)' >/dev/null 2>&1; then

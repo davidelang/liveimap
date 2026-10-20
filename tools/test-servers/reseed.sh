@@ -110,10 +110,10 @@ chown_uwimap() {
     fi
     u=$(id -u "$user")
     g=$(id -g "$user")
-    if [ -e "/var/mail/$user" ]; then
+    if [ -e "/var/mail/$user" ] && [ "/var/mail/$user" != "/var/mail" ]; then
       chown "$u:$g" "/var/mail/$user"
     fi
-    if [ -d "/home/$user" ]; then
+    if [ -d "/home/$user" ] && [ "/home/$user" != "/home" ]; then
       chown -R "$u:$g" "/home/$user"
     fi
   done < /tmp/liveimap-users
@@ -132,7 +132,7 @@ restore_tar() {
       bad
     fi
   fi
-  tar -C / -xf /liveimap-seed/seed-snapshot.tar
+  tar --no-overwrite-dir -C / -xf /liveimap-seed/seed-snapshot.tar
   case "$owner" in
     courier-606) chown_courier_606 ;;
     uwimap) chown_uwimap ;;

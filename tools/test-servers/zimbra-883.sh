@@ -365,8 +365,8 @@ def with_reseed(cmd):
             mode = os.stat(path).st_mode
             extra_mode = 0o444 if os.path.isfile(path) else 0o555
             os.chmod(path, mode | extra_mode)
-        except OSError:
-            pass
+        except OSError as exc:
+            fail("%s: %s" % (path, exc))
     proc = run(["docker", "image", "inspect", "-f", "{{.Id}}", image_name])
     if proc.returncode != 0:
         fail("docker image inspect failed")

@@ -964,6 +964,10 @@ def start_lab_container(s, skip=False):
     missing = reseed_hook_problem(cont)
     if missing:
         return missing
+    if container_running(cont):
+        r = subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True, text=True, errors="replace")
+        if r.returncode != 0 or container_running(cont):
+            return first_line(r.stderr or r.stdout)
     err = write_reseed_flag(cont, skip)
     if err:
         return err
@@ -983,7 +987,17 @@ def start_lab_container(s, skip=False):
             text = container_logs(cont)
             return snapshot_line(text) or first_line(text)
     n = 900 if cont in lab.ALONE else 300
-    if not lab.greeting(s["imap"], False, timeout=n):
+    deadline = time.time() + n
+    while time.time() < deadline:
+        if not container_running(cont):
+            text = container_logs(cont)
+            return snapshot_line(text) or first_line(text)
+        if lab.greeting(s["imap"], False, timeout=1):
+            break
+    else:
+        if not container_running(cont):
+            text = container_logs(cont)
+            return snapshot_line(text) or first_line(text)
         return f"no IMAP greeting after {n}s"
     if s["name"] in GREENMAIL_SERVERS:
         return wait_greenmail_ready(cont, 900)

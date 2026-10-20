@@ -37,8 +37,8 @@ reseed_prepare() {
   fi
   LIVEIMAP_IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$image")
   chmod a+r "$GEN/corpus-v1/manifest.tsv" "$DIR/seed/accounts.tsv" \
-    "$DIR/seed/folders.tsv" "$DIR/seed/corpus-v1.sums" 2>/dev/null || true
-  chmod a+rx "$GEN/$server" "$GEN/corpus-v1" "$DIR/seed" 2>/dev/null || true
+    "$DIR/seed/folders.tsv" "$DIR/seed/corpus-v1.sums"
+  chmod a+rx "$GEN/$server" "$GEN/corpus-v1" "$DIR/seed"
 }
 
 reseed_mount_words() {
