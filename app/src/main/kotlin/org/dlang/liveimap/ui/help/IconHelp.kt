@@ -4,26 +4,26 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import org.dlang.liveimap.ui.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.ui.input.pointer.pointerInput
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import com.davidlang.liveimap.R
 
@@ -58,6 +58,28 @@ fun IconHelpDialog(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+private fun BoxScope.HelpClickOverlay(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .matchParentSize()
+            .combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .semantics {
+                role = Role.Button
+                contentDescription = label
+            },
+    )
+}
+
+@Composable
 fun HelpIconButton(
     label: String,
     help: String,
@@ -75,15 +97,11 @@ fun HelpIconButton(
         ) {
             content()
         }
-        Box(
-            Modifier
-                .matchParentSize()
-                .combinedClickable(
-                    enabled = enabled,
-                    onClick = onClick,
-                    onLongClick = { open = true },
-                )
-                .semantics { contentDescription = label },
+        HelpClickOverlay(
+            label = label,
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = { open = true },
         )
     }
     if (open) {
@@ -96,7 +114,6 @@ fun HelpIconButton(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HelpExtendedFab(
     label: String,
@@ -116,14 +133,11 @@ fun HelpExtendedFab(
             expanded = expanded,
             modifier = Modifier.clearAndSetSemantics { },
         )
-        Box(
-            Modifier
-                .matchParentSize()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = { open = true },
-                )
-                .semantics { contentDescription = label },
+        HelpClickOverlay(
+            label = label,
+            enabled = true,
+            onClick = onClick,
+            onLongClick = { open = true },
         )
     }
     if (open) {
@@ -148,27 +162,19 @@ fun HelpDropdownMenuItem(
     text: @Composable () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    val currentClick by rememberUpdatedState(onClick)
-    val currentEnabled by rememberUpdatedState(enabled)
-    Box {
+    Box(modifier) {
         DropdownMenuItem(
             text = text,
-            onClick = onClick,
-            modifier = modifier,
+            onClick = {},
+            modifier = Modifier.clearAndSetSemantics { },
             enabled = enabled,
             leadingIcon = leadingIcon,
         )
-        // Passed modifiers sit outside the item's clickable, which consumes the down on Main
-        // before they run. This overlay is the hit target, so the long press is delivered here.
-        Box(
-            Modifier
-                .matchParentSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { if (currentEnabled) currentClick() },
-                        onLongPress = { if (currentEnabled) open = true },
-                    )
-                },
+        HelpClickOverlay(
+            label = label,
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = { open = true },
         )
     }
     if (open) {

@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.help
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +22,17 @@ class MenuHelpTest {
         }
         val help = src("main/kotlin/org/dlang/liveimap/ui/help/IconHelp.kt")
         assertTrue(help.contains("fun HelpDropdownMenuItem"))
-        assertTrue(help.contains("onLongPress"))
+        assertTrue(help.replace("BoxScope.", "").contains("fun HelpClickOverlay"))
+        assertEquals(1, help.split("combinedClickable(").size - 1)
+        assertTrue(help.contains("Role.Button"))
+        assertFalse(help.contains("detectTapGestures"))
+        for (name in listOf("HelpIconButton", "HelpExtendedFab", "HelpDropdownMenuItem")) {
+            val start = help.indexOf("fun $name(")
+            assertTrue(name, start >= 0)
+            val next = help.indexOf("\nfun ", start + 1)
+            val body = help.substring(start, if (next < 0) help.length else next)
+            assertTrue(name, body.contains("HelpClickOverlay("))
+        }
         assertTrue(help.contains("IconHelpDialog"))
         assertTrue(src("main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt").contains("DropdownMenuItem("))
         val strings = src("main/res/values/strings.xml")
