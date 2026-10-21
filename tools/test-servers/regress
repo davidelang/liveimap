@@ -1870,7 +1870,7 @@ def main():
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
             problem = domain_login_check(s)
             if problem:
-                stop(f"VERDICT BLOCKED {problem}", suites, names, [])
+                stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
             blocked, drifted = verify_one(s, False)
             if blocked:
                 stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])
