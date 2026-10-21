@@ -48,9 +48,19 @@ remove_build_container() {
 
 if [ $# -eq 1 ] && [ "$1" = "--all" ]; then
   servers=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write("\n".join(lab.SEED_SERVERS))' "$DIR") || exit 1
+  failed=0
   for server in $servers; do
-    "$SCRIPT" "$server" || exit 1
+    printf 'SEED START %s\n' "$server" >&2
+    if "$SCRIPT" "$server"; then
+      printf 'SEED OK %s\n' "$server" >&2
+    else
+      printf 'SEED FAIL %s\n' "$server" >&2
+      failed=1
+    fi
   done
+  if [ "$failed" -ne 0 ]; then
+    exit 1
+  fi
   exit 0
 fi
 if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
@@ -58,6 +68,9 @@ if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
   exit 1
 fi
 server=$1
+step() {
+  printf 'STEP %s %s\n' "$server" "$*" >&2
+}
 ensure_buildx
 CA="$DIR/generated/ca"
 SEED="$DIR/seed/accounts.tsv"
@@ -99,6 +112,7 @@ prepare_volume_work() {
 }
 
 open_build() {
+  step "open build"
   imap_port=$(cport "$server" imap)
   remove_build_container
   docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
@@ -146,8 +160,14 @@ if imap is None:
     sys.stderr.write("bare login no greeting\n")
     sys.exit(1)
 try:
-    caps = b" ".join(imap.capabilities or [])
-    if b"LOGINDISABLED" in caps:
+    parts = []
+    for item in imap.capabilities or []:
+        if isinstance(item, bytes):
+            parts.append(item.decode())
+        else:
+            parts.append(item)
+    caps = " ".join(parts)
+    if "LOGINDISABLED" in caps:
         ctx = ssl._create_unverified_context()
         imap.starttls(ctx)
     typ, data = imap.login(user, secret)
@@ -193,6 +213,7 @@ seed_suite() {
 }
 
 close_build() {
+  step "require login"
   require_login
   python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
   seed_suite
@@ -626,11 +647,13 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
   if [ "$tag" = liveimap-cyrus-3124:phase1 ]; then
     echo "building cyrus image"
-    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3124:phase1 "$CY_BUILD"
+    step "cyrus-3124 phase"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3124:phase1 --progress=plain "$CY_BUILD"
   fi
   if [ "$tag" = liveimap-courier-606:phase1 ]; then
     echo "building courier image"
-    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-courier-606:phase1 "$CO_BUILD"
+    step "courier-606 phase"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-courier-606:phase1 --progress=plain "$CO_BUILD"
   fi
 }
 
@@ -799,7 +822,8 @@ if digest != want:
 PY
 
 echo "building cyrus image"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3137:phase2 "$CY_SRC"
+step "cyrus-3137 phase"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3137:phase2 --progress=plain "$CY_SRC"
 
 }
 
@@ -827,7 +851,10 @@ namespace inbox {
   separator = /
 }
 
-ssl = no
+ssl_server {
+  cert_file = /etc/lab/chain.crt
+  key_file = /etc/lab/server.key
+}
 auth_allow_cleartext = yes
 
 default_internal_user = vmail
@@ -877,7 +904,8 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
 echo "building dovecot image"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-dovecot-dev:phase1 "$DV_SRC"
+step "dovecot-dev phase"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-dovecot-dev:phase1 --progress=plain "$DV_SRC"
 
 }
 
@@ -892,7 +920,8 @@ echo "building stalwart image"
 if ! grep -q '^ENV CARGO_BUILD_JOBS=' "$ST_SRC/Dockerfile"; then
   sed -i '/^FROM --platform=\$BUILDPLATFORM chef AS builder/a ENV CARGO_BUILD_JOBS=2' "$ST_SRC/Dockerfile"
 fi
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --cpuset-cpus=0-3 \
+step "stalwart-dev phase"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --cpuset-cpus=0-3 \
   -t liveimap-stalwart-dev:phase1 "$ST_SRC"
 }
 
@@ -1065,7 +1094,8 @@ RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/
 USER vmail
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+  step "seed image"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
   open_build
   "$DIR/client-cert-install.sh" "liveimap-build-$server"
   close_build
@@ -1128,13 +1158,17 @@ set -a
 . /etc/lab/stalwart.env
 set +a
 if [ -x /usr/local/bin/stalwart-mail ]; then
-  exec /usr/local/bin/stalwart-mail --config /etc/stalwart/config.json
+  bin=/usr/local/bin/stalwart-mail
 elif [ -x /usr/local/bin/stalwart ]; then
-  exec /usr/local/bin/stalwart --config /etc/stalwart/config.json
+  bin=/usr/local/bin/stalwart
 else
   echo "stalwart binary missing" >&2
   exit 1
 fi
+if [ ! -f /opt/stalwart/etc/config.toml ]; then
+  "$bin" --init /opt/stalwart
+fi
+exec "$bin" --config /opt/stalwart/etc/config.toml
 EOF
       ;;
   esac
@@ -1150,7 +1184,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  step "seed image"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain -t "liveimap-seed-stage-$server" "$work"
   open_build
   docker commit --change "ENV STALWART_RECOVERY_ADMIN=admin:$token" "liveimap-build-$server" "liveimap-seed-stage-$server"
   docker stop "liveimap-build-$server"
@@ -1159,6 +1194,7 @@ EOF
   ready=0
   i=0
   while [ "$i" -lt 120 ]; do
+    printf 'STEP %s stalwart health %s\n' "$server" "$i" >&2
     if docker exec "liveimap-build-$server" /bin/sh -c 'curl -fsS -o /dev/null http://localhost:8080/healthz/live'; then
       ready=1
       break
@@ -1168,6 +1204,7 @@ EOF
   done
   if [ "$ready" -ne 1 ]; then
     echo "stalwart management listener did not open" >&2
+    docker logs --tail 80 "liveimap-build-$server" >&2
     exit 1
   fi
   docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
@@ -1175,6 +1212,7 @@ EOF
 JSON
   if ! grep -q '"created"' "$work/listener.json"; then
     echo "stalwart imap listener was not created" >&2
+    sed "s/${token}/***/g" "$work/listener.json" >&2
     exit 1
   fi
   "$DIR/stalwart-accounts.sh" "liveimap-build-$server"
@@ -1222,7 +1260,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/zimbra.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  step "seed image"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain -t "liveimap-seed-stage-$server" "$work"
   open_build
   python3 - "$work/zimbra.env" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
 import csv
@@ -1326,8 +1365,14 @@ if imap is None:
     sys.stderr.write("bare login no greeting\n")
     sys.exit(1)
 try:
-    caps = b" ".join(imap.capabilities or [])
-    if b"LOGINDISABLED" in caps:
+    parts = []
+    for item in imap.capabilities or []:
+        if isinstance(item, bytes):
+            parts.append(item.decode())
+        else:
+            parts.append(item)
+    caps = " ".join(parts)
+    if "LOGINDISABLED" in caps:
         ctx = ssl._create_unverified_context()
         imap.starttls(ctx)
     typ, data = imap.login(user, secret)
@@ -1557,7 +1602,8 @@ setup_cyrus() {
     useradd -r -d /var/lib/cyrus -s /usr/sbin/nologin cyrus
   fi
   mkdir -p /var/lib/cyrus /var/spool/cyrus/mail /var/spool/cyrus/sieve /run/cyrus /etc/sasl2 /usr/lib/sasl2
-  chown -R cyrus:cyrus /var/lib/cyrus /var/spool/cyrus /run/cyrus
+  cyrus_group=$(id -gn cyrus)
+  chown -R "cyrus:$cyrus_group" /var/lib/cyrus /var/spool/cyrus /run/cyrus
   sasl_body='pwcheck_method: auxprop
 auxprop_plugin: sasldb
 mech_list: plain login
@@ -1749,11 +1795,30 @@ AUTH
 
 setup_dovecot_dev() {
   setup_dovecot_files plain
+  mkdir -p /etc/dovecot/conf.d
+  cat > /etc/dovecot/conf.d/auth.conf <<'CFG'
+  passdb passwd-file {
+    passwd_file_path = /etc/dovecot/passwd
+  }
+  userdb static {
+    fields {
+      uid = vmail
+      gid = vmail
+      home = /srv/vmail/%{user}
+    }
+  }
+  auth_allow_weak_schemes = yes
+CFG
   conf=/usr/local/etc/dovecot/dovecot.conf
   if [ ! -f "$conf" ]; then
     conf=/etc/dovecot/dovecot.conf
   fi
-  printf '%s\n' '# lab-tls' 'ssl = yes' 'ssl_server_cert_file = /etc/lab/chain.crt' 'ssl_server_key_file = /etc/lab/server.key' >> "$conf"
+  if grep -q '^ssl = no$' "$conf"; then
+    sed -i '/^ssl = no$/d' "$conf"
+  fi
+  if ! grep -q 'ssl_server {' "$conf"; then
+    printf '%s\n' 'ssl_server {' '  cert_file = /etc/lab/chain.crt' '  key_file = /etc/lab/server.key' '}' >> "$conf"
+  fi
 }
 
 courier_one() {
@@ -1842,6 +1907,7 @@ setup_courier() {
       echo 'IMAP_STARTTLS=YES' >> "$f"
     fi
   done
+  mkdir -p /etc/courier
   each_base courier_one
   makeuserdb
 }
@@ -1999,7 +2065,11 @@ else
 # syntax=docker/dockerfile:1
 FROM $base_image
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y $packages && rm -rf /var/lib/apt/lists/*
+RUN echo "apt-get update $base_image" \
+    && timeout 120 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update \
+    && echo "apt-get install $packages" \
+    && timeout 120 apt-get install -y $packages \
+    && rm -rf /var/lib/apt/lists/*
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
 COPY version-pkg /etc/lab/version-pkg
@@ -2012,7 +2082,8 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 fi
 
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+step "seed image"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
 imap_port=$(cport "$server" imap)
 remove_build_container
 docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
@@ -2190,6 +2261,7 @@ if not good:
 PY
     ;;
 esac
+step "require login"
 require_login
 python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
 seed_suite

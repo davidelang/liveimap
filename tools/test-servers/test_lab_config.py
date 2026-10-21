@@ -496,11 +496,11 @@ open_body = function_body(builder, "open_build")
 log_at = open_body.find("docker logs --tail 80")
 fail_at = open_body.find("exit 1", log_at)
 assert log_at != -1 and fail_at != -1 and log_at < fail_at
-assert builder.count("docker logs --tail 80") == 2
+assert builder.count("docker logs --tail 80") == 3
 assert 'docker inspect "liveimap-build-$server"' not in builder
 assert "|| true" not in builder
 assert "2>/dev/null" not in builder
-assert "ssl_server_cert_file" in builder
+assert "ssl_server_cert_file" not in builder
 assert "STALWART_RECOVERY_ADMIN=admin" not in latest
 assert "upstream=stalwartlabs/stalwart:v0.16\n" in builder
 assert "upstream=stalwartlabs/stalwart:v0.16.25\n" in builder
@@ -858,6 +858,7 @@ build_lines = [line for line in builder.splitlines() if "docker build " in line]
 assert build_lines
 for line in build_lines:
     assert 'HOME="$plugin_home"' in line, line
+    assert "--progress=plain" in line, line
 for line in builder.splitlines():
     if "docker commit" in line or "docker create" in line:
         assert "HOME=" not in line, line
@@ -869,7 +870,9 @@ assert 'usage: tools/test-servers/build-seed-image --all|<server>' in builder
 assert '[ "$1" = "--all" ]' in builder
 assert builder.find('[ "$1" = "--all" ]') < builder.find("trap 'remove_build_container; exit 1' EXIT")
 assert 'sys.stdout.write("\\n".join(lab.SEED_SERVERS))' in builder
-assert '"$SCRIPT" "$server" || exit 1' in builder
+assert "SEED START" in builder
+assert "SEED FAIL" in builder
+assert '"$SCRIPT" "$server" || exit 1' not in builder
 assert "\nensure_buildx\n" in builder
 assert builder.find("\nensure_buildx\n") < builder.find('case "$server" in')
 assert lab.SEED_SERVERS[0] == "dovecot-245"
@@ -913,6 +916,42 @@ assert dove_at != -1 and sink_call != -1 and seed_call != -1 and sink_call < see
 assert "draw_ports 10" not in latest
 assert "|| true" not in latest and "2>/dev/null" not in latest
 assert "|| true" not in builder and "2>/dev/null" not in builder
+# Seed census edges 1-8. Text only; this does not run docker or build-seed-image.
+assert 'b" ".join' not in builder
+assert 'b" ".join' not in snap
+assert builder.count("isinstance(item, bytes)") == 2
+assert snap.count("isinstance(item, bytes)") == 1
+cyrus_fn = function_body(builder, "setup_cyrus")
+assert "id -gn cyrus" in cyrus_fn
+assert "chown -R cyrus:cyrus" not in cyrus_fn
+mail_at = builder.find("if [ -x /usr/local/bin/stalwart-mail ]; then")
+assert mail_at != -1
+mail_end = builder.find("\nEOF\n", mail_at)
+mail_ep = builder[mail_at:mail_end]
+assert "--init /opt/stalwart" in mail_ep
+assert "config.toml" in mail_ep
+assert "config.json" not in mail_ep
+health_at = builder.find('while [ "$i" -lt 120 ]; do')
+assert health_at != -1
+health_end = builder.find("\ndone\n", health_at)
+health = builder[health_at:health_end]
+assert "STEP" in health and "stalwart health" in health
+dev_fn = function_body(builder, "setup_dovecot_dev")
+assert "/etc/dovecot/conf.d/auth.conf" in dev_fn
+assert "ssl_server {" in dev_fn
+assert "ssl_server_cert_file" not in dev_fn
+courier_fn = function_body(builder, "setup_courier")
+assert courier_fn.find("mkdir -p /etc/courier") < courier_fn.find("each_base courier_one")
+pkg = builder.split("FROM $base_image\n", 1)[1].split("COPY certs/", 1)[0]
+assert "timeout 120" in pkg
+assert "Acquire::http::Timeout=30" in pkg
+assert "apt-get install" in pkg
+all_at = builder.find('if [ $# -eq 1 ] && [ "$1" = "--all" ]; then')
+all_end = builder.find("\nfi\n", all_at)
+all_body = builder[all_at:all_end]
+assert "SEED START" in all_body and "SEED FAIL" in all_body
+assert '"$SCRIPT" "$server" || exit 1' not in all_body
+assert "exec /usr/bin/tini -- /dovecot/sbin/dovecot -F" in builder
 for line in builder.splitlines():
     if line.strip().startswith("COPY"):
         assert "accounts.tsv" not in line, line

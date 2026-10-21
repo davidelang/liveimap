@@ -152,8 +152,14 @@ if imap is None:
     sys.stderr.write("bare login no greeting\n")
     sys.exit(1)
 try:
-    caps = b" ".join(imap.capabilities or [])
-    if b"LOGINDISABLED" in caps:
+    parts = []
+    for item in imap.capabilities or []:
+        if isinstance(item, bytes):
+            parts.append(item.decode())
+        else:
+            parts.append(item)
+    caps = " ".join(parts)
+    if "LOGINDISABLED" in caps:
         ctx = ssl._create_unverified_context()
         imap.starttls(ctx)
     typ, data = imap.login(user, secret)

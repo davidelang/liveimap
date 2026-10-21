@@ -3531,3 +3531,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - One start script recreates every lab server.
 
 ## 2026-10-21 - Dovecot 2.4.5 stays up and a dead build container prints its log.
+
+## 2026-10-21 - Seed builds report the live step and fix the census failures.
