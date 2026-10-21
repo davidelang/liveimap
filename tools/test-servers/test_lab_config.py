@@ -55,23 +55,15 @@ for name in ("t2run.sh", "t3run.sh"):
     rec_at = text.find(rec_assign)
     assert rec_at != -1 and cd_at != -1 and rec_at < cd_at, name
 
-# Edge 2: generate generated/corpus-v1, and a failed seed stops the matrix.
+# Edge 2: generate generated/corpus-v1. The acceptance runners do not seed.
 seed = open(os.path.join(HERE, "seed_corpus.py"), encoding="utf-8").read()
 assert "generated" in seed and "corpus-v1" in seed
 assert "make_corpus.load_tables" in seed and "make_corpus.generate" in seed
 assert "manifest.tsv" in seed
 acc = open(os.path.join(HERE, "acclab.py"), encoding="utf-8").read()
-retry = acc.find('seed("--starttls")')
-assert retry != -1
-after = acc[retry:]
-assert after.find("if rc != 0:") != -1
-assert after.find("sys.exit") != -1 and after.find("sys.exit") < after.find("acceptanceMatrix")
+assert "seed_corpus.py" not in acc
 t4 = open(os.path.join(HERE, "t4smtp.py"), encoding="utf-8").read()
-seed_at = t4.find("seed_corpus.py")
-exit_at = t4.find("sys.exit", seed_at)
-smtp_at = t4.find("smtpAccepts", seed_at)
-assert seed_at != -1 and exit_at != -1 and smtp_at != -1 and exit_at < smtp_at
-assert "returncode" in t4[seed_at:exit_at]
+assert "seed_corpus.py" not in t4
 assert 'NAME = "dovecot-dev"' in t4
 assert 'PORT = "2525"' in t4
 
@@ -538,4 +530,27 @@ stop_fn = function_body(zimbra, "stop_zimbra")
 assert "|| true" not in stop_fn
 assert "2>/dev/null" not in stop_fn
 assert "docker stop liveimap-zimbra-883" in stop_fn
+
+# No-test-time-seed edges 1-4. Text only; this does not run docker, regress, or build-seed-image.
+assert "seed_corpus.py" not in regress
+assert "seed_one(" not in regress
+verify_at = regress.find("blocked, drifted = verify_one(")
+assert verify_at != -1
+stop_at = regress.find("stop(", verify_at)
+assert stop_at != -1
+verify_fail = regress[verify_at:regress.find("\n", stop_at)]
+assert "build-seed-image" in verify_fail
+assert "stop(" in verify_fail
+assert "seed_corpus.py" not in acc
+assert "seed_corpus.py" not in t4
+assert "seed_corpus.py" in builder
+ep_at = builder.find("    stalwart-0155)\n      cat > \"$work/entrypoint.sh\" <<'EOF'\n")
+assert ep_at != -1
+ep_end = builder.find("\nEOF\n", ep_at)
+ep = builder[ep_at:ep_end]
+assert "exec /usr/local/bin/stalwart" in ep
+assert "/opt/stalwart/stalwart-mail" not in ep
+assert "/usr/local/bin/stalwart --init /opt/stalwart" in ep
+assert "--config /opt/stalwart/etc/config.toml" in ep
+assert "stalwart binary missing" in ep
 print("ok")

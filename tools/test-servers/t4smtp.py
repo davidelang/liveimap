@@ -14,11 +14,10 @@ child = os.environ.copy(); child["LAB_LOG"] = fake_log
 smtp = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), PORT], stdout=log, stderr=log, env=child)
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
-    say("greeting", lab.greeting(s["imap"], False, timeout=300)); time.sleep(5)
-    sr = subprocess.run(["timeout", "900", sys.executable, os.path.join(HERE, "seed_corpus.py"), lab.LAB_HOST, str(s["imap"]), "--user", lab.user_for(s)], capture_output=True, text=True)
-    say("seed", sr.returncode, (sr.stdout + sr.stderr).strip().splitlines()[-1:])
-    if sr.returncode != 0:
-        sys.exit(sr.returncode)
+    up = lab.greeting(s["imap"], False, timeout=300); say("greeting", up)
+    if not up:
+        sys.exit(1)
+    time.sleep(5)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#smtpAccepts",
                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", "None",
                 "-e", "labSmtpPort", PORT, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@lab.test",

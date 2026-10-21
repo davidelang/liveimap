@@ -7,20 +7,12 @@ lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]]
 upcmd = lab.up_commands().get(s["container"])  # older images idle in a sleep loop: up.tsv starts the daemons (as lab.py run)
 if upcmd: subprocess.run(["docker", "exec", s["container"], "sh", "-c", upcmd], capture_output=True)
 try:
-    time.sleep(int(os.environ.get("ACC_WAIT", "0"))); up = lab.greeting(s["imap"], False, timeout=900 if s["container"] in lab.ALONE else int(os.environ.get("ACC_UP", "300"))); print("greeting", up); time.sleep(5)
-    # seed every run (seed_corpus skips when the marker is there; in-memory servers need it each session)
-    def seed(*extra):
-        r = subprocess.run(["timeout", "900", sys.executable, os.path.join(HERE, "seed_corpus.py"), lab.LAB_HOST, str(s["imap"]), "--user", lab.user_for(s), *extra], capture_output=True, text=True)
-        return r.returncode, (r.stdout + r.stderr).strip().splitlines()[-1:]
+    time.sleep(int(os.environ.get("ACC_WAIT", "0"))); up = lab.greeting(s["imap"], False, timeout=900 if s["container"] in lab.ALONE else int(os.environ.get("ACC_UP", "300"))); print("greeting", up)
+    if not up:
+        sys.exit(1)
+    time.sleep(5)
     if tls == "auto":
-        rc, out = seed(); tls = "None"
-        if rc != 0 and any(k in " ".join(out) for k in ("PRIVACYREQUIRED", "LOGINDISABLED", "Cleartext", "Plaintext", "disabled")):
-            rc, out = seed("--starttls"); tls = "StartTls"
-    else:
-        rc, out = seed(*(["--starttls"] if tls == "StartTls" else []))
-    print("seed", rc, out)
-    if rc != 0:
-        sys.exit(rc)
+        tls = "None"
     def smtp():
         a = lab.smtp_args(s, tls)
         if a: return a

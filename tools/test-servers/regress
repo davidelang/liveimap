@@ -5,7 +5,7 @@ Preflight and seed failures stop with one reason. Suite failures are collected.
 Recordings and logs go under the repo sandbox symlink. The host address is never
 written into summary.md, results.json, or the RESULTS body.
 """
-import argparse, atexit, base64, csv, hashlib, imaplib, json, os, re, shutil, signal, socket, ssl, subprocess, sys, tempfile, time, urllib.request
+import argparse, atexit, base64, csv, hashlib, imaplib, json, os, re, signal, socket, ssl, subprocess, sys, tempfile, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -1286,21 +1286,6 @@ def verify_one(s, skipped):
     return "", []
 
 
-def seed_one(s):
-    """seed_corpus.py the way acclab.py does, including the STARTTLS retry. Acceptance is the imap suite."""
-    import lab
-    cmd = [sys.executable, os.path.join(HERE, "seed_corpus.py"),
-           lab.LAB_HOST, str(s["imap"]), "--user", lab.user_for(s)]
-    if shutil.which("timeout"):
-        cmd = ["timeout", "900", *cmd]
-    rc, text = run_cmd(cmd, f"seed-{s['name']}.log", child_env(), timeout=960)
-    if rc != 0 and any(k in text for k in ("PRIVACYREQUIRED", "LOGINDISABLED", "Cleartext", "Plaintext", "disabled")):
-        rc, text = run_cmd(cmd + ["--starttls"], f"seed-{s['name']}.log", child_env(), timeout=960)
-    if rc != 0:
-        return rc, redact(first_line(text))
-    return 0, ""
-
-
 def record_cached(suite, server, variant):
     counts = cached_counts(suite, server, variant)
     add_row(server, suite, variant, counts, "PASS", "", "", 0)
@@ -1879,7 +1864,7 @@ def main():
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
             blocked, drifted = verify_one(s, skipped)
             if blocked:
-                stop(f"VERDICT BLOCKED {blocked}", suites, names, [])
+                stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])
             drift_lines.extend(drifted)
         finally:
             if s and s.get("container"):
