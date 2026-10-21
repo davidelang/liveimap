@@ -100,12 +100,16 @@ prepare_volume_work() {
 
 open_build() {
   imap_port=$(cport "$server" imap)
-  if docker inspect "liveimap-build-$server" >/dev/null; then
-    docker rm -f "liveimap-build-$server"
-  fi
+  remove_build_container
   docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
   docker start "liveimap-build-$server"
-  published=$(docker port "liveimap-build-$server" "$imap_port")
+  port_out="$DIR/generated/published-$server"
+  docker port "liveimap-build-$server" "$imap_port" > "$port_out" || {
+    docker logs --tail 80 "liveimap-build-$server" >&2
+    printf '%s\n' "liveimap-build-$server is not publishing $imap_port" >&2
+    exit 1
+  }
+  published=$(cat "$port_out")
   host_port=${published##*:}
   lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
   case "$lab_host" in
@@ -1014,7 +1018,13 @@ while IFS= read -r line || [ -n "$line" ]; do
   mkdir -p "/srv/vmail/$user/Maildir"
 done < /run/secrets/accounts
 chmod 640 /etc/dovecot/passwd
-cat > /etc/dovecot/auth.conf <<'CFG'
+chown vmail:vmail /etc/dovecot/passwd
+chown -R vmail:vmail /srv/vmail
+cat > /etc/dovecot/conf.d/auth.conf <<'CFG'
+import_environment {
+  DOVEADM_PASSWORD = %{env:DOVEADM_PASSWORD | default}
+  USER_PASSWORD = %{env:USER_PASSWORD | default('{CRYPT}*')}
+}
 passdb passwd-file {
   passwd_file_path = /etc/dovecot/passwd
 }
@@ -1025,20 +1035,20 @@ userdb static {
     home = /srv/vmail/%{user}
   }
 }
+auth_allow_weak_schemes = yes
 CFG
-conf=/etc/dovecot/dovecot.conf
-if [ ! -f "$conf" ]; then
-  conf=/usr/local/etc/dovecot/dovecot.conf
-fi
-if [ -f "$conf" ]; then
-  printf '%s\n' '!include /etc/dovecot/auth.conf' '!include /etc/dovecot/conf.d/relay.conf' '# lab-tls' 'ssl = yes' 'ssl_server_cert_file = /etc/lab/chain.crt' 'ssl_server_key_file = /etc/lab/server.key' >> "$conf"
-fi
+cat > /etc/dovecot/conf.d/zz-lab-tls.conf <<'CFG'
+ssl_server {
+  cert_file = /etc/lab/chain.crt
+  key_file = /etc/lab/server.key
+}
+CFG
 EOF
   chmod 755 "$work/liveimap-setup"
   cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
-exec dovecot -F
+exec /usr/bin/tini -- /dovecot/sbin/dovecot -F
 EOF
   chmod 755 "$work/entrypoint.sh"
   cat > "$work/Dockerfile" <<'EOF'
@@ -1052,6 +1062,7 @@ COPY liveimap-setup /usr/local/bin/liveimap-setup
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
 RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
+USER vmail
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
   HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
@@ -2003,12 +2014,16 @@ fi
 
 HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
 imap_port=$(cport "$server" imap)
-if docker inspect "liveimap-build-$server" >/dev/null; then
-  docker rm -f "liveimap-build-$server"
-fi
+remove_build_container
 docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
 docker start "liveimap-build-$server"
-published=$(docker port "liveimap-build-$server" "$imap_port")
+port_out="$DIR/generated/published-$server"
+docker port "liveimap-build-$server" "$imap_port" > "$port_out" || {
+  docker logs --tail 80 "liveimap-build-$server" >&2
+  printf '%s\n' "liveimap-build-$server is not publishing $imap_port" >&2
+  exit 1
+}
+published=$(cat "$port_out")
 host_port=${published##*:}
 lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
 case "$lab_host" in

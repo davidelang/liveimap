@@ -483,6 +483,24 @@ for line in dove.splitlines():
     if "submission_relay_host = " in line and "%s" not in line:
         raise AssertionError(line)
 assert "client-cert-install.sh" in dove
+# Dovecot 2.4.5 start edges 1-4. Text only; this does not run docker or build-seed-image.
+assert "/dovecot/sbin/dovecot" in dove
+assert "/usr/bin/tini" in dove
+assert "USER vmail" in dove
+assert "exec dovecot -F" not in dove
+assert "ssl = yes" not in dove
+assert "ssl_server_cert_file" not in dove
+assert "auth_allow_weak_schemes = yes" in dove
+assert "VOLUME" not in builder
+open_body = function_body(builder, "open_build")
+log_at = open_body.find("docker logs --tail 80")
+fail_at = open_body.find("exit 1", log_at)
+assert log_at != -1 and fail_at != -1 and log_at < fail_at
+assert builder.count("docker logs --tail 80") == 2
+assert 'docker inspect "liveimap-build-$server"' not in builder
+assert "|| true" not in builder
+assert "2>/dev/null" not in builder
+assert "ssl_server_cert_file" in builder
 assert "STALWART_RECOVERY_ADMIN=admin" not in latest
 assert "upstream=stalwartlabs/stalwart:v0.16\n" in builder
 assert "upstream=stalwartlabs/stalwart:v0.16.25\n" in builder
