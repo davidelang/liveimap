@@ -61,15 +61,11 @@
 
 - Alpine-scale tests on a 244k-message folder and 1000 folders, and the index frame drops (roadmap M7.1-M7.2; recommendations R-P2-3, B13)
 
-- Move UI strings into strings.xml (roadmap M7.5; recommendations W10)
-
 - TLS and SMTP AUTH, then other IMAP servers by capability (roadmap M8.1-M8.2; sandbox/research/liveimap-roadmap-20261003.md)
 
 - Watch more folders for new mail, each with its own IDLE connection within a connection budget (roadmap M8.6; recommendations D22)
 
 - JMAP accounts on Cyrus 3.x, chosen by the server's JMAP capability (roadmap M9; sandbox/research/liveimap-roadmap-20261003.md)
-
-- A long press on an icon or menu action shows a short explanation of that control. Do this later with the expanded manual, once the UI is stable, so the text does not go stale.
 
 - Move OpenSSL from 1.1.1w to 3.x before a public release. IMAP TLS may ship on 1.1.1w (roadmap M4.3; recommendations section 12).
 - DIGEST-MD5 realm (low priority; design says skip): when the server offers no realm, libetpan passes realm=NULL and Cyrus SASL's DIGEST client falls back to the server name (here the IP), so Dovecot 2.4 sees user=liveimap@10.2.3.133 and fails. Fix would need a GETREALM choice (offered realm, else none); not trivial with Cyrus's fallback. Lab: dovecot-245, dovecot-dev.
@@ -82,8 +78,6 @@
   Owner: David to decide the UX; then implement in MessageIndexScreen/IndexModel. (2026-10-11)
 
 - Add attachments for sending and for receiving. The reader already lists and opens received parts, and a forward can resend those parts. Also check the plain-text version of an HTML message on send: compose sends text/plain only and does not add a text/html part with a text/plain alternative.
-
-- Internationalize the app so the UI can be translated. Moving the strings into strings.xml is the existing separate item and comes first.
 
 - One Compose button for the whole screen in a multi-panel layout. The folder list and the message index each draw their own Compose button, so a side-by-side layout shows more than one. Reply, reply-all, forward, and bounce on an open message stay message actions.
 

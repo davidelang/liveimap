@@ -52,7 +52,6 @@ import androidx.compose.material.icons.outlined.Flag as OutlinedFlag
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -144,6 +143,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.Capabilities
@@ -294,7 +294,10 @@ private fun IndexFilterMenu(
                 FilterRole.Widen -> canWiden
                 else -> true
             }
-            DropdownMenuItem(
+            HelpDropdownMenuItem(
+                label = label,
+                help = stringResource(R.string.help_menu_filter),
+                page = "messages.html",
                 text = { Text(label) },
                 enabled = enabled,
                 onClick = {
@@ -2537,16 +2540,24 @@ private fun MessageIndexLoaded(
                                 onDismissRequest = { selectionMore = false },
                             ) {
                                 ObscuredTouchFilter()
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_select_all)) },
+                                val selectAll = stringResource(R.string.index_select_all)
+                                HelpDropdownMenuItem(
+                                    label = selectAll,
+                                    help = stringResource(R.string.help_menu_index_select_all),
+                                    page = "messages.html",
+                                    text = { Text(selectAll) },
                                     onClick = {
                                         selectionMore = false
                                         selectAllMessages()
                                     },
                                 )
                                 for (policy in alternateDeletePolicies(effectivePolicy, uidPlusNow, trashKnown)) {
-                                    DropdownMenuItem(
-                                        text = { Text(deletePolicyLabel(policy)) },
+                                    val policyLabel = deletePolicyLabel(policy)
+                                    HelpDropdownMenuItem(
+                                        label = policyLabel,
+                                        help = stringResource(R.string.help_menu_delete_policy),
+                                        page = "messages.html",
+                                        text = { Text(policyLabel) },
                                         onClick = {
                                             selectionMore = false
                                             val uids = selected.toList()
@@ -2569,22 +2580,38 @@ private fun MessageIndexLoaded(
                                         },
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_mark_answered)) },
+                                val markAnswered = stringResource(R.string.index_mark_answered)
+                                HelpDropdownMenuItem(
+                                    label = markAnswered,
+                                    help = stringResource(R.string.help_menu_index_mark_answered),
+                                    page = "messages.html",
+                                    text = { Text(markAnswered) },
                                     onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_mark_unanswered)) },
+                                val markUnanswered = stringResource(R.string.index_mark_unanswered)
+                                HelpDropdownMenuItem(
+                                    label = markUnanswered,
+                                    help = stringResource(R.string.help_menu_index_mark_unanswered),
+                                    page = "messages.html",
+                                    text = { Text(markUnanswered) },
                                     onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
                                 )
                                 if (showUndelete) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.index_undelete)) },
+                                    val undelete = stringResource(R.string.index_undelete)
+                                    HelpDropdownMenuItem(
+                                        label = undelete,
+                                        help = stringResource(R.string.help_menu_index_undelete),
+                                        page = "messages.html",
+                                        text = { Text(undelete) },
                                         onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_bounce)) },
+                                val bounce = stringResource(R.string.index_bounce)
+                                HelpDropdownMenuItem(
+                                    label = bounce,
+                                    help = stringResource(R.string.help_menu_index_bounce),
+                                    page = "messages.html",
+                                    text = { Text(bounce) },
                                     enabled = !allMailbox && selectedHits.isEmpty(), // a bounce seed names one folder
                                     onClick = {
                                         selectionMore = false
@@ -2593,8 +2620,12 @@ private fun MessageIndexLoaded(
                                 )
                                 if (!allMailbox && selected.size == 1 && selectedHits.isEmpty()) {
                                     val oneUid = selected.single()
-                                    DropdownMenuItem(
-                                        text = { Text(forwardStyleName(account.forwardAsAttachment)) },
+                                    val forwardLabel = forwardStyleName(account.forwardAsAttachment)
+                                    HelpDropdownMenuItem(
+                                        label = forwardLabel,
+                                        help = stringResource(R.string.help_menu_forward_style),
+                                        page = "messages.html",
+                                        text = { Text(forwardLabel) },
                                         onClick = {
                                             selectionMore = false
                                             onCompose(
@@ -2609,8 +2640,12 @@ private fun MessageIndexLoaded(
                                         },
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_clear_selection)) },
+                                val clearSelectionLabel = stringResource(R.string.index_clear_selection)
+                                HelpDropdownMenuItem(
+                                    label = clearSelectionLabel,
+                                    help = stringResource(R.string.help_menu_index_clear_selection),
+                                    page = "messages.html",
+                                    text = { Text(clearSelectionLabel) },
                                     onClick = { clearSelection() },
                                 )
                                 for (entry in selectionMenuTail(selectionLayout)) {
@@ -2624,7 +2659,16 @@ private fun MessageIndexLoaded(
                                                 SelectionBarAction.Move -> moveText
                                                 SelectionBarAction.Delete -> deletePolicyLabel(effectivePolicy)
                                             }
-                                            DropdownMenuItem(
+                                            val help = when (action) {
+                                                SelectionBarAction.Seen -> stringResource(R.string.help_menu_seen)
+                                                SelectionBarAction.Flag -> stringResource(R.string.help_menu_flag)
+                                                SelectionBarAction.Move -> stringResource(R.string.help_menu_move)
+                                                SelectionBarAction.Delete -> stringResource(R.string.help_menu_delete_policy)
+                                            }
+                                            HelpDropdownMenuItem(
+                                                label = label,
+                                                help = help,
+                                                page = "messages.html",
                                                 text = { Text(label) },
                                                 onClick = {
                                                     selectionMore = false
@@ -2638,8 +2682,12 @@ private fun MessageIndexLoaded(
                                             )
                                         }
                                         SelectionMenuEntry.Customize -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.toolbar_customize)) },
+                                            val title = stringResource(R.string.toolbar_customize)
+                                            HelpDropdownMenuItem(
+                                                label = title,
+                                                help = stringResource(R.string.help_menu_toolbar_customize),
+                                                page = "messages.html",
+                                                text = { Text(title) },
                                                 onClick = {
                                                     selectionMore = false
                                                     onCustomizeSelection(accountId)
@@ -2774,7 +2822,15 @@ private fun MessageIndexLoaded(
                                 if (uid != null) model.showThreadOf(uid, labelThread)
                             },
                         )) {
-                            DropdownMenuItem(
+                            val quickHelp = when (label) {
+                                labelNew -> stringResource(R.string.help_menu_index_show_new)
+                                labelUndeleted -> stringResource(R.string.help_menu_index_show_not_deleted)
+                                else -> stringResource(R.string.help_menu_index_show_thread)
+                            }
+                            HelpDropdownMenuItem(
+                                label = label,
+                                help = quickHelp,
+                                page = "messages.html",
                                 text = { Text(label) },
                                 modifier = Modifier.testTag("index-quick-" + label),
                                 onClick = {
@@ -2871,8 +2927,12 @@ private fun MessageIndexLoaded(
                             )
                         }
                         if (account.openAtInIndexMenu) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.label_open_at)) },
+                            val openAtLabel = stringResource(R.string.label_open_at)
+                            HelpDropdownMenuItem(
+                                label = openAtLabel,
+                                help = stringResource(R.string.help_menu_label_open_at),
+                                page = "messages.html",
+                                text = { Text(openAtLabel) },
                                 onClick = {
                                     menuOpen = false
                                     openAt = true
@@ -2880,10 +2940,14 @@ private fun MessageIndexLoaded(
                             )
                         }
                         HorizontalDivider()
-                        DropdownMenuItem(
+                        val expungeLabel = stringResource(R.string.index_expunge_menu)
+                        HelpDropdownMenuItem(
+                            label = expungeLabel,
+                            help = stringResource(R.string.help_menu_index_expunge_menu),
+                            page = "messages.html",
                             text = {
                                 Column {
-                                    Text(stringResource(R.string.index_expunge_menu))
+                                    Text(expungeLabel)
                                     if (!uidPlusNow) {
                                         Text(
                                             text = stringResource(R.string.settings_reason_uidplus),
@@ -2895,7 +2959,7 @@ private fun MessageIndexLoaded(
                             },
                             enabled = uidPlusNow,
                             onClick = {
-                                if (!uidPlusNow) return@DropdownMenuItem
+                                if (!uidPlusNow) return@HelpDropdownMenuItem
                                 menuOpen = false
                                 if (account.askBeforeExpunge) {
                                     pendingExpungeUids = null
@@ -2910,15 +2974,23 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_select_all)) },
+                        val selectAllLabel = stringResource(R.string.index_select_all)
+                        HelpDropdownMenuItem(
+                            label = selectAllLabel,
+                            help = stringResource(R.string.help_menu_index_select_all),
+                            page = "messages.html",
+                            text = { Text(selectAllLabel) },
                             onClick = {
                                 menuOpen = false
                                 selectAllMessages()
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_folder_info)) },
+                        val folderInfoLabel = stringResource(R.string.index_folder_info)
+                        HelpDropdownMenuItem(
+                            label = folderInfoLabel,
+                            help = stringResource(R.string.help_menu_index_folder_info),
+                            page = "messages.html",
+                            text = { Text(folderInfoLabel) },
                             onClick = {
                                 menuOpen = false
                                 enqueueModel {
@@ -2934,16 +3006,24 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_jump)) },
+                        val jumpLabel = stringResource(R.string.index_jump)
+                        HelpDropdownMenuItem(
+                            label = jumpLabel,
+                            help = stringResource(R.string.help_menu_index_jump),
+                            page = "messages.html",
+                            text = { Text(jumpLabel) },
                             onClick = {
                                 menuOpen = false
                                 jumpText = ""
                                 jumpOpen = true
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_next_unread)) },
+                        val nextUnread = stringResource(R.string.index_next_unread)
+                        HelpDropdownMenuItem(
+                            label = nextUnread,
+                            help = stringResource(R.string.help_menu_index_next_unread),
+                            page = "messages.html",
+                            text = { Text(nextUnread) },
                             onClick = {
                                 menuOpen = false
                                 enqueueModel {
@@ -2979,8 +3059,12 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.index_mark_all_read)) },
+                        val markAllRead = stringResource(R.string.index_mark_all_read)
+                        HelpDropdownMenuItem(
+                            label = markAllRead,
+                            help = stringResource(R.string.help_menu_index_mark_all_read),
+                            page = "messages.html",
+                            text = { Text(markAllRead) },
                             onClick = {
                                 menuOpen = false
                                 confirmMarkAllRead = true
@@ -2990,8 +3074,18 @@ private fun MessageIndexLoaded(
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()
                                 is IndexMenuEntry.Action -> {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(indexBarActionRes(entry.action))) },
+                                    val title = stringResource(indexBarActionRes(entry.action))
+                                    HelpDropdownMenuItem(
+                                        label = title,
+                                        help = stringResource(
+                                            when (entry.action) {
+                                                IndexBarAction.Refresh -> R.string.help_menu_index_refresh
+                                                IndexBarAction.Search -> R.string.help_menu_index_search
+                                                IndexBarAction.Filter -> R.string.help_menu_index_filter
+                                            },
+                                        ),
+                                        page = "messages.html",
+                                        text = { Text(title) },
                                         onClick = {
                                             menuOpen = false
                                             when (entry.action) {
@@ -3006,8 +3100,12 @@ private fun MessageIndexLoaded(
                                     )
                                 }
                                 IndexMenuEntry.Customize -> {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.toolbar_customize)) },
+                                    val title = stringResource(R.string.toolbar_customize)
+                                    HelpDropdownMenuItem(
+                                        label = title,
+                                        help = stringResource(R.string.help_menu_toolbar_customize),
+                                        page = "messages.html",
+                                        text = { Text(title) },
                                         onClick = {
                                             menuOpen = false
                                             onCustomize(accountId)
@@ -3188,8 +3286,12 @@ private fun MessageIndexLoaded(
                         ) {
                             ObscuredTouchFilter()
                             for (field in SimpleSearchField.entries) {
-                                DropdownMenuItem(
-                                    text = { Text(simpleSearchLabel(field)) },
+                                val fieldLabel = simpleSearchLabel(field)
+                                HelpDropdownMenuItem(
+                                    label = fieldLabel,
+                                    help = stringResource(R.string.help_menu_simple_search),
+                                    page = "messages.html",
+                                    text = { Text(fieldLabel) },
                                     onClick = {
                                         searchFieldOpen = false
                                         held.searchField = field
@@ -3280,8 +3382,12 @@ private fun MessageIndexLoaded(
                         ) {
                             ObscuredTouchFilter()
                             if (savedItems.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.index_search_none)) },
+                                val none = stringResource(R.string.index_search_none)
+                                HelpDropdownMenuItem(
+                                    label = none,
+                                    help = stringResource(R.string.help_menu_index_search_none),
+                                    page = "messages.html",
+                                    text = { Text(none) },
                                     onClick = {},
                                     enabled = false,
                                 )
@@ -3290,7 +3396,10 @@ private fun MessageIndexLoaded(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        DropdownMenuItem(
+                                        HelpDropdownMenuItem(
+                                            label = item.name,
+                                            help = stringResource(R.string.help_menu_saved_search),
+                                            page = "messages.html",
                                             text = { Text(item.name) },
                                             onClick = {
                                                 savedOpen = false
@@ -4311,7 +4420,10 @@ private fun DirectionMenuChoice(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    DropdownMenuItem(
+    HelpDropdownMenuItem(
+        label = label,
+        help = stringResource(R.string.help_menu_direction),
+        page = "messages.html",
         text = { Text(label) },
         onClick = onClick,
         leadingIcon = if (selected) {
@@ -4331,8 +4443,12 @@ private fun SortMenuChoice(
 ) {
     val label = sortShortLabel(key)
     val disabledLabel = stringResource(R.string.index_not_advertised, label)
-    DropdownMenuItem(
-        text = { Text(if (enabled) label else disabledLabel) },
+    val shown = if (enabled) label else disabledLabel
+    HelpDropdownMenuItem(
+        label = shown,
+        help = stringResource(R.string.help_menu_sort),
+        page = "messages.html",
+        text = { Text(shown) },
         onClick = onClick,
         leadingIcon = if (selected) {
             { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }

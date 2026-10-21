@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
@@ -338,8 +338,12 @@ private fun AdvancedSearchLoaded(
                         ) {
                             ObscuredTouchFilter()
                             for (field in advancedFields) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(field.labelRes)) },
+                                val fieldLabel = stringResource(field.labelRes)
+                                HelpDropdownMenuItem(
+                                    label = fieldLabel,
+                                    help = stringResource(R.string.help_menu_search_field),
+                                    page = "messages.html",
+                                    text = { Text(fieldLabel) },
                                     onClick = {
                                         openRow = -1
                                         rows = rows.mapIndexed { rowIndex, current ->
@@ -527,15 +531,22 @@ private fun AdvancedSearchLoaded(
                     ) {
                         ObscuredTouchFilter()
                         if (savedItems.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.index_search_none)) },
+                            val none = stringResource(R.string.index_search_none)
+                            HelpDropdownMenuItem(
+                                label = none,
+                                help = stringResource(R.string.help_menu_index_search_none),
+                                page = "messages.html",
+                                text = { Text(none) },
                                 onClick = {},
                                 enabled = false,
                             )
                         } else {
                             savedItems.forEach { item ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    DropdownMenuItem(
+                                    HelpDropdownMenuItem(
+                                        label = item.name,
+                                        help = stringResource(R.string.help_menu_saved_search),
+                                        page = "messages.html",
                                         text = { Text(item.name) },
                                         onClick = {
                                             savedOpen = false

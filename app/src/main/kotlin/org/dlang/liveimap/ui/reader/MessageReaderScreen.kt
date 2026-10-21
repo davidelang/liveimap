@@ -71,7 +71,6 @@ import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -136,6 +135,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.ui.compose.oppositeForwardLabel
@@ -1705,8 +1705,12 @@ private fun MessageReaderLoaded(
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                 ObscuredTouchFilter()
                 for (policy in alternateDeletePolicies(effectivePolicy, readerUidPlus, trashKnown)) {
-                    DropdownMenuItem(
-                        text = { Text(deletePolicyLabel(policy)) },
+                    val policyLabel = deletePolicyLabel(policy)
+                    HelpDropdownMenuItem(
+                        label = policyLabel,
+                        help = stringResource(R.string.help_menu_delete_policy),
+                        page = "reading.html",
+                        text = { Text(policyLabel) },
                         onClick = {
                             moreMenu = false
                             runChosenPolicy(policy)
@@ -1715,21 +1719,28 @@ private fun MessageReaderLoaded(
                 }
                 for (action in menuActions) {
                     if (action == ReaderToolbarAction.Refresh) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.reader_refresh)) },
+                        val title = stringResource(R.string.reader_refresh)
+                        HelpDropdownMenuItem(
+                            label = title,
+                            help = stringResource(R.string.help_menu_reader_refresh),
+                            page = "reading.html",
+                            text = { Text(title) },
                             onClick = {
                                 moreMenu = false
                                 runReaderAction(action)
                             },
                         )
                     } else {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    if (action == ReaderToolbarAction.Delete) deletePolicyLabel(effectivePolicy)
-                                    else readerActionName(action),
-                                )
-                            },
+                        val title = if (action == ReaderToolbarAction.Delete) {
+                            deletePolicyLabel(effectivePolicy)
+                        } else {
+                            readerActionName(action)
+                        }
+                        HelpDropdownMenuItem(
+                            label = title,
+                            help = readerMenuHelp(action),
+                            page = "reading.html",
+                            text = { Text(title) },
                             onClick = {
                                 moreMenu = false
                                 runReaderAction(action)
@@ -1737,8 +1748,12 @@ private fun MessageReaderLoaded(
                         )
                     }
                 }
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.reader_save)) },
+                val saveLabel = stringResource(R.string.reader_save)
+                HelpDropdownMenuItem(
+                    label = saveLabel,
+                    help = stringResource(R.string.help_menu_reader_save),
+                    page = "reading.html",
+                    text = { Text(saveLabel) },
                     onClick = {
                         moreMenu = false
                         scope.launch {
@@ -1769,8 +1784,12 @@ private fun MessageReaderLoaded(
                         }
                     },
                 )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.reader_take_address)) },
+                val takeAddress = stringResource(R.string.reader_take_address)
+                HelpDropdownMenuItem(
+                    label = takeAddress,
+                    help = stringResource(R.string.help_menu_reader_take_address),
+                    page = "reading.html",
+                    text = { Text(takeAddress) },
                     onClick = {
                         moreMenu = false
                         if (account.addressBookMailbox.isEmpty()) {
@@ -1792,22 +1811,29 @@ private fun MessageReaderLoaded(
                         }
                     },
                 )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.reader_filter_like)) },
+                val filterLike = stringResource(R.string.reader_filter_like)
+                HelpDropdownMenuItem(
+                    label = filterLike,
+                    help = stringResource(R.string.help_menu_reader_filter_like),
+                    page = "reading.html",
+                    text = { Text(filterLike) },
                     onClick = {
                         moreMenu = false
                         onFilterLike(headerFrom, headerTo, listIdKey(headerListId), headerSubject, accountId)
                     },
                 )
                 if (renderedHtml && dark) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    if (originalColors) R.string.reader_dark_colors else R.string.reader_original_colors,
-                                ),
-                            )
-                        },
+                    val colorLabel = stringResource(
+                        if (originalColors) R.string.reader_dark_colors else R.string.reader_original_colors,
+                    )
+                    HelpDropdownMenuItem(
+                        label = colorLabel,
+                        help = stringResource(
+                            if (originalColors) R.string.help_menu_reader_dark_colors
+                            else R.string.help_menu_reader_original_colors,
+                        ),
+                        page = "reading.html",
+                        text = { Text(colorLabel) },
                         onClick = {
                             moreMenu = false
                             originalColors = !originalColors
@@ -1817,15 +1843,18 @@ private fun MessageReaderLoaded(
                 }
                 if (renderedHtml && trustSenderKey(headerFrom).isNotEmpty()) {
                     val on = trustSenderKey(headerFrom) in imageTrust.senders
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    if (on) R.string.reader_images_sender_off else R.string.reader_images_sender_on,
-                                    trustSenderKey(headerFrom),
-                                ),
-                            )
-                        },
+                    val senderLabel = stringResource(
+                        if (on) R.string.reader_images_sender_off else R.string.reader_images_sender_on,
+                        trustSenderKey(headerFrom),
+                    )
+                    HelpDropdownMenuItem(
+                        label = senderLabel,
+                        help = stringResource(
+                            if (on) R.string.help_menu_reader_images_sender_off
+                            else R.string.help_menu_reader_images_sender_on,
+                        ),
+                        page = "reading.html",
+                        text = { Text(senderLabel) },
                         onClick = {
                             moreMenu = false
                             imageTrust = withSender(imageTrust, headerFrom, !on)
@@ -1837,15 +1866,18 @@ private fun MessageReaderLoaded(
                 }
                 if (renderedHtml && listIdKey(headerListId).isNotEmpty()) {
                     val on = listIdKey(headerListId) in imageTrust.lists
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    if (on) R.string.reader_images_list_off else R.string.reader_images_list_on,
-                                    listIdKey(headerListId),
-                                ),
-                            )
-                        },
+                    val listLabel = stringResource(
+                        if (on) R.string.reader_images_list_off else R.string.reader_images_list_on,
+                        listIdKey(headerListId),
+                    )
+                    HelpDropdownMenuItem(
+                        label = listLabel,
+                        help = stringResource(
+                            if (on) R.string.help_menu_reader_images_list_off
+                            else R.string.help_menu_reader_images_list_on,
+                        ),
+                        page = "reading.html",
+                        text = { Text(listLabel) },
                         onClick = {
                             moreMenu = false
                             imageTrust = withList(imageTrust, headerListId, !on)
@@ -1855,8 +1887,12 @@ private fun MessageReaderLoaded(
                         modifier = Modifier.testTag("reader-images-list"),
                     )
                 }
-                DropdownMenuItem(
-                    text = { Text(forwardStyleName(account.forwardAsAttachment)) },
+                val forwardLabel = forwardStyleName(account.forwardAsAttachment)
+                HelpDropdownMenuItem(
+                    label = forwardLabel,
+                    help = stringResource(R.string.help_menu_forward_style),
+                    page = "reading.html",
+                    text = { Text(forwardLabel) },
                     onClick = {
                         moreMenu = false
                         onCompose(
@@ -1872,8 +1908,12 @@ private fun MessageReaderLoaded(
                 )
                 // HTML and plain text are positions of the display selector; the menu keeps the other views.
                 BodyView.entries.filter { it != BodyView.PlainOrHtml && it != BodyView.PlainOrError }.forEach { view ->
-                    DropdownMenuItem(
-                        text = { Text(bodyViewName(view)) },
+                    val viewLabel = bodyViewName(view)
+                    HelpDropdownMenuItem(
+                        label = viewLabel,
+                        help = stringResource(R.string.help_menu_body_view),
+                        page = "reading.html",
+                        text = { Text(viewLabel) },
                         onClick = {
                             moreMenu = false
                             requestView(view)
@@ -1881,8 +1921,12 @@ private fun MessageReaderLoaded(
                     )
                 }
                 HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.toolbar_customize)) },
+                val customize = stringResource(R.string.toolbar_customize)
+                HelpDropdownMenuItem(
+                    label = customize,
+                    help = stringResource(R.string.help_menu_toolbar_customize),
+                    page = "reading.html",
+                    text = { Text(customize) },
                     onClick = {
                         moreMenu = false
                         onCustomize(accountId)
@@ -2523,6 +2567,21 @@ private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
         DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
         DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
         DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+    },
+)
+
+@Composable
+private fun readerMenuHelp(action: ReaderToolbarAction): String = stringResource(
+    when (action) {
+        ReaderToolbarAction.Refresh -> R.string.help_menu_reader_refresh
+        ReaderToolbarAction.Reply -> R.string.help_menu_compose_reply
+        ReaderToolbarAction.ReplyAll -> R.string.help_menu_compose_reply_all
+        ReaderToolbarAction.Forward -> R.string.help_menu_compose_forward
+        ReaderToolbarAction.Delete -> R.string.help_menu_delete_policy
+        ReaderToolbarAction.Move -> R.string.help_menu_label_move
+        ReaderToolbarAction.Spam -> R.string.help_menu_label_spam
+        ReaderToolbarAction.Bounce -> R.string.help_menu_compose_bounce
+        ReaderToolbarAction.Headers -> R.string.help_menu_reader_all_headers
     },
 )
 

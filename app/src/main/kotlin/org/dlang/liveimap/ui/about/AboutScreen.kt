@@ -37,11 +37,11 @@ import org.dlang.liveimap.ui.help.PRIVACY_URL
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
 
-internal fun aboutLibraryLines(): List<String> = listOf(
-    "libEtPan!, BSD 3-Clause",
-    "libfastjson, MIT",
-    "OpenSSL, Apache License 2.0",
-    "Cyrus SASL, Carnegie Mellon University license",
+internal fun aboutLibraryLines(): List<Int> = listOf(
+    R.string.about_lib_etpan,
+    R.string.about_libfastjson,
+    R.string.about_openssl,
+    R.string.about_cyrus_sasl,
 )
 
 internal fun aboutConnectionNotice(host: String, mode: TlsMode): Int? {
@@ -97,7 +97,7 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
             modifier = Modifier.semantics { heading() },
         )
         aboutLibraryLines().forEach { line ->
-            Text(line)
+            Text(stringResource(line))
         }
         ListItem(
             headlineContent = { Text(licenses) },

@@ -387,14 +387,14 @@ private fun <A : Enum<A>> ColumnScope.SectionEditor(
                         enabled = toolbarRows > 1,
                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                     ) {
-                        Text("−")
+                        Text(stringResource(R.string.toolbar_rows_fewer))
                     }
                     TextButton(
                         onClick = { onToolbarRows(toolbarRows + 1) },
                         enabled = toolbarRows < 4,
                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                     ) {
-                        Text("+")
+                        Text(stringResource(R.string.toolbar_rows_more))
                     }
                 }
                 // Editor budget is 3 slots. Each bar measures its own width.

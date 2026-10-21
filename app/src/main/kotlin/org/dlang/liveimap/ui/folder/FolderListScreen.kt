@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -101,6 +100,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
@@ -712,8 +712,19 @@ private fun FolderListLoaded(
                                 for (entry in folderMenu(folderBar, unsentCount > 0)) {
                                     when (entry) {
                                         is FolderMenuEntry.Action -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(folderBarLabel(entry.action))) },
+                                            val title = stringResource(folderBarLabel(entry.action))
+                                            HelpDropdownMenuItem(
+                                                label = title,
+                                                help = stringResource(
+                                                    when (entry.action) {
+                                                        FolderBarAction.Refresh -> R.string.help_menu_folders_refresh
+                                                        FolderBarAction.CollapseAll -> R.string.help_menu_folders_collapse_all
+                                                        FolderBarAction.SaveDefault -> R.string.help_menu_folders_save_default
+                                                        FolderBarAction.ResetDefault -> R.string.help_menu_folders_reset_default
+                                                    },
+                                                ),
+                                                page = "folders.html",
+                                                text = { Text(title) },
                                                 onClick = {
                                                     moreMenu = false
                                                     when (entry.action) {
@@ -726,8 +737,12 @@ private fun FolderListLoaded(
                                             )
                                         }
                                         FolderMenuEntry.Unsent -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.folders_unsent)) },
+                                            val title = stringResource(R.string.folders_unsent)
+                                            HelpDropdownMenuItem(
+                                                label = title,
+                                                help = stringResource(R.string.help_menu_folders_unsent),
+                                                page = "folders.html",
+                                                text = { Text(title) },
                                                 onClick = {
                                                     moreMenu = false
                                                     onOpenUnsent()
@@ -736,8 +751,12 @@ private fun FolderListLoaded(
                                         }
                                         FolderMenuEntry.Divider -> HorizontalDivider()
                                         FolderMenuEntry.Customize -> {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.toolbar_customize)) },
+                                            val title = stringResource(R.string.toolbar_customize)
+                                            HelpDropdownMenuItem(
+                                                label = title,
+                                                help = stringResource(R.string.help_menu_toolbar_customize),
+                                                page = "folders.html",
+                                                text = { Text(title) },
                                                 onClick = {
                                                     moreMenu = false
                                                     onCustomize(accountId)
@@ -1193,22 +1212,33 @@ private fun FolderListRow(
             onDismissRequest = { rowMenu = false },
         ) {
             ObscuredTouchFilter()
-            DropdownMenuItem(
+            HelpDropdownMenuItem(
+                label = favoriteText,
+                help = stringResource(R.string.help_menu_favorite),
+                page = "folders.html",
                 text = { Text(favoriteText) },
                 onClick = {
                     rowMenu = false
                     onStar()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.folders_always_expand)) },
+            val alwaysExpand = stringResource(R.string.folders_always_expand)
+            HelpDropdownMenuItem(
+                label = alwaysExpand,
+                help = stringResource(R.string.help_menu_folders_always_expand),
+                page = "folders.html",
+                text = { Text(alwaysExpand) },
                 onClick = {
                     rowMenu = false
                     onAlwaysExpand()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.folders_dont_always_expand)) },
+            val dontAlwaysExpand = stringResource(R.string.folders_dont_always_expand)
+            HelpDropdownMenuItem(
+                label = dontAlwaysExpand,
+                help = stringResource(R.string.help_menu_folders_dont_always_expand),
+                page = "folders.html",
+                text = { Text(dontAlwaysExpand) },
                 onClick = {
                     rowMenu = false
                     onDontAlwaysExpand()
@@ -1285,14 +1315,21 @@ private fun NoAccountYet(
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                             ObscuredTouchFilter()
                             val items = listOf(
-                                R.string.drawer_settings to onOpenSettings,
-                                R.string.folders_unsent to onOpenUnsent,
-                                R.string.toolbar_customize to onCustomize,
-                                R.string.help_title to onOpenHelp,
-                                R.string.about_title to onOpenAbout,
+                                Triple(R.string.drawer_settings, R.string.help_menu_drawer_settings, onOpenSettings),
+                                Triple(R.string.folders_unsent, R.string.help_menu_folders_unsent, onOpenUnsent),
+                                Triple(R.string.toolbar_customize, R.string.help_menu_toolbar_customize, onCustomize),
+                                Triple(R.string.help_title, R.string.help_menu_help_title, onOpenHelp),
+                                Triple(R.string.about_title, R.string.help_menu_about_title, onOpenAbout),
                             )
-                            for ((label, action) in items) {
-                                DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { more = false; action() })
+                            for ((label, help, action) in items) {
+                                val title = stringResource(label)
+                                HelpDropdownMenuItem(
+                                    label = title,
+                                    help = stringResource(help),
+                                    page = "folders.html",
+                                    text = { Text(title) },
+                                    onClick = { more = false; action() },
+                                )
                             }
                         }
                     }

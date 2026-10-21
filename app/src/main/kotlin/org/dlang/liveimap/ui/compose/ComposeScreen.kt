@@ -30,7 +30,6 @@ import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import java.util.UUID
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1636,23 +1636,35 @@ private fun ComposeLoaded(
                                     for (entry in composeMenu(account.composeBar)) {
                                         when (entry) {
                                             is ComposeMenuEntry.Action -> when (entry.action) {
-                                                ComposeBarAction.Postpone -> DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.compose_postpone)) },
-                                                    onClick = {
-                                                        overflow = false
-                                                        postponeDraft()
-                                                    },
-                                                    enabled = account.postponedMailbox.isNotEmpty(),
-                                                )
+                                                ComposeBarAction.Postpone -> {
+                                                    val title = stringResource(R.string.compose_postpone)
+                                                    HelpDropdownMenuItem(
+                                                        label = title,
+                                                        help = stringResource(R.string.help_menu_compose_postpone),
+                                                        page = "writing.html",
+                                                        text = { Text(title) },
+                                                        onClick = {
+                                                            overflow = false
+                                                            postponeDraft()
+                                                        },
+                                                        enabled = account.postponedMailbox.isNotEmpty(),
+                                                    )
+                                                }
                                             }
                                             ComposeMenuEntry.Divider -> HorizontalDivider()
-                                            ComposeMenuEntry.Customize -> DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.toolbar_customize)) },
-                                                onClick = {
-                                                    overflow = false
-                                                    onCustomize(accountId)
-                                                },
-                                            )
+                                            ComposeMenuEntry.Customize -> {
+                                                val title = stringResource(R.string.toolbar_customize)
+                                                HelpDropdownMenuItem(
+                                                    label = title,
+                                                    help = stringResource(R.string.help_menu_toolbar_customize),
+                                                    page = "writing.html",
+                                                    text = { Text(title) },
+                                                    onClick = {
+                                                        overflow = false
+                                                        onCustomize(accountId)
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1728,12 +1740,19 @@ private fun ComposeLoaded(
                 ObscuredTouchFilter()
                 val froms = (listOf(account.email) + account.altAddresses +
                     knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { it.trim().lowercase() }
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.compose_from_by_rules)) },
+                val byRules = stringResource(R.string.compose_from_by_rules)
+                HelpDropdownMenuItem(
+                    label = byRules,
+                    help = stringResource(R.string.help_menu_compose_from_by_rules),
+                    page = "writing.html",
+                    text = { Text(byRules) },
                     onClick = { pinnedFrom = null; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
                 )
                 for (from in froms) {
-                    DropdownMenuItem(
+                    HelpDropdownMenuItem(
+                        label = from,
+                        help = stringResource(R.string.help_menu_from_address),
+                        page = "writing.html",
                         text = { Text(from) },
                         onClick = { pinnedFrom = from; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
                     )

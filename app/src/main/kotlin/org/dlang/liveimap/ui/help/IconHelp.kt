@@ -4,16 +4,20 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import org.dlang.liveimap.ui.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.ui.input.pointer.pointerInput
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -122,6 +126,43 @@ fun HelpExtendedFab(
                 .semantics { contentDescription = label },
         )
     }
+    if (open) {
+        IconHelpDialog(
+            title = label,
+            body = help,
+            page = page,
+            onDismiss = { open = false },
+        )
+    }
+}
+
+@Composable
+fun HelpDropdownMenuItem(
+    label: String,
+    help: String,
+    page: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    text: @Composable () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val currentClick by rememberUpdatedState(onClick)
+    val currentEnabled by rememberUpdatedState(enabled)
+    DropdownMenuItem(
+        text = text,
+        onClick = onClick,
+        modifier = modifier.pointerInput(enabled) {
+            // Consumes the down, so this onTap is the click. A long press does not call onClick.
+            detectTapGestures(
+                onTap = { if (currentEnabled) currentClick() },
+                onLongPress = { if (currentEnabled) open = true },
+            )
+        },
+        enabled = enabled,
+        leadingIcon = leadingIcon,
+    )
     if (open) {
         IconHelpDialog(
             title = label,
