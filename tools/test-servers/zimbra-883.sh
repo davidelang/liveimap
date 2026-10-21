@@ -712,16 +712,24 @@ def ensure_domain():
         "set +x\n"
         "export HOME=/opt/zimbra\n"
         "export PATH=/opt/zimbra/bin:$PATH\n"
-        "if zmprov gad | grep -qx '%s'; then exit 0; fi\n"
-        "zmprov cd '%s'\n"
-    ) % (domain, domain)
+        "cd_status=0\n"
+        "if ! zmprov gad | grep -qx '%s'; then\n"
+        "  zmprov cd '%s'\n"
+        "  cd_status=$?\n"
+        "fi\n"
+        "zmprov mcf zimbraDefaultDomainName '%s'\n"
+        "mcf_status=$?\n"
+        "if [ \"$mcf_status\" -ne 0 ]; then exit 1; fi\n"
+        "if [ \"$cd_status\" -ne 0 ]; then exit \"$cd_status\"; fi\n"
+    ) % (domain, domain, domain)
     proc = zmprov_script(body)
+    text = ""
+    if proc is not None:
+        text = (proc.stdout or "") + (proc.stderr or "")
     if proc is None or proc.returncode != 0:
-        text = ""
-        if proc is not None:
-            text = (proc.stdout or "") + (proc.stderr or "")
         if "already exists" not in text.lower():
             sys.stderr.write(redact("domain create failed\n"))
+            sys.exit(1)
 
 def create_account(user, secret):
     addr = "%s@%s" % (user, domain)

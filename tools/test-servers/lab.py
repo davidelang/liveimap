@@ -78,15 +78,6 @@ def servers():
     return [s for s in by.values() if "imap" in s]
 
 
-def user_for(s):
-    if "zimbra" in s["name"]:
-        user = HOSTENV.get("LAB_ZIMBRA_USER")
-        if not user:
-            sys.exit("needs LAB_ZIMBRA_USER")
-        return user
-    return USER
-
-
 def greeting(port, tls, timeout=180):
     end = time.time() + timeout
     while time.time() < end:
@@ -220,14 +211,13 @@ def classify_plain(caps, login_reply):
 def resolve_auto(s):
     """StartTls, None, or one error string. Does not seed."""
     caps = plain_caps(s["imap"])
-    user = user_for(s)
     reply = ""
     if caps and "LOGINDISABLED" not in caps:
-        reply = _plain_login_reply(s["imap"], user)
+        reply = _plain_login_reply(s["imap"], USER)
     kind = classify_plain(caps, reply)
     if kind != "StartTls":
         return None if kind is None else _text(kind)
-    err = _starttls_login(s["imap"], user)
+    err = _starttls_login(s["imap"], USER)
     return "StartTls" if not err else _text(err)
 
 
@@ -276,7 +266,7 @@ def smtp_args(s, tls):
             out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
             hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
             if hp:
-                return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{user_for(s).split('@')[0]}@{f[2]}"]
+                return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{USER.split('@')[0]}@{f[2]}"]
     return []
 
 
@@ -565,7 +555,7 @@ def instrument(s, port, tls, run, commit, mech="", side=None):
          *client_cert_args(tls),
          *(["-e", "labSteps", os.environ["LAB_STEPS"]] if os.environ.get("LAB_STEPS") else []),
          *(["-e", "labAltHost", HOSTENV["LAB_ALT_HOST"]] if HOSTENV.get("LAB_ALT_HOST") else []),
-         "-e", "labUser", user_for(s), "-e", "labPass", PASS, RUNNER]
+         "-e", "labUser", USER, "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
     if "OK (1 test)" in out:
@@ -629,29 +619,29 @@ def run_one(s, commit, stamp, out):
         if "imaps" in s and greeting(s["imaps"], True, 60):
             modes.append(("Implicit", s["imaps"]))
         lab = os.path.join(HERE, "lab_imap.py")
-        seed = sh([sys.executable, lab, "seed", LAB_HOST, str(s["imap"]), user_for(s), PASS,
+        seed = sh([sys.executable, lab, "seed", LAB_HOST, str(s["imap"]), USER, PASS,
                    "--allow", f"{LAB_HOST}:{s['imap']}", "--count", "60"])
         # Servers that refuse a plaintext login are seeded over TLS (implicit if offered, else STARTTLS).
         seed_port, seed_tls = s["imap"], ""
         offers_starttls = "STARTTLS" in plain_caps(s["imap"])
         if seed.returncode != 0 and re.search(r"disabled|disallowed|PRIVACYREQUIRED|cleartext|clear-text", seed.stdout + seed.stderr, re.I):
             seed_port, seed_tls = (s["imaps"], "Implicit") if "imaps" in s else (s["imap"], "StartTls" if offers_starttls else "")
-            seed = sh([sys.executable, lab, "seed", LAB_HOST, str(seed_port), user_for(s), PASS, "--tls", seed_tls,
+            seed = sh([sys.executable, lab, "seed", LAB_HOST, str(seed_port), USER, PASS, "--tls", seed_tls,
                        "--allow", f"{LAB_HOST}:{seed_port}", "--count", "60"])
         if os.environ.get("LAB_DEEP") == "1":
             # Deeply nested MIME messages (100 and 5000 levels) in LiveIMAP-Test/Deep for the deepNesting step.
-            deep = sh([sys.executable, lab, "seed-deep", LAB_HOST, str(seed_port), user_for(s), PASS,
+            deep = sh([sys.executable, lab, "seed-deep", LAB_HOST, str(seed_port), USER, PASS,
                        *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
             seed.stdout += "\n" + deep.stdout + deep.stderr[-500:]
         if os.environ.get("LAB_SPOOF") == "1":
             # Attachments whose declared type/filename lie about the content, for the typeSniff step.
-            spoof = sh([sys.executable, lab, "seed-spoof", LAB_HOST, str(seed_port), user_for(s), PASS,
+            spoof = sh([sys.executable, lab, "seed-spoof", LAB_HOST, str(seed_port), USER, PASS,
                         *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
             seed.stdout += "\n" + spoof.stdout + spoof.stderr[-500:]
         open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
         folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
         s["folder"] = folder
-        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(seed_port), user_for(s), PASS,
+        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(seed_port), USER, PASS,
                    *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}", "--record", os.path.join(dest, "caps.jsonl"),
                    "--server-name", name, "--commit", commit, "--suite", "caps"])
         open(os.path.join(dest, "caps.txt"), "w").write(caps.stdout + caps.stderr[-500:])

@@ -9,7 +9,7 @@ try:
     lab.greeting(s["imap"], "None"); time.sleep(5)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.JmapLabSuiteTest#jmapSuite",
                 "-e", "jmapServer", field, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),
-                "-e", "labUser", lab.user_for(s), "-e", "labPass", lab.PASS, lab.RUNNER, timeout=600)
+                "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=600)
     print("OK" if "OK (1 test)" in r.stdout else "FAIL")
     out = lab.adb("exec-out", "run-as", lab.PKG, "cat", f"cache/recordings/{run}.steps.tsv").stdout
     print(out)

@@ -27,13 +27,13 @@ try:
             if len(f) == 3 and f[0] == name and f[1] == tls:
                 cport = ports.container_port(name, "submission")
                 hp = subprocess.run(["docker", "port", s["container"], str(cport)], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
-                if hp: return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@{f[2]}"]
+                if hp: return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{lab.USER.split('@')[0]}@{f[2]}"]
         return []
     print("smtp", smtp())
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#acceptanceMatrix",
                 "-e", "accServer", name, "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", tls,
                 "-e", "labRun", run, *smtp(), *(["-e", "accVariants", os.environ["ACC_VARIANTS"]] if os.environ.get("ACC_VARIANTS") else []), "-e", "labWriteHosts", lab.LAB_HOST, "-e", "labCa", lab.lab_ca(),
-                "-e", "labUser", lab.user_for(s), "-e", "labPass", lab.PASS, lab.RUNNER, timeout=1500)
+                "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=1500)
     ok = "OK (1 test)" in r.stdout
     print("OK" if ok else "FAIL")
     dest = os.path.join(lab.REC, name, run); os.makedirs(dest, exist_ok=True)

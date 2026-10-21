@@ -35,7 +35,7 @@ def derive_rcpt(base, user):
 # JMAP_DOMAIN_USER=1: the run's domain-qualified lab account (<user>@LAB_MAIL_DOMAIN), whose Identity has an address.
 if os.environ.get("JMAP_DOMAIN_USER") and not lab.HOSTENV.get("LAB_MAIL_DOMAIN"):
     sys.exit("needs LAB_MAIL_DOMAIN")
-RUNUSER = (lab.USER.split("@")[0] + "@" + lab.HOSTENV["LAB_MAIL_DOMAIN"]) if os.environ.get("JMAP_DOMAIN_USER") else lab.user_for(s)
+RUNUSER = (lab.USER.split("@")[0] + "@" + lab.HOSTENV["LAB_MAIL_DOMAIN"]) if os.environ.get("JMAP_DOMAIN_USER") else lab.USER
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], False, 300); time.sleep(5)

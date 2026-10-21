@@ -20,9 +20,9 @@ try:
     time.sleep(5)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#smtpAccepts",
                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", "None",
-                "-e", "labSmtpPort", PORT, "-e", "labRcpt", f"{lab.user_for(s).split('@')[0]}@lab.test",
+                "-e", "labSmtpPort", PORT, "-e", "labRcpt", f"{lab.USER.split('@')[0]}@lab.test",
                 "-e", "labWriteHosts", lab.LAB_HOST, "-e", "labCa", lab.lab_ca(),
-                "-e", "labUser", lab.user_for(s), "-e", "labPass", lab.PASS, lab.RUNNER, timeout=600)
+                "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=600)
     log.write(r.stdout + "\n")
     lc = subprocess.run(["adb", "-s", "emulator-5554", "logcat", "-d", "-s", "AcceptanceLab"], capture_output=True, text=True).stdout
     log.write(lc[-3000:] + "\n")

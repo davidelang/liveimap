@@ -414,8 +414,16 @@ if not opened:
     sys.exit(1)
 body = (
     "set +x\nexport HOME=/opt/zimbra\nexport PATH=/opt/zimbra/bin:$PATH\n"
-    "if zmprov gad | grep -qx '%s'; then exit 0; fi\nzmprov cd '%s'\n"
-) % (domain, domain)
+    "cd_status=0\n"
+    "if ! zmprov gad | grep -qx '%s'; then\n"
+    "  zmprov cd '%s'\n"
+    "  cd_status=$?\n"
+    "fi\n"
+    "zmprov mcf zimbraDefaultDomainName '%s'\n"
+    "mcf_status=$?\n"
+    "if [ \"$mcf_status\" -ne 0 ]; then exit 1; fi\n"
+    "if [ \"$cd_status\" -ne 0 ]; then exit \"$cd_status\"; fi\n"
+) % (domain, domain, domain)
 proc = subprocess.run(
     ["docker", "exec", "-i", "-u", "zimbra", name, "/bin/bash", "-s"],
     input=body, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -448,6 +456,48 @@ for user, secret in users:
         sys.exit(1)
 PY
   "$DIR/zimbra-tls.sh" "liveimap-build-$server"
+  python3 - "$lab_host" "$host_port" "$DIR" <<'PY'
+import imaplib
+import ssl
+import sys
+import time
+
+host, port_s, tools = sys.argv[1:]
+sys.path.insert(0, tools)
+import lab
+user = lab.USER
+secret = lab.PASS
+port = int(port_s)
+deadline = time.time() + 180
+imap = None
+while time.time() < deadline:
+    try:
+        imap = imaplib.IMAP4(host, port, timeout=20)
+        break
+    except OSError:
+        time.sleep(2)
+if imap is None:
+    sys.stderr.write("bare login no greeting\n")
+    sys.exit(1)
+try:
+    caps = b" ".join(imap.capabilities or [])
+    if b"LOGINDISABLED" in caps:
+        ctx = ssl._create_unverified_context()
+        imap.starttls(ctx)
+    typ, data = imap.login(user, secret)
+except Exception as exc:
+    text = str(exc).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+if typ != "OK":
+    text = str(data).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+try:
+    imap.logout()
+except Exception:
+    pass
+PY
   close_build
 }
 

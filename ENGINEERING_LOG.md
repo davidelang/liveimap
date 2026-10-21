@@ -3515,3 +3515,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - acclab chooses StartTls from the server, without seeding.
 
 ## 2026-10-20 - The auto probe logs in as the server user.
+
+## 2026-10-20 - Zimbra accepts the shared lab user, and the per-server user is gone.

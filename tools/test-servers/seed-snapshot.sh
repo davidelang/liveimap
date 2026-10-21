@@ -116,4 +116,70 @@ if [ "$entry_missing" -eq 0 ]; then
 fi
 rm -rf "$tmp"
 
+case "$server" in
+  zimbra-883)
+    docker start "$name"
+    imap_port=$(python3 "$here/cport.py" zimbra-883 imap)
+    published=$(docker port "$name" "$imap_port")
+    host_port=${published##*:}
+    lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$here/host.env")
+    case "$lab_host" in
+      "")
+        echo "LAB_BIND missing" >&2
+        exit 1
+        ;;
+    esac
+    python3 - "$lab_host" "$host_port" "$here" <<'PY'
+import imaplib
+import ssl
+import sys
+import time
+
+host, port_s, tools = sys.argv[1:]
+sys.path.insert(0, tools)
+import lab
+user = lab.USER
+secret = lab.PASS
+port = int(port_s)
+deadline = time.time() + 180
+imap = None
+while time.time() < deadline:
+    try:
+        imap = imaplib.IMAP4(host, port, timeout=20)
+        break
+    except OSError:
+        time.sleep(2)
+if imap is None:
+    sys.stderr.write("bare login no greeting\n")
+    sys.exit(1)
+try:
+    caps = b" ".join(imap.capabilities or [])
+    if b"LOGINDISABLED" in caps:
+        ctx = ssl._create_unverified_context()
+        imap.starttls(ctx)
+    typ, data = imap.login(user, secret)
+except Exception as exc:
+    text = str(exc).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+if typ != "OK":
+    text = str(data).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+try:
+    imap.logout()
+except Exception:
+    pass
+PY
+    if ! docker stop -t 60 "$name"; then
+      exit 1
+    fi
+    running=$(docker inspect -f '{{.State.Running}}' "$name")
+    if [ "$running" = "true" ]; then
+      echo "stop failed $name" >&2
+      exit 1
+    fi
+    ;;
+esac
+
 docker commit "$name" "liveimap-seed-$server" >/dev/null

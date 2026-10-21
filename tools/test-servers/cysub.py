@@ -1,7 +1,7 @@
 import sys, json, base64, urllib.request, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); import lab
-u=lab.user_for({"name":sys.argv[2]}); u=u if isinstance(u,str) else u[0]
+u=lab.USER
 H={"Authorization":"Basic "+base64.b64encode(f"{u}:{lab.PASS}".encode()).decode(),"Content-Type":"application/json"}
 base=f"http://{lab.LAB_HOST}:{sys.argv[1]}"
 def get(url,data=None):

@@ -123,7 +123,7 @@ def main():
                  "-e", "labScenario", scenario, "-e", "labAutoExpunge", "true" if cfg.get("auto") else "false",
                  "-e", "labMoveMethod", cfg.get("move", "CopyThenMarkDeleted"),
                  "-e", "labDeletePolicy", cfg.get("policy", "MarkDeleted"),
-                 "-e", "labUser", lab.user_for(s), "-e", "labPass", lab.PASS, lab.RUNNER]
+                 "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER]
             try:
                 r = lab.adb(*a, timeout=300)
                 passed = "OK (1 test)" in r.stdout

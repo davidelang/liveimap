@@ -49,7 +49,7 @@ def main(host, port, tls):
         m = imaplib.IMAP4(host, port)
         if "--starttls" in sys.argv:
             m.starttls(ssl_context=ctx)
-    m.login(sys.argv[sys.argv.index("--user") + 1] if "--user" in sys.argv else lab.USER, lab.PASS)  # zimbra: lab.user_for
+    m.login(sys.argv[sys.argv.index("--user") + 1] if "--user" in sys.argv else lab.USER, lab.PASS)  # bare lab user unless --user
     # The acceptance append/flag folder: top level, or under the personal prefix where top level is refused
     # (courier, older Cyrus: "INBOX."). An error just means it exists or that name is not allowed here.
     prefix = ""

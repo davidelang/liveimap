@@ -89,27 +89,20 @@ try:
                 os.environ[key] = old
 finally:
     os.environ.pop(sentinel, None)
-saved_user = lab.HOSTENV.get("LAB_ZIMBRA_USER")
-lab.HOSTENV["LAB_ZIMBRA_USER"] = "zimbra-user@example.test"
-try:
-    assert lab.user_for({"name": "zimbra"}) == "zimbra-user@example.test"
-    assert lab.user_for({"name": "cyrus"}) == lab.USER
-    del lab.HOSTENV["LAB_ZIMBRA_USER"]
-    try:
-        lab.user_for({"name": "zimbra"})
-        raise AssertionError("missing LAB_ZIMBRA_USER should exit")
-    except SystemExit as e:
-        assert e.code == "needs LAB_ZIMBRA_USER"
-finally:
-    if saved_user is None:
-        lab.HOSTENV.pop("LAB_ZIMBRA_USER", None)
-    else:
-        lab.HOSTENV["LAB_ZIMBRA_USER"] = saved_user
 example = open(os.path.join(HERE, "host.env.example"), encoding="utf-8").read()
 assert "requires" in example
-for key in ("LAB_MAIL_DOMAIN", "LAB_ZIMBRA_USER"):
-    values = [line.split("=", 1)[1] for line in example.splitlines() if line.startswith(key + "=")]
-    assert values and values[0].strip().strip('"') == ""
+values = [line.split("=", 1)[1] for line in example.splitlines() if line.startswith("LAB_MAIL_DOMAIN=")]
+assert values and values[0].strip().strip('"') == ""
+banned = ("user" + "_for", "LAB_" + "ZIMBRA" + "_USER")
+banned_files = (
+    "lab.py", "acclab.py", "jmaplab.py", "jmaprun.py", "safety_run.py",
+    "t4smtp.py", "cysub.py", "sess.py", "seed_corpus.py", "host.env.example",
+    "test_lab_config.py",
+)
+for name in banned_files:
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    for bad in banned:
+        assert bad not in text, (name, bad)
 
 # servers() skips greenmail, greenmail-16, greenmail-214, and greenmail-dev.
 ports_dir = tempfile.mkdtemp()
@@ -589,7 +582,30 @@ for fn in ("_plain_login_reply", "_starttls_login"):
     src = py_function(lab_py, fn)
     assert "login(user, PASS)" in src
     assert "login(USER, PASS)" not in src
-assert "user_for(s)" in resolve_src
+assert "login" in resolve_src and "USER" in resolve_src
+assert ("user" + "_for") not in resolve_src
 assert "resolve_auto(s)" in acc_auto
 assert "seed_corpus.py" not in acc_auto
+ensure = py_function(zimbra, "ensure_domain")
+assert "sys.exit" in ensure
+assert "already exists" in ensure
+assert "zimbraDefaultDomainName" in ensure
+z_at = builder.find("build_zimbra() {")
+z_end = builder.find("\nbuild_volume_servers()", z_at)
+zbody = builder[z_at:z_end]
+assert "zimbraDefaultDomainName" in zbody
+bare_at = zbody.find("bare login")
+close_at = zbody.rfind("\n  close_build\n")
+login_py = zbody.rfind("python3 - ", 0, close_at)
+assert login_py != -1 and bare_at != -1 and close_at != -1
+assert login_py < bare_at < close_at
+chunk = zbody[login_py:close_at]
+assert "sys.exit(1)" in chunk and "lab.USER" in chunk and "***" in chunk
+snap_commit = snap.rfind("docker commit")
+snap_bare = snap.find("bare login")
+snap_py = snap.rfind("python3 - ", 0, snap_commit)
+assert snap_py != -1 and snap_bare != -1 and snap_py < snap_bare < snap_commit
+snap_chunk = snap[snap_py:snap_commit]
+assert "zimbra-883" in snap[max(0, snap_py - 600):snap_py]
+assert "lab.USER" in snap_chunk and "***" in snap_chunk and "sys.exit(1)" in snap_chunk
 print("ok")
