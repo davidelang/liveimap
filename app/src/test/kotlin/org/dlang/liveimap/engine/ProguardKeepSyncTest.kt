@@ -24,6 +24,18 @@ class ProguardKeepSyncTest {
         assertTrue(release.contains("isShrinkResources = true"))
         val debug = block(types, "getByName(\"debug\")")
         assertFalse(debug.contains("isMinifyEnabled = true"))
+        assertFalse(usageSectionFails(true, listOf("    static void <clinit>()")))
+        assertTrue(usageSectionFails(true, emptyList()))
+        assertTrue(usageSectionFails(true, listOf("    static void <clinit>()", "    void removed()")))
+        assertTrue(usageSectionFails(true, listOf("    int field")))
+        assertFalse(usageSectionFails(false, listOf("    void removed()")))
+        assertTrue(gradle.contains("it.trim() != \"static void <clinit>()\""))
+        assertTrue(gradle.contains("members.isEmpty() || other.isNotEmpty()"))
+    }
+
+    internal fun usageSectionFails(watched: Boolean, memberLines: List<String>): Boolean {
+        if (!watched) return false
+        return memberLines.isEmpty() || memberLines.any { it.trim() != "static void <clinit>()" }
     }
 
     private fun findClassNames(): Set<String> {
