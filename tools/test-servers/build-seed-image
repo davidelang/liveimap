@@ -253,23 +253,42 @@ build_stalwart() {
   token=$(cat "$admin_file")
   printf 'STALWART_RECOVERY_ADMIN=admin:%s\n' "$token" > "$work/stalwart.env"
   chmod 600 "$work/stalwart.env"
-  cat > "$work/entrypoint.sh" <<'EOF'
+  case "$server" in
+    stalwart-0155)
+      cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+set -a
+. /etc/lab/stalwart.env
+set +a
+if [ ! -x /opt/stalwart/stalwart-mail ]; then
+  echo "stalwart binary missing" >&2
+  exit 1
+fi
+if [ ! -f /opt/stalwart/etc/config.toml ]; then
+  /opt/stalwart/stalwart-mail --init /opt/stalwart
+fi
+exec /opt/stalwart/stalwart-mail --config /opt/stalwart/etc/config.toml
+EOF
+      ;;
+    *)
+      cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
 set -a
 . /etc/lab/stalwart.env
 set +a
 if [ -x /usr/local/bin/stalwart-mail ]; then
-  exec /usr/local/bin/stalwart-mail
+  exec /usr/local/bin/stalwart-mail --config /etc/stalwart/config.json
 elif [ -x /usr/local/bin/stalwart ]; then
-  exec /usr/local/bin/stalwart
-elif [ -x /opt/stalwart/stalwart-mail ]; then
-  exec /opt/stalwart/stalwart-mail
+  exec /usr/local/bin/stalwart --config /etc/stalwart/config.json
 else
   echo "stalwart binary missing" >&2
   exit 1
 fi
 EOF
+      ;;
+  esac
   chmod 755 "$work/entrypoint.sh"
   cat > "$work/Dockerfile" <<EOF
 # syntax=docker/dockerfile:1
