@@ -68,7 +68,74 @@ open_build() {
   esac
 }
 
+require_login() {
+  # Bare USER login and the recorded domain login, including zimbra-883.
+  python3 - "$lab_host" "$host_port" "$DIR" "$server" <<'PY'
+import sys
+import time
+
+host, port_s, tools, server = sys.argv[1:]
+sys.path.insert(0, tools)
+import lab
+import imaplib
+import ssl
+user = lab.USER
+secret = lab.PASS
+port = int(port_s)
+deadline = time.time() + 180
+imap = None
+while time.time() < deadline:
+    try:
+        imap = imaplib.IMAP4(host, port, timeout=20)
+        break
+    except OSError:
+        time.sleep(2)
+if imap is None:
+    sys.stderr.write("bare login no greeting\n")
+    sys.exit(1)
+try:
+    caps = b" ".join(imap.capabilities or [])
+    if b"LOGINDISABLED" in caps:
+        ctx = ssl._create_unverified_context()
+        imap.starttls(ctx)
+    typ, data = imap.login(user, secret)
+except Exception as exc:
+    text = str(exc).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+if typ != "OK":
+    text = str(data).replace(secret, "***")
+    sys.stderr.write("bare login %s\n" % text)
+    sys.exit(1)
+try:
+    imap.logout()
+except Exception:
+    pass
+login_domain, expect = lab._imap_domain_columns(server)
+if login_domain == "LAB_MAIL_DOMAIN":
+    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
+    if not login_domain:
+        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
+        sys.exit(1)
+if not login_domain or not expect:
+    problem = lab.domain_login_problem({"name": server}, "")
+else:
+    account = user.split("@")[0] + "@" + login_domain
+    caps = lab.plain_caps(port)
+    if caps and "LOGINDISABLED" in caps:
+        err = lab._starttls_login(port, account)
+        reply = "OK" if not err else err
+    else:
+        reply = lab._plain_login_reply(port, account)
+    problem = lab.domain_login_problem({"name": server}, reply)
+if problem:
+    sys.stderr.write(problem + "\n")
+    sys.exit(1)
+PY
+}
+
 close_build() {
+  require_login
   python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
   docker stop "liveimap-build-$server"
   manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
@@ -456,13 +523,13 @@ for user, secret in users:
         sys.exit(1)
 PY
   "$DIR/zimbra-tls.sh" "liveimap-build-$server"
-  python3 - "$lab_host" "$host_port" "$DIR" <<'PY'
+  python3 - "$lab_host" "$host_port" "$DIR" "$server" <<'PY'
 import imaplib
 import ssl
 import sys
 import time
 
-host, port_s, tools = sys.argv[1:]
+host, port_s, tools, server = sys.argv[1:]
 sys.path.insert(0, tools)
 import lab
 user = lab.USER
@@ -497,6 +564,26 @@ try:
     imap.logout()
 except Exception:
     pass
+login_domain, expect = lab._imap_domain_columns(server)
+if login_domain == "LAB_MAIL_DOMAIN":
+    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
+    if not login_domain:
+        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
+        sys.exit(1)
+if not login_domain or not expect:
+    problem = lab.domain_login_problem({"name": server}, "")
+else:
+    account = user.split("@")[0] + "@" + login_domain
+    caps = lab.plain_caps(port)
+    if caps and "LOGINDISABLED" in caps:
+        err = lab._starttls_login(port, account)
+        reply = "OK" if not err else err
+    else:
+        reply = lab._plain_login_reply(port, account)
+    problem = lab.domain_login_problem({"name": server}, reply)
+if problem:
+    sys.stderr.write(problem + "\n")
+    sys.exit(1)
 PY
   close_build
 }
@@ -1323,6 +1410,7 @@ if not good:
 PY
     ;;
 esac
+require_login
 python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
 docker stop "liveimap-build-$server"
 manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")

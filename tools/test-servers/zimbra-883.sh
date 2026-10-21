@@ -62,14 +62,6 @@ setup_keys = (
     "LDAP_NGINX_PW",
 )
 users = ("liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8")
-message = (
-    "From: liveimap@test\r\n"
-    "To: liveimap@test\r\n"
-    "Subject: Lab note one\r\n"
-    "Date: Fri, 9 Oct 2026 12:30:00 -0700\r\n"
-    "\r\n"
-    "Lab server note.\r\n"
-).encode("ascii")
 
 admin_pw = os.environ.get("ADMIN_PW") or ""
 ldap_pw = os.environ.get("LDAP_ROOT_PW") or ""
@@ -603,24 +595,6 @@ class Imap:
         self.s.sendall(literal + b"\r\n")
         return tag, self.read_tag(tag)
 
-    def append_once(self, payload):
-        self.n += 1
-        tag = "a%d" % self.n
-        self.s.sendall(
-            ("%s APPEND INBOX {%d}\r\n" % (tag, len(payload))).encode("ascii")
-        )
-        lines = []
-        while True:
-            line = self.readline()
-            if line.startswith("+"):
-                self.s.sendall(payload + b"\r\n")
-                lines.extend(self.read_tag(tag))
-                return tag, lines
-            lines.append(line)
-            self.consume_literal(line)
-            if line.startswith(tag + " "):
-                return tag, lines
-
 def tagged_status(lines, tag):
     for line in reversed(lines):
         if line.startswith(tag + " "):
@@ -707,74 +681,7 @@ def zmprov_script(body):
     except subprocess.TimeoutExpired:
         return None
 
-def ensure_domain():
-    body = (
-        "set +x\n"
-        "export HOME=/opt/zimbra\n"
-        "export PATH=/opt/zimbra/bin:$PATH\n"
-        "cd_status=0\n"
-        "if ! zmprov gad | grep -qx '%s'; then\n"
-        "  zmprov cd '%s'\n"
-        "  cd_status=$?\n"
-        "fi\n"
-        "zmprov mcf zimbraDefaultDomainName '%s'\n"
-        "mcf_status=$?\n"
-        "if [ \"$mcf_status\" -ne 0 ]; then exit 1; fi\n"
-        "if [ \"$cd_status\" -ne 0 ]; then exit \"$cd_status\"; fi\n"
-    ) % (domain, domain, domain)
-    proc = zmprov_script(body)
-    text = ""
-    if proc is not None:
-        text = (proc.stdout or "") + (proc.stderr or "")
-    if proc is None or proc.returncode != 0:
-        if "already exists" not in text.lower():
-            sys.stderr.write(redact("domain create failed\n"))
-            sys.exit(1)
-
-def create_account(user, secret):
-    addr = "%s@%s" % (user, domain)
-    env = os.environ.copy()
-    env["LIVEIMAP_ADDR"] = addr
-    env["LIVEIMAP_ACCOUNT_PW"] = secret
-    inner = (
-        "set +x\n"
-        "export HOME=/opt/zimbra\n"
-        "export PATH=/opt/zimbra/bin:$PATH\n"
-        "export LANG=C.UTF-8\n"
-        "export LC_ALL=C.UTF-8\n"
-        'zmprov ca "$LIVEIMAP_ADDR" "$LIVEIMAP_ACCOUNT_PW"\n'
-        "status=$?\n"
-        "if [ \"$status\" -ne 0 ]; then\n"
-        '  zmprov sp "$LIVEIMAP_ADDR" "$LIVEIMAP_ACCOUNT_PW"\n'
-        "fi\n"
-    )
-    try:
-        proc = run(
-            [
-                "docker", "exec", "-i", "-u", "zimbra",
-                "-e", "LIVEIMAP_ADDR",
-                "-e", "LIVEIMAP_ACCOUNT_PW",
-                name,
-                "/bin/bash", "-s",
-            ],
-            timeout=180,
-            env=env,
-            input_text=inner,
-        )
-    except subprocess.TimeoutExpired:
-        return False
-    text = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode == 0:
-        return True
-    if "ACCOUNT_EXISTS" in text or "already exists" in text.lower():
-        return True
-    sys.stderr.write(redact("account create failed for %s\n" % addr))
-    return False
-
 lines_out = ["setup complete", "greeting ok"]
-ensure_domain()
-for user in users:
-    create_account(user, passwords[user])
 
 kept = None
 live_ok = False
@@ -806,22 +713,18 @@ for user in users:
 
 if live_ok and kept is not None:
     try:
-        tag, reply = kept.append_once(message)
-        if tagged_status(reply, tag) != "OK":
+        tag, reply = kept.command("EXAMINE INBOX")
+        count = exists_count(reply)
+        if tagged_status(reply, tag) != "OK" or not count:
             lines_out.append("fetch skipped")
         else:
-            tag, reply = kept.command("EXAMINE INBOX")
-            count = exists_count(reply)
-            if tagged_status(reply, tag) != "OK" or not count:
+            tag, reply = kept.command("FETCH %d BODY.PEEK[1]<0.32>" % count)
+            parsed = section_token(reply)
+            if tagged_status(reply, tag) != "OK" or parsed is None:
                 lines_out.append("fetch skipped")
             else:
-                tag, reply = kept.command("FETCH %d BODY.PEEK[1]<0.32>" % count)
-                parsed = section_token(reply)
-                if tagged_status(reply, tag) != "OK" or parsed is None:
-                    lines_out.append("fetch skipped")
-                else:
-                    token, nbytes = parsed
-                    lines_out.append("fetch %s %s" % (token, nbytes))
+                token, nbytes = parsed
+                lines_out.append("fetch %s %s" % (token, nbytes))
         try:
             kept.command("LOGOUT")
         except OSError:

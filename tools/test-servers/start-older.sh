@@ -203,35 +203,6 @@ wait_port() {
   return 1
 }
 
-write_passwd() {
-  dest=$1
-  umask 007
-  python3 - "$SEED" "$dest" <<'PY'
-import csv
-import sys
-
-seed, dest = sys.argv[1], sys.argv[2]
-lines = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        user = row.get("user") or ""
-        password = row.get("password") or ""
-        if not user or not password:
-            sys.exit(1)
-        lines.append("%s:{PLAIN}%s:1000:1000::/srv/vmail/%s\n" % (user, password, user))
-want = ["liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8"]
-got = [line.split(":", 1)[0] for line in lines]
-if got != want:
-    sys.stderr.write("unexpected base users\n")
-    sys.exit(1)
-with open(dest, "w", encoding="utf-8") as handle:
-    handle.writelines(lines)
-PY
-  umask 022
-}
-
 write_admin() {
   dest=$1
   umask 007
@@ -422,162 +393,6 @@ start_courier() {
   create_from_seed courier-50 \
     -p "${port}:${cp_courier50_imap}"
   wait_port "$name" "$port"
-}
-
-stalwart_accounts() {
-  name=liveimap-stalwart-0155
-  if ! docker exec "$name" /bin/sh -c 'command -v curl >/dev/null 2>&1'; then
-    echo "stalwart curl missing" >&2
-    exit 1
-  fi
-  python3 - "$SEED" "$name" <<'PY'
-import csv
-import json
-import subprocess
-import sys
-
-seed, name = sys.argv[1], sys.argv[2]
-
-def run_curl(script, payload, label):
-    proc = subprocess.run(
-        ["docker", "exec", "-i", name, "/bin/sh", "-c", script],
-        input=payload,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    out = proc.stdout.decode("utf-8", "replace").strip()
-    if proc.returncode == 0 and out == "ok":
-        return "ok"
-    code = "request"
-    parts = out.split()
-    if len(parts) == 2 and parts[0] == "fail" and parts[1].isdigit():
-        code = parts[1]
-    if label is None:
-        return code
-    sys.stderr.write("%s error %s\n" % (label, code))
-    sys.exit(1)
-
-domain_sh = r"""
-curl -sS -o /tmp/st-body -w "%{http_code}" -u "$STALWART_RECOVERY_ADMIN" -X POST -H "Content-Length: 0" \
-  http://127.0.0.1:8080/api/domain/localhost.local > /tmp/st-code || {
-  rm -f /tmp/st-body /tmp/st-code
-  echo fail 0
-  exit 1
-}
-code=$(tr -d '\r\n' < /tmp/st-code)
-norm=$(tr 'A-Z' 'a-z' < /tmp/st-body | tr -d ' \t\r\n')
-rm -f /tmp/st-body /tmp/st-code
-case "$norm" in
-  *alreadyexists*) echo ok; exit 0 ;;
-esac
-case "$code" in
-  200) echo ok; exit 0 ;;
-esac
-echo "fail $code"
-exit 1
-"""
-# v0.15.5 has no /api/domain route. A 404 falls through to a domain principal.
-domain_code = run_curl(domain_sh, b"", None)
-
-users = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        user = row.get("user") or ""
-        password = row.get("password") or ""
-        if not user or not password:
-            sys.stderr.write("unexpected base users\n")
-            sys.exit(1)
-        users.append((user, password))
-want = ["liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8"]
-if [item[0] for item in users] != want:
-    sys.stderr.write("unexpected base users\n")
-    sys.exit(1)
-
-def sha512_crypt(password):
-    proc = subprocess.run(
-        ["openssl", "passwd", "-6", "-stdin"],
-        input=password.encode("utf-8"),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    if proc.returncode != 0:
-        sys.stderr.write("hash failed\n")
-        sys.exit(1)
-    hashed = proc.stdout.decode("utf-8", "replace").strip()
-    if not hashed.startswith("$6$") or any(ch.isspace() for ch in hashed):
-        sys.stderr.write("hash failed\n")
-        sys.exit(1)
-    return hashed
-
-account_sh = r"""
-curl -sS -o /tmp/st-body -w "%{http_code}" -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- \
-  http://127.0.0.1:8080/api/principal > /tmp/st-code || {
-  rm -f /tmp/st-body /tmp/st-code
-  echo fail 0
-  exit 1
-}
-code=$(tr -d '\r\n' < /tmp/st-code)
-norm=$(tr 'A-Z' 'a-z' < /tmp/st-body | tr -d ' \t\r\n')
-rm -f /tmp/st-body /tmp/st-code
-case "$norm" in
-  *alreadyexists*) echo ok; exit 0 ;;
-esac
-case "$code" in
-  200)
-    printf '%s' "$norm" | grep -Eq '^[0-9]+$' && echo ok && exit 0
-    printf '%s' "$norm" | grep -Eq '"data":[0-9]+' && echo ok && exit 0
-    echo "fail $code"
-    exit 1
-    ;;
-esac
-echo "fail $code"
-exit 1
-"""
-if domain_code != "ok":
-    if domain_code != "404":
-        sys.stderr.write("stalwart domain error %s\n" % domain_code)
-        sys.exit(1)
-    run_curl(
-        account_sh,
-        json.dumps({"type": "domain", "name": "localhost.local"}).encode("utf-8"),
-        "stalwart domain",
-    )
-for user, password in users:
-    payload = {
-        "type": "individual",
-        "name": user,
-        "secrets": [sha512_crypt(password)],
-        "emails": ["%s@localhost.local" % user],
-    }
-    run_curl(account_sh, json.dumps(payload).encode("utf-8"), "stalwart account")
-    role_sh = (
-        "curl -sS -o /tmp/st-body -w \"%{http_code}\" -u \"$STALWART_RECOVERY_ADMIN\" "
-        "-H \"Content-Type: application/json\" -X PATCH --data-binary @- "
-        "http://127.0.0.1:8080/api/principal/" + user + " > /tmp/st-code || {\n"
-        "  rm -f /tmp/st-body /tmp/st-code\n"
-        "  echo fail 0\n"
-        "  exit 1\n"
-        "}\n"
-        "code=$(tr -d '\\r\\n' < /tmp/st-code)\n"
-        "norm=$(tr 'A-Z' 'a-z' < /tmp/st-body | tr -d ' \\t\\r\\n')\n"
-        "rm -f /tmp/st-body /tmp/st-code\n"
-        "case \"$norm\" in\n"
-        "  *alreadyexists*) echo ok; exit 0 ;;\n"
-        "esac\n"
-        "case \"$code\" in\n"
-        "  200) echo ok; exit 0 ;;\n"
-        "esac\n"
-        "echo \"fail $code\"\n"
-        "exit 1\n"
-    )
-    run_curl(
-        role_sh,
-        json.dumps([{"action": "addItem", "field": "roles", "value": "user"}]).encode("utf-8"),
-        "stalwart role",
-    )
-PY
 }
 
 start_uw() {
@@ -1098,9 +913,6 @@ ST_SIEVE=$(published_port liveimap-stalwart-0155 "${cp_stalwart0155_managesieve}
 ST_HTTPS=$(published_port liveimap-stalwart-0155 "${cp_stalwart0155_https}")
 ST_SUB=$(published_port liveimap-stalwart-0155 "${cp_stalwart0155_submission}")
 
-echo "stalwart accounts"
-stalwart_accounts
-
 UW_ABSENT=0
 if running liveimap-uwimap; then
   UW=$(published_port liveimap-uwimap "${cp_uwimap_imap}")
@@ -1120,7 +932,7 @@ else
   fi
 fi
 
-echo "login append jmap"
+echo "login jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" "$HOST" \
   "$CY22" "$CY24" "$CY25" "$CY36" "$DV10" "$DV12" "$DV22" "$CO" \
   "$ST_IMAP" "$ST_HTTPS" "$CY36_HTTP" \
@@ -1182,6 +994,18 @@ order = [
 ]
 if uw_absent != "1":
     order.append("uwimap")
+canon = {
+    "cyrus22": "cyrus-22",
+    "cyrus24": "cyrus-24",
+    "cyrus25": "cyrus-25",
+    "cyrus36": "cyrus-36",
+    "dovecot10": "dovecot-10",
+    "dovecot12": "dovecot-12",
+    "dovecot22": "dovecot-22",
+    "courier50": "courier-50",
+    "stalwart015": "stalwart-0155",
+    "uwimap": "uwimap",
+}
 users = []
 with open(seed, newline="") as handle:
     for row in csv.DictReader(handle, delimiter="\t"):
@@ -1189,16 +1013,6 @@ with open(seed, newline="") as handle:
             users.append((row["user"], row["password"]))
 password_of = dict(users)
 ascii_users = ["liveimap", "liveimap2", "liveimap-empty"]
-message = (
-    "From: liveimap@test\r\n"
-    "To: liveimap@test\r\n"
-    "Subject: Lab note one\r\n"
-    "Date: Fri, 9 Oct 2026 12:30:00 -0700\r\n"
-    "MIME-Version: 1.0\r\n"
-    "Content-Type: text/plain; charset=utf-8\r\n"
-    "\r\n"
-    "Lab server note.\r\n"
-).encode("utf-8")
 
 def wait_tcp(port, seconds):
     deadline = time.time() + seconds
@@ -1291,6 +1105,11 @@ def ok_lines(lines):
             return True
     return False
 
+def missing(server):
+    name = canon[server]
+    sys.stderr.write("%s\ntools/test-servers/build-seed-image %s\n" % (name, name))
+    sys.exit(1)
+
 account_lines = []
 fetch_lines = []
 failed = False
@@ -1377,7 +1196,7 @@ for server in order:
         else:
             account_lines.append("%s %s %s\n" % (user, server, "ok" if good else "failed"))
         if user in ascii_users and not good:
-            failed = True
+            missing(server)
         if user == "liveimap" and good:
             live_ok = True
         if good:
@@ -1394,57 +1213,18 @@ for server in order:
         except OSError:
             pass
         continue
-    if not live_ok:
-        fetch_lines.append("%s append-rejected\n" % server)
-        failed = True
-        continue
-    if not ok_lines(login_ready("liveimap", password_of["liveimap"])):
-        fetch_lines.append("%s append-rejected\n" % server)
-        try:
-            state["imap"].command("LOGOUT")
-        except OSError:
-            pass
-        continue
+    if not live_ok or not ok_lines(login_ready("liveimap", password_of["liveimap"])):
+        missing(server)
     imap = state["imap"]
-    appended = None
-    rejected = False
-    for _attempt in range(10):
-        imap.n += 1
-        tag = "a%d" % imap.n
-        imap.s.sendall(("%s APPEND INBOX {%d}\r\n" % (tag, len(message))).encode("ascii"))
-        cont = imap.readline()
-        if cont.startswith("+"):
-            imap.s.sendall(message + b"\r\n")
-            appended = imap.read_tag(tag)
-            if ok_lines(appended):
-                rejected = False
-                break
-            rejected = True
-            break
-        rejected = True
-        if not cont.startswith(tag + " "):
-            try:
-                imap.read_tag(tag)
-            except OSError:
-                pass
-        time.sleep(1)
-    if rejected or not appended or not ok_lines(appended):
-        fetch_lines.append("%s append-rejected\n" % server)
-        try:
-            imap.command("LOGOUT")
-        except OSError:
-            pass
-        continue
-    uid = None
-    for line in appended:
-        match = re.search(r"APPENDUID \d+ (\d+)", line)
+    selected = imap.command("EXAMINE INBOX")
+    count_n = 0
+    for line in selected:
+        match = re.match(r"\* (\d+) EXISTS", line)
         if match:
-            uid = match.group(1)
-    imap.command("SELECT INBOX")
-    if uid:
-        fetched = imap.command("UID FETCH %s BODY.PEEK[1]<0.32>" % uid)
-    else:
-        fetched = imap.command("FETCH 1 BODY.PEEK[1]<0.32>")
+            count_n = int(match.group(1))
+    if not ok_lines(selected) or not count_n:
+        missing(server)
+    fetched = imap.command("FETCH %d BODY.PEEK[1]<0.32>" % count_n)
     prefix = ""
     count = ""
     for line in fetched:
@@ -1458,16 +1238,15 @@ for server in order:
             count = line[brace + 1 : end]
             break
     if not prefix:
-        fetch_lines.append("%s fetch-prefix-missing\n" % server)
+        missing(server)
+    gap = False
+    idx = prefix.rfind("{")
+    if idx <= 0 or prefix[idx - 1] != " ":
+        gap = True
+    if gap:
+        fetch_lines.append("%s missing-space %s %s\n" % (server, prefix, count))
     else:
-        missing = False
-        idx = prefix.rfind("{")
-        if idx <= 0 or prefix[idx - 1] != " ":
-            missing = True
-        if missing:
-            fetch_lines.append("%s missing-space %s %s\n" % (server, prefix, count))
-        else:
-            fetch_lines.append("%s %s %s\n" % (server, prefix, count))
+        fetch_lines.append("%s %s %s\n" % (server, prefix, count))
     try:
         imap.command("LOGOUT")
     except OSError:

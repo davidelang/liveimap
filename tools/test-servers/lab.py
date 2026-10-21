@@ -660,30 +660,20 @@ def run_one(s, commit, stamp, out):
         modes = [("None", s["imap"])]
         if "imaps" in s and greeting(s["imaps"], True, 60):
             modes.append(("Implicit", s["imaps"]))
-        lab = os.path.join(HERE, "lab_imap.py")
-        seed = sh([sys.executable, lab, "seed", LAB_HOST, str(s["imap"]), USER, PASS,
-                   "--allow", f"{LAB_HOST}:{s['imap']}", "--count", "60"])
-        # Servers that refuse a plaintext login are seeded over TLS (implicit if offered, else STARTTLS).
+        imap_tool = os.path.join(HERE, "lab_imap.py")
+        caps_now = plain_caps(s["imap"])
+        offers_starttls = "STARTTLS" in caps_now
         seed_port, seed_tls = s["imap"], ""
-        offers_starttls = "STARTTLS" in plain_caps(s["imap"])
-        if seed.returncode != 0 and re.search(r"disabled|disallowed|PRIVACYREQUIRED|cleartext|clear-text", seed.stdout + seed.stderr, re.I):
-            seed_port, seed_tls = (s["imaps"], "Implicit") if "imaps" in s else (s["imap"], "StartTls" if offers_starttls else "")
-            seed = sh([sys.executable, lab, "seed", LAB_HOST, str(seed_port), USER, PASS, "--tls", seed_tls,
-                       "--allow", f"{LAB_HOST}:{seed_port}", "--count", "60"])
-        if os.environ.get("LAB_DEEP") == "1":
-            # Deeply nested MIME messages (100 and 5000 levels) in LiveIMAP-Test/Deep for the deepNesting step.
-            deep = sh([sys.executable, lab, "seed-deep", LAB_HOST, str(seed_port), USER, PASS,
-                       *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
-            seed.stdout += "\n" + deep.stdout + deep.stderr[-500:]
-        if os.environ.get("LAB_SPOOF") == "1":
-            # Attachments whose declared type/filename lie about the content, for the typeSniff step.
-            spoof = sh([sys.executable, lab, "seed-spoof", LAB_HOST, str(seed_port), USER, PASS,
-                        *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}"])
-            seed.stdout += "\n" + spoof.stdout + spoof.stderr[-500:]
-        open(os.path.join(dest, "seed.txt"), "w").write(seed.stdout + seed.stderr[-500:])
-        folder = seed.stdout.split(":", 1)[0].strip() if ": " in seed.stdout else "LiveIMAP-Test"
-        s["folder"] = folder
-        caps = sh([sys.executable, lab, "caps", LAB_HOST, str(seed_port), USER, PASS,
+        plain_reply = ""
+        if caps_now and "LOGINDISABLED" not in caps_now:
+            plain_reply = _plain_login_reply(s["imap"], USER)
+        if classify_plain(caps_now, plain_reply) == "StartTls":
+            if "imaps" in s:
+                seed_port, seed_tls = s["imaps"], "Implicit"
+            elif offers_starttls:
+                seed_port, seed_tls = s["imap"], "StartTls"
+        s["folder"] = "LiveIMAP-Test"
+        caps = sh([sys.executable, imap_tool, "caps", LAB_HOST, str(seed_port), USER, PASS,
                    *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}", "--record", os.path.join(dest, "caps.jsonl"),
                    "--server-name", name, "--commit", commit, "--suite", "caps"])
         open(os.path.join(dest, "caps.txt"), "w").write(caps.stdout + caps.stderr[-500:])

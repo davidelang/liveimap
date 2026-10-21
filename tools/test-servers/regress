@@ -56,7 +56,6 @@ run_rec = ""
 run_log = ""
 commit = ""
 cache = {}
-reseed_notes = []
 drift_lines = []
 any_skip = False
 
@@ -1712,7 +1711,6 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
         "rows": body_rows,
         "failing_checks": [redact(n) for n in fails],
         "unseeded_servers": unseeded,
-        "reseed": reseed_notes,
         "drift": drift_lines,
         "untested": [{"name": name, "reason": "no instrumented test"} for name in (UNTESTED if "ui" in suites else [])],
     }
@@ -1737,11 +1735,6 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
         lines.append("## unseeded")
         for name in unseeded:
             lines.append(f"- {name}")
-    if reseed_notes:
-        lines.append("")
-        lines.append("## reseed")
-        for note in reseed_notes:
-            lines.append(f"- {note}")
     if drift_lines:
         lines.append("")
         lines.append("## drift")
@@ -1790,7 +1783,6 @@ def main():
     p.add_argument("--responding-to", default="")
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--no-reseed", action="append", default=[])
     a = p.parse_args()
     dry_run = a.dry_run
     responding_to = a.responding_to or "none"
@@ -1819,10 +1811,6 @@ def main():
     if bad_server:
         print(f"VERDICT BLOCKED unknown server {bad_server}")
         sys.exit(1)
-    for token in a.no_reseed:
-        if token != "all" and token not in by_name:
-            print(f"VERDICT BLOCKED unknown server {token}")
-            sys.exit(1)
     suites, bad_suite = selected_suites(a.suites)
     if bad_suite:
         print(f"VERDICT BLOCKED unknown suite {bad_suite}")
@@ -1865,30 +1853,25 @@ def main():
         if err:
             stop(f"VERDICT BLOCKED {err}", suites, names, [])
     write_lock("seed")
-    skip_all = os.environ.get("LAB_NO_RESEED") == "1" or "all" in a.no_reseed
     pending = list(used)
     for name in used:
         pending.pop(0)
         s = by_name.get(name)
-        skipped = skip_all or name in a.no_reseed
         try:
             if s and s.get("container"):
-                err = start_lab_container(s, skipped)
+                err = start_lab_container(s)
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
                 err = lab.check_published(s["container"])
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-            reseed_notes.append(f"{name} reseeded: {'no' if skipped else 'yes'}")
-            if skipped:
-                any_skip = True
             err = probe_servers([name], by_name)
             if err:
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
             problem = domain_login_check(s)
             if problem:
                 stop(f"VERDICT BLOCKED {problem}", suites, names, [])
-            blocked, drifted = verify_one(s, skipped)
+            blocked, drifted = verify_one(s, False)
             if blocked:
                 stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])
             drift_lines.extend(drifted)

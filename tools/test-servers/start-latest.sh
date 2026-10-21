@@ -508,32 +508,9 @@ userdb static {
   }
 }
 EOF
-python3 - "$SEED" "$GEN/dovecot-245/passwd" <<'PY'
-import csv
-import sys
-
-seed, dest = sys.argv[1], sys.argv[2]
-lines = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        user = row.get("user") or ""
-        password = row.get("password") or ""
-        if not user or not password:
-            sys.exit(1)
-        lines.append("%s:{PLAIN}%s\n" % (user, password))
-want = ["liveimap", "liveimap2", "liveimap-empty", "liveimap-utf8"]
-got = [line.split(":", 1)[0] for line in lines]
-if got != want:
-    sys.stderr.write("unexpected base users\n")
-    sys.exit(1)
-with open(dest, "w", encoding="utf-8") as handle:
-    handle.writelines(lines)
-PY
 umask 022
 printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$GEN/dovecot-245/relay.conf"
-setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf" "$GEN/dovecot-245/relay.conf"
+setfacl -m u:1000:r "$GEN/dovecot-245/auth.conf" "$GEN/dovecot-245/relay.conf"
 create_from_seed dovecot-245 \
   -p "${dv_imap}:${cp_dovecot245_imap}" \
   -p "${dv_sub}:${cp_dovecot245_submission}"
@@ -1147,107 +1124,6 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-# v0.16.25 has no /api/principal route. The same JMAP URL used for the
-# listener creates x:Account records. Unqualified LOGIN uses localhost.local.
-python3 - "$SEED" <<'PY' | docker exec -i liveimap-stalwart-01625 /bin/sh -c 'curl -sS -o /tmp/acct-body -w "%{http_code}" -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:8080/jmap > /tmp/acct-code'
-import csv
-import json
-import sys
-
-seed = sys.argv[1]
-users = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        users.append((row["user"], row["password"]))
-creates = {
-    "d1": {"name": "localhost.local"},
-}
-account_creates = {}
-for index, (user, password) in enumerate(users):
-    account_creates["a%d" % index] = {
-        "name": user,
-        "@type": "User",
-        "domainId": "#d1",
-        "credentials": {"0": {"@type": "Password", "secret": password}},
-    }
-body = {
-    "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
-    "methodCalls": [
-        ["x:Domain/set", {"create": creates}, "c1"],
-        ["x:Account/set", {"create": account_creates}, "c2"],
-    ],
-}
-sys.stdout.buffer.write(json.dumps(body).encode("utf-8"))
-PY
-st_code=$(docker exec liveimap-stalwart-01625 cat /tmp/acct-code)
-st_body=$(docker exec liveimap-stalwart-01625 cat /tmp/acct-body)
-case "$st_body" in
-  *notCreated*)
-    python3 - "$SEED" "$ACCOUNTS_OUT" "$st_code" "$st_body" <<'PY'
-import csv
-import json
-import sys
-
-seed, dest, code, body = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-try:
-    parsed = json.loads(body)
-except json.JSONDecodeError:
-    parsed = None
-saw = False
-present = isinstance(parsed, dict)
-if present:
-    for item in parsed.get("methodResponses") or []:
-        if not isinstance(item, list) or len(item) < 2 or not isinstance(item[1], dict):
-            present = False
-            break
-        not_created = item[1].get("notCreated") or {}
-        if not isinstance(not_created, dict):
-            present = False
-            break
-        for err in not_created.values():
-            if not isinstance(err, dict) or err.get("type") != "alreadyExists":
-                present = False
-                break
-            saw = True
-        if not present:
-            break
-if present and saw:
-    sys.exit(0)
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("password"):
-            body = body.replace(row["password"], "[redacted]")
-excerpt = body.replace("\n", " ")[:400]
-with open(dest, "a", encoding="utf-8") as handle:
-    handle.write("stalwart principal %s %s\n" % (code, excerpt))
-sys.exit(1)
-PY
-    ;;
-  *'"created"'*) ;;
-  *)
-    python3 - "$SEED" "$ACCOUNTS_OUT" "$st_code" "$st_body" <<'PY'
-import csv
-import sys
-
-seed, dest, code, body = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-passwords = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("password"):
-            passwords.append(row["password"])
-for password in passwords:
-    body = body.replace(password, "[redacted]")
-excerpt = body.replace("\n", " ")[:400]
-with open(dest, "a", encoding="utf-8") as handle:
-    handle.write("stalwart principal %s %s\n" % (code, excerpt))
-sys.exit(1)
-PY
-    ;;
-esac
-unset st_code st_body
-
 echo "starting cyrus and courier"
 create_from_seed cyrus-3124 \
   -p "${CY_IMAP}:${cp_cyrus3124_imap}" \
@@ -1255,7 +1131,7 @@ create_from_seed cyrus-3124 \
 create_from_seed courier-606 \
   -p "${CO_IMAP}:${cp_courier606_imap}"
 
-echo "login append jmap"
+echo "login jmap"
 python3 - "$SEED" "$ACCOUNTS_OUT" "$FETCH_OUT" \
   "$ST_IMAP" "$ST_HTTPS" "$DV_IMAP" "$CY_IMAP" "$CY_HTTP" "$CO_IMAP" <<'PY'
 import base64
@@ -1287,6 +1163,12 @@ ports = {
     "courier606": int(co_imap),
 }
 order = ["stalwart01625", "dovecot245", "cyrus3124", "courier606"]
+canon = {
+    "stalwart01625": "stalwart-01625",
+    "dovecot245": "dovecot-245",
+    "cyrus3124": "cyrus-3124",
+    "courier606": "courier-606",
+}
 host = "127.0.0.1"
 users = []
 with open(seed, newline="") as handle:
@@ -1295,17 +1177,6 @@ with open(seed, newline="") as handle:
             users.append((row["user"], row["password"]))
 password_of = dict(users)
 ascii_users = ["liveimap", "liveimap2", "liveimap-empty"]
-
-message = (
-    "From: liveimap@test\r\n"
-    "To: liveimap@test\r\n"
-    "Subject: Lab note one\r\n"
-    "Date: Fri, 9 Oct 2026 12:30:00 -0700\r\n"
-    "MIME-Version: 1.0\r\n"
-    "Content-Type: text/plain; charset=utf-8\r\n"
-    "\r\n"
-    "Lab server note.\r\n"
-).encode("utf-8")
 
 def wait_tcp(port, seconds):
     deadline = time.time() + seconds
@@ -1395,6 +1266,11 @@ def ok_lines(lines):
             return True
     return False
 
+def missing(server):
+    name = canon[server]
+    sys.stderr.write("%s\ntools/test-servers/build-seed-image %s\n" % (name, name))
+    sys.exit(1)
+
 account_lines = ["uw-imap 2007f no release after 2007f and no dev branch\n"]
 fetch_lines = []
 failed = False
@@ -1431,7 +1307,7 @@ for server in order:
         else:
             account_lines.append("%s %s %s\n" % (user, server, "ok" if good else "failed"))
         if user in ascii_users and not good:
-            failed = True
+            missing(server)
         if user == "liveimap" and good:
             live_ok = True
         if good:
@@ -1442,35 +1318,15 @@ for server in order:
                 imap.starttls()
     if live_ok:
         imap.login("liveimap", password_of["liveimap"])
-        appended = None
-        for _attempt in range(30):
-            imap.n += 1
-            tag = "a%d" % imap.n
-            imap.s.sendall(("%s APPEND INBOX {%d}\r\n" % (tag, len(message))).encode("ascii"))
-            cont = imap.readline()
-            if cont.startswith("+"):
-                imap.s.sendall(message + b"\r\n")
-                appended = imap.read_tag(tag)
-                if ok_lines(appended):
-                    break
-                sys.stderr.write("append failed for %s\n" % server)
-                sys.exit(1)
-            if not cont.startswith(tag + " "):
-                imap.read_tag(tag)
-            time.sleep(1)
-        if not appended:
-            sys.stderr.write("append failed for %s\n" % server)
-            sys.exit(1)
-        uid = None
-        for line in appended:
-            match = re.search(r"APPENDUID \d+ (\d+)", line)
+        selected = imap.command("EXAMINE INBOX")
+        count_n = 0
+        for line in selected:
+            match = re.match(r"\* (\d+) EXISTS", line)
             if match:
-                uid = match.group(1)
-        imap.command("SELECT INBOX")
-        if uid:
-            fetched = imap.command("UID FETCH %s BODY.PEEK[1]<0.32>" % uid)
-        else:
-            fetched = imap.command("FETCH 1 BODY.PEEK[1]<0.32>")
+                count_n = int(match.group(1))
+        if not ok_lines(selected) or not count_n:
+            missing(server)
+        fetched = imap.command("FETCH %d BODY.PEEK[1]<0.32>" % count_n)
         prefix = ""
         count = ""
         for line in fetched:
@@ -1484,13 +1340,11 @@ for server in order:
                 count = line[brace + 1 : end]
                 break
         if not prefix:
-            sys.stderr.write("fetch prefix missing for %s\n" % server)
-            sys.exit(1)
+            missing(server)
         fetch_lines.append("%s %s %s\n" % (server, prefix, count))
         imap.command("LOGOUT")
     else:
-        sys.stderr.write("liveimap login failed for %s\n" % server)
-        sys.exit(1)
+        missing(server)
 
 def http_get(url, user, password, tls=False):
     req = urllib.request.Request(url)

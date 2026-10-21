@@ -116,26 +116,25 @@ if [ "$entry_missing" -eq 0 ]; then
 fi
 rm -rf "$tmp"
 
-case "$server" in
-  zimbra-883)
-    docker start "$name"
-    imap_port=$(python3 "$here/cport.py" zimbra-883 imap)
-    published=$(docker port "$name" "$imap_port")
-    host_port=${published##*:}
-    lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$here/host.env")
-    case "$lab_host" in
-      "")
-        echo "LAB_BIND missing" >&2
-        exit 1
-        ;;
-    esac
-    python3 - "$lab_host" "$host_port" "$here" <<'PY'
+docker start "$name"
+imap_port=$(python3 "$here/cport.py" "$server" imap)
+published=$(docker port "$name" "$imap_port")
+host_port=${published##*:}
+lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$here/host.env")
+case "$lab_host" in
+  "")
+    echo "LAB_BIND missing" >&2
+    exit 1
+    ;;
+esac
+# Bare USER login and the recorded domain login, including zimbra-883.
+python3 - "$lab_host" "$host_port" "$here" "$server" <<'PY'
 import imaplib
 import ssl
 import sys
 import time
 
-host, port_s, tools = sys.argv[1:]
+host, port_s, tools, server = sys.argv[1:]
 sys.path.insert(0, tools)
 import lab
 user = lab.USER
@@ -170,16 +169,34 @@ try:
     imap.logout()
 except Exception:
     pass
+login_domain, expect = lab._imap_domain_columns(server)
+if login_domain == "LAB_MAIL_DOMAIN":
+    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
+    if not login_domain:
+        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
+        sys.exit(1)
+if not login_domain or not expect:
+    problem = lab.domain_login_problem({"name": server}, "")
+else:
+    account = user.split("@")[0] + "@" + login_domain
+    caps = lab.plain_caps(port)
+    if caps and "LOGINDISABLED" in caps:
+        err = lab._starttls_login(port, account)
+        reply = "OK" if not err else err
+    else:
+        reply = lab._plain_login_reply(port, account)
+    problem = lab.domain_login_problem({"name": server}, reply)
+if problem:
+    sys.stderr.write(problem + "\n")
+    sys.exit(1)
 PY
-    if ! docker stop -t 60 "$name"; then
-      exit 1
-    fi
-    running=$(docker inspect -f '{{.State.Running}}' "$name")
-    if [ "$running" = "true" ]; then
-      echo "stop failed $name" >&2
-      exit 1
-    fi
-    ;;
-esac
+if ! docker stop -t 60 "$name"; then
+  exit 1
+fi
+running=$(docker inspect -f '{{.State.Running}}' "$name")
+if [ "$running" = "true" ]; then
+  echo "stop failed $name" >&2
+  exit 1
+fi
 
 docker commit "$name" "liveimap-seed-$server" >/dev/null

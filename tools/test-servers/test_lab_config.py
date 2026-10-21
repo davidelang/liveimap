@@ -586,10 +586,28 @@ assert "login" in resolve_src and "USER" in resolve_src
 assert ("user" + "_for") not in resolve_src
 assert "resolve_auto(s)" in acc_auto
 assert "seed_corpus.py" not in acc_auto
-ensure = py_function(zimbra, "ensure_domain")
-assert "sys.exit" in ensure
-assert "already exists" in ensure
-assert "zimbraDefaultDomainName" in ensure
+# Image-only provision edges 1-4. Text only; this does not run docker or regress.
+callers = (
+    "start-latest.sh", "start-dev.sh", "start-older.sh", "start-local.sh",
+    "zimbra-883.sh", "regress", "lab.py", "acclab.py", "t4smtp.py",
+    "jmaplab.py", "jmaprun.py", "safety_run.py", "cysub.py", "sess.py",
+)
+forbidden = (
+    "zmprov ca", "zmprov cd", "zmprov sp", "saslpasswd2 -c",
+    "stalwart-accounts.sh", "seed_corpus.py", "seed-deep",
+)
+for name in callers:
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    for bad in forbidden:
+        assert bad not in text, (name, bad)
+assert "seed_corpus.py" in builder
+assert "stalwart-accounts.sh" in builder
+assert "saslpasswd2 -p -c" in builder
+assert "--no-reseed" not in regress
+assert "LAB_NO_RESEED" not in regress
+assert "domain_login_check(s)" in regress
+assert snap.find("domain_login_problem") != -1
+assert snap.find("domain_login_problem") < snap.rfind("docker commit")
 z_at = builder.find("build_zimbra() {")
 z_end = builder.find("\nbuild_volume_servers()", z_at)
 zbody = builder[z_at:z_end]
