@@ -114,18 +114,38 @@ tasks.register("checkArm64ReleaseKeeps") {
             throw GradleException("no org/dlang FindClass names in src/main/cpp")
         }
         classes.add("com.davidlang.liveimap.BuildConfig")
+        // R8 prints static void <clinit>() after moving a kept $stable value into the dex
+        // field. A -keep rule does not retain that method. Any other member, or the class
+        // itself, is a failure.
         val bad = mutableListOf<String>()
-        var current: String? = null
+        var header: String? = null
+        var headerName: String? = null
+        val members = mutableListOf<String>()
+        fun flush() {
+            val name = headerName ?: return
+            val line = header ?: return
+            if (name in classes) {
+                val other = members.filter { it.trim() != "static void <clinit>()" }
+                if (members.isEmpty() || other.isNotEmpty()) {
+                    bad.add(line)
+                    bad.addAll(other)
+                }
+            }
+            header = null
+            headerName = null
+            members.clear()
+        }
         for (line in usage.readLines()) {
             if (line.isBlank() || line.startsWith("#")) continue
             if (line[0] == ' ' || line[0] == '\t') {
-                if (current != null && current in classes) bad.add(line)
+                if (header != null) members.add(line)
             } else {
-                val name = line.trim().removeSuffix(":")
-                current = name
-                if (name in classes) bad.add(line)
+                flush()
+                header = line
+                headerName = line.trim().removeSuffix(":")
             }
         }
+        flush()
         if (bad.isNotEmpty()) {
             bad.forEach { println(it) }
             throw GradleException("usage.txt lists a kept class or member")
