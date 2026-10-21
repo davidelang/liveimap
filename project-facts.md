@@ -9,6 +9,7 @@
 - `./build_app` compiles and moves `builds`. `./deploy` installs the per-ABI APK (the APKs the last `./build_app` recorded from Gradle's output-metadata.json; `--test`: the debug x86_64 app plus its androidTest APK) and moves `deployed`. Agents do not deploy.
 - Package `com.davidlang.liveimap`.
 - App versionName comes from git describe (annotated tag v0.1 on master; <branch>-start when that tag exists). versionCode stays 1. About shows that version. Support mail is david+liveimap@lang.hm.
+- The launcher icon is `@mipmap/ic_launcher` (adaptive, minSdk 26, no PNG mipmaps); the Play 512 is `docs/store/icon.png`; the generator is `docs/store/gen.py` and its `OUT` is `/workspace/iconbuild/icon`.
 
 ## Build and commit
 - **Standard build:** debug

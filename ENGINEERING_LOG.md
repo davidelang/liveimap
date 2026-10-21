@@ -3535,3 +3535,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - Seed builds report the live step and fix the census failures.
 
 ## 2026-10-21 - Stalwart 0.16 starts from config.json and leaves recovery mode before login.
+
+## 2026-10-21 - The app has its first launcher icon.
