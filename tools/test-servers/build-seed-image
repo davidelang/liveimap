@@ -134,9 +134,16 @@ if problem:
 PY
 }
 
+seed_suite() {
+  python3 "$DIR/lab_imap.py" seed "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}" --count 60
+  python3 "$DIR/lab_imap.py" seed-deep "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}"
+  python3 "$DIR/lab_imap.py" seed-spoof "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}"
+}
+
 close_build() {
   require_login
   python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
+  seed_suite
   docker stop "liveimap-build-$server"
   manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
   docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
@@ -1412,6 +1419,7 @@ PY
 esac
 require_login
 python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
+seed_suite
 docker stop "liveimap-build-$server"
 manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
 docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"

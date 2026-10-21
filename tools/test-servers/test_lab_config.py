@@ -678,4 +678,77 @@ assert cyrus_at != -1 and sasl_at != -1 and cyrus_at < sasl_at
 cyrus_block = builder[cyrus_at:sasl_at + 800]
 assert "virtdomains" in cyrus_block and "needs LAB_MAIL_DOMAIN" in cyrus_block
 assert "***" in cyrus_block
+
+# Suite fixture edges 1-8. Pure helpers and source text. This does not run docker, regress, or build-seed-image.
+ns_inbox = b'(("INBOX." "."))'
+dot_list = '* LIST (\\Noselect) "." ""'
+slash_list = '* LIST (\\Noselect) "/" ""'
+assert lab.suite_root(ns_inbox) == "INBOX.LiveIMAP-Test"
+assert lab.suite_root(b"") == "LiveIMAP-Test"
+assert lab.suite_root(None) == "LiveIMAP-Test"
+prefixed = lab.suite_mailboxes(ns_inbox, dot_list)
+assert [name for name, _count in prefixed] == [
+    "INBOX.LiveIMAP-Test",
+    "INBOX.LiveIMAP-Test.Sub",
+    "INBOX.LiveIMAP-Test.Trash",
+    "INBOX.LiveIMAP-Test.T&AOs-st-&ANw-n&AO8-",
+    "INBOX.LiveIMAP-Test.Deep",
+    "INBOX.LiveIMAP-Test.Spoof",
+]
+assert [count for _name, count in prefixed] == [60, 6, 0, 1, 2, 4]
+plain = lab.suite_mailboxes(b"", slash_list)
+assert plain[0] == ("LiveIMAP-Test", 60)
+assert plain[1][0] == "LiveIMAP-Test/Sub"
+exact = {name: count for name, count in prefixed}
+assert lab.fixture_problem(exact, prefixed) == ""
+absent = dict(exact)
+del absent["INBOX.LiveIMAP-Test.Sub"]
+assert lab.fixture_problem(absent, prefixed) == "INBOX.LiveIMAP-Test.Sub: missing"
+short = {name: count for name, count in plain}
+short["LiveIMAP-Test"] = 59
+assert lab.fixture_problem(short, plain) == "LiveIMAP-Test: count 59 != 60"
+assert lab.require_suite_count(60) == ""
+assert lab.require_suite_count(200) == "suite count"
+assert lab_py.count('\\(\\("') == 1
+assert '\\(\\("' in py_function(lab_py, "suite_root")
+imap_src = open(os.path.join(HERE, "lab_imap.py"), encoding="utf-8").read()
+for fn in ("seed", "seed_deep", "seed_spoof"):
+    assert '\\(\\("' not in py_function(imap_src, fn)
+suite_fn = function_body(builder, "seed_suite")
+for cmd in (
+    'python3 "$DIR/lab_imap.py" seed "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}" --count 60',
+    'python3 "$DIR/lab_imap.py" seed-deep "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}"',
+    'python3 "$DIR/lab_imap.py" seed-spoof "$lab_host" "$host_port" --tls StartTls --allow "${lab_host}:${host_port}"',
+):
+    assert cmd in suite_fn
+assert "$(" not in suite_fn
+assert "|| true" not in suite_fn
+assert "2>/dev/null" not in suite_fn
+assert "docker rm" not in suite_fn
+assert "PASS" not in suite_fn
+assert builder.count("seed_suite() {") == 1
+close = function_body(builder, "close_build")
+assert close.find("seed_corpus.py") < close.find("\n  seed_suite\n") < close.find("docker stop")
+last_corpus = builder.rfind('"$DIR/seed_corpus.py"')
+tail_suite = builder.find("\nseed_suite\n", last_corpus)
+tail_stop = builder.find("\ndocker stop ", last_corpus)
+assert last_corpus != -1 and tail_suite != -1 and tail_stop != -1
+assert last_corpus < tail_suite < tail_stop
+stage = builder.find('docker commit --change "ENV STALWART_RECOVERY_ADMIN=admin:$token"')
+stage_close = builder.find("\n  close_build\n", stage)
+assert stage != -1 and stage_close != -1
+assert "seed_suite" not in builder[stage:stage_close]
+run_src = py_function(lab_py, "run_one")
+assert "suite_root" in run_src
+assert 's["folder"] = "LiveIMAP-Test"' not in run_src
+assert "seed-deep" not in lab_py and "seed-spoof" not in lab_py
+assert "seed-deep" not in regress and "seed-spoof" not in regress
+assert "sys.exit" not in py_function(lab_py, "fixture_check")
+assert "sys.exit" not in py_function(lab_py, "fixture_problem")
+fix_at = regress.find("lab.fixture_check(s)")
+assert fix_at != -1
+fix_window = regress[fix_at:fix_at + 220]
+assert "stop(" in fix_window and "build-seed-image" in fix_window and "VERDICT BLOCKED" in fix_window
+guard = regress.rfind('if "imap" in suites:', 0, fix_at)
+assert guard != -1 and fix_at - guard < 80
 print("ok")

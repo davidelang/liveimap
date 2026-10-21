@@ -51,6 +51,8 @@ PKG = "com.davidlang.liveimap"
 LAB_PKG = "org.dlang.liveimap.lab"
 RUNNER = f"{PKG}.test/androidx.test.runner.AndroidJUnitRunner"
 USER, PASS = "liveimap", "liveimap-test"
+SUITE_COUNT = 60
+SUITE_LEAF = "T&AOs-st-&ANw-n&AO8-"
 ALONE = {"liveimap-zimbra-883"}
 
 
@@ -642,6 +644,96 @@ def only_one(cont):
         sys.exit("lab containers still running: " + " ".join(left))
 
 
+def suite_root(namespace_field):
+    """Personal namespace prefix plus LiveIMAP-Test. Does not connect."""
+    prefix = ""
+    if namespace_field:
+        raw = namespace_field if isinstance(namespace_field, bytes) else str(namespace_field).encode()
+        hit = re.match(rb'\(\("([^"]*)"', raw)
+        if hit and hit.group(1):
+            prefix = hit.group(1).decode()
+    if prefix:
+        return prefix + "LiveIMAP-Test"
+    return "LiveIMAP-Test"
+
+
+def list_delimiter(line):
+    """First quoted LIST delimiter, otherwise /. Does not connect."""
+    if isinstance(line, bytes):
+        line = line.decode("utf-8", "replace")
+    elif not isinstance(line, str):
+        line = "" if line is None else str(line)
+    parts = line.split('"')
+    return parts[1] if len(parts) > 2 else "/"
+
+
+def suite_mailboxes(namespace_field, list_line):
+    """Six (name, count) pairs: root, Sub, Trash, leaf, Deep, Spoof. Does not connect."""
+    root = suite_root(namespace_field)
+    delim = list_delimiter(list_line)
+    return [
+        (root, SUITE_COUNT),
+        (root + delim + "Sub", max(5, SUITE_COUNT // 10)),
+        (root + delim + "Trash", 0),
+        (root + delim + SUITE_LEAF, 1),
+        (root + delim + "Deep", 2),
+        (root + delim + "Spoof", 4),
+    ]
+
+
+def require_suite_count(count):
+    """'' or suite count. Does not connect."""
+    if count == SUITE_COUNT:
+        return ""
+    return "suite count"
+
+
+def fixture_problem(have, mailboxes):
+    """'' or one string. Does not connect."""
+    for name, want in mailboxes:
+        if name not in have:
+            return name + ": missing"
+        got = have[name]
+        if got != want:
+            return name + ": count " + str(got) + " != " + str(want)
+    return ""
+
+
+def fixture_check(s):
+    """'' or one string. Same plain or STARTTLS choice as resolve_auto."""
+    import imaplib
+    s["namespace"] = None
+    kind = resolve_auto(s)
+    if kind not in (None, "StartTls"):
+        return _text(kind)
+    client = None
+    try:
+        client = imaplib.IMAP4(LAB_HOST, s["imap"], timeout=20)
+        if kind == "StartTls":
+            client.starttls(_lab_ssl())
+        client.login(USER, PASS)
+        if "NAMESPACE" in client.capabilities:
+            typ, ns = client.namespace()
+        else:
+            typ, ns = "NO", None
+        field = ns[0] if typ == "OK" and ns and ns[0] else b""
+        s["namespace"] = field
+        typ, data = client.list('""', '""')
+        line = data[0] if typ == "OK" and data and data[0] else b""
+        boxes = suite_mailboxes(field, line)
+        have = {}
+        for name, _want in boxes:
+            typ, data = client.select('"%s"' % name, readonly=True)
+            if typ == "OK" and data and data[0] is not None:
+                have[name] = int(data[0])
+        return fixture_problem(have, boxes)
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        return _text(arg)
+    finally:
+        _close_imap(client)
+
+
 def run_one(s, commit, stamp, out):
     name, cont = s["name"], s["container"]
     only_one(cont)
@@ -672,7 +764,6 @@ def run_one(s, commit, stamp, out):
                 seed_port, seed_tls = s["imaps"], "Implicit"
             elif offers_starttls:
                 seed_port, seed_tls = s["imap"], "StartTls"
-        s["folder"] = "LiveIMAP-Test"
         caps = sh([sys.executable, imap_tool, "caps", LAB_HOST, str(seed_port), USER, PASS,
                    *(["--tls", seed_tls] if seed_tls else []), "--allow", f"{LAB_HOST}:{seed_port}", "--record", os.path.join(dest, "caps.jsonl"),
                    "--server-name", name, "--commit", commit, "--suite", "caps"])
@@ -680,6 +771,12 @@ def run_one(s, commit, stamp, out):
         # Never STARTTLS unless the pre-TLS CAPABILITY lists it.
         if offers_starttls:
             modes.append(("StartTls", s["imap"]))
+        problem = fixture_check(s)
+        s["folder"] = suite_root(s.get("namespace"))
+        if problem:
+            out.write(f"{name}\timap\t-\tfail\t{problem} tools/test-servers/build-seed-image {name}\t{int(time.time()-t0)}\t{dest}\n")
+            out.flush()
+            return
         plan = []
         for tls, port in modes:
             if MECHS:

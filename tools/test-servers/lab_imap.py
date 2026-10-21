@@ -2,8 +2,8 @@
 """LiveIMAP lab helper: record CAPABILITY and seed test folders on a LAB server.
 
 Usage:
-  lab_imap.py caps HOST PORT USER PASSWORD [--allow HOST:PORT ...]
-  lab_imap.py seed HOST PORT USER PASSWORD [--count N] [--big N] [--allow HOST:PORT ...]
+  lab_imap.py caps HOST PORT [USER PASSWORD] [--allow HOST:PORT ...]
+  lab_imap.py seed HOST PORT [USER PASSWORD] [--count N] [--big N] [--allow HOST:PORT ...]
   lab_imap.py check
   Add --record FILE [--server-name N] [--commit C] [--suite S] to caps or seed
   to write the shared JSON-lines recording (tools/test-servers/rec.py).
@@ -77,7 +77,14 @@ def connect(host, port, user, password, allow):
                 raise SystemExit("server does not offer STARTTLS")
             m.starttls(ssl._create_unverified_context())
     pre = m.capabilities
-    m.login(user, password)
+    try:
+        m.login(user, password)
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        text = arg.decode("utf-8", "replace") if isinstance(arg, bytes) else str(arg)
+        if password:
+            text = text.replace(password, "***")
+        sys.exit(text)
     typ, data = m.capability()
     post = data[0].decode() if data and data[0] else ""
     return m, " ".join(pre), post
@@ -213,38 +220,40 @@ def spoof_message(subject, filename, mime, content):
     return msg.as_bytes()
 
 
+def _listed(m):
+    typ, ns = ("NO", None)
+    if "NAMESPACE" in m.capabilities:
+        typ, ns = m.namespace()
+    field = ns[0] if typ == "OK" and ns and ns[0] else b""
+    _typ, data = m.list('""', '""')
+    line = data[0] if data and data[0] else b""
+    return field, line
+
+
 def seed_spoof(a, allow):
+    import lab
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
-    d = delimiter(m)
-    box = f"{TEST_ROOT}{d}Spoof"
-    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
-    if typ == "OK" and ns and ns[0]:
-        hit = re.match(rb'\(\("([^"]*)"', ns[0])
-        if hit and hit.group(1):
-            box = hit.group(1).decode() + box
+    field, line = _listed(m)
+    box, target = lab.suite_mailboxes(field, line)[5]
     ensure(m, box)
-    for i in range(count(m, box), len(SPOOFS)):
+    for i in range(count(m, box), target):
         subject, filename, mime, content, _ = SPOOFS[i]
         typ, _ = m.append(f'"{box}"', "(\\Seen)", None, spoof_message(subject, filename, mime, content))
         print(f"append {subject}: {typ}")
-    print(f"{box}: {count(m, box)} messages (target {len(SPOOFS)})")
+    print(f"{box}: {count(m, box)} messages (target {target})")
     m.logout()
 
 
 def seed_deep(a, allow):
+    import lab
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
-    d = delimiter(m)
-    box = f"{TEST_ROOT}{d}Deep"
-    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
-    if typ == "OK" and ns and ns[0]:
-        hit = re.match(rb'\(\("([^"]*)"', ns[0])
-        if hit and hit.group(1):
-            box = hit.group(1).decode() + box
+    field, line = _listed(m)
+    box, target = lab.suite_mailboxes(field, line)[4]
     ensure(m, box)
-    for i in range(count(m, box), len(DEEP_LEVELS)):
+    for i in range(count(m, box), target):
         typ, data = m.append(f'"{box}"', "(\\Seen)", None, deep_message(DEEP_LEVELS[i]))
         print(f"append {DEEP_LEVELS[i]} levels: {typ} {data[0][:80] if data and data[0] else ''}")
-    print(f"{box}: {count(m, box)} messages (target {len(DEEP_LEVELS)})")
+    print(f"{box}: {count(m, box)} messages (target {target})")
     m.logout()
 
 
@@ -252,19 +261,19 @@ KINDS = ["plain", "plain", "latin1", "html", "attach", "sjis", "plain"]
 
 
 def seed(a, allow):
+    import lab
+    bad = lab.require_suite_count(a.count)
+    if bad:
+        sys.exit(bad)
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
-    d = delimiter(m)
-    root = TEST_ROOT
-    typ, ns = m.namespace() if "NAMESPACE" in m.capabilities else ("NO", None)
-    if typ == "OK" and ns and ns[0]:
-        hit = re.match(rb'\(\("([^"]*)"', ns[0])
-        if hit and hit.group(1):
-            root = hit.group(1).decode() + TEST_ROOT  # e.g. INBOX. on Cyrus 2.x and Courier
-    boxes = {root: a.count, f"{root}{d}Sub": max(5, a.count // 10), f"{root}{d}Trash": 0,
-             f"{root}{d}{mutf7(UTF8_LEAF)}": 1}
+    field, line = _listed(m)
+    boxes = list(lab.suite_mailboxes(field, line)[:4])
     if a.big:
-        boxes[f"{root}{d}Big"] = a.big
-    for box, target in boxes.items():
+        root = boxes[0][0]
+        sub = boxes[1][0]
+        delim = sub[len(root):-len("Sub")]
+        boxes.append((root + delim + "Big", a.big))
+    for box, target in boxes:
         ensure(m, box)
         have = count(m, box)
         for i in range(have, target):
@@ -310,7 +319,7 @@ def main():
     p.add_argument("user", nargs="?")
     p.add_argument("password", nargs="?")
     p.add_argument("--allow", action="append", default=[])
-    p.add_argument("--count", type=int, default=200)
+    p.add_argument("--count", type=int, default=60)
     p.add_argument("--big", type=int, default=0)
     p.add_argument("--record")
     p.add_argument("--server-name", default="")
@@ -325,8 +334,14 @@ def main():
             p.error("check takes no host, port, user, or password")
         check()
         return
-    if a.host is None or a.port is None or a.user is None or a.password is None:
-        p.error("host, port, user, and password are required")
+    if a.host is None or a.port is None:
+        p.error("host and port are required")
+    if a.user is None or a.password is None:
+        import lab
+        if a.user is None:
+            a.user = lab.USER
+        if a.password is None:
+            a.password = lab.PASS
     allow = set(a.allow)
     global RECORDER
     if a.record:

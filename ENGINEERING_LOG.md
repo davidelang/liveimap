@@ -3521,3 +3521,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - Every server records whether a domain login is accepted.
 
 ## 2026-10-20 - The image build creates accounts, domains, and mail.
+
+## 2026-10-20 - The image build creates the LiveIMAP-Test fixture.
