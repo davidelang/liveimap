@@ -192,6 +192,22 @@ internal fun restoreHeldPickedRows(copyOwnsParts: Boolean, loaded: List<ForwardR
     return if (extra.isEmpty()) loaded else loaded + extra
 }
 
+internal fun assembledCopyNote(saved: Boolean, writtenId: String, currentId: String): Pair<String, Boolean> {
+    if (!saved) return currentId to false
+    return writtenId to true
+}
+
+internal fun reloadCopyId(assembledCopyId: String, unsentId: String?): String? {
+    if (assembledCopyId.isNotEmpty()) return assembledCopyId
+    if (unsentId.isNullOrEmpty()) return null
+    return unsentId
+}
+
+internal fun copyIdAfterDeleted(deleted: Boolean, currentId: String): String {
+    if (deleted) return ""
+    return currentId
+}
+
 private class PickedBytes(val name: String, val type: String, val bytes: ByteArray?)
 
 private fun pickedDisplayName(resolver: ContentResolver, uri: Uri): String {
@@ -387,6 +403,7 @@ private fun ComposeLoaded(
     var retryArmedFor by rememberSaveable { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
     var pickedKeyText by rememberSaveable { mutableStateOf("") }
+    var assembledCopyId by rememberSaveable { mutableStateOf("") }
     // Sending rules (design-decisions.md "Sending rules and roles").
     var sending by remember { mutableStateOf<Resolved?>(null) }
     var pinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
@@ -447,8 +464,10 @@ private fun ComposeLoaded(
         pickedKeyText = ""
     }
 
-    fun noteAssembledCopy(saved: Boolean) {
-        if (saved) releasePickedHold()
+    fun noteAssembledCopy(saved: Boolean, writtenId: String) {
+        val (id, release) = assembledCopyNote(saved, writtenId, assembledCopyId)
+        assembledCopyId = id
+        if (release) releasePickedHold()
     }
 
     fun appendHeldPickedRows() {
@@ -855,7 +874,7 @@ private fun ComposeLoaded(
      * sent" when the server's answer was lost); the Unsent list shows it like any failed send.
      */
     fun jmapSendFailed(copy: DeviceCopy, error: Exception) {
-        noteAssembledCopy(true)
+        noteAssembledCopy(true, copy.id)
         val maybe = jmapMaybeSent(error)
         held = copy.copyWith(uncertain = maybe)
         notice = when (error) {
@@ -1231,7 +1250,7 @@ private fun ComposeLoaded(
         resolveNow(account)
     }
     LaunchedEffect(seed, unsentId, retryOnOpen) {
-        val storedId = unsentId?.takeIf { it.isNotEmpty() }
+        val storedId = reloadCopyId(assembledCopyId, unsentId)
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
             captureBaseline()
         }
@@ -1408,7 +1427,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: Exception) {
                             val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            noteAssembledCopy(writeCopy(appContext, copy, accountId))
+                            noteAssembledCopy(writeCopy(appContext, copy, accountId), copy.id)
                             held = copy
                             notice = error.message ?: notConnected
                             status = notSentNotice
@@ -1436,6 +1455,7 @@ private fun ComposeLoaded(
                                 onNotice = { leftOver = it },
                                 policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
+                            assembledCopyId = copyIdAfterDeleted(true, assembledCopyId)
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: DeviceCopyNotSaved) {
@@ -1445,7 +1465,7 @@ private fun ComposeLoaded(
                         } catch (error: JmapSentFolderMissing) {
                             // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
                             // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
-                            noteAssembledCopy(true)
+                            noteAssembledCopy(true, sending.id)
                             held = sending
                             notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                             offerNoCopy = true
@@ -1466,7 +1486,7 @@ private fun ComposeLoaded(
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
                     val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
                     val copySaved = writeCopy(appContext, sending, accountId)
-                    noteAssembledCopy(copySaved)
+                    noteAssembledCopy(copySaved, sending.id)
                     if (!copySaved) {
                         notice = appContext.getString(R.string.compose_copy_not_saved)
                         status = notSentNotice
@@ -1480,7 +1500,7 @@ private fun ComposeLoaded(
                         val uncertain = smtpUncertain(error.text)
                         val copy = sending.copyWith(uncertain = uncertain)
                         val saved = writeCopy(appContext, copy, accountId)
-                        noteAssembledCopy(saved)
+                        noteAssembledCopy(saved, copy.id)
                         held = copy
                         notice = smtpFailureText(error.text) +
                             if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
@@ -1494,7 +1514,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
-                        noteAssembledCopy(writeCopy(appContext, copy, accountId))
+                        noteAssembledCopy(writeCopy(appContext, copy, accountId), copy.id)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
                         offerNoCopy = true
@@ -1502,6 +1522,7 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     deleteCopy(appContext, id, accountId)
+                    assembledCopyId = copyIdAfterDeleted(true, assembledCopyId)
                     held = null
                     deliveryDone = true
                     notice = null

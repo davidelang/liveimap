@@ -3547,3 +3547,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - A new message can carry many attachments.
 
 ## 2026-10-21 - A stored copy does not restore the same picked file.
+
+## 2026-10-21 - A failed send reloads the copy that owns the picked file.

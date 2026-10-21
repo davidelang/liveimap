@@ -79,4 +79,20 @@ class ComposeAttachmentTest {
         val sameKey = fileAttachmentRow("resume:0", "one.txt", "text/plain", "AAA".encodeToByteArray())
         assertEquals(listOf(loadedRow), restoreHeldPickedRows(false, loaded, listOf(sameKey)))
     }
+
+    @Test
+    fun failedWriteKeepsTheOldCopyAndAWrittenCopyReloads() {
+        val failed = assembledCopyNote(false, "new", "old")
+        assertEquals("old", failed.first)
+        assertFalse(failed.second)
+        val wrote = assembledCopyNote(true, "new", "old")
+        assertEquals("new", wrote.first)
+        assertTrue(wrote.second)
+        assertNull(reloadCopyId("", null))
+        assertEquals("unsent", reloadCopyId("", "unsent"))
+        assertEquals("written", reloadCopyId("written", null))
+        assertEquals("written", reloadCopyId("written", "unsent"))
+        assertEquals("", copyIdAfterDeleted(true, "written"))
+        assertEquals("written", copyIdAfterDeleted(false, "written"))
+    }
 }
