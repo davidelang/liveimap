@@ -3539,3 +3539,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - The app has its first launcher icon.
 
 ## 2026-10-21 - The plan style guide lists shared values, callers, and an append-only log.
+
+## 2026-10-21 - Release shrinking keeps the JNI classes and BuildConfig.

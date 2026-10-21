@@ -96,6 +96,43 @@ androidComponents {
     beforeVariants(selector().withFlavor("abi" to "play").withBuildType("debug")) { it.enable = false }
 }
 
+// Same org/dlang FindClass literals as ProguardKeepSyncTest, plus BuildConfig, must survive arm64 R8.
+tasks.register("checkArm64ReleaseKeeps") {
+    dependsOn("assembleArm64Release")
+    doLast {
+        val usagePath = "app/build/outputs/mapping/arm64Release/usage.txt"
+        val usage = rootProject.file(usagePath)
+        if (!usage.isFile) {
+            throw GradleException(usagePath)
+        }
+        val literal = Regex(""""(org/dlang/[^"]+)"""")
+        val classes = file("src/main/cpp").walkTopDown()
+            .filter { it.isFile && it.extension in setOf("c", "cc", "cpp", "h", "hpp") }
+            .flatMap { literal.findAll(it.readText()).map { m -> m.groupValues[1].replace('/', '.') } }
+            .toMutableSet()
+        if (classes.isEmpty()) {
+            throw GradleException("no org/dlang FindClass names in src/main/cpp")
+        }
+        classes.add("com.davidlang.liveimap.BuildConfig")
+        val bad = mutableListOf<String>()
+        var current: String? = null
+        for (line in usage.readLines()) {
+            if (line.isBlank() || line.startsWith("#")) continue
+            if (line[0] == ' ' || line[0] == '\t') {
+                if (current != null && current in classes) bad.add(line)
+            } else {
+                val name = line.trim().removeSuffix(":")
+                current = name
+                if (name in classes) bad.add(line)
+            }
+        }
+        if (bad.isNotEmpty()) {
+            bad.forEach { println(it) }
+            throw GradleException("usage.txt lists a kept class or member")
+        }
+    }
+}
+
 kotlin {
     jvmToolchain(17)
 }

@@ -87,4 +87,4 @@
 
 - One Compose button for the whole screen in a multi-panel layout. The folder list and the message index each draw their own Compose button, so a side-by-side layout shows more than one. Reply, reply-all, forward, and bounce on an open message stay message actions.
 
-- Optimize the app with dex and R8. Release already enables R8 shrinking, resource shrinking, and proguard-android-optimize. Debug does not minify. This item is the remaining size and startup work, not turning that release flag on for the first time.
+- release shrinking stays on; the keep check is `:app:checkArm64ReleaseKeeps`; measuring startup needs a device and is not a coder step.
