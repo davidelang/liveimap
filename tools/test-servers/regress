@@ -43,7 +43,7 @@ RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
 hold_lock = False
 cleaned = False
 fake_smtp = None  # ai-fake-smtp.py started by this run (relay sink for RELAY_SERVERS)
-# Servers whose submission relays to the lab fake SMTP sink (start-latest.sh relay.conf; port = the
+# Servers whose submission relays to the lab fake SMTP sink (start.sh relay.conf; port = the
 # fake-smtp-sink row of generated/local-ports.tsv).
 RELAY_SERVERS = {"dovecot-245"}
 dry_run = False
@@ -453,30 +453,6 @@ def ensure_dirs():
     if not os.access(run_rec, os.W_OK) or not os.access(run_log, os.W_OK):
         return "VERDICT BLOCKED recordings or logs not writable"
     return ""
-
-
-# Any mount or volume on a liveimap-* container stops the run. Hints name the recreate command.
-RECREATE_HINTS = {
-    "liveimap-dovecot-245": "tools/test-servers/start-latest.sh --recreate dovecot-245",
-    "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
-    "liveimap-cyrus-3124": "tools/test-servers/start-latest.sh --recreate cyrus-3124",
-    "liveimap-courier-606": "tools/test-servers/start-latest.sh --recreate courier-606",
-    "liveimap-stalwart-dev": "tools/test-servers/start-dev.sh --recreate stalwart-dev",
-    "liveimap-dovecot-dev": "tools/test-servers/start-dev.sh --recreate dovecot-dev",
-    "liveimap-cyrus-3137": "tools/test-servers/start-dev.sh --recreate cyrus-3137",
-    "liveimap-stalwart": "tools/test-servers/start-local.sh --recreate stalwart",
-    "liveimap-cyrus-22": "tools/test-servers/start-older.sh --recreate cyrus-22",
-    "liveimap-cyrus-24": "tools/test-servers/start-older.sh --recreate cyrus-24",
-    "liveimap-cyrus-25": "tools/test-servers/start-older.sh --recreate cyrus-25",
-    "liveimap-cyrus-36": "tools/test-servers/start-older.sh --recreate cyrus-36",
-    "liveimap-dovecot-10": "tools/test-servers/start-older.sh --recreate dovecot-10",
-    "liveimap-dovecot-12": "tools/test-servers/start-older.sh --recreate dovecot-12",
-    "liveimap-dovecot-22": "tools/test-servers/start-older.sh --recreate dovecot-22",
-    "liveimap-courier-50": "tools/test-servers/start-older.sh --recreate courier-50",
-    "liveimap-uwimap": "tools/test-servers/start-older.sh --recreate uwimap",
-    "liveimap-stalwart-0155": "tools/test-servers/start-older.sh --recreate stalwart-0155",
-    "liveimap-zimbra-883": "tools/test-servers/zimbra-883.sh --recreate zimbra-883",
-}
 
 
 def lab_mount_errors():
@@ -907,8 +883,9 @@ def snapshot_line(text):
 
 def reset_lab_server(s):
     """Replace the container from its published seed image. Empty on success."""
+    import lab
     cont = s["container"]
-    hint = RECREATE_HINTS.get(cont)
+    hint = lab.RECREATE_HINTS.get(cont)
     if not hint:
         return f"{cont}: no reset script"
     rel = hint.split()[0]
@@ -983,7 +960,7 @@ def stop_lab_container(s):
     subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
 
 
-RECREATE_DOVECOT = "tools/test-servers/start-latest.sh --recreate dovecot-245"
+RECREATE_DOVECOT = "tools/test-servers/start.sh --recreate dovecot-245"
 
 
 def fake_smtp_port():

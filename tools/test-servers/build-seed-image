@@ -201,6 +201,722 @@ close_build() {
   docker rm -f "liveimap-build-$server"
 }
 
+phase_pin_ok() {
+  dest=$1
+  sha=$2
+  got=$(git -C "$dest" rev-parse HEAD)
+  obj=$(git -C "$dest" rev-parse "$sha")
+  want=$(git -C "$dest" rev-parse "${sha}^{commit}")
+  if [ "$obj" != "$sha" ] || [ "$got" != "$want" ]; then
+    echo "checkout HEAD differs from pin: $dest" >&2
+    exit 1
+  fi
+}
+
+phase_pin_checkout() {
+  dest=$1
+  url=$2
+  sha=$3
+  if [ -d "$dest/.git" ]; then
+    if git -C "$dest" rev-parse HEAD >/dev/null 2>&1; then
+      phase_pin_ok "$dest" "$sha"
+      return 0
+    fi
+    rm -rf "$dest"
+  elif [ -e "$dest" ]; then
+    echo "checkout path exists without the pin: $dest" >&2
+    exit 1
+  fi
+  mkdir -p "$dest"
+  git -C "$dest" init
+  git -C "$dest" remote add origin "$url"
+  git -C "$dest" fetch --depth 1 origin "$sha"
+  git -C "$dest" checkout FETCH_HEAD
+  phase_pin_ok "$dest" "$sha"
+}
+build_latest_phase() {
+  tag=$1
+  GEN="$DIR/generated"
+  CY_BUILD="$GEN/cyrus-3124-build"
+  CO_BUILD="$GEN/courier-606-build"
+  mkdir -p "$GEN" "$CY_BUILD" "$CO_BUILD"
+echo "resolving courier tarball"
+python3 - "$CO_BUILD/courier.url" <<'PY'
+import re
+import sys
+import urllib.request
+
+out_path = sys.argv[1]
+want = "courier-imap-6.0.6.tar.bz2"
+ua = {"User-Agent": "liveimap-lab"}
+
+def fetch(url):
+    req = urllib.request.Request(url, headers=ua)
+    with urllib.request.urlopen(req, timeout=90) as resp:
+        return resp.read().decode("utf-8", "replace"), resp.geturl()
+
+def filename(url):
+    path = url.split("?", 1)[0].rstrip("/")
+    if path.endswith("/download"):
+        path = path[: -len("/download")]
+    return path.rsplit("/", 1)[-1]
+
+page, _ = fetch("https://www.courier-mta.org/download.html")
+hrefs = re.findall(r'href="([^"]+)"', page)
+chosen = None
+for href in hrefs:
+    if filename(href) == want:
+        chosen = href
+        break
+if chosen is None:
+    folder, _ = fetch("https://sourceforge.net/projects/courier/files/imap/6.0.6/")
+    if want not in folder:
+        sys.stderr.write("download page has no %s\n" % want)
+        sys.exit(1)
+    match = re.search(r'href="([^"]*%s/download[^"]*)"' % re.escape(want), folder)
+    if not match:
+        chosen = "https://sourceforge.net/projects/courier/files/imap/6.0.6/%s/download" % want
+    else:
+        chosen = match.group(1)
+        if chosen.startswith("/"):
+            chosen = "https://sourceforge.net" + chosen
+if filename(chosen) != want:
+    sys.stderr.write("refusing courier file %s\n" % filename(chosen))
+    sys.exit(1)
+with open(out_path, "w", encoding="utf-8") as handle:
+    handle.write(chosen + "\n")
+print(chosen)
+PY
+
+echo "downloading tarballs"
+python3 - "$CY_BUILD" "$CO_BUILD" <<'PY'
+import hashlib
+import os
+import sys
+import urllib.request
+
+cy_dir, co_dir = sys.argv[1], sys.argv[2]
+ua = {"User-Agent": "liveimap-lab"}
+
+def download(url, dest):
+    req = urllib.request.Request(url, headers=ua)
+    with urllib.request.urlopen(req, timeout=300) as resp, open(dest, "wb") as out:
+        while True:
+            chunk = resp.read(1024 * 1024)
+            if not chunk:
+                break
+            out.write(chunk)
+    digest = hashlib.sha256()
+    with open(dest, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+cy_url = "https://github.com/cyrusimap/cyrus-imapd/releases/download/cyrus-imapd-3.12.4/cyrus-imapd-3.12.4.tar.gz"
+cy_dest = os.path.join(cy_dir, "cyrus-imapd-3.12.4.tar.gz")
+cy_sum = download(cy_url, cy_dest)
+with open(os.path.join(cy_dir, "sha256"), "w", encoding="utf-8") as handle:
+    handle.write(cy_sum + "\n")
+co_url = open(os.path.join(co_dir, "courier.url"), encoding="utf-8").read().strip()
+co_dest = os.path.join(co_dir, "courier-imap-6.0.6.tar.bz2")
+co_sum = download(co_url, co_dest)
+with open(os.path.join(co_dir, "sha256"), "w", encoding="utf-8") as handle:
+    handle.write(co_sum + "\n")
+print("cyrus", cy_sum)
+print("courier", co_sum)
+PY
+
+echo "preparing cyrus image"
+cat > "$CY_BUILD/xxd" <<'EOF'
+#!/bin/sh
+set -eu
+if [ "${1:-}" != "-i" ] || [ -z "${2:-}" ]; then
+  echo "xxd: only -i FILE is implemented" >&2
+  exit 1
+fi
+file=$2
+sym=$(printf '%s' "$file" | sed 's/[^A-Za-z0-9]/_/g')
+size=$(wc -c < "$file" | tr -d ' ')
+echo "unsigned char ${sym}[] = {"
+od -An -tx1 -v "$file" | awk '
+  {
+    for (i = 1; i <= NF; i++) {
+      printf "  0x%s,", $i
+      n++
+      if (n % 12 == 0) printf "\n"
+    }
+  }
+  END { if (n % 12 != 0) printf "\n" }
+'
+echo "};"
+echo "unsigned int ${sym}_len = ${size};"
+EOF
+cat > "$CY_BUILD/rsync" <<'EOF'
+#!/bin/sh
+# Present for configure. Cyrus calls rsync only to copy search indexes.
+exit 0
+EOF
+chmod 755 "$CY_BUILD/xxd" "$CY_BUILD/rsync"
+cat > "$CY_BUILD/imapd.conf" <<'EOF'
+configdirectory: /var/lib/cyrus
+partition-default: /var/spool/cyrus/mail
+sievedir: /var/spool/cyrus/sieve
+admins: cyrus
+allowplaintext: yes
+sasl_pwcheck_method: auxprop
+sasl_mech_list: PLAIN LOGIN
+httpmodules: jmap
+conversations: 1
+conversations_db: twoskip
+unixhierarchysep: yes
+virtdomains: off
+sasl_minimum_layer: 0
+EOF
+cat > "$CY_BUILD/cyrus.conf" <<'EOF'
+START {
+  recover       cmd="ctl_cyrusdb -r"
+}
+
+SERVICES {
+  imap          cmd="imapd" listen="143" prefork=0
+  http          cmd="httpd" listen="8080" prefork=0
+}
+
+EVENTS {
+  checkpoint    cmd="ctl_cyrusdb -c" period=30
+}
+EOF
+cat > "$CY_BUILD/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+master=""
+if [ -x /usr/sbin/cyrmaster ]; then
+  master=/usr/sbin/cyrmaster
+else
+  for cand in /usr/local/cyrus/libexec/master /usr/local/cyrus/sbin/master /usr/local/cyrus/bin/master /usr/sbin/master; do
+    if [ -x "$cand" ]; then
+      master=$cand
+      break
+    fi
+  done
+fi
+if [ -z "$master" ]; then
+  echo "cyrus master missing" >&2
+  exit 1
+fi
+rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
+"$master" -d
+exec sleep infinity
+
+EOF
+chmod 755 "$CY_BUILD/entrypoint.sh"
+cat > "$CY_BUILD/Dockerfile" <<'EOF'
+FROM debian:bookworm
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential autoconf automake libtool pkg-config bison flex gperf \
+    libssl-dev libjansson-dev libxml2-dev libsqlite3-dev libical-dev \
+    libsasl2-dev libsasl2-modules sasl2-bin libpcre2-dev uuid-dev \
+    libicu-dev libxapian-dev zlib1g-dev libnghttp2-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY xxd /usr/local/bin/xxd
+COPY rsync /usr/local/bin/rsync
+RUN chmod 755 /usr/local/bin/xxd /usr/local/bin/rsync
+COPY cyrus-imapd-3.12.4.tar.gz /tmp/cyrus-imapd-3.12.4.tar.gz
+RUN tar -xzf /tmp/cyrus-imapd-3.12.4.tar.gz -C /tmp \
+    && cd /tmp/cyrus-imapd-3.12.4 \
+    && ./configure --prefix=/usr/local/cyrus --enable-http --enable-jmap --enable-xapian \
+    && make -j4 \
+    && make install \
+    && rm -rf /tmp/cyrus-imapd-3.12.4 /tmp/cyrus-imapd-3.12.4.tar.gz
+COPY imapd.conf /etc/imapd.conf
+COPY cyrus.conf /etc/cyrus.conf
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+
+echo "preparing courier image"
+cat > "$CO_BUILD/build-inside.sh" <<'EOF'
+#!/bin/sh
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+# The 6.0.6 tarball is bzip2. bookworm tar does not include that decompressor.
+apt-get install -y --no-install-recommends bzip2
+tar -xjf /src/courier-imap-6.0.6.tar.bz2 -C /src
+cd /src
+# courier-debuild reads mailuser from courierauthconfig before debuild names
+# packages. This stub only exists so the first run can reach that list.
+cat > /usr/local/bin/courierauthconfig <<'STUB'
+#!/bin/sh
+echo mailuser=courier
+echo mailgroup=courier
+STUB
+chmod 755 /usr/local/bin/courierauthconfig
+cd /src/courier-imap-6.0.6
+# Bookworm ships these names. Patch the control file courier-debuild copies.
+sed -i \
+  -e 's/libcourier-auth-dev/courier-authlib-dev/' \
+  -e 's/gnutls-dev/libgnutls28-dev/' \
+  -e 's/libgcrypt-dev/libgcrypt20-dev/' \
+  -e '/^Pre-Depends:/d' \
+  packaging/debian/control
+# Unicode 2.6 is installed from the tarball, so it has no dpkg shlibs.
+printf '\noverride_dh_shlibdeps:\n\tdh_shlibdeps -- --ignore-missing-info\n' >> packaging/debian/rules
+# courier-debuild unpacks the tarball again and ignores this tree.
+cd /src
+tar -cjf courier-imap-6.0.6.tar.bz2 courier-imap-6.0.6
+cd /src/courier-imap-6.0.6
+# configure.ac rejects a bare "ps" name. procps provides /bin/ps.
+apt-get install -y procps
+if [ ! -x /bin/ps ] && [ ! -x /usr/bin/ps ]; then
+  echo "procps did not install ps" >&2
+  exit 1
+fi
+set +e
+DEBGCC=default ./courier-debuild -us -uc > /tmp/debuild1.log 2>&1
+code=$?
+set -e
+if grep -q 'Cannot find pathname to ps' /tmp/debuild1.log; then
+  echo "Cannot find pathname to ps" >&2
+  exit 1
+fi
+if [ "$code" -ne 0 ]; then
+  if [ -f /src/courier-imap-6.0.6/deb/courier-imap-6.0.6/debian/control ]; then
+    ctl=/src/courier-imap-6.0.6/deb/courier-imap-6.0.6/debian/control
+  else
+    ctl=/src/courier-imap-6.0.6/packaging/debian/control
+  fi
+  awk '
+    BEGIN { p = 0 }
+    /^Build-Depends:/ { p = 1; sub(/^Build-Depends:[[:space:]]*/, ""); printf "%s", $0; next }
+    p && /^[^[:space:]]/ { p = 0 }
+    p { sub(/^[[:space:]]*/, ""); printf " %s", $0 }
+    END { printf "\n" }
+  ' "$ctl" > /tmp/build-depends.txt
+  if grep -Eq 'debuild: (command )?not found|Cannot determine gcc version' /tmp/debuild1.log \
+      || ! grep -q 'Unmet build dependencies' /tmp/debuild1.log; then
+    printf '%s\n' devscripts >> /tmp/build-depends.txt
+  fi
+  python3 - <<'PY' || apt-get install -y python3
+import sys
+print("python-ok")
+PY
+  python3 - <<'PY'
+import os
+import re
+import subprocess
+import textwrap
+
+lines = [
+    line.strip()
+    for line in open("/tmp/build-depends.txt", encoding="utf-8", errors="replace")
+    if line.strip()
+]
+pkgs = []
+if lines:
+    for part in lines[0].split(","):
+        part = re.sub(r"\s+", " ", part).strip()
+        if part and not part.startswith("%"):
+            pkgs.append(part)
+    for line in lines[1:]:
+        part = re.sub(r"\s+", " ", line).strip().strip(",")
+        if part and not part.startswith("%"):
+            pkgs.append(part)
+# debuild itself
+if "devscripts" not in " ".join(pkgs):
+    if os.path.exists("/tmp/debuild1.log"):
+        log = open("/tmp/debuild1.log", encoding="utf-8", errors="replace").read()
+        if "debuild" in log and "not found" in log:
+            pkgs.append("devscripts")
+wanted = []
+seen = set()
+for pkg in pkgs:
+    if pkg not in seen:
+        seen.add(pkg)
+        wanted.append(pkg)
+if not wanted:
+    raise SystemExit("courier-debuild failed without naming packages")
+print("installing", " ".join(wanted))
+subprocess.check_call(["apt-get", "satisfy", "-y"] + wanted)
+PY
+  # Bookworm's libcourier-unicode 2.1 copies output iterators. 6.0.6's
+  # rfc822 iterators are not copyable. Unicode 2.6 takes them by reference.
+  apt-get install -y build-essential locales
+  printf '%s\n' 'en_US.UTF-8 UTF-8' 'en_US ISO-8859-1' > /etc/locale.gen
+  locale-gen
+  tar -xjf /src/courier-unicode-2.6.0.tar.bz2 -C /src
+  cd /src/courier-unicode-2.6.0
+  # Multiarch searches this directory before /usr/lib. Replace Bookworm's .so.
+  ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu
+  make -j4
+  make install
+  ldconfig
+  rm -f /usr/local/bin/courierauthconfig
+  if ! hash -r; then
+    :
+  fi
+  cd /src/courier-imap-6.0.6
+  export MAKEFLAGS=-j4
+  # Upstream make check needs both en_US locales and still mismatches Bookworm.
+  export DEB_BUILD_OPTIONS=parallel=4,nocheck
+  DEBGCC=default ./courier-debuild -us -uc
+fi
+rm -f /usr/local/bin/courierauthconfig
+debs=$(find /src -name '*.deb' -type f | grep -v -- '-dbgsym' || printf '')
+if [ -z "$debs" ]; then
+  echo "courier deb missing" >&2
+  exit 1
+fi
+for deb in $debs; do
+  apt-get install -y "$deb" || dpkg -i "$deb"
+done
+apt-get install -y -f
+if ! find /usr -name 'authuserdb*' | grep -q .; then
+  apt-get install -y courier-authlib-userdb
+fi
+EOF
+chmod 755 "$CO_BUILD/build-inside.sh"
+cat > "$CO_BUILD/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ -x /usr/sbin/rsyslogd ] && [ ! -S /dev/log ]; then
+  rm -f /var/run/rsyslogd.pid
+  rsyslogd
+fi
+if [ -x /etc/init.d/courier-authdaemon ]; then
+  /etc/init.d/courier-authdaemon start
+elif [ -x /etc/init.d/courier-auth ]; then
+  /etc/init.d/courier-auth start
+else
+  echo "courier authdaemon missing" >&2
+  exit 1
+fi
+if [ -x /etc/init.d/courier-imap ]; then
+  /etc/init.d/courier-imap start
+elif [ -x /usr/lib/courier-imap/libexec/imapd.rc ]; then
+  /usr/lib/courier-imap/libexec/imapd.rc start
+elif [ -x /etc/init.d/courier-imapd ]; then
+  /etc/init.d/courier-imapd start
+else
+  echo "courier imap missing" >&2
+  exit 1
+fi
+exec sleep infinity
+
+EOF
+chmod 755 "$CO_BUILD/entrypoint.sh"
+cat > "$CO_BUILD/Dockerfile" <<'EOF'
+FROM debian:bookworm
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY courier-imap-6.0.6.tar.bz2 /src/courier-imap-6.0.6.tar.bz2
+COPY courier-unicode-2.6.0.tar.bz2 /src/courier-unicode-2.6.0.tar.bz2
+COPY build-inside.sh /src/build-inside.sh
+RUN chmod 755 /src/build-inside.sh && /src/build-inside.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+  if [ "$tag" = liveimap-cyrus-3124:phase1 ]; then
+    echo "building cyrus image"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3124:phase1 "$CY_BUILD"
+  fi
+  if [ "$tag" = liveimap-courier-606:phase1 ]; then
+    echo "building courier image"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-courier-606:phase1 "$CO_BUILD"
+  fi
+}
+
+build_phase_cyrus_3137() {
+  GEN="$DIR/generated"
+  SRC="$GEN/dev-src"
+  CY_SRC="$SRC/cyrus"
+  CY_SHA=a9d201bccdadd429c46bc4cf16995453a86d8eed
+  mkdir -p "$GEN" "$SRC"
+  phase_pin_checkout "$CY_SRC" https://github.com/cyrusimap/cyrus-imapd "$CY_SHA"
+echo "preparing cyrus image"
+cat > "$CY_SRC/xxd" <<'EOF'
+#!/bin/sh
+set -eu
+if [ "${1:-}" != "-i" ] || [ -z "${2:-}" ]; then
+  echo "xxd: only -i FILE is implemented" >&2
+  exit 1
+fi
+file=$2
+sym=$(printf '%s' "$file" | sed 's/[^A-Za-z0-9]/_/g')
+size=$(wc -c < "$file" | tr -d ' ')
+echo "unsigned char ${sym}[] = {"
+od -An -tx1 -v "$file" | awk '
+  {
+    for (i = 1; i <= NF; i++) {
+      printf "  0x%s,", $i
+      n++
+      if (n % 12 == 0) printf "\n"
+    }
+  }
+  END { if (n % 12 != 0) printf "\n" }
+'
+echo "};"
+echo "unsigned int ${sym}_len = ${size};"
+EOF
+cat > "$CY_SRC/rsync" <<'EOF'
+#!/bin/sh
+# Present for configure. Cyrus calls rsync only to copy search indexes.
+exit 0
+EOF
+chmod 755 "$CY_SRC/xxd" "$CY_SRC/rsync"
+cat > "$CY_SRC/imapd.conf" <<'EOF'
+configdirectory: /var/lib/cyrus
+partition-default: /var/spool/cyrus/mail
+sievedir: /var/spool/cyrus/sieve
+admins: cyrus
+allowplaintext: yes
+sasl_pwcheck_method: auxprop
+sasl_mech_list: PLAIN LOGIN
+httpmodules: jmap
+conversations: 1
+conversations_db: twoskip
+unixhierarchysep: yes
+virtdomains: off
+sasl_minimum_layer: 0
+EOF
+cat > "$CY_SRC/cyrus.conf" <<'EOF'
+START {
+  recover       cmd="ctl_cyrusdb -r"
+}
+
+SERVICES {
+  imap          cmd="imapd" listen="143" prefork=0
+  http          cmd="httpd" listen="8080" prefork=0
+}
+
+EVENTS {
+  checkpoint    cmd="ctl_cyrusdb -c" period=30
+}
+EOF
+cat > "$CY_SRC/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+master=""
+if [ -x /usr/sbin/cyrmaster ]; then
+  master=/usr/sbin/cyrmaster
+else
+  for cand in /usr/local/cyrus/libexec/master /usr/local/cyrus/sbin/master /usr/local/cyrus/bin/master /usr/sbin/master; do
+    if [ -x "$cand" ]; then
+      master=$cand
+      break
+    fi
+  done
+fi
+if [ -z "$master" ]; then
+  echo "cyrus master missing" >&2
+  exit 1
+fi
+rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
+"$master" -d
+exec sleep infinity
+
+EOF
+chmod 755 "$CY_SRC/entrypoint.sh"
+cat > "$CY_SRC/Dockerfile" <<'EOF'
+FROM debian:bookworm
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential autoconf automake libtool pkg-config bison flex gperf \
+    cmake libmoo-perl libapp-cmd-perl libtype-tiny-perl \
+    libssl-dev libjansson-dev libxml2-dev libsqlite3-dev libical-dev \
+    libsasl2-dev libsasl2-modules sasl2-bin libpcre2-dev uuid-dev \
+    libicu-dev libxapian-dev zlib1g-dev libnghttp2-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY xxd /usr/local/bin/xxd
+COPY rsync /usr/local/bin/rsync
+RUN chmod 755 /usr/local/bin/xxd /usr/local/bin/rsync
+# Bookworm libical is 3.0. Cyrus 3.13 http requires libical >= 3.99.99.
+COPY libical-4.0.5.tar.gz /tmp/libical-4.0.5.tar.gz
+RUN tar -xzf /tmp/libical-4.0.5.tar.gz -C /tmp \
+    && cmake -S /tmp/libical-4.0.5 -B /tmp/libical-build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DLIBICAL_GLIB=OFF \
+      -DLIBICAL_GOBJECT_INTROSPECTION=OFF \
+      -DLIBICAL_JAVA_BINDINGS=OFF \
+      -DLIBICAL_CXX_BINDINGS=OFF \
+      -DLIBICAL_BUILD_DOCS=OFF \
+      -DLIBICAL_BUILD_EXAMPLES=OFF \
+    && cmake --build /tmp/libical-build -j4 \
+    && cmake --install /tmp/libical-build \
+    && printf '%s\n' /usr/local/lib > /etc/ld.so.conf.d/usr-local.conf \
+    && ldconfig \
+    && rm -rf /tmp/libical-4.0.5 /tmp/libical-build /tmp/libical-4.0.5.tar.gz
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
+COPY . /src
+RUN cd /src \
+    && autoreconf -i \
+    && ./configure --prefix=/usr/local/cyrus --enable-http --enable-jmap --enable-xapian \
+    && make -j4 \
+    && make install \
+    && rm -rf /src
+COPY imapd.conf /etc/imapd.conf
+COPY cyrus.conf /etc/cyrus.conf
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+
+echo "fetching libical 4.0.5"
+python3 - "$CY_SRC/libical-4.0.5.tar.gz" <<'PY'
+import hashlib
+import os
+import sys
+import urllib.request
+
+dest = sys.argv[1]
+url = "https://github.com/libical/libical/releases/download/v4.0.5/libical-4.0.5.tar.gz"
+want = "cc09a3ac41d60e6144e644bd3fcf97d47106d659c4a0b8965102581401e67c9c"
+if os.path.isfile(dest):
+    digest = hashlib.sha256(open(dest, "rb").read()).hexdigest()
+    if digest == want:
+        sys.exit(0)
+    os.remove(dest)
+req = urllib.request.Request(url, headers={"User-Agent": "liveimap-lab"})
+with urllib.request.urlopen(req, timeout=180) as resp, open(dest, "wb") as out:
+    while True:
+        chunk = resp.read(1024 * 1024)
+        if not chunk:
+            break
+        out.write(chunk)
+digest = hashlib.sha256(open(dest, "rb").read()).hexdigest()
+if digest != want:
+    sys.stderr.write("libical tarball hash mismatch\n")
+    sys.exit(1)
+PY
+
+echo "building cyrus image"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3137:phase2 "$CY_SRC"
+
+}
+
+build_phase_dovecot_dev() {
+  GEN="$DIR/generated"
+  SRC="$GEN/dev-src"
+  DV_SRC="$SRC/dovecot"
+  DV_SHA=d6c3486ed839ec06f6a1ec87a6e307211e3a5c92
+  mkdir -p "$GEN" "$SRC"
+  phase_pin_checkout "$DV_SRC" https://github.com/dovecot/core "$DV_SHA"
+echo "preparing dovecot image"
+cat > "$DV_SRC/dovecot-lab.conf" <<'EOF'
+dovecot_config_version = 2.4.0
+dovecot_storage_version = 2.4.0
+
+protocols {
+  imap = yes
+}
+
+mail_driver = maildir
+mail_path = ~/Maildir
+
+namespace inbox {
+  inbox = yes
+  separator = /
+}
+
+ssl = no
+auth_allow_cleartext = yes
+
+default_internal_user = vmail
+default_login_user = vmail
+
+!include /etc/dovecot/conf.d/auth.conf
+EOF
+cat > "$DV_SRC/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+mkdir -p /srv/vmail /run/dovecot /usr/local/var/run/dovecot
+chown vmail:vmail /srv/vmail
+exec /usr/local/sbin/dovecot -F
+EOF
+chmod 755 "$DV_SRC/entrypoint.sh"
+cat > "$DV_SRC/Dockerfile" <<'EOF'
+FROM debian:13-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates autoconf automake libtool gettext \
+    pkg-config bison flex libssl-dev zlib1g-dev liblz4-dev libzstd-dev \
+    libcap-dev libsodium-dev libpam0g-dev libsqlite3-dev libicu-dev \
+    python3 wget xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+COPY . /src
+WORKDIR /src
+RUN ./autogen.sh
+RUN ./configure --prefix=/usr/local --with-sqlite --with-icu --with-ssl=openssl > /tmp/configure.out 2>&1; \
+    code=$?; \
+    cat /tmp/configure.out; \
+    if [ "$code" -ne 0 ]; then exit "$code"; fi; \
+    if grep -E '^                 :' /tmp/configure.out | grep -Ei 'sqlite|icu|openssl|sodium|lz4|zstd|libcap|pam'; then \
+      echo "configure named a missing dependency" >&2; \
+      exit 1; \
+    fi
+RUN make -j4 && make install
+RUN groupadd -g 1000 vmail \
+    && useradd -u 1000 -g 1000 -d /srv/vmail -M -s /usr/sbin/nologin vmail \
+    && groupadd --system dovecot \
+    && useradd --system -g dovecot -d /nonexistent -M -s /usr/sbin/nologin dovecot \
+    && mkdir -p /usr/local/etc/dovecot /srv/vmail /run/dovecot \
+    && chown vmail:vmail /srv/vmail
+COPY dovecot-lab.conf /usr/local/etc/dovecot/dovecot.conf
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+
+echo "building dovecot image"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-dovecot-dev:phase1 "$DV_SRC"
+
+}
+
+build_phase_stalwart_dev() {
+  GEN="$DIR/generated"
+  SRC="$GEN/dev-src"
+  ST_SRC="$SRC/stalwart"
+  ST_SHA=2f5b9f2c697ca0fb1d7f015dcdeab961cd7be893
+  mkdir -p "$GEN" "$SRC"
+  phase_pin_checkout "$ST_SRC" https://github.com/stalwartlabs/stalwart "$ST_SHA"
+echo "building stalwart image"
+if ! grep -q '^ENV CARGO_BUILD_JOBS=' "$ST_SRC/Dockerfile"; then
+  sed -i '/^FROM --platform=\$BUILDPLATFORM chef AS builder/a ENV CARGO_BUILD_JOBS=2' "$ST_SRC/Dockerfile"
+fi
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --cpuset-cpus=0-3 \
+  -t liveimap-stalwart-dev:phase1 "$ST_SRC"
+}
+
+ensure_phase() {
+  tag=$1
+  if docker image inspect "$tag" >/dev/null; then
+    return 0
+  fi
+  case "$tag" in
+    liveimap-cyrus-3124:phase1|liveimap-courier-606:phase1)
+      build_latest_phase "$tag"
+      ;;
+    liveimap-cyrus-3137:phase2)
+      build_phase_cyrus_3137
+      ;;
+    liveimap-dovecot-dev:phase1)
+      build_phase_dovecot_dev
+      ;;
+    liveimap-stalwart-dev:phase1)
+      build_phase_stalwart_dev
+      ;;
+    *)
+      echo "unknown phase $tag" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # dovecot-245-build
 build_dovecot_245() {
   ports_file="$DIR/generated/local-ports.tsv"
@@ -358,10 +1074,7 @@ build_stalwart() {
     stalwart-dev)
       upstream=liveimap-stalwart-dev:phase1
       admin_file="$DIR/generated/stalwart-dev-admin.txt"
-      if ! docker image inspect "$upstream" >/dev/null; then
-        echo "missing $upstream" >&2
-        exit 1
-      fi
+      ensure_phase "$upstream"
       ;;
     stalwart-0155)
       upstream=stalwartlabs/stalwart:v0.15.5
@@ -463,22 +1176,21 @@ build_zimbra() {
     exit 1
   fi
   prepare_volume_work
-  python3 - "$DIR/zimbra-883.sh" "$work/zimbra.env" <<'PY'
-import sys
-src, dest = sys.argv[1], sys.argv[2]
-lines = []
-for line in open(src, encoding="utf-8"):
-    if line.startswith("python3 "):
-        break
-    if line.startswith("export ") and "=" in line:
-        lines.append(line[len("export "):].rstrip("\n"))
-if not lines:
-    sys.stderr.write("zimbra setup values missing\n")
-    sys.exit(1)
-with open(dest, "w", encoding="utf-8") as handle:
-    for item in lines:
-        handle.write(item + "\n")
-PY
+  cat > "$work/zimbra.env" <<'EOF'
+TZDATA_AREA=US
+TZDATA_ZONE=Pacific
+ZIMBRA_DEFAULT_DOMAIN=zimbra.zcs-foss.test
+ZIMBRA_HOST_NAME=zimbra.zcs-foss.test
+TIME_ZONE_ID=PDT
+ADMIN_PW=test123
+LDAP_ADMIN_PW=zimbra
+LDAP_AMAVIS_PW=zimbra
+LDAP_POSTFIX_PW=zimbra
+LDAP_REPLICATION_PW=zimbra
+LDAP_ROOT_PW=zimbra
+LDAP_BES_PW=zimbra
+LDAP_NGINX_PW=zimbra
+EOF
   chmod 600 "$work/zimbra.env"
   cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
@@ -501,7 +1213,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
   HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
   open_build
-  python3 - "$DIR/zimbra-883.sh" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
+  python3 - "$work/zimbra.env" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
 import csv
 import socket
 import subprocess
@@ -512,9 +1224,7 @@ script, seed, name, host, port_s = sys.argv[1:]
 port = int(port_s)
 domain = ""
 for line in open(script, encoding="utf-8"):
-    if line.startswith("python3 "):
-        break
-    if line.startswith("export ZIMBRA_DEFAULT_DOMAIN="):
+    if line.startswith("ZIMBRA_DEFAULT_DOMAIN="):
         domain = line.split("=", 1)[1].strip()
 if not domain:
     sys.stderr.write("zimbra setup values missing\n")
@@ -761,10 +1471,7 @@ case "$server" in
 esac
 
 if [ -n "$phase" ]; then
-  if ! docker image inspect "$phase" >/dev/null; then
-    echo "missing $phase" >&2
-    exit 1
-  fi
+  ensure_phase "$phase"
 fi
 
 printf '%s\n' "$role" > "$work/lab-role"

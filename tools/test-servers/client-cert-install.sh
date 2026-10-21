@@ -37,8 +37,8 @@ passdb lab-cert {
 }
 # end lab-clientcert
 CONF
-    # Submission relay: not set here. start-latest.sh mounts generated/dovecot-245/relay.conf
-    # (the fake-smtp-sink port of generated/local-ports.tsv, via the docker bridge gateway) when it creates the container.
+    # Submission relay: not set here. start.sh writes generated/dovecot-245/relay.conf
+    # and does not mount it.
     docker cp "$tmp" "$c:$conf" >/dev/null
     # LAB_TLS_MAX=1.2 caps the server at TLS 1.2 (Dovecot has no max-protocol setting, so it goes into the
     # container's system OpenSSL config, which Dovecot loads); unset restores the original (TLS 1.3).
