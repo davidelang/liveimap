@@ -363,6 +363,8 @@
     <string name="compose_bcc_book">Bcc address book</string>
     <string name="compose_remove">Remove</string>
     <string name="compose_body">Body</string>
+    <string name="compose_attach">Attach file</string>
+    <string name="compose_attach_unreadable">Could not read that file</string>
     <string name="compose_discard_title">Discard draft?</string>
     <string name="compose_keep_editing">Keep editing</string>
     <string name="compose_reply">Reply</string>

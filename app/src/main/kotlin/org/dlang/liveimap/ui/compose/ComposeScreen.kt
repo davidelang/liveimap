@@ -1,7 +1,12 @@
 package org.dlang.liveimap.ui.compose
 
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
 import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -66,7 +71,9 @@ import java.util.UUID
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpIconButton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.jmap.JmapFailure
@@ -125,7 +132,7 @@ private enum class AddressTarget {
     Bounce,
 }
 
-private class ForwardRow(
+internal class ForwardRow(
     val key: String,
     val section: String,
     val filename: String,
@@ -147,6 +154,73 @@ private class ForwardRow(
         wireBase64,
         encoding,
     )
+}
+
+internal fun fileAttachmentRow(key: String, filename: String, mediaType: String, bytes: ByteArray): ForwardRow =
+    ForwardRow(
+        key = key,
+        section = "",
+        filename = filename.ifEmpty { "attachment" },
+        mediaType = mediaType.ifEmpty { "application/octet-stream" },
+        size = bytes.size,
+        included = true,
+        bytes = bytes,
+        wireBase64 = false,
+        encoding = null,
+    )
+
+internal object PickedAttachmentHold {
+    private val rows = HashMap<String, ForwardRow>()
+
+    fun put(row: ForwardRow) {
+        rows[row.key] = row
+    }
+
+    fun get(key: String): ForwardRow? = rows[key]
+
+    fun remove(key: String) {
+        rows.remove(key)
+    }
+}
+
+private class PickedBytes(val name: String, val type: String, val bytes: ByteArray?)
+
+private fun pickedDisplayName(resolver: ContentResolver, uri: Uri): String {
+    try {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    val name = cursor.getString(index)
+                    if (!name.isNullOrEmpty()) return name
+                }
+            }
+        }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+    }
+    return ""
+}
+
+private fun readPickedUri(resolver: ContentResolver, uri: Uri): PickedBytes {
+    val name = pickedDisplayName(resolver, uri)
+    val bytes = try {
+        val stream = resolver.openInputStream(uri) ?: return PickedBytes(name, "", null)
+        stream.use { it.readBytes() }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        return PickedBytes(name, "", null)
+    }
+    val type = try {
+        resolver.getType(uri).orEmpty()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        ""
+    }
+    return PickedBytes(name, type, bytes)
 }
 
 private val headerValueSaver = mapSaver(
@@ -272,6 +346,7 @@ private fun ComposeLoaded(
     val unsentGone = stringResource(R.string.compose_unsent_gone)
     val notConnected = stringResource(R.string.reader_not_connected)
     val fetchFailed = stringResource(R.string.compose_fetch_failed)
+    val attachUnreadable = stringResource(R.string.compose_attach_unreadable)
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
     val gate = remember { Mutex() }
@@ -302,6 +377,7 @@ private fun ComposeLoaded(
     var draftLoaded by rememberSaveable { mutableStateOf(false) }
     var retryArmedFor by rememberSaveable { mutableStateOf("") }
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
+    var pickedKeyText by rememberSaveable { mutableStateOf("") }
     // Sending rules (design-decisions.md "Sending rules and roles").
     var sending by remember { mutableStateOf<Resolved?>(null) }
     var pinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
@@ -345,6 +421,66 @@ private fun ComposeLoaded(
     var useReplyTo by rememberSaveable { mutableStateOf(false) }
     var replyToLine by rememberSaveable { mutableStateOf("") }
     var replyCcLine by rememberSaveable { mutableStateOf("") }
+    val pickerContext = LocalContext.current
+
+    fun pickedKeys(): List<String> = pickedKeyText.split('\n').filter { it.isNotEmpty() }
+
+    fun addPickedKey(key: String) {
+        pickedKeyText = if (pickedKeyText.isEmpty()) key else "$pickedKeyText\n$key"
+    }
+
+    fun dropPickedKey(key: String) {
+        pickedKeyText = pickedKeys().filter { it != key }.joinToString("\n")
+    }
+
+    fun releasePickedHold() {
+        for (key in pickedKeys()) PickedAttachmentHold.remove(key)
+        pickedKeyText = ""
+    }
+
+    fun appendHeldPickedRows() {
+        val kept = ArrayList<String>()
+        val extra = ArrayList<ForwardRow>()
+        val have = HashSet<String>()
+        for (row in forwardRows) have.add(row.key)
+        for (key in pickedKeys()) {
+            val held = PickedAttachmentHold.get(key) ?: continue
+            kept.add(key)
+            if (have.add(key)) extra.add(held)
+        }
+        val keptText = kept.joinToString("\n")
+        if (keptText != pickedKeyText) pickedKeyText = keptText
+        if (extra.isNotEmpty()) forwardRows = forwardRows + extra
+    }
+
+    val pickDocuments = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val resolver = pickerContext.contentResolver
+        scope.launch {
+            val skipped = ArrayList<String>()
+            var added = 0
+            for (uri in uris) {
+                val read = withContext(Dispatchers.IO) { readPickedUri(resolver, uri) }
+                val bytes = read.bytes
+                if (bytes == null) {
+                    skipped.add(read.name)
+                    continue
+                }
+                val row = fileAttachmentRow(UUID.randomUUID().toString(), read.name, read.type, bytes)
+                PickedAttachmentHold.put(row)
+                addPickedKey(row.key)
+                forwardRows = forwardRows + row
+                added += 1
+            }
+            if (added == 0) {
+                notice = attachUnreadable
+            } else if (skipped.isNotEmpty()) {
+                notice = skipped.joinToString("\n") { name ->
+                    if (name.isEmpty()) attachUnreadable else "$attachUnreadable $name"
+                }
+            }
+        }
+    }
 
     fun statusLeaf(mailbox: String): String {
         val delimiter = loadedDelimiter
@@ -948,6 +1084,7 @@ private fun ComposeLoaded(
                 busy = false
             }
             if (leave) {
+                if (deliveryDone) releasePickedHold()
                 // Compose closes on success, which would hide the status; this note must outlive the screen.
                 if (deliveryDone && dsnRefused) {
                     android.widget.Toast.makeText(
@@ -1086,6 +1223,10 @@ private fun ComposeLoaded(
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
             captureBaseline()
         }
+        val replacesAttachmentRows = storedId != null ||
+            seed.kind == ComposeKind.Forward ||
+            seed.kind == ComposeKind.ResumePostpone
+        if (!replacesAttachmentRows) appendHeldPickedRows()
         val stored = if (storedId == null) null else loadStoredCopy(storedId)
         var leave = false
         gate.withLock {
@@ -1173,6 +1314,8 @@ private fun ComposeLoaded(
             } catch (_: Exception) {
             }
         }
+        // Source loads replace forwardRows; put back picked rows whose bytes are still held.
+        if (leave && deliveryDone) releasePickedHold() else appendHeldPickedRows()
         if (leave) onDone()
     }
 
@@ -1510,6 +1653,7 @@ private fun ComposeLoaded(
                     deliveryDone = true
                     notice = null
                     status = sentStatus(null)
+                    releasePickedHold()
                     scope.launch { removePostponedSource() }
                 } else if (kept != null && noCopyRetry) {
                     noCopyRetry = false
@@ -1854,6 +1998,9 @@ private fun ComposeLoaded(
                 )
                 TextButton(onClick = { pickerOpen = false }) { Text(stringResource(R.string.compose_close)) }
             }
+            TextButton(onClick = { pickDocuments.launch(arrayOf("*/*")) }) {
+                Text(stringResource(R.string.compose_attach))
+            }
             for (row in forwardRows) {
                 FilterChip(
                     selected = row.included,
@@ -1865,6 +2012,8 @@ private fun ComposeLoaded(
                     label = { Text(row.filename + " " + row.size) },
                     trailingIcon = {
                         IconButton(onClick = {
+                            PickedAttachmentHold.remove(row.key)
+                            dropPickedKey(row.key)
                             forwardRows = forwardRows.filter { it.key != row.key }
                         }) {
                             Icon(
@@ -1890,7 +2039,10 @@ private fun ComposeLoaded(
             title = { Text(stringResource(R.string.compose_discard_title)) },
             confirmButton = {
                 TextButton(
-                    onClick = { onDone() },
+                    onClick = {
+                        releasePickedHold()
+                        onDone()
+                    },
                     modifier = Modifier.testTag("smoke-compose-discard"),
                 ) { Text(stringResource(R.string.unsent_discard)) }
             },

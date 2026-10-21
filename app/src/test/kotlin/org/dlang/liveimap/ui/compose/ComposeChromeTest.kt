@@ -110,6 +110,23 @@ class ComposeChromeTest {
                 baselinePinnedFrom = "me@home.example",
             ),
         )
+        assertTrue(
+            composeIsDirty(
+                to = "ann@example.com",
+                cc = "bo@example.com",
+                bcc = "cy@example.com",
+                subject = "Hello",
+                body = "Body",
+                baselineTo = "ann@example.com",
+                baselineCc = "bo@example.com",
+                baselineBcc = "cy@example.com",
+                baselineSubject = "Hello",
+                baselineBody = "Body",
+                rowRemoved = false,
+                included = "file-1=true",
+                baselineIncluded = "",
+            ),
+        )
     }
 
     @Test
