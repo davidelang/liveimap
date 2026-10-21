@@ -496,7 +496,7 @@ open_body = function_body(builder, "open_build")
 log_at = open_body.find("docker logs --tail 80")
 fail_at = open_body.find("exit 1", log_at)
 assert log_at != -1 and fail_at != -1 and log_at < fail_at
-assert builder.count("docker logs --tail 80") == 3
+assert builder.count("docker logs --tail 80") == 4
 assert 'docker inspect "liveimap-build-$server"' not in builder
 assert "|| true" not in builder
 assert "2>/dev/null" not in builder
@@ -541,6 +541,7 @@ assert "exec /usr/local/bin/stalwart" in ep
 assert "/opt/stalwart/stalwart-mail" not in ep
 assert "/usr/local/bin/stalwart --init /opt/stalwart" in ep
 assert "--config /opt/stalwart/etc/config.toml" in ep
+assert "stalwart-provision" not in ep
 assert "stalwart binary missing" in ep
 
 # acclab auto TLS edges 1-3. Fixture strings and source text; this does not run acclab or docker.
@@ -928,9 +929,12 @@ mail_at = builder.find("if [ -x /usr/local/bin/stalwart-mail ]; then")
 assert mail_at != -1
 mail_end = builder.find("\nEOF\n", mail_at)
 mail_ep = builder[mail_at:mail_end]
-assert "--init /opt/stalwart" in mail_ep
-assert "config.toml" in mail_ep
-assert "config.json" not in mail_ep
+assert "--config /etc/stalwart/config.json" in mail_ep
+assert "STALWART_RECOVERY_MODE=1" in mail_ep
+assert "/etc/lab/stalwart-provision" in mail_ep
+assert "--init" not in mail_ep
+assert "config.toml" not in mail_ep
+assert '{"@type":"RocksDb","path":"/var/lib/stalwart/"}' in builder
 health_at = builder.find('while [ "$i" -lt 120 ]; do')
 assert health_at != -1
 health_end = builder.find("\ndone\n", health_at)

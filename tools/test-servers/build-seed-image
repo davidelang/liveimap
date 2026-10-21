@@ -1165,15 +1165,21 @@ else
   echo "stalwart binary missing" >&2
   exit 1
 fi
-if [ ! -f /opt/stalwart/etc/config.toml ]; then
-  "$bin" --init /opt/stalwart
+if [ ! -f /etc/stalwart/config.json ]; then
+  echo "stalwart config.json missing" >&2
+  exit 1
 fi
-exec "$bin" --config /opt/stalwart/etc/config.toml
+if [ -f /etc/lab/stalwart-provision ]; then
+  export STALWART_RECOVERY_MODE=1
+fi
+exec "$bin" --config /etc/stalwart/config.json
 EOF
       ;;
   esac
   chmod 755 "$work/entrypoint.sh"
-  cat > "$work/Dockerfile" <<EOF
+  case "$server" in
+    stalwart-0155)
+      cat > "$work/Dockerfile" <<EOF
 # syntax=docker/dockerfile:1
 FROM $upstream AS upstream
 FROM debian:bookworm-slim
@@ -1184,6 +1190,25 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
+      ;;
+    *)
+      printf '%s\n' '{"@type":"RocksDb","path":"/var/lib/stalwart/"}' > "$work/config.json"
+      : > "$work/stalwart-provision"
+      cat > "$work/Dockerfile" <<EOF
+# syntax=docker/dockerfile:1
+FROM $upstream AS upstream
+FROM debian:bookworm-slim
+COPY --from=upstream / /
+COPY certs/ /etc/lab/
+COPY stalwart.env /etc/lab/stalwart.env
+COPY config.json /etc/stalwart/config.json
+COPY stalwart-provision /etc/lab/stalwart-provision
+COPY entrypoint.sh /entrypoint.sh
+RUN mkdir -p /var/lib/stalwart /etc/stalwart && chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+      ;;
+  esac
   step "seed image"
   HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain -t "liveimap-seed-stage-$server" "$work"
   open_build
@@ -1216,6 +1241,17 @@ JSON
     exit 1
   fi
   "$DIR/stalwart-accounts.sh" "liveimap-build-$server"
+  case "$server" in
+    stalwart-0155) ;;
+    *)
+      docker exec "liveimap-build-$server" rm /etc/lab/stalwart-provision
+      printf 'STEP %s stalwart normal start\n' "$server" >&2
+      docker restart "liveimap-build-$server" || {
+        docker logs --tail 80 "liveimap-build-$server" >&2
+        exit 1
+      }
+      ;;
+  esac
   close_build
 }
 
