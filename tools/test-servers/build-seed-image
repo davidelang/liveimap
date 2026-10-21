@@ -1,5 +1,5 @@
 #!/bin/sh
-# From-scratch lab seed images. Phase 1 exits until a later phase supplies the builder.
+# From-scratch lab seed images. Phase 2 builds the non-volume servers.
 set -eu
 SCRIPT=$(readlink -f "$0")
 DIR=$(dirname "$SCRIPT")
@@ -11,8 +11,13 @@ if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
   exit 1
 fi
 server=$1
+CA="$DIR/generated/ca"
+SEED="$DIR/seed/accounts.tsv"
+SUMS="$DIR/seed/corpus-v1.sums"
 case "$server" in
-  cyrus-3124|courier-606|cyrus-3137|dovecot-dev|cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
+  cyrus-3124|courier-606|cyrus-3137|dovecot-dev|cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap)
+    ;;
+  dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
     echo "no from-scratch builder for $server" >&2
     exit 1
     ;;
@@ -21,3 +26,770 @@ case "$server" in
     exit 1
     ;;
 esac
+
+for f in server.crt server.key ca.crt chain.crt; do
+  if [ ! -f "$CA/$f" ]; then
+    echo "tools/test-servers/lab-ca.sh" >&2
+    exit 1
+  fi
+done
+if [ ! -f "$SEED" ]; then
+  echo "tools/test-servers/seed/accounts.tsv" >&2
+  exit 1
+fi
+if [ ! -f "$SUMS" ]; then
+  echo "tools/test-servers/seed/corpus-v1.sums" >&2
+  exit 1
+fi
+
+trap 'docker rm -f "liveimap-build-$server"; exit 1' EXIT
+
+work="$DIR/generated/build-seed/$server"
+rm -rf "$work"
+mkdir -p "$work/certs"
+cp "$CA/server.crt" "$work/certs/server.crt"
+cp "$CA/server.key" "$work/certs/server.key"
+cp "$CA/ca.crt" "$work/certs/ca.crt"
+cp "$CA/chain.crt" "$work/certs/chain.crt"
+
+phase=""
+base_image=""
+packages=""
+role=""
+ver_pkg="-"
+ver_pat="-"
+entry=dovecot
+case "$server" in
+  cyrus-3124)
+    phase=liveimap-cyrus-3124:phase1
+    role=cyrus-slash
+    entry=cyrus
+    ;;
+  cyrus-3137)
+    phase=liveimap-cyrus-3137:phase2
+    role=cyrus-slash
+    entry=cyrus
+    ;;
+  courier-606)
+    phase=liveimap-courier-606:phase1
+    role=courier-606
+    entry=courier
+    ;;
+  dovecot-dev)
+    phase=liveimap-dovecot-dev:phase1
+    role=dovecot-dev
+    entry=dovecot-dev
+    ;;
+  cyrus-22)
+    base_image=debian/eol:lenny
+    packages="cyrus-imapd-2.2 sasl2-bin"
+    role=cyrus-dot
+    entry=cyrus
+    ;;
+  cyrus-24)
+    base_image=debian/eol:wheezy
+    packages="cyrus-imapd-2.4 sasl2-bin"
+    role=cyrus-dot
+    entry=cyrus
+    ;;
+  cyrus-25)
+    base_image=debian/eol:stretch
+    packages="cyrus-imapd sasl2-bin"
+    role=cyrus-slash
+    entry=cyrus
+    ;;
+  cyrus-36)
+    base_image=debian:bookworm
+    packages="cyrus-imapd sasl2-bin cyrus-caldav"
+    role=cyrus-slash-http
+    ver_pkg=cyrus-imapd
+    ver_pat="3.6.*"
+    entry=cyrus
+    ;;
+  dovecot-10)
+    base_image=debian/eol:lenny
+    packages="dovecot-imapd"
+    role=dovecot-10
+    entry=dovecot
+    ;;
+  dovecot-12)
+    base_image=debian/eol:squeeze
+    packages="dovecot-imapd"
+    role=dovecot-12
+    entry=dovecot
+    ;;
+  dovecot-22)
+    base_image=debian/eol:jessie
+    packages="dovecot-imapd"
+    role=dovecot-22
+    entry=dovecot
+    ;;
+  courier-50)
+    base_image=debian:bookworm
+    packages="courier-imap courier-authlib-userdb"
+    role=courier-50
+    ver_pkg=courier-imap
+    ver_pat="5.0.13*"
+    entry=courier
+    ;;
+  uwimap)
+    base_image=debian/eol:squeeze
+    packages="uw-imapd"
+    role=uwimap
+    ver_pkg=uw-imapd
+    ver_pat="8:2007e~dfsg-3.1"
+    entry=uwimap
+    ;;
+esac
+
+if [ -n "$phase" ]; then
+  if ! docker image inspect "$phase" >/dev/null; then
+    echo "missing $phase" >&2
+    exit 1
+  fi
+fi
+
+printf '%s\n' "$role" > "$work/lab-role"
+printf '%s\n' "$ver_pkg" > "$work/version-pkg"
+printf '%s\n' "$ver_pat" > "$work/version-pat"
+
+cat > "$work/liveimap-setup" <<'EOF'
+#!/bin/sh
+set -eu
+if [ ! -f /run/secrets/accounts ]; then
+  echo "accounts secret missing" >&2
+  exit 1
+fi
+role=$(cat /etc/lab/role)
+ver_pkg=$(cat /etc/lab/version-pkg)
+ver_pat=$(cat /etc/lab/version-pat)
+chmod 644 /etc/lab/server.crt /etc/lab/ca.crt /etc/lab/chain.crt
+chmod 600 /etc/lab/server.key
+if [ "$ver_pkg" != - ]; then
+  ver=$(dpkg-query -W -f '${Version}' "$ver_pkg")
+  case "$ver" in
+    $ver_pat) ;;
+    *)
+      echo "version mismatch for $ver_pkg" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+write_cyrus_admin() {
+  raw=$(od -An -N16 -tx1 /dev/urandom)
+  admin=$(printf '%s' "$raw" | tr -d ' \n')
+  umask 077
+  printf '%s\n' "$admin" > /etc/lab/cyrus-admin
+  umask 022
+  chmod 600 /etc/lab/cyrus-admin
+}
+
+each_base() {
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ""|user*) continue ;;
+    esac
+    user=$(printf '%s' "$line" | cut -f1)
+    pass=$(printf '%s' "$line" | cut -f2)
+    profile=$(printf '%s' "$line" | cut -f3)
+    if [ "$profile" != base ]; then
+      continue
+    fi
+    "$1" "$user" "$pass"
+  done < /run/secrets/accounts
+}
+
+set_key() {
+  file=$1
+  key=$2
+  value=$3
+  sep=$4
+  if grep -q "^${key}${sep}" "$file"; then
+    sed -i "s|^${key}${sep}.*|${key}${sep}${value}|" "$file"
+  else
+    printf '%s%s%s\n' "$key" "$sep" "$value" >> "$file"
+  fi
+}
+
+setup_cyrus() {
+  sep=$1
+  http=$2
+  tls_modern=$3
+  printf '%s\n' "$sep" > /etc/lab/mbox-sep
+  if ! id cyrus >/dev/null; then
+    useradd -r -d /var/lib/cyrus -s /usr/sbin/nologin cyrus
+  fi
+  mkdir -p /var/lib/cyrus /var/spool/cyrus/mail /var/spool/cyrus/sieve /run/cyrus /etc/sasl2 /usr/lib/sasl2
+  chown -R cyrus:cyrus /var/lib/cyrus /var/spool/cyrus /run/cyrus
+  sasl_body='pwcheck_method: auxprop
+auxprop_plugin: sasldb
+mech_list: plain login
+sasldb_path: /etc/sasldb2'
+  printf '%s\n' "$sasl_body" > /etc/sasl2/Cyrus.conf
+  if [ -d /usr/lib/x86_64-linux-gnu/sasl2 ]; then
+    cp /etc/sasl2/Cyrus.conf /usr/lib/x86_64-linux-gnu/sasl2/Cyrus.conf
+  fi
+  cp /etc/sasl2/Cyrus.conf /usr/lib/sasl2/Cyrus.conf
+  if [ -f /etc/cyrus.conf ]; then
+    sed -i 's/^\t#idled\t\tcmd="idled"/\tidled\t\tcmd="idled"/' /etc/cyrus.conf
+  fi
+  if [ -f /etc/imapd.conf ]; then
+    sed -i 's/^idlemethod: poll/idlemethod: idled/' /etc/imapd.conf
+    set_key /etc/imapd.conf allowplaintext " yes" ":"
+    set_key /etc/imapd.conf sasl_pwcheck_method " auxprop" ":"
+    set_key /etc/imapd.conf sasl_mech_list " PLAIN LOGIN" ":"
+    set_key /etc/imapd.conf admins " cyrus" ":"
+    set_key /etc/imapd.conf sasl_minimum_layer " 0" ":"
+    if [ "$sep" = / ]; then
+      set_key /etc/imapd.conf unixhierarchysep " yes" ":"
+    fi
+    if [ "$tls_modern" = yes ]; then
+      set_key /etc/imapd.conf tls_server_cert " /etc/lab/chain.crt" ":"
+      set_key /etc/imapd.conf tls_server_key " /etc/lab/server.key" ":"
+      set_key /etc/imapd.conf allowstarttls " yes" ":"
+    else
+      set_key /etc/imapd.conf tls_cert_file " /etc/lab/chain.crt" ":"
+      set_key /etc/imapd.conf tls_key_file " /etc/lab/server.key" ":"
+    fi
+    if [ "$http" = yes ] && [ -f /etc/cyrus.conf ]; then
+      if grep -q 'listen="8008"' /etc/cyrus.conf; then
+        sed -i 's/listen="8008"/listen="8080"/' /etc/cyrus.conf
+      fi
+    fi
+  fi
+  for bin in pop3d nntpd; do
+    if [ ! -x "/usr/lib/cyrus/bin/$bin" ] && [ ! -x "/usr/sbin/$bin" ]; then
+      if [ -f /etc/cyrus.conf ]; then
+        sed -i "/^[[:space:]]*[^#].*${bin}/s/^/#/" /etc/cyrus.conf
+      fi
+    fi
+  done
+  if [ "$http" != yes ] && [ -f /etc/cyrus.conf ]; then
+    if [ ! -x /usr/lib/cyrus/bin/httpd ] && [ ! -x /usr/sbin/httpd ]; then
+      sed -i '/^[[:space:]]*[^#].*httpd/s/^/#/' /etc/cyrus.conf
+    fi
+  fi
+  write_cyrus_admin
+  admin=$(cat /etc/lab/cyrus-admin)
+  printf '%s\n' "$admin" | saslpasswd2 -p -c cyrus
+  cyrus_one() {
+    user=$1
+    pass=$2
+    if printf '%s\n' "$pass" | saslpasswd2 -p -c "$user"; then
+      return 0
+    fi
+    if [ "$user" = liveimap-utf8 ]; then
+      echo "utf8 sasl skipped" >&2
+      return 0
+    fi
+    echo "sasl user failed" >&2
+    exit 1
+  }
+  each_base cyrus_one
+  unset admin
+  if grep -q '^sasl:' /etc/group; then
+    chown cyrus:sasl /etc/sasldb2
+  else
+    chown cyrus /etc/sasldb2
+  fi
+  chmod 640 /etc/sasldb2
+  ctl=""
+  for cand in /usr/lib/cyrus/bin/ctl_cyrusdb /usr/sbin/ctl_cyrusdb /usr/local/cyrus/bin/ctl_cyrusdb /usr/local/cyrus/sbin/ctl_cyrusdb; do
+    if [ -x "$cand" ]; then
+      ctl=$cand
+      break
+    fi
+  done
+  if [ -z "$ctl" ]; then
+    echo "ctl_cyrusdb missing" >&2
+    exit 1
+  fi
+  su -s /bin/sh cyrus -c "$ctl -r"
+}
+
+write_passwd_line() {
+  user=$1
+  pass=$2
+  mode=$3
+  if [ "$mode" = plain ]; then
+    printf '%s:{PLAIN}%s\n' "$user" "$pass" >> /etc/dovecot/passwd
+  else
+    printf '%s:{PLAIN}%s:1000:1000::/srv/vmail/%s\n' "$user" "$pass" "$user" >> /etc/dovecot/passwd
+  fi
+  mkdir -p "/srv/vmail/$user/Maildir"
+}
+
+setup_dovecot_files() {
+  mode=$1
+  mkdir -p /etc/dovecot /srv/vmail /var/run/dovecot
+  umask 027
+  : > /etc/dovecot/passwd
+  umask 022
+  dovecot_one() {
+    user=$1
+    pass=$2
+    write_passwd_line "$user" "$pass" "$mode"
+  }
+  each_base dovecot_one
+  if grep -q '^dovecot:' /etc/group; then
+    chown root:dovecot /etc/dovecot/passwd
+  elif grep -q '^vmail:' /etc/group; then
+    chown root:vmail /etc/dovecot/passwd
+  fi
+  chmod 640 /etc/dovecot/passwd
+  chown -R 1000:1000 /srv/vmail
+}
+
+setup_dovecot_10() {
+  setup_dovecot_files full
+  cat > /etc/dovecot/dovecot.conf <<'CFG'
+protocols = imap
+disable_plaintext_auth = no
+ssl_disable = no
+ssl_cert_file = /etc/lab/chain.crt
+ssl_key_file = /etc/lab/server.key
+mail_location = maildir:/srv/vmail/%u/Maildir
+auth default {
+  mechanisms = plain login
+  passdb passwd-file {
+    args = /etc/dovecot/passwd
+  }
+  userdb passwd-file {
+    args = /etc/dovecot/passwd
+  }
+  user = root
+}
+CFG
+}
+
+setup_dovecot_12() {
+  setup_dovecot_files full
+  cat > /etc/dovecot/dovecot.conf <<'CFG'
+protocols = imap
+disable_plaintext_auth = no
+ssl = yes
+ssl_cert_file = /etc/lab/chain.crt
+ssl_key_file = /etc/lab/server.key
+mail_location = maildir:/srv/vmail/%u/Maildir
+auth default {
+  mechanisms = plain login
+  passdb passwd-file {
+    args = /etc/dovecot/passwd
+  }
+  userdb passwd-file {
+    args = /etc/dovecot/passwd
+  }
+  user = root
+}
+CFG
+}
+
+setup_dovecot_22() {
+  setup_dovecot_files full
+  mkdir -p /etc/dovecot/conf.d
+  cat > /etc/dovecot/conf.d/auth-system.conf.ext <<'AUTH'
+passdb {
+  driver = passwd-file
+  args = /etc/dovecot/passwd
+}
+userdb {
+  driver = passwd-file
+  args = /etc/dovecot/passwd
+}
+AUTH
+  if [ -f /etc/dovecot/conf.d/10-auth.conf ]; then
+    sed -i 's/^#\?disable_plaintext_auth.*/disable_plaintext_auth = no/' /etc/dovecot/conf.d/10-auth.conf
+  fi
+  printf '%s\n' 'ssl = yes' 'ssl_cert = </etc/lab/chain.crt' 'ssl_key = </etc/lab/server.key' > /etc/dovecot/conf.d/10-ssl.conf
+  if [ -f /etc/dovecot/conf.d/10-mail.conf ]; then
+    if grep -q '^mail_location' /etc/dovecot/conf.d/10-mail.conf; then
+      sed -i 's|^mail_location *=.*|mail_location = maildir:/srv/vmail/%u/Maildir|' /etc/dovecot/conf.d/10-mail.conf
+    else
+      printf '\nmail_location = maildir:/srv/vmail/%u/Maildir\n' >> /etc/dovecot/conf.d/10-mail.conf
+    fi
+  fi
+}
+
+setup_dovecot_dev() {
+  setup_dovecot_files plain
+  conf=/usr/local/etc/dovecot/dovecot.conf
+  if [ ! -f "$conf" ]; then
+    conf=/etc/dovecot/dovecot.conf
+  fi
+  printf '%s\n' '# lab-tls' 'ssl = yes' 'ssl_server_cert_file = /etc/lab/chain.crt' 'ssl_server_key_file = /etc/lab/server.key' >> "$conf"
+}
+
+courier_one() {
+  user=$1
+  pass=$2
+  if [ "$role" = courier-606 ]; then
+    home=/var/mail/$user
+    uid=$(cat /etc/lab/courier-uid)
+    if ! id "$user" >/dev/null; then
+      useradd -M -u "$uid" -d "$home" -s /usr/sbin/nologin "$user"
+    fi
+    next=$((uid + 1))
+    printf '%s\n' "$next" > /etc/lab/courier-uid
+    gid=$(id -g "$user")
+    uid_now=$(id -u "$user")
+  else
+    home=/var/vmail/$user
+    gid=1000
+    uid_now=1000
+  fi
+  mkdir -p "$home"
+  userdb "$user" set "uid=$uid_now" "gid=$gid" "home=$home" "mail=$home/Maildir" >/dev/null
+  if printf '%s\n' "$pass" | userdbpw -md5 | userdb "$user" set systempw >/dev/null; then
+    if [ ! -d "$home/Maildir" ]; then
+      if [ -n "$maildirmake" ]; then
+        "$maildirmake" "$home/Maildir"
+      fi
+    fi
+    chown -R "$user:$user" "$home"
+    return 0
+  fi
+  if [ "$user" = liveimap-utf8 ]; then
+    echo "utf8 userdb skipped" >&2
+    return 0
+  fi
+  echo "userdb failed" >&2
+  exit 1
+}
+
+setup_courier() {
+  maildirmake=""
+  if [ -x /usr/bin/maildirmake ]; then
+    maildirmake=/usr/bin/maildirmake
+  elif [ -x /usr/bin/maildirmake.courier ]; then
+    maildirmake=/usr/bin/maildirmake.courier
+  elif [ -x /usr/lib/courier-imap/bin/maildirmake ]; then
+    maildirmake=/usr/lib/courier-imap/bin/maildirmake
+  else
+    echo "maildirmake missing" >&2
+    exit 1
+  fi
+  if [ "$role" = courier-606 ]; then
+    printf '%s\n' 2500 > /etc/lab/courier-uid
+  fi
+  for conf in /etc/courier/authdaemonrc /usr/lib/courier-imap/etc/authdaemonrc; do
+    if [ -f "$conf" ]; then
+      if grep -q '^authmodulelist' "$conf"; then
+        sed -i 's/^authmodulelist=.*/authmodulelist="authuserdb"/' "$conf"
+      else
+        echo 'authmodulelist="authuserdb"' >> "$conf"
+      fi
+    fi
+  done
+  for imapd in /etc/courier/imapd /usr/lib/courier-imap/etc/imapd; do
+    if [ -f "$imapd" ]; then
+      sed -i 's/^ADDRESS=0\.0\.0\.0$/ADDRESS=0/' "$imapd"
+      if ! grep -q '^PORT=' "$imapd"; then
+        echo 'PORT=143' >> "$imapd"
+      fi
+    fi
+  done
+  cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/lab/courier.pem
+  chmod 600 /etc/lab/courier.pem
+  if id courier >/dev/null; then
+    chown courier:courier /etc/lab/courier.pem
+  elif id daemon >/dev/null; then
+    chown daemon /etc/lab/courier.pem
+  fi
+  for f in /etc/courier/imapd-ssl /usr/lib/courier-imap/etc/imapd-ssl; do
+    if [ -f "$f" ]; then
+      sed -i 's|^TLS_CERTFILE=.*|TLS_CERTFILE=/etc/lab/courier.pem|' "$f"
+      sed -i '/^IMAP_STARTTLS=/d' "$f"
+      if ! grep -q '^TLS_CERTFILE=' "$f"; then
+        echo 'TLS_CERTFILE=/etc/lab/courier.pem' >> "$f"
+      fi
+      echo 'IMAP_STARTTLS=YES' >> "$f"
+    fi
+  done
+  each_base courier_one
+  makeuserdb
+}
+
+setup_uw() {
+  uw_one() {
+    user=$1
+    pass=$2
+    if ! id "$user" >/dev/null; then
+      useradd -m -s /usr/sbin/nologin "$user"
+    fi
+    touch "/home/$user/mbox" "/var/mail/$user"
+    chown "$user:$user" "/home/$user/mbox" "/var/mail/$user"
+    if printf '%s:%s\n' "$user" "$pass" | chpasswd; then
+      return 0
+    fi
+    if [ "$user" = liveimap-utf8 ]; then
+      echo "utf8 chpasswd skipped" >&2
+      return 0
+    fi
+    echo "chpasswd failed" >&2
+    exit 1
+  }
+  each_base uw_one
+  if [ -f /etc/inetd.conf ] && grep -q '^#.*imap' /etc/inetd.conf; then
+    sed -i '/imap/s/^#//' /etc/inetd.conf
+  fi
+  cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/ssl/certs/imapd.pem
+  mkdir -p /etc/ssl/private
+  cp /etc/ssl/certs/imapd.pem /etc/ssl/private/imapd.pem
+  printf '%s\n' 'I accept the risk' 'set disable-plaintext nil' > /etc/c-client.cf
+}
+
+case "$role" in
+  cyrus-dot) setup_cyrus . no no ;;
+  cyrus-slash) setup_cyrus / no yes ;;
+  cyrus-slash-http) setup_cyrus / yes yes ;;
+  dovecot-10) setup_dovecot_10 ;;
+  dovecot-12) setup_dovecot_12 ;;
+  dovecot-22) setup_dovecot_22 ;;
+  dovecot-dev) setup_dovecot_dev ;;
+  courier-50|courier-606) setup_courier ;;
+  uwimap) setup_uw ;;
+  *)
+    echo "unknown role" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod 755 "$work/liveimap-setup"
+
+case "$entry" in
+  cyrus)
+    cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+master=""
+if [ -x /usr/sbin/cyrmaster ]; then
+  master=/usr/sbin/cyrmaster
+else
+  for cand in /usr/local/cyrus/libexec/master /usr/local/cyrus/sbin/master /usr/local/cyrus/bin/master /usr/sbin/master; do
+    if [ -x "$cand" ]; then
+      master=$cand
+      break
+    fi
+  done
+fi
+if [ -z "$master" ]; then
+  echo "cyrus master missing" >&2
+  exit 1
+fi
+rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
+"$master" -d
+exec sleep infinity
+EOF
+    ;;
+  dovecot)
+    cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+rm -f /var/run/dovecot/master.pid
+dovecot
+exec sleep infinity
+EOF
+    ;;
+  dovecot-dev)
+    cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+mkdir -p /srv/vmail /run/dovecot /usr/local/var/run/dovecot
+exec /usr/local/sbin/dovecot -F
+EOF
+    ;;
+  courier)
+    cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ -x /usr/sbin/rsyslogd ] && [ ! -S /dev/log ]; then
+  rm -f /var/run/rsyslogd.pid
+  rsyslogd
+fi
+if [ -x /etc/init.d/courier-authdaemon ]; then
+  /etc/init.d/courier-authdaemon start
+elif [ -x /etc/init.d/courier-auth ]; then
+  /etc/init.d/courier-auth start
+else
+  echo "courier authdaemon missing" >&2
+  exit 1
+fi
+if [ -x /etc/init.d/courier-imap ]; then
+  /etc/init.d/courier-imap start
+elif [ -x /usr/lib/courier-imap/libexec/imapd.rc ]; then
+  /usr/lib/courier-imap/libexec/imapd.rc start
+else
+  echo "courier imap missing" >&2
+  exit 1
+fi
+exec sleep infinity
+EOF
+    ;;
+  uwimap)
+    cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ -x /etc/init.d/openbsd-inetd ]; then
+  /etc/init.d/openbsd-inetd start
+elif [ -x /usr/sbin/inetd ]; then
+  /usr/sbin/inetd
+else
+  echo "inetd missing" >&2
+  exit 1
+fi
+exec sleep infinity
+EOF
+    ;;
+esac
+chmod 755 "$work/entrypoint.sh"
+
+if [ -n "$phase" ]; then
+  cat > "$work/Dockerfile" <<EOF
+# syntax=docker/dockerfile:1
+FROM $phase
+COPY certs/ /etc/lab/
+COPY lab-role /etc/lab/role
+COPY version-pkg /etc/lab/version-pkg
+COPY version-pat /etc/lab/version-pat
+COPY liveimap-setup /usr/local/bin/liveimap-setup
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
+RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+else
+  cat > "$work/Dockerfile" <<EOF
+# syntax=docker/dockerfile:1
+FROM $base_image
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y $packages && rm -rf /var/lib/apt/lists/*
+COPY certs/ /etc/lab/
+COPY lab-role /etc/lab/role
+COPY version-pkg /etc/lab/version-pkg
+COPY version-pat /etc/lab/version-pat
+COPY liveimap-setup /usr/local/bin/liveimap-setup
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
+RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+fi
+
+DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+imap_port=$(cport "$server" imap)
+if docker inspect "liveimap-build-$server" >/dev/null; then
+  docker rm -f "liveimap-build-$server"
+fi
+docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+docker start "liveimap-build-$server"
+published=$(docker port "liveimap-build-$server" "$imap_port")
+host_port=${published##*:}
+lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
+case "$lab_host" in
+  "")
+    echo "LAB_BIND missing" >&2
+    exit 1
+    ;;
+esac
+case "$server" in
+  cyrus-*)
+    python3 - "liveimap-build-$server" "$lab_host" "$host_port" "$SEED" <<'PY'
+import socket
+import ssl
+import subprocess
+import sys
+import time
+
+name, host, port_s, seed = sys.argv[1:]
+port = int(port_s)
+admin = subprocess.check_output(["docker", "exec", name, "cat", "/etc/lab/cyrus-admin"], text=True).strip()
+sep = subprocess.check_output(["docker", "exec", name, "cat", "/etc/lab/mbox-sep"], text=True).strip()
+users = []
+for line in open(seed, encoding="utf-8"):
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 3 or parts[0] == "user":
+        continue
+    if parts[2] == "base":
+        users.append(parts[0])
+
+def connect():
+    sock = socket.create_connection((host, port), 10)
+    sock.settimeout(30)
+    return sock
+
+class Imap:
+    def __init__(self):
+        self.s = connect()
+        self.buf = b""
+        self.n = 0
+
+    def readline(self):
+        while b"\n" not in self.buf:
+            chunk = self.s.recv(8192)
+            if not chunk:
+                break
+            self.buf += chunk
+        line, _sep, rest = self.buf.partition(b"\n")
+        self.buf = rest
+        return line.decode("utf-8", "replace").rstrip("\r")
+
+    def command(self, text):
+        self.n += 1
+        tag = "a%d" % self.n
+        self.s.sendall(("%s %s\r\n" % (tag, text)).encode("utf-8"))
+        lines = []
+        while True:
+            line = self.readline()
+            lines.append(line)
+            if line.startswith(tag + " "):
+                return lines
+
+    def starttls(self):
+        lines = self.command("STARTTLS")
+        if not any(" OK" in line for line in lines):
+            sys.exit(1)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        self.s = ctx.wrap_socket(self.s, server_hostname=host)
+        self.buf = b""
+
+deadline = time.time() + 90
+imap = None
+greeting = ""
+while time.time() < deadline:
+    try:
+        imap = Imap()
+        greeting = imap.readline()
+    except OSError:
+        time.sleep(1)
+        continue
+    if "OK" in greeting:
+        break
+if imap is None or "OK" not in greeting:
+    sys.stderr.write("cyrus greeting missing OK\n")
+    sys.exit(1)
+if "LOGINDISABLED" in greeting:
+    imap.starttls()
+lines = imap.command('LOGIN cyrus "%s"' % admin)
+if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
+    sys.stderr.write("cyrus admin login failed\n")
+    sys.exit(1)
+for user in users:
+    mailbox = "user" + sep + user
+    lines = imap.command("CREATE %s" % mailbox)
+    text = " ".join(lines).lower()
+    good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
+    if not good:
+        sys.stderr.write("mailbox create failed\n")
+        sys.exit(1)
+PY
+    ;;
+esac
+python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
+docker stop "liveimap-build-$server"
+manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
+docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
+docker rm -f "liveimap-build-$server"
+trap - EXIT

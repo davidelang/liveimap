@@ -207,17 +207,12 @@ for line in up.splitlines():
     name, cmd = line.split("\t", 1)
     rows[name] = cmd
 for name in nine:
-    assert name in rows, name
-    assert not rows[name].lstrip().startswith("{"), name
-assert "cyrmaster" in rows["liveimap-cyrus-22"]
-assert "cyrmaster" in rows["liveimap-cyrus-24"]
-assert "cyrmaster" in rows["liveimap-cyrus-25"]
-assert "cyrmaster" in rows["liveimap-cyrus-36"]
-assert "setsid dovecot" in rows["liveimap-dovecot-10"]
-assert "setsid dovecot" in rows["liveimap-dovecot-12"]
-assert "setsid dovecot" in rows["liveimap-dovecot-22"]
-assert "courier-imap" in rows["liveimap-courier-50"]
-assert "inetd" in rows["liveimap-uwimap"]
+    assert name not in rows, name
+assert "liveimap-courier-606" not in rows
+assert "cyrmaster" not in up
+assert "setsid dovecot" not in up
+assert "courier-imap" not in up
+assert "inetd" not in up
 commit_at = snap.find('docker commit "$name"')
 assert commit_at != -1
 before_commit = snap[:commit_at]
@@ -465,4 +460,49 @@ for name in ("build-seed-image", "start-latest.sh", "start-dev.sh", "start-local
     text = open(os.path.join(HERE, name), encoding="utf-8").read()
     fn = function_body(text, "cport")
     assert "python3" in fn and "|| exit 1" in fn, name
+
+# Phase 2 edge 11. Text only; this does not run docker or build-seed-image.
+phase2 = (
+    "cyrus-3124", "courier-606", "cyrus-3137", "dovecot-dev",
+    "cyrus-22", "cyrus-24", "cyrus-25", "cyrus-36",
+    "dovecot-10", "dovecot-12", "dovecot-22", "courier-50", "uwimap",
+)
+deferred = "dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883"
+assert deferred in builder
+assert "no from-scratch builder" in builder
+assert "type=secret,id=accounts" in builder
+assert "VOLUME" not in builder
+assert "|| true" not in builder
+assert "2>/dev/null" not in builder
+for server in phase2:
+    assert server in builder, server
+    for line in builder.splitlines():
+        if "no from-scratch builder" in line or line.strip().startswith(deferred):
+            assert server not in line, line
+for line in builder.splitlines():
+    if "COPY" in line:
+        assert "accounts.tsv" not in line, line
+    if "docker create" in line:
+        assert "-p" in line and "-v" not in line and "--mount" not in line, line
+for name in ("start-latest.sh", "start-dev.sh", "start-older.sh"):
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    assert "/run/liveimap/accounts.tsv" not in text, name
+older = open(os.path.join(HERE, "start-older.sh"), encoding="utf-8").read()
+for fn in ("start_cyrus", "start_dovecot", "start_courier", "start_uw"):
+    body = function_body(older, fn)
+    assert "apt-get" not in body, fn
+    assert "--mount" not in body and " -v " not in body, fn
+    assert "docker cp" not in body, fn
+for path, marker in (
+    ("start-latest.sh", 'cat > "$CY_BUILD/entrypoint.sh"'),
+    ("start-latest.sh", 'cat > "$CO_BUILD/entrypoint.sh"'),
+    ("start-dev.sh", 'cat > "$CY_SRC/entrypoint.sh"'),
+):
+    text = open(os.path.join(HERE, path), encoding="utf-8").read()
+    at = text.find(marker)
+    assert at != -1, marker
+    end = text.find("\nEOF\n", at)
+    body = text[at:end]
+    assert "/run/liveimap/accounts.tsv" not in body, marker
+    assert "apt-get" not in body, marker
 print("ok")

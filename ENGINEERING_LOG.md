@@ -3505,3 +3505,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A port mismatch records a blocked verdict, and a missing servers.tsv row stops the start script.
 
 ## 2026-10-20 - A lab mount blocks, and lab-ready stops at the first problem.
+
+## 2026-10-20 - The non-volume lab images are built from scratch.

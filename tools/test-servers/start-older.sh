@@ -239,12 +239,6 @@ write_admin() {
   umask 022
 }
 
-copy_seed() {
-  name=$1
-  docker exec "$name" mkdir -p /run/liveimap
-  docker cp "$SEED" "$name":/run/liveimap/accounts.tsv
-}
-
 require_version() {
   name=$1
   pkg=$2
@@ -267,113 +261,6 @@ pin_packages() {
   done >> "$PINS_OUT"
 }
 
-configure_cyrus() {
-  name=$1
-  sep=$2
-  want_http=$3
-  docker exec -i -e MBOX_SEP="$sep" -e WANT_HTTP="$want_http" "$name" sh -s <<'EOF'
-set -eu
-export PATH="/usr/sbin:/sbin:$PATH"
-conf=/etc/imapd.conf
-set_key() {
-  if grep -q "^$1:" "$conf"; then
-    sed -i "s|^$1:.*|$1: $2|" "$conf"
-  else
-    printf '%s: %s\n' "$1" "$2" >> "$conf"
-  fi
-}
-set_key allowplaintext yes
-set_key sasl_pwcheck_method auxprop
-set_key sasl_mech_list "PLAIN LOGIN"
-set_key admins cyrus
-set_key sasl_minimum_layer 0
-if [ "$MBOX_SEP" = / ]; then
-  set_key unixhierarchysep yes
-fi
-if [ "$WANT_HTTP" = yes ]; then
-  set_key httpmodules jmap
-  set_key conversations 1
-  if grep -q 'listen="8008"' /etc/cyrus.conf; then
-    sed -i 's/listen="8008"/listen="8080"/' /etc/cyrus.conf
-  fi
-  if ! grep -q 'httpd' /etc/cyrus.conf; then
-    echo "cyrus.conf has no httpd" >&2
-    exit 1
-  fi
-fi
-for bin in pop3d nntpd httpd; do
-  if [ ! -x "/usr/lib/cyrus/bin/$bin" ] && [ ! -x "/usr/sbin/$bin" ]; then
-    sed -i "/^[[:space:]]*[^#].*${bin}/s/^/#/" /etc/cyrus.conf
-  fi
-done
-if [ -x /usr/sbin/cyrus ] && ! /usr/sbin/cyrus tls_prune >/dev/null 2>&1; then
-  sed -i "/^[[:space:]]*[^#].*tls_prune/s/^/#/" /etc/cyrus.conf
-fi
-sasl_body='pwcheck_method: auxprop
-auxprop_plugin: sasldb
-mech_list: plain login
-sasldb_path: /etc/sasldb2
-'
-for dir in /usr/lib/sasl2 /usr/lib/x86_64-linux-gnu/sasl2 /etc/sasl2; do
-  mkdir -p "$dir"
-  printf '%s\n' "$sasl_body" > "$dir/Cyrus.conf"
-done
-admin=$(tr -d '\r\n' < /run/liveimap/admin)
-printf '%s\n' "$admin" > /tmp/sasl-one
-saslpasswd2 -p -c cyrus < /tmp/sasl-one
-rm -f /tmp/sasl-one
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  awk -F '\t' -v u="$user" 'NR > 1 && $1 == u { print $2; exit }' /run/liveimap/accounts.tsv > /tmp/sasl-one
-  if saslpasswd2 -p -c "$user" < /tmp/sasl-one; then
-    rm -f /tmp/sasl-one
-    continue
-  fi
-  rm -f /tmp/sasl-one
-  if [ "$user" = "liveimap-utf8" ]; then
-    echo "utf8 sasl skipped" >&2
-    continue
-  fi
-  echo "sasl user failed" >&2
-  exit 1
-done < /tmp/base-names
-rm -f /tmp/base-names
-if getent group sasl >/dev/null 2>&1; then
-  chown cyrus:sasl /etc/sasldb2
-else
-  chown cyrus /etc/sasldb2
-fi
-chmod 640 /etc/sasldb2
-mkdir -p /run/cyrus/socket /var/run/cyrus/socket /var/lib/cyrus /var/spool/cyrus/mail
-if id cyrus >/dev/null 2>&1; then
-  chown -R cyrus:mail /run/cyrus /var/run/cyrus /var/lib/cyrus /var/spool/cyrus 2>/dev/null \
-    || chown -R cyrus /run/cyrus /var/run/cyrus /var/lib/cyrus /var/spool/cyrus
-fi
-for init in /etc/init.d/cyrus2.2 /etc/init.d/cyrus2.4 /etc/init.d/cyrus2.5 /etc/init.d/cyrus-imapd; do
-  if [ -x "$init" ]; then
-    "$init" stop || true
-  fi
-done
-for pidf in /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid; do
-  if [ -s "$pidf" ]; then
-    kill "$(cat "$pidf")" 2>/dev/null || true
-    rm -f "$pidf"
-  fi
-done
-sleep 1
-if [ -x /usr/sbin/cyrmaster ]; then
-  setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1 || {
-    echo "cyrmaster failed" >&2
-    exit 1
-  }
-else
-  echo "cyrmaster missing" >&2
-  exit 1
-fi
-EOF
-}
-
 ensure_cyrus_master() {
   name=$1
   port=$2
@@ -382,102 +269,6 @@ ensure_cyrus_master() {
   fi
   docker exec "$name" sh -c 'export PATH="/usr/sbin:/usr/bin:/sbin:$PATH"; setsid /usr/sbin/cyrmaster -d </dev/null >/tmp/cyrmaster.out 2>&1' || true
   wait_port "$name" "$port"
-}
-
-create_cyrus_mailboxes() {
-  name=$1
-  port=$2
-  sep=$3
-  admin="$ADMIN_DIR/${name}.txt"
-  python3 - "$HOST" "$port" "$admin" "$sep" "$SEED" <<'PY'
-import csv
-import socket
-import ssl
-import sys
-import time
-
-host, port_s, admin_path, sep, seed = sys.argv[1:]
-port = int(port_s)
-with open(admin_path, encoding="utf-8") as handle:
-    admin_pass = handle.read().strip()
-users = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") == "base":
-            users.append(row["user"])
-
-def connect():
-    sock = socket.create_connection((host, port), 10)
-    sock.settimeout(30)
-    return sock
-
-class Imap:
-    def __init__(self):
-        self.s = connect()
-        self.buf = b""
-        self.n = 0
-
-    def readline(self):
-        while b"\n" not in self.buf:
-            chunk = self.s.recv(8192)
-            if not chunk:
-                break
-            self.buf += chunk
-        line, sep_b, rest = self.buf.partition(b"\n")
-        self.buf = rest
-        return line.decode("utf-8", "replace").rstrip("\r")
-
-    def command(self, text):
-        self.n += 1
-        tag = "a%d" % self.n
-        self.s.sendall(("%s %s\r\n" % (tag, text)).encode("utf-8"))
-        lines = []
-        while True:
-            line = self.readline()
-            lines.append(line)
-            if line.startswith(tag + " "):
-                return lines
-
-    def starttls(self):
-        lines = self.command("STARTTLS")
-        if not any(" OK" in line for line in lines):
-            sys.exit(1)
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        self.s = ctx.wrap_socket(self.s, server_hostname="localhost")
-        self.buf = b""
-
-deadline = time.time() + 60
-imap = None
-greeting = ""
-while time.time() < deadline:
-    try:
-        imap = Imap()
-        greeting = imap.readline()
-    except OSError:
-        time.sleep(0.5)
-        continue
-    if "OK" in greeting:
-        break
-if imap is None or "OK" not in greeting:
-    sys.stderr.write("cyrus greeting missing OK\n")
-    sys.exit(1)
-if "LOGINDISABLED" in greeting:
-    imap.starttls()
-lines = imap.command('LOGIN cyrus "%s"' % admin_pass)
-if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
-    sys.stderr.write("cyrus admin login failed\n")
-    sys.exit(1)
-for user in users:
-    mailbox = "user" + sep + user
-    lines = imap.command("CREATE %s" % mailbox)
-    text = " ".join(lines).lower()
-    good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
-    if not good:
-        sys.stderr.write("mailbox create failed\n")
-        sys.exit(1)
-PY
 }
 
 start_cyrus() {
@@ -489,8 +280,6 @@ start_cyrus() {
   sep=$6
   caldav=$7
   version_prefix=$8
-  admin="$ADMIN_DIR/${name}.txt"
-  write_admin "$admin"
   server=${name#liveimap-}
   imap_c=$(cport "$server" imap)
   if [ -n "$http_port" ]; then
@@ -502,26 +291,7 @@ start_cyrus() {
     create_from_seed "$server" \
       -p "${port}:${imap_c}"
   fi
-  docker exec "$name" apt-get update
-  if [ "$caldav" = yes ]; then
-    docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
-      apt-get install -y "$pkg" sasl2-bin cyrus-caldav
-    pin_packages "$name" "$pkg" sasl2-bin cyrus-caldav
-  else
-    docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
-      apt-get install -y "$pkg" sasl2-bin
-    pin_packages "$name" "$pkg" sasl2-bin
-  fi
-  if [ -n "$version_prefix" ]; then
-    require_version "$name" "$pkg" "$version_prefix"
-  fi
-  copy_seed "$name"
-  docker cp "$admin" "$name":/run/liveimap/admin
-  configure_cyrus "$name" "$sep" "$caldav"
-  echo "configured $name" >&2
-  ensure_cyrus_master "$name" "$port"
-  create_cyrus_mailboxes "$name" "$port" "$sep"
-  echo "mailboxes $name" >&2
+  wait_port "$name" "$port"
 }
 
 patch_dovecot_10() {
@@ -638,48 +408,10 @@ start_dovecot() {
   image=$2
   port=$3
   style=$4
-  passfile="$GEN/${name#liveimap-}/passwd"
-  write_passwd "$passfile"
   server=${name#liveimap-}
   imap_c=$(cport "$server" imap)
   create_from_seed "$server" \
     -p "${port}:${imap_c}"
-  docker exec "$name" apt-get update
-  docker exec -e DEBIAN_FRONTEND=noninteractive "$name" apt-get install -y dovecot-imapd
-  pin_packages "$name" dovecot-imapd
-  copy_seed "$name"
-  docker exec "$name" mkdir -p /etc/dovecot /srv/vmail
-  docker cp "$passfile" "$name":/etc/dovecot/passwd
-  docker exec "$name" sh -c 'if getent group dovecot >/dev/null 2>&1; then chown root:dovecot /etc/dovecot/passwd; else chown root /etc/dovecot/passwd; fi; chmod 640 /etc/dovecot/passwd'
-  if [ "$style" = v22 ]; then
-    configure_dovecot_22 "$name"
-  else
-    conf="$GEN/${name#liveimap-}/dovecot.conf"
-    docker cp "$name":/etc/dovecot/dovecot.conf "$conf"
-    patch_dovecot_10 "$conf" "$style"
-    docker cp "$conf" "$name":/etc/dovecot/dovecot.conf
-  fi
-  docker exec -i "$name" sh -s <<'EOF'
-set -eu
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  mkdir -p "/srv/vmail/$user/Maildir"
-done < /tmp/base-names
-rm -f /tmp/base-names
-chown -R 1000:1000 /srv/vmail
-if [ -s /var/run/dovecot/master.pid ]; then
-  kill "$(cat /var/run/dovecot/master.pid)" 2>/dev/null || true
-  sleep 1
-fi
-if [ -x /etc/init.d/dovecot ]; then
-  /etc/init.d/dovecot stop || true
-fi
-if ! setsid dovecot </dev/null >/tmp/dovecot.out 2>&1; then
-  echo "dovecot rejected config" >&2
-  exit 1
-fi
-EOF
   wait_port "$name" "$port"
 }
 
@@ -689,41 +421,6 @@ start_courier() {
   assign_cports "$name"
   create_from_seed courier-50 \
     -p "${port}:${cp_courier50_imap}"
-  docker exec "$name" apt-get update
-  docker exec -e DEBIAN_FRONTEND=noninteractive "$name" \
-    apt-get install -y courier-imap courier-authlib-userdb
-  pin_packages "$name" courier-imap courier-authlib-userdb
-  require_version "$name" courier-imap 5.0.13
-  copy_seed "$name"
-  docker exec -i "$name" sh -s <<'EOF'
-set -eu
-export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
-sed -i 's/^authmodulelist=.*/authmodulelist="authuserdb"/' /etc/courier/authdaemonrc
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  home="/var/vmail/$user"
-  userdb "$user" set "uid=1000" "gid=1000" "home=$home" "mail=$home/Maildir"
-  awk -F '\t' -v u="$user" 'NR > 1 && $1 == u { print $2; exit }' /run/liveimap/accounts.tsv > /tmp/userdb-one
-  if ! userdbpw -md5 < /tmp/userdb-one | userdb "$user" set systempw; then
-    rm -f /tmp/userdb-one
-    if [ "$user" = "liveimap-utf8" ]; then
-      echo "utf8 userdb skipped" >&2
-      continue
-    fi
-    echo "userdb failed" >&2
-    exit 1
-  fi
-  rm -f /tmp/userdb-one
-  mkdir -p "$home"
-  maildirmake "$home/Maildir"
-  chown -R 1000:1000 "$home"
-done < /tmp/base-names
-rm -f /tmp/base-names
-makeuserdb
-setsid /etc/init.d/courier-authdaemon start </dev/null >/tmp/courier-auth.out 2>&1
-setsid /etc/init.d/courier-imap start </dev/null >/tmp/courier-imap.out 2>&1
-EOF
   wait_port "$name" "$port"
 }
 
@@ -883,21 +580,6 @@ for user, password in users:
 PY
 }
 
-probe_uw() {
-  if ! docker run --rm debian/eol:squeeze sh -c 'apt-get update >&2 && apt-cache policy uw-imapd' > "$GEN/uw-policy.txt"; then
-    echo "apt-get update failed on debian/eol:squeeze" >&2
-    rm -f "$GEN/uw-policy.txt"
-    return 1
-  fi
-  if ! awk '/Candidate:/ { if ($2 == "8:2007e~dfsg-3.1") ok=1 } END { exit !ok }' "$GEN/uw-policy.txt"; then
-    echo "uw-imapd candidate is not 8:2007e~dfsg-3.1" >&2
-    rm -f "$GEN/uw-policy.txt"
-    return 1
-  fi
-  rm -f "$GEN/uw-policy.txt"
-  return 0
-}
-
 start_uw() {
   name=liveimap-uwimap
   port=$UW
@@ -908,81 +590,6 @@ start_uw() {
     return 1
   fi
   if ! docker start "$name"; then
-    return 1
-  fi
-  if ! docker exec "$name" apt-get update; then
-    return 1
-  fi
-  if ! docker exec -e DEBIAN_FRONTEND=noninteractive "$name" apt-get install -y uw-imapd; then
-    return 1
-  fi
-  ver=$(docker exec "$name" dpkg-query -W -f '${Version}' uw-imapd) || return 1
-  if [ "$ver" != "8:2007e~dfsg-3.1" ]; then
-    echo "version mismatch for uw-imapd" >&2
-    return 1
-  fi
-  pin_packages "$name" uw-imapd || return 1
-  docker exec "$name" mkdir -p /run/liveimap || return 1
-  docker cp "$SEED" "$name":/run/liveimap/accounts.tsv || return 1
-  umask 007
-  if ! python3 - "$SEED" "$GEN/uw-chpasswd" <<'PY'
-import csv
-import sys
-seed, dest = sys.argv[1], sys.argv[2]
-lines = []
-with open(seed, newline="") as handle:
-    for row in csv.DictReader(handle, delimiter="\t"):
-        if row.get("profile") != "base":
-            continue
-        lines.append("%s:%s\n" % (row["user"], row["password"]))
-with open(dest, "w", encoding="utf-8") as handle:
-    handle.writelines(lines)
-PY
-  then
-    umask 022
-    return 1
-  fi
-  umask 022
-  if ! docker cp "$GEN/uw-chpasswd" "$name":/run/liveimap/chpasswd; then
-    rm -f "$GEN/uw-chpasswd"
-    return 1
-  fi
-  rm -f "$GEN/uw-chpasswd"
-  if ! docker exec -i "$name" sh -s <<'EOF'
-set -eu
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  id "$user" >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin "$user"
-  touch "/home/$user/mbox" "/var/mail/$user"
-  chown "$user:$user" "/home/$user/mbox" "/var/mail/$user" || chown "$user" "/home/$user/mbox" "/var/mail/$user"
-done < /tmp/base-names
-rm -f /tmp/base-names
-while IFS= read -r line; do
-  [ -n "$line" ] || continue
-  user=${line%%:*}
-  printf '%s\n' "$line" | chpasswd && continue
-  if [ "$user" = "liveimap-utf8" ]; then
-    echo "utf8 chpasswd skipped" >&2
-    continue
-  fi
-  echo "chpasswd failed" >&2
-  exit 1
-done < /run/liveimap/chpasswd
-rm -f /run/liveimap/chpasswd
-if [ -f /etc/inetd.conf ] && grep -q '^#.*imap' /etc/inetd.conf; then
-  sed -i '/imap/s/^#//' /etc/inetd.conf
-fi
-if [ -x /etc/init.d/openbsd-inetd ]; then
-  setsid /etc/init.d/openbsd-inetd start </dev/null >/tmp/inetd.out 2>&1
-elif [ -x /usr/sbin/inetd ]; then
-  setsid /usr/sbin/inetd </dev/null >/tmp/inetd.out 2>&1
-else
-  echo "inetd missing" >&2
-  exit 1
-fi
-EOF
-  then
     return 1
   fi
   wait_port "$name" "$port"
@@ -1508,18 +1115,9 @@ else
   UW=$(draw_port "$CY22" "$CY24" "$CY25" "$CY36" "$CY36_HTTP" \
     "$DV10" "$DV12" "$DV22" "$CO" \
     "$ST_IMAP" "$ST_IMAPS" "$ST_SIEVE" "$ST_HTTPS" "$ST_SUB")
-  echo "pulling uw image"
+  echo "starting uwimap"
   require_seed_image uwimap
-  if ! docker pull debian/eol:squeeze; then
-    echo "uw image pull failed" >&2
-    UW_ABSENT=1
-  elif probe_uw; then
-    echo "starting uwimap"
-    if ! start_uw; then
-      echo "uw setup failed" >&2
-      UW_ABSENT=1
-    fi
-  else
+  if ! start_uw; then
     echo "uw setup failed" >&2
     UW_ABSENT=1
   fi

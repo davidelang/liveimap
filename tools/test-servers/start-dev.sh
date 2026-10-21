@@ -642,71 +642,25 @@ EOF
 cat > "$CY_SRC/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
-find_bin() {
-  find /usr/local/cyrus /usr/lib/cyrus /usr/sbin /usr/bin -type f -name "$1" 2>/dev/null | head -n 1
-}
-MASTER=$(find_bin master)
-CTL=$(find_bin ctl_cyrusdb)
-IMTEST=$(find_bin imtest)
-SASL=$(command -v saslpasswd2)
-if [ -z "$MASTER" ] || [ -z "$CTL" ] || [ -z "$IMTEST" ] || [ -z "$SASL" ]; then
-  echo "cyrus binaries missing" >&2
+master=""
+if [ -x /usr/sbin/cyrmaster ]; then
+  master=/usr/sbin/cyrmaster
+else
+  for cand in /usr/local/cyrus/libexec/master /usr/local/cyrus/sbin/master /usr/local/cyrus/bin/master /usr/sbin/master; do
+    if [ -x "$cand" ]; then
+      master=$cand
+      break
+    fi
+  done
+fi
+if [ -z "$master" ]; then
+  echo "cyrus master missing" >&2
   exit 1
 fi
-if ! id cyrus >/dev/null 2>&1; then
-  useradd -r -d /var/lib/cyrus -s /usr/sbin/nologin cyrus
-fi
-mkdir -p /var/lib/cyrus /var/spool/cyrus/mail /var/spool/cyrus/sieve /run/cyrus /etc/sasl2
-chown -R cyrus:cyrus /var/lib/cyrus /var/spool/cyrus /run/cyrus
-cat > /etc/sasl2/Cyrus.conf <<'SASL'
-pwcheck_method: auxprop
-auxprop_plugin: sasldb
-mech_list: plain login
-sasldb_path: /etc/sasldb2
-SASL
-if [ -d /usr/lib/x86_64-linux-gnu/sasl2 ]; then
-  cp /etc/sasl2/Cyrus.conf /usr/lib/x86_64-linux-gnu/sasl2/Cyrus.conf
-fi
-cp /etc/sasl2/Cyrus.conf /usr/lib/sasl2/Cyrus.conf 2>/dev/null || true
-mkdir -p /usr/lib/sasl2
-cp /etc/sasl2/Cyrus.conf /usr/lib/sasl2/Cyrus.conf
-admin=$(tr -d '\r\n' < /run/liveimap/admin)
-printf '%s\n' "$admin" | "$SASL" -p -c cyrus
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 "\t" $2 }' /run/liveimap/accounts.tsv > /tmp/base-users
-while IFS=$(printf '\t') read -r user pass; do
-  [ -n "$user" ] || continue
-  printf '%s\n' "$pass" | "$SASL" -p -c "$user"
-done < /tmp/base-users
-rm -f /tmp/base-users
-chown cyrus:cyrus /etc/sasldb2
-chmod 640 /etc/sasldb2
-su -s /bin/sh cyrus -c "$CTL -r" || su -s /bin/sh cyrus -c "$CTL -r"
-"$MASTER" -d -p /run/cyrus/master.pid
-ready=0
-i=0
-while [ "$i" -lt 60 ]; do
-  if bash -c 'echo >/dev/tcp/127.0.0.1/143' >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  i=$((i + 1))
-  sleep 1
-done
-if [ "$ready" -ne 1 ]; then
-  echo "cyrus imap did not open" >&2
-  exit 1
-fi
-if [ ! -f /tmp/liveimap-restored ]; then
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  printf 'A1 CREATE user/%s\n' "$user" > /tmp/create-cmd
-  timeout 20 "$IMTEST" -m login -a cyrus -w "$admin" -p 143 -f /tmp/create-cmd 127.0.0.1 >/tmp/imtest.out 2>&1 || true
-done < /tmp/base-names
-rm -f /tmp/base-names /tmp/imtest.out /tmp/create-cmd
-fi
-unset admin
+rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
+"$master" -d
 exec sleep infinity
+
 EOF
 chmod 755 "$CY_SRC/entrypoint.sh"
 cat > "$CY_SRC/Dockerfile" <<'EOF'

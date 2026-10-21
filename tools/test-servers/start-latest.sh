@@ -825,71 +825,25 @@ EOF
 cat > "$CY_BUILD/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
-find_bin() {
-  find /usr/local/cyrus /usr/lib/cyrus /usr/sbin /usr/bin -type f -name "$1" 2>/dev/null | head -n 1
-}
-MASTER=$(find_bin master)
-CTL=$(find_bin ctl_cyrusdb)
-IMTEST=$(find_bin imtest)
-SASL=$(command -v saslpasswd2)
-if [ -z "$MASTER" ] || [ -z "$CTL" ] || [ -z "$IMTEST" ] || [ -z "$SASL" ]; then
-  echo "cyrus binaries missing" >&2
+master=""
+if [ -x /usr/sbin/cyrmaster ]; then
+  master=/usr/sbin/cyrmaster
+else
+  for cand in /usr/local/cyrus/libexec/master /usr/local/cyrus/sbin/master /usr/local/cyrus/bin/master /usr/sbin/master; do
+    if [ -x "$cand" ]; then
+      master=$cand
+      break
+    fi
+  done
+fi
+if [ -z "$master" ]; then
+  echo "cyrus master missing" >&2
   exit 1
 fi
-if ! id cyrus >/dev/null 2>&1; then
-  useradd -r -d /var/lib/cyrus -s /usr/sbin/nologin cyrus
-fi
-mkdir -p /var/lib/cyrus /var/spool/cyrus/mail /var/spool/cyrus/sieve /run/cyrus /etc/sasl2
-chown -R cyrus:cyrus /var/lib/cyrus /var/spool/cyrus /run/cyrus
-cat > /etc/sasl2/Cyrus.conf <<'SASL'
-pwcheck_method: auxprop
-auxprop_plugin: sasldb
-mech_list: plain login
-sasldb_path: /etc/sasldb2
-SASL
-if [ -d /usr/lib/x86_64-linux-gnu/sasl2 ]; then
-  cp /etc/sasl2/Cyrus.conf /usr/lib/x86_64-linux-gnu/sasl2/Cyrus.conf
-fi
-cp /etc/sasl2/Cyrus.conf /usr/lib/sasl2/Cyrus.conf 2>/dev/null || true
-mkdir -p /usr/lib/sasl2
-cp /etc/sasl2/Cyrus.conf /usr/lib/sasl2/Cyrus.conf
-admin=$(tr -d '\r\n' < /run/liveimap/admin)
-printf '%s\n' "$admin" | "$SASL" -p -c cyrus
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 "\t" $2 }' /run/liveimap/accounts.tsv > /tmp/base-users
-while IFS=$(printf '\t') read -r user pass; do
-  [ -n "$user" ] || continue
-  printf '%s\n' "$pass" | "$SASL" -p -c "$user"
-done < /tmp/base-users
-rm -f /tmp/base-users
-chown cyrus:cyrus /etc/sasldb2
-chmod 640 /etc/sasldb2
-su -s /bin/sh cyrus -c "$CTL -r" || su -s /bin/sh cyrus -c "$CTL -r"
-"$MASTER" -d -p /run/cyrus/master.pid
-ready=0
-i=0
-while [ "$i" -lt 60 ]; do
-  if bash -c 'echo >/dev/tcp/127.0.0.1/143' >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  i=$((i + 1))
-  sleep 1
-done
-if [ "$ready" -ne 1 ]; then
-  echo "cyrus imap did not open" >&2
-  exit 1
-fi
-if [ ! -f /tmp/liveimap-restored ]; then
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 }' /run/liveimap/accounts.tsv > /tmp/base-names
-while read -r user; do
-  [ -n "$user" ] || continue
-  printf 'A1 CREATE user/%s\n' "$user" > /tmp/create-cmd
-  timeout 20 "$IMTEST" -m login -a cyrus -w "$admin" -p 143 -f /tmp/create-cmd 127.0.0.1 >/tmp/imtest.out 2>&1 || true
-done < /tmp/base-names
-rm -f /tmp/base-names /tmp/imtest.out /tmp/create-cmd
-fi
-unset admin
+rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
+"$master" -d
 exec sleep infinity
+
 EOF
 chmod 755 "$CY_BUILD/entrypoint.sh"
 cat > "$CY_BUILD/Dockerfile" <<'EOF'
@@ -1061,66 +1015,17 @@ chmod 755 "$CO_BUILD/build-inside.sh"
 cat > "$CO_BUILD/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
-if [ ! -f /etc/courier/authdaemonrc ]; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y courier-authdaemon
+if [ -x /usr/sbin/rsyslogd ] && [ ! -S /dev/log ]; then
+  rm -f /var/run/rsyslogd.pid
+  rsyslogd
 fi
-conf=$(find /etc -name authdaemonrc 2>/dev/null | head -n 1)
-if [ -z "$conf" ]; then
-  echo "authdaemonrc missing" >&2
-  exit 1
-fi
-if grep -q '^authmodulelist' "$conf"; then
-  sed -i 's/^authmodulelist=.*/authmodulelist="authuserdb"/' "$conf"
-else
-  echo 'authmodulelist="authuserdb"' >> "$conf"
-fi
-# ADDRESS=0 is Courier's any-interface setting. Do not write a dotted wildcard.
-for imapd in /etc/courier/imapd /usr/lib/courier-imap/etc/imapd; do
-  if [ -f "$imapd" ]; then
-    sed -i 's/^ADDRESS=0\.0\.0\.0$/ADDRESS=0/' "$imapd"
-    if ! grep -q '^PORT=' "$imapd"; then
-      echo 'PORT=143' >> "$imapd"
-    fi
-  fi
-done
-USERDB=$(command -v userdb || true)
-USERDBPW=$(command -v userdbpw || true)
-MAKEUSERDB=$(command -v makeuserdb || true)
-MAILDIRMAKE=$(command -v maildirmake || command -v maildirmake.courier || true)
-if [ -z "$MAILDIRMAKE" ] && [ -x /usr/lib/courier-imap/bin/maildirmake ]; then
-  MAILDIRMAKE=/usr/lib/courier-imap/bin/maildirmake
-fi
-if [ -z "$USERDB" ] || [ -z "$USERDBPW" ] || [ -z "$MAKEUSERDB" ] || [ -z "$MAILDIRMAKE" ]; then
-  echo "courier userdb tools missing" >&2
-  exit 1
-fi
-uid=2500
-awk -F '\t' 'NR > 1 && $3 == "base" { print $1 "\t" $2 }' /run/liveimap/accounts.tsv > /tmp/base-users
-while IFS=$(printf '\t') read -r user pass; do
-  [ -n "$user" ] || continue
-  home=/var/mail/$user
-  mkdir -p "$home"
-  if ! id "$user" >/dev/null 2>&1; then
-    useradd -M -u "$uid" -d "$home" -s /usr/sbin/nologin "$user"
-  fi
-  gid=$(id -g "$user")
-  uid_now=$(id -u "$user")
-  "$USERDB" "$user" set "uid=$uid_now" "gid=$gid" "home=$home" "mail=$home/Maildir" >/dev/null
-  printf '%s\n' "$pass" | "$USERDBPW" -md5 | "$USERDB" "$user" set systempw >/dev/null
-  if [ ! -d "$home/Maildir" ]; then
-    "$MAILDIRMAKE" "$home/Maildir"
-  fi
-  chown -R "$user:$user" "$home"
-  uid=$((uid + 1))
-done < /tmp/base-users
-rm -f /tmp/base-users
-"$MAKEUSERDB"
 if [ -x /etc/init.d/courier-authdaemon ]; then
   /etc/init.d/courier-authdaemon start
 elif [ -x /etc/init.d/courier-auth ]; then
   /etc/init.d/courier-auth start
+else
+  echo "courier authdaemon missing" >&2
+  exit 1
 fi
 if [ -x /etc/init.d/courier-imap ]; then
   /etc/init.d/courier-imap start
@@ -1128,8 +1033,12 @@ elif [ -x /usr/lib/courier-imap/libexec/imapd.rc ]; then
   /usr/lib/courier-imap/libexec/imapd.rc start
 elif [ -x /etc/init.d/courier-imapd ]; then
   /etc/init.d/courier-imapd start
+else
+  echo "courier imap missing" >&2
+  exit 1
 fi
 exec sleep infinity
+
 EOF
 chmod 755 "$CO_BUILD/entrypoint.sh"
 cat > "$CO_BUILD/Dockerfile" <<'EOF'
