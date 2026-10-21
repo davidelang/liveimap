@@ -462,15 +462,12 @@ if [ "${1:-}" = --recreate ]; then
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$ST_ADMIN_FILE"
         umask 022
       fi
-      ST_ADMIN_PASS=$(cat "$ST_ADMIN_FILE")
       create_from_seed stalwart-dev \
-        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:${cp_stalwartdev_imap}" \
         -p "${2}:${cp_stalwartdev_imaps}" \
         -p "${3}:${cp_stalwartdev_managesieve}" \
         -p "${4}:${cp_stalwartdev_https}" \
         -p "${5}:${cp_stalwartdev_submission}"
-      unset ST_ADMIN_PASS
       {
         printf 'stalwart-dev-imap\t%s\t%s\tliveimap-stalwart-dev\n' "$1" "$cp_stalwartdev_imap"
         printf 'stalwart-dev-imaps\t%s\t%s\tliveimap-stalwart-dev\n' "$2" "$cp_stalwartdev_imaps"
@@ -953,18 +950,12 @@ assign_cports liveimap-cyrus-3137
 create_from_seed dovecot-dev \
   -p "${DV_IMAP}:${cp_dovecotdev_imap}"
 
-umask 007
-ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-printf '%s\n' "$ST_ADMIN_PASS" > "$ST_ADMIN_FILE"
-umask 022
 create_from_seed stalwart-dev \
-  -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
   -p "${ST_IMAP}:${cp_stalwartdev_imap}" \
   -p "${ST_IMAPS}:${cp_stalwartdev_imaps}" \
   -p "${ST_SIEVE}:${cp_stalwartdev_managesieve}" \
   -p "${ST_HTTPS}:${cp_stalwartdev_https}" \
   -p "${ST_SUB}:${cp_stalwartdev_submission}"
-unset ST_ADMIN_PASS
 
 ready=0
 i=0

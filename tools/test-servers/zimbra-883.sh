@@ -6,7 +6,7 @@ set +x
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 stop_zimbra() {
-  docker stop liveimap-zimbra-883 >/dev/null 2>&1 || true
+  docker stop liveimap-zimbra-883 || exit 1
 }
 trap stop_zimbra EXIT INT TERM
 
@@ -42,9 +42,9 @@ name = "liveimap-zimbra-883"
 image = "liveimap-seed-zimbra-883"
 host = "127.0.0.1"
 domain = os.environ.get("ZIMBRA_DEFAULT_DOMAIN") or ""
-gen = os.path.join(root, "sandbox/test-servers/generated")
+gen = os.path.join(root, "tools/test-servers/generated")
 ports_path = os.path.join(gen, "local-ports.tsv")
-accounts_path = os.path.join(root, "sandbox/test-servers/seed/accounts.tsv")
+accounts_path = os.path.join(root, "tools/test-servers/seed/accounts.tsv")
 out_path = os.path.join(gen, "zimbra-883.txt")
 setup_keys = (
     "TZDATA_AREA",
@@ -356,16 +356,10 @@ def zimbra_create(imap_port, https_port, admin_port):
     cmd = [
         "docker", "create",
         "--name", name,
-        "--hostname", domain,
-        "--restart", "no",
-        "--entrypoint", "/zimbra/init",
-        "-p", "%s:%d:%d" % (host, imap_port, imap_c),
-        "-p", "%s:%d:%d" % (host, https_port, 443),
-        "-p", "%s:%d:%d" % (host, admin_port, admin_c),
+        "-p", "%d:%d" % (imap_port, imap_c),
+        "-p", "%d:%d" % (admin_port, admin_c),
+        image,
     ]
-    for key in setup_keys:
-        cmd.extend(["-e", key])
-    cmd.append(image)
     proc = run(cmd, timeout=600, env=os.environ.copy())
     if proc.returncode != 0:
         err = redact((proc.stderr or "") + (proc.stdout or ""))

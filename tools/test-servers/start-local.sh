@@ -386,15 +386,12 @@ if [ "${1:-}" = --recreate ]; then
         stalwart-managesieve:${cp_stalwart_managesieve}:liveimap-stalwart \
         stalwart-https:${cp_stalwart_https}:liveimap-stalwart \
         stalwart-submission:${cp_stalwart_submission}:liveimap-stalwart)
-      ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
       create_from_seed stalwart \
-        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:${cp_stalwart_imap}" \
         -p "${2}:${cp_stalwart_imaps}" \
         -p "${3}:${cp_stalwart_managesieve}" \
         -p "${4}:${cp_stalwart_https}" \
         -p "${5}:${cp_stalwart_submission}"
-      unset ST_ADMIN_PASS
       {
         printf 'stalwart-imap\t%s\t%s\tliveimap-stalwart\n' "$1" "$cp_stalwart_imap"
         printf 'stalwart-imaps\t%s\t%s\tliveimap-stalwart\n' "$2" "$cp_stalwart_imaps"
@@ -480,16 +477,13 @@ ST_HTTPS=$4
 ST_SUB=$5
 
 require_seed_image stalwart
-ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 assign_cports liveimap-stalwart
 create_from_seed stalwart \
-  -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
   -p "${ST_IMAP}:${cp_stalwart_imap}" \
   -p "${ST_IMAPS}:${cp_stalwart_imaps}" \
   -p "${ST_SIEVE}:${cp_stalwart_managesieve}" \
   -p "${ST_HTTPS}:${cp_stalwart_https}" \
   -p "${ST_SUB}:${cp_stalwart_submission}"
-unset ST_ADMIN_PASS
 
 ready=0
 i=0

@@ -537,7 +537,6 @@ setfacl -m u:1000:r "$GEN/dovecot-245/passwd" "$GEN/dovecot-245/auth.conf" "$GEN
 create_from_seed dovecot-245 \
   -p "${dv_imap}:${cp_dovecot245_imap}" \
   -p "${dv_sub}:${cp_dovecot245_submission}"
-docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"
 }
 
 # --recreate-dovecot-245 is the same replace as --recreate dovecot-245.
@@ -550,17 +549,6 @@ if [ "${1:-}" = --reset ]; then
     exit 1
   fi
   reset_from_seed "$2"
-  if [ "$2" = dovecot-245 ]; then
-    gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
-    if [ -z "$gateway" ]; then
-      echo "ERROR: no gateway on the docker bridge network" >&2
-      exit 1
-    fi
-    relay_port=$(sink_port)
-    mkdir -p "$GEN/dovecot-245"
-    printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$GEN/dovecot-245/relay.conf"
-    docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"
-  fi
   exit 0
 fi
 if [ "${1:-}" = --recreate ]; then
@@ -589,15 +577,12 @@ if [ "${1:-}" = --recreate ]; then
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$ST_ADMIN_FILE"
         umask 022
       fi
-      ST_ADMIN_PASS=$(cat "$ST_ADMIN_FILE")
       create_from_seed stalwart-01625 \
-        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:${cp_stalwart01625_imap}" \
         -p "${2}:${cp_stalwart01625_imaps}" \
         -p "${3}:${cp_stalwart01625_managesieve}" \
         -p "${4}:${cp_stalwart01625_https}" \
         -p "${5}:${cp_stalwart01625_submission}"
-      unset ST_ADMIN_PASS
       {
         printf 'stalwart01625-imap\t%s\t%s\tliveimap-stalwart-01625\n' "$1" "$cp_stalwart01625_imap"
         printf 'stalwart01625-imaps\t%s\t%s\tliveimap-stalwart-01625\n' "$2" "$cp_stalwart01625_imaps"
@@ -1089,18 +1074,12 @@ assign_cports liveimap-cyrus-3124
 assign_cports liveimap-courier-606
 create_dovecot_245 "$DV_IMAP" "$DV_SUB"
 
-umask 007
-ST_ADMIN_PASS=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-printf '%s\n' "$ST_ADMIN_PASS" > "$ST_ADMIN_FILE"
-umask 022
 create_from_seed stalwart-01625 \
-  -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
   -p "${ST_IMAP}:${cp_stalwart01625_imap}" \
   -p "${ST_IMAPS}:${cp_stalwart01625_imaps}" \
   -p "${ST_SIEVE}:${cp_stalwart01625_managesieve}" \
   -p "${ST_HTTPS}:${cp_stalwart01625_https}" \
   -p "${ST_SUB}:${cp_stalwart01625_submission}"
-unset ST_ADMIN_PASS
 
 ready=0
 i=0

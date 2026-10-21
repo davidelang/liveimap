@@ -1032,15 +1032,12 @@ if [ "${1:-}" = --recreate ]; then
         python3 -c 'import secrets; print(secrets.token_hex(16))' > "$admin"
         umask 022
       fi
-      ST_ADMIN_PASS=$(cat "$admin")
       create_from_seed stalwart-0155 \
-        -e "STALWART_RECOVERY_ADMIN=admin:${ST_ADMIN_PASS}" \
         -p "${1}:${cp_stalwart0155_imap}" \
         -p "${2}:${cp_stalwart0155_imaps}" \
         -p "${3}:${cp_stalwart0155_managesieve}" \
         -p "${4}:${cp_stalwart0155_https}" \
         -p "${5}:${cp_stalwart0155_submission}"
-      unset ST_ADMIN_PASS
       {
         printf 'stalwart015-imap\t%s\t%s\tliveimap-stalwart-0155\n' "$1" "${cp_stalwart0155_imap}"
         printf 'stalwart015-imaps\t%s\t%s\tliveimap-stalwart-0155\n' "$2" "${cp_stalwart0155_imaps}"

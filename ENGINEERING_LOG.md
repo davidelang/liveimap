@@ -3507,3 +3507,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A lab mount blocks, and lab-ready stops at the first problem.
 
 ## 2026-10-20 - The non-volume lab images are built from scratch.
+
+## 2026-10-20 - Dovecot 2.4.5, Stalwart, and Zimbra images have no volume.

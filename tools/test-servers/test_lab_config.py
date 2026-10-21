@@ -225,7 +225,7 @@ assert "/entrypoint.sh" in before_commit
 assert "|| true" not in snap
 assert "draw_ports 10" in latest
 assert "draw_ports 11" not in latest
-assert 'docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"' in latest
+assert 'docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovecot/conf.d/relay.conf"' not in latest
 assert "fake-smtp-sink:*:host" not in latest
 
 # Follow-up 2 edges. Text only; this does not run docker or a start script.
@@ -443,7 +443,7 @@ reset_z = py_function(zimbra, "reset_zimbra")
 assert reset_z.find("require_seed_image") < reset_z.find('"docker", "rm"')
 assert "build-seed-image zimbra-883" in py_function(zimbra, "require_seed_image")
 builder = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
-assert "unknown server" in builder and "no from-scratch builder" in builder
+assert "unknown server" in builder
 for server in lab.SEED_SERVERS:
     assert server in builder, server
 assert len(lab.SEED_SERVERS) == 19
@@ -467,18 +467,13 @@ phase2 = (
     "cyrus-22", "cyrus-24", "cyrus-25", "cyrus-36",
     "dovecot-10", "dovecot-12", "dovecot-22", "courier-50", "uwimap",
 )
-deferred = "dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883"
-assert deferred in builder
-assert "no from-scratch builder" in builder
+assert "no from-scratch builder" not in builder
 assert "type=secret,id=accounts" in builder
 assert "VOLUME" not in builder
 assert "|| true" not in builder
 assert "2>/dev/null" not in builder
 for server in phase2:
     assert server in builder, server
-    for line in builder.splitlines():
-        if "no from-scratch builder" in line or line.strip().startswith(deferred):
-            assert server not in line, line
 for line in builder.splitlines():
     if "COPY" in line:
         assert "accounts.tsv" not in line, line
@@ -505,4 +500,42 @@ for path, marker in (
     body = text[at:end]
     assert "/run/liveimap/accounts.tsv" not in body, marker
     assert "apt-get" not in body, marker
+
+# Phase 3 edges 8-10. Text only; this does not run docker or build-seed-image.
+dove = builder.split("# dovecot-245-build", 1)[1].split("# end dovecot-245-build", 1)[0]
+assert dove.find("fake-smtp-sink") < dove.find("open_build"), "sink row before another port"
+assert "VOLUME" not in builder
+assert "FROM dovecot/dovecot:2.4.5 AS upstream" in dove
+assert "\nFROM dovecot/dovecot:2.4.5\n" not in dove
+assert "FROM debian:bookworm-slim" in dove
+assert "submission_relay_host = %s" in dove
+assert "submission_relay_port = %s" in dove
+for line in dove.splitlines():
+    if "submission_relay_host = " in line and "%s" not in line:
+        raise AssertionError(line)
+assert "client-cert-install.sh" in dove
+for name in ("start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh"):
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    assert "STALWART_RECOVERY_ADMIN=admin" not in text, name
+assert "upstream=stalwartlabs/stalwart:v0.16\n" in builder
+assert "upstream=stalwartlabs/stalwart:v0.16.25\n" in builder
+assert "upstream=stalwartlabs/stalwart:v0.15.5\n" in builder
+assert "FROM $upstream AS upstream" in builder
+assert "liveimap-stalwart-dev:phase1" in builder
+assert "stalwart-accounts.sh" in builder
+zcreate = py_function(zimbra, "zimbra_create")
+assert "-e" not in zcreate
+assert "--hostname" not in zcreate
+assert "127.0.0.1" not in zcreate
+assert "sandbox" not in zcreate
+assert "443" not in zcreate
+assert "tools/test-servers/generated" in zimbra
+assert "tools/test-servers/seed/accounts.tsv" in zimbra
+assert "missing liveimap-zimbra-883:lan" in builder
+assert "FROM liveimap-zimbra-883:lan AS upstream" in builder
+assert "zimbra-tls.sh" in builder
+stop_fn = function_body(zimbra, "stop_zimbra")
+assert "|| true" not in stop_fn
+assert "2>/dev/null" not in stop_fn
+assert "docker stop liveimap-zimbra-883" in stop_fn
 print("ok")

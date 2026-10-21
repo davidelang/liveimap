@@ -15,11 +15,7 @@ CA="$DIR/generated/ca"
 SEED="$DIR/seed/accounts.tsv"
 SUMS="$DIR/seed/corpus-v1.sums"
 case "$server" in
-  cyrus-3124|courier-606|cyrus-3137|dovecot-dev|cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap)
-    ;;
-  dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
-    echo "no from-scratch builder for $server" >&2
-    exit 1
+  cyrus-3124|courier-606|cyrus-3137|dovecot-dev|cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
     ;;
   *)
     echo "unknown server $server" >&2
@@ -43,6 +39,414 @@ if [ ! -f "$SUMS" ]; then
 fi
 
 trap 'docker rm -f "liveimap-build-$server"; exit 1' EXIT
+
+prepare_volume_work() {
+  work="$DIR/generated/build-seed/$server"
+  rm -rf "$work"
+  mkdir -p "$work/certs"
+  cp "$CA/server.crt" "$work/certs/server.crt"
+  cp "$CA/server.key" "$work/certs/server.key"
+  cp "$CA/ca.crt" "$work/certs/ca.crt"
+  cp "$CA/chain.crt" "$work/certs/chain.crt"
+}
+
+open_build() {
+  imap_port=$(cport "$server" imap)
+  if docker inspect "liveimap-build-$server" >/dev/null; then
+    docker rm -f "liveimap-build-$server"
+  fi
+  docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+  docker start "liveimap-build-$server"
+  published=$(docker port "liveimap-build-$server" "$imap_port")
+  host_port=${published##*:}
+  lab_host=$(awk -F= '$1 == "LAB_BIND" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
+  case "$lab_host" in
+    "")
+      echo "LAB_BIND missing" >&2
+      exit 1
+      ;;
+  esac
+}
+
+close_build() {
+  python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
+  docker stop "liveimap-build-$server"
+  manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
+  docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
+  docker rm -f "liveimap-build-$server"
+}
+
+# dovecot-245-build
+build_dovecot_245() {
+  ports_file="$DIR/generated/local-ports.tsv"
+  count=0
+  if [ -f "$ports_file" ]; then
+    count=$(awk -F '\t' '$1 == "fake-smtp-sink" { n++ } END { print n + 0 }' "$ports_file")
+  fi
+  if [ "$count" -eq 0 ]; then
+    mkdir -p "$DIR/generated"
+    cat > "$DIR/generated/draw-one-port.py" <<'PY'
+import random
+import socket
+import subprocess
+import sys
+
+path = sys.argv[1]
+used = set()
+try:
+    handle = open(path, encoding="utf-8")
+except FileNotFoundError:
+    handle = None
+if handle is not None:
+    for line in handle:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 2 and parts[1].isdigit():
+            used.add(int(parts[1]))
+out = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
+busy = set()
+for line in out.splitlines():
+    parts = line.split()
+    if len(parts) < 4:
+        continue
+    got = parts[3].rpartition(":")[2]
+    if got.isdigit():
+        busy.add(int(got))
+for _n in range(400):
+    port = random.randint(20000, 39999)
+    if port in used or port in busy:
+        continue
+    sock = socket.socket()
+    try:
+        sock.bind(("", port))
+    except OSError:
+        sock.close()
+        continue
+    sock.close()
+    print(port)
+    sys.exit(0)
+sys.exit(1)
+PY
+    port=$(python3 "$DIR/generated/draw-one-port.py" "$ports_file")
+    printf 'fake-smtp-sink\t%s\t%s\thost\n' "$port" "$port" >> "$ports_file"
+  elif [ "$count" -ne 1 ]; then
+    echo "fake-smtp-sink row missing in $ports_file" >&2
+    exit 1
+  else
+    port=$(awk -F '\t' '$1 == "fake-smtp-sink" { print $2; exit }' "$ports_file")
+  fi
+  case "$port" in
+    ''|*[!0-9]*)
+      echo "fake-smtp-sink row missing in $ports_file" >&2
+      exit 1
+      ;;
+  esac
+  relay_port=$port
+  gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+  if [ -z "$gateway" ]; then
+    echo "docker bridge gateway missing" >&2
+    exit 1
+  fi
+  prepare_volume_work
+  printf 'submission_relay_host = %s\nsubmission_relay_port = %s\nsubmission_relay_trusted = yes\n' "$gateway" "$relay_port" > "$work/relay.conf"
+  cat > "$work/liveimap-setup" <<'EOF'
+#!/bin/sh
+set -eu
+if [ ! -f /run/secrets/accounts ]; then
+  echo "accounts secret missing" >&2
+  exit 1
+fi
+mkdir -p /etc/dovecot/conf.d /srv/vmail
+umask 027
+: > /etc/dovecot/passwd
+umask 022
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    ""|user*) continue ;;
+  esac
+  user=$(printf '%s' "$line" | cut -f1)
+  pass=$(printf '%s' "$line" | cut -f2)
+  profile=$(printf '%s' "$line" | cut -f3)
+  if [ "$profile" != base ]; then
+    continue
+  fi
+  printf '%s:{PLAIN}%s\n' "$user" "$pass" >> /etc/dovecot/passwd
+  mkdir -p "/srv/vmail/$user/Maildir"
+done < /run/secrets/accounts
+chmod 640 /etc/dovecot/passwd
+cat > /etc/dovecot/auth.conf <<'CFG'
+passdb passwd-file {
+  passwd_file_path = /etc/dovecot/passwd
+}
+userdb static {
+  fields {
+    uid = vmail
+    gid = vmail
+    home = /srv/vmail/%{user}
+  }
+}
+CFG
+conf=/etc/dovecot/dovecot.conf
+if [ ! -f "$conf" ]; then
+  conf=/usr/local/etc/dovecot/dovecot.conf
+fi
+if [ -f "$conf" ]; then
+  printf '%s\n' '!include /etc/dovecot/auth.conf' '!include /etc/dovecot/conf.d/relay.conf' '# lab-tls' 'ssl = yes' 'ssl_server_cert_file = /etc/lab/chain.crt' 'ssl_server_key_file = /etc/lab/server.key' >> "$conf"
+fi
+EOF
+  chmod 755 "$work/liveimap-setup"
+  cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+exec dovecot -F
+EOF
+  chmod 755 "$work/entrypoint.sh"
+  cat > "$work/Dockerfile" <<'EOF'
+# syntax=docker/dockerfile:1
+FROM dovecot/dovecot:2.4.5 AS upstream
+FROM debian:bookworm-slim
+COPY --from=upstream / /
+COPY certs/ /etc/lab/
+COPY relay.conf /etc/dovecot/conf.d/relay.conf
+COPY liveimap-setup /usr/local/bin/liveimap-setup
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
+RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+  DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+  open_build
+  "$DIR/client-cert-install.sh" "liveimap-build-$server"
+  close_build
+}
+# end dovecot-245-build
+
+build_stalwart() {
+  case "$server" in
+    stalwart)
+      upstream=stalwartlabs/stalwart:v0.16
+      admin_file="$DIR/generated/stalwart-admin.txt"
+      ;;
+    stalwart-01625)
+      upstream=stalwartlabs/stalwart:v0.16.25
+      admin_file="$DIR/generated/stalwart-01625-admin.txt"
+      ;;
+    stalwart-dev)
+      upstream=liveimap-stalwart-dev:phase1
+      admin_file="$DIR/generated/stalwart-dev-admin.txt"
+      if ! docker image inspect "$upstream" >/dev/null; then
+        echo "missing $upstream" >&2
+        exit 1
+      fi
+      ;;
+    stalwart-0155)
+      upstream=stalwartlabs/stalwart:v0.15.5
+      admin_file="$DIR/generated/stalwart-0155-admin.txt"
+      ;;
+  esac
+  if [ ! -s "$admin_file" ]; then
+    umask 077
+    python3 -c 'import secrets; print(secrets.token_hex(16))' > "$admin_file"
+    umask 022
+  fi
+  chmod 600 "$admin_file"
+  prepare_volume_work
+  token=$(cat "$admin_file")
+  printf 'STALWART_RECOVERY_ADMIN=admin:%s\n' "$token" > "$work/stalwart.env"
+  chmod 600 "$work/stalwart.env"
+  cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+set -a
+. /etc/lab/stalwart.env
+set +a
+if [ -x /usr/local/bin/stalwart-mail ]; then
+  exec /usr/local/bin/stalwart-mail
+elif [ -x /usr/local/bin/stalwart ]; then
+  exec /usr/local/bin/stalwart
+elif [ -x /opt/stalwart/stalwart-mail ]; then
+  exec /opt/stalwart/stalwart-mail
+else
+  echo "stalwart binary missing" >&2
+  exit 1
+fi
+EOF
+  chmod 755 "$work/entrypoint.sh"
+  cat > "$work/Dockerfile" <<EOF
+# syntax=docker/dockerfile:1
+FROM $upstream AS upstream
+FROM debian:bookworm-slim
+COPY --from=upstream / /
+COPY certs/ /etc/lab/
+COPY stalwart.env /etc/lab/stalwart.env
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+  DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  open_build
+  docker commit --change "ENV STALWART_RECOVERY_ADMIN=admin:$token" "liveimap-build-$server" "liveimap-seed-stage-$server"
+  docker stop "liveimap-build-$server"
+  docker rm -f "liveimap-build-$server"
+  open_build
+  ready=0
+  i=0
+  while [ "$i" -lt 120 ]; do
+    if docker exec "liveimap-build-$server" /bin/sh -c 'curl -fsS -o /dev/null http://localhost:8080/healthz/live'; then
+      ready=1
+      break
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  if [ "$ready" -ne 1 ]; then
+    echo "stalwart management listener did not open" >&2
+    exit 1
+  fi
+  docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
+{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"[::]:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
+JSON
+  if ! grep -q '"created"' "$work/listener.json"; then
+    echo "stalwart imap listener was not created" >&2
+    exit 1
+  fi
+  "$DIR/stalwart-accounts.sh" "liveimap-build-$server"
+  close_build
+}
+
+build_zimbra() {
+  if ! docker image inspect liveimap-zimbra-883:lan >/dev/null; then
+    echo "missing liveimap-zimbra-883:lan" >&2
+    exit 1
+  fi
+  prepare_volume_work
+  python3 - "$DIR/zimbra-883.sh" "$work/zimbra.env" <<'PY'
+import sys
+src, dest = sys.argv[1], sys.argv[2]
+lines = []
+for line in open(src, encoding="utf-8"):
+    if line.startswith("python3 "):
+        break
+    if line.startswith("export ") and "=" in line:
+        lines.append(line[len("export "):].rstrip("\n"))
+if not lines:
+    sys.stderr.write("zimbra setup values missing\n")
+    sys.exit(1)
+with open(dest, "w", encoding="utf-8") as handle:
+    for item in lines:
+        handle.write(item + "\n")
+PY
+  chmod 600 "$work/zimbra.env"
+  cat > "$work/entrypoint.sh" <<'EOF'
+#!/bin/sh
+set -eu
+set -a
+. /etc/lab/zimbra.env
+set +a
+exec /zimbra/init
+EOF
+  chmod 755 "$work/entrypoint.sh"
+  cat > "$work/Dockerfile" <<'EOF'
+# syntax=docker/dockerfile:1
+FROM liveimap-zimbra-883:lan AS upstream
+FROM debian:bookworm-slim
+COPY --from=upstream / /
+COPY zimbra.env /etc/lab/zimbra.env
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 600 /etc/lab/zimbra.env && chmod 755 /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+  DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  open_build
+  python3 - "$DIR/zimbra-883.sh" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
+import csv
+import socket
+import subprocess
+import sys
+import time
+
+script, seed, name, host, port_s = sys.argv[1:]
+port = int(port_s)
+domain = ""
+for line in open(script, encoding="utf-8"):
+    if line.startswith("python3 "):
+        break
+    if line.startswith("export ZIMBRA_DEFAULT_DOMAIN="):
+        domain = line.split("=", 1)[1].strip()
+if not domain:
+    sys.stderr.write("zimbra setup values missing\n")
+    sys.exit(1)
+users = []
+with open(seed, newline="", encoding="utf-8") as handle:
+    for row in csv.DictReader(handle, delimiter="\t"):
+        if row.get("profile") == "base":
+            users.append((row["user"], row["password"]))
+deadline = time.time() + 600
+opened = False
+while time.time() < deadline:
+    try:
+        sock = socket.create_connection((host, port), 5)
+        sock.close()
+        opened = True
+        break
+    except OSError:
+        time.sleep(2)
+if not opened:
+    sys.stderr.write("zimbra imap did not open\n")
+    sys.exit(1)
+body = (
+    "set +x\nexport HOME=/opt/zimbra\nexport PATH=/opt/zimbra/bin:$PATH\n"
+    "if zmprov gad | grep -qx '%s'; then exit 0; fi\nzmprov cd '%s'\n"
+) % (domain, domain)
+proc = subprocess.run(
+    ["docker", "exec", "-i", "-u", "zimbra", name, "/bin/bash", "-s"],
+    input=body, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+)
+text = (proc.stdout or "") + (proc.stderr or "")
+if proc.returncode != 0 and "already exists" not in text.lower():
+    sys.stderr.write("domain create failed\n")
+    sys.exit(1)
+for user, secret in users:
+    addr = "%s@%s" % (user, domain)
+    env = dict(**{k: v for k, v in __import__("os").environ.items()})
+    env["LIVEIMAP_ADDR"] = addr
+    env["LIVEIMAP_ACCOUNT_PW"] = secret
+    inner = (
+        "set +x\nexport HOME=/opt/zimbra\nexport PATH=/opt/zimbra/bin:$PATH\n"
+        "export LANG=C.UTF-8\nexport LC_ALL=C.UTF-8\n"
+        'zmprov ca "$LIVEIMAP_ADDR" "$LIVEIMAP_ACCOUNT_PW"\n'
+        "status=$?\n"
+        'if [ "$status" -ne 0 ]; then\n'
+        '  zmprov sp "$LIVEIMAP_ADDR" "$LIVEIMAP_ACCOUNT_PW"\n'
+        "fi\n"
+    )
+    proc = subprocess.run(
+        ["docker", "exec", "-i", "-u", "zimbra", "-e", "LIVEIMAP_ADDR", "-e", "LIVEIMAP_ACCOUNT_PW", name, "/bin/bash", "-s"],
+        input=inner, text=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    text = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0 and "ACCOUNT_EXISTS" not in text and "already exists" not in text.lower():
+        sys.stderr.write("account create failed\n")
+        sys.exit(1)
+PY
+  "$DIR/zimbra-tls.sh" "liveimap-build-$server"
+  close_build
+}
+
+build_volume_servers() {
+  case "$server" in
+    dovecot-245) build_dovecot_245 ;;
+    stalwart|stalwart-01625|stalwart-dev|stalwart-0155) build_stalwart ;;
+    zimbra-883) build_zimbra ;;
+  esac
+}
+
+case "$server" in
+  dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
+    build_volume_servers
+    trap - EXIT
+    exit 0
+    ;;
+esac
 
 work="$DIR/generated/build-seed/$server"
 rm -rf "$work"
