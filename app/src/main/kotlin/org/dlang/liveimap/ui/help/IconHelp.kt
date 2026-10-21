@@ -150,19 +150,27 @@ fun HelpDropdownMenuItem(
     var open by remember { mutableStateOf(false) }
     val currentClick by rememberUpdatedState(onClick)
     val currentEnabled by rememberUpdatedState(enabled)
-    DropdownMenuItem(
-        text = text,
-        onClick = onClick,
-        modifier = modifier.pointerInput(enabled) {
-            // Consumes the down, so this onTap is the click. A long press does not call onClick.
-            detectTapGestures(
-                onTap = { if (currentEnabled) currentClick() },
-                onLongPress = { if (currentEnabled) open = true },
-            )
-        },
-        enabled = enabled,
-        leadingIcon = leadingIcon,
-    )
+    Box {
+        DropdownMenuItem(
+            text = text,
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            leadingIcon = leadingIcon,
+        )
+        // Passed modifiers sit outside the item's clickable, which consumes the down on Main
+        // before they run. This overlay is the hit target, so the long press is delivered here.
+        Box(
+            Modifier
+                .matchParentSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { if (currentEnabled) currentClick() },
+                        onLongPress = { if (currentEnabled) open = true },
+                    )
+                },
+        )
+    }
     if (open) {
         IconHelpDialog(
             title = label,
