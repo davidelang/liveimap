@@ -299,7 +299,7 @@ def check_published(container):
             if not line.strip() or line.startswith("#"):
                 continue
             fields = line.rstrip("\n").split("\t")
-            if len(fields) == 3 and fields[2].isdigit() and fields[0] == server:
+            if len(fields) >= 3 and fields[2].isdigit() and fields[0] == server:
                 wanted.append((fields[1], int(fields[2])))
     if not wanted:
         return server + " no servers.tsv row"
@@ -443,7 +443,7 @@ def _server_rows(text):
         if not line.strip() or line.startswith("#"):
             continue
         fields = line.rstrip("\n").split("\t")
-        if len(fields) == 3 and fields[2].isdigit():
+        if len(fields) >= 3 and fields[2].isdigit():
             rows.append((fields[0], fields[1], int(fields[2])))
     return rows
 
@@ -493,6 +493,48 @@ def seed_problem(server, image_inspect):
     if not labels.get("liveimap.seed-manifest"):
         return "missing liveimap.seed-manifest " + fix
     return ""
+
+
+def _imap_domain_columns(name):
+    path = os.path.join(HERE, "servers.tsv")
+    try:
+        handle = open(path, encoding="utf-8")
+    except OSError:
+        return "", ""
+    with handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 3 or not fields[2].isdigit() or fields[0] != name or fields[1] != "imap":
+                continue
+            login_domain = fields[3] if len(fields) > 3 else ""
+            domain_login = fields[4] if len(fields) > 4 else ""
+            return login_domain, domain_login
+    return "", ""
+
+
+def _refused_login(reply):
+    if not reply or reply == "OK":
+        return False
+    return re.search(
+        r"(?:^|\s)(?:NO|BAD)(?:\s|\[|$)|AUTHENTICATIONFAILED|authentication failed|"
+        r"LOGIN failed|Invalid login|invalid credentials",
+        reply,
+        re.I,
+    ) is not None
+
+
+def domain_login_problem(s, reply):
+    """'' when reply matches the imap row. Otherwise one string naming the server and the reply."""
+    name = s["name"] if isinstance(s, dict) else str(s)
+    shown = _text(reply)
+    _login_domain, expect = _imap_domain_columns(name)
+    if expect == "accept" and shown == "OK":
+        return ""
+    if expect == "refuse" and _refused_login(shown):
+        return ""
+    return name + " " + shown
 
 
 def emulator_in_use():

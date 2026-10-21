@@ -11,7 +11,7 @@ def container_port(server, service):
             if not line.strip() or line.startswith("#"):
                 continue
             fields = line.rstrip("\n").split("\t")
-            if len(fields) != 3 or not fields[2].isdigit():
+            if len(fields) < 3 or not fields[2].isdigit():
                 continue
             if fields[0] == server and fields[1] == service:
                 return int(fields[2])

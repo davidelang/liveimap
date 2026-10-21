@@ -608,4 +608,56 @@ assert snap_py != -1 and snap_bare != -1 and snap_py < snap_bare < snap_commit
 snap_chunk = snap[snap_py:snap_commit]
 assert "zimbra-883" in snap[max(0, snap_py - 600):snap_py]
 assert "lab.USER" in snap_chunk and "***" in snap_chunk and "sys.exit(1)" in snap_chunk
+# Domain login. Text and the pure check. This does not run docker or regress.
+accept_names = {"cyrus-3124", "cyrus-3137", "cyrus-22", "cyrus-24", "cyrus-25", "cyrus-36", "zimbra-883"}
+imap_seen = set()
+for line in open(os.path.join(HERE, "servers.tsv"), encoding="utf-8"):
+    if not line.strip() or line.startswith("#"):
+        continue
+    fields = line.rstrip("\n").split("\t")
+    assert len(fields) >= 5 and fields[2].isdigit(), fields
+    if fields[1] != "imap":
+        assert fields[3] == "" and fields[4] == "", fields
+        continue
+    imap_seen.add(fields[0])
+    assert fields[4] in ("accept", "refuse"), fields
+    if fields[0] == "zimbra-883":
+        assert fields[3] == "zimbra.zcs-foss.test" and fields[4] == "accept"
+    else:
+        assert fields[3] == "LAB_MAIL_DOMAIN", fields
+        assert fields[4] == ("accept" if fields[0] in accept_names else "refuse"), fields
+assert accept_names <= imap_seen
+problem_fn = py_function(lab_py, "domain_login_problem")
+assert "sys.exit" not in problem_fn
+assert 'return ""' in problem_fn
+assert lab.domain_login_problem({"name": "cyrus-22"}, "OK") == ""
+assert lab.domain_login_problem({"name": "zimbra-883"}, "OK") == ""
+assert lab.domain_login_problem({"name": "dovecot-dev"}, "NO [AUTHENTICATIONFAILED] Authentication failed") == ""
+assert lab.domain_login_problem({"name": "uwimap"}, "NO LOGIN failed") == ""
+mismatch = lab.domain_login_problem({"name": "dovecot-dev"}, "OK")
+assert mismatch == "dovecot-dev OK"
+refused = lab.domain_login_problem({"name": "cyrus-36"}, "NO LOGIN failed")
+assert refused.startswith("cyrus-36 ") and "NO LOGIN failed" in refused
+other = lab.domain_login_problem({"name": "courier-50"}, "timed out")
+assert other == "courier-50 timed out"
+missing = lab.domain_login_problem({"name": "not-a-server"}, "OK")
+assert missing.startswith("not-a-server ") and "OK" in missing
+hidden = lab.domain_login_problem({"name": "zimbra-883"}, "NO " + lab.PASS)
+assert lab.PASS not in hidden and "***" in hidden and hidden.startswith("zimbra-883 ")
+check_fn = py_function(regress, "domain_login_check")
+assert "sys.exit" not in check_fn
+assert "domain_login_problem" in check_fn
+assert "needs LAB_MAIL_DOMAIN" in check_fn
+call = regress.find("problem = domain_login_check(s)")
+assert call != -1
+call_window = regress[call:call + 160]
+assert "stop(" in call_window and "VERDICT BLOCKED" in call_window
+assert "cyrus" + "_domain_user.py" not in regress
+assert "cyrus" + "_domain_user.py" not in builder
+cyrus_at = builder.find("cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)")
+sasl_at = builder.find("saslpasswd2", cyrus_at)
+assert cyrus_at != -1 and sasl_at != -1 and cyrus_at < sasl_at
+cyrus_block = builder[cyrus_at:sasl_at + 800]
+assert "virtdomains" in cyrus_block and "needs LAB_MAIL_DOMAIN" in cyrus_block
+assert "***" in cyrus_block
 print("ok")

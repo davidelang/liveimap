@@ -535,7 +535,7 @@ def published_ports():
         if not line.strip() or line.startswith("#"):
             continue
         fields = line.rstrip("\n").split("\t")
-        if len(fields) != 3 or not fields[2].isdigit():
+        if len(fields) < 3 or not fields[2].isdigit():
             continue
         cont = "liveimap-" + fields[0]
         if cont not in existing:
@@ -1049,6 +1049,29 @@ def start_fake_smtp():
             return ""
         time.sleep(0.1)
     return f"ai-fake-smtp.py gave no banner on {port} in 5s"
+
+
+def domain_login_reply(s, account):
+    import lab
+    caps = lab.plain_caps(s["imap"])
+    if caps and "LOGINDISABLED" in caps:
+        err = lab._starttls_login(s["imap"], account)
+        return "OK" if not err else err
+    return lab._plain_login_reply(s["imap"], account)
+
+
+def domain_login_check(s):
+    """'' or one string. A missing LAB_MAIL_DOMAIN is needs LAB_MAIL_DOMAIN."""
+    import lab
+    login_domain, expect = lab._imap_domain_columns(s["name"])
+    if login_domain == "LAB_MAIL_DOMAIN":
+        login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
+        if not login_domain:
+            return "needs LAB_MAIL_DOMAIN"
+    if not login_domain or not expect:
+        return lab.domain_login_problem(s, "")
+    account = lab.USER.split("@")[0] + "@" + login_domain
+    return lab.domain_login_problem(s, domain_login_reply(s, account))
 
 
 def probe_servers(used, by_name):
@@ -1862,6 +1885,9 @@ def main():
             err = probe_servers([name], by_name)
             if err:
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
+            problem = domain_login_check(s)
+            if problem:
+                stop(f"VERDICT BLOCKED {problem}", suites, names, [])
             blocked, drifted = verify_one(s, skipped)
             if blocked:
                 stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])

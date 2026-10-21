@@ -1166,15 +1166,23 @@ case "$lab_host" in
     ;;
 esac
 case "$server" in
-  cyrus-*)
-    python3 - "liveimap-build-$server" "$lab_host" "$host_port" "$SEED" <<'PY'
+  cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)
+    mail_domain=$(awk -F= '$1 == "LAB_MAIL_DOMAIN" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
+    case "$mail_domain" in
+      "")
+        echo "needs LAB_MAIL_DOMAIN" >&2
+        exit 1
+        ;;
+    esac
+    python3 - "liveimap-build-$server" "$lab_host" "$host_port" "$SEED" "$mail_domain" <<'PY'
+import os
 import socket
 import ssl
 import subprocess
 import sys
 import time
 
-name, host, port_s, seed = sys.argv[1:]
+name, host, port_s, seed, domain = sys.argv[1:]
 port = int(port_s)
 admin = subprocess.check_output(["docker", "exec", name, "cat", "/etc/lab/cyrus-admin"], text=True).strip()
 sep = subprocess.check_output(["docker", "exec", name, "cat", "/etc/lab/mbox-sep"], text=True).strip()
@@ -1257,6 +1265,61 @@ for user in users:
     if not good:
         sys.stderr.write("mailbox create failed\n")
         sys.exit(1)
+if not domain:
+    sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
+    sys.exit(1)
+sys.path.insert(0, os.path.dirname(os.path.dirname(seed)))
+import lab
+local = lab.USER.split("@")[0]
+secret = lab.PASS
+account = local + "@" + domain
+proc = subprocess.run(
+    ["docker", "exec", name, "sh", "-c", "sed -i 's/^virtdomains: off/virtdomains: userid/' /etc/imapd.conf"],
+    capture_output=True, text=True,
+)
+if proc.returncode != 0:
+    sys.stderr.write("virtdomains\n")
+    sys.exit(1)
+proc = subprocess.run(
+    ["docker", "exec", "-i", name, "saslpasswd2", "-p", "-c", "-u", domain, local],
+    input=secret + "\n", capture_output=True, text=True,
+)
+if proc.returncode != 0:
+    err = ((proc.stdout or "") + (proc.stderr or "")).replace(secret, "***")
+    sys.stderr.write("saslpasswd2 failed\n" + err)
+    sys.exit(1)
+proc = subprocess.run(["docker", "restart", name], capture_output=True, text=True)
+if proc.returncode != 0:
+    sys.stderr.write("cyrus restart failed\n")
+    sys.exit(1)
+deadline = time.time() + 90
+imap = None
+greeting = ""
+while time.time() < deadline:
+    try:
+        imap = Imap()
+        greeting = imap.readline()
+    except OSError:
+        time.sleep(1)
+        continue
+    if "OK" in greeting:
+        break
+if imap is None or "OK" not in greeting:
+    sys.stderr.write("cyrus greeting missing OK\n")
+    sys.exit(1)
+if "LOGINDISABLED" in greeting:
+    imap.starttls()
+lines = imap.command('LOGIN cyrus "%s"' % admin)
+if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
+    sys.stderr.write("cyrus admin login failed\n")
+    sys.exit(1)
+mailbox = "user" + sep + account
+lines = imap.command("CREATE %s" % mailbox)
+text = " ".join(lines).lower()
+good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
+if not good:
+    sys.stderr.write("mailbox create failed\n")
+    sys.exit(1)
 PY
     ;;
 esac
