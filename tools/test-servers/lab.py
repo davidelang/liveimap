@@ -146,6 +146,90 @@ POLICY_REFUSED = re.compile(r"disabled on the clear-text port|PRIVACYREQUIRED|cl
                             r"plaintext authentication disallowed", re.I)
 
 
+def _text(value):
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    elif not isinstance(value, str):
+        value = str(value)
+    return value.replace(PASS, "***")
+
+
+def _close_imap(client):
+    if client is None:
+        return
+    try:
+        client.shutdown()
+    except Exception:
+        pass
+
+
+def _lab_ssl():
+    ctx = ssl._create_unverified_context()
+    try:
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+    except Exception:
+        pass
+    return ctx
+
+
+def _plain_login_reply(port):
+    import imaplib
+    client = None
+    try:
+        client = imaplib.IMAP4(LAB_HOST, port, timeout=20)
+        typ, _dat = client.login(USER, PASS)
+        return typ
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        return _text(arg)
+    finally:
+        _close_imap(client)
+
+
+def _starttls_login(port):
+    import imaplib
+    client = None
+    try:
+        client = imaplib.IMAP4(LAB_HOST, port, timeout=20)
+        client.starttls(_lab_ssl())
+        client.login(USER, PASS)
+        return ""
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        return _text(arg)
+    finally:
+        _close_imap(client)
+
+
+def classify_plain(caps, login_reply):
+    """StartTls, None, or one error string. Does not connect."""
+    if not caps:
+        return "no plaintext capability"
+    if "LOGINDISABLED" in caps:
+        return "StartTls"
+    if login_reply == "OK":
+        return None
+    reply = login_reply or ""
+    if (POLICY_REFUSED.search(reply) or "PRIVACYREQUIRED" in reply or "Cleartext" in reply
+            or "Plaintext" in reply or "disabled" in reply):
+        return "StartTls"
+    return 'unexpected login reply "' + reply + '"'
+
+
+def resolve_auto(port):
+    """StartTls, None, or one error string. Does not seed."""
+    caps = plain_caps(port)
+    reply = ""
+    if caps and "LOGINDISABLED" not in caps:
+        reply = _plain_login_reply(port)
+    kind = classify_plain(caps, reply)
+    if kind != "StartTls":
+        return None if kind is None else _text(kind)
+    err = _starttls_login(port)
+    return "StartTls" if not err else _text(err)
+
+
 def mode_caps(tls, port):
     """CAPABILITY before login in one TLS mode (lab only, certificate not verified)."""
     import imaplib, ssl

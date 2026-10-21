@@ -3511,3 +3511,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - Dovecot 2.4.5, Stalwart, and Zimbra images have no volume.
 
 ## 2026-10-20 - A test run no longer seeds mail, and Stalwart 0.15.5 starts its own binary.
+
+## 2026-10-20 - acclab chooses StartTls from the server, without seeding.

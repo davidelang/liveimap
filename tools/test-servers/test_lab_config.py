@@ -553,4 +553,35 @@ assert "/opt/stalwart/stalwart-mail" not in ep
 assert "/usr/local/bin/stalwart --init /opt/stalwart" in ep
 assert "--config /opt/stalwart/etc/config.toml" in ep
 assert "stalwart binary missing" in ep
+
+# acclab auto TLS edges 1-3. Fixture strings and source text; this does not run acclab or docker.
+assert lab.classify_plain("IMAP4rev1 LOGINDISABLED", "") == "StartTls"
+assert lab.classify_plain("IMAP4rev1 STARTTLS", "OK") is None
+assert lab.classify_plain("IMAP4rev1", "NO PRIVACYREQUIRED") == "StartTls"
+assert lab.classify_plain("", "") == "no plaintext capability"
+bad_reply = lab.classify_plain("IMAP4rev1", "NO [UNAVAILABLE]")
+assert isinstance(bad_reply, str) and bad_reply != "StartTls"
+assert "NO [UNAVAILABLE]" in bad_reply
+acc_auto = open(os.path.join(HERE, "acclab.py"), encoding="utf-8").read()
+assert "resolve_auto" in acc_auto
+assert "seed_corpus.py" not in acc_auto
+acc_lines = acc_auto.splitlines()
+auto_at = acc_lines.index('    if tls == "auto":')
+auto_end = auto_at + 1
+while auto_end < len(acc_lines) and (acc_lines[auto_end].startswith("        ") or acc_lines[auto_end].strip() == ""):
+    auto_end += 1
+auto_branch = "\n".join(acc_lines[auto_at:auto_end])
+assert "resolve_auto" in auto_branch
+for line in auto_branch.splitlines():
+    left, sep, right = line.partition("=")
+    if sep and "==" not in line and "!=" not in line:
+        assert "None" not in right, line
+resolve_src = py_function(lab_py, "resolve_auto")
+assert "print" not in resolve_src
+assert "stdout" not in resolve_src
+assert "seed_corpus.py" not in resolve_src
+assert "lab_imap.py" not in resolve_src
+for line in resolve_src.splitlines():
+    if "PASS" in line:
+        assert "***" in line, line
 print("ok")

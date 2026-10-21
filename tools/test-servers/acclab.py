@@ -12,6 +12,11 @@ try:
         sys.exit(1)
     time.sleep(5)
     if tls == "auto":
+        tls = lab.resolve_auto(s["imap"])
+        if isinstance(tls, str) and tls != "StartTls":
+            print(tls)
+            sys.exit(1)
+    if not isinstance(tls, str):
         tls = "None"
     def smtp():
         a = lab.smtp_args(s, tls)
