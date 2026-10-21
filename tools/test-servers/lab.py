@@ -173,12 +173,12 @@ def _lab_ssl():
     return ctx
 
 
-def _plain_login_reply(port):
+def _plain_login_reply(port, user):
     import imaplib
     client = None
     try:
         client = imaplib.IMAP4(LAB_HOST, port, timeout=20)
-        typ, _dat = client.login(USER, PASS)
+        typ, _dat = client.login(user, PASS)
         return typ
     except Exception as exc:
         arg = exc.args[0] if exc.args else exc
@@ -187,13 +187,13 @@ def _plain_login_reply(port):
         _close_imap(client)
 
 
-def _starttls_login(port):
+def _starttls_login(port, user):
     import imaplib
     client = None
     try:
         client = imaplib.IMAP4(LAB_HOST, port, timeout=20)
         client.starttls(_lab_ssl())
-        client.login(USER, PASS)
+        client.login(user, PASS)
         return ""
     except Exception as exc:
         arg = exc.args[0] if exc.args else exc
@@ -217,16 +217,17 @@ def classify_plain(caps, login_reply):
     return 'unexpected login reply "' + reply + '"'
 
 
-def resolve_auto(port):
+def resolve_auto(s):
     """StartTls, None, or one error string. Does not seed."""
-    caps = plain_caps(port)
+    caps = plain_caps(s["imap"])
+    user = user_for(s)
     reply = ""
     if caps and "LOGINDISABLED" not in caps:
-        reply = _plain_login_reply(port)
+        reply = _plain_login_reply(s["imap"], user)
     kind = classify_plain(caps, reply)
     if kind != "StartTls":
         return None if kind is None else _text(kind)
-    err = _starttls_login(port)
+    err = _starttls_login(s["imap"], user)
     return "StartTls" if not err else _text(err)
 
 

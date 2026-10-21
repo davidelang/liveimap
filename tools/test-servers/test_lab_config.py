@@ -584,4 +584,12 @@ assert "lab_imap.py" not in resolve_src
 for line in resolve_src.splitlines():
     if "PASS" in line:
         assert "***" in line, line
+# Auto probe logs in as the server user. Edges 1-3.
+for fn in ("_plain_login_reply", "_starttls_login"):
+    src = py_function(lab_py, fn)
+    assert "login(user, PASS)" in src
+    assert "login(USER, PASS)" not in src
+assert "user_for(s)" in resolve_src
+assert "resolve_auto(s)" in acc_auto
+assert "seed_corpus.py" not in acc_auto
 print("ok")

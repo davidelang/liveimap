@@ -3513,3 +3513,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - A test run no longer seeds mail, and Stalwart 0.15.5 starts its own binary.
 
 ## 2026-10-20 - acclab chooses StartTls from the server, without seeding.
+
+## 2026-10-20 - The auto probe logs in as the server user.
