@@ -506,6 +506,29 @@ JSON
 )
 case "$listener_json" in
   *'"created"'*) ;;
+  *notCreated*)
+    printf '%s' "$listener_json" | python3 -c 'import json,sys
+raw=sys.stdin.read()
+try:
+    data=json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(1)
+saw=False
+for item in data.get("methodResponses") or []:
+    if not isinstance(item, list) or len(item) < 2 or not isinstance(item[1], dict):
+        sys.exit(1)
+    not_created=item[1].get("notCreated") or {}
+    if not isinstance(not_created, dict):
+        sys.exit(1)
+    for err in not_created.values():
+        if not isinstance(err, dict) or err.get("type") != "alreadyExists":
+            sys.exit(1)
+        saw=True
+sys.exit(0 if saw else 1)' || {
+      echo "stalwart imap listener was not created" >&2
+      exit 1
+    }
+    ;;
   *)
     echo "stalwart imap listener was not created" >&2
     exit 1
