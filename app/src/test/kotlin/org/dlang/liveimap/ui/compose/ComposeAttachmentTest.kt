@@ -67,4 +67,16 @@ class ComposeAttachmentTest {
         assertEquals("AAA".encodeToByteArray().toList(), loaded.attachments[0].bytes.toList())
         assertEquals(listOf(9.toByte(), 8.toByte()), loaded.attachments[1].bytes.toList())
     }
+
+    @Test
+    fun storedCopyDoesNotRestoreTheSamePickedFile() {
+        val loadedRow = fileAttachmentRow("resume:0", "one.txt", "text/plain", "AAA".encodeToByteArray())
+        val heldRow = fileAttachmentRow("pick-1", "two.txt", "text/plain", "BBB".encodeToByteArray())
+        val loaded = listOf(loadedRow)
+        val held = listOf(heldRow)
+        assertEquals(listOf(loadedRow), restoreHeldPickedRows(true, loaded, held))
+        assertEquals(listOf(loadedRow, heldRow), restoreHeldPickedRows(false, loaded, held))
+        val sameKey = fileAttachmentRow("resume:0", "one.txt", "text/plain", "AAA".encodeToByteArray())
+        assertEquals(listOf(loadedRow), restoreHeldPickedRows(false, loaded, listOf(sameKey)))
+    }
 }

@@ -3545,3 +3545,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - A kept class may list only its empty clinit.
 
 ## 2026-10-21 - A new message can carry many attachments.
+
+## 2026-10-21 - A stored copy does not restore the same picked file.

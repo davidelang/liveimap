@@ -183,6 +183,15 @@ internal object PickedAttachmentHold {
     }
 }
 
+internal fun restoreHeldPickedRows(copyOwnsParts: Boolean, loaded: List<ForwardRow>, held: List<ForwardRow>): List<ForwardRow> {
+    if (copyOwnsParts) return loaded
+    val have = HashSet<String>()
+    for (row in loaded) have.add(row.key)
+    val extra = ArrayList<ForwardRow>()
+    for (row in held) if (have.add(row.key)) extra.add(row)
+    return if (extra.isEmpty()) loaded else loaded + extra
+}
+
 private class PickedBytes(val name: String, val type: String, val bytes: ByteArray?)
 
 private fun pickedDisplayName(resolver: ContentResolver, uri: Uri): String {
@@ -438,19 +447,21 @@ private fun ComposeLoaded(
         pickedKeyText = ""
     }
 
+    fun noteAssembledCopy(saved: Boolean) {
+        if (saved) releasePickedHold()
+    }
+
     fun appendHeldPickedRows() {
         val kept = ArrayList<String>()
-        val extra = ArrayList<ForwardRow>()
-        val have = HashSet<String>()
-        for (row in forwardRows) have.add(row.key)
+        val held = ArrayList<ForwardRow>()
         for (key in pickedKeys()) {
-            val held = PickedAttachmentHold.get(key) ?: continue
+            val row = PickedAttachmentHold.get(key) ?: continue
             kept.add(key)
-            if (have.add(key)) extra.add(held)
+            held.add(row)
         }
         val keptText = kept.joinToString("\n")
         if (keptText != pickedKeyText) pickedKeyText = keptText
-        if (extra.isNotEmpty()) forwardRows = forwardRows + extra
+        forwardRows = restoreHeldPickedRows(pickedKeys().isEmpty(), forwardRows, held)
     }
 
     val pickDocuments = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -844,6 +855,7 @@ private fun ComposeLoaded(
      * sent" when the server's answer was lost); the Unsent list shows it like any failed send.
      */
     fun jmapSendFailed(copy: DeviceCopy, error: Exception) {
+        noteAssembledCopy(true)
         val maybe = jmapMaybeSent(error)
         held = copy.copyWith(uncertain = maybe)
         notice = when (error) {
@@ -1396,7 +1408,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: Exception) {
                             val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            writeCopy(appContext, copy, accountId)
+                            noteAssembledCopy(writeCopy(appContext, copy, accountId))
                             held = copy
                             notice = error.message ?: notConnected
                             status = notSentNotice
@@ -1433,6 +1445,7 @@ private fun ComposeLoaded(
                         } catch (error: JmapSentFolderMissing) {
                             // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
                             // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
+                            noteAssembledCopy(true)
                             held = sending
                             notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                             offerNoCopy = true
@@ -1452,7 +1465,9 @@ private fun ComposeLoaded(
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
                     val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
-                    if (!writeCopy(appContext, sending, accountId)) {
+                    val copySaved = writeCopy(appContext, sending, accountId)
+                    noteAssembledCopy(copySaved)
+                    if (!copySaved) {
                         notice = appContext.getString(R.string.compose_copy_not_saved)
                         status = notSentNotice
                         return@launchLocked false
@@ -1465,6 +1480,7 @@ private fun ComposeLoaded(
                         val uncertain = smtpUncertain(error.text)
                         val copy = sending.copyWith(uncertain = uncertain)
                         val saved = writeCopy(appContext, copy, accountId)
+                        noteAssembledCopy(saved)
                         held = copy
                         notice = smtpFailureText(error.text) +
                             if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
@@ -1478,7 +1494,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
-                        writeCopy(appContext, copy, accountId)
+                        noteAssembledCopy(writeCopy(appContext, copy, accountId))
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
                         offerNoCopy = true
