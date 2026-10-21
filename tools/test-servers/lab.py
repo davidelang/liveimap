@@ -262,6 +262,196 @@ def check_published(container):
     return ""
 
 
+RECREATE_HINTS = {
+    "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
+    "liveimap-dovecot-245": "tools/test-servers/start-latest.sh --recreate dovecot-245",
+    "liveimap-cyrus-3124": "tools/test-servers/start-latest.sh --recreate cyrus-3124",
+    "liveimap-courier-606": "tools/test-servers/start-latest.sh --recreate courier-606",
+    "liveimap-stalwart-dev": "tools/test-servers/start-dev.sh --recreate stalwart-dev",
+    "liveimap-dovecot-dev": "tools/test-servers/start-dev.sh --recreate dovecot-dev",
+    "liveimap-cyrus-3137": "tools/test-servers/start-dev.sh --recreate cyrus-3137",
+    "liveimap-stalwart": "tools/test-servers/start-local.sh --recreate stalwart",
+    "liveimap-cyrus-22": "tools/test-servers/start-older.sh --recreate cyrus-22",
+    "liveimap-cyrus-24": "tools/test-servers/start-older.sh --recreate cyrus-24",
+    "liveimap-cyrus-25": "tools/test-servers/start-older.sh --recreate cyrus-25",
+    "liveimap-cyrus-36": "tools/test-servers/start-older.sh --recreate cyrus-36",
+    "liveimap-dovecot-10": "tools/test-servers/start-older.sh --recreate dovecot-10",
+    "liveimap-dovecot-12": "tools/test-servers/start-older.sh --recreate dovecot-12",
+    "liveimap-dovecot-22": "tools/test-servers/start-older.sh --recreate dovecot-22",
+    "liveimap-courier-50": "tools/test-servers/start-older.sh --recreate courier-50",
+    "liveimap-uwimap": "tools/test-servers/start-older.sh --recreate uwimap",
+    "liveimap-stalwart-0155": "tools/test-servers/start-older.sh --recreate stalwart-0155",
+    "liveimap-zimbra-883": "tools/test-servers/zimbra-883.sh --recreate zimbra-883",
+}
+SEED_SERVERS = [name[len("liveimap-"):] for name in RECREATE_HINTS]
+GREENMAIL = {
+    "liveimap-greenmail",
+    "liveimap-greenmail-16",
+    "liveimap-greenmail-214",
+    "liveimap-greenmail-dev",
+}
+emulator_line = ""
+
+
+def recreate_hint(container):
+    return RECREATE_HINTS.get(container) or (container + " no recreate script")
+
+
+def mount_problems(names, mounts_by_name):
+    """Any Mounts element is a problem. Returns "" or one string."""
+    for cont in names:
+        for item in mounts_by_name.get(cont) or []:
+            typ = item.get("Type") or item.get("type") or "mount"
+            if typ == "volume":
+                src = item.get("Name") or item.get("Source") or ""
+            else:
+                src = item.get("Source") or item.get("Name") or ""
+            dest = item.get("Destination") or item.get("destination") or ""
+            if cont in GREENMAIL:
+                return f"{cont} was dropped {typ} {src} {dest} docker rm -f {cont}"
+            return f"{cont} {typ} {src} {dest} {recreate_hint(cont)}"
+    return ""
+
+
+def source_address():
+    proc = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"], capture_output=True, text=True, errors="replace")
+    match = re.search(r"\bsrc\s+(\d+\.\d+\.\d+\.\d+)\b", proc.stdout or "")
+    if proc.returncode != 0 or not match:
+        return ""
+    return match.group(1)
+
+
+def cert_problem():
+    """Returns "" or one string naming lab-ca.sh or client-cert.sh."""
+    ca = os.path.join(GEN, "ca")
+    crt = os.path.join(ca, "server.crt")
+    if not os.path.isfile(crt):
+        return "server.crt missing tools/test-servers/lab-ca.sh"
+    addr = source_address()
+    if not addr:
+        return "no source address tools/test-servers/lab-ca.sh"
+    proc = subprocess.run(
+        ["openssl", "x509", "-in", crt, "-noout", "-ext", "subjectAltName"],
+        capture_output=True, text=True, errors="replace",
+    )
+    san = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0 or addr not in san:
+        return "server.crt SAN missing the source address tools/test-servers/lab-ca.sh"
+    for name in ("client.crt", "client.key", "client.p12"):
+        if not os.path.isfile(os.path.join(ca, name)):
+            return "RSA client cert missing tools/test-servers/client-cert.sh"
+    for name in ("client-ec.crt", "client-ec.key", "client-ec.p12"):
+        if not os.path.isfile(os.path.join(ca, name)):
+            return "EC client cert missing tools/test-servers/client-cert.sh ec"
+    return ""
+
+
+def _port_rows(text):
+    rows = []
+    seen = {}
+    for line in text.splitlines():
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) != 4 or fields[0] == "service":
+            continue
+        if not fields[1].isdigit() or not fields[2].isdigit():
+            continue
+        if fields[0] in seen:
+            return None, fields[0], fields[3]
+        seen[fields[0]] = True
+        rows.append((fields[0], int(fields[1]), int(fields[2]), fields[3]))
+    return rows, "", ""
+
+
+def _server_rows(text):
+    rows = []
+    for line in text.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) == 3 and fields[2].isdigit():
+            rows.append((fields[0], fields[1], int(fields[2])))
+    return rows
+
+
+def _kind_matches(service, service_key):
+    kind = service_key.rsplit("-", 1)[-1]
+    if kind == service:
+        return True
+    if service == "https" and kind == "http":
+        return True
+    return False
+
+
+def port_problems(servers_text, ports_text, published):
+    """Returns "" or one string. Does not draw a port."""
+    rows, dup, dup_cont = _port_rows(ports_text)
+    if rows is None:
+        return f"duplicate service key {dup} {recreate_hint(dup_cont)}"
+    for server, service, cport in _server_rows(servers_text):
+        cont = "liveimap-" + server
+        hint = recreate_hint(cont)
+        matches = [row for row in rows if row[3] == cont and _kind_matches(service, row[0])]
+        if not matches:
+            return f"{server} {service} no local-ports.tsv row {hint}"
+        if len(matches) > 1:
+            return f"{server} {service} duplicate local-ports.tsv row {hint}"
+        _key, hport, saved_cport, _cont = matches[0]
+        if saved_cport != cport:
+            return f"{server} {service} container port {saved_cport} != {cport} {hint}"
+        if published is not None and cont in published:
+            got = published[cont].get(cport, "not published")
+            if str(got) != str(hport):
+                return f"{server} {service} {cport} {got} {hport} {hint}"
+    return ""
+
+
+def seed_problem(server, image_inspect):
+    """Returns "" or one string naming build-seed-image."""
+    fix = "tools/test-servers/build-seed-image " + server
+    if not image_inspect:
+        return "missing seed image " + fix
+    config = image_inspect.get("Config") or {}
+    volumes = config.get("Volumes") or {}
+    if volumes:
+        return "Config.Volumes is not empty " + fix
+    labels = config.get("Labels") or {}
+    if not labels.get("liveimap.seed-manifest"):
+        return "missing liveimap.seed-manifest " + fix
+    return ""
+
+
+def emulator_in_use():
+    """True when adb times out, adb exits non-zero, or the resumed activity is not the launcher."""
+    global emulator_line
+    try:
+        proc = subprocess.run(
+            ["adb", "-s", SERIAL, "shell", "dumpsys", "activity", "activities"],
+            capture_output=True, text=True, errors="replace", timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        emulator_line = "adb failed"
+        return True
+    except OSError:
+        emulator_line = "adb failed"
+        return True
+    if proc.returncode != 0:
+        emulator_line = "adb failed"
+        return True
+    activity = ""
+    for line in (proc.stdout or "").splitlines():
+        if "mResumedActivity" not in line and "topResumedActivity" not in line:
+            continue
+        match = re.search(r"(\S+/\S+)", line)
+        if match:
+            activity = match.group(1).rstrip("},")
+            break
+    if activity and "launcher" not in activity.lower():
+        emulator_line = activity
+        return True
+    emulator_line = ""
+    return False
+
+
 def client_cert_args(tls):
     """LAB_CLIENT_CERT=1: present the lab client cert (client-cert.sh, CN = lab user) on TLS modes."""
     if os.environ.get("LAB_CLIENT_CERT", "0") != "1" or tls == "None":

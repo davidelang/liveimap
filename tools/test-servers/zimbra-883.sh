@@ -347,7 +347,7 @@ def container_bad(want):
 def require_seed_image():
     proc = run(["docker", "image", "inspect", "-f", "{{.Id}}", image])
     if proc.returncode != 0:
-        fail("tools/test-servers/seed-snapshot.sh zimbra-883")
+        fail("tools/test-servers/build-seed-image zimbra-883")
 
 def zimbra_create(imap_port, https_port, admin_port):
     require_seed_image()

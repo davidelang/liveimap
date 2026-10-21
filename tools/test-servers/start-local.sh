@@ -25,7 +25,7 @@ command -v openssl >/dev/null
 require_seed_image() {
   server=$1
   if ! docker image inspect "liveimap-seed-$server" >/dev/null 2>&1; then
-    echo "tools/test-servers/seed-snapshot.sh $server" >&2
+    echo "tools/test-servers/build-seed-image $server" >&2
     exit 1
   fi
 }

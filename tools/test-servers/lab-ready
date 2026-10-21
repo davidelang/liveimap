@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Stop at the first lab problem. Does not build, recreate, deploy, or draw ports."""
+import argparse, json, os, subprocess, sys, tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+
+
+def blocked(step, reason, fix):
+    print(f"LAB-READY BLOCKED {step} {reason} {fix}")
+    sys.exit(1)
+
+
+def fix_command(err, default):
+    at = err.rfind("tools/test-servers/")
+    if at != -1:
+        return err[at:]
+    at = err.rfind("docker rm -f ")
+    if at != -1:
+        return err[at:]
+    at = err.rfind("docker stop ")
+    if at != -1:
+        return err[at:]
+    at = err.rfind("./deploy ")
+    if at != -1:
+        return err[at:]
+    return default
+
+
+def load_regress():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("regress", os.path.join(HERE, "regress"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def git_commit(expr):
+    proc = subprocess.run(
+        ["git", "-C", REPO, "rev-parse", "--verify", expr],
+        capture_output=True, text=True, errors="replace",
+    )
+    if proc.returncode != 0:
+        return ""
+    return (proc.stdout or "").strip()
+
+
+def mem_available_mb():
+    try:
+        for line in open("/proc/meminfo", encoding="utf-8", errors="replace"):
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
+
+def docker_names(all_containers):
+    cmd = ["docker", "ps", "--format", "{{.Names}}"]
+    if all_containers:
+        cmd = ["docker", "ps", "-a", "--format", "{{.Names}}"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if proc.returncode != 0:
+        return None
+    return [n for n in (proc.stdout or "").split() if n.startswith("liveimap-")]
+
+
+def main():
+    p = argparse.ArgumentParser(description="Check the lab and stop at the first problem.")
+    p.add_argument("--commit", required=True)
+    args = p.parse_args()
+    head = git_commit("HEAD")
+    want = git_commit(args.commit + "^{commit}")
+    if not head or not want or head != want:
+        blocked("commit", f"HEAD {head or 'unknown'} != {args.commit}", "pass --commit equal to HEAD")
+    mb = mem_available_mb()
+    if mb < 2048:
+        blocked("memory", f"MemAvailable {mb} MB is below 2048 MB", "free memory until MemAvailable is at least 2048 MB")
+    running = docker_names(False)
+    if running is None:
+        blocked("running", "docker ps failed", "docker ps")
+    if running:
+        blocked("running", running[0] + " is running", "docker stop " + running[0])
+    sys.path.insert(0, HERE)
+    import lab
+    err = lab.cert_problem()
+    if err:
+        blocked("cert", err, fix_command(err, "tools/test-servers/lab-ca.sh"))
+    servers_path = os.path.join(HERE, "servers.tsv")
+    ports_path = os.path.join(HERE, "generated", "local-ports.tsv")
+    try:
+        servers_text = open(servers_path, encoding="utf-8").read()
+    except OSError:
+        blocked("ports", "cannot read " + servers_path, "tools/test-servers/servers.tsv")
+    try:
+        ports_text = open(ports_path, encoding="utf-8").read()
+    except OSError:
+        blocked("ports", "cannot read " + ports_path, "tools/test-servers/generated/local-ports.tsv")
+    regress = load_regress()
+    published = regress.published_ports()
+    if published is None:
+        blocked("ports", "docker ps -a failed", "docker ps -a")
+    err = lab.port_problems(servers_text, ports_text, published)
+    if err:
+        blocked("ports", err, fix_command(err, "tools/test-servers/servers.tsv"))
+    names = docker_names(True)
+    if names is None:
+        blocked("containers", "docker ps -a failed", "docker ps -a")
+    have = set(names)
+    for server in lab.SEED_SERVERS:
+        cont = "liveimap-" + server
+        if cont not in have:
+            blocked("containers", cont + " is missing", lab.recreate_hint(cont))
+    mounts_by_name = {}
+    for cont in sorted(have):
+        proc = subprocess.run(
+            ["docker", "inspect", "-f", "{{json .Mounts}}", cont],
+            capture_output=True, text=True, errors="replace",
+        )
+        if proc.returncode != 0:
+            blocked("mounts", cont + " docker inspect failed", lab.recreate_hint(cont))
+        try:
+            mounts_by_name[cont] = json.loads(proc.stdout) or []
+        except json.JSONDecodeError:
+            blocked("mounts", cont + " mounts were not json", lab.recreate_hint(cont))
+    err = lab.mount_problems(sorted(have), mounts_by_name)
+    if err:
+        blocked("mounts", err, fix_command(err, "docker ps -a"))
+    for server in lab.SEED_SERVERS:
+        err = lab.seed_problem(server, regress.image_inspect(server))
+        if err:
+            blocked("seed", err, "tools/test-servers/build-seed-image " + server)
+    stamp_path = os.path.join(REPO, "app/build/outputs/build_app/test.json")
+    if not os.path.isfile(stamp_path):
+        blocked("apk", "test.json missing", "./deploy --test emulator")
+    try:
+        stamp = json.load(open(stamp_path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        blocked("apk", "test.json is not readable", "./deploy --test emulator")
+    built = stamp.get("commit") or ""
+    if built != want:
+        blocked("apk", f"test.json commit {built[:12]} != {args.commit}", "./deploy --test emulator")
+    if lab.emulator_in_use():
+        blocked("emulator", lab.emulator_line or "adb failed", "leave the emulator on the launcher")
+    regress.run_log = tempfile.mkdtemp(prefix="lab-ready-")
+    regress.run_rec = regress.run_log
+    reason = regress.commit_stop(args.commit)
+    if reason:
+        blocked("commit_stop", reason, "./deploy --test emulator")
+    print("LAB-READY OK")
+
+
+if __name__ == "__main__":
+    main()

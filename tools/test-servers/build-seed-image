@@ -1,0 +1,23 @@
+#!/bin/sh
+# From-scratch lab seed images. Phase 1 exits until a later phase supplies the builder.
+set -eu
+SCRIPT=$(readlink -f "$0")
+DIR=$(dirname "$SCRIPT")
+cport() {
+  python3 "$DIR/cport.py" "$1" "$2" || exit 1
+}
+if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
+  echo "usage: tools/test-servers/build-seed-image <server>" >&2
+  exit 1
+fi
+server=$1
+case "$server" in
+  cyrus-3124|courier-606|cyrus-3137|dovecot-dev|cyrus-22|cyrus-24|cyrus-25|cyrus-36|dovecot-10|dovecot-12|dovecot-22|courier-50|uwimap|dovecot-245|stalwart|stalwart-01625|stalwart-dev|stalwart-0155|zimbra-883)
+    echo "no from-scratch builder for $server" >&2
+    exit 1
+    ;;
+  *)
+    echo "unknown server $server" >&2
+    exit 1
+    ;;
+esac

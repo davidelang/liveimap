@@ -181,7 +181,8 @@ assert "local-ports.tsv" in reset_body
 assert "require_seed_image" in reset_body
 assert "pick_ports" not in reset_body
 assert "stalwartlabs/stalwart" not in reset_body
-assert 'tools/test-servers/seed-snapshot.sh $server' in seed_body
+assert 'tools/test-servers/build-seed-image $server' in seed_body
+assert "seed-snapshot.sh" not in seed_body
 assert 'reset_from_seed "$2"' in latest
 assert "stalwart-01625)" in latest or "stalwart-01625|" in latest
 
@@ -363,4 +364,105 @@ for name in ("start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.s
         for bad in ("-p", "printf", "pick_ports", "expected_ports", "published_port"):
             assert bad not in line, (name, line)
     assert saw, name
+
+# Seed-image build edges 1-7. Text and pure functions. This does not run docker, adb, or build-seed-image.
+assert "MOUNT_ROOTS" not in regress
+vol = {"Type": "volume", "Name": "mail", "Source": "/var/lib/docker/volumes/mail/_data", "Destination": "/srv/vmail"}
+one = lab.mount_problems(["liveimap-dovecot-245"], {"liveimap-dovecot-245": [vol]})
+assert one and "\n" not in one
+assert "volume" in one and "mail" in one and "/srv/vmail" in one
+assert "tools/test-servers/start-latest.sh --recreate dovecot-245" in one
+green = lab.mount_problems(
+    ["liveimap-greenmail"],
+    {"liveimap-greenmail": [{"Type": "volume", "Name": "gm", "Destination": "/home/greenmail"}]},
+)
+assert "docker rm -f liveimap-greenmail" in green
+assert "recreate" not in green
+assert lab.mount_problems(["liveimap-dovecot-245"], {"liveimap-dovecot-245": []}) == ""
+for name in ("check_published", "mount_problems", "cert_problem", "port_problems", "seed_problem"):
+    body = py_function(lab_py, name)
+    assert "sys.exit" not in body, name
+dry_fn = py_function(regress, "dry_run_problems")
+assert dry_fn.find("cert_problem") < dry_fn.find("port_problems") < dry_fn.find("seed_problem")
+assert "lab_mount_errors" in dry_fn[dry_fn.find("seed_problem"):]
+assert "docker start" not in dry_fn
+assert "VERDICT BLOCKED" in dry_fn
+assert "build-seed-image" in py_function(lab_py, "seed_problem")
+dry_at = regress.find("if dry_run:")
+lock_at = regress.find('write_lock("preflight")', dry_at)
+dry_window = regress[dry_at:lock_at]
+assert "dry_run_problems()" in dry_window
+assert "stop(" in dry_window
+assert dry_window.find("stop(") < dry_window.find('print("servers:')
+assert "docker start" not in dry_window
+ready = open(os.path.join(HERE, "lab-ready"), encoding="utf-8").read()
+assert "LAB-READY BLOCKED" in ready and "LAB-READY OK" in ready
+assert "git checkout" not in ready
+ready_main = ready[ready.find("\ndef main("):]
+ready_order = (
+    'git_commit("HEAD")',
+    "mem_available_mb()",
+    "docker_names(False)",
+    "cert_problem()",
+    "port_problems(",
+    "is missing",
+    "mount_problems(",
+    "seed_problem(",
+    "test.json",
+    "emulator_in_use()",
+    "commit_stop(",
+)
+ready_pos = 0
+for key in ready_order:
+    at = ready_main.find(key, ready_pos)
+    assert at != -1, key
+    ready_pos = at
+assert "sys.exit(1)" in ready[:ready.find("\ndef main(")]
+assert 'blocked("commit"' in ready_main
+assert ready_main.find('blocked("commit"') < ready_main.find("mem_available_mb()")
+
+class _Proc:
+    def __init__(self, code, out=""):
+        self.returncode = code
+        self.stdout = out
+        self.stderr = ""
+
+def _adb_fail(*_a, **_k):
+    return _Proc(1, "")
+
+saved_run = lab.subprocess.run
+try:
+    lab.subprocess.run = _adb_fail
+    assert lab.emulator_in_use() is True
+    assert lab.emulator_line == "adb failed"
+finally:
+    lab.subprocess.run = saved_run
+
+for name in ("start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh"):
+    body = function_body(open(os.path.join(HERE, name), encoding="utf-8").read(), "reset_from_seed")
+    assert body.find("require_seed_image") < body.find("docker rm"), name
+    seed_fn = function_body(open(os.path.join(HERE, name), encoding="utf-8").read(), "require_seed_image")
+    assert "build-seed-image" in seed_fn and "seed-snapshot.sh" not in seed_fn
+zimbra = open(os.path.join(HERE, "zimbra-883.sh"), encoding="utf-8").read()
+reset_z = py_function(zimbra, "reset_zimbra")
+assert reset_z.find("require_seed_image") < reset_z.find('"docker", "rm"')
+assert "build-seed-image zimbra-883" in py_function(zimbra, "require_seed_image")
+builder = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
+assert "unknown server" in builder and "no from-scratch builder" in builder
+for server in lab.SEED_SERVERS:
+    assert server in builder, server
+assert len(lab.SEED_SERVERS) == 19
+for line in builder.splitlines():
+    if "docker rm" in line:
+        assert "liveimap-build-" in line, line
+    if "$(" in line and not line.strip().startswith("#"):
+        code = line.strip()
+        assert "=" in code, line
+        lhs, rhs = code.split("=", 1)
+        assert lhs.replace("_", "").isalnum(), line
+        assert rhs.startswith("$(") and rhs.endswith(")") and rhs.count("$(") == 1, line
+for name in ("build-seed-image", "start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh"):
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    fn = function_body(text, "cport")
+    assert "python3" in fn and "|| exit 1" in fn, name
 print("ok")

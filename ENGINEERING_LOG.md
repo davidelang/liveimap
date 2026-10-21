@@ -3503,3 +3503,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - Container listen ports come from servers.tsv.
 
 ## 2026-10-20 - A port mismatch records a blocked verdict, and a missing servers.tsv row stops the start script.
+
+## 2026-10-20 - A lab mount blocks, and lab-ready stops at the first problem.
