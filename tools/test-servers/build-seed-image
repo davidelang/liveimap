@@ -6,11 +6,59 @@ DIR=$(dirname "$SCRIPT")
 cport() {
   python3 "$DIR/cport.py" "$1" "$2" || exit 1
 }
+
+ensure_buildx() {
+  plugin_home="$DIR/generated/docker-home"
+  plugin_dir="$plugin_home/.docker/cli-plugins"
+  plugin_bin="$plugin_dir/docker-buildx"
+  mkdir -p "$plugin_dir"
+  machine=$(uname -m)
+  case "$machine" in
+    x86_64) asset=amd64 ;;
+    aarch64|arm64) asset=arm64 ;;
+    *)
+      printf '%s\n' "$machine" >&2
+      exit 1
+      ;;
+  esac
+  url="https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.linux-$asset"
+  if [ ! -x "$plugin_bin" ]; then
+    python3 -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' "$url" "$plugin_bin" || exit 1
+    chmod 755 "$plugin_bin"
+  fi
+  HOME="$plugin_home" docker buildx version || {
+    rm -f "$DIR/generated/docker-home/.docker/cli-plugins/docker-buildx"
+    printf '%s\n' "$url" "$machine" >&2
+    exit 1
+  }
+}
+
+remove_build_container() {
+  names=$(docker ps -a --format '{{.Names}}')
+  found=0
+  for name in $names; do
+    if [ "$name" = "liveimap-build-$server" ]; then
+      found=1
+    fi
+  done
+  if [ "$found" -eq 1 ]; then
+    docker rm -f "liveimap-build-$server"
+  fi
+}
+
+if [ $# -eq 1 ] && [ "$1" = "--all" ]; then
+  servers=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write("\n".join(lab.SEED_SERVERS))' "$DIR") || exit 1
+  for server in $servers; do
+    "$SCRIPT" "$server" || exit 1
+  done
+  exit 0
+fi
 if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
-  echo "usage: tools/test-servers/build-seed-image <server>" >&2
+  echo "usage: tools/test-servers/build-seed-image --all|<server>" >&2
   exit 1
 fi
 server=$1
+ensure_buildx
 CA="$DIR/generated/ca"
 SEED="$DIR/seed/accounts.tsv"
 SUMS="$DIR/seed/corpus-v1.sums"
@@ -38,7 +86,7 @@ if [ ! -f "$SUMS" ]; then
   exit 1
 fi
 
-trap 'docker rm -f "liveimap-build-$server"; exit 1' EXIT
+trap 'remove_build_container; exit 1' EXIT
 
 prepare_volume_work() {
   work="$DIR/generated/build-seed/$server"
@@ -290,7 +338,7 @@ RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
 RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
   open_build
   "$DIR/client-cert-install.sh" "liveimap-build-$server"
   close_build
@@ -378,7 +426,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
   open_build
   docker commit --change "ENV STALWART_RECOVERY_ADMIN=admin:$token" "liveimap-build-$server" "liveimap-seed-stage-$server"
   docker stop "liveimap-build-$server"
@@ -451,7 +499,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/zimbra.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
-  DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t "liveimap-seed-stage-$server" "$work"
   open_build
   python3 - "$DIR/zimbra-883.sh" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
 import csv
@@ -1246,7 +1294,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 fi
 
-DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
 imap_port=$(cport "$server" imap)
 if docker inspect "liveimap-build-$server" >/dev/null; then
   docker rm -f "liveimap-build-$server"

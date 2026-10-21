@@ -3525,3 +3525,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - The image build creates the LiveIMAP-Test fixture.
 
 ## 2026-10-20 - A seed image records its fixture version, and an older image names build-seed-image.
+
+## 2026-10-20 - The seed build uses its own buildx and can build every server.

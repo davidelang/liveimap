@@ -340,8 +340,8 @@ def check_published(container):
 
 
 RECREATE_HINTS = {
-    "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
     "liveimap-dovecot-245": "tools/test-servers/start-latest.sh --recreate dovecot-245",
+    "liveimap-stalwart-01625": "tools/test-servers/start-latest.sh --recreate stalwart-01625",
     "liveimap-cyrus-3124": "tools/test-servers/start-latest.sh --recreate cyrus-3124",
     "liveimap-courier-606": "tools/test-servers/start-latest.sh --recreate courier-606",
     "liveimap-stalwart-dev": "tools/test-servers/start-dev.sh --recreate stalwart-dev",

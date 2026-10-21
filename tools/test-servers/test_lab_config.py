@@ -857,6 +857,31 @@ assert "entry_version_problem" in safety
 assert "docker start" not in safety
 assert "store_fixture_marker" not in safety
 assert "fixture_inputs_hash" not in safety
+# Seed build edges 1-4. Text only; this does not run docker or build-seed-image.
+assert "ensure_buildx" in builder
+assert "buildx-v0.38.0.linux-" in builder
+assert "x86_64) asset=amd64 ;;" in builder
+assert "aarch64|arm64) asset=arm64 ;;" in builder
+build_lines = [line for line in builder.splitlines() if "docker build " in line]
+assert build_lines
+for line in build_lines:
+    assert 'HOME="$plugin_home"' in line, line
+for line in builder.splitlines():
+    if "docker commit" in line or "docker create" in line:
+        assert "HOME=" not in line, line
+assert "trap 'remove_build_container; exit 1' EXIT" in builder
+rm_body = function_body(builder, "remove_build_container")
+assert rm_body.find("docker ps -a") < rm_body.find("docker rm")
+assert "2>/dev/null" not in rm_body and "|| true" not in rm_body
+assert 'usage: tools/test-servers/build-seed-image --all|<server>' in builder
+assert '[ "$1" = "--all" ]' in builder
+assert builder.find('[ "$1" = "--all" ]') < builder.find("trap 'remove_build_container; exit 1' EXIT")
+assert 'sys.stdout.write("\\n".join(lab.SEED_SERVERS))' in builder
+assert '"$SCRIPT" "$server" || exit 1' in builder
+assert "\nensure_buildx\n" in builder
+assert builder.find("\nensure_buildx\n") < builder.find('case "$server" in')
+assert lab.SEED_SERVERS[0] == "dovecot-245"
+assert list(lab.RECREATE_HINTS)[0] == "liveimap-dovecot-245"
 assert not os.path.exists(os.path.join(HERE, "reseed.sh"))
 stamp_name = "check_" + "stamp"
 for dirpath, dirnames, filenames in os.walk(HERE):
