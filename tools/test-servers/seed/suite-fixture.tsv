@@ -1,0 +1,21 @@
+version	1
+inputs	a82f088e0b20f93685f887403df69e00392b9cb1989be701bc2f27a86a8350ca
+box	LiveIMAP-Test	60
+box	Sub	6
+box	Trash	0
+box	Tëst-Ünï	1
+box	Deep	2
+box	Spoof	4
+deep	100
+deep	5000
+kind	plain
+kind	plain
+kind	latin1
+kind	html
+kind	attach
+kind	sjis
+kind	plain
+spoof	Spoof honest pdf	report.pdf
+spoof	Spoof apk as pdf	invoice.pdf
+spoof	Spoof html as jpeg	cat.jpg
+spoof	Spoof svg as png	logo.png

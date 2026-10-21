@@ -88,6 +88,10 @@ def main():
     out = open(os.path.join(lab.REC, f"safety-{stamp}.tsv"), "w")
     out.write("server\tcase\tresult\tapp_steps\tcommands\tproblems\n")
     for name in names:
+        problem = lab.entry_version_problem(name, None)
+        if problem:
+            print(problem)
+            sys.exit(1)
         s = next(x for x in lab.servers() if x["name"] == name)
         src = personality.pick(name)
         if not src:

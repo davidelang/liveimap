@@ -17,6 +17,10 @@ try:
     up = lab.greeting(s["imap"], False, timeout=300); say("greeting", up)
     if not up:
         sys.exit(1)
+    problem = lab.entry_version_problem(NAME, s["imap"])
+    if problem:
+        say(problem)
+        sys.exit(1)
     time.sleep(5)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.AcceptanceLabTest#smtpAccepts",
                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(s["imap"]), "-e", "labTls", "None",

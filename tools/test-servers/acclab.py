@@ -10,6 +10,10 @@ try:
     time.sleep(int(os.environ.get("ACC_WAIT", "0"))); up = lab.greeting(s["imap"], False, timeout=900 if s["container"] in lab.ALONE else int(os.environ.get("ACC_UP", "300"))); print("greeting", up)
     if not up:
         sys.exit(1)
+    problem = lab.entry_version_problem(name, s["imap"])
+    if problem:
+        print(problem)
+        sys.exit(1)
     time.sleep(5)
     if tls == "auto":
         tls = lab.resolve_auto(s)

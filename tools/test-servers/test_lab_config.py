@@ -121,7 +121,7 @@ finally:
 
 no_greenmail = (
     "start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh",
-    "reseed.sh", "regress", "seed-snapshot.sh", "zimbra-883.sh",
+    "regress", "seed-snapshot.sh", "zimbra-883.sh",
     "tls-install.sh", "lab-ca.sh", "smtp.tsv", "smtp-extra.tsv", "t4smtp.py",
 )
 for name in no_greenmail:
@@ -440,6 +440,8 @@ for line in builder.splitlines():
         assert "=" in code, line
         lhs, rhs = code.split("=", 1)
         assert lhs.replace("_", "").isalnum(), line
+        if rhs.endswith(" || exit 1"):
+            rhs = rhs[: -len(" || exit 1")]
         assert rhs.startswith("$(") and rhs.endswith(")") and rhs.count("$(") == 1, line
 for name in ("build-seed-image", "start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh"):
     text = open(os.path.join(HERE, name), encoding="utf-8").read()
@@ -751,4 +753,119 @@ fix_window = regress[fix_at:fix_at + 220]
 assert "stop(" in fix_window and "build-seed-image" in fix_window and "VERDICT BLOCKED" in fix_window
 guard = regress.rfind('if "imap" in suites:', 0, fix_at)
 assert guard != -1 and fix_at - guard < 80
+
+# Suite fixture edges 9-14. Pure helpers and source text. This does not run docker, regress, or build-seed-image.
+assert lab.version_problem("cyrus-22", "1", "1", "1") == ""
+assert lab.version_problem("cyrus-22", "2", "2", "1") == ""
+assert lab.version_problem("cyrus-22", 1, 1, 1) == ""
+low = lab.version_problem("cyrus-22", "1", "1", "2")
+assert low == "cyrus-22 label 1 marker 1 need 2 tools/test-servers/build-seed-image cyrus-22"
+missing_label = lab.version_problem("cyrus-22", None, "1", "1")
+assert missing_label == "cyrus-22 label  marker 1 need 1 tools/test-servers/build-seed-image cyrus-22"
+abc = lab.version_problem("cyrus-22", "abc", "abc", "1")
+assert abc == "cyrus-22 label abc marker abc need 1 tools/test-servers/build-seed-image cyrus-22"
+disagree = lab.version_problem("cyrus-22", "2", "1", "1")
+assert disagree == "cyrus-22 label 2 marker 1 need 1 tools/test-servers/build-seed-image cyrus-22"
+assert "sys.exit" not in py_function(lab_py, "version_problem")
+assert "fixture_inputs_hash" not in py_function(lab_py, "version_problem")
+assert "fixture_inputs_hash" not in py_function(lab_py, "entry_version_problem")
+assert "sys.exit" not in py_function(lab_py, "fixture_inputs_hash")
+assert "sys.exit" not in py_function(lab_py, "publish_problem")
+fresh = lab.fixture_inputs_hash("cyrus-22")
+assert fresh == lab.fixture_inputs_hash("zimbra-883")
+assert fresh != lab.fixture_inputs_hash("not-a-server")
+inputs_line = [line for line in open(os.path.join(HERE, "seed", "suite-fixture.tsv"), encoding="utf-8") if line.startswith("inputs\t")][0]
+assert inputs_line.rstrip("\n").split("\t")[1] == fresh
+assert lab.publish_problem("cyrus-22") == ""
+assert lab.publish_problem("zimbra-883") == ""
+import shutil
+changed_base = tempfile.mkdtemp()
+for rel in (
+    "seed/accounts.tsv",
+    "seed/corpus-v1.sums",
+    "seed/suite-fixture.tsv",
+    "generated/corpus-v1/manifest.tsv",
+    "generated/ca/server.crt",
+    "servers.tsv",
+):
+    dest = os.path.join(changed_base, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copy(os.path.join(HERE, rel), dest)
+assert lab.publish_problem("cyrus-22", changed_base) == ""
+with open(os.path.join(changed_base, "seed", "accounts.tsv"), "a", encoding="utf-8") as handle:
+    handle.write("\n")
+bumped = lab.fixture_inputs_hash("cyrus-22", changed_base)
+assert bumped != fresh
+bump = lab.publish_problem("cyrus-22", changed_base)
+assert "inputs changed and the version was not bumped" in bump
+assert bump.endswith("tools/test-servers/build-seed-image cyrus-22")
+os.remove(os.path.join(changed_base, "generated", "ca", "server.crt"))
+missing_input = lab.publish_problem("dovecot-dev", changed_base)
+assert missing_input.endswith("dovecot-dev tools/test-servers/build-seed-image dovecot-dev")
+assert "server.crt" in missing_input
+assert "hashlib" not in builder
+assert "fixture_inputs_hash" not in builder
+assert builder.count("required_fixture_version") == 2
+assert builder.count("publish_problem") == 2
+assert builder.count("store_fixture_marker") == 2
+close_mark = close.find("store_fixture_marker")
+assert close.find("\n  seed_suite\n") < close_mark < close.find("docker stop")
+assert close.find("publish_problem") < close.find("required_fixture_version") < close.find("docker commit")
+tail_mark = builder.find("store_fixture_marker", tail_suite)
+assert tail_suite < tail_mark < tail_stop
+tail_commit = builder.find("docker commit", tail_stop)
+assert builder.find("publish_problem", tail_stop) < builder.find("required_fixture_version", tail_stop) < tail_commit
+assert "required_fixture_version" not in builder[stage:stage_close]
+assert "publish_problem" not in builder[stage:stage_close]
+assert "store_fixture_marker" not in builder[stage:stage_close]
+seed_body = py_function(lab_py, "seed_problem")
+assert "required_fixture_version" in seed_body
+assert "got < required" in seed_body
+assert "sys.exit" not in seed_body
+assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "abc"}}}) != ""
+assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1"}}}) == ""
+assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {}}}) != ""
+assert "Config.Volumes" in lab.seed_problem(
+    "cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1"}, "Volumes": {"/mail": {}}}}
+)
+assert "docker start" not in dry_fn
+assert "docker start" not in ready
+for name, call in (
+    ("acclab.py", 'am", "instrument"'),
+    ("jmaplab.py", 'am", "instrument"'),
+    ("jmaprun.py", "else derive_rcpt("),
+    ("t4smtp.py", 'am", "instrument"'),
+):
+    text = open(os.path.join(HERE, name), encoding="utf-8").read()
+    at = text.find(call)
+    assert at != -1, name
+    assert text.find("entry_version_problem") != -1 and text.find("entry_version_problem") < at, name
+    assert "store_fixture_marker" not in text, name
+    assert "fixture_inputs_hash" not in text, name
+run_body = py_function(lab_py, "run_one")
+assert run_body.find("entry_version_problem") < run_body.find("instrument(")
+assert "store_fixture_marker" not in run_body
+ver_at = regress.find("lab.entry_version_problem(")
+assert ver_at != -1 and ver_at < fix_at
+assert "store_fixture_marker" not in regress
+assert "fixture_inputs_hash" not in regress
+t1 = open(os.path.join(HERE, "t1run.sh"), encoding="utf-8").read()
+assert t1.find("entry_version_problem") < t1.find("acclab.py")
+assert "store_fixture_marker" not in t1
+safety = open(os.path.join(HERE, "safety_run.py"), encoding="utf-8").read()
+assert "entry_version_problem" in safety
+assert "docker start" not in safety
+assert "store_fixture_marker" not in safety
+assert "fixture_inputs_hash" not in safety
+assert not os.path.exists(os.path.join(HERE, "reseed.sh"))
+stamp_name = "check_" + "stamp"
+for dirpath, dirnames, filenames in os.walk(HERE):
+    dirnames[:] = [d for d in dirnames if d not in ("generated", "recordings", "__pycache__")]
+    for fn in filenames:
+        path = os.path.join(dirpath, fn)
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        assert stamp_name not in text, path
 print("ok")

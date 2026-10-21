@@ -144,8 +144,11 @@ close_build() {
   require_login
   python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
   seed_suite
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; err = lab.store_fixture_marker(sys.argv[2], sys.argv[3]); raise SystemExit(err or None)' "$DIR" "$lab_host" "$host_port"
   docker stop "liveimap-build-$server"
-  manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
+  problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
+  if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
+  manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
   docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
   docker rm -f "liveimap-build-$server"
 }
@@ -1420,8 +1423,11 @@ esac
 require_login
 python3 "$DIR/seed_corpus.py" "$lab_host" "$host_port" --starttls
 seed_suite
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; err = lab.store_fixture_marker(sys.argv[2], sys.argv[3]); raise SystemExit(err or None)' "$DIR" "$lab_host" "$host_port"
 docker stop "liveimap-build-$server"
-manifest=$(python3 -c 'import hashlib,pathlib,subprocess,sys; cert,accounts,sums=sys.argv[1:]; fp=subprocess.check_output(["openssl","x509","-in",cert,"-noout","-fingerprint","-sha256"],text=True).strip().split("=",1)[1].replace(":","").lower(); sha=lambda p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest(); print("fp=%s,accounts=%s,corpus=%s"%(fp,sha(accounts),sha(sums)))' "$CA/server.crt" "$SEED" "$SUMS")
+problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
+if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
+manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
 docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
 docker rm -f "liveimap-build-$server"
 trap - EXIT

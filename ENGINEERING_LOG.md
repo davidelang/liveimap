@@ -3523,3 +3523,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-20 - The image build creates accounts, domains, and mail.
 
 ## 2026-10-20 - The image build creates the LiveIMAP-Test fixture.
+
+## 2026-10-20 - A seed image records its fixture version, and an older image names build-seed-image.

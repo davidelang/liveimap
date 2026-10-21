@@ -1871,6 +1871,10 @@ def main():
             problem = domain_login_check(s)
             if problem:
                 stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
+            imap_port = s.get("imap") if isinstance(s, dict) else None
+            problem = lab.entry_version_problem(name, imap_port)
+            if problem:
+                stop(f"VERDICT BLOCKED {problem}", suites, names, [])
             if "imap" in suites:
                 problem = lab.fixture_check(s)
                 if problem:

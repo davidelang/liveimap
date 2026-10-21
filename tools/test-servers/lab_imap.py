@@ -187,9 +187,6 @@ def deep_message(levels):
     return "".join(out).encode()
 
 
-DEEP_LEVELS = [100, 5000]
-
-
 def fake_apk():
     import io, zipfile
     buf = io.BytesIO()
@@ -235,9 +232,11 @@ def seed_spoof(a, allow):
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
     field, line = _listed(m)
     box, target = lab.suite_mailboxes(field, line)[5]
+    rows = lab.fixture_fields("spoof")
     ensure(m, box)
     for i in range(count(m, box), target):
-        subject, filename, mime, content, _ = SPOOFS[i]
+        subject, filename = rows[i][0], rows[i][1]
+        mime, content = SPOOFS[i][2], SPOOFS[i][3]
         typ, _ = m.append(f'"{box}"', "(\\Seen)", None, spoof_message(subject, filename, mime, content))
         print(f"append {subject}: {typ}")
     print(f"{box}: {count(m, box)} messages (target {target})")
@@ -249,15 +248,13 @@ def seed_deep(a, allow):
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
     field, line = _listed(m)
     box, target = lab.suite_mailboxes(field, line)[4]
+    levels = [int(fields[0]) for fields in lab.fixture_fields("deep")]
     ensure(m, box)
     for i in range(count(m, box), target):
-        typ, data = m.append(f'"{box}"', "(\\Seen)", None, deep_message(DEEP_LEVELS[i]))
-        print(f"append {DEEP_LEVELS[i]} levels: {typ} {data[0][:80] if data and data[0] else ''}")
+        typ, data = m.append(f'"{box}"', "(\\Seen)", None, deep_message(levels[i]))
+        print(f"append {levels[i]} levels: {typ} {data[0][:80] if data and data[0] else ''}")
     print(f"{box}: {count(m, box)} messages (target {target})")
     m.logout()
-
-
-KINDS = ["plain", "plain", "latin1", "html", "attach", "sjis", "plain"]
 
 
 def seed(a, allow):
@@ -268,6 +265,7 @@ def seed(a, allow):
     m, _, _ = connect(a.host, a.port, a.user, a.password, allow)
     field, line = _listed(m)
     boxes = list(lab.suite_mailboxes(field, line)[:4])
+    kinds = [fields[0] for fields in lab.fixture_fields("kind")]
     if a.big:
         root = boxes[0][0]
         sub = boxes[1][0]
@@ -280,7 +278,7 @@ def seed(a, allow):
             flags = "(\\Seen)" if i % 3 else "()"
             if i % 11 == 0:
                 flags = "(\\Flagged)"
-            m.append(f'"{box}"', flags, None, message(i, KINDS[i % len(KINDS)]))
+            m.append(f'"{box}"', flags, None, message(i, kinds[i % len(kinds)]))
         print(f"{box}: {count(m, box)} messages (target {target})")
     m.logout()
 

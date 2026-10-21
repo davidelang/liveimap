@@ -14,6 +14,11 @@ echo "LAB_BIND=$LAB_BIND commit=$COMMIT start $(date +%H:%M:%S)"
 adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/x86_64/debug/app-x86_64-debug-androidTest.apk 2>&1 | tail -1
 for n in $(PYTHONPATH="$HERE" python3 -c "import lab; print(' '.join(s['name'] for s in lab.servers()))"); do
   echo "=== $n $(date +%H:%M:%S)"
+  ver_problem=$(PYTHONPATH="$HERE" python3 -c 'import sys, lab; print(lab.entry_version_problem(sys.argv[1], None))' "$n") || exit 1
+  if [ -n "$ver_problem" ]; then
+    echo "$ver_problem" >&2
+    exit 1
+  fi
   timeout 2400 python3 "$HERE/acclab.py" $n auto t1-$n > "$LOGDIR/t1-$n.log" 2>&1
   head -5 "$LOGDIR/t1-$n.log"
   grep -m1 "# summary" "$LOGDIR/t1-$n.log" || true

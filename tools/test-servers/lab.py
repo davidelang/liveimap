@@ -9,7 +9,7 @@ after login (lab_imap.py), run LabSuiteTest on emulator-5554 for each TLS mode t
 server offers, pull the recordings, and always docker stop.
 Output: recordings/<server>/<YYYYMMDD-HHMMSS>/ and recordings/<date>-summary.tsv.
 """
-import argparse, collections, os, re, socket, ssl, subprocess, sys, time
+import argparse, collections, hashlib, json, os, re, socket, ssl, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -483,7 +483,7 @@ def port_problems(servers_text, ports_text, published):
 
 
 def seed_problem(server, image_inspect):
-    """Returns "" or one string naming build-seed-image."""
+    """Returns "" or one string naming build-seed-image. The label must be an integer >= required_fixture_version."""
     fix = "tools/test-servers/build-seed-image " + server
     if not image_inspect:
         return "missing seed image " + fix
@@ -492,8 +492,14 @@ def seed_problem(server, image_inspect):
     if volumes:
         return "Config.Volumes is not empty " + fix
     labels = config.get("Labels") or {}
-    if not labels.get("liveimap.seed-manifest"):
-        return "missing liveimap.seed-manifest " + fix
+    label = labels.get("liveimap.seed-manifest")
+    try:
+        required = required_fixture_version()
+    except FixtureInputMissing as exc:
+        return exc.path + " " + server + " " + fix
+    got = _version_int(label)
+    if got is None or got < required:
+        return version_problem(server, "" if label is None else label, "" if got is None else got, required)
     return ""
 
 
@@ -644,6 +650,299 @@ def only_one(cont):
         sys.exit("lab containers still running: " + " ".join(left))
 
 
+class FixtureInputMissing(Exception):
+    """A seed input path cannot be read. Does not exit."""
+
+    def __init__(self, path):
+        self.path = path
+        super().__init__(path)
+
+
+def _fixture_root(base):
+    return base or HERE
+
+
+def _fixture_rows(base=None):
+    path = os.path.join(_fixture_root(base), "seed", "suite-fixture.tsv")
+    if not os.path.isfile(path):
+        raise FixtureInputMissing(path)
+    rows = []
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#"):
+                continue
+            rows.append(line.rstrip("\n").split("\t"))
+    return rows
+
+
+def fixture_fields(kind, base=None):
+    """Rows of one kind, without the kind column. Does not connect."""
+    out = []
+    for fields in _fixture_rows(base):
+        if fields and fields[0] == kind:
+            out.append(tuple(fields[1:]))
+    return out
+
+
+def required_fixture_version(base=None):
+    """Integer from the version row. The tsv is the only copy. Does not connect."""
+    path = os.path.join(_fixture_root(base), "seed", "suite-fixture.tsv")
+    for fields in _fixture_rows(base):
+        if fields and fields[0] == "version" and len(fields) > 1 and fields[1].isdigit():
+            return int(fields[1])
+    raise FixtureInputMissing(path)
+
+
+def _read_input(path):
+    if not os.path.isfile(path):
+        raise FixtureInputMissing(path)
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def _domain_text(path):
+    """Every imap row's login_domain and domain_login, so one inputs hex matches every server."""
+    if not os.path.isfile(path):
+        raise FixtureInputMissing(path)
+    lines = []
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 2 or fields[1] != "imap":
+                continue
+            login_domain = fields[3] if len(fields) > 3 else ""
+            domain_login = fields[4] if len(fields) > 4 else ""
+            lines.append(fields[0] + "\t" + login_domain + "\t" + domain_login)
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _cert_fingerprint(path):
+    if not os.path.isfile(path):
+        raise FixtureInputMissing(path)
+    proc = subprocess.run(
+        ["openssl", "x509", "-in", path, "-noout", "-fingerprint", "-sha256"],
+        capture_output=True, text=True,
+    )
+    text = (proc.stdout or "").strip()
+    if proc.returncode != 0 or "=" not in text:
+        raise FixtureInputMissing(path)
+    return text.split("=", 1)[1].replace(":", "").lower()
+
+
+def fixture_inputs_hash(server, base=None):
+    """sha256 of the seed inputs. Does not hash version or inputs rows. Does not exit."""
+    root = _fixture_root(base)
+    digest = hashlib.sha256()
+
+    def add(blob):
+        if isinstance(blob, str):
+            blob = blob.encode("utf-8")
+        digest.update(blob)
+        digest.update(b"\n")
+
+    add(_read_input(os.path.join(root, "seed", "accounts.tsv")))
+    add(_read_input(os.path.join(root, "seed", "corpus-v1.sums")))
+    add(_read_input(os.path.join(root, "generated", "corpus-v1", "manifest.tsv")))
+    for fields in _fixture_rows(base):
+        if fields and fields[0] in ("box", "deep", "kind", "spoof"):
+            add("\t".join(fields))
+    domain = _domain_text(os.path.join(root, "servers.tsv"))
+    known = False
+    for line in domain.splitlines():
+        if line.split("\t", 1)[0] == server:
+            known = True
+            break
+    if not known:
+        domain = domain + server + "\n"
+    add(domain)
+    add(_cert_fingerprint(os.path.join(root, "generated", "ca", "server.crt")))
+    return digest.hexdigest()
+
+
+def _recorded_inputs(rows):
+    for fields in rows:
+        if fields and fields[0] == "inputs" and len(fields) > 1:
+            return fields[1].strip()
+    return None
+
+
+def publish_problem(server, base=None):
+    """'' when the inputs row matches. Otherwise the bump string, or the missing path. Does not exit."""
+    fix = "tools/test-servers/build-seed-image " + server
+    try:
+        digest = fixture_inputs_hash(server, base)
+        recorded = _recorded_inputs(_fixture_rows(base))
+    except FixtureInputMissing as exc:
+        return exc.path + " " + server + " " + fix
+    if recorded == digest:
+        return ""
+    return "inputs changed and the version was not bumped " + fix
+
+
+def _version_int(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if text.isdigit():
+        return int(text)
+    line = text.splitlines()[0].strip() if text else ""
+    if line.isdigit():
+        return int(line)
+    return None
+
+
+def version_problem(server, label, marker, required):
+    """'' when both stamps are the same integer and that integer is >= required. Does not connect."""
+    left = _version_int(label)
+    right = _version_int(marker)
+    need = _version_int(required)
+    if left is not None and right is not None and need is not None and left == right and left >= need:
+        return ""
+    return "%s label %s marker %s need %s tools/test-servers/build-seed-image %s" % (
+        server,
+        "" if label is None else label,
+        "" if marker is None else marker,
+        "" if required is None else required,
+        server,
+    )
+
+
+def _image_label(server):
+    proc = subprocess.run(
+        ["docker", "image", "inspect", "liveimap-seed-" + server],
+        capture_output=True, text=True, errors="replace",
+    )
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not data:
+        return None
+    config = data[0].get("Config") or {}
+    labels = config.get("Labels") or {}
+    return labels.get("liveimap.seed-manifest")
+
+
+def _fetch_text(data):
+    chunks = []
+    for part in data or []:
+        if isinstance(part, tuple) and len(part) > 1 and isinstance(part[1], (bytes, bytearray)):
+            chunks.append(bytes(part[1]))
+    return b"".join(chunks).decode("utf-8", "replace").strip()
+
+
+def _read_marker(port):
+    """Marker body, or ''. Selects readonly. Does not create or append."""
+    import imaplib
+    client = None
+    try:
+        kind = resolve_auto({"imap": port})
+        if kind not in (None, "StartTls"):
+            return ""
+        client = imaplib.IMAP4(LAB_HOST, port, timeout=20)
+        if kind == "StartTls":
+            client.starttls(_lab_ssl())
+        client.login(USER, PASS)
+        if "NAMESPACE" in client.capabilities:
+            typ, ns = client.namespace()
+        else:
+            typ, ns = "NO", None
+        field = ns[0] if typ == "OK" and ns and ns[0] else b""
+        name = marker_mailbox(field)
+        typ, data = client.select('"%s"' % name, readonly=True)
+        if typ != "OK":
+            return ""
+        typ, data = client.fetch("1", "(BODY.PEEK[TEXT])")
+        if typ != "OK":
+            return ""
+        return _fetch_text(data)
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        return _text(arg)
+    finally:
+        _close_imap(client)
+
+
+def entry_version_problem(server, imap_port):
+    """'' or one string. An int port also reads the marker mailbox. Does not create or append."""
+    try:
+        required = required_fixture_version()
+    except FixtureInputMissing as exc:
+        return exc.path + " " + server + " tools/test-servers/build-seed-image " + server
+    label = _image_label(server)
+    shown = "" if label is None else label
+    if type(imap_port) is not int:
+        got = _version_int(shown)
+        if got is None or got < required:
+            return version_problem(server, shown, "" if got is None else got, required)
+        return ""
+    return version_problem(server, shown, _read_marker(imap_port), required)
+
+
+def marker_mailbox(namespace_field):
+    """Personal prefix plus LiveIMAP-Fixture. Not one of the six suite boxes."""
+    root = suite_root(namespace_field)
+    suffix = "LiveIMAP-Test"
+    if root.endswith(suffix):
+        return root[: -len(suffix)] + "LiveIMAP-Fixture"
+    return "LiveIMAP-Fixture"
+
+
+def store_fixture_marker(host, port):
+    """Append one message whose body is the fixture version. The password stays in this process."""
+    import imaplib
+    client = None
+    try:
+        version = required_fixture_version()
+        client = imaplib.IMAP4(host, int(port), timeout=60)
+        if "STARTTLS" not in client.capabilities:
+            return "marker server does not offer STARTTLS"
+        client.starttls(_lab_ssl())
+        client.login(USER, PASS)
+        if "NAMESPACE" in client.capabilities:
+            typ, ns = client.namespace()
+        else:
+            typ, ns = "NO", None
+        field = ns[0] if typ == "OK" and ns and ns[0] else b""
+        name = marker_mailbox(field)
+        quoted = '"%s"' % name
+        typ, _data = client.select(quoted)
+        if typ != "OK":
+            typ, data = client.create(quoted)
+            if typ != "OK":
+                return "marker " + _text(data)
+        body = str(version).encode("ascii")
+        raw = b"Subject: LiveIMAP-Fixture\r\n\r\n" + body + b"\r\n"
+        typ, data = client.append(quoted, None, None, raw)
+        if typ != "OK":
+            return "marker " + _text(data)
+        return ""
+    except FixtureInputMissing as exc:
+        return exc.path + " tools/test-servers/build-seed-image"
+    except Exception as exc:
+        arg = exc.args[0] if exc.args else exc
+        return "marker " + _text(arg)
+    finally:
+        _close_imap(client)
+
+
+def _wire_leaf(name):
+    if all(32 <= ord(ch) <= 126 for ch in name):
+        return name
+    import lab_imap
+    return lab_imap.mutf7(name)
+
+
 def suite_root(namespace_field):
     """Personal namespace prefix plus LiveIMAP-Test. Does not connect."""
     prefix = ""
@@ -668,22 +967,36 @@ def list_delimiter(line):
 
 
 def suite_mailboxes(namespace_field, list_line):
-    """Six (name, count) pairs: root, Sub, Trash, leaf, Deep, Spoof. Does not connect."""
+    """Six (name, count) pairs from the box rows. Deep and Spoof counts are the deep and spoof rows."""
     root = suite_root(namespace_field)
     delim = list_delimiter(list_line)
-    return [
-        (root, SUITE_COUNT),
-        (root + delim + "Sub", max(5, SUITE_COUNT // 10)),
-        (root + delim + "Trash", 0),
-        (root + delim + SUITE_LEAF, 1),
-        (root + delim + "Deep", 2),
-        (root + delim + "Spoof", 4),
-    ]
+    deep_n = len(fixture_fields("deep"))
+    spoof_n = len(fixture_fields("spoof"))
+    out = []
+    for fields in fixture_fields("box"):
+        if len(fields) < 2 or not str(fields[1]).isdigit():
+            continue
+        name, count = fields[0], int(fields[1])
+        if name == "Deep":
+            count = deep_n
+        elif name == "Spoof":
+            count = spoof_n
+        if name == "LiveIMAP-Test":
+            wire = root
+        else:
+            wire = root + delim + _wire_leaf(name)
+        out.append((wire, count))
+    return out
 
 
 def require_suite_count(count):
     """'' or suite count. Does not connect."""
-    if count == SUITE_COUNT:
+    want = SUITE_COUNT
+    for fields in fixture_fields("box"):
+        if len(fields) > 1 and fields[0] == "LiveIMAP-Test" and str(fields[1]).isdigit():
+            want = int(fields[1])
+            break
+    if count == want:
         return ""
     return "suite count"
 
@@ -771,6 +1084,11 @@ def run_one(s, commit, stamp, out):
         # Never STARTTLS unless the pre-TLS CAPABILITY lists it.
         if offers_starttls:
             modes.append(("StartTls", s["imap"]))
+        problem = entry_version_problem(name, s["imap"])
+        if problem:
+            out.write(f"{name}\timap\t-\tfail\t{problem}\t{int(time.time()-t0)}\t{dest}\n")
+            out.flush()
+            return
         problem = fixture_check(s)
         s["folder"] = suite_root(s.get("namespace"))
         if problem:

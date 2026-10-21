@@ -39,6 +39,10 @@ RUNUSER = (lab.USER.split("@")[0] + "@" + lab.HOSTENV["LAB_MAIL_DOMAIN"]) if os.
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], False, 300); time.sleep(5)
+    problem = lab.entry_version_problem(name, s["imap"])
+    if problem:
+        print(problem)
+        sys.exit(1)
     cport = ports.container_port(name, row[1])
     hp = subprocess.run(["docker", "port", s["container"], str(cport)], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
     field = f"{row[1]}://{lab.EMU_HOST}:{hp}"

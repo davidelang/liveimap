@@ -7,6 +7,10 @@ field = field_tmpl.format(host=lab.LAB_HOST, **{k: v for k, v in s.items() if k 
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], "None"); time.sleep(5)
+    problem = lab.entry_version_problem(name, s["imap"])
+    if problem:
+        print(problem)
+        sys.exit(1)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.JmapLabSuiteTest#jmapSuite",
                 "-e", "jmapServer", field, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),
                 "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=600)
