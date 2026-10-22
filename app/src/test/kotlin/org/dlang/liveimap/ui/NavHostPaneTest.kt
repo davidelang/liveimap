@@ -1,6 +1,7 @@
 package org.dlang.liveimap.ui
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,5 +62,45 @@ class NavHostPaneTest {
         assertTrue(sem.contains("customActions"))
         assertTrue(sem.contains("onDrag(48f, span)"))
         assertTrue(sem.contains("onDrag(-48f, span)"))
+    }
+
+    @Test fun panesScrollOnceAndAccountIdAppliesLayout() {
+        val nav = src("main/kotlin/org/dlang/liveimap/ui/NavHost.kt")
+        for (name in listOf("index", "selection", "folders", "reader", "compose")) {
+            val route = nav.substringAfter("composable(\"toolbar/$name\")").substringBefore("\n            composable(")
+            assertTrue(name, route.contains("ToolbarEditorPage("))
+        }
+        val folderPane = nav.substringAfter("val folderListPane").substringBefore("val foldersAboveNow")
+        assertFalse(folderPane.contains("verticalScroll"))
+        val leaf = nav.substringAfter("is PaneNode.Leaf -> ").substringBefore("\n")
+        assertFalse(leaf.contains("verticalScroll"))
+        val folders = src("main/kotlin/org/dlang/liveimap/ui/folder/FolderListScreen.kt")
+        assertEquals(1, Regex("""\bLazyColumn\(""").findAll(folders).count())
+        val setup = slice(src("main/kotlin/org/dlang/liveimap/accounts/AuthenticatorService.kt"), "fun AccountSetupContent")
+        assertTrue(setup.contains("SettingsTree("))
+        assertFalse(setup.contains("SettingsGroupList"))
+        assertTrue(nav.contains("chosenAccountIdFlow()"))
+        val flowAt = nav.indexOf("store.chosenAccountIdFlow()")
+        val effectStart = nav.lastIndexOf("LaunchedEffect(Unit)", flowAt)
+        assertTrue(effectStart >= 0)
+        val effect = nav.substring(effectStart, nav.indexOf("\n    }", flowAt) + 6)
+        assertTrue(effect.contains("applyRunningLayout"))
+        val routeEffect = nav.substringAfter("LaunchedEffect(route, drawerState.currentValue)")
+            .substringBefore("LaunchedEffect(")
+        assertFalse(routeEffect.contains("applyRunningLayout"))
+        for (name in listOf("openIndexRow", "openFoldersRow", "openAccountFavorite")) {
+            assertFalse(name, slice(nav, "fun $name").contains("applyRunningLayout"))
+        }
+    }
+
+    private fun slice(source: String, signature: String): String {
+        val start = source.indexOf(signature)
+        assertTrue(signature, start >= 0)
+        val rest = source.substring(start + signature.length)
+        val cut = listOf("\nfun ", "\nprivate fun ", "\ninternal fun ")
+            .map { rest.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull() ?: rest.length
+        return rest.substring(0, cut)
     }
 }

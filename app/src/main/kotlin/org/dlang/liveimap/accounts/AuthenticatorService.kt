@@ -22,12 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import org.dlang.liveimap.settings.ExpandedFoldersScreen
-import org.dlang.liveimap.settings.FolderStartsScreen
-import org.dlang.liveimap.settings.FolderViewsScreen
-import org.dlang.liveimap.settings.SettingsGroup
-import org.dlang.liveimap.settings.SettingsGroupList
-import org.dlang.liveimap.settings.SettingsGroupScreen
+import org.dlang.liveimap.settings.SettingsTree
 import org.dlang.liveimap.ui.contacts.ContactCopyScreen
 
 class AuthenticatorService : Service() {
@@ -202,36 +197,18 @@ class AccountSetupActivity : ComponentActivity() {
     }
 }
 
-private sealed interface SetupScreen {
-    data object List : SetupScreen
-    data class Group(val group: SettingsGroup) : SetupScreen
-    data object Expanded : SetupScreen
-    data object Views : SetupScreen
-    data object Starts : SetupScreen
-    data object Contacts : SetupScreen
-}
-
 @Composable
 private fun AccountSetupContent() {
-    var stack by remember { mutableStateOf(listOf<SetupScreen>(SetupScreen.List)) }
-    BackHandler(enabled = stack.size > 1) {
-        stack = stack.dropLast(1)
-    }
-    when (val screen = stack.last()) {
-        SetupScreen.List -> SettingsGroupList { group ->
-            stack = stack + SetupScreen.Group(group)
-        }
-        is SetupScreen.Group -> SettingsGroupScreen(
-            group = screen.group,
-            onOpenExpanded = { stack = stack + SetupScreen.Expanded },
-            onOpenViews = { stack = stack + SetupScreen.Views },
-            onOpenStarts = { stack = stack + SetupScreen.Starts },
-            onCopyContacts = { stack = stack + SetupScreen.Contacts },
+    var contacts by remember { mutableStateOf(false) }
+    BackHandler(enabled = contacts) { contacts = false }
+    if (contacts) {
+        ContactCopyScreen()
+    } else {
+        SettingsTree(
+            onCopyContacts = { contacts = true },
+            onEditBook = {},
+            onOpenPanel = { _, _ -> },
         )
-        SetupScreen.Expanded -> ExpandedFoldersScreen()
-        SetupScreen.Views -> FolderViewsScreen()
-        SetupScreen.Starts -> FolderStartsScreen()
-        SetupScreen.Contacts -> ContactCopyScreen()
     }
 }
 

@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
@@ -60,10 +59,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
@@ -411,40 +408,6 @@ private fun rememberSectionOpen(): SectionOpen {
     return remember(packed) { SectionOpen(packed) }
 }
 
-private val LocalSettingsInTree = compositionLocalOf { false }
-
-@Composable
-fun SettingsGroupList(selected: SettingsGroup? = null, onOpen: (SettingsGroup) -> Unit) {
-    val editor = rememberSettingsEditor()
-    // The list's summaries ("Traffic log on" and the rest) follow saves made by the detail pane's own editor.
-    val revision = SettingsRevision.value
-    LaunchedEffect(revision) { if (revision > 0) editor.load() }
-    if (!editor.ready) return
-    val settings = editor.settings
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-    ) {
-        SettingsGroup.entries.forEach { group ->
-            ListItem(
-                headlineContent = { Text(group.title) },
-                supportingContent = { Text(groupSummary(group, settings)) },
-                colors = if (group == selected) {
-                    androidx.compose.material3.ListItemDefaults.colors(
-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
-                    )
-                } else {
-                    androidx.compose.material3.ListItemDefaults.colors()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(group) },
-            )
-        }
-    }
-}
-
 @Composable
 fun SettingsGroupScreen(
     group: SettingsGroup,
@@ -457,16 +420,18 @@ fun SettingsGroupScreen(
 ) {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    when (group) {
-        SettingsGroup.Account -> AccountGroup(editor)
-        SettingsGroup.Mailboxes -> MailboxesGroup(editor)
-        SettingsGroup.Folders -> FoldersGroup(editor)
-        SettingsGroup.Reading -> ReadingGroup(editor)
-        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
-        SettingsGroup.Appearance -> AppearanceGroup(editor)
-        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
-        SettingsGroup.Slower -> SlowerGroup(editor)
-        SettingsGroup.Debug -> DebugGroup(editor)
+    SettingsPage {
+        when (group) {
+            SettingsGroup.Account -> AccountGroup(editor)
+            SettingsGroup.Mailboxes -> MailboxesGroup(editor)
+            SettingsGroup.Folders -> FoldersGroup(editor)
+            SettingsGroup.Reading -> ReadingGroup(editor)
+            SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
+            SettingsGroup.Appearance -> AppearanceGroup(editor)
+            SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
+            SettingsGroup.Slower -> SlowerGroup(editor)
+            SettingsGroup.Debug -> DebugGroup(editor)
+        }
     }
 }
 
@@ -482,13 +447,13 @@ fun SettingsTree(
     val settings = editor.settings
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
-    CompositionLocalProvider(LocalSettingsInTree provides true) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .testTag("smoke-settings"),
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+            .testTag("smoke-settings"),
+    ) {
             for (group in SettingsGroup.entries) {
                 SettingsSection(
                     title = group.title,
@@ -519,7 +484,6 @@ fun SettingsTree(
                 }
             }
         }
-    }
     val editing = editingFavorite
     if (editing != null) {
         FavoriteEditDialog(
@@ -625,10 +589,8 @@ private fun ToolbarBlock(
         expanded = id in bars.open,
         onToggle = { bars.toggle(id) },
     ) {
-        Box(Modifier.fillMaxWidth().height(480.dp)) {
-            key(ToolbarRevision.value) {
-                ToolbarEditorScreen(screen, accountId)
-            }
+        key(ToolbarRevision.value) {
+            ToolbarEditorScreen(screen, accountId)
         }
     }
 }
@@ -663,14 +625,16 @@ private fun FavoritesSection(editor: SettingsEditor, onEdit: (FolderFavorite) ->
 fun ExpandedFoldersScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    ExpandedFoldersBody(editor)
+    SettingsPage {
+        ExpandedFoldersBody(editor)
+    }
 }
 
 @Composable
 private fun ExpandedFoldersBody(editor: SettingsEditor) {
     var picking by remember { mutableStateOf(false) }
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         settings.expandedFolders.forEach { mailbox ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(mailbox, modifier = Modifier.weight(1f))
@@ -705,7 +669,9 @@ private fun ExpandedFoldersBody(editor: SettingsEditor) {
 fun FolderViewsScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    FolderViewsBody(editor)
+    SettingsPage {
+        FolderViewsBody(editor)
+    }
 }
 
 @Composable
@@ -714,7 +680,7 @@ private fun FolderViewsBody(editor: SettingsEditor) {
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         settings.folderViews.forEach { (mailbox, view) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -769,7 +735,9 @@ private fun FolderViewsBody(editor: SettingsEditor) {
 fun FolderStartsScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
-    FolderStartsBody(editor)
+    SettingsPage {
+        FolderStartsBody(editor)
+    }
 }
 
 @Composable
@@ -777,7 +745,7 @@ private fun FolderStartsBody(editor: SettingsEditor) {
     var draftStartMailbox by remember { mutableStateOf("") }
     var draftStartRule by remember { mutableStateOf(StartRule.Newest) }
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         settings.folderStarts.forEach { (mailbox, rule) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -1107,7 +1075,7 @@ private fun AccountGroup(editor: SettingsEditor) {
             }
         }
     }
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val accountRows = editor.accounts
         SettingsSection(
             title = stringResource(R.string.settings_accounts),
@@ -1658,7 +1626,7 @@ private fun MailboxesGroup(editor: SettingsEditor) {
             }
         }
     }
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_special_use),
             summary = mailboxSetCount(settings),
@@ -1706,7 +1674,7 @@ private fun MailboxesGroup(editor: SettingsEditor) {
 private fun FoldersGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_folder_list),
             summary = pluralStringResource(
@@ -1818,7 +1786,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
         if (picking != null) picking = null else warnUnread = false
     }
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_opening),
             summary = bodyViewName(settings.bodyView),
@@ -2008,7 +1976,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
 private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // David, 2026-10-12: the wrap column is a Compose setting (it was under Sending/SMTP). Same stored value.
         SettingsSection(
             title = stringResource(R.string.settings_composing),
@@ -2250,7 +2218,7 @@ private fun AddressCompletionRows(editor: SettingsEditor) {
 private fun AppearanceGroup(editor: SettingsEditor) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_theme),
             summary = themeSummary(settings),
@@ -2301,7 +2269,7 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
     val sections = rememberSectionOpen()
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_panes),
             summary = multiPaneName(settings.multiPane),
@@ -2462,7 +2430,7 @@ private val hideCapabilityTokens = listOf(
 @Composable
 private fun SlowerGroup(editor: SettingsEditor) {
     val settings = editor.settings
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoolField(
             stringResource(R.string.settings_client_sort),
             settings.clientSort,
@@ -2511,7 +2479,7 @@ private fun DebugGroup(editor: SettingsEditor) {
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var confirmShareLog by remember { mutableStateOf(false) }
     val contextState = rememberUpdatedState(LocalContext.current)
-    SettingsPage {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsSection(
             title = stringResource(R.string.settings_logging),
             summary = loggingSummary(settings),
@@ -2647,11 +2615,10 @@ private fun MailboxPickDialog(
 @Composable
 private fun SettingsPage(content: @Composable () -> Unit) {
     val scrollState = rememberScrollState()
-    val scroll = if (LocalSettingsInTree.current) Modifier else Modifier.verticalScroll(scrollState)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(scroll)
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

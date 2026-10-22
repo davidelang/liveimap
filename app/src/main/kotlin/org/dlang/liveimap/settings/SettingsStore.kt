@@ -109,6 +109,8 @@ class DataStoreSettingsStore(
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 
+    fun chosenAccountIdFlow(): Flow<String?> = store.chosenAccountIdFlow()
+
     /** F121: a store bound to [accountId]. */
     fun forAccount(accountId: String): DataStoreSettingsStore = DataStoreSettingsStore(context, accountId)
 }

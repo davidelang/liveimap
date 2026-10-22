@@ -4,16 +4,13 @@ import androidx.compose.foundation.horizontalScroll
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
@@ -25,9 +22,11 @@ import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,9 +39,8 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import sh.calvin.reorderable.ReorderableCollectionItemScope
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import sh.calvin.reorderable.ReorderableColumn
+import sh.calvin.reorderable.ReorderableListItemScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import com.davidlang.liveimap.R
@@ -154,7 +152,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
     var announcement by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(16.dp),
     ) {
         Text(
@@ -328,7 +326,34 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
 }
 
 @Composable
-private fun <A : Enum<A>> ColumnScope.SectionEditor(
+fun ToolbarEditorPage(
+    screen: ToolbarScreen,
+    accountId: String,
+    content: @Composable () -> Unit = { ToolbarEditorScreen(screen, accountId) },
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        content()
+    }
+}
+
+private sealed interface EditorLine<out A> {
+    val key: String
+
+    data class Header<A>(val section: BarSection) : EditorLine<A> {
+        override val key: String = "section-${section.name}"
+    }
+
+    data class Action<A>(val section: BarSection, val action: A, val index: Int, val count: Int) : EditorLine<A> {
+        override val key: String = "action-${(action as Enum<*>).name}"
+    }
+}
+
+@Composable
+private fun <A : Enum<A>> SectionEditor(
     rowsIn: (BarSection) -> List<A>,
     labelRes: (A) -> Int,
     onMoveBy: (A, Int) -> Unit,
@@ -338,78 +363,78 @@ private fun <A : Enum<A>> ColumnScope.SectionEditor(
     toolbarRows: Int,
     onToolbarRows: (Int) -> Unit,
 ) {
-    val lazyListState = rememberLazyListState()
-    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        onDrag(from.index, to.index)
+    val lines = buildList {
+        for (section in BarSection.entries) {
+            add(EditorLine.Header(section))
+            val rows = rowsIn(section)
+            rows.forEachIndexed { index, action ->
+                add(EditorLine.Action(section, action, index, rows.size))
+            }
+        }
     }
-    LazyColumn(
-        state = lazyListState,
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxWidth(),
+    val drag = rememberUpdatedState(onDrag)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        for (section in BarSection.entries) {
-            item(key = section.name) {
-                ReorderableItem(reorderableState, key = section.name) {
-                    Text(
-                        text = sectionTitle(section),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
-            }
-            val rows = rowsIn(section)
-            items(rows, key = { action -> action.name }) { action ->
-                val index = rows.indexOf(action)
-                ReorderableItem(reorderableState, key = action.name) {
-                    ToolbarEditorRow(
-                        labelRes = labelRes(action),
-                        section = section,
-                        index = index,
-                        count = rows.size,
-                        onMoveBy = { delta -> onMoveBy(action, delta) },
-                        onMoveTo = { target -> onMoveTo(action, target) },
-                    )
+        ReorderableColumn(
+            list = lines,
+            onSettle = { from, to -> drag.value(from, to) },
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) { _, line, _ ->
+            key(line.key) {
+                ReorderableItem {
+                    when (line) {
+                        is EditorLine.Header -> Text(
+                            text = sectionTitle(line.section),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        is EditorLine.Action -> ToolbarEditorRow(
+                            labelRes = labelRes(line.action),
+                            section = line.section,
+                            index = line.index,
+                            count = line.count,
+                            onMoveBy = { delta -> onMoveBy(line.action, delta) },
+                            onMoveTo = { target -> onMoveTo(line.action, target) },
+                        )
+                    }
                 }
             }
         }
-        item(key = "reset") {
-            TextButton(onClick = onReset) {
-                Text(stringResource(R.string.toolbar_reset))
-            }
+        TextButton(onClick = onReset) {
+            Text(stringResource(R.string.toolbar_reset))
         }
-        item(key = "toolbar-rows") {
-            val toolbarCount = rowsIn(BarSection.Toolbar).size
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.toolbar_rows))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(toolbarRows.toString())
-                    TextButton(
-                        onClick = { onToolbarRows(toolbarRows - 1) },
-                        enabled = toolbarRows > 1,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) {
-                        Text(stringResource(R.string.toolbar_rows_fewer))
-                    }
-                    TextButton(
-                        onClick = { onToolbarRows(toolbarRows + 1) },
-                        enabled = toolbarRows < 4,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) {
-                        Text(stringResource(R.string.toolbar_rows_more))
-                    }
+        val toolbarCount = rowsIn(BarSection.Toolbar).size
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.toolbar_rows))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(toolbarRows.toString())
+                TextButton(
+                    onClick = { onToolbarRows(toolbarRows - 1) },
+                    enabled = toolbarRows > 1,
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                ) {
+                    Text(stringResource(R.string.toolbar_rows_fewer))
                 }
-                // Editor budget is 3 slots. Each bar measures its own width.
-                if (packToolbar(toolbarCount, 3, toolbarRows).overflowsCap) {
-                    Text(stringResource(R.string.toolbar_rows_warning, toolbarRows))
+                TextButton(
+                    onClick = { onToolbarRows(toolbarRows + 1) },
+                    enabled = toolbarRows < 4,
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                ) {
+                    Text(stringResource(R.string.toolbar_rows_more))
                 }
+            }
+            // Editor budget is 3 slots. Each bar measures its own width.
+            if (packToolbar(toolbarCount, 3, toolbarRows).overflowsCap) {
+                Text(stringResource(R.string.toolbar_rows_warning, toolbarRows))
             }
         }
     }
 }
 
 @Composable
-private fun ReorderableCollectionItemScope.ToolbarEditorRow(
+private fun ReorderableListItemScope.ToolbarEditorRow(
     labelRes: Int,
     section: BarSection,
     index: Int,

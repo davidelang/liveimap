@@ -156,6 +156,7 @@ import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
+import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 
@@ -431,6 +432,13 @@ fun LiveImapNavHost() {
 
     LaunchedEffect(LayoutApply.generation) {
         applyRunningLayout()
+    }
+
+    LaunchedEffect(Unit) {
+        store.chosenAccountIdFlow().collect {
+            applyOpenAccount()
+            applyRunningLayout()
+        }
     }
 
     LaunchedEffect(split, route, currentEntry?.id) {
@@ -752,31 +760,51 @@ fun LiveImapNavHost() {
             composable("toolbar/index") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Index, accountId) }
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(ToolbarScreen.Index, accountId) {
+                            ToolbarEditorScreen(ToolbarScreen.Index, accountId)
+                        }
+                    }
                 }
             }
             composable("toolbar/selection") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Selection, accountId) }
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(ToolbarScreen.Selection, accountId) {
+                            ToolbarEditorScreen(ToolbarScreen.Selection, accountId)
+                        }
+                    }
                 }
             }
             composable("toolbar/folders") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Folders, accountId) }
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(ToolbarScreen.Folders, accountId) {
+                            ToolbarEditorScreen(ToolbarScreen.Folders, accountId)
+                        }
+                    }
                 }
             }
             composable("toolbar/reader") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Reader, accountId) }
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(ToolbarScreen.Reader, accountId) {
+                            ToolbarEditorScreen(ToolbarScreen.Reader, accountId)
+                        }
+                    }
                 }
             }
             composable("toolbar/compose") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Compose, accountId) }
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(ToolbarScreen.Compose, accountId) {
+                            ToolbarEditorScreen(ToolbarScreen.Compose, accountId)
+                        }
+                    }
                 }
             }
             composable(
@@ -1082,7 +1110,6 @@ fun LiveImapNavHost() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
-                applyRunningLayout()
                 navController.navigate("index/${Uri.encode(mailbox)}") {
                     popUpTo("folders")
                     launchSingleTop = false
@@ -1098,7 +1125,6 @@ fun LiveImapNavHost() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
-                applyRunningLayout()
                 navController.navigate("folders") {
                     popUpTo("folders") { inclusive = true }
                     launchSingleTop = false
@@ -1121,7 +1147,6 @@ fun LiveImapNavHost() {
             drawerState.close()
             store.selectAccount(account.id)
             applyOpenAccount()
-            applyRunningLayout()
             if (favorite.node) {
                 val id = store.chosenAccountId()
                 if (id != null) {

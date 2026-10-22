@@ -19,8 +19,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -248,6 +250,11 @@ class AccountStore private constructor(private val context: Context) {
             removed
         }
     }
+
+    fun chosenAccountIdFlow(): Flow<String?> =
+        context.accountSettingsDataStore.data
+            .map { prefs -> prefs[stringPreferencesKey(selectedAccountIdKey)] }
+            .distinctUntilChanged()
 
     fun theme(): Flow<ThemeMode> = flow {
         context.accountSettingsDataStore.data.collect { prefs ->
