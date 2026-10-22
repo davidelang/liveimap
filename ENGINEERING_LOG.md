@@ -3569,3 +3569,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - The remaining seed images open IMAP.
 
 ## 2026-10-21 - Screenshot personality for the compact tablet.
+
+## 2026-10-21 - Settings is one tree, and Change layout applies the panes.

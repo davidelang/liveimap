@@ -20,7 +20,8 @@ class NavHostPaneTest {
         assertTrue(next >= 0)
         assertTrue(tail.substring(next).startsWith("\ninternal fun drawerHiddenFor"))
         assertFalse(tail.substring(0, next).contains("settingsSplitRoute"))
-        assertTrue(nav.contains("internal fun settingsSplitRoute"))
+        assertTrue(nav.contains("SettingsTree("))
+        assertFalse(nav.contains("if (settingsSplit) {"))
     }
 
     @Test fun drawerAccountTestDropsInboxCases() {

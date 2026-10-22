@@ -15,6 +15,13 @@ class PaneSplitTest {
     }
 
     @Test
+    fun paneControlsFollowMultiPane() {
+        assertFalse(paneControlsEnabled(MultiPane.Off))
+        assertTrue(paneControlsEnabled(MultiPane.Wide))
+        assertTrue(paneControlsEnabled(MultiPane.Auto))
+    }
+
+    @Test
     fun phoneReaderStartsDrawerClosed() {
         assertEquals(0, initialDrawerDp(880, readerOpen = true))
         assertEquals(360, initialDrawerDp(1200, readerOpen = true))

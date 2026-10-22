@@ -26,8 +26,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,11 +45,16 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
@@ -77,6 +87,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -123,9 +135,10 @@ import org.dlang.liveimap.settings.FolderStartsScreen
 import org.dlang.liveimap.settings.FolderViewsScreen
 import org.dlang.liveimap.settings.LayoutChoice
 import org.dlang.liveimap.settings.MultiPane
+import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.settings.SettingsGroup
-import org.dlang.liveimap.settings.SettingsGroupList
 import org.dlang.liveimap.settings.SettingsGroupScreen
+import org.dlang.liveimap.settings.SettingsTree
 import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.about.LicensesScreen
@@ -324,11 +337,6 @@ fun LiveImapNavHost() {
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
     val drawerGestures = route == "folders"
-    // David, 2026-10-12: in two-pane layouts Settings shows its group list on the left and the opened group on the
-    // right, with no drawer.
-    val settingsSplit = split && settingsSplitRoute(route)
-    val settingsSplitNow = rememberUpdatedState(settingsSplit)
-    var settingsListDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
     var header by remember { mutableStateOf("") }
     var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
     var drawerAccounts by remember { mutableStateOf<List<DrawerAccount>>(emptyList()) }
@@ -393,26 +401,35 @@ fun LiveImapNavHost() {
         },
     )
 
+    suspend fun applyRunningLayout() {
+        val account = store.load()
+        multiPane = account.multiPane
+        customTree = decodePaneLayout(account.customLayout)?.takeIf { paneLayoutProblem(it) == null }
+        treeDp.clear()
+        folderPane = account.folderPane
+        foldPosture = account.foldPosture
+        arrangement = account.paneArrangement
+        folderPosition = account.folderPosition
+        LayoutApply.noteFullScreen()
+    }
+
     suspend fun applyOpenAccount() {
         val account = store.load()
         header = if (account.email.isNotBlank()) account.email else account.username
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
-        multiPane = account.multiPane
-        customTree = decodePaneLayout(account.customLayout)?.takeIf { paneLayoutProblem(it) == null }
-        treeDp.clear()
-        folderPane = account.folderPane
         textZoom = account.readerTextZoom
-        arrangement = account.paneArrangement
-        folderPosition = account.folderPosition
         NonAsciiText.active = account.nonAsciiDisplay
-        foldPosture = account.foldPosture
         accounts = store.listAccounts()
         drawerAccounts = store.listDrawerAccounts()
     }
 
     LaunchedEffect(route, drawerState.currentValue) {
         applyOpenAccount()
+    }
+
+    LaunchedEffect(LayoutApply.generation) {
+        applyRunningLayout()
     }
 
     LaunchedEffect(split, route, currentEntry?.id) {
@@ -847,17 +864,11 @@ fun LiveImapNavHost() {
             }
             composable("settings") {
                 UpPage(stringResource(R.string.drawer_settings), onUp = { navController.navigateUp() }) {
-                    if (settingsSplitNow.value) {
-                        // The list is in the left pane; this pane waits for a group.
-                        Text(
-                            stringResource(R.string.settings_pick_group),
-                            modifier = Modifier.padding(16.dp).testTag("settings-pick-group"),
-                        )
-                    } else {
-                        SettingsGroupList(onOpen = { group ->
-                            navController.navigate("settings/${group.route}")
-                        })
-                    }
+                    SettingsTree(
+                        onCopyContacts = { navController.navigate("contacts") },
+                        onEditBook = { navController.navigate("addressbook") },
+                        onOpenPanel = { name, accountId -> openToolbar(name, accountId) },
+                    )
                 }
             }
             composable("settings/folders/expanded") {
@@ -1070,6 +1081,7 @@ fun LiveImapNavHost() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
+                applyRunningLayout()
                 navController.navigate("index/${Uri.encode(mailbox)}") {
                     popUpTo("folders")
                     launchSingleTop = false
@@ -1085,6 +1097,7 @@ fun LiveImapNavHost() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
+                applyRunningLayout()
                 navController.navigate("folders") {
                     popUpTo("folders") { inclusive = true }
                     launchSingleTop = false
@@ -1107,6 +1120,7 @@ fun LiveImapNavHost() {
             drawerState.close()
             store.selectAccount(account.id)
             applyOpenAccount()
+            applyRunningLayout()
             if (favorite.node) {
                 val id = store.chosenAccountId()
                 if (id != null) {
@@ -1333,7 +1347,14 @@ fun LiveImapNavHost() {
         }
     }
     val drawerPanel: @Composable () -> Unit = {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) { drawerSheet() }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .windowInsetsPadding(
+                    mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
+                ),
+        ) { drawerSheet() }
     }
     drawerPaneSlot.value = drawerPanel
 
@@ -1367,7 +1388,7 @@ fun LiveImapNavHost() {
         Box(Modifier.fillMaxSize()) {
         val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
         val modalDrawer = mailUsesModalDrawer(
-            settingsSplit = settingsSplit,
+            settingsSplit = false,
             hasCustomTree = customTree != null,
             drawerOutsideMail = drawerOutsideMail,
             split = split,
@@ -1377,35 +1398,7 @@ fun LiveImapNavHost() {
             if (composeChoice != ComposeButton.Pick) composeAccounts = null
         }
         val tree = customTree
-        if (settingsSplit) {
-            val openGroup = currentEntry?.arguments?.getString("group")?.let(SettingsGroup::fromRoute)
-            AxisSplit(
-                axis = axis,
-                leadingDp = settingsListDp,
-                fallback = { span -> minOf(360f, span / 2f) },
-                onSpan = { _ -> },
-                onDrag = { delta, span ->
-                    val max = (span - 8f).coerceAtLeast(0f)
-                    val base = if (settingsListDp < 0f) minOf(360f, span / 2f) else settingsListDp
-                    settingsListDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
-                },
-                leading = {
-                    UpPage(stringResource(R.string.drawer_settings), onUp = { UnsavedEdits.guard { navController.popBackStack("settings", inclusive = true) } }) {
-                        SettingsGroupList(selected = openGroup, onOpen = { group ->
-                            UnsavedEdits.guard {
-                                navController.navigate("settings/${group.route}") {
-                                    popUpTo("settings")
-                                    launchSingleTop = true
-                                }
-                            }
-                        })
-                    }
-                },
-                trailing = {
-                    NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
-                },
-            )
-        } else if (tree != null) {
+        if (tree != null) {
             PaneTree(tree, "T", treeDp, mailNode(tree), { CustomMailArea() }) { content ->
                 when (content) {
                     PaneContent.Folders -> folderListPane()
@@ -1715,7 +1708,7 @@ private fun ColumnScope.DrawerSheetContent(
 }
 
 @Composable
-private fun FavoriteEditDialog(
+internal fun FavoriteEditDialog(
     where: FavoriteWhere,
     name: String,
     onName: (String) -> Unit,
@@ -1779,6 +1772,8 @@ internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
 internal fun useMultiPane(mode: MultiPane, autoPanes: Int = 1): Boolean =
     mode == MultiPane.Wide || (mode == MultiPane.Auto && autoPanes >= 2)
 
+internal fun paneControlsEnabled(mode: MultiPane) = mode != MultiPane.Off
+
 
 internal fun useFolderPane(choice: LayoutChoice, autoPanes: Int = 1): Boolean =
     choice == LayoutChoice.On || (choice == LayoutChoice.Auto && autoPanes >= 3)
@@ -1789,10 +1784,6 @@ internal enum class PaneAxis {
     SideBySide,
     TopBottom,
 }
-
-/** Settings routes, which get the list/detail split (no drawer) in two-pane layouts. */
-internal fun settingsSplitRoute(route: String?): Boolean =
-    route == "settings" || route?.startsWith("settings/") == true
 
 /**
  * The account drawer is a hidden (openable) drawer when a folder column shows, or in Auto when there is no
@@ -2011,14 +2002,51 @@ private fun searchScopeOrCurrent(name: String): SearchScope {
     return SearchScope.Current
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> Unit) {
-    Scaffold(topBar = { UpTopAppBar(title, onUp) }) { innerPadding ->
+    val density = LocalDensity.current
+    val statusTop = WindowInsets.statusBars.getTop(density)
+    var coversStatus by remember { mutableStateOf(true) }
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            Box(
+                Modifier.onGloballyPositioned { coords ->
+                    val next = coords.positionInWindow().y < statusTop
+                    if (next != coversStatus) coversStatus = next
+                },
+            ) {
+                val back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+                val up: () -> Unit = {
+                    if (UnsavedEdits.pending && back != null) back.onBackPressed() else onUp()
+                }
+                TopAppBar(
+                    title = { Text(title) },
+                    navigationIcon = {
+                        IconButton(onClick = up) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.scaffold_up),
+                            )
+                        }
+                    },
+                    windowInsets = if (coversStatus) {
+                        TopAppBarDefaults.windowInsets
+                    } else {
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)
+                    },
+                )
+            }
+        },
+    ) { innerPadding ->
         Box(
             Modifier
                 .padding(innerPadding)
                 .windowInsetsPadding(
-                    mailScreenInsets().only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                    WindowInsets.navigationBars.union(
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal),
+                    ),
                 ),
         ) {
             content()

@@ -560,6 +560,9 @@ Your version: %2$s</string>
     <string name="settings_multi_pane_off">Off</string>
     <string name="settings_multi_pane_wide">On</string>
     <string name="settings_layout">Layout</string>
+    <string name="settings_change_layout">Change layout</string>
+    <string name="settings_toolbars">Toolbars</string>
+    <string name="settings_favorites">Favorites</string>
     <string name="settings_panes">Panes</string>
     <string name="settings_folder_pane">Folder list pane</string>
     <string name="settings_fold_posture">Fold posture</string>

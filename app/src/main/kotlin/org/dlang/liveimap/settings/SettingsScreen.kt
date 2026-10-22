@@ -20,13 +20,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import org.dlang.liveimap.ui.compose.formatMailbox
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
@@ -57,7 +60,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
@@ -70,6 +75,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -133,7 +140,12 @@ import org.dlang.liveimap.ui.contacts.hasReadContacts
 import org.dlang.liveimap.ui.contacts.moveCompletionSource
 import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
+import org.dlang.liveimap.ui.FavoriteEditDialog
+import org.dlang.liveimap.ui.FavoriteWhere
 import org.dlang.liveimap.ui.folder.MailboxChooser
+import org.dlang.liveimap.ui.paneControlsEnabled
+import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
+import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 
 /**
  * F96: a failed save (e.g. Keystore unavailable, so a password is refused) is shown, never an uncaught
@@ -311,11 +323,24 @@ internal fun serverCapAllows(jmapFolders: Boolean, sessionOpen: Boolean, adverti
     return advertised
 }
 
-/** Bumped after every settings save, so another editor on screen (the two-pane group list) reloads. */
+/** Bumped after every settings save, so another editor on screen reloads. */
 internal object SettingsRevision {
     private val state = androidx.compose.runtime.mutableIntStateOf(0)
     val value: Int get() = state.intValue
     fun bump() { state.intValue = state.intValue + 1 }
+}
+
+/**
+ * Change layout is the only in-process apply. [generation] starts at 0.
+ * [fullScreenGeneration] is what MainActivity collects to reload full screen.
+ */
+internal object LayoutApply {
+    private val panes = androidx.compose.runtime.mutableIntStateOf(0)
+    private val screen = androidx.compose.runtime.mutableIntStateOf(0)
+    val generation: Int get() = panes.intValue
+    val fullScreenGeneration: Int get() = screen.intValue
+    fun request() { panes.intValue = panes.intValue + 1 }
+    fun noteFullScreen() { screen.intValue = screen.intValue + 1 }
 }
 
 @Composable
@@ -332,20 +357,24 @@ private fun rememberSettingsEditor(): SettingsEditor {
     return editor
 }
 
-private class SectionOpen(private val selected: MutableState<String>) {
+private class SectionOpen(private val packed: MutableState<String>) {
     val open: Set<String>
-        get() = if (selected.value.isEmpty()) emptySet() else setOf(selected.value)
+        get() = if (packed.value.isEmpty()) emptySet() else packed.value.split('\n').toSet()
 
     fun toggle(id: String) {
-        selected.value = if (id in open) "" else id
+        val now = open
+        val next = if (id in now) now - id else now + id
+        packed.value = next.joinToString("\n")
     }
 }
 
 @Composable
-private fun rememberSectionOpen(first: String): SectionOpen {
-    val selected = rememberSaveable { mutableStateOf(first) }
-    return remember(selected) { SectionOpen(selected) }
+private fun rememberSectionOpen(): SectionOpen {
+    val packed = rememberSaveable { mutableStateOf("") }
+    return remember(packed) { SectionOpen(packed) }
 }
+
+private val LocalSettingsInTree = compositionLocalOf { false }
 
 @Composable
 fun SettingsGroupList(selected: SettingsGroup? = null, onOpen: (SettingsGroup) -> Unit) {
@@ -358,8 +387,7 @@ fun SettingsGroupList(selected: SettingsGroup? = null, onOpen: (SettingsGroup) -
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .testTag("smoke-settings"),
+            .verticalScroll(rememberScrollState()),
     ) {
         SettingsGroup.entries.forEach { group ->
             ListItem(
@@ -395,7 +423,7 @@ fun SettingsGroupScreen(
     when (group) {
         SettingsGroup.Account -> AccountGroup(editor)
         SettingsGroup.Mailboxes -> MailboxesGroup(editor)
-        SettingsGroup.Folders -> FoldersGroup(editor, onOpenExpanded, onOpenViews, onOpenStarts)
+        SettingsGroup.Folders -> FoldersGroup(editor)
         SettingsGroup.Reading -> ReadingGroup(editor)
         SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
         SettingsGroup.Appearance -> AppearanceGroup(editor)
@@ -406,9 +434,184 @@ fun SettingsGroupScreen(
 }
 
 @Composable
+fun SettingsTree(
+    onCopyContacts: () -> Unit,
+    onEditBook: () -> Unit,
+    onOpenPanel: (String, String) -> Unit,
+) {
+    val editor = rememberSettingsEditor()
+    if (!editor.ready) return
+    val sections = rememberSectionOpen()
+    val settings = editor.settings
+    var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
+    var favoriteDraft by remember { mutableStateOf("") }
+    CompositionLocalProvider(LocalSettingsInTree provides true) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .testTag("smoke-settings"),
+        ) {
+            for (group in SettingsGroup.entries) {
+                SettingsSection(
+                    title = group.title,
+                    summary = groupSummary(group, settings),
+                    expanded = group.route in sections.open,
+                    onToggle = { sections.toggle(group.route) },
+                ) {
+                    when (group) {
+                        SettingsGroup.Account -> AccountGroup(editor)
+                        SettingsGroup.Mailboxes -> MailboxesGroup(editor)
+                        SettingsGroup.Folders -> FoldersGroup(editor)
+                        SettingsGroup.Reading -> ReadingGroup(editor)
+                        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
+                        SettingsGroup.Appearance -> AppearanceGroup(editor)
+                        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
+                        SettingsGroup.Slower -> SlowerGroup(editor)
+                        SettingsGroup.Debug -> DebugGroup(editor)
+                    }
+                }
+            }
+            ToolbarsSection(editor)
+            FavoritesSection(editor) { favorite ->
+                editingFavorite = favorite
+                favoriteDraft = if (favorite.label.isNotBlank()) {
+                    favorite.label
+                } else {
+                    favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+                }
+            }
+        }
+    }
+    val editing = editingFavorite
+    if (editing != null) {
+        FavoriteEditDialog(
+            where = FavoriteWhere(
+                account = settings.email.ifBlank { settings.username },
+                server = settings.imapHost,
+                path = editing.mailbox,
+            ),
+            name = favoriteDraft,
+            onName = { favoriteDraft = it },
+            onMoveUp = { moveTreeFavorite(editor, editing, -1) },
+            onMoveDown = { moveTreeFavorite(editor, editing, 1) },
+            onSave = {
+                val trimmed = favoriteDraft.trim()
+                editor.persist(
+                    editor.settings.copy(
+                        favorites = editor.settings.favorites.map { item ->
+                            if (item.node == editing.node && item.mailbox == editing.mailbox) {
+                                item.copy(label = trimmed)
+                            } else {
+                                item
+                            }
+                        },
+                    ),
+                )
+                editingFavorite = null
+            },
+            onDelete = {
+                editor.persist(
+                    editor.settings.copy(
+                        favorites = editor.settings.favorites.filterNot {
+                            it.node == editing.node && it.mailbox == editing.mailbox
+                        },
+                    ),
+                )
+                editingFavorite = null
+            },
+            onDismiss = { editingFavorite = null },
+        )
+    }
+}
+
+private fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, delta: Int) {
+    val list = editor.settings.favorites
+    val index = list.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
+    if (index < 0) return
+    val target = index + delta
+    if (target !in list.indices) return
+    val next = list.toMutableList()
+    val swap = next[target]
+    next[target] = next[index]
+    next[index] = swap
+    editor.persist(editor.settings.copy(favorites = next))
+}
+
+@Composable
+private fun ToolbarsSection(editor: SettingsEditor) {
+    val bars = rememberSectionOpen()
+    val accountId = editor.editingId.orEmpty()
+    SettingsSection(
+        title = stringResource(R.string.settings_toolbars),
+        summary = stringResource(R.string.settings_toolbars),
+        expanded = "toolbars" in bars.open,
+        onToggle = { bars.toggle("toolbars") },
+    ) {
+        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId)
+        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId)
+        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId)
+        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId)
+        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId)
+    }
+}
+
+@Composable
+private fun ToolbarBlock(
+    titleRes: Int,
+    id: String,
+    bars: SectionOpen,
+    screen: ToolbarScreen,
+    accountId: String,
+) {
+    val title = stringResource(titleRes)
+    SettingsSection(
+        title = title,
+        summary = title,
+        expanded = id in bars.open,
+        onToggle = { bars.toggle(id) },
+    ) {
+        Box(Modifier.fillMaxWidth().height(480.dp)) {
+            ToolbarEditorScreen(screen, accountId)
+        }
+    }
+}
+
+@Composable
+private fun FavoritesSection(editor: SettingsEditor, onEdit: (FolderFavorite) -> Unit) {
+    val sections = rememberSectionOpen()
+    val favorites = editor.settings.favorites
+    SettingsSection(
+        title = stringResource(R.string.settings_favorites),
+        summary = favorites.size.toString(),
+        expanded = "favorites" in sections.open,
+        onToggle = { sections.toggle("favorites") },
+    ) {
+        for (favorite in favorites) {
+            val shown = if (favorite.label.isNotBlank()) {
+                favorite.label
+            } else {
+                favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+            }
+            ListItem(
+                headlineContent = { Text(shown) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEdit(favorite) },
+            )
+        }
+    }
+}
+
+@Composable
 fun ExpandedFoldersScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
+    ExpandedFoldersBody(editor)
+}
+
+@Composable
+private fun ExpandedFoldersBody(editor: SettingsEditor) {
     var picking by remember { mutableStateOf(false) }
     val settings = editor.settings
     SettingsPage {
@@ -446,6 +649,11 @@ fun ExpandedFoldersScreen() {
 fun FolderViewsScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
+    FolderViewsBody(editor)
+}
+
+@Composable
+private fun FolderViewsBody(editor: SettingsEditor) {
     var picking by remember { mutableStateOf(false) }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
@@ -505,6 +713,11 @@ fun FolderViewsScreen() {
 fun FolderStartsScreen() {
     val editor = rememberSettingsEditor()
     if (!editor.ready) return
+    FolderStartsBody(editor)
+}
+
+@Composable
+private fun FolderStartsBody(editor: SettingsEditor) {
     var draftStartMailbox by remember { mutableStateOf("") }
     var draftStartRule by remember { mutableStateOf(StartRule.Newest) }
     val settings = editor.settings
@@ -564,7 +777,7 @@ private fun sharePinerc(context: Context, text: String) {
 
 @Composable
 private fun AccountGroup(editor: SettingsEditor) {
-    val sections = rememberSectionOpen("server")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     var probing by remember { mutableStateOf(false) }
     var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -1368,7 +1581,7 @@ private fun AccountGroup(editor: SettingsEditor) {
 
 @Composable
 private fun MailboxesGroup(editor: SettingsEditor) {
-    val sections = rememberSectionOpen("special")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
     BackHandler(enabled = picking != null) { picking = null }
@@ -1434,13 +1647,8 @@ private fun MailboxesGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun FoldersGroup(
-    editor: SettingsEditor,
-    onOpenExpanded: () -> Unit,
-    onOpenViews: () -> Unit,
-    onOpenStarts: () -> Unit,
-) {
-    val sections = rememberSectionOpen("list")
+private fun FoldersGroup(editor: SettingsEditor) {
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     SettingsPage {
         SettingsSection(
@@ -1453,7 +1661,8 @@ private fun FoldersGroup(
             expanded = "list" in sections.open,
             onToggle = { sections.toggle("list") },
         ) {
-            OpenRow(stringResource(R.string.settings_expanded_folders), onOpenExpanded)
+            Text(stringResource(R.string.settings_expanded_folders))
+            ExpandedFoldersBody(editor)
         }
         SettingsSection(
             title = stringResource(R.string.settings_folder_views),
@@ -1480,7 +1689,8 @@ private fun FoldersGroup(
             ) { style ->
                 editor.persist(editor.settings.copy(threadIndexStyle = style))
             }
-            OpenRow(stringResource(R.string.settings_folder_views), onOpenViews)
+            Text(stringResource(R.string.settings_folder_views))
+            FolderViewsBody(editor)
         }
         SettingsSection(
             title = stringResource(R.string.settings_start_position),
@@ -1516,7 +1726,8 @@ private fun FoldersGroup(
             ) { value ->
                 editor.persist(editor.settings.copy(pinercStartDefault = value))
             }
-            OpenRow(stringResource(R.string.settings_start_per_folder), onOpenStarts)
+            Text(stringResource(R.string.settings_start_per_folder))
+            FolderStartsBody(editor)
         }
         SettingsSection(
             title = stringResource(R.string.settings_large_folders),
@@ -1543,7 +1754,7 @@ private fun FoldersGroup(
 
 @Composable
 private fun ReadingGroup(editor: SettingsEditor) {
-    val sections = rememberSectionOpen("opening")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
     var warnUnread by remember { mutableStateOf(false) }
@@ -1739,7 +1950,7 @@ private fun ReadingGroup(editor: SettingsEditor) {
 
 @Composable
 private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit) {
-    val sections = rememberSectionOpen("replying")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     SettingsPage {
         // David, 2026-10-12: the wrap column is a Compose setting (it was under Sending/SMTP). Same stored value.
@@ -1981,7 +2192,7 @@ private fun AddressCompletionRows(editor: SettingsEditor) {
 
 @Composable
 private fun AppearanceGroup(editor: SettingsEditor) {
-    val sections = rememberSectionOpen("theme")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     SettingsPage {
         SettingsSection(
@@ -2031,12 +2242,13 @@ private fun AppearanceGroup(editor: SettingsEditor) {
 
 @Composable
 private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) -> Unit) {
-    val sections = rememberSectionOpen("panes")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
+    val panesOn = paneControlsEnabled(settings.multiPane)
     SettingsPage {
         SettingsSection(
             title = stringResource(R.string.settings_panes),
-            summary = layoutOffOn(settings),
+            summary = multiPaneName(settings.multiPane),
             expanded = "panes" in sections.open,
             onToggle = { sections.toggle("panes") },
         ) {
@@ -2053,16 +2265,18 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
                 LayoutChoice.entries,
                 settings.folderPane,
                 { layoutChoiceName(it) },
+                enabled = panesOn,
             ) {
-                editor.persist(editor.settings.copy(folderPane = it))
+                if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_fold_posture),
                 listOf(LayoutChoice.Off, LayoutChoice.On),
                 settings.foldPosture,
                 { layoutChoiceName(it) },
+                enabled = panesOn,
             ) {
-                editor.persist(editor.settings.copy(foldPosture = it))
+                if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_pane_arrangement),
@@ -2073,8 +2287,9 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
                     ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
                     ArrangementChoice.Stacked -> R.string.settings_pane_stacked
                 }) },
+                enabled = panesOn,
             ) {
-                editor.persist(editor.settings.copy(paneArrangement = it))
+                if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
             }
             ChoiceField(
                 stringResource(R.string.settings_folder_position),
@@ -2085,11 +2300,12 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
                     FolderPositionChoice.Beside -> R.string.settings_folder_beside
                     FolderPositionChoice.AboveList -> R.string.settings_folder_above
                 }) },
+                enabled = panesOn,
             ) {
-                editor.persist(editor.settings.copy(folderPosition = it))
+                if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
             }
-            PaneLayoutEditor(settings.customLayout, settings.readerTextZoom) { text ->
-                editor.persist(editor.settings.copy(customLayout = text))
+            GatedPaneLayoutEditor(panesOn, settings.customLayout, settings.readerTextZoom) { text ->
+                if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
             }
             ChoiceField(
                 stringResource(R.string.settings_preview_size),
@@ -2134,6 +2350,40 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
             OpenRow(stringResource(R.string.settings_panel_folders)) { onOpenPanel("folders", editor.editingId.orEmpty()) }
             OpenRow(stringResource(R.string.settings_panel_reader)) { onOpenPanel("reader", editor.editingId.orEmpty()) }
             OpenRow(stringResource(R.string.settings_panel_compose)) { onOpenPanel("compose", editor.editingId.orEmpty()) }
+        }
+        Button(
+            onClick = {
+                settingsIo.launch {
+                    settingsMutex.withLock {
+                        editor.bound.save(editor.settingsState.value)
+                    }
+                    LayoutApply.request()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.settings_change_layout))
+        }
+    }
+}
+
+@Composable
+private fun GatedPaneLayoutEditor(
+    enabled: Boolean,
+    saved: String,
+    textZoom: Int,
+    onSave: (String) -> Unit,
+) {
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.alpha(if (enabled) 1f else 0.38f)) {
+            PaneLayoutEditor(saved, textZoom) { text -> if (enabled) onSave(text) }
+        }
+        if (!enabled) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .pointerInput(Unit) { detectTapGestures { } },
+            )
         }
     }
 }
@@ -2201,7 +2451,7 @@ private fun hiddenSummary(settings: AccountSettings): String {
 
 @Composable
 private fun DebugGroup(editor: SettingsEditor) {
-    val sections = rememberSectionOpen("logging")
+    val sections = rememberSectionOpen()
     val settings = editor.settings
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var confirmShareLog by remember { mutableStateOf(false) }
@@ -2340,10 +2590,12 @@ private fun MailboxPickDialog(
 
 @Composable
 private fun SettingsPage(content: @Composable () -> Unit) {
+    val scrollState = rememberScrollState()
+    val scroll = if (LocalSettingsInTree.current) Modifier else Modifier.verticalScroll(scrollState)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .then(scroll)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -2404,7 +2656,7 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
     SettingsGroup.Appearance -> themeName(settings.theme)
-    SettingsGroup.Layout -> layoutOffOn(settings)
+    SettingsGroup.Layout -> multiPaneName(settings.multiPane)
     SettingsGroup.Slower -> stringResource(
         if (
             settings.clientSort ||
@@ -2783,8 +3035,10 @@ private fun BoolField(
     label: String,
     value: Boolean,
     note: String? = null,
+    enabled: Boolean = true,
     onValue: (Boolean) -> Unit,
 ) {
+    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     ListItem(
         headlineContent = { Text(label) },
         supportingContent = if (note == null) {
@@ -2792,11 +3046,25 @@ private fun BoolField(
         } else {
             { Text(note) }
         },
+        colors = if (enabled) {
+            androidx.compose.material3.ListItemDefaults.colors()
+        } else {
+            androidx.compose.material3.ListItemDefaults.colors(
+                headlineColor = faded,
+                supportingColor = faded,
+            )
+        },
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(value = value, role = Role.Switch, onValueChange = onValue),
+            .then(
+                if (enabled) {
+                    Modifier.toggleable(value = value, role = Role.Switch, onValueChange = onValue)
+                } else {
+                    Modifier
+                },
+            ),
         trailingContent = {
-            Switch(checked = value, onCheckedChange = null)
+            Switch(checked = value, onCheckedChange = null, enabled = enabled)
         },
     )
 }
@@ -2964,20 +3232,6 @@ private fun layoutChoiceName(choice: LayoutChoice): String = stringResource(
 )
 
 @Composable
-private fun layoutOffOn(settings: AccountSettings): String = stringResource(
-    if (settings.multiPane == MultiPane.Auto) R.string.settings_pane_auto else if (
-        settings.multiPane == MultiPane.Off &&
-        settings.folderPane == LayoutChoice.Off &&
-        settings.foldPosture == LayoutChoice.Off &&
-        !settings.fullScreen
-    ) {
-        R.string.settings_multi_pane_off
-    } else {
-        R.string.settings_multi_pane_wide
-    },
-)
-
-@Composable
 private fun densityName(density: Density): String = stringResource(
     when (density) {
         Density.Compact -> R.string.label_compact
@@ -3093,12 +3347,14 @@ private fun <T> ChoiceField(
     options: List<T>,
     selected: T,
     name: @Composable (T) -> String,
+    enabled: Boolean = true,
     onSelect: (T) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val open = expanded && enabled
     ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+        expanded = open,
+        onExpandedChange = { next -> if (enabled) expanded = next },
         modifier = Modifier.fillMaxWidth(),
     ) {
         OutlinedTextField(
@@ -3106,14 +3362,15 @@ private fun <T> ChoiceField(
             onValueChange = {},
             readOnly = true,
             singleLine = true,
+            enabled = enabled,
             label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
             modifier = Modifier
                 .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth(),
         )
         ExposedDropdownMenu(
-            expanded = expanded,
+            expanded = open,
             onDismissRequest = { expanded = false },
         ) {
             ObscuredTouchFilter()
@@ -3121,7 +3378,7 @@ private fun <T> ChoiceField(
                 DropdownMenuItem(
                     text = { Text(name(option)) },
                     onClick = {
-                        onSelect(option)
+                        if (enabled) onSelect(option)
                         expanded = false
                     },
                 )

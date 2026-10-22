@@ -1,6 +1,9 @@
 package org.dlang.liveimap.ui
 
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ComposeButtonTest {
@@ -79,6 +82,16 @@ class ComposeButtonTest {
                 split = false,
             ),
         )
+    }
+
+    @Test
+    fun settingsRouteIsNotASplit() {
+        val nav = listOf(
+            "src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt",
+        ).map(::File).first { it.exists() }.readText()
+        assertFalse(nav.contains("settingsSplitRoute"))
+        assertTrue(nav.contains("settingsSplit = false"))
     }
 
     @Test

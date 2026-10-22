@@ -31,6 +31,7 @@ import org.dlang.liveimap.session.applyExtraIdle
 import org.dlang.liveimap.session.launchExtraIdleStop
 import org.dlang.liveimap.session.runAfterExtraIdleStop
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
@@ -65,6 +66,9 @@ class MainActivity : ComponentActivity() {
                     dynamicColor = loaded.dynamicColor
                     fullScreen = loaded.fullScreen
                 }
+            }
+            LaunchedEffect(LayoutApply.fullScreenGeneration) {
+                fullScreen = store.load().fullScreen
             }
             val dark = when (theme) {
                 ThemeMode.Dark -> true
