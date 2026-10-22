@@ -388,6 +388,9 @@ private fun rememberSettingsEditor(): SettingsEditor {
         onDispose { unbindSettingsEditor(editor) }
     }
     LaunchedEffect(store) { editor.load() }
+    // Another editor (a toolbar save, a pin write) bumps SettingsRevision. Reload so this page matches the store.
+    val revision = SettingsRevision.value
+    LaunchedEffect(revision) { if (revision > 0) editor.load() }
     return editor
 }
 
