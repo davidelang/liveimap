@@ -139,6 +139,7 @@ import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.settings.SettingsGroup
 import org.dlang.liveimap.settings.SettingsGroupScreen
 import org.dlang.liveimap.settings.SettingsTree
+import org.dlang.liveimap.settings.ToolbarRevision
 import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
 import org.dlang.liveimap.ui.about.LicensesScreen
@@ -751,31 +752,31 @@ fun LiveImapNavHost() {
             composable("toolbar/index") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Index, accountId)
+                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Index, accountId) }
                 }
             }
             composable("toolbar/selection") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Selection, accountId)
+                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Selection, accountId) }
                 }
             }
             composable("toolbar/folders") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Folders, accountId)
+                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Folders, accountId) }
                 }
             }
             composable("toolbar/reader") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Reader, accountId)
+                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Reader, accountId) }
                 }
             }
             composable("toolbar/compose") {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
-                    ToolbarEditorScreen(ToolbarScreen.Compose, accountId)
+                    key(ToolbarRevision.value) { ToolbarEditorScreen(ToolbarScreen.Compose, accountId) }
                 }
             }
             composable(

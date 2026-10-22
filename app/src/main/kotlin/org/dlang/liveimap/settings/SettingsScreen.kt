@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
@@ -224,7 +225,7 @@ private class SettingsEditor(
         settings = retarget.settings
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { target.save(settingsState.value) }
+            settingsMutex.withLock { saveKeepingToolbars(target) }
             SettingsRevision.bump()
         }
     }
@@ -328,6 +329,42 @@ internal object SettingsRevision {
     private val state = androidx.compose.runtime.mutableIntStateOf(0)
     val value: Int get() = state.intValue
     fun bump() { state.intValue = state.intValue + 1 }
+}
+
+/**
+ * Bumped when a toolbar save lands in the store. [ToolbarEditorScreen] does not watch [SettingsRevision],
+ * so open copies reload from this instead of keeping a stale bar or row count.
+ */
+internal object ToolbarRevision {
+    private val state = androidx.compose.runtime.mutableIntStateOf(0)
+    val value: Int get() = state.intValue
+    fun bump() { state.intValue = state.intValue + 1 }
+}
+
+private fun AccountSettings.keepingStoredToolbars(stored: AccountSettings) = copy(
+    indexBar = stored.indexBar,
+    selectionBar = stored.selectionBar,
+    folderBar = stored.folderBar,
+    readerToolbar = stored.readerToolbar,
+    composeBar = stored.composeBar,
+    toolbarRows = stored.toolbarRows,
+)
+
+private fun toolbarsDiffer(left: AccountSettings, right: AccountSettings) =
+    left.indexBar != right.indexBar ||
+        left.selectionBar != right.selectionBar ||
+        left.folderBar != right.folderBar ||
+        left.readerToolbar != right.readerToolbar ||
+        left.composeBar != right.composeBar ||
+        left.toolbarRows != right.toolbarRows
+
+/** Writes [settingsState] without putting stale toolbar fields over a newer toolbar save. */
+private suspend fun SettingsEditor.saveKeepingToolbars(target: DataStoreSettingsStore) {
+    // update's edit runs on Dispatchers.IO. Read the snapshot here, on settingsIo (Main).
+    val snapshot = settingsState.value
+    val saved = target.update { stored -> snapshot.keepingStoredToolbars(stored) }
+    // A newer edit may have assigned settingsState while the store write ran.
+    settingsState.value = settingsState.value.keepingStoredToolbars(saved)
 }
 
 /**
@@ -542,6 +579,23 @@ private fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, de
 private fun ToolbarsSection(editor: SettingsEditor) {
     val bars = rememberSectionOpen()
     val accountId = editor.editingId.orEmpty()
+    LaunchedEffect(editor.editingId) {
+        val target = editor.bound
+        var previous = target.load()
+        target.theme().collect {
+            val loaded = target.load()
+            val rowsChanged = previous.toolbarRows != loaded.toolbarRows
+            if (toolbarsDiffer(previous, loaded)) {
+                settingsMutex.withLock {
+                    editor.settings = editor.settings.keepingStoredToolbars(loaded)
+                }
+            }
+            // Recreate open copies only for the shared row count. A bar edit is already on screen
+            // in the editor that saved it, and disposing that editor would cancel its store write.
+            if (rowsChanged) ToolbarRevision.bump()
+            previous = loaded
+        }
+    }
     SettingsSection(
         title = stringResource(R.string.settings_toolbars),
         summary = stringResource(R.string.settings_toolbars),
@@ -572,7 +626,9 @@ private fun ToolbarBlock(
         onToggle = { bars.toggle(id) },
     ) {
         Box(Modifier.fillMaxWidth().height(480.dp)) {
-            ToolbarEditorScreen(screen, accountId)
+            key(ToolbarRevision.value) {
+                ToolbarEditorScreen(screen, accountId)
+            }
         }
     }
 }
@@ -2353,10 +2409,9 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
         }
         Button(
             onClick = {
+                val target = editor.bound
                 settingsIo.launch {
-                    settingsMutex.withLock {
-                        editor.bound.save(editor.settingsState.value)
-                    }
+                    settingsMutex.withLock { editor.saveKeepingToolbars(target) }
                     LayoutApply.request()
                 }
             },
@@ -2577,9 +2632,10 @@ private fun MailboxPickDialog(
         onPick = { mailbox ->
             settingsIo.launch {
                 settingsMutex.withLock {
-                    val next = assignMailbox(editor.bound.load(), field, mailbox)
-                    editor.bound.save(next)
-                    editor.settings = next
+                    val saved = editor.bound.update { assignMailbox(it, field, mailbox) }
+                    editor.settings = editor.settings.keepingStoredToolbars(saved).let { current ->
+                        assignMailbox(current, field, mailbox)
+                    }
                 }
                 onPicking(null)
             }
