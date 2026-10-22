@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -88,11 +89,122 @@ class ComposeAttachmentTest {
         val wrote = assembledCopyNote(true, "new", "old")
         assertEquals("new", wrote.first)
         assertTrue(wrote.second)
-        assertNull(reloadCopyId("", null))
-        assertEquals("unsent", reloadCopyId("", "unsent"))
-        assertEquals("written", reloadCopyId("written", null))
-        assertEquals("written", reloadCopyId("written", "unsent"))
+        assertNull(reloadCopyId("", null, false))
+        assertEquals("unsent", reloadCopyId("", "unsent", false))
+        assertEquals("written", reloadCopyId("written", null, false))
+        assertEquals("written", reloadCopyId("written", "unsent", false))
+        assertNull(reloadCopyId("written", "unsent", true))
         assertEquals("", copyIdAfterDeleted(true, "written"))
         assertEquals("written", copyIdAfterDeleted(false, "written"))
+    }
+
+    @Test
+    fun attachmentLifeFollowsOneTable() {
+        val written = "written"
+        val current = "current"
+        val unsent = "unsent"
+        var cells = 0
+        val newOrigin = ComposeCopyOrigin.New
+        val replyOrigin = ComposeCopyOrigin.Reply
+        for (action in ComposeCopyAction.entries) {
+            for (appendOnly in listOf(false, true)) {
+                assertEquals(
+                    composeAttachmentLife(newOrigin, action, written, null, current, appendOnly),
+                    composeAttachmentLife(replyOrigin, action, written, null, current, appendOnly),
+                )
+            }
+        }
+        for (origin in listOf(ComposeCopyOrigin.New, ComposeCopyOrigin.Reply, ComposeCopyOrigin.Unsent)) {
+            val unsentId = if (origin == ComposeCopyOrigin.Unsent) unsent else null
+            val success = composeAttachmentLife(origin, ComposeCopyAction.SendSuccess, written, unsentId, current, false)
+            assertCell(success, ComposeCopyDisk.Delete, "", true, null, true)
+            cells += 1
+            val wrote = composeAttachmentLife(origin, ComposeCopyAction.SendFailureWritten, written, unsentId, current, false)
+            assertCell(wrote, ComposeCopyDisk.Keep, written, true, written, false)
+            cells += 1
+            val noWrite = composeAttachmentLife(origin, ComposeCopyAction.SendFailureNoWrite, written, unsentId, current, false)
+            if (origin == ComposeCopyOrigin.Unsent) {
+                val fresh = composeAttachmentLife(origin, ComposeCopyAction.SendFailureNoWrite, written, unsentId, "", false)
+                assertCell(fresh, ComposeCopyDisk.Keep, "", false, unsent, false)
+            } else {
+                assertCell(noWrite, ComposeCopyDisk.None, current, false, current, false)
+                val heldOnly = composeAttachmentLife(origin, ComposeCopyAction.SendFailureNoWrite, "", null, "", false)
+                assertCell(heldOnly, ComposeCopyDisk.None, "", false, null, false)
+            }
+            cells += 1
+            val postponeDelete = composeAttachmentLife(origin, ComposeCopyAction.PostponeSuccess, written, unsentId, current, false)
+            assertCell(postponeDelete, ComposeCopyDisk.Delete, "", true, null, true)
+            val postponeKeep = composeAttachmentLife(origin, ComposeCopyAction.PostponeSuccess, written, unsentId, current, true)
+            assertCell(postponeKeep, ComposeCopyDisk.Keep, current, true, null, true)
+            cells += 1
+            val drop = composeAttachmentLife(origin, ComposeCopyAction.SendWithoutCopyDrop, written, unsentId, current, true)
+            assertCell(drop, ComposeCopyDisk.Delete, "", true, null, false)
+            cells += 1
+            assertEquals(success, composeAttachmentLife(origin, ComposeCopyAction.SendSuccess, written, unsentId, current, false))
+            assertEquals(wrote, composeAttachmentLife(origin, ComposeCopyAction.SendFailureWritten, written, unsentId, current, false))
+            assertEquals(noWrite, composeAttachmentLife(origin, ComposeCopyAction.SendFailureNoWrite, written, unsentId, current, false))
+            assertFalse(drop.closes)
+            cells += 1
+            val cancel = composeAttachmentLife(origin, ComposeCopyAction.Cancel, written, unsentId, current, false)
+            val cancelDisk = if (origin == ComposeCopyOrigin.Unsent) ComposeCopyDisk.Keep else ComposeCopyDisk.None
+            assertCell(cancel, cancelDisk, current, true, null, true)
+            cells += 1
+        }
+        assertEquals(21, cells)
+        assertEquals(6, ComposeCopyAction.entries.size)
+    }
+
+    @Test
+    fun lifeIsAppliedOnTheTerminalPaths() {
+        val src = listOf(
+            "src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt",
+            "app/src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt",
+        ).map(::File).first { it.exists() }.readText()
+        fun slice(start: String, end: String, from: Int = 0): String {
+            val at = src.indexOf(start, from)
+            val stop = src.indexOf(end, at + start.length)
+            assertTrue(start, at >= 0 && stop > at)
+            return src.substring(at, stop)
+        }
+        val smtp = slice(
+            "deleteCopy(appContext, id, accountId)",
+            "status = sentStatus(statusLeaf(account.sentMailbox))",
+        )
+        assertTrue(smtp.contains("composeAttachmentLife"))
+        assertTrue(smtp.contains("ComposeCopyAction.SendSuccess"))
+        val jmap = slice("keepCopyUntilSubmitted(sending,", "jmapSendFailed(sending")
+        assertTrue(jmap.contains("composeAttachmentLife"))
+        assertTrue(jmap.contains("ComposeCopyAction.SendSuccess"))
+        val postpone = slice("fun postponeDraft()", "fun loadStoredCopy")
+        assertTrue(postpone.contains("composeAttachmentLife"))
+        assertTrue(postpone.contains("ComposeCopyAction.PostponeSuccess"))
+        val drop = slice("if (kept != null && kept.appendOnly)", "else if (kept != null && noCopyRetry)")
+        assertTrue(drop.contains("composeAttachmentLife"))
+        assertTrue(drop.contains("ComposeCopyAction.SendWithoutCopyDrop"))
+        assertFalse(drop.contains("onDone"))
+        val discard = slice("compose_discard_title", "compose_keep_editing")
+        assertTrue(discard.contains("composeAttachmentLife"))
+        assertTrue(discard.contains("ComposeCopyAction.Cancel"))
+        assertTrue(discard.contains("onDone()"))
+        val back = slice("fun requestClose()", "fun postponeDraft()")
+        assertTrue(back.contains("composeAttachmentLife"))
+        assertTrue(back.contains("ComposeCopyAction.Cancel"))
+        assertTrue(back.contains("onDone()"))
+    }
+
+    private fun assertCell(
+        life: ComposeAttachmentLife,
+        disk: ComposeCopyDisk,
+        copyId: String,
+        releaseHold: Boolean,
+        reloadId: String?,
+        closes: Boolean,
+    ) {
+        assertEquals(disk, life.disk)
+        assertEquals(copyId, life.copyId)
+        assertEquals(releaseHold, life.releaseHold)
+        assertEquals(reloadId, life.reloadId)
+        assertEquals(closes, life.closes)
+        assertFalse(life.unsentGone)
     }
 }

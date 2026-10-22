@@ -197,10 +197,104 @@ internal fun assembledCopyNote(saved: Boolean, writtenId: String, currentId: Str
     return writtenId to true
 }
 
-internal fun reloadCopyId(assembledCopyId: String, unsentId: String?): String? {
+internal enum class ComposeCopyOrigin {
+    New,
+    Reply,
+    Unsent,
+}
+
+internal enum class ComposeCopyAction {
+    SendSuccess,
+    SendFailureWritten,
+    SendFailureNoWrite,
+    PostponeSuccess,
+    SendWithoutCopyDrop,
+    Cancel,
+}
+
+internal enum class ComposeCopyDisk {
+    Keep,
+    Delete,
+    None,
+}
+
+internal data class ComposeAttachmentLife(
+    val disk: ComposeCopyDisk,
+    val copyId: String,
+    val reloadSuppressed: Boolean,
+    val releaseHold: Boolean,
+    val closes: Boolean,
+    val unsentGone: Boolean,
+    val reloadId: String?,
+)
+
+internal fun reloadCopyId(assembledCopyId: String, unsentId: String?, reloadSuppressed: Boolean): String? {
+    if (reloadSuppressed) return null
     if (assembledCopyId.isNotEmpty()) return assembledCopyId
     if (unsentId.isNullOrEmpty()) return null
     return unsentId
+}
+
+internal fun composeAttachmentLife(
+    origin: ComposeCopyOrigin,
+    action: ComposeCopyAction,
+    writtenId: String,
+    unsentId: String?,
+    currentId: String,
+    appendOnly: Boolean,
+): ComposeAttachmentLife {
+    val unsent = origin == ComposeCopyOrigin.Unsent
+    val disk: ComposeCopyDisk
+    val copyId: String
+    val suppressed: Boolean
+    val release: Boolean
+    val closes: Boolean
+    when (action) {
+        ComposeCopyAction.SendSuccess -> {
+            disk = ComposeCopyDisk.Delete
+            copyId = ""
+            suppressed = true
+            release = true
+            closes = true
+        }
+        ComposeCopyAction.SendFailureWritten -> {
+            disk = ComposeCopyDisk.Keep
+            copyId = writtenId
+            suppressed = false
+            release = true
+            closes = false
+        }
+        ComposeCopyAction.SendFailureNoWrite -> {
+            disk = if (unsent) ComposeCopyDisk.Keep else ComposeCopyDisk.None
+            copyId = currentId
+            suppressed = false
+            release = false
+            closes = false
+        }
+        ComposeCopyAction.PostponeSuccess -> {
+            disk = if (appendOnly) ComposeCopyDisk.Keep else ComposeCopyDisk.Delete
+            copyId = if (appendOnly) currentId else ""
+            suppressed = true
+            release = true
+            closes = true
+        }
+        ComposeCopyAction.SendWithoutCopyDrop -> {
+            disk = ComposeCopyDisk.Delete
+            copyId = ""
+            suppressed = true
+            release = true
+            closes = false
+        }
+        ComposeCopyAction.Cancel -> {
+            disk = if (unsent) ComposeCopyDisk.Keep else ComposeCopyDisk.None
+            copyId = currentId
+            suppressed = false
+            release = true
+            closes = true
+        }
+    }
+    val reloadId = if (closes) null else reloadCopyId(copyId, unsentId, suppressed)
+    return ComposeAttachmentLife(disk, copyId, suppressed, release, closes, false, reloadId)
 }
 
 internal fun copyIdAfterDeleted(deleted: Boolean, currentId: String): String {
@@ -377,7 +471,7 @@ private fun ComposeLoaded(
     val gate = remember { Mutex() }
     var account by remember { mutableStateOf(AccountSettings()) }
     var notice by remember { mutableStateOf<String?>(null) }
-    var status by remember { mutableStateOf<String?>(null) }
+    var status by rememberSaveable { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
     var loadedDelimiter by remember { mutableStateOf<Char?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -404,6 +498,7 @@ private fun ComposeLoaded(
     var forwardRows by remember { mutableStateOf<List<ForwardRow>>(emptyList()) }
     var pickedKeyText by rememberSaveable { mutableStateOf("") }
     var assembledCopyId by rememberSaveable { mutableStateOf("") }
+    var reloadSuppressed by rememberSaveable { mutableStateOf(false) }
     // Sending rules (design-decisions.md "Sending rules and roles").
     var sending by remember { mutableStateOf<Resolved?>(null) }
     var pinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
@@ -412,7 +507,7 @@ private fun ComposeLoaded(
     var fromMenuOpen by remember { mutableStateOf(false) }
     val headerValuesTyped = rememberSaveable(saver = headerValueSaver) { mutableStateMapOf<String, String>() }
     var sourceUid by remember { mutableStateOf<Long?>(null) }
-    var deliveryDone by remember { mutableStateOf(false) }
+    var deliveryDone by rememberSaveable { mutableStateOf(false) }
     // Set when the server took the message without the requested DSN; kept through the "Sent" status.
     var dsnRefused by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<DeviceCopy?>(null) }
@@ -468,6 +563,33 @@ private fun ComposeLoaded(
         val (id, release) = assembledCopyNote(saved, writtenId, assembledCopyId)
         assembledCopyId = id
         if (release) releasePickedHold()
+    }
+
+    fun shownCopyOrigin(): ComposeCopyOrigin {
+        if (!unsentId.isNullOrEmpty()) return ComposeCopyOrigin.Unsent
+        val reply = seed.kind == ComposeKind.Reply || seed.kind == ComposeKind.ReplyAll ||
+            (seed.kind == ComposeKind.Forward && pickedKeys().isNotEmpty())
+        return if (reply) ComposeCopyOrigin.Reply else ComposeCopyOrigin.New
+    }
+
+    fun applyAttachmentLife(life: ComposeAttachmentLife) {
+        assembledCopyId = life.copyId
+        reloadSuppressed = life.reloadSuppressed
+        if (life.releaseHold) releasePickedHold()
+    }
+
+    fun clearShownCopy(deletedId: String) {
+        val shown = reloadCopyId(assembledCopyId, unsentId, reloadSuppressed)
+        if (deletedId.isEmpty() || deletedId != shown) return
+        applyAttachmentLife(
+            composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, deletedId, unsentId, assembledCopyId, false),
+        )
+    }
+
+    fun failAttachment(saved: Boolean, writtenId: String, appendOnly: Boolean) {
+        noteAssembledCopy(saved, writtenId)
+        val action = if (saved) ComposeCopyAction.SendFailureWritten else ComposeCopyAction.SendFailureNoWrite
+        applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), action, writtenId, unsentId, assembledCopyId, appendOnly))
     }
 
     fun appendHeldPickedRows() {
@@ -874,7 +996,7 @@ private fun ComposeLoaded(
      * sent" when the server's answer was lost); the Unsent list shows it like any failed send.
      */
     fun jmapSendFailed(copy: DeviceCopy, error: Exception) {
-        noteAssembledCopy(true, copy.id)
+        failAttachment(true, copy.id, copy.appendOnly)
         val maybe = jmapMaybeSent(error)
         held = copy.copyWith(uncertain = maybe)
         notice = when (error) {
@@ -976,6 +1098,7 @@ private fun ComposeLoaded(
                     return false
                 }
                 deleteCopy(appContext, copy.id, accountId)
+                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, true))
                 if (held?.id == copy.id) held = null
                 notice = null
                 deliveryDone = true
@@ -1001,7 +1124,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted, via = copy.via)
-                        writeCopy(appContext, saved, accountId)
+                        failAttachment(writeCopy(appContext, saved, accountId), saved.id, true)
                         if (held?.id == copy.id) held = saved
                         notice = error.text
                         status = acceptedNotice
@@ -1009,6 +1132,7 @@ private fun ComposeLoaded(
                     }
                 }
                 deleteCopy(appContext, copy.id, accountId)
+                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
                 if (held?.id == copy.id) held = null
                 notice = null
                 deliveryDone = true
@@ -1057,6 +1181,7 @@ private fun ComposeLoaded(
                     status = notSentNotice
                     return false
                 } catch (error: JmapSentFolderMissing) {
+                    failAttachment(true, copy.id, copy.appendOnly)
                     held = copy
                     notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                     offerNoCopy = true
@@ -1079,6 +1204,7 @@ private fun ComposeLoaded(
                     return false
                 }
                 storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
                 if (held?.id == copy.id) held = null
                 notice = leftOver
                 deliveryDone = true
@@ -1177,7 +1303,10 @@ private fun ComposeLoaded(
             useReplyTo = useReplyTo,
             baselineUseReplyTo = baseUseReplyTo,
         )
-        if (dirty || bounceTo.isNotEmpty()) discardOpen = true else onDone()
+        if (dirty || bounceTo.isNotEmpty()) discardOpen = true else {
+            applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.Cancel, assembledCopyId, unsentId, assembledCopyId, false))
+            onDone()
+        }
     }
 
     fun postponeDraft() {
@@ -1203,10 +1332,19 @@ private fun ComposeLoaded(
                 return@launchLocked false
             }
             val current = held
-            if (current != null && !current.appendOnly) {
+            val life = composeAttachmentLife(
+                shownCopyOrigin(),
+                ComposeCopyAction.PostponeSuccess,
+                current?.id.orEmpty(),
+                unsentId,
+                assembledCopyId,
+                current?.appendOnly == true,
+            )
+            if (current != null && life.disk == ComposeCopyDisk.Delete) {
                 deleteCopy(appContext, current.id, accountId)
                 held = null
             }
+            applyAttachmentLife(life)
             notice = null
             status = appContext.getString(R.string.compose_saved_to, statusLeaf(account.postponedMailbox))
             removePostponedSource()
@@ -1250,7 +1388,7 @@ private fun ComposeLoaded(
         resolveNow(account)
     }
     LaunchedEffect(seed, unsentId, retryOnOpen) {
-        val storedId = reloadCopyId(assembledCopyId, unsentId)
+        val storedId = reloadCopyId(assembledCopyId, unsentId, reloadSuppressed)
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
             captureBaseline()
         }
@@ -1395,6 +1533,7 @@ private fun ComposeLoaded(
                     if (deliveryDone) {
                         notice = null
                         status = sentStatus(statusLeaf(account.sentMailbox))
+                        applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
@@ -1427,7 +1566,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: Exception) {
                             val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
-                            noteAssembledCopy(writeCopy(appContext, copy, accountId), copy.id)
+                            failAttachment(writeCopy(appContext, copy, accountId), copy.id, false)
                             held = copy
                             notice = error.message ?: notConnected
                             status = notSentNotice
@@ -1455,7 +1594,7 @@ private fun ComposeLoaded(
                                 onNotice = { leftOver = it },
                                 policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
-                            assembledCopyId = copyIdAfterDeleted(true, assembledCopyId)
+                            applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false))
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: DeviceCopyNotSaved) {
@@ -1465,7 +1604,7 @@ private fun ComposeLoaded(
                         } catch (error: JmapSentFolderMissing) {
                             // Nothing was sent; the user chooses: fix the setting or send without the copy. The local
                             // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
-                            noteAssembledCopy(true, sending.id)
+                            failAttachment(true, sending.id, sending.appendOnly)
                             held = sending
                             notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
                             offerNoCopy = true
@@ -1486,12 +1625,13 @@ private fun ComposeLoaded(
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
                     val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
                     val copySaved = writeCopy(appContext, sending, accountId)
-                    noteAssembledCopy(copySaved, sending.id)
                     if (!copySaved) {
+                        failAttachment(false, sending.id, false)
                         notice = appContext.getString(R.string.compose_copy_not_saved)
                         status = notSentNotice
                         return@launchLocked false
                     }
+                    noteAssembledCopy(true, sending.id)
                     val accepted = try {
                         sendSmtp(built.rfc822, built.recipients, via)
                     } catch (error: CancellationException) {
@@ -1500,7 +1640,7 @@ private fun ComposeLoaded(
                         val uncertain = smtpUncertain(error.text)
                         val copy = sending.copyWith(uncertain = uncertain)
                         val saved = writeCopy(appContext, copy, accountId)
-                        noteAssembledCopy(saved, copy.id)
+                        failAttachment(saved, copy.id, false)
                         held = copy
                         notice = smtpFailureText(error.text) +
                             if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
@@ -1514,7 +1654,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
-                        noteAssembledCopy(writeCopy(appContext, copy, accountId), copy.id)
+                        failAttachment(writeCopy(appContext, copy, accountId), copy.id, true)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
                         offerNoCopy = true
@@ -1522,7 +1662,7 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     deleteCopy(appContext, id, accountId)
-                    assembledCopyId = copyIdAfterDeleted(true, assembledCopyId)
+                    applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, id, unsentId, assembledCopyId, false))
                     held = null
                     deliveryDone = true
                     notice = null
@@ -1697,12 +1837,13 @@ private fun ComposeLoaded(
                 val kept = held
                 if (kept != null && kept.appendOnly) {
                     // Already sent; only the copy is dropped.
-                    deleteCopy(appContext, kept.id, accountId)
+                    val life = composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendWithoutCopyDrop, kept.id, unsentId, assembledCopyId, true)
+                    if (life.disk == ComposeCopyDisk.Delete) deleteCopy(appContext, kept.id, accountId)
+                    applyAttachmentLife(life)
                     held = null
                     deliveryDone = true
                     notice = null
                     status = sentStatus(null)
-                    releasePickedHold()
                     scope.launch { removePostponedSource() }
                 } else if (kept != null && noCopyRetry) {
                     noCopyRetry = false
@@ -1836,6 +1977,7 @@ private fun ComposeLoaded(
                                 storeAcceptedFlags(listOf(uid))
                                 if (!account.bounceFcc) {
                                     deleteCopy(appContext, id, accountId)
+                                    clearShownCopy(id)
                                     addBounceAccepted(uid)
                                     continue
                                 }
@@ -1853,6 +1995,7 @@ private fun ComposeLoaded(
                                     return@launchLocked false
                                 }
                                 deleteCopy(appContext, id, accountId)
+                                clearShownCopy(id)
                                 addBounceAccepted(uid)
                             }
                         }
@@ -1900,6 +2043,7 @@ private fun ComposeLoaded(
                                         onNotice = { notice = it },
                                         policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
+                                    clearShownCopy(id)
                                     storeAcceptedFlags(listOf(uid))
                                     addBounceAccepted(uid)
                                     continue
@@ -2096,7 +2240,7 @@ private fun ComposeLoaded(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        releasePickedHold()
+                        applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.Cancel, assembledCopyId, unsentId, assembledCopyId, false))
                         onDone()
                     },
                     modifier = Modifier.testTag("smoke-compose-discard"),
