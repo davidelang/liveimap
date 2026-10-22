@@ -3561,3 +3561,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - The seed build fixes the nineteen image failures from the 06:13 run.
 
 ## 2026-10-21 - Close TODO items whose work is already in the app.
+
+## 2026-10-21 - The Compose button sits under the account drawer.

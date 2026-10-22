@@ -21,6 +21,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -179,6 +180,25 @@ internal fun composeButton(route: String, accounts: Set<String>): ComposeButton 
     val named = accounts.filter { it.isNotEmpty() }
     if (named.size == 1 && named.size == accounts.size) return ComposeButton.Open
     return ComposeButton.Pick
+}
+
+internal enum class ComposeFabLayer { Hidden, UnderDrawer, Overlay }
+
+internal fun mailUsesModalDrawer(
+    settingsSplit: Boolean,
+    hasCustomTree: Boolean,
+    drawerOutsideMail: Boolean,
+    split: Boolean,
+): Boolean {
+    if (settingsSplit) return false
+    if (hasCustomTree) return !drawerOutsideMail
+    return !split
+}
+
+internal fun composeFabLayer(choice: ComposeButton, modalDrawer: Boolean): ComposeFabLayer {
+    if (choice == ComposeButton.Hidden) return ComposeFabLayer.Hidden
+    if (modalDrawer) return ComposeFabLayer.UnderDrawer
+    return ComposeFabLayer.Overlay
 }
 
 internal class ScreenAccounts {
@@ -1189,6 +1209,43 @@ fun LiveImapNavHost() {
         }
     }
 
+    val screenAccounts = remember { ScreenAccounts() }
+    var composeAccounts by remember { mutableStateOf<List<AccountChoice>?>(null) }
+    var composeLayer = ComposeFabLayer.Hidden
+
+    @Composable
+    fun BoxScope.ComposeFab(modifier: Modifier = Modifier) {
+        HelpExtendedFab(
+            label = stringResource(R.string.screen_compose),
+            help = stringResource(R.string.help_screen_compose),
+            page = "writing.html",
+            onClick = {
+                val ids = screenAccounts.ids()
+                when (composeButton(route.orEmpty(), ids)) {
+                    ComposeButton.Hidden -> Unit
+                    ComposeButton.Open -> openCompose(
+                        ComposeSeed(ComposeKind.New, null, emptyList(), accountId = ids.single()),
+                    )
+                    ComposeButton.Pick -> scope.launch { composeAccounts = store.listAccounts() }
+                }
+            },
+            expanded = true,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(
+                    mailScreenInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.End),
+                )
+                .padding(16.dp)
+                .then(modifier),
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = stringResource(R.string.screen_compose),
+                )
+            },
+        )
+    }
+
     @Composable
     fun DrawerScaffold() {
         if (split) {
@@ -1261,12 +1318,17 @@ fun LiveImapNavHost() {
                 drawerState = drawerState,
                 gesturesEnabled = drawerGestures,
             ) {
-                NavHost(
-                    navController = navController,
-                    startDestination = "folders",
-                    modifier = Modifier.fillMaxSize(),
-                    builder = navGraph,
-                )
+                Box(Modifier.fillMaxSize()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = "folders",
+                        modifier = Modifier.fillMaxSize(),
+                        builder = navGraph,
+                    )
+                    if (composeLayer == ComposeFabLayer.UnderDrawer) {
+                        ComposeFab()
+                    }
+                }
             }
         }
     }
@@ -1291,15 +1353,29 @@ fun LiveImapNavHost() {
                 drawerState = drawerState,
                 gesturesEnabled = drawerGestures,
             ) {
-                NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
+                Box(Modifier.fillMaxSize()) {
+                    NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
+                    if (composeLayer == ComposeFabLayer.UnderDrawer) {
+                        ComposeFab()
+                    }
+                }
             }
         }
     }
-    val screenAccounts = remember { ScreenAccounts() }
-    var composeAccounts by remember { mutableStateOf<List<AccountChoice>?>(null) }
     CompositionLocalProvider(LocalScreenAccounts provides screenAccounts) {
     LiveImapScaffold {
         Box(Modifier.fillMaxSize()) {
+        val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
+        val modalDrawer = mailUsesModalDrawer(
+            settingsSplit = settingsSplit,
+            hasCustomTree = customTree != null,
+            drawerOutsideMail = drawerOutsideMail,
+            split = split,
+        )
+        composeLayer = composeFabLayer(composeChoice, modalDrawer)
+        LaunchedEffect(composeChoice) {
+            if (composeChoice != ComposeButton.Pick) composeAccounts = null
+        }
         val tree = customTree
         if (settingsSplit) {
             val openGroup = currentEntry?.arguments?.getString("group")?.let(SettingsGroup::fromRoute)
@@ -1438,40 +1514,8 @@ fun LiveImapNavHost() {
                 },
             )
         }
-        val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
-        LaunchedEffect(composeChoice) {
-            if (composeChoice != ComposeButton.Pick) composeAccounts = null
-        }
-        if (composeChoice != ComposeButton.Hidden) {
-            HelpExtendedFab(
-                label = stringResource(R.string.screen_compose),
-                help = stringResource(R.string.help_screen_compose),
-                page = "writing.html",
-                onClick = {
-                    val ids = screenAccounts.ids()
-                    when (composeButton(route.orEmpty(), ids)) {
-                        ComposeButton.Hidden -> Unit
-                        ComposeButton.Open -> openCompose(
-                            ComposeSeed(ComposeKind.New, null, emptyList(), accountId = ids.single()),
-                        )
-                        ComposeButton.Pick -> scope.launch { composeAccounts = store.listAccounts() }
-                    }
-                },
-                expanded = true,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(
-                        mailScreenInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.End),
-                    )
-                    .padding(16.dp)
-                    .zIndex(2f),
-                icon = {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = stringResource(R.string.screen_compose),
-                    )
-                },
-            )
+        if (composeLayer == ComposeFabLayer.Overlay) {
+            ComposeFab(Modifier.zIndex(2f))
         }
         val listed = composeAccounts
         if (listed != null && composeChoice == ComposeButton.Pick) {

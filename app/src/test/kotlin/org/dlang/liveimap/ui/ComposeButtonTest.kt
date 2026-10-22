@@ -31,4 +31,62 @@ class ComposeButtonTest {
         assertEquals(ComposeButton.Pick, composeButton("folders", setOf("acct-a", "acct-b")))
         assertEquals(ComposeButton.Pick, composeButton("index/{mailbox}", setOf("")))
     }
+
+    @Test
+    fun modalDrawerMatchesTheMailSheet() {
+        assertEquals(
+            false,
+            mailUsesModalDrawer(
+                settingsSplit = true,
+                hasCustomTree = false,
+                drawerOutsideMail = false,
+                split = true,
+            ),
+        )
+        assertEquals(
+            false,
+            mailUsesModalDrawer(
+                settingsSplit = false,
+                hasCustomTree = true,
+                drawerOutsideMail = true,
+                split = false,
+            ),
+        )
+        assertEquals(
+            false,
+            mailUsesModalDrawer(
+                settingsSplit = false,
+                hasCustomTree = false,
+                drawerOutsideMail = false,
+                split = true,
+            ),
+        )
+        assertEquals(
+            true,
+            mailUsesModalDrawer(
+                settingsSplit = false,
+                hasCustomTree = true,
+                drawerOutsideMail = false,
+                split = true,
+            ),
+        )
+        assertEquals(
+            true,
+            mailUsesModalDrawer(
+                settingsSplit = false,
+                hasCustomTree = false,
+                drawerOutsideMail = false,
+                split = false,
+            ),
+        )
+    }
+
+    @Test
+    fun fabLayerFollowsTheModalDrawer() {
+        assertEquals(ComposeFabLayer.Hidden, composeFabLayer(ComposeButton.Hidden, modalDrawer = true))
+        assertEquals(ComposeFabLayer.Hidden, composeFabLayer(ComposeButton.Hidden, modalDrawer = false))
+        assertEquals(ComposeFabLayer.UnderDrawer, composeFabLayer(ComposeButton.Open, modalDrawer = true))
+        assertEquals(ComposeFabLayer.UnderDrawer, composeFabLayer(ComposeButton.Pick, modalDrawer = true))
+        assertEquals(ComposeFabLayer.Overlay, composeFabLayer(ComposeButton.Open, modalDrawer = false))
+    }
 }
