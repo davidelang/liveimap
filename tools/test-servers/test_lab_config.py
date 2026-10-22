@@ -93,6 +93,16 @@ example = open(os.path.join(HERE, "host.env.example"), encoding="utf-8").read()
 assert "requires" in example
 values = [line.split("=", 1)[1] for line in example.splitlines() if line.startswith("LAB_MAIL_DOMAIN=")]
 assert values and values[0].strip().strip('"') == ""
+saved_hostenv = lab.HOSTENV
+try:
+    lab.HOSTENV = {}
+    assert lab.mail_domain() == "lab.liveimap.test"
+    lab.HOSTENV = {"LAB_MAIL_DOMAIN": ""}
+    assert lab.mail_domain() == "lab.liveimap.test"
+    lab.HOSTENV = {"LAB_MAIL_DOMAIN": "example.test"}
+    assert lab.mail_domain() == "example.test"
+finally:
+    lab.HOSTENV = saved_hostenv
 banned = ("user" + "_for", "LAB_" + "ZIMBRA" + "_USER")
 banned_files = (
     "lab.py", "acclab.py", "jmaplab.py", "jmaprun.py", "safety_run.py",
@@ -130,11 +140,12 @@ for name in no_greenmail:
 
 jmap = open(os.path.join(HERE, "jmaprun.py"), encoding="utf-8").read()
 assert "Config.Hostname" not in jmap
-assert jmap.count('sys.exit("needs LAB_MAIL_DOMAIN")') >= 2
+assert jmap.count("lab.mail_domain()") >= 2
+assert 'sys.exit("needs LAB_MAIL_DOMAIN")' not in jmap
 assert "JMAP_DOMAIN_USER" in jmap
 cyrus = open(os.path.join(HERE, "cyrus_domain_user.py"), encoding="utf-8").read()
-assert 'lab.HOSTENV.get("LAB_MAIL_DOMAIN")' in cyrus
-assert 'sys.exit("needs LAB_MAIL_DOMAIN")' in cyrus
+assert "lab.mail_domain()" in cyrus
+assert 'sys.exit("needs LAB_MAIL_DOMAIN")' not in cyrus
 
 # Seed-image edges 1-4. Text only; this does not run docker.
 start_names = ("start.sh",)
@@ -496,7 +507,7 @@ open_body = function_body(builder, "open_build")
 log_at = open_body.find("docker logs --tail 80")
 fail_at = open_body.find("exit 1", log_at)
 assert log_at != -1 and fail_at != -1 and log_at < fail_at
-assert builder.count("docker logs --tail 80") == 4
+assert builder.count("docker logs --tail 80") == 6
 assert 'docker inspect "liveimap-build-$server"' not in builder
 assert "|| true" not in builder
 assert "2>/dev/null" not in builder
@@ -608,6 +619,10 @@ z_at = builder.find("build_zimbra() {")
 z_end = builder.find("\nbuild_volume_servers()", z_at)
 zbody = builder[z_at:z_end]
 assert "zimbraDefaultDomainName" in zbody
+zdf_at = zbody.find("cat > \"$work/Dockerfile\" <<'EOF'")
+zdf_end = zbody.find("\nEOF\n", zdf_at)
+zdf = zbody[zdf_at:zdf_end]
+assert "FROM scratch" in zdf and "debian:bookworm-slim" not in zdf
 bare_at = zbody.find("bare login")
 close_at = zbody.rfind("\n  close_build\n")
 login_py = zbody.rfind("python3 - ", 0, close_at)
@@ -622,6 +637,7 @@ assert snap_py != -1 and snap_bare != -1 and snap_py < snap_bare < snap_commit
 snap_chunk = snap[snap_py:snap_commit]
 assert "zimbra-883" in snap[max(0, snap_py - 600):snap_py]
 assert "lab.USER" in snap_chunk and "***" in snap_chunk and "sys.exit(1)" in snap_chunk
+assert "lab.mail_domain()" in snap
 # Domain login. Text and the pure check. This does not run docker or regress.
 accept_names = {"cyrus-3124", "cyrus-3137", "cyrus-22", "cyrus-24", "cyrus-25", "cyrus-36", "zimbra-883"}
 imap_seen = set()
@@ -661,7 +677,8 @@ assert lab.PASS not in hidden and "***" in hidden and hidden.startswith("zimbra-
 check_fn = py_function(regress, "domain_login_check")
 assert "sys.exit" not in check_fn
 assert "domain_login_problem" in check_fn
-assert "needs LAB_MAIL_DOMAIN" in check_fn
+assert "lab.mail_domain()" in check_fn
+assert "needs LAB_MAIL_DOMAIN" not in check_fn
 call = regress.find("problem = domain_login_check(s)")
 assert call != -1
 call_window = regress[call:call + 160]
@@ -673,6 +690,8 @@ sasl_at = builder.find("saslpasswd2", cyrus_at)
 assert cyrus_at != -1 and sasl_at != -1 and cyrus_at < sasl_at
 cyrus_block = builder[cyrus_at:sasl_at + 800]
 assert "virtdomains" in cyrus_block and "needs LAB_MAIL_DOMAIN" in cyrus_block
+assert "lab.mail_domain()" in cyrus_block
+assert 'awk -F= \'$1 == "LAB_MAIL_DOMAIN"' not in builder
 assert "***" in cyrus_block
 
 # Suite fixture edges 1-8. Pure helpers and source text. This does not run docker, regress, or build-seed-image.
@@ -944,10 +963,36 @@ dev_fn = function_body(builder, "setup_dovecot_dev")
 assert "/etc/dovecot/conf.d/auth.conf" in dev_fn
 assert "ssl_server {" in dev_fn
 assert "ssl_server_cert_file" not in dev_fn
+assert "chown root:vmail /etc/dovecot/passwd" in dev_fn
+weak_at = dev_fn.find("auth_allow_weak_schemes = yes")
+passdb_at = dev_fn.find("passdb passwd-file")
+assert weak_at != -1 and passdb_at != -1 and weak_at < passdb_at
 courier_fn = function_body(builder, "setup_courier")
 assert courier_fn.find("mkdir -p /etc/courier") < courier_fn.find("each_base courier_one")
+assert "useradd -M -u 1000" in courier_fn
+assert 'chown -R "$user:$user"' not in courier_fn
+authd = "/usr/lib/courier-imap/sbin/authdaemond"
+co_at = builder.find('cat > "$CO_BUILD/entrypoint.sh"')
+co_end = builder.find("\nEOF\n", co_at)
+assert authd in builder[co_at:co_end]
+seed_courier = builder.find("  courier)\n    cat > \"$work/entrypoint.sh\"")
+seed_end = builder.find("\nEOF\n", seed_courier)
+assert authd in builder[seed_courier:seed_end]
+cert_sh = open(os.path.join(HERE, "client-cert-install.sh"), encoding="utf-8").read()
+case_at = cert_sh.find('case "$c" in')
+case_end = cert_sh.find("esac", case_at)
+case_body = cert_sh[case_at:case_end]
+assert "liveimap-dovecot-245" in case_body and "liveimap-build-dovecot-245" in case_body
+s15_at = builder.find("    stalwart-0155)\n      cat > \"$work/Dockerfile\"")
+s15_end = builder.find("\n      ;;\n", s15_at)
+s15 = builder[s15_at:s15_end]
+assert "command -v curl" in s15
+assert "apt-get install -y --no-install-recommends curl" in s15
+assert "0.0.0.0:143" in builder
 pkg = builder.split("FROM $base_image\n", 1)[1].split("COPY certs/", 1)[0]
-assert "timeout 120" in pkg
+assert "timeout 120" not in pkg
+assert "Acquire::ForceIPv4=true" in pkg
+assert "/proc/" in pkg and "600" in pkg
 assert "Acquire::http::Timeout=30" in pkg
 assert "apt-get install" in pkg
 all_at = builder.find('if [ $# -eq 1 ] && [ "$1" = "--all" ]; then')

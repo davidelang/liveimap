@@ -39,6 +39,14 @@ if not LAB_HOST:
 EMU_HOST = LAB_HOST
 
 
+def mail_domain():
+    # Reads HOSTENV at call time. Missing or empty is the lab default. Never empty.
+    domain = HOSTENV.get("LAB_MAIL_DOMAIN") or ""
+    if domain:
+        return domain
+    return "lab.liveimap.test"
+
+
 def up_commands():
     cmds = {}
     for line in open(os.path.join(HERE, "up.tsv")):

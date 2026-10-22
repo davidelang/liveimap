@@ -7,7 +7,7 @@ DIR=$(dirname "$(readlink -f "$0")")
 c="$1"
 docker cp "$DIR/generated/ca/ca.crt" "$c:/etc/lab/ca.crt" >/dev/null
 case "$c" in
-  liveimap-dovecot-245)
+  liveimap-dovecot-245|liveimap-build-dovecot-245)
     # Dovecot 2.4 names: ssl_server_request_client_cert + ssl_server_ca_file (2.3's ssl_verify_client_cert /
     # ssl_ca are gone), auth_ssl_username_from_cert + ssl_server_cert_username_field. The client cert is
     # requested but not required, so password logins keep working on the same ports.

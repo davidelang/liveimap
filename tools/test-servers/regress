@@ -1037,13 +1037,11 @@ def domain_login_reply(s, account):
 
 
 def domain_login_check(s):
-    """'' or one string. A missing LAB_MAIL_DOMAIN is needs LAB_MAIL_DOMAIN."""
+    """'' or one string. LAB_MAIL_DOMAIN uses lab.mail_domain()."""
     import lab
     login_domain, expect = lab._imap_domain_columns(s["name"])
     if login_domain == "LAB_MAIL_DOMAIN":
-        login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
-        if not login_domain:
-            return "needs LAB_MAIL_DOMAIN"
+        login_domain = lab.mail_domain()
     if not login_domain or not expect:
         return lab.domain_login_problem(s, "")
     account = lab.USER.split("@")[0] + "@" + login_domain

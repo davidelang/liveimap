@@ -177,10 +177,7 @@ except Exception:
     pass
 login_domain, expect = lab._imap_domain_columns(server)
 if login_domain == "LAB_MAIL_DOMAIN":
-    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
-    if not login_domain:
-        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
-        sys.exit(1)
+    login_domain = lab.mail_domain()
 if not login_domain or not expect:
     problem = lab.domain_login_problem({"name": server}, "")
 else:

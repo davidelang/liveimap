@@ -136,6 +136,7 @@ open_build() {
 
 require_login() {
   # Bare USER login and the recorded domain login, including zimbra-883.
+  set +e
   python3 - "$lab_host" "$host_port" "$DIR" "$server" <<'PY'
 import sys
 import time
@@ -150,14 +151,16 @@ secret = lab.PASS
 port = int(port_s)
 deadline = time.time() + 180
 imap = None
+last_oserror = ""
 while time.time() < deadline:
     try:
         imap = imaplib.IMAP4(host, port, timeout=20)
         break
-    except OSError:
+    except OSError as exc:
+        last_oserror = str(exc).replace(secret, "***")
         time.sleep(2)
 if imap is None:
-    sys.stderr.write("bare login no greeting\n")
+    sys.stderr.write("bare login no greeting: %s\n" % last_oserror)
     sys.exit(1)
 try:
     parts = []
@@ -185,10 +188,7 @@ except Exception:
     pass
 login_domain, expect = lab._imap_domain_columns(server)
 if login_domain == "LAB_MAIL_DOMAIN":
-    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
-    if not login_domain:
-        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
-        sys.exit(1)
+    login_domain = lab.mail_domain()
 if not login_domain or not expect:
     problem = lab.domain_login_problem({"name": server}, "")
 else:
@@ -204,6 +204,12 @@ if problem:
     sys.stderr.write(problem + "\n")
     sys.exit(1)
 PY
+  login_status=$?
+  set -e
+  if [ "$login_status" -ne 0 ]; then
+    docker logs --tail 80 "liveimap-build-$server" >&2
+    exit "$login_status"
+  fi
 }
 
 seed_suite() {
@@ -614,8 +620,11 @@ if [ -x /etc/init.d/courier-authdaemon ]; then
   /etc/init.d/courier-authdaemon start
 elif [ -x /etc/init.d/courier-auth ]; then
   /etc/init.d/courier-auth start
+elif [ -x /usr/lib/courier-imap/sbin/authdaemond ]; then
+  /usr/lib/courier-imap/sbin/authdaemond start
 else
   echo "courier authdaemon missing" >&2
+  find /usr /etc -name 'authdaemond' -o -name 'authdaemon*'
   exit 1
 fi
 if [ -x /etc/init.d/courier-imap ]; then
@@ -1184,6 +1193,7 @@ EOF
 FROM $upstream AS upstream
 FROM debian:bookworm-slim
 COPY --from=upstream / /
+RUN if ! command -v curl; then apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*; fi
 COPY certs/ /etc/lab/
 COPY stalwart.env /etc/lab/stalwart.env
 COPY entrypoint.sh /entrypoint.sh
@@ -1233,7 +1243,7 @@ EOF
     exit 1
   fi
   docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
-{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"[::]:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
+{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"0.0.0.0:143":true,"[::]:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
 JSON
   if ! grep -q '"created"' "$work/listener.json"; then
     echo "stalwart imap listener was not created" >&2
@@ -1289,7 +1299,7 @@ EOF
   cat > "$work/Dockerfile" <<'EOF'
 # syntax=docker/dockerfile:1
 FROM liveimap-zimbra-883:lan AS upstream
-FROM debian:bookworm-slim
+FROM scratch
 COPY --from=upstream / /
 COPY zimbra.env /etc/lab/zimbra.env
 COPY entrypoint.sh /entrypoint.sh
@@ -1377,6 +1387,7 @@ for user, secret in users:
         sys.exit(1)
 PY
   "$DIR/zimbra-tls.sh" "liveimap-build-$server"
+  set +e
   python3 - "$lab_host" "$host_port" "$DIR" "$server" <<'PY'
 import imaplib
 import ssl
@@ -1391,14 +1402,16 @@ secret = lab.PASS
 port = int(port_s)
 deadline = time.time() + 180
 imap = None
+last_oserror = ""
 while time.time() < deadline:
     try:
         imap = imaplib.IMAP4(host, port, timeout=20)
         break
-    except OSError:
+    except OSError as exc:
+        last_oserror = str(exc).replace(secret, "***")
         time.sleep(2)
 if imap is None:
-    sys.stderr.write("bare login no greeting\n")
+    sys.stderr.write("bare login no greeting: %s\n" % last_oserror)
     sys.exit(1)
 try:
     parts = []
@@ -1426,10 +1439,7 @@ except Exception:
     pass
 login_domain, expect = lab._imap_domain_columns(server)
 if login_domain == "LAB_MAIL_DOMAIN":
-    login_domain = lab.HOSTENV.get("LAB_MAIL_DOMAIN") or ""
-    if not login_domain:
-        sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
-        sys.exit(1)
+    login_domain = lab.mail_domain()
 if not login_domain or not expect:
     problem = lab.domain_login_problem({"name": server}, "")
 else:
@@ -1445,6 +1455,12 @@ if problem:
     sys.stderr.write(problem + "\n")
     sys.exit(1)
 PY
+  login_status=$?
+  set -e
+  if [ "$login_status" -ne 0 ]; then
+    docker logs --tail 80 "liveimap-build-$server" >&2
+    exit "$login_status"
+  fi
   close_build
 }
 
@@ -1831,8 +1847,11 @@ AUTH
 
 setup_dovecot_dev() {
   setup_dovecot_files plain
+  chown root:vmail /etc/dovecot/passwd
+  chmod 640 /etc/dovecot/passwd
   mkdir -p /etc/dovecot/conf.d
   cat > /etc/dovecot/conf.d/auth.conf <<'CFG'
+  auth_allow_weak_schemes = yes
   passdb passwd-file {
     passwd_file_path = /etc/dovecot/passwd
   }
@@ -1843,7 +1862,6 @@ setup_dovecot_dev() {
       home = /srv/vmail/%{user}
     }
   }
-  auth_allow_weak_schemes = yes
 CFG
   conf=/usr/local/etc/dovecot/dovecot.conf
   if [ ! -f "$conf" ]; then
@@ -1883,7 +1901,7 @@ courier_one() {
         "$maildirmake" "$home/Maildir"
       fi
     fi
-    chown -R "$user:$user" "$home"
+    chown -R "$uid_now:$gid" "$home"
     return 0
   fi
   if [ "$user" = liveimap-utf8 ]; then
@@ -1944,6 +1962,14 @@ setup_courier() {
     fi
   done
   mkdir -p /etc/courier
+  if [ "$role" = courier-50 ]; then
+    if ! getent group 1000 >/dev/null; then
+      groupadd -g 1000 vmail
+    fi
+    if ! getent passwd 1000 >/dev/null; then
+      useradd -M -u 1000 -g 1000 -d /var/vmail -s /usr/sbin/nologin vmail
+    fi
+  fi
   each_base courier_one
   makeuserdb
 }
@@ -2049,8 +2075,11 @@ if [ -x /etc/init.d/courier-authdaemon ]; then
   /etc/init.d/courier-authdaemon start
 elif [ -x /etc/init.d/courier-auth ]; then
   /etc/init.d/courier-auth start
+elif [ -x /usr/lib/courier-imap/sbin/authdaemond ]; then
+  /usr/lib/courier-imap/sbin/authdaemond start
 else
   echo "courier authdaemon missing" >&2
+  find /usr /etc -name 'authdaemond' -o -name 'authdaemon*'
   exit 1
 fi
 if [ -x /etc/init.d/courier-imap ]; then
@@ -2101,10 +2130,19 @@ else
 # syntax=docker/dockerfile:1
 FROM $base_image
 ENV DEBIAN_FRONTEND=noninteractive
-RUN echo "apt-get update $base_image" \
-    && timeout 120 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update \
+RUN bounded() { \
+    "\$@" & pid=\$!; i=0; \
+    while [ -d /proc/\$pid ] && [ "\$i" -lt 600 ]; do sleep 1; i=\`expr \$i + 1\`; done; \
+    timed_out=0; \
+    if [ -d /proc/\$pid ]; then kill \$pid; timed_out=1; fi; \
+    set +e; wait \$pid; status=\$?; set -e; \
+    if [ "\$timed_out" -eq 1 ]; then return 124; fi; \
+    return \$status; \
+    } \
+    && echo "apt-get update $base_image" \
+    && bounded apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update \
     && echo "apt-get install $packages" \
-    && timeout 120 apt-get install -y $packages \
+    && bounded apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y $packages \
     && rm -rf /var/lib/apt/lists/*
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
@@ -2141,13 +2179,7 @@ case "$lab_host" in
 esac
 case "$server" in
   cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)
-    mail_domain=$(awk -F= '$1 == "LAB_MAIL_DOMAIN" { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$DIR/host.env")
-    case "$mail_domain" in
-      "")
-        echo "needs LAB_MAIL_DOMAIN" >&2
-        exit 1
-        ;;
-    esac
+    mail_domain=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.mail_domain())' "$DIR") || exit 1
     python3 - "liveimap-build-$server" "$lab_host" "$host_port" "$SEED" "$mail_domain" <<'PY'
 import os
 import socket
