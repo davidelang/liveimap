@@ -2200,6 +2200,16 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 else
   dol='$'
+  jessie_nofile=""
+  if [ "$server" = dovecot-22 ]; then
+    jessie_nofile="    && n=${dol}(ulimit -n) \\
+    && case ${dol}n in \\
+         ''|*[!0-9]*) ;; \\
+         *) if [ \"${dol}n\" -gt 1024 ]; then ulimit -n 1024; fi ;; \\
+       esac \\
+    && echo \"nofile ${dol}(ulimit -n)\" \\
+"
+  fi
   cat > "$work/Dockerfile" <<EOF
 # syntax=docker/dockerfile:1
 FROM $base_image
@@ -2213,13 +2223,7 @@ RUN bounded() { \
     if [ "\$timed_out" -eq 1 ]; then return 124; fi; \
     return \$status; \
     } \
-    && n=${dol}(ulimit -n) \
-    && case ${dol}n in \
-         ''|*[!0-9]*) ;; \
-         *) if [ "${dol}n" -gt 1024 ]; then ulimit -n 1024; fi ;; \
-       esac \
-    && echo "nofile ${dol}(ulimit -n)" \
-    && echo "apt-get update $base_image" \
+${jessie_nofile}    && echo "apt-get update $base_image" \
     && bounded apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update \
     && echo "apt-get install $packages" \
     && bounded apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y $packages \

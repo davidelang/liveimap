@@ -1017,7 +1017,9 @@ for dirpath, dirnames, filenames in os.walk(HERE):
         assert stamp_name not in text, path
 # Remaining seed failures. Text only; this does not run docker or build-seed-image.
 assert "-u root" in cert_sh and "LAB_TLS_MAX" in cert_sh
-assert "ulimit -n 1024" in pkg
+assert "ulimit -n 1024" not in pkg
+jessie_gate = builder[builder.find("  dol='$'"):builder.find("FROM $base_image\n")]
+assert '[ "$server" = dovecot-22 ]' in jessie_gate and "ulimit -n 1024" in jessie_gate
 new_auth = "/usr/lib/courier/courier-authlib/authdaemond"
 assert authd in builder[co_at:co_end] and new_auth in builder[co_at:co_end]
 assert authd in builder[seed_courier:seed_end] and new_auth in builder[seed_courier:seed_end]
