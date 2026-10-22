@@ -11,7 +11,7 @@ case "$c" in
     # Dovecot 2.4 names: ssl_server_request_client_cert + ssl_server_ca_file (2.3's ssl_verify_client_cert /
     # ssl_ca are gone), auth_ssl_username_from_cert + ssl_server_cert_username_field. The client cert is
     # requested but not required, so password logins keep working on the same ports.
-    conf=$(docker exec "$c" sh -c 'for f in /usr/local/etc/dovecot/dovecot.conf /etc/dovecot/dovecot.conf; do [ -f $f ] && echo $f && break; done')
+    conf=$(docker exec -u root "$c" sh -c 'for f in /usr/local/etc/dovecot/dovecot.conf /etc/dovecot/dovecot.conf; do [ -f $f ] && echo $f && break; done')
     tmp=$(mktemp)
     docker cp "$c:$conf" "$tmp" >/dev/null
     sed -i '/^# lab-clientcert/,/^# end lab-clientcert/d' "$tmp"
@@ -40,21 +40,29 @@ CONF
     # Submission relay: not set here. start.sh writes generated/dovecot-245/relay.conf
     # and does not mount it.
     docker cp "$tmp" "$c:$conf" >/dev/null
-    # LAB_TLS_MAX=1.2 caps the server at TLS 1.2 (Dovecot has no max-protocol setting, so it goes into the
-    # container's system OpenSSL config, which Dovecot loads); unset restores the original (TLS 1.3).
-    # /usr/lib/ssl/openssl.cnf is a symlink to /etc/ssl/openssl.cnf; always write the real file. The pristine
-    # copy comes from the image (the container has no cp), so re-runs never stack edits.
-    ssl=/etc/ssl/openssl.cnf
-    t=$(docker create "$(docker inspect -f '{{.Config.Image}}' "$c")")
-    docker cp -L "$t:$ssl" - | tar xO > "$tmp"
-    docker rm "$t" >/dev/null
-    if [ "${LAB_TLS_MAX:-}" = 1.2 ]; then
-      sed -i '/^\[openssl_init\]/a ssl_conf = lab_ssl_sect' "$tmp"
-      printf '\n[lab_ssl_sect]\nsystem_default = lab_tls_sect\n[lab_tls_sect]\nMaxProtocol = TLSv1.2\n' >> "$tmp"
-    fi
-    docker cp "$tmp" "$c:$ssl" >/dev/null
     rm -f "$tmp"
-    docker exec "$c" doveconf -n >/dev/null
+    # LAB_TLS_MAX=1.2 caps the server at TLS 1.2 (Dovecot has no max-protocol setting, so it goes into the
+    # container's system OpenSSL config, which Dovecot loads). Unset leaves openssl.cnf unread and unwritten.
+    # /usr/lib/ssl/openssl.cnf is a symlink to /etc/ssl/openssl.cnf; write the real file. The pristine
+    # copy comes from the image (the container has no cp), so re-runs never stack edits.
+    if [ "${LAB_TLS_MAX:-}" = 1.2 ]; then
+      ssl=/etc/ssl/openssl.cnf
+      t=$(docker create "$(docker inspect -f '{{.Config.Image}}' "$c")")
+      ssl_dir=$(mktemp -d)
+      docker cp -L "$t:$ssl" "$ssl_dir/openssl.cnf"
+      docker rm "$t" >/dev/null
+      sed -i '/^\[openssl_init\]/a ssl_conf = lab_ssl_sect' "$ssl_dir/openssl.cnf"
+      printf '\n[lab_ssl_sect]\nsystem_default = lab_tls_sect\n[lab_tls_sect]\nMaxProtocol = TLSv1.2\n' >> "$ssl_dir/openssl.cnf"
+      docker cp "$ssl_dir/openssl.cnf" "$c:$ssl" >/dev/null
+      rm -rf "$ssl_dir"
+    fi
+    dove_out=$(mktemp)
+    if ! docker exec -u root "$c" doveconf -n >"$dove_out" 2>&1; then
+      cat "$dove_out" >&2
+      rm -f "$dove_out"
+      exit 1
+    fi
+    rm -f "$dove_out"
     docker restart "$c" >/dev/null ;;
   *) echo "no client-cert recipe for $c" >&2; exit 2 ;;
 esac

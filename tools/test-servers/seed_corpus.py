@@ -2,7 +2,7 @@
 """Seed corpus-v1 (generated/corpus-v1, from make_corpus.generate) into one RUNNING lab server for the
 liveimap account: folders created with the server's delimiter, APPEND with manifest flags and INTERNALDATE.
 Skips when INBOX already holds the seed marker. Usage: seed_corpus.py HOST PORT [--tls|--starttls] [--user U]. Lab servers only."""
-import base64, csv, imaplib, os, ssl, sys
+import base64, csv, imaplib, os, sys
 from datetime import datetime
 from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -39,16 +39,12 @@ def q(name):
 def main(host, port, tls):
     ensure_corpus()
     assert host == lab.LAB_HOST, "lab host only"
-    ctx = ssl.create_default_context(cadata=open(os.path.join(lab.GEN, "ca", "ca.der"), "rb").read())
-    ctx.check_hostname = False
     if tls:
-        ctx = ssl.create_default_context(cadata=open(os.path.join(lab.GEN, "ca", "ca.der"), "rb").read())
-        ctx.check_hostname = False
-        m = imaplib.IMAP4_SSL(host, port, ssl_context=ctx)
+        m = imaplib.IMAP4_SSL(host, port, ssl_context=lab._lab_ssl())
     else:
         m = imaplib.IMAP4(host, port)
         if "--starttls" in sys.argv:
-            m.starttls(ssl_context=ctx)
+            m.starttls(ssl_context=lab._lab_ssl())
     m.login(sys.argv[sys.argv.index("--user") + 1] if "--user" in sys.argv else lab.USER, lab.PASS)  # bare lab user unless --user
     # The acceptance append/flag folder: top level, or under the personal prefix where top level is refused
     # (courier, older Cyrus: "INBOX."). An error just means it exists or that name is not allowed here.

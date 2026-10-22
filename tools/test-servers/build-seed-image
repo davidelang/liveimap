@@ -115,7 +115,14 @@ open_build() {
   step "open build"
   imap_port=$(cport "$server" imap)
   remove_build_container
-  docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+  case "$server" in
+    zimbra-883)
+      docker create --hostname zimbra.zcs-foss.test --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+      ;;
+    *)
+      docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+      ;;
+  esac
   docker start "liveimap-build-$server"
   port_out="$DIR/generated/published-$server"
   docker port "liveimap-build-$server" "$imap_port" > "$port_out" || {
@@ -622,6 +629,8 @@ elif [ -x /etc/init.d/courier-auth ]; then
   /etc/init.d/courier-auth start
 elif [ -x /usr/lib/courier-imap/sbin/authdaemond ]; then
   /usr/lib/courier-imap/sbin/authdaemond start
+elif [ -x /usr/lib/courier/courier-authlib/authdaemond ]; then
+  /usr/lib/courier/courier-authlib/authdaemond start
 else
   echo "courier authdaemon missing" >&2
   find /usr /etc -name 'authdaemond' -o -name 'authdaemon*'
@@ -1186,6 +1195,41 @@ EOF
       ;;
   esac
   chmod 755 "$work/entrypoint.sh"
+  if [ "$server" = stalwart-0155 ]; then
+    umask 077
+    cat > "$work/config.toml" <<EOF
+[storage]
+data = "rocksdb"
+fts = "rocksdb"
+blob = "rocksdb"
+lookup = "rocksdb"
+directory = "internal"
+
+[store.rocksdb]
+type = "rocksdb"
+path = "/opt/stalwart/data"
+
+[directory.internal]
+type = "internal"
+store = "rocksdb"
+
+[server.listener.imap]
+bind = "0.0.0.0:143"
+protocol = "imap"
+tls.implicit = false
+
+[server.listener.http]
+bind = "127.0.0.1:8080"
+protocol = "http"
+tls.implicit = false
+
+[authentication.fallback-admin]
+user = "admin"
+secret = "${token}"
+EOF
+    umask 022
+    chmod 600 "$work/config.toml"
+  fi
   case "$server" in
     stalwart-0155)
       cat > "$work/Dockerfile" <<EOF
@@ -1196,6 +1240,7 @@ COPY --from=upstream / /
 RUN if ! command -v curl; then apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*; fi
 COPY certs/ /etc/lab/
 COPY stalwart.env /etc/lab/stalwart.env
+COPY config.toml /opt/stalwart/etc/config.toml
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 600 /etc/lab/stalwart.env && chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
@@ -1242,14 +1287,27 @@ EOF
     docker logs --tail 80 "liveimap-build-$server" >&2
     exit 1
   fi
-  docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
-{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"0.0.0.0:143":true,"[::]:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
+  case "$server" in
+    stalwart-0155) ;;
+    *)
+      docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/tracer.json" <<'JSON'
+{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:Tracer/set",{"create":{"stdout":{"@type":"Stdout","ansi":false,"multiline":false,"buffered":false,"enable":true,"level":"info"}}},"c1"]]}
 JSON
-  if ! grep -q '"created"' "$work/listener.json"; then
-    echo "stalwart imap listener was not created" >&2
-    sed "s/${token}/***/g" "$work/listener.json" >&2
-    exit 1
-  fi
+      if ! grep -q '"created"' "$work/tracer.json"; then
+        echo "stalwart tracer was not created" >&2
+        sed "s/${token}/***/g" "$work/tracer.json" >&2
+        exit 1
+      fi
+      docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
+{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"0.0.0.0:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
+JSON
+      if ! grep -q '"created"' "$work/listener.json"; then
+        echo "stalwart imap listener was not created" >&2
+        sed "s/${token}/***/g" "$work/listener.json" >&2
+        exit 1
+      fi
+      ;;
+  esac
   "$DIR/stalwart-accounts.sh" "liveimap-build-$server"
   case "$server" in
     stalwart-0155) ;;
@@ -1333,6 +1391,12 @@ with open(seed, newline="", encoding="utf-8") as handle:
 deadline = time.time() + 600
 opened = False
 while time.time() < deadline:
+    state = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", name],
+        capture_output=True, text=True,
+    )
+    if state.returncode == 0 and state.stdout.strip() == "false":
+        break
     try:
         sock = socket.create_connection((host, port), 5)
         sock.close()
@@ -1342,6 +1406,7 @@ while time.time() < deadline:
         time.sleep(2)
 if not opened:
     sys.stderr.write("zimbra imap did not open\n")
+    subprocess.run("docker logs --tail 80".split() + [name])
     sys.exit(1)
 body = (
     "set +x\nexport HOME=/opt/zimbra\nexport PATH=/opt/zimbra/bin:$PATH\n"
@@ -1674,6 +1739,7 @@ sasldb_path: /etc/sasldb2'
     set_key /etc/imapd.conf sasl_pwcheck_method " auxprop" ":"
     set_key /etc/imapd.conf sasl_mech_list " PLAIN LOGIN" ":"
     set_key /etc/imapd.conf admins " cyrus" ":"
+    set_key /etc/imapd.conf servername " localhost" ":"
     set_key /etc/imapd.conf sasl_minimum_layer " 0" ":"
     if [ "$sep" = / ]; then
       set_key /etc/imapd.conf unixhierarchysep " yes" ":"
@@ -1706,11 +1772,11 @@ sasldb_path: /etc/sasldb2'
   fi
   write_cyrus_admin
   admin=$(cat /etc/lab/cyrus-admin)
-  printf '%s\n' "$admin" | saslpasswd2 -p -c cyrus
+  printf '%s\n' "$admin" | saslpasswd2 -p -c -u localhost cyrus
   cyrus_one() {
     user=$1
     pass=$2
-    if printf '%s\n' "$pass" | saslpasswd2 -p -c "$user"; then
+    if printf '%s\n' "$pass" | saslpasswd2 -p -c -u localhost "$user"; then
       return 0
     fi
     if [ "$user" = liveimap-utf8 ]; then
@@ -2041,6 +2107,11 @@ if [ -z "$master" ]; then
   echo "cyrus master missing" >&2
   exit 1
 fi
+if id cyrus >/dev/null; then
+  mkdir -p /run/cyrus /var/run/cyrus
+  cyrus_group=$(id -gn cyrus)
+  chown "cyrus:$cyrus_group" /run/cyrus /var/run/cyrus
+fi
 rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
 "$master" -d
 exec sleep infinity
@@ -2077,6 +2148,8 @@ elif [ -x /etc/init.d/courier-auth ]; then
   /etc/init.d/courier-auth start
 elif [ -x /usr/lib/courier-imap/sbin/authdaemond ]; then
   /usr/lib/courier-imap/sbin/authdaemond start
+elif [ -x /usr/lib/courier/courier-authlib/authdaemond ]; then
+  /usr/lib/courier/courier-authlib/authdaemond start
 else
   echo "courier authdaemon missing" >&2
   find /usr /etc -name 'authdaemond' -o -name 'authdaemon*'
@@ -2126,6 +2199,7 @@ RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
 else
+  dol='$'
   cat > "$work/Dockerfile" <<EOF
 # syntax=docker/dockerfile:1
 FROM $base_image
@@ -2139,6 +2213,12 @@ RUN bounded() { \
     if [ "\$timed_out" -eq 1 ]; then return 124; fi; \
     return \$status; \
     } \
+    && n=${dol}(ulimit -n) \
+    && case ${dol}n in \
+         ''|*[!0-9]*) ;; \
+         *) if [ "${dol}n" -gt 1024 ]; then ulimit -n 1024; fi ;; \
+       esac \
+    && echo "nofile ${dol}(ulimit -n)" \
     && echo "apt-get update $base_image" \
     && bounded apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update \
     && echo "apt-get install $packages" \
@@ -2160,7 +2240,14 @@ step "seed image"
 HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
 imap_port=$(cport "$server" imap)
 remove_build_container
-docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+case "$server" in
+  cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)
+    docker create --hostname localhost --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+    ;;
+  *)
+    docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+    ;;
+esac
 docker start "liveimap-build-$server"
 port_out="$DIR/generated/published-$server"
 docker port "liveimap-build-$server" "$imap_port" > "$port_out" || {
@@ -2242,27 +2329,42 @@ class Imap:
         self.s = ctx.wrap_socket(self.s, server_hostname=host)
         self.buf = b""
 
+def show_cyrus_greeting_miss(last_err, greeting):
+    sys.stderr.write("cyrus greeting missing OK\n")
+    if greeting:
+        sys.stderr.write(greeting + "\n")
+    else:
+        sys.stderr.write(last_err + "\n")
+    subprocess.run("docker logs --tail 80".split() + [name])
+    sys.exit(1)
+
+def show_cyrus_admin_miss(lines):
+    sys.stderr.write("cyrus admin login failed\n")
+    sys.stderr.write("\n".join(lines).replace(admin, "***") + "\n")
+    subprocess.run("docker logs --tail 80".split() + [name])
+    sys.exit(1)
+
 deadline = time.time() + 90
 imap = None
 greeting = ""
+last_err = ""
 while time.time() < deadline:
     try:
         imap = Imap()
         greeting = imap.readline()
-    except OSError:
+    except OSError as exc:
+        last_err = str(exc)
         time.sleep(1)
         continue
     if "OK" in greeting:
         break
 if imap is None or "OK" not in greeting:
-    sys.stderr.write("cyrus greeting missing OK\n")
-    sys.exit(1)
+    show_cyrus_greeting_miss(last_err, greeting if imap is not None else "")
 if "LOGINDISABLED" in greeting:
     imap.starttls()
 lines = imap.command('LOGIN cyrus "%s"' % admin)
 if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
-    sys.stderr.write("cyrus admin login failed\n")
-    sys.exit(1)
+    show_cyrus_admin_miss(lines)
 for user in users:
     mailbox = "user" + sep + user
     lines = imap.command("CREATE %s" % mailbox)
@@ -2301,24 +2403,24 @@ if proc.returncode != 0:
 deadline = time.time() + 90
 imap = None
 greeting = ""
+last_err = ""
 while time.time() < deadline:
     try:
         imap = Imap()
         greeting = imap.readline()
-    except OSError:
+    except OSError as exc:
+        last_err = str(exc)
         time.sleep(1)
         continue
     if "OK" in greeting:
         break
 if imap is None or "OK" not in greeting:
-    sys.stderr.write("cyrus greeting missing OK\n")
-    sys.exit(1)
+    show_cyrus_greeting_miss(last_err, greeting if imap is not None else "")
 if "LOGINDISABLED" in greeting:
     imap.starttls()
 lines = imap.command('LOGIN cyrus "%s"' % admin)
 if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
-    sys.stderr.write("cyrus admin login failed\n")
-    sys.exit(1)
+    show_cyrus_admin_miss(lines)
 mailbox = "user" + sep + account
 lines = imap.command("CREATE %s" % mailbox)
 text = " ".join(lines).lower()

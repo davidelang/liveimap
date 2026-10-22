@@ -66,16 +66,15 @@ def connect(host, port, user, password, allow):
     tls = TLS_MODE == "Implicit" or (not TLS_MODE and str(port).endswith("993"))
     if RECORDER:
         RECORDER.event("connect", f"{host}:{port} {'Implicit' if tls else TLS_MODE or 'None'}")
+    import lab
     if tls:
-        import ssl
-        m = RecIMAP4_SSL(host, port, ssl_context=ssl._create_unverified_context())
+        m = RecIMAP4_SSL(host, port, ssl_context=lab._lab_ssl())
     else:
         m = RecIMAP4(host, port)
         if TLS_MODE == "StartTls":
-            import ssl
             if "STARTTLS" not in m.capabilities:
                 raise SystemExit("server does not offer STARTTLS")
-            m.starttls(ssl._create_unverified_context())
+            m.starttls(lab._lab_ssl())
     pre = m.capabilities
     try:
         m.login(user, password)

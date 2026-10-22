@@ -507,7 +507,7 @@ open_body = function_body(builder, "open_build")
 log_at = open_body.find("docker logs --tail 80")
 fail_at = open_body.find("exit 1", log_at)
 assert log_at != -1 and fail_at != -1 and log_at < fail_at
-assert builder.count("docker logs --tail 80") == 6
+assert builder.count("docker logs --tail 80") == 9
 assert 'docker inspect "liveimap-build-$server"' not in builder
 assert "|| true" not in builder
 assert "2>/dev/null" not in builder
@@ -1015,4 +1015,35 @@ for dirpath, dirnames, filenames in os.walk(HERE):
         except (OSError, UnicodeDecodeError):
             continue
         assert stamp_name not in text, path
+# Remaining seed failures. Text only; this does not run docker or build-seed-image.
+assert "-u root" in cert_sh and "LAB_TLS_MAX" in cert_sh
+assert "ulimit -n 1024" in pkg
+new_auth = "/usr/lib/courier/courier-authlib/authdaemond"
+assert authd in builder[co_at:co_end] and new_auth in builder[co_at:co_end]
+assert authd in builder[seed_courier:seed_end] and new_auth in builder[seed_courier:seed_end]
+assert 'set_key /etc/imapd.conf servername " localhost" ":"' in cyrus_fn
+assert "saslpasswd2 -p -c -u localhost cyrus" in cyrus_fn
+assert 'saslpasswd2 -p -c -u localhost "$user"' in cyrus_fn
+assert '"-u", domain, local' in builder
+pkg_host = builder.find('docker create --hostname localhost --name "liveimap-build-$server"')
+assert pkg_host != -1 and pkg_host > builder.find("FROM $base_image\n")
+assert "--hostname zimbra.zcs-foss.test" in open_body
+for line in open_body.splitlines():
+    if "docker create" in line and "zimbra.zcs-foss.test" not in line:
+        assert "--hostname" not in line, line
+zcreate_again = py_function(latest, "zimbra_create")
+assert "--hostname" not in zcreate_again
+assert '@type":"Stdout"' in builder and '"buffered":false' in builder
+assert "0.0.0.0:143" in builder and "[::]:143" not in builder
+assert "fallback-admin" in builder and "config.toml" in s15
+assert "config.toml" not in mail_ep
+seed_src = open(os.path.join(HERE, "seed_corpus.py"), encoding="utf-8").read()
+imap_src = open(os.path.join(HERE, "lab_imap.py"), encoding="utf-8").read()
+assert "lab._lab_ssl()" in seed_src
+connect_src = py_function(imap_src, "connect")
+assert "\n    import lab\n" in connect_src and "lab._lab_ssl()" in connect_src
+cy_ep = builder.find("  cyrus)\n    cat > \"$work/entrypoint.sh\"")
+cy_end = builder.find("\nEOF\n", cy_ep)
+assert cy_ep != -1 and "/run/cyrus" in builder[cy_ep:cy_end]
+assert builder.count("docker logs --tail 80") == 9
 print("ok")
