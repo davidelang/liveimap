@@ -47,7 +47,7 @@ fun paneContentLabel(content: PaneContent): String = stringResource(
 /** Settings editor for the custom panel layout. [onSave] gets "" for Auto. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PaneLayoutEditor(saved: String, textZoom: Int, onSave: (String) -> Unit) {
+fun PaneLayoutEditor(saved: String, textZoom: Int, persist: Boolean = true, onSave: (String) -> Unit) {
     val configuration = LocalConfiguration.current
     val auto = autoPaneLayout(planLayout(configuration.screenWidthDp, configuration.screenHeightDp, configuration.fontScale * textZoom / 100f))
     var tree by remember(saved) { mutableStateOf(decodePaneLayout(saved)) }
@@ -55,7 +55,9 @@ fun PaneLayoutEditor(saved: String, textZoom: Int, onSave: (String) -> Unit) {
     val custom = tree != null
     fun commit(next: PaneNode?) {
         tree = next
-        if (next == null) onSave("") else if (paneLayoutProblem(next) == null) onSave(next.encode())
+        if (persist) {
+            if (next == null) onSave("") else if (paneLayoutProblem(next) == null) onSave(next.encode())
+        }
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

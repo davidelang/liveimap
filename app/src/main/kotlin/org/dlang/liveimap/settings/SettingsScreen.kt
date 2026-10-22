@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import org.dlang.liveimap.ui.compose.formatMailbox
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -39,7 +38,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.Checkbox
@@ -53,6 +54,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -73,8 +75,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -425,15 +425,15 @@ fun SettingsGroupScreen(
     if (!editor.ready) return
     SettingsPage {
         when (group) {
-            SettingsGroup.Account -> AccountGroup(editor)
-            SettingsGroup.Mailboxes -> MailboxesGroup(editor)
-            SettingsGroup.Folders -> FoldersGroup(editor)
-            SettingsGroup.Reading -> ReadingGroup(editor)
-            SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
-            SettingsGroup.Appearance -> AppearanceGroup(editor)
-            SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
+            SettingsGroup.Account -> AccountGroup(editor, 0)
+            SettingsGroup.Mailboxes -> MailboxesGroup(editor, 0)
+            SettingsGroup.Folders -> FoldersGroup(editor, 0)
+            SettingsGroup.Reading -> ReadingGroup(editor, 0)
+            SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook, 0)
+            SettingsGroup.Appearance -> AppearanceGroup(editor, 0)
+            SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel, 0)
             SettingsGroup.Slower -> SlowerGroup(editor)
-            SettingsGroup.Debug -> DebugGroup(editor)
+            SettingsGroup.Debug -> DebugGroup(editor, 0)
         }
     }
 }
@@ -448,6 +448,7 @@ fun SettingsTree(
     if (!editor.ready) return
     val sections = rememberSectionOpen()
     val settings = editor.settings
+    val depth = 0
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     Column(
@@ -458,27 +459,28 @@ fun SettingsTree(
             .testTag("smoke-settings"),
     ) {
             for (group in SettingsGroup.entries) {
-                SettingsSection(
+                SettingsNode(
                     title = group.title,
+                    depth = depth,
                     summary = groupSummary(group, settings),
                     expanded = group.route in sections.open,
                     onToggle = { sections.toggle(group.route) },
                 ) {
                     when (group) {
-                        SettingsGroup.Account -> AccountGroup(editor)
-                        SettingsGroup.Mailboxes -> MailboxesGroup(editor)
-                        SettingsGroup.Folders -> FoldersGroup(editor)
-                        SettingsGroup.Reading -> ReadingGroup(editor)
-                        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook)
-                        SettingsGroup.Appearance -> AppearanceGroup(editor)
-                        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel)
+                        SettingsGroup.Account -> AccountGroup(editor, depth + 1)
+                        SettingsGroup.Mailboxes -> MailboxesGroup(editor, depth + 1)
+                        SettingsGroup.Folders -> FoldersGroup(editor, depth + 1)
+                        SettingsGroup.Reading -> ReadingGroup(editor, depth + 1)
+                        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook, depth + 1)
+                        SettingsGroup.Appearance -> AppearanceGroup(editor, depth + 1)
+                        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel, depth + 1)
                         SettingsGroup.Slower -> SlowerGroup(editor)
-                        SettingsGroup.Debug -> DebugGroup(editor)
+                        SettingsGroup.Debug -> DebugGroup(editor, depth + 1)
                     }
                 }
             }
-            ToolbarsSection(editor)
-            FavoritesSection(editor) { favorite ->
+            ToolbarsSection(editor, depth)
+            FavoritesSection(editor, depth) { favorite ->
                 editingFavorite = favorite
                 favoriteDraft = if (favorite.label.isNotBlank()) {
                     favorite.label
@@ -543,7 +545,7 @@ private fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, de
 }
 
 @Composable
-private fun ToolbarsSection(editor: SettingsEditor) {
+private fun ToolbarsSection(editor: SettingsEditor, depth: Int) {
     val bars = rememberSectionOpen()
     val accountId = editor.editingId.orEmpty()
     LaunchedEffect(editor.editingId) {
@@ -563,17 +565,18 @@ private fun ToolbarsSection(editor: SettingsEditor) {
             previous = loaded
         }
     }
-    SettingsSection(
+    SettingsNode(
         title = stringResource(R.string.settings_toolbars),
+        depth = depth,
         summary = stringResource(R.string.settings_toolbars),
         expanded = "toolbars" in bars.open,
         onToggle = { bars.toggle("toolbars") },
     ) {
-        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId)
-        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId)
-        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId)
-        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId)
-        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId)
+        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId, depth + 1)
+        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId, depth + 1)
+        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId, depth + 1)
+        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId, depth + 1)
+        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId, depth + 1)
     }
 }
 
@@ -584,10 +587,12 @@ private fun ToolbarBlock(
     bars: SectionOpen,
     screen: ToolbarScreen,
     accountId: String,
+    depth: Int,
 ) {
     val title = stringResource(titleRes)
-    SettingsSection(
+    SettingsNode(
         title = title,
+        depth = depth,
         summary = title,
         expanded = id in bars.open,
         onToggle = { bars.toggle(id) },
@@ -599,11 +604,12 @@ private fun ToolbarBlock(
 }
 
 @Composable
-private fun FavoritesSection(editor: SettingsEditor, onEdit: (FolderFavorite) -> Unit) {
+private fun FavoritesSection(editor: SettingsEditor, depth: Int, onEdit: (FolderFavorite) -> Unit) {
     val sections = rememberSectionOpen()
     val favorites = editor.settings.favorites
-    SettingsSection(
+    SettingsNode(
         title = stringResource(R.string.settings_favorites),
+        depth = depth,
         summary = favorites.size.toString(),
         expanded = "favorites" in sections.open,
         onToggle = { sections.toggle("favorites") },
@@ -803,7 +809,7 @@ private fun sharePinerc(context: Context, text: String) {
 }
 
 @Composable
-private fun AccountGroup(editor: SettingsEditor) {
+private fun AccountGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     var probing by remember { mutableStateOf(false) }
@@ -1080,8 +1086,9 @@ private fun AccountGroup(editor: SettingsEditor) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val accountRows = editor.accounts
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_accounts),
+            depth = depth,
             summary = accountRows.firstOrNull { it.chosen }?.name.orEmpty(),
             expanded = "accounts" in sections.open,
             onToggle = { sections.toggle("accounts") },
@@ -1115,8 +1122,9 @@ private fun AccountGroup(editor: SettingsEditor) {
             Text(stringResource(R.string.settings_add_account))
         }
         val noUser = stringResource(R.string.settings_no_user)
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_identity),
+            depth = depth,
             summary = settings.email.ifBlank { settings.displayName.ifBlank { noUser } },
             expanded = "identity" in sections.open,
             onToggle = { sections.toggle("identity") },
@@ -1132,8 +1140,9 @@ private fun AccountGroup(editor: SettingsEditor) {
             }
         }
         // David, 2026-10-12: identity first, then IMAP or JMAP, then that protocol's server questions.
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_mail_access),
+            depth = depth,
             summary = stringResource(if (settings.jmapFolders) R.string.settings_access_jmap else R.string.settings_access_imap),
             expanded = "access" in sections.open,
             onToggle = { sections.toggle("access") },
@@ -1146,8 +1155,9 @@ private fun AccountGroup(editor: SettingsEditor) {
             ) { jmap -> editor.persist(withMailAccess(editor.settings, jmap)) }
         }
         if (settings.jmapFolders) {
-            SettingsSection(
+            SettingsNode(
                 title = stringResource(R.string.settings_jmap_server),
+                depth = depth,
                 summary = server.imapHost.ifBlank { stringResource(R.string.settings_no_server) },
                 expanded = "server" in sections.open,
                 onToggle = { sections.toggle("server") },
@@ -1179,8 +1189,9 @@ private fun AccountGroup(editor: SettingsEditor) {
                 ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
             }
         } else {
-            SettingsSection(
+            SettingsNode(
                 title = stringResource(R.string.settings_server),
+                depth = depth,
                 summary = hostAndPort(
                     settings.imapHost,
                     settings.imapPort,
@@ -1344,8 +1355,9 @@ private fun AccountGroup(editor: SettingsEditor) {
                 if (sieveReport.isNotEmpty()) Text(sieveReport)
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_sending),
+            depth = depth,
             summary = if (settings.emailSubmission) {
                 stringResource(R.string.settings_send_over_jmap)
             } else {
@@ -1397,8 +1409,9 @@ private fun AccountGroup(editor: SettingsEditor) {
         }
         if (!settings.jmapFolders) {
             val watchedNames = settings.watchedFolders
-            SettingsSection(
+            SettingsNode(
                 title = stringResource(R.string.settings_watched_folders),
+                depth = depth,
                 summary = if (watchedNames.isEmpty()) {
                     stringResource(R.string.settings_watched_none)
                 } else {
@@ -1443,16 +1456,18 @@ private fun AccountGroup(editor: SettingsEditor) {
                 )
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_sending_rules),
+            depth = depth,
             summary = sendingRulesSummary(settings),
             expanded = "rules" in sections.open,
             onToggle = { sections.toggle("rules") },
         ) {
             SendingRulesRows(editor)
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_import),
+            depth = depth,
             summary = stringResource(R.string.settings_import_pinerc),
             expanded = "import" in sections.open,
             onToggle = { sections.toggle("import") },
@@ -1607,7 +1622,7 @@ private fun AccountGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun MailboxesGroup(editor: SettingsEditor) {
+private fun MailboxesGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
@@ -1630,8 +1645,9 @@ private fun MailboxesGroup(editor: SettingsEditor) {
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_special_use),
+            depth = depth,
             summary = mailboxSetCount(settings),
             expanded = "special" in sections.open,
             onToggle = { sections.toggle("special") },
@@ -1674,12 +1690,13 @@ private fun MailboxesGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun FoldersGroup(editor: SettingsEditor) {
+private fun FoldersGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_folder_list),
+            depth = depth,
             summary = pluralStringResource(
                 R.plurals.settings_expanded,
                 settings.expandedFolders.size,
@@ -1691,8 +1708,9 @@ private fun FoldersGroup(editor: SettingsEditor) {
             Text(stringResource(R.string.settings_expanded_folders))
             ExpandedFoldersBody(editor)
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_folder_views),
+            depth = depth,
             summary = sortDirection(settings),
             expanded = "views" in sections.open,
             onToggle = { sections.toggle("views") },
@@ -1719,8 +1737,9 @@ private fun FoldersGroup(editor: SettingsEditor) {
             Text(stringResource(R.string.settings_folder_views))
             FolderViewsBody(editor)
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_start_position),
+            depth = depth,
             summary = stringResource(R.string.settings_inbox_line, startRuleName(settings.inboxStart)),
             expanded = "start" in sections.open,
             onToggle = { sections.toggle("start") },
@@ -1756,8 +1775,9 @@ private fun FoldersGroup(editor: SettingsEditor) {
             Text(stringResource(R.string.settings_start_per_folder))
             FolderStartsBody(editor)
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_large_folders),
+            depth = depth,
             summary = stringResource(R.string.settings_ask_note),
             expanded = "large" in sections.open,
             onToggle = { sections.toggle("large") },
@@ -1780,7 +1800,7 @@ private fun FoldersGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun ReadingGroup(editor: SettingsEditor) {
+private fun ReadingGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     var picking by remember { mutableStateOf<MailboxPick?>(null) }
@@ -1790,8 +1810,9 @@ private fun ReadingGroup(editor: SettingsEditor) {
     }
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_opening),
+            depth = depth,
             summary = bodyViewName(settings.bodyView),
             expanded = "opening" in sections.open,
             onToggle = { sections.toggle("opening") },
@@ -1830,8 +1851,9 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 { "$it%" },
             ) { editor.persist(editor.settings.copy(readerTextZoom = it)) }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_deleting),
+            depth = depth,
             summary = stringResource(
                 if (settings.askBeforeExpunge) R.string.settings_ask_expunge else R.string.settings_expunge_without,
             ),
@@ -1916,8 +1938,9 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(compression = mode))
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_counts),
+            depth = depth,
             summary = stringResource(
                 if (settings.showUnreadCounts) R.string.settings_unread_on else R.string.settings_unread_off,
             ),
@@ -1933,8 +1956,9 @@ private fun ReadingGroup(editor: SettingsEditor) {
                 }
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_actions),
+            depth = depth,
             summary = stringResource(
                 R.string.settings_swipe_line,
                 swipeActionName(settings.swipeTrailing.action),
@@ -1976,13 +2000,14 @@ private fun ReadingGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit) {
+private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // David, 2026-10-12: the wrap column is a Compose setting (it was under Sending/SMTP). Same stored value.
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_composing),
+            depth = depth,
             summary = settings.composerWrapColumn.toString(),
             expanded = "composing" in sections.open,
             onToggle = { sections.toggle("composing") },
@@ -2016,8 +2041,9 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
                 editor.persist(editor.settings.copy(quellFlowed = !enabled))
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_replying),
+            depth = depth,
             summary = stringResource(
                 if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
             ),
@@ -2039,8 +2065,9 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
                 )
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_forwarding),
+            depth = depth,
             summary = forwardSummary(settings),
             expanded = "forwarding" in sections.open,
             onToggle = { sections.toggle("forwarding") },
@@ -2052,8 +2079,9 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
                 editor.persist(editor.settings.copy(forwardAsAttachment = it))
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_fcc),
+            depth = depth,
             summary = stringResource(
                 if (settings.bounceFcc) R.string.settings_bounce_fcc_on else R.string.settings_bounce_fcc_off,
             ),
@@ -2064,16 +2092,18 @@ private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onE
                 editor.persist(editor.settings.copy(bounceFcc = it))
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_completion),
+            depth = depth,
             summary = completionSummary(settings),
             expanded = "address-completion" in sections.open,
             onToggle = { sections.toggle("address-completion") },
         ) {
             AddressCompletionRows(editor)
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_address_book),
+            depth = depth,
             summary = if (settings.addressBookNeverTrim) {
                 stringResource(R.string.settings_never_trim)
             } else {
@@ -2218,12 +2248,13 @@ private fun AddressCompletionRows(editor: SettingsEditor) {
 }
 
 @Composable
-private fun AppearanceGroup(editor: SettingsEditor) {
+private fun AppearanceGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_theme),
+            depth = depth,
             summary = themeSummary(settings),
             expanded = "theme" in sections.open,
             onToggle = { sections.toggle("theme") },
@@ -2237,8 +2268,9 @@ private fun AppearanceGroup(editor: SettingsEditor) {
                 }
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_display),
+            depth = depth,
             summary = stringResource(
                 R.string.settings_display_line,
                 densityName(settings.density),
@@ -2268,106 +2300,112 @@ private fun AppearanceGroup(editor: SettingsEditor) {
 }
 
 @Composable
-private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) -> Unit) {
+private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) -> Unit, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
-            title = stringResource(R.string.settings_panes),
-            summary = multiPaneName(settings.multiPane),
-            expanded = "panes" in sections.open,
-            onToggle = { sections.toggle("panes") },
+        ChoiceField(
+            stringResource(R.string.settings_multi_pane),
+            MultiPane.entries,
+            settings.multiPane,
+            { multiPaneName(it) },
         ) {
-            ChoiceField(
-                stringResource(R.string.settings_multi_pane),
-                MultiPane.entries,
-                settings.multiPane,
-                { multiPaneName(it) },
-            ) {
-                editor.persist(editor.settings.copy(multiPane = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_folder_pane),
-                LayoutChoice.entries,
-                settings.folderPane,
-                { layoutChoiceName(it) },
-                enabled = panesOn,
-            ) {
-                if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_fold_posture),
-                listOf(LayoutChoice.Off, LayoutChoice.On),
-                settings.foldPosture,
-                { layoutChoiceName(it) },
-                enabled = panesOn,
-            ) {
-                if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_pane_arrangement),
-                ArrangementChoice.entries,
-                settings.paneArrangement,
-                { stringResource(when (it) {
-                    ArrangementChoice.Auto -> R.string.settings_pane_auto
-                    ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
-                    ArrangementChoice.Stacked -> R.string.settings_pane_stacked
-                }) },
-                enabled = panesOn,
-            ) {
-                if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_folder_position),
-                FolderPositionChoice.entries,
-                settings.folderPosition,
-                { stringResource(when (it) {
-                    FolderPositionChoice.Auto -> R.string.settings_pane_auto
-                    FolderPositionChoice.Beside -> R.string.settings_folder_beside
-                    FolderPositionChoice.AboveList -> R.string.settings_folder_above
-                }) },
-                enabled = panesOn,
-            ) {
-                if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
-            }
-            GatedPaneLayoutEditor(panesOn, settings.customLayout, settings.readerTextZoom) { text ->
+            editor.persist(editor.settings.copy(multiPane = it))
+        }
+        ChoiceField(
+            stringResource(R.string.settings_folder_pane),
+            LayoutChoice.entries,
+            settings.folderPane,
+            { layoutChoiceName(it) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
+        }
+        ChoiceField(
+            stringResource(R.string.settings_fold_posture),
+            listOf(LayoutChoice.Off, LayoutChoice.On),
+            settings.foldPosture,
+            { layoutChoiceName(it) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
+        }
+        ChoiceField(
+            stringResource(R.string.settings_pane_arrangement),
+            ArrangementChoice.entries,
+            settings.paneArrangement,
+            { stringResource(when (it) {
+                ArrangementChoice.Auto -> R.string.settings_pane_auto
+                ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
+                ArrangementChoice.Stacked -> R.string.settings_pane_stacked
+            }) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
+        }
+        ChoiceField(
+            stringResource(R.string.settings_folder_position),
+            FolderPositionChoice.entries,
+            settings.folderPosition,
+            { stringResource(when (it) {
+                FolderPositionChoice.Auto -> R.string.settings_pane_auto
+                FolderPositionChoice.Beside -> R.string.settings_folder_beside
+                FolderPositionChoice.AboveList -> R.string.settings_folder_above
+            }) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
+        }
+        SettingsNode(
+            title = stringResource(R.string.layout_custom),
+            depth = depth,
+            summary = if (settings.customLayout.isEmpty()) {
+                stringResource(R.string.settings_pane_auto)
+            } else {
+                stringResource(R.string.layout_custom)
+            },
+            expanded = "custom" in sections.open,
+            onToggle = { sections.toggle("custom") },
+        ) {
+            PaneLayoutEditor(settings.customLayout, settings.readerTextZoom, persist = panesOn) { text ->
                 if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
             }
-            ChoiceField(
-                stringResource(R.string.settings_preview_size),
-                PreviewChoice.entries,
-                settings.previewSize,
-                { stringResource(when (it) {
-                    PreviewChoice.Auto -> R.string.settings_pane_auto
-                    PreviewChoice.Density -> R.string.settings_preview_density
-                    PreviewChoice.None -> R.string.settings_preview_none
-                    PreviewChoice.Small -> R.string.settings_preview_small
-                    PreviewChoice.Large -> R.string.settings_preview_large
-                }) },
-            ) {
-                editor.persist(editor.settings.copy(previewSize = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_non_ascii),
-                NonAsciiDisplay.entries,
-                settings.nonAsciiDisplay,
-                { stringResource(when (it) {
-                    NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
-                    NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
-                    NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
-                    NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
-                    NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
-                }) },
-            ) {
-                editor.persist(editor.settings.copy(nonAsciiDisplay = it))
-            }
-            BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
-                editor.persist(editor.settings.copy(fullScreen = it))
-            }
         }
-        SettingsSection(
+        ChoiceField(
+            stringResource(R.string.settings_preview_size),
+            PreviewChoice.entries,
+            settings.previewSize,
+            { stringResource(when (it) {
+                PreviewChoice.Auto -> R.string.settings_pane_auto
+                PreviewChoice.Density -> R.string.settings_preview_density
+                PreviewChoice.None -> R.string.settings_preview_none
+                PreviewChoice.Small -> R.string.settings_preview_small
+                PreviewChoice.Large -> R.string.settings_preview_large
+            }) },
+        ) {
+            editor.persist(editor.settings.copy(previewSize = it))
+        }
+        ChoiceField(
+            stringResource(R.string.settings_non_ascii),
+            NonAsciiDisplay.entries,
+            settings.nonAsciiDisplay,
+            { stringResource(when (it) {
+                NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
+                NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
+                NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
+                NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
+                NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
+            }) },
+        ) {
+            editor.persist(editor.settings.copy(nonAsciiDisplay = it))
+        }
+        BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
+            editor.persist(editor.settings.copy(fullScreen = it))
+        }
+        SettingsNode(
             title = stringResource(R.string.settings_panels),
+            depth = depth,
             summary = stringResource(R.string.settings_panels),
             expanded = "panels" in sections.open,
             onToggle = { sections.toggle("panels") },
@@ -2389,27 +2427,6 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.settings_change_layout))
-        }
-    }
-}
-
-@Composable
-private fun GatedPaneLayoutEditor(
-    enabled: Boolean,
-    saved: String,
-    textZoom: Int,
-    onSave: (String) -> Unit,
-) {
-    Box(Modifier.fillMaxWidth()) {
-        Box(Modifier.alpha(if (enabled) 1f else 0.38f)) {
-            PaneLayoutEditor(saved, textZoom) { text -> if (enabled) onSave(text) }
-        }
-        if (!enabled) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) { detectTapGestures { } },
-            )
         }
     }
 }
@@ -2476,15 +2493,16 @@ private fun hiddenSummary(settings: AccountSettings): String {
 }
 
 @Composable
-private fun DebugGroup(editor: SettingsEditor) {
+private fun DebugGroup(editor: SettingsEditor, depth: Int) {
     val sections = rememberSectionOpen()
     val settings = editor.settings
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var confirmShareLog by remember { mutableStateOf(false) }
     val contextState = rememberUpdatedState(LocalContext.current)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_logging),
+            depth = depth,
             summary = loggingSummary(settings),
             expanded = "logging" in sections.open,
             onToggle = { sections.toggle("logging") },
@@ -2518,8 +2536,9 @@ private fun DebugGroup(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(showUserInDebugReport = it))
             }
         }
-        SettingsSection(
+        SettingsNode(
             title = stringResource(R.string.settings_hide_capabilities),
+            depth = depth,
             summary = hiddenSummary(settings),
             expanded = "caps" in sections.open,
             onToggle = { sections.toggle("caps") },
@@ -2630,33 +2649,45 @@ private fun SettingsPage(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsSection(
+private fun SettingsNode(
     title: String,
-    summary: String,
+    depth: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
-    rows: @Composable () -> Unit,
+    summary: String,
+    children: @Composable () -> Unit,
 ) {
     val description = stringResource(
         if (expanded) R.string.settings_expanded_state else R.string.settings_collapsed_state,
     )
-    val headerModifier = Modifier
-        .fillMaxWidth()
-        .clickable(onClick = onToggle)
-        .semantics { stateDescription = description }
-    if (expanded) {
-        ListItem(
-            headlineContent = { Text(title) },
-            modifier = headerModifier,
-        )
-        rows()
-    } else {
-        ListItem(
-            headlineContent = { Text(title) },
-            supportingContent = { Text(summary) },
-            modifier = headerModifier,
-        )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp * depth)
+            .clickable(onClick = onToggle)
+            .semantics { stateDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onToggle),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                contentDescription = stringResource(
+                    if (expanded) R.string.folders_collapse else R.string.folders_expand,
+                    title,
+                ),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            if (!expanded) Text(summary)
+        }
     }
+    if (expanded) children()
 }
 
 @Composable
@@ -3377,10 +3408,10 @@ private fun <T> ChoiceField(
     onSelect: (T) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val open = expanded && enabled
+    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     ExposedDropdownMenuBox(
-        expanded = open,
-        onExpandedChange = { next -> if (enabled) expanded = next },
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
         modifier = Modifier.fillMaxWidth(),
     ) {
         OutlinedTextField(
@@ -3388,15 +3419,25 @@ private fun <T> ChoiceField(
             onValueChange = {},
             readOnly = true,
             singleLine = true,
-            enabled = enabled,
+            enabled = true,
             label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = if (enabled) {
+                OutlinedTextFieldDefaults.colors()
+            } else {
+                OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = faded,
+                    unfocusedTextColor = faded,
+                    focusedLabelColor = faded,
+                    unfocusedLabelColor = faded,
+                )
+            },
             modifier = Modifier
                 .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth(),
         )
         ExposedDropdownMenu(
-            expanded = open,
+            expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
             ObscuredTouchFilter()

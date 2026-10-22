@@ -77,6 +77,50 @@ class SettingsSplitTest {
         assertTrue(slice(toolbar, "fun ToolbarEditorPage").contains("verticalScroll"))
     }
 
+    @Test fun folderArrowsAndGatedRowsOpen() {
+        val settings = src("main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
+        assertTrue(settings.contains("ChevronRight"))
+        assertTrue(settings.contains("ExpandMore"))
+        assertTrue(settings.contains("24.dp * depth"))
+        assertFalse(settings.contains("detectTapGestures"))
+        val choice = slice(settings, "fun <T> ChoiceField")
+        assertFalse(choice.contains("expanded && enabled"))
+        val layout = slice(settings, "fun LayoutGroup")
+        assertTrue(layout.contains("settings_multi_pane"))
+        assertTrue(layout.contains("PaneLayoutEditor"))
+        assertTrue(layout.contains("settings_change_layout"))
+        assertFalse(layout.contains("settings_panes"))
+        val editor = src("main/kotlin/org/dlang/liveimap/settings/PaneLayoutEditor.kt")
+        val pane = slice(editor, "fun PaneLayoutEditor")
+        assertTrue(pane.contains("persist"))
+        val commit = slice(editor, "fun commit")
+        val gate = commit.indexOf("if (persist)")
+        assertTrue(gate >= 0)
+        assertFalse(commit.substring(0, gate).contains("onSave"))
+        var depth = 0
+        var end = -1
+        var seenBrace = false
+        for (i in gate until commit.length) {
+            when (commit[i]) {
+                '{' -> {
+                    depth += 1
+                    seenBrace = true
+                }
+                '}' -> {
+                    depth -= 1
+                    if (seenBrace && depth == 0) {
+                        end = i
+                        break
+                    }
+                }
+            }
+        }
+        assertTrue(end > gate)
+        val block = commit.substring(gate, end)
+        assertTrue(block.contains("onSave"))
+        assertFalse(commit.substring(end).contains("onSave"))
+    }
+
     private fun slice(source: String, signature: String): String {
         val start = source.indexOf(signature)
         assertTrue(signature, start >= 0)
