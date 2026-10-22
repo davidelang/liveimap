@@ -3563,3 +3563,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - Close TODO items whose work is already in the app.
 
 ## 2026-10-21 - The Compose button sits under the account drawer.
+
+## 2026-10-21 - Compose can send HTML with a plain alternative.

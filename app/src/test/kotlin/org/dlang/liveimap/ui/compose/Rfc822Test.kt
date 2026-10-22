@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.ui.reader.htmlAsText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertArrayEquals
@@ -337,9 +338,10 @@ class Rfc822Test {
                 "--mix--\r\n"
             ).toByteArray(Charsets.UTF_8)
         val loaded = loadEditor(bytes)
-        assertEquals("hello", loaded.body)
+        assertEquals("<p>no</p>", loaded.body)
+        assertTrue(loaded.html)
         assertEquals("résumé.pdf", loaded.attachments.first { it.mediaType == "application/pdf" }.filename)
-        assertTrue(loaded.attachments.any { it.mediaType.equals("text/html", ignoreCase = true) })
+        assertFalse(loaded.attachments.any { it.mediaType.equals("text/html", ignoreCase = true) })
         val named = (
             "Content-Type: multipart/mixed; boundary=n\r\n\r\n" +
                 "--n\r\n" +
@@ -396,6 +398,86 @@ class Rfc822Test {
     }
 
     @Test
+    fun htmlSendIsAlternativeAndPlainStaysOnePart() {
+        val plainBuilt = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = "Hello",
+                messageId = "<plain@example.com>",
+                date = "Tue, 21 Oct 2026 00:00:00 +0000",
+            ),
+        )
+        val plainRaw = plainBuilt.rfc822.toString(Charsets.UTF_8)
+        assertTrue(plainRaw.contains("Content-Type: text/plain; charset=utf-8"))
+        assertFalse(plainRaw.contains("multipart/alternative"))
+        val plainLoaded = loadEditor(plainBuilt.rfc822)
+        assertFalse(plainLoaded.html)
+        assertEquals("Hello", plainLoaded.body.trimEnd('\n'))
+
+        val source = "<p>Hello</p>"
+        val htmlBuilt = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = source,
+                messageId = "<html@example.com>",
+                date = "Tue, 21 Oct 2026 00:00:00 +0000",
+                html = true,
+            ),
+        )
+        val htmlRaw = htmlBuilt.rfc822.toString(Charsets.UTF_8)
+        assertTrue(htmlRaw.substringBefore("\r\n\r\n").contains("multipart/alternative"))
+        assertFalse(htmlRaw.contains("format=flowed"))
+        assertTrue(htmlRaw.indexOf("Content-Type: text/plain; charset=utf-8") < htmlRaw.indexOf("Content-Type: text/html; charset=utf-8"))
+        assertEquals(htmlAsText(source), partBody(htmlRaw, "text/plain"))
+        assertEquals(source, partBody(htmlRaw, "text/html"))
+        val htmlLoaded = loadEditor(htmlBuilt.rfc822)
+        assertTrue(htmlLoaded.html)
+        assertEquals(source, htmlLoaded.body.trimEnd('\n'))
+        assertTrue(htmlLoaded.attachments.none { it.mediaType.equals("text/html", ignoreCase = true) })
+
+        val file = byteArrayOf(1, 2, 3, 4)
+        val mixed = buildPlain(
+            PlainMessage(
+                fromName = "Me",
+                fromEmail = "me@example.com",
+                to = listOf("ann@example.com"),
+                cc = emptyList(),
+                bcc = emptyList(),
+                subject = "Hi",
+                body = source,
+                messageId = "<htmlfile@example.com>",
+                date = "Tue, 21 Oct 2026 00:00:00 +0000",
+                attachments = listOf(
+                    OutgoingPart("a.bin", "application/octet-stream", file, wireBase64 = false),
+                ),
+                html = true,
+            ),
+        )
+        val mixedRaw = mixed.rfc822.toString(Charsets.ISO_8859_1)
+        assertTrue(mixedRaw.substringBefore("\r\n\r\n").contains("multipart/mixed"))
+        assertTrue(mixedRaw.contains("multipart/alternative"))
+        assertTrue(mixedRaw.indexOf("multipart/alternative") < mixedRaw.indexOf("a.bin"))
+        assertEquals(htmlAsText(source), partBody(mixedRaw, "text/plain"))
+        assertEquals(source, partBody(mixedRaw, "text/html"))
+        val mixedLoaded = loadEditor(mixed.rfc822)
+        assertTrue(mixedLoaded.html)
+        assertEquals(source, mixedLoaded.body.trimEnd('\n'))
+        assertEquals(listOf("a.bin"), mixedLoaded.attachments.map { it.filename })
+        assertEquals(file.toList(), mixedLoaded.attachments.single().bytes.toList())
+        assertFalse(mixedLoaded.attachments.any { it.mediaType.equals("text/html", ignoreCase = true) })
+    }
+
+    @Test
     fun quotedWrapKeepsPrefix() {
         assertEquals("> one two\n> three", wrapPlain("> one two three", 10))
     }
@@ -403,6 +485,17 @@ class Rfc822Test {
     @Test
     fun longWordIsNotSplit() {
         assertEquals("abcdefghijk", wrapPlain("abcdefghijk", 5))
+    }
+
+    private fun partBody(raw: String, subtype: String): String {
+        val marker = "Content-Type: text/$subtype; charset=utf-8\r\n"
+        val at = raw.indexOf(marker)
+        assertTrue(at >= 0)
+        return raw.substring(at + marker.length)
+            .substringAfter("\r\n\r\n")
+            .substringBefore("\r\n--")
+            .replace("\r\n", "\n")
+            .trimEnd('\n')
     }
 
     private fun plain(body: String): BuiltMail = buildPlain(

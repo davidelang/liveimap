@@ -484,6 +484,7 @@ private fun ComposeLoaded(
     var bodyField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
+    var html by rememberSaveable { mutableStateOf(false) }
     var inReplyTo by rememberSaveable { mutableStateOf("") }
     var referencesHeader by rememberSaveable { mutableStateOf("") }
     var bounceTo by rememberSaveable { mutableStateOf("") }
@@ -526,6 +527,7 @@ private fun ComposeLoaded(
     var baseBcc by rememberSaveable { mutableStateOf("") }
     var baseSubject by rememberSaveable { mutableStateOf("") }
     var baseBody by rememberSaveable { mutableStateOf("") }
+    var baseHtml by rememberSaveable { mutableStateOf(false) }
     var baseRowKeyText by rememberSaveable { mutableStateOf("") }
     var baseHeader by rememberSaveable { mutableStateOf("") }
     var baseIncluded by rememberSaveable { mutableStateOf("") }
@@ -905,6 +907,7 @@ private fun ComposeLoaded(
             bccBuffer = ""
             subject = loaded.subject
             bodyField = TextFieldValue(loaded.body, TextRange(loaded.body.length))
+            html = loaded.html
             inReplyTo = loaded.inReplyTo
             referencesHeader = loaded.references
         }
@@ -972,6 +975,7 @@ private fun ComposeLoaded(
                 attachments = parts,
                 wrapColumn = settings.composerWrapColumn,
                 flowed = !settings.quellFlowed,
+                html = html,
             ),
         )
     }
@@ -1267,6 +1271,7 @@ private fun ComposeLoaded(
         baseBcc = bccText
         baseSubject = subject
         baseBody = bodyField.text
+        baseHtml = html
         baseRowKeyText = forwardRows.joinToString("\n") { it.key }
         baseHeader = headerSnapshot()
         baseIncluded = includedSnapshot()
@@ -1302,6 +1307,8 @@ private fun ComposeLoaded(
             baselinePinnedFrom = basePinnedFrom,
             useReplyTo = useReplyTo,
             baselineUseReplyTo = baseUseReplyTo,
+            html = html,
+            baselineHtml = baseHtml,
         )
         if (dirty || bounceTo.isNotEmpty()) discardOpen = true else {
             applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.Cancel, assembledCopyId, unsentId, assembledCopyId, false))
@@ -2224,6 +2231,14 @@ private fun ComposeLoaded(
                     },
                 )
             }
+            TextButton(onClick = {
+                val current = bodyField.text
+                val converted = if (html) htmlAsText(current) else plainAsHtml(current)
+                html = !html
+                bodyField = TextFieldValue(converted, TextRange(converted.length))
+            }) {
+                Text(stringResource(if (html) R.string.compose_body_html else R.string.compose_body_plain))
+            }
             OutlinedTextField(
                 value = bodyField,
                 onValueChange = { bodyField = it },
@@ -2294,17 +2309,35 @@ internal fun composeIsDirty(
     baselinePinnedFrom: String? = null,
     useReplyTo: Boolean = false,
     baselineUseReplyTo: Boolean = false,
+    html: Boolean = false,
+    baselineHtml: Boolean = false,
 ): Boolean {
     if (rowRemoved) return true
     if (header != baselineHeader) return true
     if (included != baselineIncluded) return true
     if (pinnedFrom != baselinePinnedFrom) return true
     if (useReplyTo != baselineUseReplyTo) return true
+    if (html != baselineHtml) return true
     return to != baselineTo ||
         cc != baselineCc ||
         bcc != baselineBcc ||
         subject != baselineSubject ||
         body != baselineBody
+}
+
+/** Plain text as HTML: escape &, <, and >, then wrap in pre. An empty string stays empty. */
+internal fun plainAsHtml(text: String): String {
+    if (text.isEmpty()) return ""
+    val escaped = StringBuilder(text.length)
+    for (ch in text) {
+        when (ch) {
+            '&' -> escaped.append("&amp;")
+            '<' -> escaped.append("&lt;")
+            '>' -> escaped.append("&gt;")
+            else -> escaped.append(ch)
+        }
+    }
+    return "<pre>$escaped</pre>"
 }
 
 internal fun postponedUidToRemove(kind: ComposeKind, sent: Boolean, uid: Long?): Long? {

@@ -12,6 +12,5 @@
   view (entry point on deep rows, filter-in-place vs. new screen, back navigation, how the depth number resets).
   Owner: David to decide the UX; then implement in MessageIndexScreen/IndexModel. (2026-10-11)
 
-- Add attachments for sending and for receiving. The reader already lists and opens received parts, and a forward can resend those parts. Also check the plain-text version of an HTML message on send: compose sends text/plain only and does not add a text/html part with a text/plain alternative.
 
 - release shrinking stays on; the keep check is `:app:checkArm64ReleaseKeeps`; measuring startup needs a device and is not a coder step.

@@ -130,6 +130,29 @@ class ComposeChromeTest {
     }
 
     @Test
+    fun plainAsHtmlEscapesAndDirtyHtmlFlag() {
+        assertEquals("", plainAsHtml(""))
+        assertEquals("<pre>a &amp; b &lt; c &gt;</pre>", plainAsHtml("a & b < c >"))
+        assertTrue(
+            composeIsDirty(
+                to = "ann@example.com",
+                cc = "bo@example.com",
+                bcc = "cy@example.com",
+                subject = "Hello",
+                body = "Body",
+                baselineTo = "ann@example.com",
+                baselineCc = "bo@example.com",
+                baselineBcc = "cy@example.com",
+                baselineSubject = "Hello",
+                baselineBody = "Body",
+                rowRemoved = false,
+                html = true,
+                baselineHtml = false,
+            ),
+        )
+    }
+
+    @Test
     fun foldReaderIntoIndex() {
         assertTrue(foldReaderIntoIndex(true, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))
         assertFalse(foldReaderIntoIndex(false, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))

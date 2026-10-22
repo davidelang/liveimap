@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.compose
 
 import org.dlang.liveimap.session.MaxMimeDepth
 import org.dlang.liveimap.session.MimePart
+import org.dlang.liveimap.ui.reader.htmlAsText
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import java.time.ZonedDateTime
@@ -53,6 +54,8 @@ class PlainMessage(
     val flowed: Boolean = true,
     /** Reply-To and user-chosen composer headers, in order. */
     val extraHeaders: List<Pair<String, String>> = emptyList(),
+    /** When true, [body] is text/html and the plain part is [htmlAsText] of it. */
+    val html: Boolean = false,
 )
 
 class BuiltMail(
@@ -68,6 +71,8 @@ class EditorLoad(
     val inReplyTo: String,
     val references: String,
     val attachments: List<OutgoingPart>,
+    /** True when [body] is the text/html part of a multipart/alternative. */
+    val html: Boolean = false,
 )
 
 fun missingPartText(html: Boolean): String =
@@ -596,6 +601,7 @@ internal fun forwardWire(encoding: String, bytes: ByteArray): Pair<String, ByteA
 /** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
 fun buildPlain(message: PlainMessage): BuiltMail {
     val recipients = envelopeRecipients(message.to, message.cc, message.bcc)
+    if (message.html) return BuiltMail(htmlMessage(message), recipients)
     val flowed = message.flowed && message.wrapColumn > 0
     val plain = if (flowed) {
         flowPlain(message.body, message.wrapColumn)
@@ -657,6 +663,62 @@ fun buildPlain(message: PlainMessage): BuiltMail {
     return BuiltMail(bytes, recipients)
 }
 
+/**
+ * HTML body as sent: multipart/alternative of text/plain (htmlAsText, not flowed) then text/html.
+ * Attachments sit outside that alternative, in multipart/mixed.
+ */
+private fun htmlMessage(message: PlainMessage): ByteArray {
+    val token = message.messageId.filter { it.isLetterOrDigit() }.ifEmpty { "part" }
+    val altBoundary = "liveimap_alt_$token"
+    val (plainEncoding, plainPayload) = textPart(htmlAsText(message.body), allowEightBit = true)
+    val (htmlEncoding, htmlPayload) = textPart(message.body, allowEightBit = true)
+    val alternative = ByteArrayOutputStream()
+    writePart(alternative, altBoundary, "text/plain; charset=utf-8", plainEncoding, null, plainPayload)
+    writePart(alternative, altBoundary, "text/html; charset=utf-8", htmlEncoding, null, htmlPayload)
+    alternative.write("--$altBoundary--\r\n".toByteArray(Charsets.US_ASCII))
+    val altBytes = alternative.toByteArray()
+    if (message.attachments.isEmpty()) {
+        val headers = baseHeaders(message, "multipart/alternative; boundary=$altBoundary", null)
+        val out = ByteArrayOutputStream()
+        out.write(headers.toByteArray(Charsets.UTF_8))
+        out.write("\r\n".toByteArray(Charsets.US_ASCII))
+        out.write(altBytes)
+        return out.toByteArray()
+    }
+    val mixedBoundary = "liveimap_$token"
+    val headers = baseHeaders(message, "multipart/mixed; boundary=$mixedBoundary", null)
+    val out = ByteArrayOutputStream()
+    out.write(headers.toByteArray(Charsets.UTF_8))
+    out.write("\r\n".toByteArray(Charsets.US_ASCII))
+    out.write("--$mixedBoundary\r\n".toByteArray(Charsets.US_ASCII))
+    out.write(
+        "Content-Type: multipart/alternative; boundary=$altBoundary\r\n\r\n".toByteArray(Charsets.US_ASCII),
+    )
+    out.write(altBytes)
+    for (part in message.attachments) {
+        val (cte, encoded) = if (part.transferEncoding != null) {
+            forwardWire(part.transferEncoding, part.bytes)
+        } else if (part.wireBase64) {
+            "base64" to rewrapBase64(part.bytes)
+        } else {
+            "base64" to mimeBase64(part.bytes)
+        }
+        val type = cleanHeader(part.mediaType).ifEmpty { "application/octet-stream" }
+        val file = cleanHeader(part.filename).ifEmpty { "attachment" }
+        val (nameParam, dispositionParam) = filenameParams(file)
+        writePart(
+            out,
+            mixedBoundary,
+            "$type; $nameParam",
+            cte,
+            "attachment; $dispositionParam",
+            encoded,
+        )
+    }
+    out.write("--$mixedBoundary--\r\n".toByteArray(Charsets.US_ASCII))
+    return out.toByteArray()
+}
+
 /** Prepend Resent-* and leave the original headers, including Message-ID, unchanged. */
 fun buildBounce(
     original: ByteArray,
@@ -691,14 +753,17 @@ fun loadEditor(bytes: ByteArray): EditorLoad {
     val encoding = headerValues(parsed, "Content-Transfer-Encoding").firstOrNull().orEmpty()
     val text: String
     val parts: List<OutgoingPart>
+    val html: Boolean
     if (contentType.trim().lowercase().startsWith("multipart/")) {
         val collected = readMultipart(parsed.body, contentType)
-        text = collected.first
-        parts = collected.second
+        text = collected.text ?: ""
+        parts = collected.parts
+        html = collected.html
     } else {
         val decoded = decodeTransfer(parsed.body, encoding)
         text = decoded.toString(charsetOf(contentType)).replace("\r\n", "\n").replace('\r', '\n')
         parts = emptyList()
+        html = false
     }
     return EditorLoad(
         to = addresses(parsed, "To").joinToString(", "),
@@ -708,6 +773,7 @@ fun loadEditor(bytes: ByteArray): EditorLoad {
         inReplyTo = headerValues(parsed, "In-Reply-To").firstOrNull().orEmpty().trim(),
         references = headerValues(parsed, "References").joinToString(" ").trim(),
         attachments = parts,
+        html = html,
     )
 }
 
@@ -1422,16 +1488,31 @@ private fun readParam(header: String, name: String, star: Boolean): String? {
     }
 }
 
-private fun readMultipart(body: ByteArray, contentType: String): Pair<String, List<OutgoingPart>> {
-    if (headerParam(contentType, "boundary").isEmpty()) return body.toString(Charsets.UTF_8) to emptyList()
+private class MultipartBody(
+    val text: String?,
+    val html: Boolean,
+    val parts: List<OutgoingPart>,
+    /** HTML part kept out of [parts] so a parent that does not adopt it can still attach it. */
+    val heldHtml: OutgoingPart? = null,
+)
+
+private fun readMultipart(body: ByteArray, contentType: String): MultipartBody {
+    if (headerParam(contentType, "boundary").isEmpty()) {
+        return MultipartBody(body.toString(Charsets.UTF_8), false, emptyList())
+    }
     val found = readMultipartFound(body, contentType)
-    return (found.first ?: "") to found.second
+    return MultipartBody(found.text ?: "", found.html, found.parts, found.heldHtml)
 }
 
-private fun readMultipartFound(body: ByteArray, contentType: String): Pair<String?, List<OutgoingPart>> {
+private fun readMultipartFound(body: ByteArray, contentType: String): MultipartBody {
     val boundary = headerParam(contentType, "boundary")
-    if (boundary.isEmpty()) return null to emptyList()
+    if (boundary.isEmpty()) return MultipartBody(null, false, emptyList())
+    if (contentType.substringBefore(';').trim().equals("multipart/alternative", ignoreCase = true)) {
+        return readAlternative(body, boundary)
+    }
     var text: String? = null
+    var html = false
+    var heldHtml: OutgoingPart? = null
     val parts = ArrayList<OutgoingPart>()
     for (chunk in splitMultipartChunks(body, boundary)) {
         val part = parseRfc822(chunk)
@@ -1440,17 +1521,81 @@ private fun readMultipartFound(body: ByteArray, contentType: String): Pair<Strin
         val media = type.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
         if (media.startsWith("multipart/", ignoreCase = true)) {
             val nested = readMultipartFound(part.body, type)
-            if (text == null && nested.first != null) text = nested.first
-            parts.addAll(nested.second)
+            if (text == null && nested.text != null) {
+                text = nested.text
+                html = nested.html
+                if (nested.html) heldHtml = nested.heldHtml
+            } else if (nested.heldHtml != null) {
+                parts.add(nested.heldHtml)
+            }
+            parts.addAll(nested.parts)
         } else if (text == null && media.equals("text/plain", ignoreCase = true)) {
-            val decoded = decodeTransfer(part.body, cte)
-            text = decoded.toString(charsetOf(type)).replace("\r\n", "\n").replace('\r', '\n')
+            text = partText(part, type, cte)
         } else {
-            val decoded = decodeTransfer(part.body, cte)
-            parts.add(OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false))
+            parts.add(outgoingPart(part, media, type, cte))
         }
     }
-    return text to parts
+    return MultipartBody(text, html, parts, heldHtml)
+}
+
+/** text/html that is not an attachment becomes the body. Its text/plain sibling is not an attachment. */
+private fun readAlternative(body: ByteArray, boundary: String): MultipartBody {
+    var htmlBody: String? = null
+    var plainBody: String? = null
+    var heldHtml: OutgoingPart? = null
+    var attachedPlain: OutgoingPart? = null
+    val rest = ArrayList<OutgoingPart>()
+    for (chunk in splitMultipartChunks(body, boundary)) {
+        val part = parseRfc822(chunk)
+        val type = rawHeader(part, "Content-Type")
+        val cte = headerValues(part, "Content-Transfer-Encoding").firstOrNull().orEmpty()
+        val media = type.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
+        if (media.startsWith("multipart/", ignoreCase = true)) {
+            val nested = readMultipartFound(part.body, type)
+            if (htmlBody == null && nested.html && nested.text != null) {
+                htmlBody = nested.text
+                heldHtml = nested.heldHtml
+            } else if (plainBody == null && nested.text != null && !nested.html) {
+                plainBody = nested.text
+            } else if (nested.heldHtml != null) {
+                rest.add(nested.heldHtml)
+            }
+            rest.addAll(nested.parts)
+            continue
+        }
+        val attached = isAttachment(part)
+        if (htmlBody == null && !attached && media.equals("text/html", ignoreCase = true)) {
+            htmlBody = partText(part, type, cte)
+            heldHtml = outgoingPart(part, media, type, cte)
+            continue
+        }
+        if (plainBody == null && media.equals("text/plain", ignoreCase = true)) {
+            plainBody = partText(part, type, cte)
+            if (attached) attachedPlain = outgoingPart(part, media, type, cte)
+            continue
+        }
+        rest.add(outgoingPart(part, media, type, cte))
+    }
+    if (htmlBody != null) {
+        attachedPlain?.let { rest.add(it) }
+        return MultipartBody(htmlBody, true, rest, heldHtml)
+    }
+    return MultipartBody(plainBody, false, rest, null)
+}
+
+private fun partText(part: ParsedRfc822, type: String, cte: String): String {
+    val decoded = decodeTransfer(part.body, cte)
+    return decoded.toString(charsetOf(type)).replace("\r\n", "\n").replace('\r', '\n')
+}
+
+private fun outgoingPart(part: ParsedRfc822, media: String, type: String, cte: String): OutgoingPart {
+    val decoded = decodeTransfer(part.body, cte)
+    return OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false)
+}
+
+private fun isAttachment(part: ParsedRfc822): Boolean {
+    val disposition = rawHeader(part, "Content-Disposition")
+    return disposition.substringBefore(';').trim().equals("attachment", ignoreCase = true)
 }
 
 private fun rawHeader(part: ParsedRfc822, name: String): String =
