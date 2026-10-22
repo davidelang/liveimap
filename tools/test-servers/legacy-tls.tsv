@@ -1,0 +1,2 @@
+# server	reason (regress TLS checks allow @SECLEVEL=0 ciphers only for these servers; the lab CA pin still applies)
+cyrus-22	OpenSSL of Debian lenny offers only legacy ciphers

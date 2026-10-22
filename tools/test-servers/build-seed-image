@@ -21,11 +21,9 @@ ensure_buildx() {
       exit 1
       ;;
   esac
-  url="https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.linux-$asset"
-  if [ ! -x "$plugin_bin" ]; then
-    python3 -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' "$url" "$plugin_bin" || exit 1
-    chmod 755 "$plugin_bin"
-  fi
+  url=$(python3 "$DIR/upstream_pins.py" url "docker-buildx-$asset")
+  python3 "$DIR/upstream_pins.py" fetch "docker-buildx-$asset" "$plugin_bin"
+  chmod 755 "$plugin_bin"
   HOME="$plugin_home" docker buildx version || {
     rm -f "$DIR/generated/docker-home/.docker/cli-plugins/docker-buildx"
     printf '%s\n' "$url" "$machine" >&2
@@ -68,6 +66,11 @@ if [ $# -ne 1 ] || [ -z "${1:-}" ]; then
   exit 1
 fi
 server=$1
+# One free host port per build container, fixed at create so a restart keeps it (never -p 0).
+build_host_port() {
+  python3 "$DIR/build_host_port.py" "$DIR/generated/local-ports.tsv"
+}
+
 step() {
   printf 'STEP %s %s\n' "$server" "$*" >&2
 }
@@ -90,6 +93,10 @@ for f in server.crt server.key ca.crt chain.crt; do
     exit 1
   fi
 done
+# The lab certificate is generated on the host (lab-ca.sh, generated/ca, not checked in) and copied into the image
+# here. It must name every host the lab needs; the image records its fingerprint (label liveimap.cert-sha256).
+python3 "$DIR/lab_cert.py" check
+cert_sha=$(python3 "$DIR/lab_cert.py" fingerprint)
 if [ ! -f "$SEED" ]; then
   echo "tools/test-servers/seed/accounts.tsv" >&2
   exit 1
@@ -117,10 +124,13 @@ open_build() {
   remove_build_container
   case "$server" in
     zimbra-883)
-      docker create --hostname zimbra.zcs-foss.test --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+      seed_hostname=zimbra.zcs-foss.test
+      build_port=$(build_host_port)
+      docker create --hostname "$seed_hostname" --name "liveimap-build-$server" -p "${build_port}:${imap_port}" "liveimap-seed-stage-$server"
       ;;
     *)
-      docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+      build_port=$(build_host_port)
+      docker create --name "liveimap-build-$server" -p "${build_port}:${imap_port}" "liveimap-seed-stage-$server"
       ;;
   esac
   docker start "liveimap-build-$server"
@@ -177,9 +187,8 @@ try:
         else:
             parts.append(item)
     caps = " ".join(parts)
-    if "LOGINDISABLED" in caps:
-        ctx = ssl._create_unverified_context()
-        imap.starttls(ctx)
+    if "STARTTLS" in caps:  # Stalwart 0.15 refuses clear-text LOGIN without advertising LOGINDISABLED
+        imap.starttls(lab._lab_ssl())
     typ, data = imap.login(user, secret)
 except Exception as exc:
     text = str(exc).replace(secret, "***")
@@ -201,7 +210,7 @@ if not login_domain or not expect:
 else:
     account = user.split("@")[0] + "@" + login_domain
     caps = lab.plain_caps(port)
-    if caps and "LOGINDISABLED" in caps:
+    if caps and "STARTTLS" in caps:
         err = lab._starttls_login(port, account)
         reply = "OK" if not err else err
     else:
@@ -235,7 +244,7 @@ close_build() {
   problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
   if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
   manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
-  docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
+  docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" --change "LABEL liveimap.cert-sha256=$cert_sha" "liveimap-build-$server" "liveimap-seed-$server"
   docker rm -f "liveimap-build-$server"
 }
 
@@ -278,91 +287,10 @@ build_latest_phase() {
   CY_BUILD="$GEN/cyrus-3124-build"
   CO_BUILD="$GEN/courier-606-build"
   mkdir -p "$GEN" "$CY_BUILD" "$CO_BUILD"
-echo "resolving courier tarball"
-python3 - "$CO_BUILD/courier.url" <<'PY'
-import re
-import sys
-import urllib.request
-
-out_path = sys.argv[1]
-want = "courier-imap-6.0.6.tar.bz2"
-ua = {"User-Agent": "liveimap-lab"}
-
-def fetch(url):
-    req = urllib.request.Request(url, headers=ua)
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        return resp.read().decode("utf-8", "replace"), resp.geturl()
-
-def filename(url):
-    path = url.split("?", 1)[0].rstrip("/")
-    if path.endswith("/download"):
-        path = path[: -len("/download")]
-    return path.rsplit("/", 1)[-1]
-
-page, _ = fetch("https://www.courier-mta.org/download.html")
-hrefs = re.findall(r'href="([^"]+)"', page)
-chosen = None
-for href in hrefs:
-    if filename(href) == want:
-        chosen = href
-        break
-if chosen is None:
-    folder, _ = fetch("https://sourceforge.net/projects/courier/files/imap/6.0.6/")
-    if want not in folder:
-        sys.stderr.write("download page has no %s\n" % want)
-        sys.exit(1)
-    match = re.search(r'href="([^"]*%s/download[^"]*)"' % re.escape(want), folder)
-    if not match:
-        chosen = "https://sourceforge.net/projects/courier/files/imap/6.0.6/%s/download" % want
-    else:
-        chosen = match.group(1)
-        if chosen.startswith("/"):
-            chosen = "https://sourceforge.net" + chosen
-if filename(chosen) != want:
-    sys.stderr.write("refusing courier file %s\n" % filename(chosen))
-    sys.exit(1)
-with open(out_path, "w", encoding="utf-8") as handle:
-    handle.write(chosen + "\n")
-print(chosen)
-PY
-
-echo "downloading tarballs"
-python3 - "$CY_BUILD" "$CO_BUILD" <<'PY'
-import hashlib
-import os
-import sys
-import urllib.request
-
-cy_dir, co_dir = sys.argv[1], sys.argv[2]
-ua = {"User-Agent": "liveimap-lab"}
-
-def download(url, dest):
-    req = urllib.request.Request(url, headers=ua)
-    with urllib.request.urlopen(req, timeout=300) as resp, open(dest, "wb") as out:
-        while True:
-            chunk = resp.read(1024 * 1024)
-            if not chunk:
-                break
-            out.write(chunk)
-    digest = hashlib.sha256()
-    with open(dest, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-cy_url = "https://github.com/cyrusimap/cyrus-imapd/releases/download/cyrus-imapd-3.12.4/cyrus-imapd-3.12.4.tar.gz"
-cy_dest = os.path.join(cy_dir, "cyrus-imapd-3.12.4.tar.gz")
-cy_sum = download(cy_url, cy_dest)
-with open(os.path.join(cy_dir, "sha256"), "w", encoding="utf-8") as handle:
-    handle.write(cy_sum + "\n")
-co_url = open(os.path.join(co_dir, "courier.url"), encoding="utf-8").read().strip()
-co_dest = os.path.join(co_dir, "courier-imap-6.0.6.tar.bz2")
-co_sum = download(co_url, co_dest)
-with open(os.path.join(co_dir, "sha256"), "w", encoding="utf-8") as handle:
-    handle.write(co_sum + "\n")
-print("cyrus", cy_sum)
-print("courier", co_sum)
-PY
+echo "downloading tarballs (checked against upstream-pins.tsv)"
+python3 "$DIR/upstream_pins.py" fetch cyrus-imapd-3.12.4.tar.gz "$CY_BUILD/cyrus-imapd-3.12.4.tar.gz"
+python3 "$DIR/upstream_pins.py" fetch courier-imap-6.0.6.tar.bz2 "$CO_BUILD/courier-imap-6.0.6.tar.bz2"
+python3 "$DIR/upstream_pins.py" fetch courier-unicode-2.6.0.tar.bz2 "$CO_BUILD/courier-unicode-2.6.0.tar.bz2"
 
 echo "preparing cyrus image"
 cat > "$CY_BUILD/xxd" <<'EOF'
@@ -443,36 +371,17 @@ if [ -z "$master" ]; then
   exit 1
 fi
 rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
-"$master" -d
-exec sleep infinity
+# Unix-socket listeners (lmtpunix, notify) need their directory; /run is empty in a fresh container.
+cyrus_socks=$(sed -n 's/.*listen="\(\/[^"]*\)".*/\1/p' /etc/cyrus.conf)
+for sock in $cyrus_socks; do
+  mkdir -p "${sock%/*}"
+  chown cyrus "${sock%/*}"
+done
+exec "$master"  # foreground: docker stop reaches master, its stderr is docker logs
 
 EOF
 chmod 755 "$CY_BUILD/entrypoint.sh"
-cat > "$CY_BUILD/Dockerfile" <<'EOF'
-FROM debian:bookworm
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential autoconf automake libtool pkg-config bison flex gperf \
-    libssl-dev libjansson-dev libxml2-dev libsqlite3-dev libical-dev \
-    libsasl2-dev libsasl2-modules sasl2-bin libpcre2-dev uuid-dev \
-    libicu-dev libxapian-dev zlib1g-dev libnghttp2-dev \
-    && rm -rf /var/lib/apt/lists/*
-COPY xxd /usr/local/bin/xxd
-COPY rsync /usr/local/bin/rsync
-RUN chmod 755 /usr/local/bin/xxd /usr/local/bin/rsync
-COPY cyrus-imapd-3.12.4.tar.gz /tmp/cyrus-imapd-3.12.4.tar.gz
-RUN tar -xzf /tmp/cyrus-imapd-3.12.4.tar.gz -C /tmp \
-    && cd /tmp/cyrus-imapd-3.12.4 \
-    && ./configure --prefix=/usr/local/cyrus --enable-http --enable-jmap --enable-xapian \
-    && make -j4 \
-    && make install \
-    && rm -rf /tmp/cyrus-imapd-3.12.4 /tmp/cyrus-imapd-3.12.4.tar.gz
-COPY imapd.conf /etc/imapd.conf
-COPY cyrus.conf /etc/cyrus.conf
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
+cp "$DIR/images/cyrus-3124/Dockerfile" "$CY_BUILD/Dockerfile"
 
 echo "preparing courier image"
 cat > "$CO_BUILD/build-inside.sh" <<'EOF'
@@ -650,28 +559,18 @@ exec sleep infinity
 
 EOF
 chmod 755 "$CO_BUILD/entrypoint.sh"
-cat > "$CO_BUILD/Dockerfile" <<'EOF'
-FROM debian:bookworm
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 \
-    && rm -rf /var/lib/apt/lists/*
-COPY courier-imap-6.0.6.tar.bz2 /src/courier-imap-6.0.6.tar.bz2
-COPY courier-unicode-2.6.0.tar.bz2 /src/courier-unicode-2.6.0.tar.bz2
-COPY build-inside.sh /src/build-inside.sh
-RUN chmod 755 /src/build-inside.sh && /src/build-inside.sh
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
+cp "$DIR/images/courier-606/Dockerfile" "$CO_BUILD/Dockerfile"
   if [ "$tag" = liveimap-cyrus-3124:phase1 ]; then
     echo "building cyrus image"
     step "cyrus-3124 phase"
-    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3124:phase1 --progress=plain "$CY_BUILD"
+    python3 "$DIR/upstream_pins.py" dockerfile "$CY_BUILD/Dockerfile"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-cyrus-3124:phase1 --progress=plain "$CY_BUILD"
   fi
   if [ "$tag" = liveimap-courier-606:phase1 ]; then
     echo "building courier image"
     step "courier-606 phase"
-    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-courier-606:phase1 --progress=plain "$CO_BUILD"
+    python3 "$DIR/upstream_pins.py" dockerfile "$CO_BUILD/Dockerfile"
+    HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-courier-606:phase1 --progress=plain "$CO_BUILD"
   fi
 }
 
@@ -679,9 +578,10 @@ build_phase_cyrus_3137() {
   GEN="$DIR/generated"
   SRC="$GEN/dev-src"
   CY_SRC="$SRC/cyrus"
-  CY_SHA=a9d201bccdadd429c46bc4cf16995453a86d8eed
+  CY_SHA=$(python3 "$DIR/upstream_pins.py" git cyrus-imapd)
+  CY_URL=$(python3 "$DIR/upstream_pins.py" url cyrus-imapd)
   mkdir -p "$GEN" "$SRC"
-  phase_pin_checkout "$CY_SRC" https://github.com/cyrusimap/cyrus-imapd "$CY_SHA"
+  phase_pin_checkout "$CY_SRC" "$CY_URL" "$CY_SHA"
 echo "preparing cyrus image"
 cat > "$CY_SRC/xxd" <<'EOF'
 #!/bin/sh
@@ -761,87 +661,25 @@ if [ -z "$master" ]; then
   exit 1
 fi
 rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
-"$master" -d
-exec sleep infinity
+# Unix-socket listeners (lmtpunix, notify) need their directory; /run is empty in a fresh container.
+cyrus_socks=$(sed -n 's/.*listen="\(\/[^"]*\)".*/\1/p' /etc/cyrus.conf)
+for sock in $cyrus_socks; do
+  mkdir -p "${sock%/*}"
+  chown cyrus "${sock%/*}"
+done
+exec "$master"  # foreground: docker stop reaches master, its stderr is docker logs
 
 EOF
 chmod 755 "$CY_SRC/entrypoint.sh"
-cat > "$CY_SRC/Dockerfile" <<'EOF'
-FROM debian:bookworm
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential autoconf automake libtool pkg-config bison flex gperf \
-    cmake libmoo-perl libapp-cmd-perl libtype-tiny-perl \
-    libssl-dev libjansson-dev libxml2-dev libsqlite3-dev libical-dev \
-    libsasl2-dev libsasl2-modules sasl2-bin libpcre2-dev uuid-dev \
-    libicu-dev libxapian-dev zlib1g-dev libnghttp2-dev \
-    && rm -rf /var/lib/apt/lists/*
-COPY xxd /usr/local/bin/xxd
-COPY rsync /usr/local/bin/rsync
-RUN chmod 755 /usr/local/bin/xxd /usr/local/bin/rsync
-# Bookworm libical is 3.0. Cyrus 3.13 http requires libical >= 3.99.99.
-COPY libical-4.0.5.tar.gz /tmp/libical-4.0.5.tar.gz
-RUN tar -xzf /tmp/libical-4.0.5.tar.gz -C /tmp \
-    && cmake -S /tmp/libical-4.0.5 -B /tmp/libical-build \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local \
-      -DLIBICAL_GLIB=OFF \
-      -DLIBICAL_GOBJECT_INTROSPECTION=OFF \
-      -DLIBICAL_JAVA_BINDINGS=OFF \
-      -DLIBICAL_CXX_BINDINGS=OFF \
-      -DLIBICAL_BUILD_DOCS=OFF \
-      -DLIBICAL_BUILD_EXAMPLES=OFF \
-    && cmake --build /tmp/libical-build -j4 \
-    && cmake --install /tmp/libical-build \
-    && printf '%s\n' /usr/local/lib > /etc/ld.so.conf.d/usr-local.conf \
-    && ldconfig \
-    && rm -rf /tmp/libical-4.0.5 /tmp/libical-build /tmp/libical-4.0.5.tar.gz
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
-COPY . /src
-RUN cd /src \
-    && autoreconf -i \
-    && ./configure --prefix=/usr/local/cyrus --enable-http --enable-jmap --enable-xapian \
-    && make -j4 \
-    && make install \
-    && rm -rf /src
-COPY imapd.conf /etc/imapd.conf
-COPY cyrus.conf /etc/cyrus.conf
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
+cp "$DIR/images/cyrus-3137/Dockerfile" "$CY_SRC/Dockerfile"
 
 echo "fetching libical 4.0.5"
-python3 - "$CY_SRC/libical-4.0.5.tar.gz" <<'PY'
-import hashlib
-import os
-import sys
-import urllib.request
-
-dest = sys.argv[1]
-url = "https://github.com/libical/libical/releases/download/v4.0.5/libical-4.0.5.tar.gz"
-want = "cc09a3ac41d60e6144e644bd3fcf97d47106d659c4a0b8965102581401e67c9c"
-if os.path.isfile(dest):
-    digest = hashlib.sha256(open(dest, "rb").read()).hexdigest()
-    if digest == want:
-        sys.exit(0)
-    os.remove(dest)
-req = urllib.request.Request(url, headers={"User-Agent": "liveimap-lab"})
-with urllib.request.urlopen(req, timeout=180) as resp, open(dest, "wb") as out:
-    while True:
-        chunk = resp.read(1024 * 1024)
-        if not chunk:
-            break
-        out.write(chunk)
-digest = hashlib.sha256(open(dest, "rb").read()).hexdigest()
-if digest != want:
-    sys.stderr.write("libical tarball hash mismatch\n")
-    sys.exit(1)
-PY
+python3 "$DIR/upstream_pins.py" fetch libical-4.0.5.tar.gz "$CY_SRC/libical-4.0.5.tar.gz"
 
 echo "building cyrus image"
 step "cyrus-3137 phase"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-cyrus-3137:phase2 --progress=plain "$CY_SRC"
+python3 "$DIR/upstream_pins.py" dockerfile "$CY_SRC/Dockerfile"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-cyrus-3137:phase2 --progress=plain "$CY_SRC"
 
 }
 
@@ -849,9 +687,10 @@ build_phase_dovecot_dev() {
   GEN="$DIR/generated"
   SRC="$GEN/dev-src"
   DV_SRC="$SRC/dovecot"
-  DV_SHA=d6c3486ed839ec06f6a1ec87a6e307211e3a5c92
+  DV_SHA=$(python3 "$DIR/upstream_pins.py" git dovecot-core)
+  DV_URL=$(python3 "$DIR/upstream_pins.py" url dovecot-core)
   mkdir -p "$GEN" "$SRC"
-  phase_pin_checkout "$DV_SRC" https://github.com/dovecot/core "$DV_SHA"
+  phase_pin_checkout "$DV_SRC" "$DV_URL" "$DV_SHA"
 echo "preparing dovecot image"
 cat > "$DV_SRC/dovecot-lab.conf" <<'EOF'
 dovecot_config_version = 2.4.0
@@ -888,42 +727,12 @@ chown vmail:vmail /srv/vmail
 exec /usr/local/sbin/dovecot -F
 EOF
 chmod 755 "$DV_SRC/entrypoint.sh"
-cat > "$DV_SRC/Dockerfile" <<'EOF'
-FROM debian:13-slim
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git ca-certificates autoconf automake libtool gettext \
-    pkg-config bison flex libssl-dev zlib1g-dev liblz4-dev libzstd-dev \
-    libcap-dev libsodium-dev libpam0g-dev libsqlite3-dev libicu-dev \
-    python3 wget xz-utils \
-    && rm -rf /var/lib/apt/lists/*
-COPY . /src
-WORKDIR /src
-RUN ./autogen.sh
-RUN ./configure --prefix=/usr/local --with-sqlite --with-icu --with-ssl=openssl > /tmp/configure.out 2>&1; \
-    code=$?; \
-    cat /tmp/configure.out; \
-    if [ "$code" -ne 0 ]; then exit "$code"; fi; \
-    if grep -E '^                 :' /tmp/configure.out | grep -Ei 'sqlite|icu|openssl|sodium|lz4|zstd|libcap|pam'; then \
-      echo "configure named a missing dependency" >&2; \
-      exit 1; \
-    fi
-RUN make -j4 && make install
-RUN groupadd -g 1000 vmail \
-    && useradd -u 1000 -g 1000 -d /srv/vmail -M -s /usr/sbin/nologin vmail \
-    && groupadd --system dovecot \
-    && useradd --system -g dovecot -d /nonexistent -M -s /usr/sbin/nologin dovecot \
-    && mkdir -p /usr/local/etc/dovecot /srv/vmail /run/dovecot \
-    && chown vmail:vmail /srv/vmail
-COPY dovecot-lab.conf /usr/local/etc/dovecot/dovecot.conf
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
+cp "$DIR/images/dovecot-dev/Dockerfile" "$DV_SRC/Dockerfile"
 
 echo "building dovecot image"
 step "dovecot-dev phase"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build -t liveimap-dovecot-dev:phase1 --progress=plain "$DV_SRC"
+python3 "$DIR/upstream_pins.py" dockerfile "$DV_SRC/Dockerfile"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-dovecot-dev:phase1 --progress=plain "$DV_SRC"
 
 }
 
@@ -931,15 +740,17 @@ build_phase_stalwart_dev() {
   GEN="$DIR/generated"
   SRC="$GEN/dev-src"
   ST_SRC="$SRC/stalwart"
-  ST_SHA=2f5b9f2c697ca0fb1d7f015dcdeab961cd7be893
+  ST_SHA=$(python3 "$DIR/upstream_pins.py" git stalwart)
+  ST_URL=$(python3 "$DIR/upstream_pins.py" url stalwart)
   mkdir -p "$GEN" "$SRC"
-  phase_pin_checkout "$ST_SRC" https://github.com/stalwartlabs/stalwart "$ST_SHA"
+  phase_pin_checkout "$ST_SRC" "$ST_URL" "$ST_SHA"
 echo "building stalwart image"
 if ! grep -q '^ENV CARGO_BUILD_JOBS=' "$ST_SRC/Dockerfile"; then
   sed -i '/^FROM --platform=\$BUILDPLATFORM chef AS builder/a ENV CARGO_BUILD_JOBS=2' "$ST_SRC/Dockerfile"
 fi
 step "stalwart-dev phase"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --cpuset-cpus=0-3 \
+python3 "$DIR/upstream_pins.py" dockerfile "$ST_SRC/Dockerfile"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain --cpuset-cpus=0-3 \
   -t liveimap-stalwart-dev:phase1 "$ST_SRC"
 }
 
@@ -970,68 +781,8 @@ ensure_phase() {
 
 # dovecot-245-build
 build_dovecot_245() {
-  ports_file="$DIR/generated/local-ports.tsv"
-  count=0
-  if [ -f "$ports_file" ]; then
-    count=$(awk -F '\t' '$1 == "fake-smtp-sink" { n++ } END { print n + 0 }' "$ports_file")
-  fi
-  if [ "$count" -eq 0 ]; then
-    mkdir -p "$DIR/generated"
-    cat > "$DIR/generated/draw-one-port.py" <<'PY'
-import random
-import socket
-import subprocess
-import sys
-
-path = sys.argv[1]
-used = set()
-try:
-    handle = open(path, encoding="utf-8")
-except FileNotFoundError:
-    handle = None
-if handle is not None:
-    for line in handle:
-        parts = line.rstrip("\n").split("\t")
-        if len(parts) >= 2 and parts[1].isdigit():
-            used.add(int(parts[1]))
-out = subprocess.check_output(["ss", "-lnt"], text=True, errors="replace")
-busy = set()
-for line in out.splitlines():
-    parts = line.split()
-    if len(parts) < 4:
-        continue
-    got = parts[3].rpartition(":")[2]
-    if got.isdigit():
-        busy.add(int(got))
-for _n in range(400):
-    port = random.randint(20000, 39999)
-    if port in used or port in busy:
-        continue
-    sock = socket.socket()
-    try:
-        sock.bind(("", port))
-    except OSError:
-        sock.close()
-        continue
-    sock.close()
-    print(port)
-    sys.exit(0)
-sys.exit(1)
-PY
-    port=$(python3 "$DIR/generated/draw-one-port.py" "$ports_file")
-    printf 'fake-smtp-sink\t%s\t%s\thost\n' "$port" "$port" >> "$ports_file"
-  elif [ "$count" -ne 1 ]; then
-    echo "fake-smtp-sink row missing in $ports_file" >&2
-    exit 1
-  else
-    port=$(awk -F '\t' '$1 == "fake-smtp-sink" { print $2; exit }' "$ports_file")
-  fi
-  case "$port" in
-    ''|*[!0-9]*)
-      echo "fake-smtp-sink row missing in $ports_file" >&2
-      exit 1
-      ;;
-  esac
+  python3 "$DIR/lab_ports.py" sync
+  port=$(python3 "$DIR/lab_ports.py" port fake-smtp-sink)
   relay_port=$port
   gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
   if [ -z "$gateway" ]; then
@@ -1092,28 +843,26 @@ ssl_server {
 CFG
 EOF
   chmod 755 "$work/liveimap-setup"
-  cat > "$work/entrypoint.sh" <<'EOF'
-#!/bin/sh
-set -eu
-exec /usr/bin/tini -- /dovecot/sbin/dovecot -F
-EOF
-  chmod 755 "$work/entrypoint.sh"
-  cat > "$work/Dockerfile" <<'EOF'
+  upstream=$(python3 "$DIR/upstream_pins.py" image dovecot/dovecot:2.4.5)
+  docker image inspect "$upstream" >/dev/null
+  cat > "$work/Dockerfile" <<EOF
 # syntax=docker/dockerfile:1
-FROM dovecot/dovecot:2.4.5 AS upstream
+FROM $upstream AS upstream
+# The upstream image has no coreutils; Debian supplies them under the upstream tree.
 FROM debian:bookworm-slim
 COPY --from=upstream / /
+USER root
 COPY certs/ /etc/lab/
 COPY relay.conf /etc/dovecot/conf.d/relay.conf
 COPY liveimap-setup /usr/local/bin/liveimap-setup
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
-RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
-USER vmail
-ENTRYPOINT ["/entrypoint.sh"]
+RUN chmod 755 /usr/local/bin/liveimap-setup
+RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts ["/usr/local/bin/liveimap-setup"]
 EOF
+  python3 "$DIR/upstream_config.py" tail "$upstream" >> "$work/Dockerfile"
   step "seed image"
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+  python3 "$DIR/upstream_pins.py" dockerfile "$work/Dockerfile"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+  python3 "$DIR/upstream_config.py" check "$upstream" "liveimap-seed-stage-$server"
   open_build
   "$DIR/client-cert-install.sh" "liveimap-build-$server"
   close_build
@@ -1123,11 +872,11 @@ EOF
 build_stalwart() {
   case "$server" in
     stalwart)
-      upstream=stalwartlabs/stalwart:v0.16
+      upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.16)
       admin_file="$DIR/generated/stalwart-admin.txt"
       ;;
     stalwart-01625)
-      upstream=stalwartlabs/stalwart:v0.16.25
+      upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.16.25)
       admin_file="$DIR/generated/stalwart-01625-admin.txt"
       ;;
     stalwart-dev)
@@ -1136,7 +885,7 @@ build_stalwart() {
       ensure_phase "$upstream"
       ;;
     stalwart-0155)
-      upstream=stalwartlabs/stalwart:v0.15.5
+      upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.15.5)
       admin_file="$DIR/generated/stalwart-0155-admin.txt"
       ;;
   esac
@@ -1197,6 +946,7 @@ EOF
   chmod 755 "$work/entrypoint.sh"
   if [ "$server" = stalwart-0155 ]; then
     umask 077
+    listeners_toml=$(python3 "$DIR/stalwart_015_toml.py" "$server")
     cat > "$work/config.toml" <<EOF
 [storage]
 data = "rocksdb"
@@ -1213,10 +963,7 @@ path = "/opt/stalwart/data"
 type = "internal"
 store = "rocksdb"
 
-[server.listener.imap]
-bind = "0.0.0.0:143"
-protocol = "imap"
-tls.implicit = false
+${listeners_toml}
 
 [server.listener.http]
 bind = "127.0.0.1:8080"
@@ -1265,7 +1012,8 @@ EOF
       ;;
   esac
   step "seed image"
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain -t "liveimap-seed-stage-$server" "$work"
+  python3 "$DIR/upstream_pins.py" dockerfile "$work/Dockerfile"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain -t "liveimap-seed-stage-$server" "$work"
   open_build
   docker commit --change "ENV STALWART_RECOVERY_ADMIN=admin:$token" "liveimap-build-$server" "liveimap-seed-stage-$server"
   docker stop "liveimap-build-$server"
@@ -1298,20 +1046,16 @@ JSON
         sed "s/${token}/***/g" "$work/tracer.json" >&2
         exit 1
       fi
-      docker exec -i "liveimap-build-$server" /bin/sh -c 'curl -sS -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" --data-binary @- http://localhost:8080/jmap' > "$work/listener.json" <<'JSON'
-{"using":["urn:ietf:params:jmap:core","urn:stalwart:jmap"],"methodCalls":[["x:NetworkListener/set",{"create":{"imap143":{"name":"imap","protocol":"imap","bind":{"0.0.0.0:143":true},"tlsImplicit":false,"useTls":true}}},"c1"]]}
-JSON
-      if ! grep -q '"created"' "$work/listener.json"; then
-        echo "stalwart imap listener was not created" >&2
-        sed "s/${token}/***/g" "$work/listener.json" >&2
-        exit 1
-      fi
       ;;
   esac
-  "$DIR/stalwart-accounts.sh" "liveimap-build-$server"
+  case "$server" in
+    stalwart-0155) python3 "$DIR/stalwart_015_accounts.py" "liveimap-build-$server" ;;
+    *) "$DIR/stalwart-accounts.sh" "liveimap-build-$server" ;;
+  esac
   case "$server" in
     stalwart-0155) ;;
     *)
+      python3 "$DIR/stalwart_lab_config.py" "liveimap-build-$server" "$server"
       docker exec "liveimap-build-$server" rm /etc/lab/stalwart-provision
       printf 'STEP %s stalwart normal start\n' "$server" >&2
       docker restart "liveimap-build-$server" || {
@@ -1354,18 +1098,10 @@ set +a
 exec /zimbra/init
 EOF
   chmod 755 "$work/entrypoint.sh"
-  cat > "$work/Dockerfile" <<'EOF'
-# syntax=docker/dockerfile:1
-FROM liveimap-zimbra-883:lan AS upstream
-FROM scratch
-COPY --from=upstream / /
-COPY zimbra.env /etc/lab/zimbra.env
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod 600 /etc/lab/zimbra.env && chmod 755 /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
+  cp "$DIR/images/zimbra-883/Dockerfile" "$work/Dockerfile"
   step "seed image"
-  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain -t "liveimap-seed-stage-$server" "$work"
+  python3 "$DIR/upstream_pins.py" dockerfile "$work/Dockerfile"
+  HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain -t "liveimap-seed-stage-$server" "$work"
   open_build
   python3 - "$work/zimbra.env" "$SEED" "liveimap-build-$server" "$lab_host" "$host_port" <<'PY'
 import csv
@@ -1486,9 +1222,8 @@ try:
         else:
             parts.append(item)
     caps = " ".join(parts)
-    if "LOGINDISABLED" in caps:
-        ctx = ssl._create_unverified_context()
-        imap.starttls(ctx)
+    if "STARTTLS" in caps:  # Stalwart 0.15 refuses clear-text LOGIN without advertising LOGINDISABLED
+        imap.starttls(lab._lab_ssl())
     typ, data = imap.login(user, secret)
 except Exception as exc:
     text = str(exc).replace(secret, "***")
@@ -1510,7 +1245,7 @@ if not login_domain or not expect:
 else:
     account = user.split("@")[0] + "@" + login_domain
     caps = lab.plain_caps(port)
-    if caps and "LOGINDISABLED" in caps:
+    if caps and "STARTTLS" in caps:
         err = lab._starttls_login(port, account)
         reply = "OK" if not err else err
     else:
@@ -1648,6 +1383,12 @@ if [ -n "$phase" ]; then
 fi
 
 printf '%s\n' "$role" > "$work/lab-role"
+# Container HTTP (JMAP) port from servers.tsv, "-" when the server has no http row.
+if grep -q "^${server}	http	" "$DIR/servers.tsv"; then
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import ports; print(ports.container_port(sys.argv[2], "http"))' "$DIR" "$server" > "$work/http-port"
+else
+  echo - > "$work/http-port"
+fi
 printf '%s\n' "$ver_pkg" > "$work/version-pkg"
 printf '%s\n' "$ver_pat" > "$work/version-pat"
 
@@ -1699,14 +1440,15 @@ each_base() {
 }
 
 set_key() {
-  file=$1
-  key=$2
-  value=$3
-  sep=$4
-  if grep -q "^${key}${sep}" "$file"; then
-    sed -i "s|^${key}${sep}.*|${key}${sep}${value}|" "$file"
+  # sk_* names: plain sh has no locals, and setup_cyrus keeps the mailbox separator in $sep.
+  sk_file=$1
+  sk_key=$2
+  sk_value=$3
+  sk_sep=$4
+  if grep -q "^${sk_key}${sk_sep}" "$sk_file"; then
+    sed -i "s|^${sk_key}${sk_sep}.*|${sk_key}${sk_sep}${sk_value}|" "$sk_file"
   else
-    printf '%s%s%s\n' "$key" "$sep" "$value" >> "$file"
+    printf '%s%s%s\n' "$sk_key" "$sk_sep" "$sk_value" >> "$sk_file"
   fi
 }
 
@@ -1752,10 +1494,15 @@ sasldb_path: /etc/sasldb2'
       set_key /etc/imapd.conf tls_cert_file " /etc/lab/chain.crt" ":"
       set_key /etc/imapd.conf tls_key_file " /etc/lab/server.key" ":"
     fi
-    if [ "$http" = yes ] && [ -f /etc/cyrus.conf ]; then
-      if grep -q 'listen="8008"' /etc/cyrus.conf; then
-        sed -i 's/listen="8008"/listen="8080"/' /etc/cyrus.conf
+    http_port=$(cat /etc/lab/http-port)
+    if [ "$http_port" != - ]; then
+      sed -i 's/^#[[:space:]]*\(http[[:space:]].*cmd="httpd\)/  \1/' /etc/cyrus.conf
+      if grep -q '^[[:space:]]*http[[:space:]].*cmd="httpd' /etc/cyrus.conf; then
+        sed -i "s/^\([[:space:]]*http[[:space:]].*cmd=\"httpd[^\"]*\"\).*/\1 listen=\"$http_port\" prefork=0/" /etc/cyrus.conf
+      else
+        sed -i "/^SERVICES {/a\  http          cmd=\"httpd\" listen=\"$http_port\" prefork=0" /etc/cyrus.conf
       fi
+      grep -q "cmd=\"httpd.*listen=\"$http_port\"" /etc/cyrus.conf
     fi
   fi
   for bin in pop3d nntpd; do
@@ -1765,10 +1512,14 @@ sasldb_path: /etc/sasldb2'
       fi
     fi
   done
-  if [ "$http" != yes ] && [ -f /etc/cyrus.conf ]; then
-    if [ ! -x /usr/lib/cyrus/bin/httpd ] && [ ! -x /usr/sbin/httpd ]; then
-      sed -i '/^[[:space:]]*[^#].*httpd/s/^/#/' /etc/cyrus.conf
-    fi
+  if [ -f /etc/cyrus.conf ]; then
+    # START-time tls_prune exits 1 while tls_sessions.db does not exist yet (fresh image), and master then
+    # refuses to start. The periodic EVENTS entry (at=...) stays.
+    sed -i '/^[[:space:]]*tlsprune[[:space:]].*tls_prune"[[:space:]]*$/s/^/#/' /etc/cyrus.conf
+  fi
+  lab_http_port=$(cat /etc/lab/http-port)
+  if [ "$lab_http_port" = - ] && [ -f /etc/cyrus.conf ]; then
+    sed -i '/^[[:space:]]*[^#].*httpd/s/^/#/' /etc/cyrus.conf  # no servers.tsv http row: no httpd
   fi
   write_cyrus_admin
   admin=$(cat /etc/lab/cyrus-admin)
@@ -1794,6 +1545,7 @@ sasldb_path: /etc/sasldb2'
     chown cyrus /etc/sasldb2
   fi
   chmod 640 /etc/sasldb2
+  chown cyrus /etc/lab/server.key  # imapd runs as cyrus and must read the TLS key (stays 600)
   ctl=""
   for cand in /usr/lib/cyrus/bin/ctl_cyrusdb /usr/sbin/ctl_cyrusdb /usr/local/cyrus/bin/ctl_cyrusdb /usr/local/cyrus/sbin/ctl_cyrusdb; do
     if [ -x "$cand" ]; then
@@ -1993,6 +1745,13 @@ setup_courier() {
   if [ "$role" = courier-606 ]; then
     printf '%s\n' 2500 > /etc/lab/courier-uid
   fi
+  if [ ! -f /etc/courier/authdaemonrc ] && [ ! -f /usr/lib/courier-imap/etc/authdaemonrc ] \
+     && [ -x /usr/lib/courier/courier-authlib/authdaemond ]; then
+    # Source-built authlib (courier-606) installs no authdaemonrc; authdaemond reads /etc/courier/authdaemonrc.
+    mkdir -p /etc/courier
+    printf '%s\n' 'authmodulelist="authuserdb"' 'authmodulelistorig="authuserdb"' 'daemons=5' \
+      'authdaemonvar=/run/courier/authdaemon' 'DEBUG_LOGIN=0' 'DEFAULTOPTIONS=""' 'LOGGEROPTS=""' > /etc/courier/authdaemonrc
+  fi
   for conf in /etc/courier/authdaemonrc /usr/lib/courier-imap/etc/authdaemonrc; do
     if [ -f "$conf" ]; then
       if grep -q '^authmodulelist' "$conf"; then
@@ -2066,7 +1825,9 @@ setup_uw() {
   cat /etc/lab/server.key /etc/lab/server.crt /etc/lab/ca.crt > /etc/ssl/certs/imapd.pem
   mkdir -p /etc/ssl/private
   cp /etc/ssl/certs/imapd.pem /etc/ssl/private/imapd.pem
-  printf '%s\n' 'I accept the risk' 'set disable-plaintext nil' > /etc/c-client.cf
+  # mix: new folders are directories, so a folder can hold messages and children (Deep/L2 and Deep/L2/L3);
+  # UW's default mbox files cannot.
+  printf '%s\n' 'I accept the risk' 'set disable-plaintext nil' 'set new-mailbox-format mix' > /etc/c-client.cf
 }
 
 case "$role" in
@@ -2092,6 +1853,7 @@ case "$entry" in
     cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
+/usr/local/sbin/labsyslog &  # syslog -> docker logs
 master=""
 if [ -x /usr/sbin/cyrmaster ]; then
   master=/usr/sbin/cyrmaster
@@ -2113,14 +1875,20 @@ if id cyrus >/dev/null; then
   chown "cyrus:$cyrus_group" /run/cyrus /var/run/cyrus
 fi
 rm -f /var/run/cyrus-master.pid /run/cyrus-master.pid /var/run/cyrmaster.pid /run/cyrus/master.pid
-"$master" -d
-exec sleep infinity
+# Unix-socket listeners (lmtpunix, notify) need their directory; /run is empty in a fresh container.
+cyrus_socks=$(sed -n 's/.*listen="\(\/[^"]*\)".*/\1/p' /etc/cyrus.conf)
+for sock in $cyrus_socks; do
+  mkdir -p "${sock%/*}"
+  chown cyrus "${sock%/*}"
+done
+exec "$master"  # foreground: docker stop reaches master, its stderr is docker logs
 EOF
     ;;
   dovecot)
     cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
+/usr/local/sbin/labsyslog &  # syslog -> docker logs
 rm -f /var/run/dovecot/master.pid
 dovecot
 exec sleep infinity
@@ -2130,6 +1898,7 @@ EOF
     cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
+/usr/local/sbin/labsyslog &  # syslog -> docker logs
 mkdir -p /srv/vmail /run/dovecot /usr/local/var/run/dovecot
 exec /usr/local/sbin/dovecot -F
 EOF
@@ -2138,6 +1907,7 @@ EOF
     cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
+/usr/local/sbin/labsyslog &  # syslog -> docker logs
 if [ -x /usr/sbin/rsyslogd ] && [ ! -S /dev/log ]; then
   rm -f /var/run/rsyslogd.pid
   rsyslogd
@@ -2149,7 +1919,15 @@ elif [ -x /etc/init.d/courier-auth ]; then
 elif [ -x /usr/lib/courier-imap/sbin/authdaemond ]; then
   /usr/lib/courier-imap/sbin/authdaemond start
 elif [ -x /usr/lib/courier/courier-authlib/authdaemond ]; then
-  /usr/lib/courier/courier-authlib/authdaemond start
+  # authlib >= 0.70 runs authdaemond in the foreground ("start" is refused); it is the helper, imapd is PID 1.
+  mkdir -p /run/courier/authdaemon
+  /usr/lib/courier/courier-authlib/authdaemond &
+  i=0
+  while [ ! -S /run/courier/authdaemon/socket ]; do
+    i=$((i + 1))
+    if [ "$i" -gt 50 ]; then echo "authdaemond socket did not appear" >&2; exit 1; fi
+    sleep 0.2
+  done
 else
   echo "courier authdaemon missing" >&2
   find /usr /etc -name 'authdaemond' -o -name 'authdaemon*'
@@ -2158,7 +1936,13 @@ fi
 if [ -x /etc/init.d/courier-imap ]; then
   /etc/init.d/courier-imap start
 elif [ -x /usr/lib/courier-imap/libexec/imapd.rc ]; then
-  /usr/lib/courier-imap/libexec/imapd.rc start
+  # Foreground: the same couriertcpd command imapd.rc runs, without courierlogger -start (daemonize), exec'd.
+  sed -e 's#/usr/sbin/courierlogger -pid=$PIDFILE -start#exec /usr/sbin/courierlogger#' \
+      -e 's#^\([[:space:]]*\)/usr/bin/env -i#\1exec /usr/bin/env -i#' \
+      /usr/lib/courier-imap/libexec/imapd.rc > /etc/lab/imapd-fg.rc
+  grep -q 'exec /usr/sbin/courierlogger' /etc/lab/imapd-fg.rc
+  grep -q 'exec /usr/bin/env -i' /etc/lab/imapd-fg.rc
+  exec /bin/sh /etc/lab/imapd-fg.rc start
 else
   echo "courier imap missing" >&2
   exit 1
@@ -2170,6 +1954,7 @@ EOF
     cat > "$work/entrypoint.sh" <<'EOF'
 #!/bin/sh
 set -eu
+/usr/local/sbin/labsyslog &  # syslog -> docker logs
 if [ -x /etc/init.d/openbsd-inetd ]; then
   /etc/init.d/openbsd-inetd start
 elif [ -x /usr/sbin/inetd ]; then
@@ -2183,6 +1968,8 @@ EOF
     ;;
 esac
 chmod 755 "$work/entrypoint.sh"
+python3 "$DIR/upstream_pins.py" dockerfile "$DIR/labsyslog/Dockerfile"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain -t liveimap-seed-labsyslog "$DIR/labsyslog"
 
 if [ -n "$phase" ]; then
   cat > "$work/Dockerfile" <<EOF
@@ -2190,9 +1977,11 @@ if [ -n "$phase" ]; then
 FROM $phase
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
+COPY http-port /etc/lab/http-port
 COPY version-pkg /etc/lab/version-pkg
 COPY version-pat /etc/lab/version-pat
 COPY liveimap-setup /usr/local/bin/liveimap-setup
+COPY --from=liveimap-seed-labsyslog /labsyslog /usr/local/sbin/labsyslog
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
 RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
@@ -2230,9 +2019,11 @@ ${jessie_nofile}    && echo "apt-get update $base_image" \
     && rm -rf /var/lib/apt/lists/*
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
+COPY http-port /etc/lab/http-port
 COPY version-pkg /etc/lab/version-pkg
 COPY version-pat /etc/lab/version-pat
 COPY liveimap-setup /usr/local/bin/liveimap-setup
+COPY --from=liveimap-seed-labsyslog /labsyslog /usr/local/sbin/labsyslog
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 755 /usr/local/bin/liveimap-setup /entrypoint.sh
 RUN --mount=type=secret,id=accounts,target=/run/secrets/accounts /usr/local/bin/liveimap-setup
@@ -2241,15 +2032,19 @@ EOF
 fi
 
 step "seed image"
-HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
+python3 "$DIR/upstream_pins.py" dockerfile "$work/Dockerfile"
+HOME="$plugin_home" DOCKER_BUILDKIT=1 docker build ${SEED_NO_CACHE:+--no-cache} --progress=plain --secret id=accounts,src="$SEED" -t "liveimap-seed-stage-$server" "$work"
 imap_port=$(cport "$server" imap)
 remove_build_container
 case "$server" in
   cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)
-    docker create --hostname localhost --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+    seed_hostname=localhost
+    build_port=$(build_host_port)
+    docker create --hostname "$seed_hostname" --name "liveimap-build-$server" -p "${build_port}:${imap_port}" "liveimap-seed-stage-$server"
     ;;
   *)
-    docker create --name "liveimap-build-$server" -p "0:${imap_port}" "liveimap-seed-stage-$server"
+    build_port=$(build_host_port)
+    docker create --name "liveimap-build-$server" -p "${build_port}:${imap_port}" "liveimap-seed-stage-$server"
     ;;
 esac
 docker start "liveimap-build-$server"
@@ -2375,7 +2170,7 @@ for user in users:
     text = " ".join(lines).lower()
     good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
     if not good:
-        sys.stderr.write("mailbox create failed\n")
+        sys.stderr.write("mailbox create failed %s: %s\n" % (mailbox, " | ".join(lines)))
         sys.exit(1)
 if not domain:
     sys.stderr.write("needs LAB_MAIL_DOMAIN\n")
@@ -2386,7 +2181,7 @@ local = lab.USER.split("@")[0]
 secret = lab.PASS
 account = local + "@" + domain
 proc = subprocess.run(
-    ["docker", "exec", name, "sh", "-c", "sed -i 's/^virtdomains: off/virtdomains: userid/' /etc/imapd.conf"],
+    ["docker", "exec", name, "sh", "-c", "sed -i '/^virtdomains:/d' /etc/imapd.conf && echo 'virtdomains: userid' >> /etc/imapd.conf"],
     capture_output=True, text=True,
 )
 if proc.returncode != 0:
@@ -2444,6 +2239,6 @@ docker stop "liveimap-build-$server"
 problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
 if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
 manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
-docker commit --change "LABEL liveimap.seed-manifest=$manifest" "liveimap-build-$server" "liveimap-seed-$server"
+docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" --change "LABEL liveimap.cert-sha256=$cert_sha" "liveimap-build-$server" "liveimap-seed-$server"
 docker rm -f "liveimap-build-$server"
 trap - EXIT

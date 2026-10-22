@@ -168,17 +168,15 @@ def function_body(text, name):
     return text[at:end + 2]
 
 latest = open(os.path.join(HERE, "start.sh"), encoding="utf-8").read()
-reset_body = function_body(latest, "reset_from_seed")
-seed_body = function_body(latest, "require_seed_image")
-assert "liveimap-seed-$server" in reset_body
-assert "local-ports.tsv" in reset_body
-assert "require_seed_image" in reset_body
-assert "pick_ports" not in reset_body
-assert "stalwartlabs/stalwart" not in reset_body
-assert 'tools/test-servers/build-seed-image $server' in seed_body
-assert "seed-snapshot.sh" not in seed_body
-assert 'reset_from_seed "$server"' in latest
-assert "stalwart-01625)" in latest or "stalwart-01625|" in latest
+# Shared lab ports: start.sh creates from the seed image with lab_ports.py flags, one server at a time.
+assert 'image="liveimap-seed-$server"' in latest
+assert "tools/test-servers/build-seed-image $server" in latest
+assert 'python3 "$DIR/lab_ports.py" sync' in latest
+assert 'port_flags=$(python3 "$DIR/lab_ports.py" flags "$server")' in latest
+assert "one lab server at a time" in latest
+assert "pick_ports" not in latest and "draw_ports" not in latest and "replace_port_rows" not in latest
+assert "stalwartlabs/stalwart" not in latest
+assert "liveimap.hostname" in latest
 
 # Follow-up edges 1-3. Text only; this does not run docker.
 up = open(os.path.join(HERE, "up.tsv"), encoding="utf-8").read()
@@ -223,22 +221,10 @@ assert 'docker cp "$GEN/dovecot-245/relay.conf" "liveimap-dovecot-245:/etc/dovec
 assert "fake-smtp-sink:*:host" not in latest
 
 # Follow-up 2 edges. Text only; this does not run docker or a start script.
-sink_body = function_body(latest, "sink_port")
-zero_at = sink_body.find('[ "$count" -eq 0 ]')
-draw_at = sink_body.find("draw_ports 1)")
-write_at = sink_body.find("printf 'fake-smtp-sink\\t%s\\t%s\\thost\\n'")
-other_at = sink_body.find('[ "$count" -ne 1 ]')
-assert zero_at != -1 and draw_at != -1 and write_at != -1 and other_at != -1
-assert zero_at < draw_at < write_at < other_at
-assert "draw_ports" not in sink_body[other_at:]
-assert "exit 1" in sink_body[other_at:]
-assert "--recreate dovecot-245" in sink_body
-assert sink_body.count("draw_ports") == 1
-assert latest.count("draw_ports 1)") == 1
-assert latest.count("draw_ports 10") == 0
-pick_body = function_body(latest, "pick_ports")
-assert "draw_ports" not in pick_body
-assert "fake-smtp-sink" not in pick_body
+lp = open(os.path.join(HERE, "lab_ports.py"), encoding="utf-8").read()
+assert 'EXTRA_SERVICES = ["fake-smtp-sink"]' in lp
+assert "never redrawn" in lp
+assert "a recorded port that\nis taken fails loudly" in lp or "is taken fails loudly" in lp
 assert "Could not find the file" in snap
 assert snap.count("Could not find the file") == 2
 assert 'mktemp -d "$here/generated/seed-snapshot.XXXXXX"' in snap
@@ -335,17 +321,9 @@ def whole_cport(line):
         return False
     return True
 
-for name in ("start.sh",):
-    text = open(os.path.join(HERE, name), encoding="utf-8").read()
-    saw = False
-    for line in text.splitlines():
-        if "$(cport" not in line:
-            continue
-        saw = True
-        assert whole_cport(line), (name, line)
-        for bad in ("-p", "printf", "pick_ports", "expected_ports", "published_port"):
-            assert bad not in line, (name, line)
-    assert saw, name
+# Container ports come from servers.tsv through lab_ports.py, never from start.sh itself.
+assert "$(cport" not in latest
+assert 'os.path.join(HERE, "servers.tsv")' in lp
 
 # Seed-image build edges 1-7. Text and pure functions. This does not run docker, adb, or build-seed-image.
 assert "MOUNT_ROOTS" not in regress
@@ -420,16 +398,14 @@ try:
 finally:
     lab.subprocess.run = saved_run
 
-for name in ("start.sh",):
-    body = function_body(open(os.path.join(HERE, name), encoding="utf-8").read(), "reset_from_seed")
-    assert body.find("require_seed_image") < body.find("docker rm"), name
-    seed_fn = function_body(open(os.path.join(HERE, name), encoding="utf-8").read(), "require_seed_image")
-    assert "build-seed-image" in seed_fn and "seed-snapshot.sh" not in seed_fn
-zimbra = open(os.path.join(HERE, "start.sh"), encoding="utf-8").read()
-reset_z = py_function(zimbra, "reset_zimbra")
-assert reset_z.find("require_seed_image") < reset_z.find('"docker", "rm"')
-assert "build-seed-image zimbra-883" in py_function(zimbra, "require_seed_image")
+assert latest.find('docker image inspect "$image"') < latest.find('docker rm -f "$name"')
+assert "seed-snapshot.sh" not in latest
 builder = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
+# The static Dockerfiles live in images/<server>/Dockerfile; build-seed-image copies each into its build context.
+image_files = sorted(os.path.join(HERE, "images", d, "Dockerfile") for d in os.listdir(os.path.join(HERE, "images")))
+for path in image_files:
+    assert 'cp "$DIR/images/%s/Dockerfile" ' % os.path.basename(os.path.dirname(path)) in builder, path
+builder_images = "".join(open(path, encoding="utf-8").read() for path in image_files)
 assert "unknown server" in builder
 for server in lab.SEED_SERVERS:
     assert server in builder, server
@@ -445,7 +421,7 @@ for line in builder.splitlines():
         if rhs.endswith(" || exit 1"):
             rhs = rhs[: -len(" || exit 1")]
         assert rhs.startswith("$(") and rhs.endswith(")") and rhs.count("$(") == 1, line
-for name in ("build-seed-image", "start.sh"):
+for name in ("build-seed-image",):
     text = open(os.path.join(HERE, name), encoding="utf-8").read()
     fn = function_body(text, "cport")
     assert "python3" in fn and "|| exit 1" in fn, name
@@ -485,7 +461,8 @@ for marker in (
 dove = builder.split("# dovecot-245-build", 1)[1].split("# end dovecot-245-build", 1)[0]
 assert dove.find("fake-smtp-sink") < dove.find("open_build"), "sink row before another port"
 assert "VOLUME" not in builder
-assert "FROM dovecot/dovecot:2.4.5 AS upstream" in dove
+assert 'upstream=$(python3 "$DIR/upstream_pins.py" image dovecot/dovecot:2.4.5)' in dove
+assert "FROM $upstream AS upstream" in dove
 assert "\nFROM dovecot/dovecot:2.4.5\n" not in dove
 assert "FROM debian:bookworm-slim" in dove
 assert "submission_relay_host = %s" in dove
@@ -495,9 +472,9 @@ for line in dove.splitlines():
         raise AssertionError(line)
 assert "client-cert-install.sh" in dove
 # Dovecot 2.4.5 start edges 1-4. Text only; this does not run docker or build-seed-image.
-assert "/dovecot/sbin/dovecot" in dove
-assert "/usr/bin/tini" in dove
-assert "USER vmail" in dove
+# The seed keeps the upstream ENV, PATH, ENTRYPOINT, CMD and USER: appended from the upstream image, then checked.
+assert 'upstream_config.py" tail "$upstream"' in dove
+assert 'upstream_config.py" check "$upstream"' in dove
 assert "exec dovecot -F" not in dove
 assert "ssl = yes" not in dove
 assert "ssl_server_cert_file" not in dove
@@ -513,23 +490,19 @@ assert "|| true" not in builder
 assert "2>/dev/null" not in builder
 assert "ssl_server_cert_file" not in builder
 assert "STALWART_RECOVERY_ADMIN=admin" not in latest
-assert "upstream=stalwartlabs/stalwart:v0.16\n" in builder
-assert "upstream=stalwartlabs/stalwart:v0.16.25\n" in builder
-assert "upstream=stalwartlabs/stalwart:v0.15.5\n" in builder
+assert 'upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.16)\n' in builder
+assert 'upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.16.25)\n' in builder
+assert 'upstream=$(python3 "$DIR/upstream_pins.py" image stalwartlabs/stalwart:v0.15.5)\n' in builder
 assert "FROM $upstream AS upstream" in builder
 assert "liveimap-stalwart-dev:phase1" in builder
 assert "stalwart-accounts.sh" in builder
-zcreate = py_function(zimbra, "zimbra_create")
-assert "-e" not in zcreate
-assert "--hostname" not in zcreate
-assert "127.0.0.1" not in zcreate
-assert "sandbox" not in zcreate
-assert "443" not in zcreate
-assert "tools/test-servers/start.sh" in zimbra
+# Zimbra is created like every other server: shared ports, hostname from the seed image label, no -e, no mounts.
+assert "zimbra" not in latest
+assert "127.0.0.1" not in latest and "sandbox" not in latest and "443" not in latest
+assert "docker create" in latest and " -e " not in latest
 assert "missing liveimap-zimbra-883:lan" in builder
-assert "FROM liveimap-zimbra-883:lan AS upstream" in builder
+assert "FROM liveimap-zimbra-883:lan AS upstream" in builder_images
 assert "zimbra-tls.sh" in builder
-assert "docker stop liveimap-zimbra-883" not in zimbra
 
 # No-test-time-seed edges 1-4. Text only; this does not run docker, regress, or build-seed-image.
 assert "seed_corpus.py" not in regress
@@ -619,9 +592,8 @@ z_at = builder.find("build_zimbra() {")
 z_end = builder.find("\nbuild_volume_servers()", z_at)
 zbody = builder[z_at:z_end]
 assert "zimbraDefaultDomainName" in zbody
-zdf_at = zbody.find("cat > \"$work/Dockerfile\" <<'EOF'")
-zdf_end = zbody.find("\nEOF\n", zdf_at)
-zdf = zbody[zdf_at:zdf_end]
+assert 'cp "$DIR/images/zimbra-883/Dockerfile" "$work/Dockerfile"' in zbody
+zdf = open(os.path.join(HERE, "images", "zimbra-883", "Dockerfile"), encoding="utf-8").read()
 assert "FROM scratch" in zdf and "debian:bookworm-slim" not in zdf
 bare_at = zbody.find("bare login")
 close_at = zbody.rfind("\n  close_build\n")
@@ -812,10 +784,17 @@ assert bumped != fresh
 bump = lab.publish_problem("cyrus-22", changed_base)
 assert "inputs changed and the version was not bumped" in bump
 assert bump.endswith("tools/test-servers/build-seed-image cyrus-22")
+# The host-generated cert is not a fixture input (each lab's differs); the seed image's label records it instead.
 os.remove(os.path.join(changed_base, "generated", "ca", "server.crt"))
-missing_input = lab.publish_problem("dovecot-dev", changed_base)
-assert missing_input.endswith("dovecot-dev tools/test-servers/build-seed-image dovecot-dev")
-assert "server.crt" in missing_input
+assert lab.fixture_inputs_hash("cyrus-22", changed_base) == bumped
+cert_now = lab._cert_fingerprint(os.path.join(HERE, "generated", "ca", "server.crt"))
+assert lab.cert_label_problem("cyrus-22", {"liveimap.cert-sha256": cert_now}) == ""
+stale = lab.cert_label_problem("cyrus-22", {"liveimap.cert-sha256": "0" * 64})
+assert stale.endswith("tools/test-servers/build-seed-image cyrus-22") and "000000000000" in stale
+assert "(none)" in lab.cert_label_problem("cyrus-22", {})
+assert 'python3 "$DIR/lab_cert.py" check' in builder
+assert builder.count('LABEL liveimap.cert-sha256=$cert_sha') == 2
+assert "_cert_fingerprint" not in py_function(lab_py, "fixture_inputs_hash")
 assert "fixture_inputs_hash" not in builder
 assert builder.count("required_fixture_version") == 2
 assert builder.count("publish_problem") == 2
@@ -835,7 +814,9 @@ assert "required_fixture_version" in seed_body
 assert "got < required" in seed_body
 assert "sys.exit" not in seed_body
 assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "abc"}}}) != ""
-assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1"}}}) == ""
+_cert = lab._cert_fingerprint(os.path.join(HERE, "generated", "ca", "server.crt"))
+assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1", "liveimap.cert-sha256": _cert}}}) == ""
+assert "build-seed-image cyrus-22" in lab.seed_problem("cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1"}}})
 assert lab.seed_problem("cyrus-22", {"Config": {"Labels": {}}}) != ""
 assert "Config.Volumes" in lab.seed_problem(
     "cyrus-22", {"Config": {"Labels": {"liveimap.seed-manifest": "1"}, "Volumes": {"/mail": {}}}}
@@ -871,7 +852,16 @@ assert "store_fixture_marker" not in safety
 assert "fixture_inputs_hash" not in safety
 # Seed build edges 1-4. Text only; this does not run docker or build-seed-image.
 assert "ensure_buildx" in builder
-assert "buildx-v0.38.0.linux-" in builder
+pins_tsv = open(os.path.join(HERE, "upstream-pins.tsv"), encoding="utf-8").read()
+assert "buildx-v0.38.0.linux-amd64" in pins_tsv
+assert 'upstream_pins.py" fetch "docker-buildx-$asset" "$plugin_bin"' in builder
+# Every upstream fetch is pinned: each docker build first pins its Dockerfile's FROM lines.
+for n_line, line in enumerate(builder.splitlines()):
+    if "docker build " in line:
+        assert 'upstream_pins.py" dockerfile' in builder.splitlines()[n_line - 1], line
+for line in builder.splitlines():
+    assert "urllib.request" not in line, line
+    assert not line.strip().startswith(("CY_SHA=", "DV_SHA=", "ST_SHA=")) or "upstream_pins.py" in line, line
 assert "x86_64) asset=amd64 ;;" in builder
 assert "aarch64|arm64) asset=arm64 ;;" in builder
 build_lines = [line for line in builder.splitlines() if "docker build " in line]
@@ -909,30 +899,18 @@ for value in lab.RECREATE_HINTS.values():
     assert value.startswith("tools/test-servers/start.sh --recreate "), value
 for gone in ("start-latest.sh", "start-dev.sh", "start-local.sh", "start-older.sh", "zimbra-883.sh"):
     assert gone not in regress, gone
-zcreate = py_function(latest, "zimbra_create")
-for bad in ("-e", "--hostname", "127.0.0.1", "sandbox", "443"):
-    assert bad not in zcreate, bad
 assert "ADMIN_PW" not in latest and "LDAP_ROOT_PW" not in latest
 for tag in (
-    "docker build -t liveimap-cyrus-3124:phase1",
-    "docker build -t liveimap-courier-606:phase1",
-    "docker build -t liveimap-cyrus-3137:phase2",
-    "docker build -t liveimap-dovecot-dev:phase1",
+    "docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-cyrus-3124:phase1",
+    "docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-courier-606:phase1",
+    "docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-cyrus-3137:phase2",
+    "docker build ${SEED_NO_CACHE:+--no-cache} -t liveimap-dovecot-dev:phase1",
     "liveimap-stalwart-dev:phase1",
 ):
     assert tag in builder, tag
 assert 'echo "missing $phase"' not in builder
 assert "missing liveimap-zimbra-883:lan" in builder
 assert "docker build" not in latest
-sink_fn = function_body(latest, "sink_port")
-zero_at = sink_fn.find('[ "$count" -eq 0 ]')
-one_at = sink_fn.find('[ "$count" -ne 1 ]')
-assert zero_at != -1 and "draw_ports 1)" in sink_fn[zero_at:one_at]
-assert "exit 1" in sink_fn[one_at:]
-dove_at = latest.find("create_dovecot_245() {")
-sink_call = latest.find("relay_port=$(sink_port)", dove_at)
-seed_call = latest.find("create_from_seed dovecot-245", dove_at)
-assert dove_at != -1 and sink_call != -1 and seed_call != -1 and sink_call < seed_call
 assert "draw_ports 10" not in latest
 assert "|| true" not in latest and "2>/dev/null" not in latest
 assert "|| true" not in builder and "2>/dev/null" not in builder
@@ -988,7 +966,7 @@ s15_end = builder.find("\n      ;;\n", s15_at)
 s15 = builder[s15_at:s15_end]
 assert "command -v curl" in s15
 assert "apt-get install -y --no-install-recommends curl" in s15
-assert "0.0.0.0:143" in builder
+assert 'bind = "0.0.0.0:{ports.container_port(server, service)}"' in open(os.path.join(HERE, "stalwart_015_toml.py"), encoding="utf-8").read()
 pkg = builder.split("FROM $base_image\n", 1)[1].split("COPY certs/", 1)[0]
 assert "timeout 120" not in pkg
 assert "Acquire::ForceIPv4=true" in pkg
@@ -1000,7 +978,7 @@ all_end = builder.find("\nfi\n", all_at)
 all_body = builder[all_at:all_end]
 assert "SEED START" in all_body and "SEED FAIL" in all_body
 assert '"$SCRIPT" "$server" || exit 1' not in all_body
-assert "exec /usr/bin/tini -- /dovecot/sbin/dovecot -F" in builder
+assert "exec /usr/bin/tini" not in builder  # dovecot-245 keeps the upstream ENTRYPOINT/CMD (upstream_config.py)
 for line in builder.splitlines():
     if line.strip().startswith("COPY"):
         assert "accounts.tsv" not in line, line
@@ -1027,16 +1005,13 @@ assert 'set_key /etc/imapd.conf servername " localhost" ":"' in cyrus_fn
 assert "saslpasswd2 -p -c -u localhost cyrus" in cyrus_fn
 assert 'saslpasswd2 -p -c -u localhost "$user"' in cyrus_fn
 assert '"-u", domain, local' in builder
-pkg_host = builder.find('docker create --hostname localhost --name "liveimap-build-$server"')
+pkg_host = builder.find("seed_hostname=localhost\n")
+assert builder.count('docker create --hostname "$seed_hostname" --name "liveimap-build-$server"') == 2
+assert builder.count('LABEL liveimap.hostname=${seed_hostname:-}') == 2
 assert pkg_host != -1 and pkg_host > builder.find("FROM $base_image\n")
-assert "--hostname zimbra.zcs-foss.test" in open_body
-for line in open_body.splitlines():
-    if "docker create" in line and "zimbra.zcs-foss.test" not in line:
-        assert "--hostname" not in line, line
-zcreate_again = py_function(latest, "zimbra_create")
-assert "--hostname" not in zcreate_again
+assert "seed_hostname=zimbra.zcs-foss.test" in open_body
 assert '@type":"Stdout"' in builder and '"buffered":false' in builder
-assert "0.0.0.0:143" in builder and "[::]:143" not in builder
+assert "[::]:" not in open(os.path.join(HERE, "stalwart_015_toml.py"), encoding="utf-8").read() and "[::]:143" not in builder
 assert "fallback-admin" in builder and "config.toml" in s15
 assert "config.toml" not in mail_ep
 seed_src = open(os.path.join(HERE, "seed_corpus.py"), encoding="utf-8").read()

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Lab CA and one server certificate for the lab host (SAN: LAB_BIND IP and LAB_NAME).
+# Lab CA and one server certificate shared by every lab server (SAN: LAB_BIND IP, LAB_NAME, and each fixed
+# login_domain host name in servers.tsv, e.g. Zimbra's, which its LDAP checks against its own host name).
 # Output (gitignored): generated/ca/{ca.key,ca.crt,server.key,server.crt,server.pem,server.p12,ca.der}
 # Re-runnable: keeps an existing CA; reissues the server certificate when its SANs differ.
 set -eu
@@ -13,11 +14,17 @@ if [ ! -f ca.key ]; then
     -subj "/CN=LiveIMAP lab CA" -addext "basicConstraints=critical,CA:TRUE" \
     -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
 fi
+extra_names=$(awk -F '\t' '!/^#/ && $4 != "" && $4 != "LAB_MAIL_DOMAIN" { print $4 }' "$DIR/servers.tsv" | sort -u)
 want="IP Address:$LAB_BIND, DNS:$LAB_NAME"
+ext_san="IP:$LAB_BIND,DNS:$LAB_NAME"
+for name in $extra_names; do
+  want="$want, DNS:$name"
+  ext_san="$ext_san,DNS:$name"
+done
 have=$(openssl x509 -in server.crt -noout -ext subjectAltName 2>/dev/null | tail -1 | sed 's/^ *//' || true)
-if [ "$have" != "$want" ] && [ "$have" != "DNS:$LAB_NAME, IP Address:$LAB_BIND" ]; then
+if [ "$have" != "$want" ]; then
   openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=$LAB_NAME" 2>/dev/null
-  printf 'subjectAltName=IP:%s,DNS:%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' "$LAB_BIND" "$LAB_NAME" > server.ext
+  printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' "$ext_san" > server.ext
   openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -extfile server.ext 2>/dev/null
 fi
 cat server.crt server.key > server.pem

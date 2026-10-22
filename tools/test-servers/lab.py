@@ -508,6 +508,19 @@ def seed_problem(server, image_inspect):
     got = _version_int(label)
     if got is None or got < required:
         return version_problem(server, "" if label is None else label, "" if got is None else got, required)
+    return cert_label_problem(server, labels)
+
+
+def cert_label_problem(server, labels):
+    """'' when the image was built with the current generated/ca/server.crt (label liveimap.cert-sha256)."""
+    fix = "tools/test-servers/build-seed-image " + server
+    try:
+        have = _cert_fingerprint(os.path.join(GEN, "ca", "server.crt"))
+    except FixtureInputMissing as exc:
+        return exc.path + " tools/test-servers/lab-ca.sh"
+    got = (labels or {}).get("liveimap.cert-sha256") or ""
+    if got != have:
+        return "seed image cert %s != generated/ca/server.crt %s %s" % (got[:12] or "(none)", have[:12], fix)
     return ""
 
 
@@ -765,7 +778,6 @@ def fixture_inputs_hash(server, base=None):
     if not known:
         domain = domain + server + "\n"
     add(domain)
-    add(_cert_fingerprint(os.path.join(root, "generated", "ca", "server.crt")))
     return digest.hexdigest()
 
 

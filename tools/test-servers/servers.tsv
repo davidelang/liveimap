@@ -38,4 +38,5 @@ courier-606	imap	143	LAB_MAIL_DOMAIN	refuse
 courier-50	imap	143	LAB_MAIL_DOMAIN	refuse
 uwimap	imap	143	LAB_MAIL_DOMAIN	refuse
 zimbra-883	imap	143	zimbra.zcs-foss.test	accept
+zimbra-883	https	443		
 zimbra-883	admin	7071		

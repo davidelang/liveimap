@@ -1,0 +1,31 @@
+# Every upstream thing build-seed-image fetches, pinned. upstream_pins.py checks each fetch against this file and
+# fails loudly on a mismatch. kind<TAB>name<TAB>pin<TAB>source
+#   image:    name = image ref as written in build-seed-image/Dockerfiles, pin = registry manifest digest
+#   local:    an image built outside these scripts; pin = docker image Id
+#   tarball:  name = file name, pin = sha256 of the file, source = download URL
+#   git:      name = checkout, pin = commit, source = repository URL
+#   tool:     name = file name, pin = sha256, source = download URL (with {arch} = amd64|arm64)
+# Pinned 2026-10-21 from the images and files the 19-server proof was built from.
+image	dovecot/dovecot:2.4.5	sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914	docker.io
+image	stalwartlabs/stalwart:v0.16	sha256:74e5a7d55303ba525d939c6bf97ed4e010df7521f52d80afc22a815b66bd53f3	docker.io (moving tag; pinned to the v0.16.25 manifest)
+image	stalwartlabs/stalwart:v0.16.25	sha256:74e5a7d55303ba525d939c6bf97ed4e010df7521f52d80afc22a815b66bd53f3	docker.io
+image	stalwartlabs/stalwart:v0.15.5	sha256:dcf575db2d53d9ef86d6ced8abe4ba491984659a0f8862cc6079ee7b41c3c568	docker.io
+image	debian:bookworm	sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858	docker.io
+image	debian:bookworm-slim	sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8	docker.io
+image	debian:13-slim	sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f	docker.io
+image	debian/eol:lenny	sha256:c3ccfeb011d015021c84da0a502d9328dc17bdc1ca16ee503bac98a537305691	docker.io
+image	debian/eol:squeeze	sha256:80ed3d6f933f102b35efaa1a9a7513e5ed9937c5a93c289dd6e2e1db51d6f331	docker.io
+image	debian/eol:wheezy	sha256:bddcd5525189f4afeb098fba34e3131c1483fe7f54aebfad9befcb481bd8f9ed	docker.io
+image	debian/eol:jessie	sha256:81cc60273fcd009665b917085e8edb4a44af01130e42a9349545bcaaf05236a2	docker.io
+image	debian/eol:stretch	sha256:87de8b3de9239bd73f9d73bd3816411e156705c7517dd0177b50136e97cdb43f	docker.io
+image	docker.io/lukemathwalker/cargo-chef:latest-rust-slim-trixie	sha256:b22df2bf8abec048f46a6505c9303e2c8c0a8e22d21181f8b803b9ad5593ba99	docker.io (stalwart-dev Dockerfile)
+image	docker.io/debian:trixie-slim	sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad	docker.io (stalwart-dev Dockerfile)
+local	liveimap-zimbra-883:lan	sha256:a13e58360fa99d1d95717d520cbbf01aae4900a31728220cf35b08918a154f84	built outside build-seed-image
+tarball	cyrus-imapd-3.12.4.tar.gz	87a39e27208d9019f00608483d532eb05bd0d71394a6f3f8bb05a72833ad8d91	https://github.com/cyrusimap/cyrus-imapd/releases/download/cyrus-imapd-3.12.4/cyrus-imapd-3.12.4.tar.gz
+tarball	courier-imap-6.0.6.tar.bz2	857810d8bcfb9e617a0a7e05833b00d6310ca4be3632831c51824841b700664d	https://sourceforge.net/projects/courier/files/imap/6.0.6/courier-imap-6.0.6.tar.bz2/download
+tarball	courier-unicode-2.6.0.tar.bz2	0aed2349c5b62de0d33ccf8c23527aae41daf95a03c8054c88de4faef8da8a08	https://sourceforge.net/projects/courier/files/courier-unicode/2.6.0/courier-unicode-2.6.0.tar.bz2/download
+tarball	libical-4.0.5.tar.gz	cc09a3ac41d60e6144e644bd3fcf97d47106d659c4a0b8965102581401e67c9c	https://github.com/libical/libical/releases/download/v4.0.5/libical-4.0.5.tar.gz
+git	cyrus-imapd	a9d201bccdadd429c46bc4cf16995453a86d8eed	https://github.com/cyrusimap/cyrus-imapd
+git	dovecot-core	d6c3486ed839ec06f6a1ec87a6e307211e3a5c92	https://github.com/dovecot/core
+git	stalwart	2f5b9f2c697ca0fb1d7f015dcdeab961cd7be893	https://github.com/stalwartlabs/stalwart
+tool	docker-buildx-amd64	4fe4cc38adf48169132749b6ca22a990928db0118e3407584ee553723115d287	https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.linux-amd64
