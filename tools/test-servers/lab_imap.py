@@ -130,6 +130,25 @@ def mutf7(text):
     return "".join(out)
 
 
+def append_one(m, box, flags, msg):
+    """APPEND that must succeed. count() leaves the box EXAMINEd, and some servers (Courier 4: "Current box is
+    selected READ-ONLY.") refuse APPEND to a read-only selected box, so close it first."""
+    if m.state == "SELECTED":
+        m.close()
+    typ, data = m.append(f'"{box}"', flags, None, msg)
+    if typ != "OK":
+        sys.exit(f"APPEND {box} failed: {typ} {data[0][:120] if data and data[0] else ''}")
+    return typ
+
+
+def require_count(m, box, target):
+    """Print the seeded count; exit 1 unless the box holds exactly target messages."""
+    got = count(m, box)
+    print(f"{box}: {got} messages (target {target})")
+    if got != target:
+        sys.exit(f"seed {box}: {got} messages != target {target}")
+
+
 def ensure(m, box):
     if count(m, box) < 0:
         m.create(f'"{box}"')
@@ -236,9 +255,9 @@ def seed_spoof(a, allow):
     for i in range(count(m, box), target):
         subject, filename = rows[i][0], rows[i][1]
         mime, content = SPOOFS[i][2], SPOOFS[i][3]
-        typ, _ = m.append(f'"{box}"', "(\\Seen)", None, spoof_message(subject, filename, mime, content))
+        typ = append_one(m, box, "(\\Seen)", spoof_message(subject, filename, mime, content))
         print(f"append {subject}: {typ}")
-    print(f"{box}: {count(m, box)} messages (target {target})")
+    require_count(m, box, target)
     m.logout()
 
 
@@ -250,9 +269,9 @@ def seed_deep(a, allow):
     levels = [int(fields[0]) for fields in lab.fixture_fields("deep")]
     ensure(m, box)
     for i in range(count(m, box), target):
-        typ, data = m.append(f'"{box}"', "(\\Seen)", None, deep_message(levels[i]))
-        print(f"append {levels[i]} levels: {typ} {data[0][:80] if data and data[0] else ''}")
-    print(f"{box}: {count(m, box)} messages (target {target})")
+        typ = append_one(m, box, "(\\Seen)", deep_message(levels[i]))
+        print(f"append {levels[i]} levels: {typ}")
+    require_count(m, box, target)
     m.logout()
 
 
@@ -277,8 +296,8 @@ def seed(a, allow):
             flags = "(\\Seen)" if i % 3 else "()"
             if i % 11 == 0:
                 flags = "(\\Flagged)"
-            m.append(f'"{box}"', flags, None, message(i, kinds[i % len(kinds)]))
-        print(f"{box}: {count(m, box)} messages (target {target})")
+            append_one(m, box, flags, message(i, kinds[i % len(kinds)]))
+        require_count(m, box, target)
     m.logout()
 
 

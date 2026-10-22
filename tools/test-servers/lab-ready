@@ -132,6 +132,12 @@ def main():
         err = lab.seed_problem(server, regress.image_inspect(server))
         if err:
             blocked("seed", err, "tools/test-servers/build-seed-image " + server)
+        # Offline content audit: build-time live audit label for the current inputs, cert files inside the image.
+        proc = subprocess.run([sys.executable, os.path.join(HERE, "seed_audit.py"), "image", server],
+                              capture_output=True, text=True, errors="replace")
+        if proc.returncode != 0:
+            first = next((l for l in proc.stdout.splitlines() if l.startswith("AUDIT FAIL")), proc.stderr.strip()[-200:])
+            blocked("seed", first, "tools/test-servers/build-seed-image " + server)
     stamp_path = os.path.join(REPO, "app/build/outputs/build_app/test.json")
     if not os.path.isfile(stamp_path):
         blocked("apk", "test.json missing", "./deploy --test emulator")

@@ -411,7 +411,7 @@ for server in lab.SEED_SERVERS:
     assert server in builder, server
 assert len(lab.SEED_SERVERS) == 19
 for line in builder.splitlines():
-    if "docker rm" in line:
+    if "docker rm" in line and 'docker rmi "liveimap-seed-$server"' not in line:  # an image failing its audit is removed
         assert "liveimap-build-" in line, line
     if "$(" in line and not line.strip().startswith("#"):
         code = line.strip()
@@ -732,7 +732,15 @@ assert "seed-deep" not in lab_py and "seed-spoof" not in lab_py
 assert "seed-deep" not in regress and "seed-spoof" not in regress
 assert "sys.exit" not in py_function(lab_py, "fixture_check")
 assert "sys.exit" not in py_function(lab_py, "fixture_problem")
-fix_at = regress.find("lab.fixture_check(s)")
+fix_at = regress.find("problem = lab.fixture_check(s)")
+# verify_one (regress start/verify) also checks the suite boxes, so an empty seed folder blocks there too.
+assert "suite = lab.fixture_check(s)" in py_function(regress, "verify_one")
+lab_imap_src = open(os.path.join(HERE, "lab_imap.py"), encoding="utf-8").read()
+for fn in ("seed", "seed_deep", "seed_spoof"):
+    body = py_function(lab_imap_src, fn)
+    assert "m.append(" not in body and "append_one(" in body and "require_count(" in body, fn
+assert "m.close()" in py_function(lab_imap_src, "append_one") and "sys.exit" in py_function(lab_imap_src, "append_one")
+assert "sys.exit" in py_function(lab_imap_src, "require_count")
 assert fix_at != -1
 fix_window = regress[fix_at:fix_at + 220]
 assert "stop(" in fix_window and "build-seed-image" in fix_window and "VERDICT BLOCKED" in fix_window
@@ -1024,3 +1032,11 @@ cy_end = builder.find("\nEOF\n", cy_ep)
 assert cy_ep != -1 and "/run/cyrus" in builder[cy_ep:cy_end]
 assert builder.count("docker logs --tail 80") == 9
 print("ok")
+# Seed audit: build-seed-image audits live before each commit and the image after; lab-ready audits each image.
+audit_src = open(os.path.join(HERE, "seed_audit.py"), encoding="utf-8").read()
+assert builder.count('python3 "$DIR/seed_audit.py" live "$server" "$lab_host" "$host_port"') == 2
+assert builder.count('if ! python3 "$DIR/seed_audit.py" image "$server"; then') == 2
+assert builder.count('LABEL liveimap.audit=$audit') == 2
+assert '"seed_audit.py"), "image", server]' in open(os.path.join(HERE, "lab-ready"), encoding="utf-8").read()
+assert 'g["verify_one"](s, True)' in audit_src and "getpeercert(binary_form=True)" in audit_src
+assert "/etc/lab/" in audit_src and "liveimap.audit" in audit_src

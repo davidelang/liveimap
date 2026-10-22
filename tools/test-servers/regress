@@ -1316,6 +1316,9 @@ def verify_one(s, skipped):
                 mail.logout()
             except Exception:
                 pass
+    suite = lab.fixture_check(s)  # the suite boxes (LiveIMAP-Test, Sub, Trash, Deep, Spoof) are part of the seed too
+    if suite:
+        problems.append(f"{server} {suite}")
     if skipped:
         return "", [f"drift: {line}" for line in problems]
     if problems:
