@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Drafts
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderSpecial
@@ -101,10 +100,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
-import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
-import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
@@ -170,9 +168,6 @@ private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
     FolderBarAction.SaveDefault -> R.string.folders_save_default
     FolderBarAction.ResetDefault -> R.string.folders_reset_default
 }
-
-/** True when the folder list sits above the message list, which already has its own Compose button. */
-val LocalFolderPaneAboveList = androidx.compose.runtime.staticCompositionLocalOf { false }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -256,6 +251,7 @@ private fun FolderListLoaded(
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
 ) {
+    LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val session = remember(accountId) { mailSession(accountId) }
@@ -962,17 +958,6 @@ private fun FolderListLoaded(
             }
         }
     }
-        if (!LocalFolderPaneAboveList.current) HelpExtendedFab(
-            label = stringResource(R.string.folders_compose),
-            help = stringResource(R.string.help_folders_compose),
-            page = "folders.html#compose",
-            onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
-            expanded = !listState.isScrollInProgress,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.folders_compose)) },
-        )
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),

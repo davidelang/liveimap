@@ -38,8 +38,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.ui.platform.testTag
@@ -54,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -68,6 +72,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -129,6 +135,7 @@ import org.dlang.liveimap.ui.filter.FilterEditorScreen
 import org.dlang.liveimap.ui.filter.FilterListScreen
 import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
+import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.index.SearchScope
@@ -159,6 +166,43 @@ internal fun certDisplayText(text: String, limit: Int = 160): String {
         }
     }.trim().replace(Regex(" {2,}"), " ")
     return if (cleaned.length <= limit) cleaned else cleaned.take(limit) + "…"
+}
+
+internal enum class ComposeButton { Hidden, Open, Pick }
+
+internal fun composeButton(route: String, accounts: Set<String>): ComposeButton {
+    if (route == "compose" || route == "help" || route == "about" || route == "about/licenses" ||
+        route == "settings" || route.startsWith("settings/")
+    ) {
+        return ComposeButton.Hidden
+    }
+    val named = accounts.filter { it.isNotEmpty() }
+    if (named.size == 1 && named.size == accounts.size) return ComposeButton.Open
+    return ComposeButton.Pick
+}
+
+internal class ScreenAccounts {
+    private val counts = mutableStateMapOf<String, Int>()
+
+    fun ids(): Set<String> = counts.keys.toSet()
+
+    @Composable
+    fun Register(accountId: String) {
+        DisposableEffect(accountId) {
+            if (accountId.isNotEmpty()) {
+                counts[accountId] = (counts[accountId] ?: 0) + 1
+            }
+            onDispose {
+                if (accountId.isEmpty()) return@onDispose
+                val left = (counts[accountId] ?: 1) - 1
+                if (left <= 0) counts.remove(accountId) else counts[accountId] = left
+            }
+        }
+    }
+}
+
+internal val LocalScreenAccounts = staticCompositionLocalOf<ScreenAccounts> {
+    error("ScreenAccounts is not provided")
 }
 
 @Composable
@@ -589,9 +633,7 @@ fun LiveImapNavHost() {
                             if (foldersAboveNow.value) {
                                 Column(Modifier.fillMaxSize()) {
                                     Box(Modifier.weight(0.35f).fillMaxWidth()) {
-                                        androidx.compose.runtime.CompositionLocalProvider(
-                                            org.dlang.liveimap.ui.folder.LocalFolderPaneAboveList provides true,
-                                        ) { folderListPane() }
+                                        folderListPane()
                                     }
                                     Box(Modifier.height(8.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outlineVariant))
                                     Box(Modifier.weight(0.65f).fillMaxWidth()) { IndexBody(shownViewToken, watch = false) }
@@ -1253,7 +1295,11 @@ fun LiveImapNavHost() {
             }
         }
     }
+    val screenAccounts = remember { ScreenAccounts() }
+    var composeAccounts by remember { mutableStateOf<List<AccountChoice>?>(null) }
+    CompositionLocalProvider(LocalScreenAccounts provides screenAccounts) {
     LiveImapScaffold {
+        Box(Modifier.fillMaxSize()) {
         val tree = customTree
         if (settingsSplit) {
             val openGroup = currentEntry?.arguments?.getString("group")?.let(SettingsGroup::fromRoute)
@@ -1392,6 +1438,82 @@ fun LiveImapNavHost() {
                 },
             )
         }
+        val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
+        LaunchedEffect(composeChoice) {
+            if (composeChoice != ComposeButton.Pick) composeAccounts = null
+        }
+        if (composeChoice != ComposeButton.Hidden) {
+            HelpExtendedFab(
+                label = stringResource(R.string.screen_compose),
+                help = stringResource(R.string.help_screen_compose),
+                page = "writing.html",
+                onClick = {
+                    val ids = screenAccounts.ids()
+                    when (composeButton(route.orEmpty(), ids)) {
+                        ComposeButton.Hidden -> Unit
+                        ComposeButton.Open -> openCompose(
+                            ComposeSeed(ComposeKind.New, null, emptyList(), accountId = ids.single()),
+                        )
+                        ComposeButton.Pick -> scope.launch { composeAccounts = store.listAccounts() }
+                    }
+                },
+                expanded = true,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(
+                        mailScreenInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.End),
+                    )
+                    .padding(16.dp)
+                    .zIndex(2f),
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringResource(R.string.screen_compose),
+                    )
+                },
+            )
+        }
+        val listed = composeAccounts
+        if (listed != null && composeChoice == ComposeButton.Pick) {
+            AlertDialog(
+                onDismissRequest = { composeAccounts = null },
+                title = { Text(stringResource(R.string.screen_compose)) },
+                text = {
+                    if (listed.isEmpty()) {
+                        Text(stringResource(R.string.folders_no_account))
+                    } else {
+                        Column(Modifier.verticalScroll(rememberScrollState())) {
+                            for (account in listed) {
+                                Text(
+                                    text = account.name,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            openCompose(
+                                                ComposeSeed(
+                                                    ComposeKind.New,
+                                                    null,
+                                                    emptyList(),
+                                                    accountId = account.id,
+                                                ),
+                                            )
+                                            composeAccounts = null
+                                        }
+                                        .padding(vertical = 12.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { composeAccounts = null }) {
+                        Text(stringResource(R.string.drawer_cancel))
+                    }
+                },
+            )
+        }
+        }
+    }
     }
 }
 

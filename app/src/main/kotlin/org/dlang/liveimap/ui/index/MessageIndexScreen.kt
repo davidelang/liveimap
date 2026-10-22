@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.DriveFileMove
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
@@ -144,8 +143,8 @@ import android.content.Context
 import android.content.ContextWrapper
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
-import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpIconButton
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
@@ -788,6 +787,7 @@ private fun MessageIndexLoaded(
     onAdvancedConsumed: () -> Unit = {},
     onOpenFolder: (String) -> Unit = {},
 ) {
+    LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val emptyIndexSentence = stringResource(R.string.index_empty)
     val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
@@ -3666,17 +3666,6 @@ private fun MessageIndexLoaded(
         }
         }
     }
-        HelpExtendedFab(
-            label = stringResource(R.string.index_compose),
-            help = stringResource(R.string.help_index_compose),
-            page = "messages.html#compose",
-            onClick = { onCompose(ComposeSeed(ComposeKind.New, null, emptyList())) },
-            expanded = !listState.isScrollInProgress,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            icon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = stringResource(R.string.index_compose)) },
-        )
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),

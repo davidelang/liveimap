@@ -52,6 +52,7 @@ import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.settings.alpineBookOf
 import org.dlang.liveimap.settings.alpineBookSourceId
 import org.dlang.liveimap.settings.alpineBooks
+import org.dlang.liveimap.ui.LocalScreenAccounts
 
 private enum class CopyStep { Source, Contacts, Destination, Preview }
 
@@ -82,6 +83,7 @@ fun ContactCopyScreen() {
 
 @Composable
 private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) {
+    LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
     val session = remember(accountId) { mailSession(accountId) }

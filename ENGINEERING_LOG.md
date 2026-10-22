@@ -3555,3 +3555,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - A menu row keeps its press ripple and a long-press action.
 
 ## 2026-10-21 - The compose copy and its picked file follow one lifecycle.
+
+## 2026-10-21 - The screen has one Compose button.

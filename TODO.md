@@ -79,6 +79,4 @@
 
 - Add attachments for sending and for receiving. The reader already lists and opens received parts, and a forward can resend those parts. Also check the plain-text version of an HTML message on send: compose sends text/plain only and does not add a text/html part with a text/plain alternative.
 
-- One Compose button for the whole screen in a multi-panel layout. The folder list and the message index each draw their own Compose button, so a side-by-side layout shows more than one. Reply, reply-all, forward, and bounce on an open message stay message actions.
-
 - release shrinking stays on; the keep check is `:app:checkArm64ReleaseKeeps`; measuring startup needs a device and is not a coder step.

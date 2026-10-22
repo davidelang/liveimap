@@ -63,6 +63,7 @@ import org.dlang.liveimap.ui.index.deleteAdvanced
 import org.dlang.liveimap.ui.index.encodeAdvancedQuery
 import org.dlang.liveimap.ui.index.mailboxesFor
 import org.dlang.liveimap.ui.index.saveAdvanced
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.ui.mailScreenInsets
 
 private data class AdvancedField(
@@ -217,6 +218,7 @@ private fun AdvancedSearchLoaded(
     onSearch: (String, SearchScope) -> Unit,
     onBack: () -> Unit,
 ) {
+    LocalScreenAccounts.current.Register(accountId)
     var combiner by rememberSaveable(stateSaver = combinerSaver) { mutableStateOf(AdvancedCombiner.And) }
     var fuzzyOn by rememberSaveable { mutableStateOf(false) }
     var rows by rememberSaveable(stateSaver = draftRowSaver) { mutableStateOf(defaultDraftRows) }

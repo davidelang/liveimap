@@ -168,6 +168,7 @@ import org.dlang.liveimap.ui.contacts.bookHasAddress
 import org.dlang.liveimap.ui.contacts.readPineBook
 import org.dlang.liveimap.ui.contacts.writePineBook
 import org.dlang.liveimap.ui.ConnectionStatusStrip
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
@@ -379,6 +380,7 @@ private fun MessageReaderLoaded(
     onCustomize: (String) -> Unit = { _ -> },
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
+    LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
     val noAppFound = stringResource(R.string.reader_no_app)

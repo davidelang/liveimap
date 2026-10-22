@@ -33,6 +33,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.openBound
+import org.dlang.liveimap.ui.LocalScreenAccounts
 
 /** The entry being edited: null original = a new entry. */
 private data class Draft(val original: String?, val entry: AlpineEntry)
@@ -55,6 +56,7 @@ fun AddressBookScreen() {
 
 @Composable
 private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) {
+    LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()

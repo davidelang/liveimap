@@ -24,6 +24,7 @@
     <string name="help_folders_refresh">Loads the folder list again.</string>
     <string name="help_folders_more">Collapse all, the default view, and the toolbar editor.</string>
     <string name="help_folders_compose">Starts a new message.</string>
+    <string name="help_screen_compose">Starts a new message.</string>
     <string name="help_index_back">Returns to the folder list.</string>
     <string name="help_index_search">Searches this folder. Subject is the usual field.</string>
     <string name="help_index_sort">Changes the order of this folder.</string>
@@ -105,6 +106,7 @@
     <string name="folders_search">Search folders</string>
     <string name="folders_clear_search">Clear search</string>
     <string name="folders_compose">Compose</string>
+    <string name="screen_compose">Compose</string>
     <string name="folders_retry">Retry</string>
     <string name="folders_none">No folders</string>
     <string name="folders_none_match">No matching folders</string>

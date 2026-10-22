@@ -53,10 +53,12 @@ import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.sieveEndpoint
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.settings.tlsPolicy
 
 @Composable
 fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
+    LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val store = remember(accountId) {
         DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })
@@ -207,6 +209,7 @@ fun FilterEditorScreen(
     seed: List<RuleCriterion>,
     onDone: () -> Unit,
 ) {
+    LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val store = remember(accountId) {
         DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })

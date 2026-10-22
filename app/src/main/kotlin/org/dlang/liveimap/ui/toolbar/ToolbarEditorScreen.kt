@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -142,6 +143,7 @@ private class ToolbarSettings(
 
 @Composable
 fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
+    LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val accountStore = remember(accountId) {

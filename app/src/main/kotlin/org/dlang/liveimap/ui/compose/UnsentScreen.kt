@@ -27,6 +27,7 @@ import java.text.DateFormat
 import java.util.Date
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.ui.LocalScreenAccounts
 
 @Composable
 fun UnsentScreen(
@@ -43,6 +44,7 @@ fun UnsentScreen(
         if (accountId == null) accountId = store.chosenAccountId()
     }
     val id = accountId ?: ""
+    LocalScreenAccounts.current.Register(id)
 
     LaunchedEffect(id) {
         copies = readCopies(appContext, id)
