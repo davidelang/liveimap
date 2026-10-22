@@ -68,7 +68,7 @@ private data class AndroidWrite(
 )
 
 @Composable
-fun ContactCopyScreen() {
+fun ContactCopyScreen(registerAccount: Boolean = false) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
@@ -78,12 +78,21 @@ fun ContactCopyScreen() {
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
-    ContactCopyLoaded(accountId = id, store = remember(id) { store.forAccount(id) })
+    ContactCopyLoaded(
+        accountId = id,
+        store = remember(id) { store.forAccount(id) },
+        registerAccount = registerAccount,
+    )
 }
 
 @Composable
-private fun ContactCopyLoaded(accountId: String, store: DataStoreSettingsStore) {
-    LocalScreenAccounts.current.Register(accountId)
+private fun ContactCopyLoaded(
+    accountId: String,
+    store: DataStoreSettingsStore,
+    registerAccount: Boolean,
+) {
+    // Account setup composes this screen with no provider. Only the NavHost call registers.
+    if (registerAccount) LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
     val session = remember(accountId) { mailSession(accountId) }

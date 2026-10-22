@@ -892,7 +892,7 @@ fun LiveImapNavHost() {
             }
             composable("contacts") {
                 UpPage(stringResource(R.string.settings_copy_contacts), onUp = { navController.popBackStack() }) {
-                    ContactCopyScreen()
+                    ContactCopyScreen(registerAccount = true)
                 }
             }
             composable("filters") {
