@@ -921,7 +921,14 @@ fi
 if [ ! -f /opt/stalwart/etc/config.toml ]; then
   /usr/local/bin/stalwart --init /opt/stalwart
 fi
-exec /usr/local/bin/stalwart --config /opt/stalwart/etc/config.toml
+config=/opt/stalwart/etc/config.toml
+# start.sh passes STALWART_PUBLIC_URL (lab_ports.py env) so JMAP session URLs name the lab host; the build
+# container has none and keeps the baked config.
+if [ -n "${STALWART_PUBLIC_URL:-}" ]; then
+  config=/tmp/stalwart-config.toml
+  (umask 077; cp /opt/stalwart/etc/config.toml "$config"; printf '\n[http]\nurl = "%s"\n' "'$STALWART_PUBLIC_URL'" >> "$config")
+fi
+exec /usr/local/bin/stalwart --config "$config"
 EOF
       ;;
     *)

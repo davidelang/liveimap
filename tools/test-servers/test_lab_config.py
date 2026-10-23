@@ -524,7 +524,8 @@ ep = builder[ep_at:ep_end]
 assert "exec /usr/local/bin/stalwart" in ep
 assert "/opt/stalwart/stalwart-mail" not in ep
 assert "/usr/local/bin/stalwart --init /opt/stalwart" in ep
-assert "--config /opt/stalwart/etc/config.toml" in ep
+assert "config=/opt/stalwart/etc/config.toml" in ep and '--config "$config"' in ep
+assert 'if [ -n "${STALWART_PUBLIC_URL:-}" ]' in ep and "[http]" in ep
 assert "stalwart-provision" not in ep
 assert "stalwart binary missing" in ep
 
@@ -1185,3 +1186,30 @@ assert 'f"{suite}-{todo[0]}.log"' in py_function(regress, "run_lab_suite")  # on
 print("ok per-server order")
 for l in out:
     print("  sample:", l)
+
+# Full-regress fixes 2026-10-22. Pure helpers and source text. This does not run docker, regress, or a device.
+assert lab.POLICY_REFUSED.search("login failed: Cleartext authentication disallowed on non-secure (SSL/TLS) connections.")
+with tempfile.TemporaryDirectory() as _d:
+    _j = os.path.join(_d, "zimbra-883-None.jsonl")
+    with open(_j, "w") as _h:
+        _h.write('{"conn":"main","dir":"C","line":"2 LOGIN x cleartext logins disabled"}\n')
+        _h.write('not json\n')
+    _rows = [["open", "fail", "login failed (server rejected LOGIN)"]]
+    assert not lab.policy_refused(_rows, [_j])  # client lines do not count
+    with open(_j, "a") as _h:
+        _h.write('{"conn":"main","dir":"S","line":"2 NO cleartext logins disabled"}\n')
+    assert lab.policy_refused(_rows, [_j])
+assert lab.policy_refused([["open", "fail", "LOGIN is disabled on the clear-text port"]], [])
+_ss = {}
+exec(py_function(regress, "step_status"), _ss)
+assert _ss["step_status"]({"open": ("fail", "x")}, "open", "expected")[0] == "skip"
+assert _ss["step_status"]({"open": ("fail", "x")}, "open", "fail")[0] == "fail"
+assert _ss["step_status"]({"idle": ("fail", "x")}, "idle", "expected")[0] == "fail"  # KNOWN via known-limits
+_kl = open(os.path.join(HERE, "known-limits.tsv")).read()
+assert "stalwart-0155\timap-idle\tidle" not in _kl and "uwimap\timap-idle\tidleRenew" in _kl
+assert "cyrus-3137\tjmap\tsubmit" in _kl and "cyrus-3124\tjmap\tsubmit" in _kl
+import lab_ports
+assert lab_ports.env_flags("dovecot-245", {}) == []
+_start = open(os.path.join(HERE, "start.sh")).read()
+assert '$port_flags $env_flags "$image"' in _start
+print("full-regress fixes ok")

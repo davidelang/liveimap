@@ -906,6 +906,9 @@ def steps_for(row):
 
 def step_status(steps, check, summary_result):
     """A step the suite never ran (no IDLE, no sieve port) is a skip. A failed open is a fail."""
+    if summary_result == "expected" and check == "open" and check in steps and steps[check][0] != "ok":
+        # lab.py marks a policy refusal of plaintext login "expected": the server is right, the variant is skipped.
+        return "skip", "server policy: " + steps[check][1]
     if check in steps:
         res = steps[check][0]
         if res == "ok":

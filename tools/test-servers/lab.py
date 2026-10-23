@@ -144,7 +144,27 @@ def plain_caps(port):
 MECHS = False
 IDLE_NO_EXAMINE_PUSH = {"uwimap"}
 POLICY_REFUSED = re.compile(r"disabled on the clear-text port|PRIVACYREQUIRED|cleartext logins? (are )?disabled|"
-                            r"plaintext authentication disallowed", re.I)
+                            r"plaintext authentication disallowed|cleartext authentication disallowed", re.I)
+
+
+def policy_refused(rows, files):
+    """The open step failed because the server refuses plaintext login by policy. The app's open detail may
+    carry the server text (dovecot, stalwart) or only "server rejected LOGIN" (zimbra), so the server lines of
+    the run's wire record ("dir":"S") are read too."""
+    if any(r[0] == "open" and len(r) > 2 and POLICY_REFUSED.search(r[2]) for r in rows):
+        return True
+    for path in files:
+        if not path.endswith(".jsonl"):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and rec.get("dir") == "S" and POLICY_REFUSED.search(str(rec.get("line", ""))):
+                    return True
+    return False
 
 
 def _text(value):
@@ -1138,12 +1158,12 @@ def run_one(s, commit, stamp, out):
                 steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
                 # A server that refuses plaintext login by policy (e.g. Stalwart 0.16: "LOGIN is disabled on the
                 # clear-text port") is expected, not an app failure.
-                if tls == "None" and bad == ["open"] and any(
-                        r[0] == "open" and len(r) > 2 and POLICY_REFUSED.search(r[2]) for r in rows):
+                if tls == "None" and bad == ["open"] and policy_refused(rows, files):
                     res, msg = "expected", "server policy: plaintext login refused"
                 # UW-IMAP (mbox) checks for new mail every 60 s during IDLE but reports it only to SELECTed
                 # sessions; the app's watch uses EXAMINE on purpose (David, 2026-10-11), so no EXISTS ever arrives.
-                elif name in IDLE_NO_EXAMINE_PUSH and bad == ["idle"]:
+                # The renewal step watches the same EXAMINEd mailbox, so it sees no EXISTS either.
+                elif name in IDLE_NO_EXAMINE_PUSH and "idle" in bad and set(bad) <= {"idle", "idleRenew"}:
                     res, msg = "expected", "expected-by-server-behaviour: no IDLE push to EXAMINE sessions"
             # Servers in old-tls.txt run with the app's Allow old TLS and weak keys setting on (labOldTls).
             out.write(f"{name}\timap{('/' + mech) if mech else ''}\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")

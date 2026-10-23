@@ -12,6 +12,7 @@ Usage:
   lab_ports.py sync            draw missing services, rewrite the derived local-ports.tsv rows
   lab_ports.py flags SERVER    print the docker -p arguments for SERVER (after sync)
   lab_ports.py port SERVICE    print one shared host port (after sync)
+  lab_ports.py env SERVER      print the docker -e arguments for SERVER (after sync); empty for most servers
 """
 import os
 import socket
@@ -177,6 +178,20 @@ def sync():
     os.replace(tmp, LOCAL_PORTS)
 
 
+def env_flags(server, have):
+    """Stalwart builds its JMAP session URLs from its hostname (https://localhost.local/...), which the app's
+    same-origin check rejects. STALWART_PUBLIC_URL names the address devices really use."""
+    if not server.startswith("stalwart"):
+        return []
+    sys.path.insert(0, HERE)
+    import lab
+    if not lab.LAB_HOST:
+        fail(f"{server}: LAB_BIND is empty in host.env; STALWART_PUBLIC_URL needs the lab host")
+    if "https" not in have:
+        fail(f"{server}: no shared https port in {LAB_PORTS}; run lab_ports.py sync")
+    return ["-e", f"STALWART_PUBLIC_URL=https://{lab.LAB_HOST}:{have['https']}"]
+
+
 def main():
     if len(sys.argv) == 2 and sys.argv[1] == "sync":
         sync()
@@ -192,6 +207,9 @@ def main():
                 fail(f"{service}: not in {LAB_PORTS}; run lab_ports.py sync")
             out.append(f"-p {have[service]}:{cport}")
         print(" ".join(out))
+        return
+    if len(sys.argv) == 3 and sys.argv[1] == "env":
+        print(" ".join(env_flags(sys.argv[2], have)))
         return
     if len(sys.argv) == 3 and sys.argv[1] == "port":
         if sys.argv[2] not in have:
