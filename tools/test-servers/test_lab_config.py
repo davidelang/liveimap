@@ -157,6 +157,9 @@ for _c in ("stalwart", "stalwart-01625", "stalwart-dev"):
     assert _jmap_send[_c] == ("https", "USER", "USER@localhost.local", "USER@localhost.local"), _c
 assert _jmap_send["stalwart-0155"] == ("https", "USER-send", "USER-send@liveimap.example.com", "USER@liveimap.example.com")
 _s015 = open(os.path.join(HERE, "stalwart_015_accounts.py"), encoding="utf-8").read()
+# The sender gets a top-level "Sent" (the lab send's sentMailbox; 0.15 names its role-sent folder "Sent Items"),
+# created over JMAP with the credentials on curl's stdin, never on a command line.
+assert '"create": {"sent": {"name": "Sent", "parentId": None}}' in _s015 and '"-K", "-"' in _s015
 assert 'SEND_DOMAIN = "liveimap.example.com"' in _s015 and 'user + "-send"' in _s015 and 'user + "@" + SEND_DOMAIN' in _s015
 _bsi = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
 assert '"user" + sep + local + sep + "Sent@" + domain' in _bsi

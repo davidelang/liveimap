@@ -49,6 +49,31 @@ post({"type": "individual", "name": user + "-send", "secrets": [sender_secret],
       "emails": [user + "-send@" + SEND_DOMAIN], "roles": ["user"]})
 
 
+def jmap_as(login, secret, path, body=None):
+    """JMAP on 127.0.0.1:8080 as LOGIN. The credentials go to curl on stdin (-K -), never on a command line."""
+    cmd = ["docker", "exec", "-i", container, "curl", "-sS", "-f", "-K", "-"]
+    if body is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+    r = subprocess.run(cmd + ["http://127.0.0.1:8080" + path], input=f'user = "{login}:{secret}"\n',
+                       capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"stalwart 0.15 JMAP {path} as {login} failed ({r.returncode}): {r.stderr[-300:]}")
+    return json.loads(r.stdout)
+
+
+# The JMAP lab send (JmapLabSuiteTest) saves its copy in the folder named exactly "Sent"; 0.15 makes the new
+# account's role-sent folder "Sent Items". The run user's "Sent" comes from the fixture; the sender gets its own here.
+sender = user + "-send"
+session = jmap_as(sender, sender_secret, "/jmap/session")
+made = jmap_as(sender, sender_secret, "/jmap", {
+    "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+    "methodCalls": [["Mailbox/set", {"accountId": session["primaryAccounts"]["urn:ietf:params:jmap:mail"],
+                                     "create": {"sent": {"name": "Sent", "parentId": None}}}, "0"]]})
+if "sent" not in (made["methodResponses"][0][1].get("created") or {}):
+    sys.exit(f"stalwart 0.15 {sender} Sent: {json.dumps(made['methodResponses'][0][1])[:300]}")
+print("stalwart 0.15 mailbox", sender, "Sent")
+
+
 # login-policy.tsv cleartext=yes: accept plain-text logins on the clear-text IMAP listener, then reload the config.
 def api(method, path, body=None):
     r = subprocess.run(["docker", "exec", "-i", container, "/bin/sh", "-c",
