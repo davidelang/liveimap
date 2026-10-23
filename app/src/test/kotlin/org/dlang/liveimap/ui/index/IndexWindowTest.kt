@@ -2693,6 +2693,9 @@ class IndexWindowTest {
         session.rows[62L] = row(62L)
         session.exists = 62
         session.threadNode = ThreadNode(null, (1L..62L).map { ThreadNode(it, emptyList()) })
+        runImmediate { model.applyChange(MailboxChange.Exists(62)) }
+        assertEquals(0, model.pendingNew)
+        assertTrue(model.newMailUnnumbered)
         runImmediate { model.refreshListed(shown, 62) }
         assertEquals(1, model.anchorPage)
         assertEquals(1, model.pendingNew)

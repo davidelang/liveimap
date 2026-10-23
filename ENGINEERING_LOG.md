@@ -3577,3 +3577,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-21 - Settings nodes use folder arrows, and a disabled row still opens.
 
 ## 2026-10-23 - Threaded index unread, delete, and refresh.
+
+## 2026-10-23 - A threaded refresh keeps exists growth after Exists.

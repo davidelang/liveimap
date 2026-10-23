@@ -827,6 +827,8 @@ class IndexModel(
 
     private var threadPlan: List<CollapsedThread> = emptyList()
     private var knownExists: Int = 0
+    /** Exists at the last successful listing. An Exists event moves [knownExists] only. */
+    private var listedExists: Int = 0
     private var arrivalTotal: Int = 0
     var pendingNew: Int = 0
         private set
@@ -1393,7 +1395,7 @@ class IndexModel(
     suspend fun refreshListed(shown: List<Long>, reportedExists: Int, toNewest: Boolean = false): List<IndexRow> {
         if (!threaded) return refreshShown(shown, reportedExists)
         val atNewest = showsNewestEnd
-        val rememberedExists = knownExists
+        val rememberedExists = listedExists
         val keptPending = pendingNew
         val keptUnnumbered = newMailUnnumbered
         if (toNewest || atNewest) jumpToNewest() else reloadKeepingAnchor()
@@ -2772,7 +2774,10 @@ class IndexModel(
 
     private suspend fun rememberExists() {
         val exists = home().selectedExists()
-        if (exists > 0) knownExists = exists
+        if (exists > 0) {
+            knownExists = exists
+            listedExists = exists
+        }
     }
 
     private suspend fun addNewTail(growth: Int) {
