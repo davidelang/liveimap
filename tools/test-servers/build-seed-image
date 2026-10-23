@@ -852,6 +852,13 @@ ssl_server {
   key_file = /etc/lab/server.key
 }
 CFG
+# The upstream fts.conf keeps flatcurve's min_term_size 2: a one-character word ("5" in "Acceptance 5 KB <n>")
+# is never indexed, so SEARCH SUBJECT with it misses unless another term happens to contain it (regress 2026-10-22).
+cat > /etc/dovecot/conf.d/zz-lab-fts.conf <<'CFG'
+fts flatcurve {
+  min_term_size = 1
+}
+CFG
 EOF
   chmod 755 "$work/liveimap-setup"
   upstream=$(python3 "$DIR/upstream_pins.py" image dovecot/dovecot:2.4.5)
@@ -2302,13 +2309,14 @@ if "LOGINDISABLED" in greeting:
 lines = imap.command('LOGIN cyrus "%s"' % admin)
 if not any(line.split(" ", 2)[1:2] == ["OK"] for line in lines):
     show_cyrus_admin_miss(lines)
-mailbox = "user" + sep + account
-lines = imap.command("CREATE %s" % mailbox)
-text = " ".join(lines).lower()
-good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
-if not good:
-    sys.stderr.write("mailbox create failed\n")
-    sys.exit(1)
+# The JMAP send test submits as this account (its Identity email is the userid) and saves the copy to its Sent.
+for mailbox in ("user" + sep + account, "user" + sep + local + sep + "Sent@" + domain):
+    lines = imap.command("CREATE %s" % mailbox)
+    text = " ".join(lines).lower()
+    good = any(line.split(" ", 2)[1:2] == ["OK"] for line in lines) or "exist" in text
+    if not good:
+        sys.stderr.write("mailbox create failed %s\n" % mailbox)
+        sys.exit(1)
 PY
     ;;
 esac

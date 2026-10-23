@@ -143,6 +143,13 @@ assert "Config.Hostname" not in jmap
 assert jmap.count("lab.mail_domain()") >= 2
 assert 'sys.exit("needs LAB_MAIL_DOMAIN")' not in jmap
 assert "JMAP_DOMAIN_USER" in jmap
+# Cyrus JMAP send: the domain account (Identity email = userid) submits to the bare run user; it needs a Sent.
+assert '"-e", "jmapSubmitUser", submit_user or RUNUSER' in jmap and "if cand in found:" in jmap
+_bsi = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
+assert '"user" + sep + local + sep + "Sent@" + domain' in _bsi
+_jst = open(os.path.join(HERE, "..", "..", "app", "src", "androidTest", "kotlin", "org", "dlang", "liveimap", "lab", "JmapLabSuiteTest.kt"), encoding="utf-8").read()
+assert 'arg("jmapSubmitUser")' in _jst and "From: $from" in _jst
+assert "min_term_size = 1" in _bsi  # dovecot-245: one-character words are searchable
 cyrus = open(os.path.join(HERE, "cyrus_domain_user.py"), encoding="utf-8").read()
 assert "lab.mail_domain()" in cyrus
 assert 'sys.exit("needs LAB_MAIL_DOMAIN")' not in cyrus
@@ -1127,7 +1134,7 @@ assert "file=sys.stderr" in py_function(regress, "progress")
 
 # tlsUntrusted: a plaintext variant that failed another step must not turn the TLS-only step into an empty FAIL.
 _ss = rg["step_status"]
-assert _ss({"idle": ("ok", ""), "idleRenew": ("fail", "x")}, "tlsUntrusted", "fail") == ("skip", "step not run")
+assert _ss({"idle": ("ok", ""), "idleRenew": ("fail", "x")}, "tlsUntrusted", "fail") == ("skip", "step tlsUntrusted not run (absent from steps.tsv)")
 assert _ss({}, "tlsUntrusted", "fail") == ("fail", "lab run failed before any step ran")
 assert _ss({"tlsUntrusted": ("ok", "certificate untrusted confirms=1")}, "tlsUntrusted", "fail")[0] == "ok"
 _n = len(rg["rows"])
@@ -1136,6 +1143,12 @@ rg["add_row"]("courier-50", "imap-idle", "tlsUntrusted", {}, "FAIL", "tlsUntrust
 assert rg["rows"][_n]["first_error"].startswith("no detail reported for tlsUntrusted"), rg["rows"][_n]
 rg["add_row"]("courier-50", "imap-idle", "idleRenew", {}, "FAIL", "idleRenew", "no EXISTS after 28 renewals", 1)
 assert rg["rows"][_n + 1]["first_error"] == "no EXISTS after 28 renewals"
+# A SKIP row always carries its reason (contacts alpineBook was an empty SKIP in regress 2026-10-22).
+rg["add_row"]("dovecot-245", "contacts", "alpineBook", {}, "SKIP", "", "", 1)
+assert rg["rows"][_n + 2]["first_error"].startswith("no skip reason reported for alpineBook"), rg["rows"][_n + 2]
+assert '"KNOWN", "skip", "SKIP") else ""' in py_function(regress, "run_lab_suite")
+assert _ss({"open": ("ok", ""), "select": ("ok", "")}, "alpineBook", "pass") == ("skip", "step alpineBook not run (absent from steps.tsv)")
+assert _ss({"alpineBook": ("skip", "no LiveIMAP-Test/Addressbook mailbox")}, "alpineBook", "pass") == ("skip", "no LiveIMAP-Test/Addressbook mailbox")
 print("ok step_status/empty-detail")
 
 # Startup and seed/start phase progress: a start line before anything slow, setup k/K per server step with

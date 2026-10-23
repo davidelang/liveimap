@@ -29,6 +29,19 @@ def derive_rcpt(base, user):
     except Exception as e:
         print("identity lookup:", type(e).__name__)
     return sess.get("username", user)
+def identity_emails(base, user):
+    """The Identity emails the server reports for USER (logged in as USER)."""
+    import base64, json, ssl, urllib.request
+    auth = "Basic " + base64.b64encode(f"{user}:{lab.PASS}".encode()).decode()
+    ctx = ssl.create_default_context(cadata=open(os.path.join(lab.GEN, "ca", "ca.der"), "rb").read()); ctx.check_hostname = False
+    def req(url, body=None):
+        r = urllib.request.Request(url, data=body, headers={"Authorization": auth, "Content-Type": "application/json"})
+        return json.loads(urllib.request.urlopen(r, context=ctx if url.startswith("https") else None, timeout=20).read())
+    sess = req(base + "/.well-known/jmap")
+    api = sess["apiUrl"] if sess["apiUrl"].startswith("http") else base + sess["apiUrl"]
+    acct = sess.get("primaryAccounts", {}).get("urn:ietf:params:jmap:mail", "")
+    ids = req(api, json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"], "methodCalls": [["Identity/get", {"accountId": acct}, "0"]]}).encode())
+    return [i["email"] for i in ids["methodResponses"][0][1].get("list", []) if i.get("email")]
 # JMAP_DOMAIN_USER=1: the run's domain-qualified lab account (<user>@LAB_MAIL_DOMAIN), whose Identity has an address.
 RUNUSER = (lab.USER.split("@")[0] + "@" + lab.mail_domain()) if os.environ.get("JMAP_DOMAIN_USER") else lab.USER
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
@@ -41,10 +54,23 @@ try:
     cport = ports.container_port(name, row[1])
     hp = subprocess.run(["docker", "port", s["container"], str(cport)], capture_output=True, text=True).stdout.split("\n")[0].rsplit(":", 1)[-1].strip()
     field = f"{row[1]}://{lab.EMU_HOST}:{hp}"
-    rcpt = f"{RUNUSER.split('@')[0]}@{row[2]}" if row[2] != "-" else derive_rcpt(f"{row[1]}://{lab.LAB_HOST}:{hp}", RUNUSER)
-    print("rcpt", rcpt)
+    base = f"{row[1]}://{lab.LAB_HOST}:{hp}"
+    rcpt = f"{RUNUSER.split('@')[0]}@{row[2]}" if row[2] != "-" else derive_rcpt(base, RUNUSER)
+    submit_user = ""
+    if "@" not in rcpt and lab.login_policy(name)["domain"] == "yes":
+        # Cyrus gives an Identity an email only for a userid with '@' (the bare user's is ""), and has no Identity/set.
+        # The seed's <user>@LAB_MAIL_DOMAIN account (build-seed-image, with a Sent) sends; the recipient stays the
+        # bare run user, whose INBOX the suite reads. Sending to itself would hang: Cyrus httpd holds the sender's
+        # mailbox lock through EmailSubmission/set while lmtpd waits on it for the delivery.
+        cand = lab.USER.split("@")[0] + "@" + lab.mail_domain()
+        found = identity_emails(base, cand)
+        if cand in found:
+            submit_user = cand
+        else:
+            print("no JMAP identity", cand, "for", name, "identities:", found)
+    print("rcpt", rcpt, "submit user", submit_user or RUNUSER)
     r = lab.adb("shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.JmapLabSuiteTest#jmapSuite",
-                "-e", "jmapServer", field, "-e", "jmapRcpt", rcpt, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),
+                "-e", "jmapServer", field, "-e", "jmapRcpt", rcpt, "-e", "jmapSubmitUser", submit_user or RUNUSER, "-e", "labHost", lab.EMU_HOST, "-e", "labRun", run, "-e", "labCa", lab.lab_ca(),
                 "-e", "labUser", RUNUSER, "-e", "labPass", lab.PASS, lab.RUNNER, timeout=900)
     out = lab.adb("exec-out", "run-as", lab.PKG, "cat", f"cache/recordings/{run}.steps.tsv").stdout
     print(name, field, "OK" if "OK (1 test)" in r.stdout else "FAIL"); print(out)

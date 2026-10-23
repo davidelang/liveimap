@@ -115,15 +115,18 @@ class JmapLabSuiteTest {
         var submitted = ""
         if (arg("jmapRcpt").isNotEmpty()) step("submit") {
             val rcpt = arg("jmapRcpt")
+            // -e jmapSubmitUser: the account that sends (its JMAP Identity is the From); default the lab account.
+            // On Cyrus it is <user>@<lab domain> (a bare userid's Identity has no email), sending to the bare lab user.
+            val from = arg("jmapSubmitUser").ifEmpty { rcpt }
             val sender = session()
-            val jmapAccount = account.copy(email = rcpt, emailSubmission = true, sentMailbox = "Sent")
+            val jmapAccount = account.copy(username = arg("jmapSubmitUser").ifEmpty { account.username }, email = from, emailSubmission = true, sentMailbox = "Sent")
             if (sender.open(jmapAccount) != OpenResult.Connected) throw IllegalStateException("open for submit failed")
             try {
                 submitted = "LiveIMAP JMAP submission ${System.currentTimeMillis()}"
-                val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: $submitted\r\n" +
-                    "Message-ID: <jmap-${System.nanoTime()}@${rcpt.substringAfter('@')}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nJMAP lab submission.\r\n").toByteArray()
+                val msg = ("From: $from\r\nTo: $rcpt\r\nSubject: $submitted\r\n" +
+                    "Message-ID: <jmap-${System.nanoTime()}@${from.substringAfter('@')}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nJMAP lab submission.\r\n").toByteArray()
                 sender.smtpSend(msg, listOf(rcpt))
-                "EmailSubmission accepted for $rcpt"
+                "EmailSubmission from $from accepted for $rcpt"
             } finally { sender.close() }
         }
         // The submitted message must arrive in this account's INBOX (rcpt is the lab account itself); removed afterwards.

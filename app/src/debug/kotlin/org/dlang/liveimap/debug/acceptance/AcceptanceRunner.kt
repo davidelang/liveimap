@@ -38,13 +38,9 @@ class AcceptanceContext(
     /** [mailbox] as one folder-scoped view, in the epoch the server has now (pass 5: nothing runs unscoped). */
     suspend fun folder(mailbox: String): MailSession =
         session.at(FolderAt(mailbox, session.folderInfo(FolderAt(mailbox)).uidValidity))
-    /** The one UID with [subject] in [testFolder] just after an APPEND. RFC 3501 6.3.11: the new message is only
-     *  certain to be in this session's view after a fresh SELECT or an EXISTS, and dovecot 2.4 SEARCH on a stale
-     *  view does not see it (full regress 2026-10-22), so the folder is reselected first. */
+    /** The one UID with [subject] in [testFolder] just after an APPEND. */
     suspend fun searchAfterAppend(subject: String): Long {
-        val box = folder(testFolder)
-        box.selectedInfo()
-        val found = box.searchCriterion("Subject", subject)
+        val found = folder(testFolder).searchCriterion("Subject", subject)
         return found.singleOrNull() ?: throw MailFailure("SEARCH SUBJECT after APPEND found ${found.size} messages: $found")
     }
 }

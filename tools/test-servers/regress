@@ -827,6 +827,9 @@ def add_row(server, suite, variant, counts, result, failing, error, duration):
     if result == "FAIL" and not str(error or "").strip():
         # A FAIL must say why. An empty detail is a harness defect; name where it came from.
         error = f"no detail reported for {failing or suite} (harness: empty failure text)"
+    if result == "SKIP" and not str(error or "").strip():
+        # A SKIP must say why too (contacts alpineBook came out as an empty SKIP, 2026-10-22).
+        error = f"no skip reason reported for {variant or suite} (harness: empty skip text)"
     progress_row(server, suite, variant, result, duration)
     rows.append({
         "server": server,
@@ -912,17 +915,20 @@ def step_status(steps, check, summary_result):
         res = steps[check][0]
         if res == "ok":
             return "ok", steps[check][1]
+        if res == "skip":
+            # LabSuiteTest skipStep: the step cannot run on this server and says why.
+            return "skip", steps[check][1]
         return "fail", steps[check][1]
     if summary_result in ("skip", "assumption", "pass", "expected"):
-        return "skip", "step not run"
+        return "skip", f"step {check} not run (absent from steps.tsv)"
     if "open" in steps and steps["open"][0] != "ok":
         return "fail", steps["open"][1]
     if summary_result == "fail":
         # The variant ran other steps but not this one (tlsUntrusted on a plaintext variant): not run, not a fail.
         if steps:
-            return "skip", "step not run"
+            return "skip", f"step {check} not run (absent from steps.tsv)"
         return "fail", "lab run failed before any step ran"
-    return "skip", "step not run"
+    return "skip", f"step {check} not run (absent from steps.tsv)"
 
 
 def lab_servers_by_name():
@@ -1740,7 +1746,7 @@ def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None)
             add_row(name, suite, "", counts_for("FAIL"), "FAIL", checks[0] if checks else suite, err, duration)
             cache_store(suite, name, "", "FAIL", counts_for("FAIL"))
             continue
-        per_check = {check: ("skip", "") for check in checks}
+        per_check = {check: ("skip", f"no lab result row for step {check}") for check in checks}
         mech_results = {}
         seconds = 0
         for row in server_rows:
@@ -1757,7 +1763,7 @@ def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None)
                 prev = mech_results.get(mechanism)
                 status = classify(mechanism, "imap-mechs", "open", res, detail)
                 if prev is None or RANK[status] > RANK[prev[0]]:
-                    mech_results[mechanism] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN") else "")
+                    mech_results[mechanism] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN", "SKIP") else "")
             else:
                 for check in checks:
                     res, detail = step_status(steps, check, row["result"])
@@ -1766,7 +1772,8 @@ def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None)
                     status = classify(name, suite, check, res, detail)
                     prev = per_check.get(check, ("SKIP", ""))
                     if RANK[status] >= RANK.get(prev[0], 0):
-                        per_check[check] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN") else "")
+                        # A skip keeps its reason: an empty SKIP row says nothing (contacts alpineBook, 2026-10-22).
+                        per_check[check] = (status, detail if status in ("FAIL", "unexpected pass", "KNOWN", "skip", "SKIP") else "")
         if mech:
             if not mech_results:
                 add_row(name, suite, "", counts_for("FAIL"), "FAIL", "open", "no mechanism result", seconds or duration)

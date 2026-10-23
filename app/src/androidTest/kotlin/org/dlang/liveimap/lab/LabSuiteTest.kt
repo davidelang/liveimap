@@ -85,6 +85,11 @@ class LabSuiteTest {
         var failed = 0
         // labSteps (lab.py --steps): run only these, plus open/select which the others need.
         val onlySteps = arg("labSteps").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        /** A step that cannot run here: steps.tsv says so with its reason, so regress reports a SKIP that says why. */
+        fun skipStep(name: String, reason: String) {
+            if (onlySteps.isNotEmpty() && name !in onlySteps) return
+            steps.append(name).append('\t').append("skip").append('\t').append(reason.replace('\t', ' ').replace('\n', ' ').take(400)).append('\n')
+        }
         suspend fun step(name: String, body: suspend () -> String) {
             if (onlySteps.isNotEmpty() && name !in onlySteps && name != "open" && name != "select") return
             TrafficRecorder.event("main", "step", name)
@@ -662,6 +667,7 @@ class LabSuiteTest {
                 }
                 // Contacts plan phase 6: Alpine book write + copy on the seeded <box>/Addressbook (lab only).
                 val abook = session.listLevel("", box, false).firstOrNull { it.leaf == "Addressbook" }?.mailbox
+                if (abook == null) skipStep("alpineBook", "no $box/Addressbook mailbox: the seed has no Alpine book")
                 if (abook != null) step("alpineBook") {
                     val first = readPineBook(session, abook) as? PineRead.Ready ?: throw IllegalStateException("not a book")
                     val base = first.state

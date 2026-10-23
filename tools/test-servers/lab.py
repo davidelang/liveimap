@@ -1195,8 +1195,10 @@ def run_one(s, commit, stamp, out):
             st = [p for p in files if p.endswith(".steps.tsv")]
             if st:
                 rows = [l.split("\t") for l in open(st[0]).read().splitlines()[1:]]
-                bad = [r[0] for r in rows if len(r) > 1 and r[1] != "ok"]
-                steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
+                bad = [r[0] for r in rows if len(r) > 1 and r[1] not in ("ok", "skip")]
+                skipped = [r[0] for r in rows if len(r) > 1 and r[1] == "skip"]
+                steps = (f"{len(rows)-len(bad)-len(skipped)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
+                         + (f" skip={','.join(skipped)}" if skipped else ""))
                 # A server that refuses plaintext login by policy (e.g. Stalwart 0.16: "LOGIN is disabled on the
                 # clear-text port") is expected, not an app failure.
                 # Only for servers login-policy.tsv lists as unable; elsewhere the refusal is a FAIL, named as such.
