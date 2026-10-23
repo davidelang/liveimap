@@ -578,6 +578,15 @@ class LibetpanMailSession : MailSession {
 
     private fun selectNow(mailbox: String): SelectResult = openMailbox(mailbox, write = false)
 
+    /**
+     * Courier refuses APPEND into the mailbox that is selected read-only ("NO Current box is selected READ-ONLY"),
+     * e.g. right after a SEARCH ran on it via EXAMINE. Re-SELECT it read-write first. Never CLOSE (F101: that
+     * would expunge); a re-SELECT of the same folder expunges nothing.
+     */
+    private fun writableForAppend(name: String) {
+        if (appendNeedsReadWrite(selectedMailbox, selectedReadWrite, name)) openMailbox(name, write = true)
+    }
+
     private fun ensureReadWrite() {
         val mailbox = selectedMailbox ?: return
         openMailbox(mailbox, write = true)
@@ -1311,6 +1320,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
         keeper.write("append") {
             forgetSelected()
+            writableForAppend(wire(mailbox))
             nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
         }
     }
@@ -1318,6 +1328,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         keeper.write("append") {
             forgetSelected()
+            writableForAppend(wire(mailbox))
             nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
         }
 
@@ -1903,6 +1914,10 @@ internal fun currentApplication(): Context? {
 
 /** Native window results are [count, uid...]; a server that sent no COUNT gives -1 (total unknown: window size). */
 /** A server that advertised PARTIAL but returned COUNT without the window it covers (seen on Cyrus ESORT). */
+/** True when APPEND targets the mailbox that is currently selected read-only (EXAMINE). */
+internal fun appendNeedsReadWrite(selectedMailbox: String?, selectedReadWrite: Boolean, target: String): Boolean =
+    selectedMailbox == target && !selectedReadWrite
+
 internal fun partialWindowIgnored(window: UidWindow, first: Int): Boolean =
     window.uids.isEmpty() && window.total >= first
 

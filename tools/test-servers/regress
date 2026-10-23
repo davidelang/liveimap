@@ -905,6 +905,28 @@ def reset_lab_server(s):
     return ""
 
 
+def reset_for_suite(suite, name):
+    """Drop the copy-on-write container and recreate it from its seed image, so a suite never sees an
+    earlier suite's writes (the imap suite's appends). Empty on success; servers without a container pass."""
+    import lab
+    s = lab_servers_by_name().get(name)
+    if not s or not s.get("container"):
+        return ""
+    lab.only_one("")
+    err = reset_lab_server(s)
+    return f"reset before {suite}: {err}" if err else ""
+
+
+def reset_or_fail(suite, name, check):
+    """Reset [name] for [suite]; on failure record a FAIL row and return False (the suite is not run)."""
+    err = reset_for_suite(suite, name)
+    if not err:
+        return True
+    add_row(name, suite, "", counts_for("FAIL"), "FAIL", check, redact(err), 0)
+    cache_store(suite, name, "", "FAIL", counts_for("FAIL"))
+    return False
+
+
 def container_running(cont):
     r = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", cont],
                        capture_output=True, text=True, errors="replace")
@@ -1354,6 +1376,8 @@ def run_imap(names, variants, force):
         if not force and cache_pass("imap", name, variant_key):
             record_cached("imap", name, variant_key)
             continue
+        if not reset_or_fail("imap", name, "reset"):
+            continue
         t0 = time.time()
         rc, text = run_cmd([sys.executable, os.path.join(HERE, "acclab.py"), name, "auto", run_id],
                            f"imap-{name}.log", env)
@@ -1440,6 +1464,9 @@ def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None)
     if not todo:
         return
     write_lock(f"suite {suite}")
+    todo = [name for name in todo if reset_or_fail(suite, name, checks[0] if checks else suite)]
+    if not todo:
+        return
     cmd = [sys.executable, os.path.join(HERE, "lab.py"), "run", "--skip-install", "--commit", commit, "--steps", args]
     if mech:
         cmd.append("--mechs")
@@ -1543,6 +1570,8 @@ def run_jmap(names, force):
         if not force and cache_pass("jmap", name, ""):
             record_cached("jmap", name, "")
             continue
+        if not reset_or_fail("jmap", name, "reset"):
+            continue
         t0 = time.time()
         rc, text = run_cmd([sys.executable, os.path.join(HERE, "jmaprun.py"), name, run_id],
                            f"jmap-{name}.log", child_env())
@@ -1605,6 +1634,8 @@ def run_smtp(force):
     write_lock("suite smtp")
     if not force and cache_pass("smtp", name, ""):
         record_cached("smtp", name, "")
+        return
+    if not reset_or_fail("smtp", name, "smtpAccepts"):
         return
     t0 = time.time()
     rc, text = run_cmd([sys.executable, os.path.join(HERE, "t4smtp.py"), commit], "smtp.log", child_env())

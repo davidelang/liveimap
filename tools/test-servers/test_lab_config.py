@@ -1040,3 +1040,14 @@ assert builder.count('LABEL liveimap.audit=$audit') == 2
 assert '"seed_audit.py"), "image", server]' in open(os.path.join(HERE, "lab-ready"), encoding="utf-8").read()
 assert 'g["verify_one"](s, True)' in audit_src and "getpeercert(binary_form=True)" in audit_src
 assert "/etc/lab/" in audit_src and "liveimap.audit" in audit_src
+
+# Every suite starts from the seed: the container is dropped and recreated before each suite on each server,
+# so the imap suite's appends never reach imap-idle's fixture precheck. Text only; no docker.
+reset_fn = py_function(regress, "reset_for_suite")
+assert "reset_lab_server(s)" in reset_fn and 'lab.only_one("")' in reset_fn
+for runner, before in (("run_imap", '"acclab.py"'), ("run_lab_suite", '"lab.py"), "run"'),
+                       ("run_jmap", '"jmaprun.py"'), ("run_smtp", '"t4smtp.py"')):
+    body = py_function(regress, runner)
+    assert "reset_or_fail(" in body, runner
+    assert body.find("reset_or_fail(") < body.find(before), runner
+assert "fixture_problem" not in py_function(regress, "reset_or_fail")
