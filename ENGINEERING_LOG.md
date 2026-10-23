@@ -3581,3 +3581,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-23 - A threaded refresh keeps exists growth after Exists.
 
 ## 2026-10-23 - Reader header, display menu, quotes, and message swipes.
+
+## 2026-10-23 - Index sort, filter line, and collapsed-thread swipe.

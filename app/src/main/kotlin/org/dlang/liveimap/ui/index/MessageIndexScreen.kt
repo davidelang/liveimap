@@ -35,12 +35,14 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.MoreVert
@@ -1250,11 +1252,16 @@ private fun MessageIndexLoaded(
         if (pending != null) publishUndo(pending)
     }
 
-    suspend fun finishSwipe(uid: Long, binding: SwipeBinding, rowMailbox: String = "") {
+    suspend fun finishSwipe(
+        uid: Long,
+        binding: SwipeBinding,
+        rowMailbox: String = "",
+        also: List<Long> = emptyList(),
+    ) {
         var undo: MailUndo? = null
 
         model.clearMailUndo()
-        when (val command = model.performSwipe(uid, binding, rowMailbox)) {
+        when (val command = model.performSwipe(uid, binding, rowMailbox, also)) {
             is IndexCommand.Compose -> onCompose(command.seed)
             is IndexCommand.ShowFlags -> flagUid = command.uid
             IndexCommand.None -> Unit
@@ -2368,14 +2375,20 @@ private fun MessageIndexLoaded(
                     } else {
                         Column {
                             MailboxTitleLines(heading.leaf, heading.parent)
-                            Text(
-                                text = stringResource(
-                                    R.string.settings_sort_line,
-                                    sortShortLabel(view.key),
-                                    stringResource(
-                                        if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
-                                    ),
+                            val sortLine = stringResource(
+                                R.string.settings_sort_line,
+                                sortShortLabel(view.key),
+                                stringResource(
+                                    if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
                                 ),
+                            )
+                            val criteria = if (filterActive) {
+                                filters.joinToString(", ") { filterChipText(it) }
+                            } else {
+                                ""
+                            }
+                            Text(
+                                text = if (filterActive && criteria.isNotEmpty()) "$sortLine · $criteria" else sortLine,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,
@@ -2791,21 +2804,15 @@ private fun MessageIndexLoaded(
                             icons = indexIcons,
                         )
                 Box {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        HelpIconButton(
-                            label = stringResource(R.string.index_sort),
-                            help = stringResource(R.string.help_index_sort),
-                            page = "messages.html#sort",
-                            onClick = { menuOpen = true },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Sort,
-                                contentDescription = stringResource(R.string.index_sort),
-                            )
-                        }
-                        Text(
-                            text = sortShortLabel(view.key),
-                            modifier = Modifier.clickable { menuOpen = true },
+                    HelpIconButton(
+                        label = stringResource(R.string.index_sort),
+                        help = stringResource(R.string.help_index_sort),
+                        page = "messages.html#sort",
+                        onClick = { menuOpen = true },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Sort,
+                            contentDescription = stringResource(R.string.index_sort),
                         )
                     }
                     DropdownMenu(
@@ -2813,43 +2820,6 @@ private fun MessageIndexLoaded(
                         onDismissRequest = { menuOpen = false },
                     ) {
                         ObscuredTouchFilter()
-                        // Quick filters first (easy to reach). Each narrows the list, combined with the active filters into one
-                        // server search (IndexModel.setFilters).
-                        val labelNew = stringResource(R.string.index_show_new)
-                        val labelUndeleted = stringResource(R.string.index_show_not_deleted)
-                        val labelThread = stringResource(R.string.index_show_thread)
-                        for ((label, run) in listOf<Pair<String, suspend () -> Unit>>(
-                            labelNew to { model.showNew(labelNew) },
-                            labelUndeleted to { model.showNotDeleted(labelUndeleted) },
-                            labelThread to {
-                                val uid = selected.firstOrNull() ?: model.rows.getOrNull(rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex))?.uid
-                                if (uid != null) model.showThreadOf(uid, labelThread)
-                            },
-                        )) {
-                            val quickHelp = when (label) {
-                                labelNew -> stringResource(R.string.help_menu_index_show_new)
-                                labelUndeleted -> stringResource(R.string.help_menu_index_show_not_deleted)
-                                else -> stringResource(R.string.help_menu_index_show_thread)
-                            }
-                            HelpDropdownMenuItem(
-                                label = label,
-                                help = quickHelp,
-                                page = "messages.html",
-                                text = { Text(label) },
-                                modifier = Modifier.testTag("index-quick-" + label),
-                                onClick = {
-                                    menuOpen = false
-                                    enqueueModel {
-
-                                        noteVisibleTop()
-                                        run()
-                                        pull()
-                                    
-                                    }
-                                },
-                            )
-                        }
-                        HorizontalDivider()
                         val fieldKeys = menuKeys.filter { key ->
                             key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject
                         }
@@ -3580,6 +3550,7 @@ private fun MessageIndexLoaded(
                                 aheadPhrase = indexAhead,
                                 badPattern = indexBadPattern,
                                 threadCount = threadCount,
+                                threadExpanded = row.uid in expandedThreads,
                                 onToggleThread = { toggleThread(row.uid) },
                                 onClick = {
                                     if (multiSelect && foreignRow(row)) {
@@ -3607,6 +3578,16 @@ private fun MessageIndexLoaded(
                                     }
                                 },
                                 onSwipe = { binding ->
+                                    val also = if (!foreignRow(row) && !entry.member) {
+                                        threadSwipeAlso(
+                                            false,
+                                            row.uid in expandedThreads,
+                                            threadHidden[row.uid].orEmpty(),
+                                            binding.action,
+                                        )
+                                    } else {
+                                        emptyList()
+                                    }
                                     var askedPermanent = false
                                     if (binding.action == SwipeAction.Delete && account.askBeforeExpunge) {
                                         val trash = readKnownTrash()
@@ -3619,7 +3600,7 @@ private fun MessageIndexLoaded(
                                         )
                                         if (policy == DeletePolicy.DeletePermanently) {
                                             pendingPermanent = PendingDelete(
-                                                listOf(row.uid),
+                                                listOf(row.uid) + also,
                                                 allMailbox = false,
                                                 fromSwipe = true,
                                                 rowMailbox = row.mailbox,
@@ -3627,7 +3608,7 @@ private fun MessageIndexLoaded(
                                             askedPermanent = true
                                         }
                                     }
-                                    if (!askedPermanent) finishSwipe(row.uid, binding, row.mailbox)
+                                    if (!askedPermanent) finishSwipe(row.uid, binding, row.mailbox, also)
                                 },
                             )
                         }
@@ -3704,7 +3685,13 @@ private fun MessageIndexLoaded(
                     pendingPermanent = null
                     enqueueModel {
                         if (request.fromSwipe) {
-                            finishSwipe(request.uids.single(), SwipeBinding(SwipeAction.Delete), request.rowMailbox)
+                            val head = request.uids.first()
+                            finishSwipe(
+                                head,
+                                SwipeBinding(SwipeAction.Delete),
+                                request.rowMailbox,
+                                request.uids.drop(1),
+                            )
                         } else {
                             applyDeletePolicy(
                                 request.policy,
@@ -4028,6 +4015,7 @@ private fun IndexMessageRow(
     aheadPhrase: String,
     badPattern: String,
     threadCount: String? = null,
+    threadExpanded: Boolean = false,
     onToggleThread: () -> Unit = {},
     onClick: () -> Unit,
     onLongPress: () -> Unit,
@@ -4251,6 +4239,20 @@ private fun IndexMessageRow(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val mark = threadCount
                             if (mark != null) {
+                                Icon(
+                                    imageVector = if (threadExpanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                                    contentDescription = stringResource(
+                                        if (threadExpanded) {
+                                            R.string.index_thread_expanded
+                                        } else {
+                                            R.string.index_thread_collapsed
+                                        },
+                                    ),
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clickable(role = Role.Button, onClick = onToggleThread),
+                                    tint = textColor,
+                                )
                                 Text(
                                     text = mark,
                                     modifier = Modifier

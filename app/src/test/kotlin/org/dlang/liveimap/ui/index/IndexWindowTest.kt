@@ -366,6 +366,32 @@ class IndexWindowTest {
     }
 
     @Test
+    fun collapsedThreadSwipeIncludesHiddenAndReplyStaysOnOne() {
+        assertEquals(listOf(1L, 2L), threadSwipeAlso(false, false, listOf(1L, 2L), SwipeAction.Delete))
+        assertEquals(emptyList<Long>(), threadSwipeAlso(false, true, listOf(1L, 2L), SwipeAction.Delete))
+        assertEquals(emptyList<Long>(), threadSwipeAlso(true, false, listOf(1L, 2L), SwipeAction.Delete))
+        assertEquals(emptyList<Long>(), threadSwipeAlso(false, false, listOf(1L, 2L), SwipeAction.Reply))
+
+        val session = FakeMailSession()
+        session.arrivalRows = listOf(row(6, flags = setOf("\\Seen")))
+        val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { model.loadWindow() }
+        val deleted = runImmediate { model.performSwipe(6L, SwipeBinding(SwipeAction.Delete), also = listOf(1L, 2L)) }
+        assertTrue(deleted is IndexCommand.None)
+        assertEquals(listOf(FlagWrite(listOf(6L, 1L, 2L), setOf("\\Deleted"), emptySet())), session.stores)
+        val reply = runImmediate { model.performSwipe(6L, SwipeBinding(SwipeAction.Reply), also = listOf(1L, 2L)) }
+        assertTrue(reply is IndexCommand.Compose)
+        assertEquals(listOf(6L), (reply as IndexCommand.Compose).seed.uids)
+
+        val alone = FakeMailSession()
+        alone.arrivalRows = listOf(row(6, flags = setOf("\\Seen")))
+        val aloneModel = IndexModel(alone, MemorySettingsStore(AccountSettings()), "INBOX")
+        runImmediate { aloneModel.loadWindow() }
+        runImmediate { aloneModel.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
+        assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), alone.stores)
+    }
+
+    @Test
     fun moveRequiresMailbox() {
         val session = FakeMailSession()
         session.arrivalRows = listOf(row(1))
@@ -1138,11 +1164,10 @@ class IndexWindowTest {
         val snack = source.substringAfter("LaunchedEffect(snackEvent)").substringBefore("LaunchedEffect(undoToken)")
         assertFalse(snack.contains("loadWindow"))
         assertFalse(snack.contains("actionLabel"))
-        val thread = source.substringAfter("labelThread to {").substringBefore("HorizontalDivider()")
-        assertTrue(thread.contains("selected.firstOrNull()"))
-        assertTrue(thread.contains("rootRowIndex(indexEntryState.value, listState.firstVisibleItemIndex)"))
-        assertFalse(thread.contains("model.startIndex"))
-        assertFalse(thread.substringAfter("pull()").contains("postSnack"))
+        assertFalse(source.contains("labelThread to {"))
+        assertFalse(source.contains("model.showNew"))
+        assertFalse(source.contains("model.showNotDeleted"))
+        assertFalse(source.contains("model.showThreadOf"))
         val undo = source.substringAfter("LaunchedEffect(undoToken)").substringBefore("LaunchedEffect(session, mailbox, loadToken)")
         assertTrue(undo.contains("snackMode = \"undo\""))
     }

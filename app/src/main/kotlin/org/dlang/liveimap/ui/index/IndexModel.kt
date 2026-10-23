@@ -729,6 +729,15 @@ fun threadMessageOrder(
     return out
 }
 
+/** Extra uids a collapsed thread root's swipe acts on. Members, expanded roots, and other actions stay on the one uid. */
+fun threadSwipeAlso(isMember: Boolean, expanded: Boolean, hidden: List<Long>, action: SwipeAction): List<Long> {
+    if (isMember || expanded || hidden.isEmpty()) return emptyList()
+    return when (action) {
+        SwipeAction.Delete, SwipeAction.Move, SwipeAction.SetFlag, SwipeAction.ClearFlag -> hidden
+        else -> emptyList()
+    }
+}
+
 sealed class IndexCommand {
     data object None : IndexCommand()
     data class Compose(val seed: ComposeSeed) : IndexCommand()
@@ -1890,7 +1899,12 @@ class IndexModel(
         return reloadKeepingAnchor()
     }
 
-    suspend fun performSwipe(uid: Long, binding: SwipeBinding, rowMailbox: String = ""): IndexCommand {
+    suspend fun performSwipe(
+        uid: Long,
+        binding: SwipeBinding,
+        rowMailbox: String = "",
+        also: List<Long> = emptyList(),
+    ): IndexCommand {
         if (foreign(rowMailbox)) {
             when (binding.action) {
                 SwipeAction.Reply, SwipeAction.ReplyAll -> {
@@ -1902,13 +1916,19 @@ class IndexModel(
                     return IndexCommand.None
                 }
                 SwipeAction.Next, SwipeAction.Previous -> return IndexCommand.None
-                else -> return inRowFolder(rowMailbox) { acted -> performSwipeHere(uid, binding, acted) }
+                else -> return inRowFolder(rowMailbox) { acted -> performSwipeHere(uid, binding, acted, also) }
             }
         }
-        return performSwipeHere(uid, binding, mailbox)
+        return performSwipeHere(uid, binding, mailbox, also)
     }
 
-    private suspend fun performSwipeHere(uid: Long, binding: SwipeBinding, folder: String): IndexCommand {
+    private suspend fun performSwipeHere(
+        uid: Long,
+        binding: SwipeBinding,
+        folder: String,
+        also: List<Long> = emptyList(),
+    ): IndexCommand {
+        val targets = (listOf(uid) + also).distinct()
         when (binding.action) {
             SwipeAction.Next, SwipeAction.Previous -> return IndexCommand.None
             SwipeAction.Delete -> {
@@ -1923,19 +1943,19 @@ class IndexModel(
                     trashNamedByUser = usableTrashName(settings.trashMailbox).isNotEmpty(),
                 )
                 when (policy) {
-                    DeletePolicy.MarkDeleted -> deleteMessages(listOf(uid), folder = folder)
-                    DeletePolicy.MoveToTrash -> moveMessages(listOf(uid), trash, folder = folder)
-                    DeletePolicy.DeletePermanently -> deletePermanently(listOf(uid), folder = folder)
+                    DeletePolicy.MarkDeleted -> deleteMessages(targets, folder = folder)
+                    DeletePolicy.MoveToTrash -> moveMessages(targets, trash, folder = folder)
+                    DeletePolicy.DeletePermanently -> deletePermanently(targets, folder = folder)
                 }
             }
-            SwipeAction.Move -> moveMessages(listOf(uid), binding.moveMailbox, folder = folder)
+            SwipeAction.Move -> moveMessages(targets, binding.moveMailbox, folder = folder)
             SwipeAction.Reply -> return IndexCommand.Compose(actionSeed(ComposeKind.Reply, listOf(uid), folder))
             SwipeAction.ReplyAll -> return IndexCommand.Compose(actionSeed(ComposeKind.ReplyAll, listOf(uid), folder))
             SwipeAction.SetFlag -> {
-                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), setOf(binding.flag), emptySet(), folder = folder)
+                if (binding.flag.isNotEmpty()) changeFlags(targets, setOf(binding.flag), emptySet(), folder = folder)
             }
             SwipeAction.ClearFlag -> {
-                if (binding.flag.isNotEmpty()) changeFlags(listOf(uid), emptySet(), setOf(binding.flag), folder = folder)
+                if (binding.flag.isNotEmpty()) changeFlags(targets, emptySet(), setOf(binding.flag), folder = folder)
             }
             SwipeAction.FlagScreen -> return IndexCommand.ShowFlags(uid)
         }
