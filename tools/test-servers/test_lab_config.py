@@ -1051,3 +1051,55 @@ for runner, before in (("run_imap", '"acclab.py"'), ("run_lab_suite", '"lab.py")
     assert "reset_or_fail(" in body, runner
     assert body.find("reset_or_fail(") < body.find(before), runner
 assert "fixture_problem" not in py_function(regress, "reset_or_fail")
+
+# Progress on stderr: n/m over planned server x suite units, a heartbeat while one runs, --quiet keeps only FAILs.
+# Fakes only: no docker, lab, emulator or regress run.
+import io
+rg = {"__file__": os.path.join(HERE, "regress"), "__name__": "regress_progress_test"}
+exec(compile(regress, "regress", "exec"), rg)
+units = rg["plan_units"](["imap", "imap-idle", "jmap", "smtp", "sieve", "contacts"],
+                         ["courier-50", "dovecot-245", "stalwart"], sieve=["dovecot-245"])
+assert units == [("courier-50", "imap"), ("dovecot-245", "imap"), ("stalwart", "imap"),
+                 ("courier-50", "imap-idle"), ("dovecot-245", "imap-idle"), ("stalwart", "imap-idle"),
+                 ("stalwart", "jmap"), ("dovecot-dev", "smtp"), ("dovecot-245", "sieve"), ("dovecot-245", "contacts")], units
+rg["plan"] = units[:3]
+rg["run_t0"] = rg["time"].time()
+err, saved = io.StringIO(), sys.stderr
+sys.stderr = err
+try:
+    rg["add_row"]("courier-50", "imap", "plain", {"pass": 13}, "PASS", "", "", 83)
+    rg["add_row"]("courier-50", "imap", "no SORT", {"pass": 12}, "PASS", "", "", 83)
+    rg["quiet"] = True
+    rg["add_row"]("dovecot-245", "imap", "plain", {"pass": 14}, "PASS", "", "", 5)
+    rg["add_row"]("stalwart", "imap", "plain", {"fail": 1}, "FAIL", "x", "boom", 125)
+    rg["quiet"] = False
+    rg["HEARTBEAT_S"] = 0.2
+    rg["run_log"] = tempfile.mkdtemp()
+    rc, text = rg["run_cmd"]([sys.executable, "-c", "import time; time.sleep(0.5); print('hi')"], "imap-idle.log", None)
+finally:
+    sys.stderr = saved
+out = err.getvalue().splitlines()
+assert rc == 0 and text.strip() == "hi", (rc, text)
+assert out[0].startswith("[regress] 1/3 courier-50 imap plain PASS 1m23s (total "), out
+assert out[1].startswith("[regress] 1/3 courier-50 imap no SORT PASS 1m23s"), out
+assert out[2].startswith("[regress] 3/3 stalwart imap plain FAIL 2m05s"), out  # quiet: the PASS line is suppressed
+assert len(out) >= 4 and all(l.startswith("[regress] ... still running imap-idle ") for l in out[3:]), out
+assert len(rg["rows"]) == 4
+main_src = regress[regress.find("\ndef main():"):regress.find("\nif __name__ == ")]
+assert 'add_argument("--quiet"' in main_src and "plan = plan_units(suites, names)" in main_src
+assert 'print(f"VERDICT {verdict}")' in main_src  # stdout VERDICT/summary lines unchanged
+assert "file=sys.stderr" in py_function(regress, "progress")
+
+
+# tlsUntrusted: a plaintext variant that failed another step must not turn the TLS-only step into an empty FAIL.
+_ss = rg["step_status"]
+assert _ss({"idle": ("ok", ""), "idleRenew": ("fail", "x")}, "tlsUntrusted", "fail") == ("skip", "step not run")
+assert _ss({}, "tlsUntrusted", "fail") == ("fail", "lab run failed before any step ran")
+assert _ss({"tlsUntrusted": ("ok", "certificate untrusted confirms=1")}, "tlsUntrusted", "fail")[0] == "ok"
+_n = len(rg["rows"])
+rg["quiet"] = True
+rg["add_row"]("courier-50", "imap-idle", "tlsUntrusted", {}, "FAIL", "tlsUntrusted", "", 1)
+assert rg["rows"][_n]["first_error"].startswith("no detail reported for tlsUntrusted"), rg["rows"][_n]
+rg["add_row"]("courier-50", "imap-idle", "idleRenew", {}, "FAIL", "idleRenew", "no EXISTS after 28 renewals", 1)
+assert rg["rows"][_n + 1]["first_error"] == "no EXISTS after 28 renewals"
+print("ok step_status/empty-detail")

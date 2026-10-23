@@ -47,6 +47,12 @@ fake_smtp = None  # ai-fake-smtp.py started by this run (relay sink for RELAY_SE
 # fake-smtp-sink row of generated/local-ports.tsv).
 RELAY_SERVERS = {"dovecot-245"}
 dry_run = False
+# Progress (stderr only; stdout keeps its VERDICT/summary lines). --quiet keeps only FAIL lines.
+quiet = False
+HEARTBEAT_S = 60
+plan = []          # [(server, suite)] planned units, computed before the first suite
+done_units = set()
+run_t0 = 0.0
 suites_started = False
 responding_to = "none"
 secrets = []
@@ -118,6 +124,22 @@ def write_log(name, text):
 
 
 def run_cmd(args, log_name, env, timeout=None):
+    import threading
+    stop_event = threading.Event()
+    beat = None
+    if not quiet:
+        beat = threading.Thread(target=heartbeat, args=(log_name[:-4] if log_name.endswith(".log") else log_name, stop_event),
+                                daemon=True)
+        beat.start()
+    try:
+        return _run_cmd(args, log_name, env, timeout)
+    finally:
+        stop_event.set()
+        if beat:
+            beat.join()
+
+
+def _run_cmd(args, log_name, env, timeout=None):
     try:
         r = subprocess.run(args, capture_output=True, text=True, errors="replace", env=env, cwd=REPO, timeout=timeout)
     except subprocess.TimeoutExpired as e:
@@ -660,7 +682,56 @@ def worst(statuses):
     return best
 
 
+def plan_units(suites, names, sieve=None):
+    """[(server, suite)] in the order main() runs them; mirrors each runner's own server filter."""
+    sieve = sieve_names(names) if sieve is None else sieve
+    units = []
+    for suite in suites:
+        if suite in ("imap", "imap-idle", "imap-mechs"):
+            units += [(n, suite) for n in names]
+        elif suite == "jmap":
+            units += [(n, suite) for n in JMAP_SERVERS if n in names]
+        elif suite == "smtp":
+            units.append(("dovecot-dev", suite))
+        elif suite == "sieve":
+            units += [(n, suite) for n in sieve]
+        elif suite == "contacts" and "dovecot-245" in names:
+            units.append(("dovecot-245", suite))
+    return units
+
+
+def fmt_secs(sec):
+    sec = int(sec)
+    return f"{sec // 60}m{sec % 60:02d}s" if sec >= 60 else f"{sec}s"
+
+
+def progress(line):
+    print("[regress] " + line, file=sys.stderr, flush=True)
+
+
+def progress_row(server, suite, variant, result, duration):
+    done_units.add((server, suite))
+    if quiet and result != "FAIL":
+        return
+    n = len([u for u in plan if u in done_units])
+    progress(f"{n}/{len(plan)} {server} {suite} {variant or '-'} {result} {fmt_secs(duration)}"
+             f" (total {fmt_secs(time.time() - run_t0)})")
+
+
+def heartbeat(label, stop_event, every=None):
+    """Thread body: one 'still running' line per interval until stop_event is set."""
+    every = HEARTBEAT_S if every is None else every
+    t0 = time.time()
+    while not stop_event.wait(every):
+        progress(f"... still running {label} {fmt_secs(time.time() - t0)}"
+                 f" ({len([u for u in plan if u in done_units])}/{len(plan)} done)")
+
+
 def add_row(server, suite, variant, counts, result, failing, error, duration):
+    if result == "FAIL" and not str(error or "").strip():
+        # A FAIL must say why. An empty detail is a harness defect; name where it came from.
+        error = f"no detail reported for {failing or suite} (harness: empty failure text)"
+    progress_row(server, suite, variant, result, duration)
     rows.append({
         "server": server,
         "suite": suite,
@@ -748,7 +819,10 @@ def step_status(steps, check, summary_result):
     if "open" in steps and steps["open"][0] != "ok":
         return "fail", steps["open"][1]
     if summary_result == "fail":
-        return "fail", ""
+        # The variant ran other steps but not this one (tlsUntrusted on a plaintext variant): not run, not a fail.
+        if steps:
+            return "skip", "step not run"
+        return "fail", "lab run failed before any step ran"
     return "skip", "step not run"
 
 
@@ -1823,6 +1897,7 @@ def stop(msg, suites, servers, unseeded):
 
 
 def main():
+    global quiet, plan, run_t0
     global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to, any_skip
     p = argparse.ArgumentParser(description="Run the lab suites, IDLE events, and per-mechanism login.")
     p.add_argument("--commit", required=True)
@@ -1832,8 +1907,11 @@ def main():
     p.add_argument("--responding-to", default="")
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--quiet", action="store_true", help="no progress on stderr; only FAIL lines and the final VERDICT")
     a = p.parse_args()
     dry_run = a.dry_run
+    quiet = a.quiet
+    run_t0 = time.time()
     responding_to = a.responding_to or "none"
     commit = a.commit
     sha8 = commit[:8]
@@ -1936,6 +2014,9 @@ def main():
             if s and s.get("container"):
                 stop_lab_container(s)
     cache.update(load_cache())
+    plan = plan_units(suites, names)
+    if not quiet:
+        progress(f"plan: {len(plan)} server x suite units ({', '.join(suites)}); variants and checks print as they finish")
     if "imap" in suites:
         run_imap(names, a.variants, a.force)
     if "imap-idle" in suites:
