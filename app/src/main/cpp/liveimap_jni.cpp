@@ -2248,8 +2248,12 @@ void flushQueuedWatch(LiveSession * session, jlong generation, const std::vector
 }
 
 // Queue while nativeWatch has not published this generation. Drop after a clear. Deliver after a publish.
+void watchTraceQueued(LiveSession * session, int kind, int exists);
+
 void queueWatch(LiveSession * session, int kind, int exists, jlong uid, std::vector<std::string> flags, jlong generation) {
     std::vector<WatchNote> ready;
+    // Trace before the lock: the note calls into Kotlin.
+    if (kind == 0 || kind == 4) watchTraceQueued(session, kind, exists);
     {
         std::lock_guard<std::mutex> lock(session->startMu);
         if (session->watchGate == 2) return;
@@ -2355,6 +2359,59 @@ int watchPollMs(bool hasWakeFd, long renewLeftSec, long doneDelaySec, int wakeMs
 }
 std::atomic<int> gIdleRenews{0};
 
+void postTrafficNote(const std::string & connectionId, const std::string & text);
+
+/* Watch trace (lab): one note per watch-loop decision, only while IMAP traffic logging is on. */
+void watchTrace(LiveSession * session, const std::string & text) {
+    if (session == nullptr || !session->logImapTraffic) return;
+    postTrafficNote("watch", "watch " + text);
+}
+
+/* IDLE renew DONE. libetpan's mailimap_idle_done() parses the DONE response with mailimap_parse_response(),
+   which stores untagged EXISTS/EXPUNGE/FETCH in selection info and never reaches handleUntagged: Courier
+   reports a new message only between DONE and the tagged OK, so every renew dropped it. Read the response
+   here: each untagged line goes through handleUntagged like the IDLE loop, then the tagged line is parsed. */
+int watchRenewDone(LiveSession * session, jlong generation) {
+    mailimap * w = session->watch;
+    int r = mailimap_token_send(w->imap_stream, "DONE");
+    if (r != MAILIMAP_NO_ERROR) return r;
+    r = mailimap_crlf_send(w->imap_stream);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (mailstream_flush(w->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
+    while (true) {
+        if (mailimap_read_line(w) == nullptr) return MAILIMAP_ERROR_STREAM;
+        const char * line = w->imap_stream_buffer->str;
+        if (w->imap_stream_buffer->len < 2 || line[0] != '*' || line[1] != ' ') break;
+        size_t indx = 0;
+        struct mailimap_parser_context * ctx = mailimap_parser_context_new(w);
+        struct mailimap_response_data * data = nullptr;
+        int prs = mailimap_response_data_parse(w->imap_stream, w->imap_stream_buffer, ctx, &indx, &data, 0, nullptr);
+        if (prs == MAILIMAP_NO_ERROR) {
+            watchTrace(session, "done untagged " + std::to_string(data != nullptr ? data->rsp_type : -1));
+            handleUntagged(session, data, generation);
+        } else {
+            watchTrace(session, "done untagged parse error " + std::to_string(prs));
+        }
+        if (data != nullptr) mailimap_response_data_free(data);
+        if (ctx != nullptr) mailimap_parser_context_free(ctx);
+        if (prs != MAILIMAP_NO_ERROR) return prs;
+    }
+    struct mailimap_response * response = nullptr;
+    r = mailimap_parse_response(w, &response);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    int result = MAILIMAP_ERROR_EXTENSION;
+    if (response->rsp_resp_done != nullptr && response->rsp_resp_done->rsp_type == MAILIMAP_RESP_DONE_TYPE_TAGGED
+        && response->rsp_resp_done->rsp_data.rsp_tagged->rsp_cond_state->rsp_type == MAILIMAP_RESP_COND_STATE_OK) {
+        result = MAILIMAP_NO_ERROR;
+    }
+    mailimap_response_free(response);
+    return result;
+}
+
+void watchTraceQueued(LiveSession * session, int kind, int exists) {
+    watchTrace(session, "queue kind=" + std::to_string(kind) + " exists=" + std::to_string(exists));
+}
+
 void watchMain(LiveSession * session) {
     uint64_t generation = 0;
     {
@@ -2402,7 +2459,7 @@ void watchMain(LiveSession * session) {
             (mailimap_idle_get_done_delay(session->watch) == 0 || idleAge >= gIdleRenewSec.load())) {
             idleSince = std::chrono::steady_clock::now();
             gIdleRenews.fetch_add(1);
-            int doneR = mailimap_idle_done(session->watch);
+            int doneR = watchRenewDone(session, static_cast<jlong>(generation));
             int idleR = doneR == MAILIMAP_NO_ERROR ? mailimap_idle(session->watch) : doneR;
             // Shutdown fails this in-flight DONE or IDLE. That is a stop, not WatchLost, and not another DONE.
             if (session->watchStop.load()) break;
@@ -2412,6 +2469,8 @@ void watchMain(LiveSession * session) {
                 break;
             }
             fd = mailimap_idle_get_fd(session->watch);
+            watchTrace(session, "renew fd=" + std::to_string(fd) + " buffered="
+                + std::to_string(session->watch->imap_stream != nullptr ? session->watch->imap_stream->read_buffer_len : 0));
         }
         // A server may send several untagged lines in one packet (Stalwart: STATUS, EXISTS, FETCH). After one
         // line is parsed the rest sits in libetpan's read buffer or in OpenSSL, where poll() cannot see it; the
@@ -2425,6 +2484,7 @@ void watchMain(LiveSession * session) {
             ssl_st * wssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(ws));
             buffered = wssl != nullptr && SSL_pending(wssl) > 0;
         }
+        if (buffered) watchTrace(session, "buffered read_buffer=" + std::to_string(ws->read_buffer_len));
         if (!buffered) {
             struct pollfd pfd[2]{};
             pfd[0].fd = fd;
@@ -2445,6 +2505,10 @@ void watchMain(LiveSession * session) {
                 (void)ignored;
             }
             if (session->watchStop.load()) break;
+            if (pr != 0) {
+                watchTrace(session, "poll pr=" + std::to_string(pr) + " fd=" + std::to_string(fd) + " rev="
+                    + std::to_string(pfd[0].revents) + " wake=" + std::to_string(pfd[1].revents));
+            }
             if (pr <= 0 || (pfd[0].revents == 0)) continue;
             newNetworkData = (pfd[0].revents & POLLIN) != 0;
         }
@@ -2462,7 +2526,12 @@ void watchMain(LiveSession * session) {
         int prs = mailimap_response_data_parse(session->watch->imap_stream, session->watch->imap_stream_buffer,
             ctx, &indx, &data, 0, nullptr);
         if (prs == MAILIMAP_NO_ERROR) {
+            watchTrace(session, "untagged " + std::to_string(data != nullptr ? data->rsp_type : -1));
             handleUntagged(session, data, static_cast<jlong>(generation));
+        } else {
+            // A line the parser rejects was dropped without a word; say so in the trace.
+            watchTrace(session, "untagged parse error " + std::to_string(prs) + ": "
+                + std::string(session->watch->imap_stream_buffer->str).substr(0, 60));
         }
         if (data != nullptr) mailimap_response_data_free(data);
         if (ctx != nullptr) mailimap_parser_context_free(ctx);
