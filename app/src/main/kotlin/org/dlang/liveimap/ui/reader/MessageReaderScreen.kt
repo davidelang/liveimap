@@ -1628,6 +1628,15 @@ private fun MessageReaderLoaded(
                     }
                 },
                 actions = {
+                    if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
+                        ReaderDisplayMenu(
+                            selected = readerDisplayOf(selectedView, textLayout),
+                            onOpen = {
+                                displayMenu = true
+                                moreMenu = false
+                            },
+                        )
+                    }
                     DebugStatusIcon(debugStatus)
                     if (renderedHtml) {
                         HelpIconButton(
@@ -1733,15 +1742,6 @@ private fun MessageReaderLoaded(
                         icons = readerIcons,
                     )
                     Box {
-                if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
-                    ReaderDisplayMenu(
-                        selected = readerDisplayOf(selectedView, textLayout),
-                        onOpen = {
-                            displayMenu = true
-                            moreMenu = false
-                        },
-                    )
-                }
                 HelpIconButton(
                     label = stringResource(R.string.reader_more),
                     help = stringResource(R.string.help_reader_more),
