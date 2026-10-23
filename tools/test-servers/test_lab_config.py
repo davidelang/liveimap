@@ -304,7 +304,7 @@ checked = regress.find('err = timed_step(f"{name} check_published", lambda: lab.
 assert checked != -1
 window = regress[checked:checked + 220]
 assert 'if err:' in window
-stop_line = 'stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])'
+stop_line = 'return f"{name}: {err}"'  # setup_server's reason; main() turns it into a BLOCKED server
 assert stop_line in window
 assert window.find("if err:") < window.find(stop_line)
 
@@ -509,11 +509,11 @@ assert "seed_corpus.py" not in regress
 assert "seed_one(" not in regress
 verify_at = regress.find("blocked, drifted = timed_step(f\"{name} verify-seed\", lambda: verify_one(")
 assert verify_at != -1
-stop_at = regress.find("stop(", verify_at)
+stop_at = regress.find("return f", verify_at)
 assert stop_at != -1
 verify_fail = regress[verify_at:regress.find("\n", stop_at)]
 assert "build-seed-image" in verify_fail
-assert "stop(" in verify_fail
+assert "if blocked:" in verify_fail
 assert "seed_corpus.py" not in acc
 assert "seed_corpus.py" not in t4
 assert "seed_corpus.py" in builder
@@ -653,8 +653,8 @@ assert "lab.mail_domain()" in check_fn
 assert "needs LAB_MAIL_DOMAIN" not in check_fn
 call = regress.find("problem = timed_step(f\"{name} login\", lambda: domain_login_check(s))")
 assert call != -1
-call_window = regress[call:call + 160]
-assert "stop(" in call_window and "VERDICT BLOCKED" in call_window
+call_window = regress[call:call + 200]
+assert "return f\"{name} {problem} tools/test-servers/build-seed-image {name}\"" in call_window
 assert "cyrus" + "_domain_user.py" not in regress
 assert "cyrus" + "_domain_user.py" not in builder
 cyrus_at = builder.find("cyrus-3124|cyrus-3137|cyrus-22|cyrus-24|cyrus-25|cyrus-36)")
@@ -743,7 +743,7 @@ assert "m.close()" in py_function(lab_imap_src, "append_one") and "sys.exit" in 
 assert "sys.exit" in py_function(lab_imap_src, "require_count")
 assert fix_at != -1
 fix_window = regress[fix_at:fix_at + 220]
-assert "stop(" in fix_window and "build-seed-image" in fix_window and "VERDICT BLOCKED" in fix_window
+assert "return f" in fix_window and "build-seed-image" in fix_window
 guard = regress.rfind('if "imap" in suites:', 0, fix_at)
 assert guard != -1 and fix_at - guard < 80
 
@@ -1081,8 +1081,9 @@ finally:
 out = err.getvalue().splitlines()
 assert rc == 0 and text.strip() == "hi", (rc, text)
 assert out[0].startswith("[regress] 1/3 courier-50 imap plain PASS 1m23s (total "), out
-assert out[1].startswith("[regress] 1/3 courier-50 imap no SORT PASS 1m23s"), out
-assert out[2].startswith("[regress] 3/3 stalwart imap plain FAIL 2m05s"), out  # quiet: the PASS line is suppressed
+# n counts result lines (it moves within a unit); m is the expected line count, one per open unit by default.
+assert out[1].startswith("[regress] 2/4 courier-50 imap no SORT PASS 1m23s"), out
+assert out[2].startswith("[regress] 4/4 stalwart imap plain FAIL 2m05s"), out  # quiet: the PASS line is suppressed
 assert len(out) >= 4 and all(l.startswith("[regress] ... still running imap-idle ") for l in out[3:]), out
 assert len(rg["rows"]) == 4
 main_src = regress[regress.find("\ndef main():"):regress.find("\nif __name__ == ")]
@@ -1129,7 +1130,8 @@ finally:
     rg["quiet"] = False
 out = err.getvalue().splitlines()
 beats = [l for l in out if "still running courier-50 start" in l]
-assert beats and beats[0].startswith("[regress] ... still running courier-50 start 0s (1/2 done)"), out
+assert beats and beats[0].startswith("[regress] ... still running courier-50 start 0s ("), out
+assert beats[0].endswith(" results, 1/2 server x suite units done)"), out
 rest = [l for l in out if "still running" not in l]
 assert rest[0].startswith("[regress] setup 1/4 courier-50 start ok 0s (total "), rest
 assert rest[1].startswith("[regress] setup 2/4 courier-50 verify-seed ok "), rest
@@ -1137,10 +1139,49 @@ assert rest[2].startswith("[regress] reset (1/2 done) courier-50 reset for imap-
 assert rest[3].startswith("[regress] setup 4/4 ext login FAIL ") and rest[3].endswith("login refused"), rest
 assert len(rest) == 4, rest  # quiet: ext probe ok suppressed
 main_src = regress[regress.find("\ndef main():"):regress.find("\nif __name__ == ")]
-assert main_src.find('progress(f"start: ') < main_src.find("acquire_lock()") < main_src.find('write_lock("seed")')
+assert main_src.find('progress(f"start: ') < main_src.find("acquire_lock()") < main_src.find('write_lock(f"seed {name}")')
+_setup_src = py_function(regress, "setup_server")
 for st in ("start", "check_published", "probe", "login", "entry-version", "fixture", "verify-seed"):
-    assert f'timed_step(f"{{name}} {st}"' in main_src, st
+    assert f'timed_step(f"{{name}} {st}"' in _setup_src, st
 assert "timed_step(" in py_function(regress, "reset_for_suite")
 print("ok setup/reset progress")
+
+# Per-server order: servers outer, suites inner; setup once per server, a reset only between that server's
+# suites, teardown (stop + rm) before the next server; a setup failure blocks one server, not the run. Fakes only.
+_units = rg["plan_units"](["imap", "imap-idle", "smtp"], ["courier-50", "dovecot-12"], sieve=[])
+_per = rg["server_major"](_units, ["courier-50", "dovecot-12"])
+assert _per == [("courier-50", ["imap", "imap-idle"]), ("dovecot-12", ["imap", "imap-idle"]),
+                ("dovecot-dev", ["smtp"])], _per
+assert "plan = [(name, suite) for name, mine in per_server for suite in mine]" in main_src
+assert main_src.rfind("for i, (name, mine) in enumerate(per_server, 1):") > main_src.find("cache.update(load_cache())")
+assert "for name in used:" not in main_src  # the up-front setup pass over all servers is gone
+_loop = main_src[main_src.rfind("for i, (name, mine) in enumerate(per_server, 1):"):]
+assert _loop.find("setup_server(") < _loop.find("fresh.add(name)") < _loop.rfind("run_unit(suite, name") \
+    < _loop.find("finally:") < _loop.find("teardown_server(s)")
+assert "block_server(name, mine, reason)" in _loop and "continue" in _loop[_loop.find("block_server("):_loop.find("fresh.add(")]
+_td = py_function(regress, "teardown_server")
+assert '["docker", "stop", "-t", "20", cont]' in _td and '["docker", "rm", cont]' in _td
+_rs = py_function(regress, "reset_for_suite")
+assert _rs.find("if name in fresh:") < _rs.find("timed_step(")
+rg["fresh"].add("courier-50")
+rg["lab_servers_by_name"] = lambda: {"courier-50": {"name": "courier-50", "container": "liveimap-courier-50"}}
+assert rg["reset_for_suite"]("imap", "courier-50") == "" and "courier-50" not in rg["fresh"]  # first suite: no reset
+_n = len(rg["rows"])
+rg["quiet"] = True
+err = io.StringIO(); sys.stderr = err
+try:
+    rg["block_server"]("courier-50", ["imap", "imap-idle"], "courier-50: no IMAP greeting after 300s")
+finally:
+    sys.stderr = saved
+    rg["quiet"] = False
+_bl = err.getvalue().splitlines()
+assert _bl[0].startswith("[regress] BLOCKED courier-50 setup: courier-50: no IMAP greeting after 300s"), _bl  # loud even with --quiet
+assert len(_bl) == 3 and all(" BLOCKED " in l for l in _bl[1:]), _bl
+assert [r["result"] for r in rg["rows"][_n:]] == ["BLOCKED", "BLOCKED"]
+assert [r["suite"] for r in rg["rows"][_n:]] == ["imap", "imap-idle"]  # the suite name is recorded as given
+assert "courier-50 imap-idle setup" in rg["failing_names"](rg["rows"][_n:])
+assert 'row["result"] in ("FAIL", "BLOCKED")' in main_src
+assert 'f"{suite}-{todo[0]}.log"' in py_function(regress, "run_lab_suite")  # one server per lab.py run: own log
+print("ok per-server order")
 for l in out:
     print("  sample:", l)

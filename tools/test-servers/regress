@@ -50,8 +50,12 @@ dry_run = False
 # Progress (stderr only; stdout keeps its VERDICT/summary lines). --quiet keeps only FAIL lines.
 quiet = False
 HEARTBEAT_S = 60
-plan = []          # [(server, suite)] planned units, computed before the first suite
+plan = []          # [(server, suite)] planned units, server-major (the order main() runs them)
 done_units = set()
+current_unit = ["", ""]  # [server, suite or setup/teardown] named by the heartbeat
+expected_rows = {}  # (server, suite) -> result lines expected (previous run's count); corrected when the unit ends
+unit_rows = {}      # (server, suite) -> result lines reported so far
+fresh = set()       # servers setup_server just created from their seed: the first suite skips the reset
 run_t0 = 0.0
 suites_started = False
 responding_to = "none"
@@ -709,30 +713,75 @@ def progress(line):
     print("[regress] " + line, file=sys.stderr, flush=True)
 
 
+def rows_done():
+    return sum(unit_rows.values())
+
+
+def rows_planned():
+    """Result lines for the whole run: a finished unit counts what it reported, an open one what it is expected
+    to report (the previous run's count), so m only moves when a unit reports more or fewer variants."""
+    total = 0
+    for u in plan:
+        got = unit_rows.get(u, 0)
+        total += got if u in done_units else max(got, expected_rows.get(u, 1))
+    return total + sum(n for u, n in unit_rows.items() if u not in plan)
+
+
 def progress_row(server, suite, variant, result, duration):
-    done_units.add((server, suite))
-    if quiet and result != "FAIL":
+    unit = (server, suite)
+    unit_rows[unit] = unit_rows.get(unit, 0) + 1
+    if quiet and result not in ("FAIL", "BLOCKED"):
         return
-    n = len([u for u in plan if u in done_units])
-    progress(f"{n}/{len(plan)} {server} {suite} {variant or '-'} {result} {fmt_secs(duration)}"
+    progress(f"{rows_done()}/{rows_planned()} {server} {suite} {variant or '-'} {result} {fmt_secs(duration)}"
              f" (total {fmt_secs(time.time() - run_t0)})")
 
 
 def heartbeat(label, stop_event, every=None):
-    """Thread body: one 'still running' line per interval until stop_event is set."""
+    """Thread body: one 'still running' line per interval, naming the current server and suite, until stop_event."""
     every = HEARTBEAT_S if every is None else every
     t0 = time.time()
     while not stop_event.wait(every):
-        progress(f"... still running {label} {fmt_secs(time.time() - t0)}"
-                 f" ({len([u for u in plan if u in done_units])}/{len(plan)} done)")
+        where = " ".join(p for p in current_unit if p)
+        progress(f"... still running {where + ': ' if where else ''}{label} {fmt_secs(time.time() - t0)}"
+                 f" ({rows_done()}/{rows_planned()} results, {len([u for u in plan if u in done_units])}/{len(plan)}"
+                 f" server x suite units done)")
 
 
 setup_done = [0]
 setup_total = [0]
 
 
+def server_major(units, used):
+    """[(server, [suites])]: units grouped per server, servers in servers_used order (then any plan-only server,
+    e.g. smtp's dovecot-dev), suites in plan order. main() runs one server at a time in this order."""
+    order = list(used) + [n for n, _ in units if n not in used]
+    out = []
+    for name in order:
+        mine = [suite for n, suite in units if n == name]
+        if mine and name not in [n for n, _ in out]:
+            out.append((name, mine))
+    return out
+
+
+def previous_row_counts():
+    """(server, suite) -> result lines in the previous run; {} when there is none. Progress estimate only."""
+    path = previous_results()
+    if not path:
+        return {}
+    try:
+        prev = json.load(open(path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        progress(f"progress estimate: cannot read {path}: {e}; m counts one line per unit until each finishes")
+        return {}
+    counts = {}
+    for row in (prev.get("rows") or []) if isinstance(prev, dict) else []:
+        key = (row.get("server") or "", row.get("suite") or "")
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def setup_steps(used, by_name, suites):
-    """[(server, step)] for the seed/start phase, in the order main() runs them."""
+    """[(server, step)] for one server's setup (main() passes [name] and that server's suites), in run order."""
     steps = []
     for name in used:
         s = by_name.get(name)
@@ -1034,6 +1083,10 @@ def reset_for_suite(suite, name):
     s = lab_servers_by_name().get(name)
     if not s or not s.get("container"):
         return ""
+    if name in fresh:
+        # setup_server created it from its seed moments ago and no suite has written to it: nothing to undo.
+        fresh.discard(name)
+        return ""
     lab.only_one("")
     n = len([u for u in plan if u in done_units])
     err = timed_step(f"{name} reset for {suite}", lambda: reset_lab_server(s), counter=f"reset ({n}/{len(plan)} done)")
@@ -1111,6 +1164,82 @@ def stop_lab_container(s):
     if not cont:
         return
     subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
+
+
+def teardown_server(s):
+    """Stop and remove the server's copy-on-write container; the next setup or reset recreates it from its seed
+    (start.sh --reset). '' or why not."""
+    cont = s["container"]
+    r = subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return f"docker stop {cont}: {first_line(r.stderr or r.stdout)}"
+    r = subprocess.run(["docker", "rm", cont], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return f"docker rm {cont}: {first_line(r.stderr or r.stdout)}"
+    return ""
+
+
+def setup_server(name, s, by_name, suites):
+    """Create [name] from its seed, start it and check it. '' or the BLOCKED reason; drift notes go to drift_lines."""
+    import lab
+    if s and s.get("container"):
+        err = timed_step(f"{name} start", lambda: start_lab_container(s))
+        if err:
+            return f"{name}: {err}"
+        err = timed_step(f"{name} check_published", lambda: lab.check_published(s["container"]))
+        if err:
+            return f"{name}: {err}"
+    err = timed_step(f"{name} probe", lambda: probe_servers([name], by_name))
+    if err:
+        return err
+    problem = timed_step(f"{name} login", lambda: domain_login_check(s))
+    if problem:
+        return f"{name} {problem} tools/test-servers/build-seed-image {name}"
+    imap_port = s.get("imap") if isinstance(s, dict) else None
+    problem = timed_step(f"{name} entry-version", lambda: lab.entry_version_problem(name, imap_port))
+    if problem:
+        return problem
+    if "imap" in suites:
+        problem = timed_step(f"{name} fixture", lambda: lab.fixture_check(s))
+        if problem:
+            return f"{name} {problem} tools/test-servers/build-seed-image {name}"
+    blocked, drifted = timed_step(f"{name} verify-seed", lambda: verify_one(s, False), failed=lambda r: bool(r[0]))
+    if blocked:
+        return f"{blocked} tools/test-servers/build-seed-image {name}"
+    drift_lines.extend(drifted)
+    return ""
+
+
+def block_server(name, suites, reason):
+    """A setup failure: one loud line (even with --quiet) and a BLOCKED row per suite; the run goes on."""
+    progress(f"BLOCKED {name} setup: {redact(reason)[:300]} (skipping {', '.join(suites)}; next server)")
+    for suite in suites:
+        add_row(name, suite, "", counts_for("BLOCKED"), "BLOCKED", "setup", reason, 0)
+        done_units.add((name, suite))
+
+
+def unit_cached(suite, name, variants):
+    return cache_pass(suite, name, (variants or "") if suite == "imap" else "")
+
+
+def run_unit(suite, name, a, idle_steps, idle_env):
+    """One suite on one server (already set up, or every unit of it cached)."""
+    if suite == "imap":
+        run_imap([name], a.variants, a.force)
+    elif suite == "imap-idle":
+        run_lab_suite("imap-idle", [name], ",".join(idle_steps), idle_steps, a.force, extra_env=idle_env)
+    elif suite == "imap-mechs":
+        run_lab_suite("imap-mechs", [name], "open", ["open"], a.force, mech=True)
+    elif suite == "jmap":
+        run_jmap([name], a.force)
+    elif suite == "smtp":
+        run_smtp(a.force)
+    elif suite == "sieve":
+        run_lab_suite("sieve", [name], "sieveDeliver", ["sieveDeliver"], a.force)
+    elif suite == "contacts":
+        run_lab_suite("contacts", [name], "alpineBook", ["alpineBook"], a.force)
+    else:
+        raise ValueError(f"no runner for suite {suite}")
 
 
 RECREATE_DOVECOT = "tools/test-servers/start.sh --recreate dovecot-245"
@@ -1596,7 +1725,7 @@ def run_lab_suite(suite, names, args, checks, force, mech=False, extra_env=None)
     for name in todo:
         cmd.extend(["--server", name])
     t0 = time.time()
-    rc, text = run_cmd(cmd, f"{suite}.log", child_env(extra_env))
+    rc, text = run_cmd(cmd, f"{suite}-{todo[0]}.log" if len(todo) == 1 else f"{suite}.log", child_env(extra_env))
     duration = int(time.time() - t0)
     parsed = parse_lab_summary(text)
     by = {}
@@ -1782,7 +1911,7 @@ def sieve_names(selected):
 def failing_names(items):
     out = []
     for row in items:
-        if row.get("result") == "FAIL" and row.get("failing_check"):
+        if row.get("result") in ("FAIL", "BLOCKED") and row.get("failing_check"):
             variant = row.get("variant") or ""
             out.append(" ".join(p for p in (row.get("server", ""), row.get("suite", ""), variant, row.get("failing_check", "")) if p))
     return out
@@ -1993,10 +2122,26 @@ def main():
         sys.exit(1)
     plan = plan_units(suites, names)
     used = servers_used(names, suites)
-    setup_total[0] = len(setup_steps(used, by_name, suites))
+    per_server = server_major(plan, used)
+    plan = [(name, suite) for name, mine in per_server for suite in mine]
+    idle_steps, alt_host = imap_idle_steps() if "imap-idle" in suites else ([], "")
+    # lab.py forwards LAB_ALT_HOST as -e labAltHost. Pass it only when host.env sets the key.
+    idle_env = {"LAB_ALT_HOST": alt_host} if alt_host else None
+    expected_rows.update(previous_row_counts())
+    for unit in plan:
+        if unit[1] == "imap-idle":
+            expected_rows[unit] = len(idle_steps)
     if not quiet and not dry_run:
-        progress(f"start: {len(names)} servers x {len(suites)} suites ({', '.join(suites)}) = {len(plan)} units;"
-                 f" setup {setup_total[0]} steps on {len(used)} servers; heartbeat every {fmt_secs(HEARTBEAT_S)}")
+        progress(f"start: {len(per_server)} servers, {len(plan)} server x suite units ({', '.join(suites)}),"
+                 f" ~{rows_planned()} result lines; one server at a time: setup, its suites (reset between), teardown;"
+                 f" heartbeat every {fmt_secs(HEARTBEAT_S)}")
+    if dry_run:
+        for i, (name, mine) in enumerate(per_server, 1):
+            s = by_name.get(name)
+            steps = ", ".join(step for _n, step in setup_steps([name], by_name, mine))
+            seq = "; ".join(suite if j == 0 else f"reset, {suite}" for j, suite in enumerate(mine))
+            down = "stop, rm" if s and s.get("container") else "-"
+            print(f"plan {i}/{len(per_server)} {name}: setup ({steps}); {seq}; teardown ({down})")
     if not dry_run:
         try:
             acquire_lock()
@@ -2028,69 +2173,55 @@ def main():
             err = "VERDICT BLOCKED lab container mounts: " + " | ".join(bad)
     if err:
         stop(err, suites, names, [])
-    unseeded = []
-    if any(n in RELAY_SERVERS for n in used):
+    if any(n in RELAY_SERVERS for n, _mine in per_server):
         err = start_fake_smtp()
         if err:
             stop(f"VERDICT BLOCKED {err}", suites, names, [])
-    write_lock("seed")
-    pending = list(used)
-    for name in used:
-        pending.pop(0)
-        s = by_name.get(name)
-        try:
-            if s and s.get("container"):
-                err = timed_step(f"{name} start", lambda: start_lab_container(s))
-                if err:
-                    stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-                err = timed_step(f"{name} check_published", lambda: lab.check_published(s["container"]))
-                if err:
-                    stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-            err = timed_step(f"{name} probe", lambda: probe_servers([name], by_name))
-            if err:
-                stop(f"VERDICT BLOCKED {err}", suites, names, [])
-            problem = timed_step(f"{name} login", lambda: domain_login_check(s))
-            if problem:
-                stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
-            imap_port = s.get("imap") if isinstance(s, dict) else None
-            problem = timed_step(f"{name} entry-version", lambda: lab.entry_version_problem(name, imap_port))
-            if problem:
-                stop(f"VERDICT BLOCKED {problem}", suites, names, [])
-            if "imap" in suites:
-                problem = timed_step(f"{name} fixture", lambda: lab.fixture_check(s))
-                if problem:
-                    stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
-            blocked, drifted = timed_step(f"{name} verify-seed", lambda: verify_one(s, False), failed=lambda r: bool(r[0]))
-            if blocked:
-                stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])
-            drift_lines.extend(drifted)
-        finally:
-            if s and s.get("container"):
-                stop_lab_container(s)
     cache.update(load_cache())
-    if not quiet:
-        progress(f"plan: {len(plan)} server x suite units ({', '.join(suites)}); variants and checks print as they finish")
-    if "imap" in suites:
-        run_imap(names, a.variants, a.force)
-    if "imap-idle" in suites:
-        idle_steps, alt_host = imap_idle_steps()
-        # lab.py forwards LAB_ALT_HOST as -e labAltHost. Pass it only when host.env sets the key.
-        idle_env = {"LAB_ALT_HOST": alt_host} if alt_host else None
-        run_lab_suite("imap-idle", names, ",".join(idle_steps), idle_steps, a.force, extra_env=idle_env)
-    if "imap-mechs" in suites:
-        run_lab_suite("imap-mechs", names, "open", ["open"], a.force, mech=True)
-    if "jmap" in suites:
-        run_jmap(names, a.force)
-    if "smtp" in suites:
-        run_smtp(a.force)
-    if "sieve" in suites:
-        run_lab_suite("sieve", sieve_names(names), "sieveDeliver", ["sieveDeliver"], a.force)
-    if "contacts" in suites:
-        if "dovecot-245" in names:
-            run_lab_suite("contacts", ["dovecot-245"], "alpineBook", ["alpineBook"], a.force)
+    for i, (name, mine) in enumerate(per_server, 1):
+        s = by_name.get(name)
+        current_unit[:] = [name, "setup"]
+        write_lock(f"seed {name}")
+        if not quiet:
+            progress(f"server {i}/{len(per_server)} {name}: {', '.join(mine)}"
+                     f" (total {fmt_secs(time.time() - run_t0)})")
+        if not a.force and all(unit_cached(suite, name, a.variants) for suite in mine):
+            for suite in mine:
+                run_unit(suite, name, a, idle_steps, idle_env)  # records the cached rows; the server is not started
+                done_units.add((name, suite))
+            continue
+        setup_done[0] = 0
+        setup_total[0] = len(setup_steps([name], by_name, mine))
+        try:
+            try:
+                reason = setup_server(name, s, by_name, mine)
+            except SystemExit as e:
+                if isinstance(e.code, str):  # lab.only_one: another lab container would not stop
+                    stop(f"VERDICT BLOCKED {name}: {e.code}", suites, names, [])
+                raise
+            except Exception as e:
+                reason = f"{name}: setup {type(e).__name__}: {e}"
+            if reason:
+                block_server(name, mine, reason)
+                continue
+            fresh.add(name)
+            for suite in mine:
+                current_unit[:] = [name, suite]
+                run_unit(suite, name, a, idle_steps, idle_env)
+                done_units.add((name, suite))
+        finally:
+            fresh.discard(name)
+            if s and s.get("container"):
+                current_unit[:] = [name, "teardown"]
+                n = len([u for u in plan if u in done_units])
+                err = timed_step(f"{name} teardown (stop, rm)", lambda: teardown_server(s),
+                                 counter=f"teardown ({n}/{len(plan)} done)")
+                if err and container_running(s["container"]):
+                    stop(f"VERDICT BLOCKED {name} still running after teardown: {err}", suites, names, [])
+            current_unit[:] = ["", ""]
     if not any_skip:
         save_cache()
-    verdict = "FAIL" if any(row["result"] == "FAIL" for row in rows) else "PASS"
+    verdict = "FAIL" if any(row["result"] in ("FAIL", "BLOCKED") for row in rows) else "PASS"
     write_lock("cleanup")
     write_outputs(verdict, "", [], suites, names)
     print(f"VERDICT {verdict}")
