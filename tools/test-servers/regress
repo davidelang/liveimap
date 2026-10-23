@@ -237,8 +237,7 @@ def acquire_lock():
             except ValueError:
                 pid = 0
         if pid_alive(pid):
-            print(f"BLOCKED lock held by {pid}")
-            sys.exit(1)
+            finish(f"VERDICT BLOCKED lock held by {pid}")
     write_lock("starting")
     hold_lock = True
 
@@ -2067,14 +2066,64 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
     open(os.path.join(run_rec, "results-body.txt"), "w", encoding="utf-8").write(body)
 
 
+SUMMARY_ORDER = ("PASS", "FAIL", "SKIP", "KNOWN", "unexpected pass", "BLOCKED")
+SUMMARY_RANK = {"BLOCKED": 6, "FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
+
+
+def final_summary(verdict_line, now=None):
+    """The end-of-run summary (stdout, also under --quiet): totals by result line and by server x suite unit,
+    one line per server, every non-PASS row, elapsed time, the summary.md path, and the VERDICT line last.
+    Error text is redacted like summary.md."""
+    def tally(results):
+        c = {k: 0 for k in SUMMARY_ORDER}
+        for r in results:
+            c[r if r in c else "FAIL"] += 1
+        return " ".join(f"{k.lower()} {c[k]}" for k in SUMMARY_ORDER)
+
+    units, servers = {}, {}
+    for row in rows:
+        key = (row["server"], row["suite"])
+        prev = units.get(key)
+        if prev is None or SUMMARY_RANK.get(row["result"], 5) > SUMMARY_RANK.get(prev, 5):
+            units[key] = row["result"]
+        servers.setdefault(row["server"], []).append(row["result"])
+    checks = {k: sum(int(row.get(k, 0) or 0) for row in rows) for k in ("pass", "fail", "skip", "known")}
+    lines = ["== regress summary ==",
+             f"results ({len(rows)}): {tally(r['result'] for r in rows)}",
+             f"units ({len(units)}): {tally(units.values())}",
+             "checks: " + " ".join(f"{k} {v}" for k, v in checks.items())]
+    for name, results in servers.items():
+        lines.append(f"  {redact(name)}: {tally(results)}")
+    odd = [row for row in rows if row["result"] != "PASS"]
+    lines.append(f"non-pass rows ({len(odd)}):" if odd else "non-pass rows: none")
+    for row in odd:
+        lines.append("  " + " ".join(redact(str(v)) or "-" for v in (
+            row["server"], row["suite"], row["variant"] or "-", row["result"], row["failing_check"] or "-"))
+            + " " + (redact(row["first_error"])[:160] or "-"))
+    elapsed = (now if now is not None else time.time()) - run_t0 if run_t0 else 0
+    lines.append(f"elapsed: {fmt_secs(elapsed)}")
+    md = os.path.join(run_rec, "summary.md") if run_rec else ""
+    if md and os.path.exists(md):
+        lines.append("summary: " + os.path.join("sandbox", "test-servers", "recordings", run_id, "summary.md"))
+    else:
+        lines.append("summary: not written")
+    lines.append(redact(verdict_line))
+    return "\n".join(lines)
+
+
+def finish(verdict_line, code=1):
+    print(final_summary(verdict_line), flush=True)
+    sys.exit(code)
+
+
 def stop(msg, suites, servers, unseeded):
     line = redact(msg).replace("\n", " ").strip()
-    if dry_run or not run_rec:
+    if dry_run:
         print(line)
         sys.exit(1)
-    write_outputs("BLOCKED", line, unseeded, suites, servers)
-    print(line)
-    sys.exit(1)
+    if run_rec:
+        write_outputs("BLOCKED", line, unseeded, suites, servers)
+    finish(line)
 
 
 def main():
@@ -2101,8 +2150,7 @@ def main():
     run_log = os.path.join(LOG_ROOT, run_id)
     bind = source_address()
     if not bind:
-        print("VERDICT BLOCKED no source address")
-        sys.exit(1)
+        finish("VERDICT BLOCKED no source address")
     os.environ["LAB_BIND"] = bind
     os.environ["LAB_HOST"] = bind
     os.environ["LAB_REC"] = run_rec
@@ -2111,18 +2159,15 @@ def main():
     try:
         import lab
     except SystemExit as e:
-        print(redact(f"VERDICT BLOCKED {e}"))
-        sys.exit(1)
+        finish(f"VERDICT BLOCKED {e}")
     secrets = load_secrets()
     by_name = lab_servers_by_name()
     names, bad_server = selected_servers(a.servers, by_name)
     if bad_server:
-        print(f"VERDICT BLOCKED unknown server {bad_server}")
-        sys.exit(1)
+        finish(f"VERDICT BLOCKED unknown server {bad_server}")
     suites, bad_suite = selected_suites(a.suites)
     if bad_suite:
-        print(f"VERDICT BLOCKED unknown suite {bad_suite}")
-        sys.exit(1)
+        finish(f"VERDICT BLOCKED unknown suite {bad_suite}")
     plan = plan_units(suites, names)
     used = servers_used(names, suites)
     per_server = server_major(plan, used)
@@ -2151,8 +2196,7 @@ def main():
         except SystemExit:
             raise
         except OSError as e:
-            print(redact(f"VERDICT BLOCKED lock: {e.strerror or e}"))
-            sys.exit(1)
+            finish(f"VERDICT BLOCKED lock: {e.strerror or e}")
     reason = commit_stop(commit)
     if reason:
         stop(reason, suites, names, [])
@@ -2227,8 +2271,7 @@ def main():
     verdict = "FAIL" if any(row["result"] in ("FAIL", "BLOCKED") for row in rows) else "PASS"
     write_lock("cleanup")
     write_outputs(verdict, "", [], suites, names)
-    print(f"VERDICT {verdict}")
-    print(os.path.join("sandbox", "test-servers", "recordings", run_id, "summary.md"))
+    finish(f"VERDICT {verdict}", 0)  # exit status unchanged: 0 after a completed run, PASS or FAIL
 
 
 if __name__ == "__main__":
@@ -2240,5 +2283,4 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except Exception as e:
-        print(redact(f"VERDICT BLOCKED {type(e).__name__}: {e}"))
-        sys.exit(1)
+        finish(f"VERDICT BLOCKED {type(e).__name__}: {e}")

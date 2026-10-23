@@ -1117,7 +1117,11 @@ assert len(out) >= 4 and all(l.startswith("[regress] ... still running imap-idle
 assert len(rg["rows"]) == 4
 main_src = regress[regress.find("\ndef main():"):regress.find("\nif __name__ == ")]
 assert 'add_argument("--quiet"' in main_src and "plan = plan_units(suites, names)" in main_src
-assert 'print(f"VERDICT {verdict}")' in main_src  # stdout VERDICT/summary lines unchanged
+assert 'finish(f"VERDICT {verdict}", 0)' in main_src  # the final summary ends with the VERDICT line
+# Every exit path of a run goes through finish(): no bare VERDICT prints left.
+assert 'print(f"VERDICT' not in regress and 'print("VERDICT' not in regress and 'print(redact(f"VERDICT' not in regress
+assert "finish(line)" in py_function(regress, "stop")
+assert 'finish(f"VERDICT BLOCKED {type(e).__name__}: {e}")' in regress[regress.find('\nif __name__ == '):]
 assert "file=sys.stderr" in py_function(regress, "progress")
 
 
@@ -1241,3 +1245,65 @@ assert lab_ports.env_flags("dovecot-245", {}) == []
 _start = open(os.path.join(HERE, "start.sh")).read()
 assert '$port_flags $env_flags "$image"' in _start
 print("full-regress fixes ok")
+
+
+# Final summary: totals (results and units), per-server lines, non-pass rows (redacted, truncated), elapsed,
+# summary.md path, VERDICT last.
+import contextlib, tempfile
+fs = {"__file__": os.path.join(HERE, "regress"), "__name__": "regress_summary_test"}
+exec(compile(regress, "regress", "exec"), fs)
+fs["secrets"] = ["s3cretPW"]
+fs["quiet"] = True
+with contextlib.redirect_stderr(io.StringIO()):
+    fs["add_row"]("courier-50", "imap", "plain", {"pass": 9}, "PASS", "", "", 3)
+    fs["add_row"]("courier-50", "imap-idle", "idleRenew", {"fail": 1}, "FAIL", "idleRenew",
+                  "LOGIN liveimap s3cretPW refused " + "x" * 400, 2)
+    fs["add_row"]("cyrus-3137", "jmap", "", {"known": 1}, "KNOWN", "push", "EventSource, F151", 5)
+    fs["add_row"]("cyrus-3137", "jmap", "", {"pass": 1}, "unexpected pass", "submit", "", 5)
+    fs["add_row"]("uwimap", "imap", "", {}, "BLOCKED", "setup", "start failed", 0)
+    fs["add_row"]("uwimap", "imap-mechs", "NTLM", {"skip": 1}, "SKIP", "open", "no lab credentials", 0)
+with tempfile.TemporaryDirectory() as tmp:
+    fs["run_id"] = "20261022-233000-e9c4795f"
+    fs["run_rec"] = os.path.join(tmp, fs["run_id"])
+    fs["run_t0"] = 1000.0
+    summary = fs["final_summary"]("VERDICT FAIL", now=1000.0 + 754)
+    assert summary.splitlines()[-2] == "summary: not written", summary
+    os.makedirs(fs["run_rec"])
+    open(os.path.join(fs["run_rec"], "summary.md"), "w").write("x\n")
+    summary = fs["final_summary"]("VERDICT FAIL", now=1000.0 + 754)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        try:
+            fs["finish"]("VERDICT BLOCKED x s3cretPW", 1)
+        except SystemExit as e:
+            assert e.code == 1
+    assert out.getvalue().rstrip("\n").splitlines()[-1] == "VERDICT BLOCKED x redacted", out.getvalue()
+sl = summary.splitlines()
+print("--- sample final summary ---\n" + summary + "\n---")
+assert sl[0] == "== regress summary ==", sl
+assert sl[1] == "results (6): pass 1 fail 1 skip 1 known 1 unexpected pass 1 blocked 1", sl
+assert sl[2] == "units (5): pass 1 fail 1 skip 1 known 0 unexpected pass 1 blocked 1", sl  # cyrus-3137 jmap: worst row
+assert sl[3] == "checks: pass 10 fail 1 skip 1 known 1", sl
+assert sl[4] == "  courier-50: pass 1 fail 1 skip 0 known 0 unexpected pass 0 blocked 0", sl
+assert sl[6] == "  uwimap: pass 0 fail 0 skip 1 known 0 unexpected pass 0 blocked 1", sl
+assert sl[7] == "non-pass rows (5):", sl
+assert sl[8].startswith("  courier-50 imap-idle idleRenew FAIL idleRenew LOGIN liveimap redacted refused x"), sl
+assert len(sl[8]) <= 2 + len("courier-50 imap-idle idleRenew FAIL idleRenew ") + 160, len(sl[8])
+assert "s3cretPW" not in summary
+assert "  uwimap imap - BLOCKED setup start failed" in sl
+assert "elapsed: 12m34s" in sl, sl
+assert sl[-2] == "summary: " + os.path.join("sandbox", "test-servers", "recordings", "20261022-233000-e9c4795f", "summary.md"), sl
+assert sl[-1] == "VERDICT FAIL", sl
+fs["rows"][:] = []
+fs["run_rec"], fs["run_t0"] = "", 0.0
+empty = fs["final_summary"]("VERDICT BLOCKED unknown server nope").splitlines()
+assert empty[1] == "results (0): pass 0 fail 0 skip 0 known 0 unexpected pass 0 blocked 0" and "non-pass rows: none" in empty
+assert empty[-2:] == ["summary: not written", "VERDICT BLOCKED unknown server nope"], empty
+print("final summary ok")
+
+# lab-ca.sh: no swallowed openssl errors when reading the SAN or signing.
+_ca = open(os.path.join(HERE, "lab-ca.sh"), encoding="utf-8").read()
+assert "|| true" not in _ca, "lab-ca.sh must not swallow errors"
+assert "-ext subjectAltName 2>/dev/null" not in _ca and "-extfile server.ext 2>/dev/null" not in _ca
+assert "if [ -e server.crt ]; then" in _ca and "exit 1" in _ca
+print("lab-ca ok")

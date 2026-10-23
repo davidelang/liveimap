@@ -21,11 +21,19 @@ for name in $extra_names; do
   want="$want, DNS:$name"
   ext_san="$ext_san,DNS:$name"
 done
-have=$(openssl x509 -in server.crt -noout -ext subjectAltName 2>/dev/null | tail -1 | sed 's/^ *//' || true)
+# No server.crt yet: issue one. An existing one openssl cannot read is an error, not a silent reissue.
+have=""
+if [ -e server.crt ]; then
+  if ! san=$(openssl x509 -in server.crt -noout -ext subjectAltName); then
+    echo "lab-ca.sh: openssl cannot read the subjectAltName of $OUT/server.crt" >&2
+    exit 1
+  fi
+  have=$(printf '%s\n' "$san" | tail -1 | sed 's/^ *//')
+fi
 if [ "$have" != "$want" ]; then
   openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=$LAB_NAME" 2>/dev/null
   printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' "$ext_san" > server.ext
-  openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -extfile server.ext 2>/dev/null
+  openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -extfile server.ext
 fi
 cat server.crt server.key > server.pem
 cat server.crt ca.crt > chain.crt
