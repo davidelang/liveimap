@@ -1,9 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
 import org.dlang.liveimap.session.usableTrashName
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedButton
 import androidx.compose.foundation.horizontalScroll
 import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.layout.heightIn
@@ -52,6 +49,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -60,7 +58,10 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.outlined.OutlinedFlag
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
@@ -71,7 +72,12 @@ import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -106,8 +112,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -119,7 +126,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
-import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
@@ -156,6 +163,8 @@ import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.BodyView
+import org.dlang.liveimap.settings.SwipeAction
+import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DeletePolicy
@@ -182,7 +191,12 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.index.MailUndo
 import org.dlang.liveimap.ui.index.OpenMessageOrder
+import org.dlang.liveimap.ui.index.SwipeWidthPercent
 import org.dlang.liveimap.ui.index.followingUid
+import org.dlang.liveimap.ui.index.precedingUid
+import org.dlang.liveimap.ui.index.swipeBindingForOffset
+import org.dlang.liveimap.ui.index.swipeReached
+import org.dlang.liveimap.ui.index.swipeVisual
 import org.dlang.liveimap.ui.index.mailUndoText
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.nextWireCount
@@ -500,6 +514,7 @@ private fun MessageReaderLoaded(
         }
     }
     var choosingMove by remember { mutableStateOf(false) }
+    var showFlags by remember { mutableStateOf(false) }
     var choosingSave by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
     var saveOffer by remember { mutableStateOf("") }
@@ -1427,6 +1442,23 @@ private fun MessageReaderLoaded(
         }
     }
 
+    fun storeReaderFlag(flag: String, set: Boolean) {
+        if (flag.isEmpty()) return
+        scope.launch {
+            try {
+                inRef { _, s -> // F43: act on this folder's UID
+                    if (set) s.storeFlags(listOf(uid), setOf(flag), emptySet())
+                    else s.storeFlags(listOf(uid), emptySet(), setOf(flag))
+                }
+                rowFlags = if (set) rowFlags + flag else rowFlags - flag
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                postSnack(error.text)
+            }
+        }
+    }
+
     fun runDelete() {
         scope.launch {
             val trash = try {
@@ -1449,6 +1481,34 @@ private fun MessageReaderLoaded(
                 return@launch
             }
             runReaderPolicyLocked(policy)
+        }
+    }
+
+    fun performReaderSwipe(binding: SwipeBinding) {
+        when (binding.action) {
+            SwipeAction.Next -> {
+                if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
+                val next = followingUid(OpenMessageOrder.uids, uid) ?: return
+                onAdvance(next, OpenMessageOrder.sequence(next))
+            }
+            SwipeAction.Previous -> {
+                if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
+                val previous = precedingUid(OpenMessageOrder.uids, uid) ?: return
+                onAdvance(previous, OpenMessageOrder.sequence(previous))
+            }
+            SwipeAction.Reply ->
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
+            SwipeAction.ReplyAll ->
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch))
+            SwipeAction.Delete -> runDelete()
+            SwipeAction.Move -> choosingMove = true
+            SwipeAction.SetFlag -> {
+                if (binding.flag.isNotEmpty()) storeReaderFlag(binding.flag, set = true)
+            }
+            SwipeAction.ClearFlag -> {
+                if (binding.flag.isNotEmpty()) storeReaderFlag(binding.flag, set = false)
+            }
+            SwipeAction.FlagScreen -> showFlags = true
         }
     }
 
@@ -1524,7 +1584,6 @@ private fun MessageReaderLoaded(
     }
     val linkColor = MaterialTheme.colorScheme.primary
     val quoteTint = MaterialTheme.colorScheme.onSurfaceVariant
-    val quoteBorder = MaterialTheme.colorScheme.outlineVariant
     val htmlBackground = MaterialTheme.colorScheme.background.toArgb()
     val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
     val plainFont = if (textLayout == TextLayout.Monospaced) FontFamily.Monospace else null
@@ -1568,24 +1627,14 @@ private fun MessageReaderLoaded(
                     }
                 },
                 actions = {
-                    HelpIconButton(
-                        label = stringResource(
-                            if (headerExpanded) R.string.reader_collapse_header
-                            else R.string.reader_expand_header,
-                        ),
-                        help = stringResource(
-                            if (headerExpanded) R.string.help_reader_collapse_header
-                            else R.string.help_reader_expand_header,
-                        ),
-                        page = "reading.html#header",
-                        onClick = { headerExpanded = !headerExpanded },
-                    ) {
-                        Icon(
-                            imageVector = if (headerExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = stringResource(
-                                if (headerExpanded) R.string.reader_collapse_header
-                                else R.string.reader_expand_header,
-                            ),
+                    if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
+                        ReaderDisplayMenu(
+                            selected = readerDisplayOf(selectedView, textLayout),
+                            onSelect = { display ->
+                                textLayout = textLayoutOf(display, textLayout)
+                                val view = bodyViewOf(display, selectedView)
+                                if (view != selectedView) requestView(view)
+                            },
                         )
                     }
                     DebugStatusIcon(debugStatus)
@@ -1944,6 +1993,94 @@ private fun MessageReaderLoaded(
         contentWindowInsets = mailScreenInsets(),
     ) { padding ->
     Box(Modifier.fillMaxSize().padding(padding)) {
+    val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
+    var swipeWidth by remember { mutableIntStateOf(0) }
+    val swipeHolder = remember { ReaderSwipeBox() }
+    val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { distance -> distance * SwipeWidthPercent / 100f },
+        confirmValueChange = { target ->
+            if (target == SwipeToDismissBoxValue.Settled) {
+                true
+            } else {
+                val box = swipeHolder.state ?: return@rememberSwipeToDismissBoxState false
+                val offset = runCatching { box.requireOffset() }.getOrDefault(0f)
+                swipeReached(offset, swipeWidth.toFloat())
+            }
+        },
+    )
+    swipeHolder.state = dismissState
+    LaunchedEffect(dismissState.currentValue) {
+        val value = dismissState.currentValue
+        if (value == SwipeToDismissBoxValue.Settled) return@LaunchedEffect
+        val binding = swipeBindingForOffset(
+            offsetPx = readerDismissOffset(value, swipeWidth.toFloat(), leftToRight),
+            leftToRight = leftToRight,
+            trailing = account.readerSwipeTrailing,
+            leading = account.readerSwipeLeading,
+        )
+        if (binding != null) performReaderSwipe(binding)
+        dismissState.reset()
+    }
+    Box(Modifier.fillMaxSize().onSizeChanged { swipeWidth = it.width }) {
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            val offset = runCatching { dismissState.requireOffset() }.getOrDefault(0f)
+            val binding = swipeBindingForOffset(
+                offsetPx = offset,
+                leftToRight = leftToRight,
+                trailing = account.readerSwipeTrailing,
+                leading = account.readerSwipeLeading,
+            )
+            if (binding != null) {
+                val visual = swipeVisual(binding.action)
+                val tint = if (binding.action == SwipeAction.Delete) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                val atStart = if (leftToRight) offset > 0f else offset < 0f
+                val reached = swipeReached(offset, swipeWidth.toFloat())
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            readerSwipeContainerColor(visual.container).copy(
+                                alpha = if (reached) 1f else 0.45f,
+                            ),
+                        )
+                        .padding(
+                            start = if (atStart) 24.dp else 0.dp,
+                            end = if (atStart) 0.dp else 24.dp,
+                        ),
+                    contentAlignment = if (atStart) Alignment.CenterStart else Alignment.CenterEnd,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (atStart) {
+                            ReaderSwipeIcon(visual.icon, tint)
+                            Text(
+                                text = readerSwipeActionName(binding.action),
+                                color = tint,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        } else {
+                            Text(
+                                text = readerSwipeActionName(binding.action),
+                                color = tint,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            ReaderSwipeIcon(visual.icon, tint)
+                        }
+                    }
+                }
+            }
+        },
+    ) {
     Column(Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState) {
             scope.launch {
@@ -1977,7 +2114,7 @@ private fun MessageReaderLoaded(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            if (headerExpanded && headerReady) {
+            if (headerReady && headerExpanded) {
                 ReaderHeaderCard(
                     from = headerFrom,
                     toLine = recipientLine(headerTo, headerCc),
@@ -1991,8 +2128,32 @@ private fun MessageReaderLoaded(
                     decode = decodeHeaderView,
                     onDecode = { decodeHeaderView = it },
                     onToggleAllHeaders = { toggleAllHeaders() },
+                    onCollapse = { headerExpanded = false },
                     extraHeaders = viewerExtra,
                 )
+            }
+            if (headerReady && !headerExpanded) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        text = org.dlang.liveimap.ui.nonAscii(headerSubject),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = { headerExpanded = true },
+                        modifier = Modifier.testTag("reader-header-toggle"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ExpandMore,
+                            contentDescription = stringResource(R.string.reader_expand_header),
+                        )
+                    }
+                }
             }
             PullToRefreshBox(
                 isRefreshing = loading,
@@ -2020,16 +2181,6 @@ private fun MessageReaderLoaded(
                             )
                         }
                     }
-                }
-                if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
-                    ReaderDisplaySelector(
-                        selected = readerDisplayOf(selectedView, textLayout),
-                        onSelect = { display ->
-                            textLayout = textLayoutOf(display, textLayout)
-                            val view = bodyViewOf(display, selectedView)
-                            if (view != selectedView) requestView(view)
-                        },
-                    )
                 }
                 when {
                     noTextPart -> {
@@ -2191,12 +2342,15 @@ private fun MessageReaderLoaded(
                             val hscroll = rememberScrollState()
                             Column(if (noWrap) Modifier.horizontalScroll(hscroll).testTag("reader-nowrap") else Modifier) {
                                 for ((quoted, line) in plainLines) {
-                                    if (quoted && !noWrap) {
-                                        QuotedReaderLine(line, quoteTint, quoteBorder, plainFont)
-                                    } else if (noWrap) {
+                                    if (noWrap) {
                                         Text(text = line, fontFamily = plainFont, softWrap = false)
                                     } else {
-                                        Text(text = line, fontFamily = plainFont, modifier = Modifier.fillMaxWidth())
+                                        Text(
+                                            text = line,
+                                            color = if (quoted) quoteTint else Color.Unspecified,
+                                            fontFamily = plainFont,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
                                     }
                                 }
                             }
@@ -2210,6 +2364,8 @@ private fun MessageReaderLoaded(
             }
         }
         }
+    }
+    }
     }
         SnackbarHost(
             hostState = snackbarHostState,
@@ -2356,6 +2512,29 @@ private fun MessageReaderLoaded(
                 TextButton(onClick = { confirmPermanent = false }) {
                     Text(stringResource(R.string.reader_cancel))
                 }
+            },
+        )
+    }
+    if (showFlags) {
+        AlertDialog(
+            onDismissRequest = { showFlags = false },
+            title = { Text(stringResource(R.string.index_flags)) },
+            text = {
+                Column {
+                    for (flag in listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")) {
+                        Row {
+                            TextButton(onClick = { storeReaderFlag(flag, set = true) }) {
+                                Text(stringResource(R.string.index_set_flag, flag))
+                            }
+                            TextButton(onClick = { storeReaderFlag(flag, set = false) }) {
+                                Text(stringResource(R.string.index_clear_flag, flag))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFlags = false }) { Text(stringResource(R.string.index_close)) }
             },
         )
     }
@@ -2646,6 +2825,7 @@ private fun ReaderHeaderCard(
     decode: Boolean = false,
     onDecode: (Boolean) -> Unit = {},
     onToggleAllHeaders: () -> Unit = {},
+    onCollapse: () -> Unit = {},
     extraHeaders: List<Pair<String, String>> = emptyList(),
 ) {
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
@@ -2714,42 +2894,25 @@ private fun ReaderHeaderCard(
                 }
             }
             Text(date)
-            Text(org.dlang.liveimap.ui.nonAscii(subject), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    org.dlang.liveimap.ui.nonAscii(subject),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onCollapse, modifier = Modifier.testTag("reader-header-toggle")) {
+                    Icon(
+                        Icons.Filled.ExpandLess,
+                        contentDescription = stringResource(R.string.reader_collapse_header),
+                    )
+                }
+            }
             if (deleted) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(onClick = {}, label = { Text(stringResource(R.string.reader_deleted)) })
                     TextButton(onClick = onUndelete) { Text(stringResource(R.string.reader_undelete)) }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun QuotedReaderLine(
-    text: AnnotatedString,
-    color: Color,
-    border: Color,
-    fontFamily: FontFamily?,
-) {
-    Layout(
-        content = {
-            Box(Modifier.background(border))
-            Text(text = text, color = color, fontFamily = fontFamily)
-        },
-    ) { measurables, constraints ->
-        val gap = 8.dp.roundToPx()
-        val barWidth = 2.dp.roundToPx()
-        val textMax = (constraints.maxWidth - barWidth - gap).coerceAtLeast(0)
-        val textPlaceable = measurables[1].measure(
-            constraints.copy(minWidth = 0, maxWidth = textMax),
-        )
-        val barPlaceable = measurables[0].measure(
-            Constraints.fixed(barWidth, textPlaceable.height.coerceAtLeast(1)),
-        )
-        layout(constraints.maxWidth, textPlaceable.height) {
-            barPlaceable.placeRelative(0, 0)
-            textPlaceable.placeRelative(barWidth + gap, 0)
         }
     }
 }
@@ -3123,17 +3286,81 @@ internal fun TypeMismatchDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderDisplaySelector(selected: ReaderDisplay, onSelect: (ReaderDisplay) -> Unit) {
-    val entries = ReaderDisplay.entries
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp).testTag("reader-display")) {
-        entries.forEachIndexed { index, display ->
-            SegmentedButton(
-                selected = display == selected,
-                onClick = { onSelect(display) },
-                shape = SegmentedButtonDefaults.itemShape(index, entries.size),
-                modifier = Modifier.testTag("reader-display-${display.name}"),
-            ) { Text(readerDisplayName(display)) }
+private fun ReaderDisplayMenu(selected: ReaderDisplay, onSelect: (ReaderDisplay) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(
+            onClick = { open = true },
+            modifier = Modifier.testTag("reader-display"),
+        ) { Text(readerDisplayName(selected)) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            ObscuredTouchFilter()
+            ReaderDisplay.entries.forEach { display ->
+                DropdownMenuItem(
+                    text = { Text(readerDisplayName(display)) },
+                    onClick = {
+                        open = false
+                        onSelect(display)
+                    },
+                    modifier = Modifier.testTag("reader-display-${display.name}"),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun readerSwipeActionName(action: SwipeAction): String = stringResource(
+    when (action) {
+        SwipeAction.Delete -> R.string.drawer_delete
+        SwipeAction.Move -> R.string.label_move
+        SwipeAction.Reply -> R.string.compose_reply
+        SwipeAction.ReplyAll -> R.string.compose_reply_all
+        SwipeAction.SetFlag -> R.string.label_set_flag
+        SwipeAction.ClearFlag -> R.string.label_clear_flag
+        SwipeAction.FlagScreen -> R.string.label_flag_screen
+        SwipeAction.Next -> R.string.reader_next
+        SwipeAction.Previous -> R.string.reader_previous
+    },
+)
+
+@Composable
+private fun readerSwipeContainerColor(name: String): Color = when (name) {
+    "errorContainer" -> MaterialTheme.colorScheme.errorContainer
+    "tertiaryContainer" -> MaterialTheme.colorScheme.tertiaryContainer
+    "primaryContainer" -> MaterialTheme.colorScheme.primaryContainer
+    else -> MaterialTheme.colorScheme.secondaryContainer
+}
+
+@Composable
+private fun ReaderSwipeIcon(name: String, tint: Color) {
+    Icon(
+        imageVector = when (name) {
+            "delete" -> Icons.Filled.Delete
+            "drive_file_move" -> Icons.Filled.DriveFileMove
+            "reply" -> Icons.AutoMirrored.Filled.Reply
+            "reply_all" -> Icons.AutoMirrored.Filled.ReplyAll
+            "arrow_forward" -> Icons.AutoMirrored.Filled.ArrowForward
+            "arrow_back" -> Icons.AutoMirrored.Filled.ArrowBack
+            "flag" -> Icons.Filled.Flag
+            else -> Icons.Outlined.OutlinedFlag
+        },
+        contentDescription = null,
+        modifier = Modifier.size(24.dp),
+        tint = tint,
+    )
+}
+
+private class ReaderSwipeBox {
+    var state: SwipeToDismissBoxState? = null
+}
+
+private fun readerDismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, leftToRight: Boolean): Float {
+    val span = if (widthPx > 0f) widthPx else 1f
+    return when (value) {
+        SwipeToDismissBoxValue.EndToStart -> if (leftToRight) -span else span
+        SwipeToDismissBoxValue.StartToEnd -> if (leftToRight) span else -span
+        SwipeToDismissBoxValue.Settled -> 0f
     }
 }
 

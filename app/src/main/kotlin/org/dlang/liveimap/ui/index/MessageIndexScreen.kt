@@ -4352,6 +4352,8 @@ private fun swipeActionName(action: SwipeAction): String = stringResource(
         SwipeAction.SetFlag -> R.string.label_set_flag
         SwipeAction.ClearFlag -> R.string.label_clear_flag
         SwipeAction.FlagScreen -> R.string.label_flag_screen
+        SwipeAction.Next -> R.string.reader_next
+        SwipeAction.Previous -> R.string.reader_previous
     },
 )
 

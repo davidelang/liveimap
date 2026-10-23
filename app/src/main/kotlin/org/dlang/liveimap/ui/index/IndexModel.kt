@@ -426,6 +426,8 @@ fun swipeVisual(action: SwipeAction): SwipeVisual = when (action) {
     SwipeAction.SetFlag -> SwipeVisual("secondaryContainer", "flag")
     SwipeAction.ClearFlag -> SwipeVisual("secondaryContainer", "outlined_flag")
     SwipeAction.FlagScreen -> SwipeVisual("secondaryContainer", "flag")
+    SwipeAction.Next -> SwipeVisual("primaryContainer", "arrow_forward")
+    SwipeAction.Previous -> SwipeVisual("primaryContainer", "arrow_back")
 }
 
 fun indexSwipeBinding(
@@ -737,6 +739,12 @@ fun followingUid(uids: List<Long>, current: Long): Long? {
     val index = uids.indexOf(current)
     if (index < 0 || index + 1 >= uids.size) return null
     return uids[index + 1]
+}
+
+fun precedingUid(uids: List<Long>, current: Long): Long? {
+    val index = uids.indexOf(current)
+    if (index <= 0) return null
+    return uids[index - 1]
 }
 
 fun followingUndeleted(uids: List<Long>, deleted: Set<Long>, current: Long): Long? {
@@ -1893,6 +1901,7 @@ class IndexModel(
                     notice = "Open the message to change flags on a hit from another folder"
                     return IndexCommand.None
                 }
+                SwipeAction.Next, SwipeAction.Previous -> return IndexCommand.None
                 else -> return inRowFolder(rowMailbox) { acted -> performSwipeHere(uid, binding, acted) }
             }
         }
@@ -1901,6 +1910,7 @@ class IndexModel(
 
     private suspend fun performSwipeHere(uid: Long, binding: SwipeBinding, folder: String): IndexCommand {
         when (binding.action) {
+            SwipeAction.Next, SwipeAction.Previous -> return IndexCommand.None
             SwipeAction.Delete -> {
                 val settings = store.load()
                 account = settings

@@ -63,7 +63,8 @@ class TextDisplayTest {
 
     @Test fun readerUsesOneSelectorWithZoomAndNoWrap() {
         val reader = File("src/main/kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt").readText()
-        assertTrue(reader.contains("ReaderDisplaySelector("))
+        assertTrue(reader.contains("ReaderDisplayMenu("))
+        assertTrue(!reader.contains("SingleChoiceSegmentedButtonRow"))
         assertTrue(reader.contains("BodyView.entries.filter { it != BodyView.PlainOrHtml && it != BodyView.PlainOrError }"))
         assertTrue(reader.contains("horizontalScroll(hscroll)"))
         assertTrue(reader.contains("softWrap = false"))

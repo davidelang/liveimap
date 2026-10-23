@@ -136,6 +136,8 @@ enum class SwipeAction {
     SetFlag,
     ClearFlag,
     FlagScreen,
+    Next,
+    Previous,
 }
 
 enum class ThemeMode {
@@ -333,6 +335,8 @@ data class AccountSettings(
     val expandedFolders: Set<String> = emptySet(),
     val swipeTrailing: SwipeBinding = SwipeBinding(SwipeAction.Delete),
     val swipeLeading: SwipeBinding = SwipeBinding(SwipeAction.ReplyAll),
+    val readerSwipeTrailing: SwipeBinding = SwipeBinding(SwipeAction.Next),
+    val readerSwipeLeading: SwipeBinding = SwipeBinding(SwipeAction.Previous),
     val bounceFcc: Boolean = false,
     val friendlyName: String = "",
     val theme: ThemeMode = ThemeMode.FollowSystem,
@@ -554,6 +558,8 @@ private val fieldNames = listOf(
     "openAtInIndexMenu",
     "pinercStartDefault",
     "readerTextLayout",
+    "readerSwipeTrailing",
+    "readerSwipeLeading",
     "readerTextZoom",
     "idleWakeSeconds",
     "altAddresses",
@@ -711,12 +717,14 @@ fun AccountSettings.encode(): String = buildString {
     put("openAtInIndexMenu=$openAtInIndexMenu")
     put("pinercStartDefault=${pinercStartDefault.name}")
     if (readerTextLayout != TextLayout.Text) put("readerTextLayout=${readerTextLayout.name}")
+    if (readerSwipeTrailing != SwipeBinding(SwipeAction.Next)) put("readerSwipeTrailing=${encodeSwipe(readerSwipeTrailing)}")
+    if (readerSwipeLeading != SwipeBinding(SwipeAction.Previous)) put("readerSwipeLeading=${encodeSwipe(readerSwipeLeading)}")
     if (readerTextZoom != 100) put("readerTextZoom=$readerTextZoom")
     if (idleWakeSeconds != 5) put("idleWakeSeconds=$idleWakeSeconds")
     // Always written (still optional on decode), so each account stores its look-alike choice explicitly.
     put("nonAsciiDisplay=${nonAsciiDisplay.name}")
     put("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, readerTextLayout when Text, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
+    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, readerTextLayout when Text, readerSwipeTrailing when Next, readerSwipeLeading when Previous, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
     if (completionSources != listOf(pineSourceId)) {
         put("completionSources=${encodeCompletionSources(completionSources)}")
     }
@@ -878,6 +886,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "openAtInIndexMenu" ||
             key == "pinercStartDefault" ||
             key == "readerTextLayout" ||
+            key == "readerSwipeTrailing" ||
+            key == "readerSwipeLeading" ||
             key == "readerTextZoom" ||
             key == "idleWakeSeconds" ||
             key == "altAddresses" ||
@@ -1005,6 +1015,12 @@ fun decodeAccountSettings(text: String): AccountSettings {
         expandedFolders = field("expandedFolders", d.expandedFolders) { parseExpanded(values.getValue("expandedFolders")) },
         swipeTrailing = field("swipeTrailing", d.swipeTrailing) { parseSwipe(values.getValue("swipeTrailing")) },
         swipeLeading = field("swipeLeading", d.swipeLeading) { parseSwipe(values.getValue("swipeLeading")) },
+        readerSwipeTrailing = field("readerSwipeTrailing", d.readerSwipeTrailing) {
+            values["readerSwipeTrailing"]?.let { parseSwipe(it) } ?: SwipeBinding(SwipeAction.Next)
+        },
+        readerSwipeLeading = field("readerSwipeLeading", d.readerSwipeLeading) {
+            values["readerSwipeLeading"]?.let { parseSwipe(it) } ?: SwipeBinding(SwipeAction.Previous)
+        },
         bounceFcc = field("bounceFcc", d.bounceFcc) { parseBoolean(values.getValue("bounceFcc")) },
         friendlyName = field("friendlyName", d.friendlyName) { values["friendlyName"]?.let { percentDecode(it) } ?: "" },
         theme = field("theme", d.theme) { values["theme"]?.let { enumValueOf<ThemeMode>(it) } ?: ThemeMode.FollowSystem },

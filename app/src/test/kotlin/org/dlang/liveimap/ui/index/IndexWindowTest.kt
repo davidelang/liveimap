@@ -354,6 +354,9 @@ class IndexWindowTest {
         session.arrivalRows = listOf(row(6, flags = setOf("\\Seen")))
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")
         runImmediate { model.loadWindow() }
+        val next = runImmediate { model.performSwipe(6L, SwipeBinding(SwipeAction.Next)) }
+        assertTrue(next is IndexCommand.None)
+        assertEquals(setOf("\\Seen"), model.rows.single().flags)
         val command = runImmediate { model.performSwipe(6L, SwipeBinding(SwipeAction.Delete)) }
         assertTrue(command is IndexCommand.None)
         assertEquals(listOf(FlagWrite(listOf(6L), setOf("\\Deleted"), emptySet())), session.stores)
@@ -1017,6 +1020,8 @@ class IndexWindowTest {
         assertEquals(SwipeVisual("secondaryContainer", "flag"), swipeVisual(SwipeAction.SetFlag))
         assertEquals(SwipeVisual("secondaryContainer", "outlined_flag"), swipeVisual(SwipeAction.ClearFlag))
         assertEquals(SwipeVisual("secondaryContainer", "flag"), swipeVisual(SwipeAction.FlagScreen))
+        assertEquals(SwipeVisual("primaryContainer", "arrow_forward"), swipeVisual(SwipeAction.Next))
+        assertEquals(SwipeVisual("primaryContainer", "arrow_back"), swipeVisual(SwipeAction.Previous))
     }
 
     private fun screenSource(): String = listOf(
@@ -1242,6 +1247,10 @@ class IndexWindowTest {
         assertEquals(6L, followingUid(listOf(5L, 6L, 7L), 5L))
         assertNull(followingUid(listOf(5L, 6L, 7L), 7L))
         assertNull(followingUid(listOf(5L, 6L, 7L), 9L))
+        assertEquals(5L, precedingUid(listOf(5L, 6L, 7L), 6L))
+        assertEquals(6L, precedingUid(listOf(5L, 6L, 7L), 7L))
+        assertNull(precedingUid(listOf(5L, 6L, 7L), 5L))
+        assertNull(precedingUid(listOf(5L, 6L, 7L), 9L))
         val session = FakeMailSession()
         session.arrivalRows = listOf(row(5, sequence = 11), row(6, sequence = 22))
         val model = IndexModel(session, MemorySettingsStore(AccountSettings()), "INBOX")

@@ -124,6 +124,10 @@ class AccountSettingsTest {
         assertTrue(text.contains("\nfolderViews=\n"))
         assertTrue(text.contains("swipeTrailing=Delete||"))
         assertTrue(text.contains("swipeLeading=ReplyAll||"))
+        assertFalse(keys.contains("readerSwipeTrailing"))
+        assertFalse(keys.contains("readerSwipeLeading"))
+        assertEquals(SwipeBinding(SwipeAction.Next), decodeAccountSettings(text).readerSwipeTrailing)
+        assertEquals(SwipeBinding(SwipeAction.Previous), decodeAccountSettings(text).readerSwipeLeading)
         assertTrue(text.contains("bounceFcc=false"))
         assertTrue(text.lines().contains("friendlyName="))
         assertTrue(text.lines().contains("theme=FollowSystem"))
@@ -149,6 +153,14 @@ class AccountSettingsTest {
         assertFalse(keys.contains("addressBookHistory"))
         assertFalse(keys.contains("addressBookNeverTrim"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
+    }
+
+    @Test
+    fun readerSwipeDeleteRoundTrip() {
+        val settings = AccountSettings(readerSwipeTrailing = SwipeBinding(SwipeAction.Delete))
+        val text = settings.encode()
+        assertTrue(text.contains("readerSwipeTrailing=Delete||"))
+        assertEquals(settings, decodeAccountSettings(text))
     }
 
     @Test

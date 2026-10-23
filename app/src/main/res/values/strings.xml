@@ -527,6 +527,8 @@ Your version: %2$s</string>
     <string name="settings_actions">Actions</string>
     <string name="settings_swipe_left">Swipe left</string>
     <string name="settings_swipe_right">Swipe right</string>
+    <string name="settings_message_swipe_left">Message swipe left</string>
+    <string name="settings_message_swipe_right">Message swipe right</string>
     <string name="settings_message_bar">Message bar</string>
     <string name="settings_unread_warn">Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.</string>
     <string name="settings_confirm">Confirm</string>
@@ -849,6 +851,8 @@ Your version: %2$s</string>
     <string name="settings_flowed_text_note">Off sends fixed lines.</string>
     <string name="reader_collapse_header">Collapse header</string>
     <string name="reader_expand_header">Expand header</string>
+    <string name="reader_next">Next</string>
+    <string name="reader_previous">Previous</string>
     <string name="reader_hide_images">Hide images</string>
     <string name="settings_full_screen">Full screen</string>
     <string name="settings_sieve_host">Sieve host</string>

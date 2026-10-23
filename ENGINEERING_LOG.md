@@ -3579,3 +3579,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-23 - Threaded index unread, delete, and refresh.
 
 ## 2026-10-23 - A threaded refresh keeps exists growth after Exists.
+
+## 2026-10-23 - Reader header, display menu, quotes, and message swipes.

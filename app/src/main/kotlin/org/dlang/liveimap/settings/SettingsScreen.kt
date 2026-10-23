@@ -1967,16 +1967,31 @@ private fun ReadingGroup(editor: SettingsEditor, depth: Int) {
             expanded = "actions" in sections.open,
             onToggle = { sections.toggle("actions") },
         ) {
+            val indexSwipeActions = SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous }
             SwipeEditor(
                 stringResource(if (leftToRight) R.string.settings_swipe_left else R.string.settings_swipe_right),
                 settings.swipeTrailing,
                 { picking = MailboxPick.TrailingMove },
+                indexSwipeActions,
             ) { editor.persist(editor.settings.copy(swipeTrailing = it)) }
             SwipeEditor(
                 stringResource(if (leftToRight) R.string.settings_swipe_right else R.string.settings_swipe_left),
                 settings.swipeLeading,
                 { picking = MailboxPick.LeadingMove },
+                indexSwipeActions,
             ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
+            SwipeEditor(
+                stringResource(if (leftToRight) R.string.settings_message_swipe_left else R.string.settings_message_swipe_right),
+                settings.readerSwipeTrailing,
+                { picking = MailboxPick.ReaderTrailingMove },
+                SwipeAction.entries,
+            ) { editor.persist(editor.settings.copy(readerSwipeTrailing = it)) }
+            SwipeEditor(
+                stringResource(if (leftToRight) R.string.settings_message_swipe_right else R.string.settings_message_swipe_left),
+                settings.readerSwipeLeading,
+                { picking = MailboxPick.ReaderLeadingMove },
+                SwipeAction.entries,
+            ) { editor.persist(editor.settings.copy(readerSwipeLeading = it)) }
         }
     }
     if (warnUnread) {
@@ -3239,6 +3254,8 @@ private fun swipeActionName(action: SwipeAction): String = stringResource(
         SwipeAction.SetFlag -> R.string.label_set_flag
         SwipeAction.ClearFlag -> R.string.label_clear_flag
         SwipeAction.FlagScreen -> R.string.label_flag_screen
+        SwipeAction.Next -> R.string.reader_next
+        SwipeAction.Previous -> R.string.reader_previous
     },
 )
 
@@ -3459,10 +3476,11 @@ private fun SwipeEditor(
     label: String,
     binding: SwipeBinding,
     onChooseMove: () -> Unit,
+    actions: List<SwipeAction>,
     onChange: (SwipeBinding) -> Unit,
 ) {
     Text(label)
-    ChoiceField(stringResource(R.string.settings_action), SwipeAction.entries, binding.action, { swipeActionName(it) }) { action ->
+    ChoiceField(stringResource(R.string.settings_action), actions, binding.action, { swipeActionName(it) }) { action ->
         onChange(binding.copy(action = action))
     }
     if (binding.action == SwipeAction.Move) {
@@ -3517,6 +3535,8 @@ private enum class MailboxPick {
     Saved,
     TrailingMove,
     LeadingMove,
+    ReaderTrailingMove,
+    ReaderLeadingMove,
 }
 
 private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: String): AccountSettings {
@@ -3536,6 +3556,12 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         )
         MailboxPick.LeadingMove -> base.copy(
             swipeLeading = base.swipeLeading.copy(moveMailbox = mailbox),
+        )
+        MailboxPick.ReaderTrailingMove -> base.copy(
+            readerSwipeTrailing = base.readerSwipeTrailing.copy(moveMailbox = mailbox),
+        )
+        MailboxPick.ReaderLeadingMove -> base.copy(
+            readerSwipeLeading = base.readerSwipeLeading.copy(moveMailbox = mailbox),
         )
     }
 }
