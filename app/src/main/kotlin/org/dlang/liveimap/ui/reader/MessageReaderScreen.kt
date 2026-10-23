@@ -72,7 +72,6 @@ import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxState
@@ -522,20 +521,22 @@ private fun MessageReaderLoaded(
     var takeChoices by remember { mutableStateOf<List<TakeAddress>>(emptyList()) }
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var moreMenu by remember { mutableStateOf(false) }
+    var displayMenu by remember { mutableStateOf(false) }
     var iconRows by remember { mutableIntStateOf(1) }
     var bodyGeneration by remember { mutableIntStateOf(0) }
     var pageGeneration by remember { mutableIntStateOf(0) }
     var heading by held.headingState
     val saveMutex = remember { Mutex() }
 
-    BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake) && !moreMenu) {
+    BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake) && !moreMenu && !displayMenu) {
         choosingMove = false
         choosingSave = false
         confirmSave = false
         confirmTake = false
     }
-    BackHandler(enabled = moreMenu) {
+    BackHandler(enabled = moreMenu || displayMenu) {
         moreMenu = false
+        displayMenu = false
     }
 
     LifecycleStartEffect(store) {
@@ -1627,16 +1628,6 @@ private fun MessageReaderLoaded(
                     }
                 },
                 actions = {
-                    if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
-                        ReaderDisplayMenu(
-                            selected = readerDisplayOf(selectedView, textLayout),
-                            onSelect = { display ->
-                                textLayout = textLayoutOf(display, textLayout)
-                                val view = bodyViewOf(display, selectedView)
-                                if (view != selectedView) requestView(view)
-                            },
-                        )
-                    }
                     DebugStatusIcon(debugStatus)
                     if (renderedHtml) {
                         HelpIconButton(
@@ -1742,19 +1733,55 @@ private fun MessageReaderLoaded(
                         icons = readerIcons,
                     )
                     Box {
+                if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
+                    ReaderDisplayMenu(
+                        selected = readerDisplayOf(selectedView, textLayout),
+                        onOpen = {
+                            displayMenu = true
+                            moreMenu = false
+                        },
+                    )
+                }
                 HelpIconButton(
                     label = stringResource(R.string.reader_more),
                     help = stringResource(R.string.help_reader_more),
                     page = "reading.html#more",
-                    onClick = { moreMenu = true },
+                    onClick = {
+                        moreMenu = true
+                        displayMenu = false
+                    },
                 ) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = stringResource(R.string.reader_more),
                     )
                 }
-            DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+            DropdownMenu(
+                expanded = moreMenu || displayMenu,
+                onDismissRequest = {
+                    moreMenu = false
+                    displayMenu = false
+                },
+            ) {
                 ObscuredTouchFilter()
+                if (displayMenu) {
+                    ReaderDisplay.entries.forEach { display ->
+                        val label = readerDisplayName(display)
+                        HelpDropdownMenuItem(
+                            label = label,
+                            help = stringResource(R.string.help_menu_body_view),
+                            page = "reading.html",
+                            modifier = Modifier.testTag("reader-display-${display.name}"),
+                            text = { Text(label) },
+                            onClick = {
+                                displayMenu = false
+                                textLayout = textLayoutOf(display, textLayout)
+                                val view = bodyViewOf(display, selectedView)
+                                if (view != selectedView) requestView(view)
+                            },
+                        )
+                    }
+                } else {
                 for (policy in alternateDeletePolicies(effectivePolicy, readerUidPlus, trashKnown)) {
                     val policyLabel = deletePolicyLabel(policy)
                     HelpDropdownMenuItem(
@@ -1983,6 +2010,7 @@ private fun MessageReaderLoaded(
                         onCustomize(accountId)
                     },
                 )
+                }
             }
                     }
                 },
@@ -3284,29 +3312,12 @@ internal fun TypeMismatchDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderDisplayMenu(selected: ReaderDisplay, onSelect: (ReaderDisplay) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        TextButton(
-            onClick = { open = true },
-            modifier = Modifier.testTag("reader-display"),
-        ) { Text(readerDisplayName(selected)) }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            ObscuredTouchFilter()
-            ReaderDisplay.entries.forEach { display ->
-                DropdownMenuItem(
-                    text = { Text(readerDisplayName(display)) },
-                    onClick = {
-                        open = false
-                        onSelect(display)
-                    },
-                    modifier = Modifier.testTag("reader-display-${display.name}"),
-                )
-            }
-        }
-    }
+private fun ReaderDisplayMenu(selected: ReaderDisplay, onOpen: () -> Unit) {
+    TextButton(
+        onClick = onOpen,
+        modifier = Modifier.testTag("reader-display"),
+    ) { Text(readerDisplayName(selected)) }
 }
 
 @Composable
