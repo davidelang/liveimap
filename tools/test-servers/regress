@@ -727,6 +727,54 @@ def heartbeat(label, stop_event, every=None):
                  f" ({len([u for u in plan if u in done_units])}/{len(plan)} done)")
 
 
+setup_done = [0]
+setup_total = [0]
+
+
+def setup_steps(used, by_name, suites):
+    """[(server, step)] for the seed/start phase, in the order main() runs them."""
+    steps = []
+    for name in used:
+        s = by_name.get(name)
+        if s and s.get("container"):
+            steps += [(name, "start"), (name, "check_published")]
+        steps += [(name, "probe"), (name, "login"), (name, "entry-version")]
+        if "imap" in suites:
+            steps.append((name, "fixture"))
+        steps.append((name, "verify-seed"))
+    return steps
+
+
+def timed_step(label, fn, failed=lambda r: bool(r), counter=None):
+    """Run fn() with a heartbeat; report 'setup k/K label ok|FAIL dur (total T)' when it ends. --quiet keeps only
+    FAIL lines. counter=None counts against the setup plan; a string is printed in its place (suite resets)."""
+    import threading
+    stop_event = threading.Event()
+    hb = None
+    if not quiet:
+        hb = threading.Thread(target=heartbeat, args=(label, stop_event), daemon=True)
+        hb.start()
+    t0 = time.time()
+    result = None
+    try:
+        result = fn()
+    finally:
+        stop_event.set()
+        if hb is not None:
+            hb.join()
+    bad = failed(result)
+    if counter is None:
+        setup_done[0] += 1
+        counter = f"setup {setup_done[0]}/{setup_total[0]}"
+    if bad or not quiet:
+        detail = ""
+        if bad and isinstance(result, str):
+            detail = " " + redact(result)[:200]
+        progress(f"{counter} {label} {'FAIL' if bad else 'ok'} {fmt_secs(time.time() - t0)}"
+                 f" (total {fmt_secs(time.time() - run_t0)}){detail}")
+    return result
+
+
 def add_row(server, suite, variant, counts, result, failing, error, duration):
     if result == "FAIL" and not str(error or "").strip():
         # A FAIL must say why. An empty detail is a harness defect; name where it came from.
@@ -987,7 +1035,8 @@ def reset_for_suite(suite, name):
     if not s or not s.get("container"):
         return ""
     lab.only_one("")
-    err = reset_lab_server(s)
+    n = len([u for u in plan if u in done_units])
+    err = timed_step(f"{name} reset for {suite}", lambda: reset_lab_server(s), counter=f"reset ({n}/{len(plan)} done)")
     return f"reset before {suite}: {err}" if err else ""
 
 
@@ -1942,6 +1991,12 @@ def main():
     if bad_suite:
         print(f"VERDICT BLOCKED unknown suite {bad_suite}")
         sys.exit(1)
+    plan = plan_units(suites, names)
+    used = servers_used(names, suites)
+    setup_total[0] = len(setup_steps(used, by_name, suites))
+    if not quiet and not dry_run:
+        progress(f"start: {len(names)} servers x {len(suites)} suites ({', '.join(suites)}) = {len(plan)} units;"
+                 f" setup {setup_total[0]} steps on {len(used)} servers; heartbeat every {fmt_secs(HEARTBEAT_S)}")
     if not dry_run:
         try:
             acquire_lock()
@@ -1973,7 +2028,6 @@ def main():
             err = "VERDICT BLOCKED lab container mounts: " + " | ".join(bad)
     if err:
         stop(err, suites, names, [])
-    used = servers_used(names, suites)
     unseeded = []
     if any(n in RELAY_SERVERS for n in used):
         err = start_fake_smtp()
@@ -1986,27 +2040,27 @@ def main():
         s = by_name.get(name)
         try:
             if s and s.get("container"):
-                err = start_lab_container(s)
+                err = timed_step(f"{name} start", lambda: start_lab_container(s))
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-                err = lab.check_published(s["container"])
+                err = timed_step(f"{name} check_published", lambda: lab.check_published(s["container"]))
                 if err:
                     stop(f"VERDICT BLOCKED {name}: {err}", suites, names, [])
-            err = probe_servers([name], by_name)
+            err = timed_step(f"{name} probe", lambda: probe_servers([name], by_name))
             if err:
                 stop(f"VERDICT BLOCKED {err}", suites, names, [])
-            problem = domain_login_check(s)
+            problem = timed_step(f"{name} login", lambda: domain_login_check(s))
             if problem:
                 stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
             imap_port = s.get("imap") if isinstance(s, dict) else None
-            problem = lab.entry_version_problem(name, imap_port)
+            problem = timed_step(f"{name} entry-version", lambda: lab.entry_version_problem(name, imap_port))
             if problem:
                 stop(f"VERDICT BLOCKED {problem}", suites, names, [])
             if "imap" in suites:
-                problem = lab.fixture_check(s)
+                problem = timed_step(f"{name} fixture", lambda: lab.fixture_check(s))
                 if problem:
                     stop(f"VERDICT BLOCKED {name} {problem} tools/test-servers/build-seed-image {name}", suites, names, [])
-            blocked, drifted = verify_one(s, False)
+            blocked, drifted = timed_step(f"{name} verify-seed", lambda: verify_one(s, False), failed=lambda r: bool(r[0]))
             if blocked:
                 stop(f"VERDICT BLOCKED {blocked} tools/test-servers/build-seed-image {name}", suites, names, [])
             drift_lines.extend(drifted)
@@ -2014,7 +2068,6 @@ def main():
             if s and s.get("container"):
                 stop_lab_container(s)
     cache.update(load_cache())
-    plan = plan_units(suites, names)
     if not quiet:
         progress(f"plan: {len(plan)} server x suite units ({', '.join(suites)}); variants and checks print as they finish")
     if "imap" in suites:

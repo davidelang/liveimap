@@ -36,4 +36,22 @@ class NativeIdleRenewGuardTest {
         assertTrue(queue.indexOf("watchTraceQueued(") in 0 until queue.indexOf("std::lock_guard"))
         assertEquals(1, Regex("""watchTrace\(session, "untagged parse error""").findAll(src).count())
     }
+
+    /**
+     * Lab StartTls idle -> idleRenew: the idle step's stopWatch freed the TLS watch on the caller thread; its
+     * failed LOGOUT/SSL_shutdown left OpenSSL errors in that thread's queue, so the next main EXAMINE read failed
+     * at once and the keeper reconnected. The new LiveSession restarted watch generations at 1, below the floor
+     * Kotlin kept, so publishWatch dropped the idleRenew watch and every EXISTS was discarded.
+     */
+    @Test fun sslErrorQueueClearedAndGenerationsProcessWide() {
+        assertTrue(src.contains("void ERR_clear_error(void);"))
+        val lock = src.substringAfter("LiveSession * lockSession(JNIEnv * env, jlong handle) {").substringBefore("\n}\n")
+        assertTrue(lock, lock.indexOf("ERR_clear_error();") > lock.indexOf("session->mu.lock();"))
+        val finish = src.substringAfter("void finishWatchStopLocked(LiveSession * session, JNIEnv * env) {").substringBefore("\n}\n")
+        assertTrue(finish, finish.indexOf("ERR_clear_error();") > finish.indexOf("mailimap_free(session->watch);"))
+        val bump = src.substringAfter("uint64_t bumpWatchGeneration(LiveSession * session) {").substringBefore("\n}\n")
+        assertTrue(bump, bump.contains("uint64_t next = ++gWatchGenerationSeq;"))
+        assertTrue(bump, bump.contains("session->watchGeneration = next;"))
+        assertTrue(!src.contains("++session->watchGeneration"))
+    }
 }

@@ -300,7 +300,7 @@ assert "sys.exit" not in published
 assert 'return ""' in published
 assert "not published" in published
 assert "no local-ports.tsv row" in published
-checked = regress.find('err = lab.check_published(s["container"])')
+checked = regress.find('err = timed_step(f"{name} check_published", lambda: lab.check_published(s["container"]))')
 assert checked != -1
 window = regress[checked:checked + 220]
 assert 'if err:' in window
@@ -507,7 +507,7 @@ assert "zimbra-tls.sh" in builder
 # No-test-time-seed edges 1-4. Text only; this does not run docker, regress, or build-seed-image.
 assert "seed_corpus.py" not in regress
 assert "seed_one(" not in regress
-verify_at = regress.find("blocked, drifted = verify_one(")
+verify_at = regress.find("blocked, drifted = timed_step(f\"{name} verify-seed\", lambda: verify_one(")
 assert verify_at != -1
 stop_at = regress.find("stop(", verify_at)
 assert stop_at != -1
@@ -651,7 +651,7 @@ assert "sys.exit" not in check_fn
 assert "domain_login_problem" in check_fn
 assert "lab.mail_domain()" in check_fn
 assert "needs LAB_MAIL_DOMAIN" not in check_fn
-call = regress.find("problem = domain_login_check(s)")
+call = regress.find("problem = timed_step(f\"{name} login\", lambda: domain_login_check(s))")
 assert call != -1
 call_window = regress[call:call + 160]
 assert "stop(" in call_window and "VERDICT BLOCKED" in call_window
@@ -732,7 +732,7 @@ assert "seed-deep" not in lab_py and "seed-spoof" not in lab_py
 assert "seed-deep" not in regress and "seed-spoof" not in regress
 assert "sys.exit" not in py_function(lab_py, "fixture_check")
 assert "sys.exit" not in py_function(lab_py, "fixture_problem")
-fix_at = regress.find("problem = lab.fixture_check(s)")
+fix_at = regress.find("problem = timed_step(f\"{name} fixture\", lambda: lab.fixture_check(s))")
 # verify_one (regress start/verify) also checks the suite boxes, so an empty seed folder blocks there too.
 assert "suite = lab.fixture_check(s)" in py_function(regress, "verify_one")
 lab_imap_src = open(os.path.join(HERE, "lab_imap.py"), encoding="utf-8").read()
@@ -1103,3 +1103,44 @@ assert rg["rows"][_n]["first_error"].startswith("no detail reported for tlsUntru
 rg["add_row"]("courier-50", "imap-idle", "idleRenew", {}, "FAIL", "idleRenew", "no EXISTS after 28 renewals", 1)
 assert rg["rows"][_n + 1]["first_error"] == "no EXISTS after 28 renewals"
 print("ok step_status/empty-detail")
+
+# Startup and seed/start phase progress: a start line before anything slow, setup k/K per server step with
+# elapsed, a heartbeat inside one long step, per-suite reset lines; --quiet keeps only FAIL. Fakes only.
+_by = {"courier-50": {"name": "courier-50", "container": "c50"}, "ext": {"name": "ext"}}
+_steps = rg["setup_steps"](["courier-50", "ext"], _by, ["imap-idle"])
+assert _steps == [("courier-50", "start"), ("courier-50", "check_published"), ("courier-50", "probe"),
+                  ("courier-50", "login"), ("courier-50", "entry-version"), ("courier-50", "verify-seed"),
+                  ("ext", "probe"), ("ext", "login"), ("ext", "entry-version"), ("ext", "verify-seed")], _steps
+assert len(rg["setup_steps"](["ext"], _by, ["imap"])) == 5  # imap adds the fixture check
+rg["setup_done"][0], rg["setup_total"][0] = 0, 4
+rg["plan"], rg["done_units"] = [("courier-50", "imap"), ("courier-50", "imap-idle")], {("courier-50", "imap")}
+rg["HEARTBEAT_S"] = 0.2
+rg["quiet"] = False
+err = io.StringIO(); sys.stderr = err
+try:
+    assert rg["timed_step"]("courier-50 start", lambda: (rg["time"].sleep(0.5), "")[1]) == ""
+    assert rg["timed_step"]("courier-50 verify-seed", lambda: ("", ["d"]), failed=lambda r: bool(r[0])) == ("", ["d"])
+    rg["timed_step"]("courier-50 reset for imap-idle", lambda: "", counter="reset (1/2 done)")
+    rg["quiet"] = True
+    rg["timed_step"]("ext probe", lambda: "")
+    rg["timed_step"]("ext login", lambda: "login refused")
+finally:
+    sys.stderr = saved
+    rg["quiet"] = False
+out = err.getvalue().splitlines()
+beats = [l for l in out if "still running courier-50 start" in l]
+assert beats and beats[0].startswith("[regress] ... still running courier-50 start 0s (1/2 done)"), out
+rest = [l for l in out if "still running" not in l]
+assert rest[0].startswith("[regress] setup 1/4 courier-50 start ok 0s (total "), rest
+assert rest[1].startswith("[regress] setup 2/4 courier-50 verify-seed ok "), rest
+assert rest[2].startswith("[regress] reset (1/2 done) courier-50 reset for imap-idle ok "), rest
+assert rest[3].startswith("[regress] setup 4/4 ext login FAIL ") and rest[3].endswith("login refused"), rest
+assert len(rest) == 4, rest  # quiet: ext probe ok suppressed
+main_src = regress[regress.find("\ndef main():"):regress.find("\nif __name__ == ")]
+assert main_src.find('progress(f"start: ') < main_src.find("acquire_lock()") < main_src.find('write_lock("seed")')
+for st in ("start", "check_published", "probe", "login", "entry-version", "fixture", "verify-seed"):
+    assert f'timed_step(f"{{name}} {st}"' in main_src, st
+assert "timed_step(" in py_function(regress, "reset_for_suite")
+print("ok setup/reset progress")
+for l in out:
+    print("  sample:", l)

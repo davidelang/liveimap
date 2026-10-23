@@ -94,6 +94,7 @@ struct stack_st;
 extern "C" {
 long SSL_CTX_ctrl(ssl_ctx_st * ctx, int cmd, long larg, void * parg);
 unsigned long ERR_get_error(void);
+void ERR_clear_error(void);
 void SSL_CTX_set_security_level(ssl_ctx_st * ctx, int level);
 int SSL_CTX_set_cipher_list(ssl_ctx_st * ctx, const char * list);
 void SSL_CTX_set_info_callback(ssl_ctx_st * ctx, void (* cb)(const ssl_st *, int, int));
@@ -828,6 +829,11 @@ LiveSession * lockSession(JNIEnv * env, jlong handle) {
         throwFailure(env, "not connected");
         return nullptr;
     }
+    // OpenSSL keeps one error queue per thread, and libetpan's SSL read/write calls SSL_get_error without
+    // clearing it. A stale entry (freeing a shut-down TLS watch on this thread: its LOGOUT and SSL_shutdown
+    // fail) turns the next main-connection WANT_READ into SSL_ERROR_SSL: the read fails at once, the
+    // connection is dropped and reconnected (lab StartTls idle -> idleRenew). Start every call clean.
+    ERR_clear_error();
     return session;
 }
 
@@ -2160,9 +2166,14 @@ bool watchSetupSuperseded(bool closed, uint64_t currentGeneration, uint64_t setu
 }
 
 // Caller holds session->mu. The IDLE-start wait reads the generation under startMu.
+// Process-wide, so a reconnect's new LiveSession never reuses a generation at or below the floor the Kotlin
+// session kept from the old handle (publishWatch would drop it and every event of that watch).
+std::atomic<uint64_t> gWatchGenerationSeq{0};
+
 uint64_t bumpWatchGeneration(LiveSession * session) {
     std::lock_guard<std::mutex> lock(session->startMu);
-    uint64_t next = ++session->watchGeneration;
+    uint64_t next = ++gWatchGenerationSeq;
+    session->watchGeneration = next;
     session->startCv.notify_all();
     return next;
 }
@@ -2190,6 +2201,8 @@ void finishWatchStopLocked(LiveSession * session, JNIEnv * env) {
     if (session->watch != nullptr) {
         mailimap_free(session->watch);
         session->watch = nullptr;
+        // The LOGOUT/SSL_shutdown on the shut-down socket left errors in this thread's OpenSSL queue.
+        ERR_clear_error();
     }
     if (session->selfGlobal != nullptr && env != nullptr) {
         env->DeleteGlobalRef(session->selfGlobal);
