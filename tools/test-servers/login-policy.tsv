@@ -10,7 +10,7 @@ dovecot-22	yes	yes
 stalwart	yes	yes	
 stalwart-01625	yes	yes	
 stalwart-dev	yes	yes	
-stalwart-0155	yes	yes	
+stalwart-0155	yes	no	Stalwart 0.15 internal directory logs in by principal name only; liveimap@localhost.local gets AUTHENTICATIONFAILED
 cyrus-3124	yes	yes	
 cyrus-3137	yes	yes	
 cyrus-22	yes	yes	

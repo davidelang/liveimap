@@ -20,7 +20,7 @@ stalwart-dev	imaps	993
 stalwart-dev	managesieve	4190		
 stalwart-dev	https	443		
 stalwart-dev	submission	587		
-stalwart-0155	imap	143	localhost.local	accept
+stalwart-0155	imap	143	localhost.local	refuse
 stalwart-0155	imaps	993		
 stalwart-0155	managesieve	4190		
 stalwart-0155	https	443		

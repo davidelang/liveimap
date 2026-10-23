@@ -2032,6 +2032,8 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
     json.dump(payload, open(os.path.join(run_rec, "results.json"), "w", encoding="utf-8"), indent=2, sort_keys=True)
     lines = ["| server | suite | variant | pass | fail | skip | known | result | failing check | first error | seconds |",
              "|---|---|---|---|---|---|---|---|---|---|---|"]
+    if blocked_reason and not body_rows:
+        lines = ["**BLOCKED before setup:** no server was started and no suite ran.", "", redact(blocked_reason)]
     for row in body_rows:
         lines.append("| " + " | ".join(str(row[k]) for k in (
             "server", "suite", "variant", "pass", "fail", "skip", "known", "result", "failing_check", "first_error", "duration_s")) + " |")
@@ -2095,14 +2097,19 @@ def final_summary(verdict_line, now=None):
             units[key] = row["result"]
         servers.setdefault(row["server"], []).append(row["result"])
     checks = {k: sum(int(row.get(k, 0) or 0) for row in rows) for k in ("pass", "fail", "skip", "known")}
-    lines = ["== regress summary ==",
-             f"results ({len(rows)}): {tally(r['result'] for r in rows)}",
-             f"units ({len(units)}): {tally(units.values())}",
-             "checks: " + " ".join(f"{k} {v}" for k, v in checks.items())]
+    before_setup = not rows and verdict_line.startswith("VERDICT BLOCKED")
+    if before_setup:
+        lines = ["== regress summary ==", "blocked before setup: no server was started and no suite ran"]
+    else:
+        lines = ["== regress summary ==",
+                 f"results ({len(rows)}): {tally(r['result'] for r in rows)}",
+                 f"units ({len(units)}): {tally(units.values())}",
+                 "checks: " + " ".join(f"{k} {v}" for k, v in checks.items())]
     for name, results in servers.items():
         lines.append(f"  {redact(name)}: {tally(results)}")
     odd = [row for row in rows if row["result"] != "PASS"]
-    lines.append(f"non-pass rows ({len(odd)}):" if odd else "non-pass rows: none")
+    if not before_setup:
+        lines.append(f"non-pass rows ({len(odd)}):" if odd else "non-pass rows: none")
     for row in odd:
         lines.append("  " + " ".join(redact(str(v)) or "-" for v in (
             row["server"], row["suite"], row["variant"] or "-", row["result"], row["failing_check"] or "-"))

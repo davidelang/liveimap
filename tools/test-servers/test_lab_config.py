@@ -1310,7 +1310,17 @@ assert sl[-1] == "VERDICT FAIL", sl
 fs["rows"][:] = []
 fs["run_rec"], fs["run_t0"] = "", 0.0
 empty = fs["final_summary"]("VERDICT BLOCKED unknown server nope").splitlines()
-assert empty[1] == "results (0): pass 0 fail 0 skip 0 known 0 unexpected pass 0 blocked 0" and "non-pass rows: none" in empty
+assert empty[1] == "blocked before setup: no server was started and no suite ran", empty
+assert not any(x.startswith("results (") or x.startswith("checks:") for x in empty), empty
+_fail0 = fs["final_summary"]("VERDICT FAIL").splitlines()
+assert _fail0[1] == "results (0): pass 0 fail 0 skip 0 known 0 unexpected pass 0 blocked 0" and "non-pass rows: none" in _fail0
+with tempfile.TemporaryDirectory() as tmp:
+    fs["run_id"] = "20261023-090000-141bb350"
+    fs["run_rec"] = os.path.join(tmp, fs["run_id"])
+    fs["write_outputs"]("BLOCKED", "VERDICT BLOCKED commit x is not HEAD", [], ["imap"], ["dovecot-245"])
+    _md = open(os.path.join(fs["run_rec"], "summary.md"), encoding="utf-8").read()
+    assert _md.startswith("**BLOCKED before setup:**") and "commit x is not HEAD" in _md and "| server |" not in _md, _md
+    fs["run_rec"] = ""
 assert empty[-2:] == ["summary: not written", "VERDICT BLOCKED unknown server nope"], empty
 print("final summary ok")
 
