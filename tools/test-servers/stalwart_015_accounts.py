@@ -8,8 +8,15 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lab  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOMAIN = "localhost.local"  # same lab mail domain as stalwart-accounts.sh (0.16)
+# JMAP send (jmap.tsv stalwart-0155): 0.15.5 refuses Identity and envelope addresses in .local/.test domains ("Invalid
+# e-mail address"), and drops a delivery whose Message-ID the account already has outside INBOX (the Sent copy). So the
+# lab user also gets an address in SEND_DOMAIN, and a separate USER-send account (same password) sends to it.
+SEND_DOMAIN = "liveimap.example.com"
 container = sys.argv[1]
 
 
@@ -27,10 +34,19 @@ def post(obj):
 
 
 post({"type": "domain", "name": DOMAIN})
+post({"type": "domain", "name": SEND_DOMAIN})
+user = lab.USER.split("@")[0]
+sender_secret = ""
 for row in csv.DictReader(open(os.path.join(HERE, "seed", "accounts.tsv"), newline="", encoding="utf-8"), delimiter="\t"):
     if row.get("profile") == "base":
-        post({"type": "individual", "name": row["user"], "secrets": [row["password"]],
-              "emails": [row["user"] + "@" + DOMAIN], "roles": ["user"]})
+        emails = [row["user"] + "@" + DOMAIN] + ([user + "@" + SEND_DOMAIN] if row["user"] == user else [])
+        post({"type": "individual", "name": row["user"], "secrets": [row["password"]], "emails": emails, "roles": ["user"]})
+        if row["user"] == user:
+            sender_secret = row["password"]
+if not sender_secret:
+    sys.exit(f"stalwart 0.15: no base account {user} in seed/accounts.tsv")
+post({"type": "individual", "name": user + "-send", "secrets": [sender_secret],
+      "emails": [user + "-send@" + SEND_DOMAIN], "roles": ["user"]})
 
 
 # login-policy.tsv cleartext=yes: accept plain-text logins on the clear-text IMAP listener, then reload the config.

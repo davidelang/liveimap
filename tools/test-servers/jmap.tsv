@@ -1,7 +1,12 @@
-# name	scheme	recipient domain ("-": ask the server: JMAP Identity/get, else session username)
-cyrus-3124	http	-
-cyrus-3137	http	-
-stalwart	https	localhost.local
-stalwart-01625	https	localhost.local
-stalwart-dev	https	localhost.local
-stalwart-0155	https	-
+# name	scheme	login	from	rcpt   per-server JMAP send, explicit (no lookup): login = the account that submits, from = its
+# Identity email, rcpt = the run user's address (its INBOX is checked). USER = lab user, LAB_MAIL_DOMAIN = lab mail domain.
+# cyrus: a bare userid's Identity has no email, so the domain account sends; to itself it would hang (httpd holds the mailbox
+# lock that lmtpd waits on). stalwart-0155: 0.15.5 refuses Identity/envelope addresses in .local/.test domains, and drops a
+# delivery whose Message-ID is already in the account outside INBOX (the Sent copy), so USER-send sends to USER in the
+# liveimap.example.com domain stalwart_015_accounts.py adds.
+cyrus-3124	http	USER@LAB_MAIL_DOMAIN	USER@LAB_MAIL_DOMAIN	USER
+cyrus-3137	http	USER@LAB_MAIL_DOMAIN	USER@LAB_MAIL_DOMAIN	USER
+stalwart	https	USER	USER@localhost.local	USER@localhost.local
+stalwart-01625	https	USER	USER@localhost.local	USER@localhost.local
+stalwart-dev	https	USER	USER@localhost.local	USER@localhost.local
+stalwart-0155	https	USER-send	USER-send@liveimap.example.com	USER@liveimap.example.com

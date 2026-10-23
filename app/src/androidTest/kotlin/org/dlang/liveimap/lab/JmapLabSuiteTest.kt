@@ -115,11 +115,13 @@ class JmapLabSuiteTest {
         var submitted = ""
         if (arg("jmapRcpt").isNotEmpty()) step("submit") {
             val rcpt = arg("jmapRcpt")
-            // -e jmapSubmitUser: the account that sends (its JMAP Identity is the From); default the lab account.
-            // On Cyrus it is <user>@<lab domain> (a bare userid's Identity has no email), sending to the bare lab user.
-            val from = arg("jmapSubmitUser").ifEmpty { rcpt }
+            // jmap.tsv, per server and explicit: -e jmapSubmitUser is the account that submits, -e jmapFrom its
+            // JMAP Identity email (the From), -e jmapRcpt the address of this run's account.
+            val submitUser = arg("jmapSubmitUser")
+            val from = arg("jmapFrom")
+            if (submitUser.isEmpty() || from.isEmpty()) throw IllegalStateException("needs -e jmapSubmitUser and -e jmapFrom")
             val sender = session()
-            val jmapAccount = account.copy(username = arg("jmapSubmitUser").ifEmpty { account.username }, email = from, emailSubmission = true, sentMailbox = "Sent")
+            val jmapAccount = account.copy(username = submitUser, email = from, emailSubmission = true, sentMailbox = "Sent")
             if (sender.open(jmapAccount) != OpenResult.Connected) throw IllegalStateException("open for submit failed")
             try {
                 submitted = "LiveIMAP JMAP submission ${System.currentTimeMillis()}"

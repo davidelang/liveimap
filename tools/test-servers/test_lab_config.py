@@ -143,12 +143,26 @@ assert "Config.Hostname" not in jmap
 assert jmap.count("lab.mail_domain()") >= 2
 assert 'sys.exit("needs LAB_MAIL_DOMAIN")' not in jmap
 assert "JMAP_DOMAIN_USER" in jmap
-# Cyrus JMAP send: the domain account (Identity email = userid) submits to the bare run user; it needs a Sent.
-assert '"-e", "jmapSubmitUser", submit_user or RUNUSER' in jmap and "if cand in found:" in jmap
+# JMAP send is explicit per server (jmap.tsv login, from, rcpt): no Identity lookup, no conditional sender switch.
+for _gone in ("derive_rcpt", "identity_emails", "Identity/get", "Identity/set", "if cand in found", "submit_user or"):
+    assert _gone not in jmap, _gone
+assert '"-e", "jmapSubmitUser", submit_user, "-e", "jmapFrom", sender,' in jmap and '"-e", "jmapRcpt", rcpt' in jmap
+_jrows = [l.rstrip("\n").split("\t") for l in open(os.path.join(HERE, "jmap.tsv"), encoding="utf-8") if l.strip() and not l.startswith("#")]
+assert all(len(r) == 5 and "" not in r for r in _jrows), _jrows
+_jmap_send = {r[0]: tuple(r[1:]) for r in _jrows}
+# Cyrus: the domain account (Identity email = userid, Sent from the seed) sends to the bare run user.
+for _c in ("cyrus-3124", "cyrus-3137"):
+    assert _jmap_send[_c] == ("http", "USER@LAB_MAIL_DOMAIN", "USER@LAB_MAIL_DOMAIN", "USER"), _c
+for _c in ("stalwart", "stalwart-01625", "stalwart-dev"):
+    assert _jmap_send[_c] == ("https", "USER", "USER@localhost.local", "USER@localhost.local"), _c
+assert _jmap_send["stalwart-0155"] == ("https", "USER-send", "USER-send@liveimap.example.com", "USER@liveimap.example.com")
+_s015 = open(os.path.join(HERE, "stalwart_015_accounts.py"), encoding="utf-8").read()
+assert 'SEND_DOMAIN = "liveimap.example.com"' in _s015 and 'user + "-send"' in _s015 and 'user + "@" + SEND_DOMAIN' in _s015
 _bsi = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
 assert '"user" + sep + local + sep + "Sent@" + domain' in _bsi
 _jst = open(os.path.join(HERE, "..", "..", "app", "src", "androidTest", "kotlin", "org", "dlang", "liveimap", "lab", "JmapLabSuiteTest.kt"), encoding="utf-8").read()
-assert 'arg("jmapSubmitUser")' in _jst and "From: $from" in _jst
+assert 'arg("jmapSubmitUser")' in _jst and 'arg("jmapFrom")' in _jst and "From: $from" in _jst
+assert 'arg("jmapSubmitUser").ifEmpty' not in _jst
 assert "min_term_size = 1" in _bsi  # dovecot-245: one-character words are searchable
 cyrus = open(os.path.join(HERE, "cyrus_domain_user.py"), encoding="utf-8").read()
 assert "lab.mail_domain()" in cyrus
@@ -870,7 +884,7 @@ assert "docker start" not in ready
 for name, call in (
     ("acclab.py", 'am", "instrument"'),
     ("jmaplab.py", 'am", "instrument"'),
-    ("jmaprun.py", "else derive_rcpt("),
+    ("jmaprun.py", 'am", "instrument"'),
     ("t4smtp.py", 'am", "instrument"'),
 ):
     text = open(os.path.join(HERE, name), encoding="utf-8").read()
