@@ -1272,8 +1272,12 @@ private fun MessageIndexLoaded(
             val plainArrival = model.view.key == SortKey.Arrival &&
                 !model.filterActive &&
                 !model.searchActive
-            model.acknowledgeNewMail()
-            if (plainArrival) model.jumpToNewest()
+            if (model.threaded) {
+                model.refreshListed(emptyList(), folderExists, toNewest = true)
+            } else {
+                model.acknowledgeNewMail()
+                if (plainArrival) model.jumpToNewest()
+            }
             pull()
         
             if (model.rows.isNotEmpty()) scrollToNewestEnd()
@@ -2213,7 +2217,7 @@ private fun MessageIndexLoaded(
         enqueueModel {
             try {
 
-                model.refreshShown(shown, exists)
+                model.refreshListed(shown, exists)
                 val failed = model.notice
                 if (failed != null) {
                     lastReported = failed

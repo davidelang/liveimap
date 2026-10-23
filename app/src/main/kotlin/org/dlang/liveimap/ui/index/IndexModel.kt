@@ -822,6 +822,9 @@ class IndexModel(
     private var placedStart: Boolean = false
     private var notedTop: Long? = null
     private var threading = false
+
+    val threaded: Boolean get() = threading
+
     private var threadPlan: List<CollapsedThread> = emptyList()
     private var knownExists: Int = 0
     private var arrivalTotal: Int = 0
@@ -1387,13 +1390,32 @@ class IndexModel(
         return heldRows
     }
 
+    suspend fun refreshListed(shown: List<Long>, reportedExists: Int, toNewest: Boolean = false): List<IndexRow> {
+        if (!threaded) return refreshShown(shown, reportedExists)
+        val atNewest = showsNewestEnd
+        val rememberedExists = knownExists
+        val keptPending = pendingNew
+        val keptUnnumbered = newMailUnnumbered
+        if (toNewest || atNewest) jumpToNewest() else reloadKeepingAnchor()
+        if (windowFailed) {
+            pendingNew = keptPending
+            newMailUnnumbered = keptUnnumbered
+            return heldRows
+        }
+        if (atNewest || toNewest) {
+            pendingNew = 0
+            newMailUnnumbered = false
+        } else {
+            newMailUnnumbered = false
+            val growth = maxOf(reportedExists, knownExists) - rememberedExists
+            pendingNew = if (growth > 0) growth else 0
+        }
+        return heldRows
+    }
+
     suspend fun applyChange(change: MailboxChange): List<IndexRow> {
         when (change) {
-            is MailboxChange.Flags -> {
-                heldRows = heldRows.map { row ->
-                    if (row.uid == change.uid && inListedFolder(row, mailbox)) row.copy(flags = change.flags) else row
-                }
-            }
+            is MailboxChange.Flags -> patchListedFlags(mailbox, setOf(change.uid)) { _ -> change.flags }
             is MailboxChange.Exists -> applyExistsCount(change.exists)
             is MailboxChange.Expunge -> {
                 if (loadedWindow) reloadKeepingAnchor()
@@ -1591,10 +1613,7 @@ class IndexModel(
                 }
             }
             val changed = done.filter { it !in before }
-            val idSet = done.toSet()
-            heldRows = heldRows.map { row ->
-                if (row.uid in idSet && inActedFolder(row, folder)) row.copy(flags = row.flags + "\\Deleted") else row
-            }
+            patchListedFlags(folder, done.toSet()) { it + "\\Deleted" }
             notice = when {
                 failure != null && done.isNotEmpty() -> "Deleted ${done.size} of ${target.size}, then: ${failure.text}"
                 failure != null -> failure.text
@@ -1754,14 +1773,10 @@ class IndexModel(
                 session.onRefs(accountKey, u.source) { s, _, uids ->
                     for (part in uids.chunked(MoveChunk)) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
                 }
-                val hits = u.source.map { it.mailbox to it.uid }.toSet()
-                heldRows = heldRows.map { row ->
-                    val named = if (row.mailbox.isEmpty()) mailbox else row.mailbox
-                    if ((named to row.uid) in hits || u.source.any { sameMailbox(it.mailbox, named) && it.uid == row.uid }) {
-                        row.copy(flags = row.flags - "\\Deleted")
-                    } else {
-                        row
-                    }
+                val byFolder = LinkedHashMap<String, MutableSet<Long>>()
+                for (ref in u.source) byFolder.getOrPut(ref.mailbox) { LinkedHashSet() }.add(ref.uid)
+                for ((sourceFolder, sourceUids) in byFolder) {
+                    patchListedFlags(sourceFolder, sourceUids) { it - "\\Deleted" }
                 }
                 notice = null
                 mailUndo = null
@@ -1828,10 +1843,7 @@ class IndexModel(
                     break
                 }
             }
-            val idSet = done.toSet()
-            heldRows = heldRows.map { row ->
-                if (row.uid in idSet && inActedFolder(row, folder)) row.copy(flags = (row.flags + add) - remove) else row
-            }
+            patchListedFlags(folder, done.toSet()) { (it + add) - remove }
             notice = when {
                 failure != null && done.isNotEmpty() -> "Changed ${done.size} of ${target.size}, then: ${failure.text}"
                 failure != null -> failure.text
@@ -2793,6 +2805,24 @@ class IndexModel(
         }
     }
 
+    private fun patchListedFlags(folder: String, uids: Set<Long>, edit: (Set<String>) -> Set<String>) {
+        heldRows = heldRows.map { row ->
+            if (row.uid in uids && inActedFolder(row, folder)) row.copy(flags = edit(row.flags)) else row
+        }
+        if (threadMembers.isNotEmpty()) {
+            val merged = LinkedHashMap(threadMembers)
+            var changed = false
+            for ((uid, row) in threadMembers) {
+                if (uid in uids && inListedFolder(row, folder)) {
+                    merged[uid] = row.copy(flags = edit(row.flags))
+                    changed = true
+                }
+            }
+            if (changed) threadMembers = merged
+        }
+        refreshSummaryUnread()
+    }
+
     private fun refreshSummaryUnread() {
         if (summaries.isEmpty()) return
         val hiddenByRoot = threadHidden
@@ -2802,7 +2832,7 @@ class IndexModel(
             var unread = 0
             for (uid in hiddenUids) {
                 val row = byUid[uid]
-                if (row == null || "\\Seen" !in row.flags) unread += 1
+                if (row != null && "\\Seen" !in row.flags) unread += 1
             }
             summary.copy(unread = unread)
         }
@@ -2859,7 +2889,7 @@ class IndexModel(
             var unread = 0
             for (uid in hiddenUids) {
                 val row = byUid[uid]
-                if (row == null || "\\Seen" !in row.flags) unread += 1
+                if (row != null && "\\Seen" !in row.flags) unread += 1
                 val from = row?.from?.trim().orEmpty()
                 if (from.isNotEmpty()) froms.add(from)
             }

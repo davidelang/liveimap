@@ -2597,6 +2597,108 @@ class IndexWindowTest {
         assertEquals(stayed, model.rows.map { it.uid })
         assertNull(model.notice)
     }
+
+    @Test
+    fun threadUnreadSkipsMissingHidden() {
+        val session = FakeMailSession()
+        session.omitUids = setOf(2L)
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(5L, listOf(ThreadNode(1L, emptyList()), ThreadNode(2L, emptyList()))),
+            ),
+        )
+        session.rows[5L] = row(5L, flags = setOf("\\Seen"))
+        session.rows[1L] = row(1L)
+        session.rows[2L] = row(2L)
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        assertEquals(1, model.summaries.getValue(5L).unread)
+    }
+
+    @Test
+    fun threadFlagChangePaintsMember() {
+        val session = FakeMailSession()
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(ThreadNode(5L, listOf(ThreadNode(1L, emptyList())))),
+        )
+        session.rows[5L] = row(5L)
+        session.rows[1L] = row(1L)
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.applyChange(MailboxChange.Flags(1L, setOf("\\Seen"))) }
+        assertEquals(0, model.summaries.getValue(5L).unread)
+        assertTrue("\\Seen" in model.threadMembers.getValue(1L).flags)
+        runImmediate { model.deleteMessages(listOf(1L)) }
+        assertTrue("\\Deleted" in model.threadMembers.getValue(1L).flags)
+        assertFalse("\\Deleted" in model.rows.first { it.uid == 5L }.flags)
+    }
+
+    @Test
+    fun threadRefreshAtNewestEndShowsNewMember() {
+        val session = FakeMailSession()
+        session.exists = 2
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(ThreadNode(5L, listOf(ThreadNode(1L, emptyList())))),
+        )
+        session.rows[5L] = row(5L)
+        session.rows[1L] = row(1L)
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        assertTrue(model.showsNewestEnd)
+        session.rows[1L] = row(1L, flags = setOf("\\Deleted"))
+        session.rows[7L] = row(7L)
+        session.exists = 3
+        session.threadNode = ThreadNode(
+            uid = null,
+            children = listOf(
+                ThreadNode(5L, listOf(ThreadNode(1L, emptyList()), ThreadNode(7L, emptyList()))),
+            ),
+        )
+        runImmediate { model.refreshListed(listOf(5L, 1L), 3) }
+        assertTrue(7L in model.threadHidden.getValue(5L))
+        assertTrue("\\Deleted" in model.threadMembers.getValue(1L).flags)
+        assertEquals(0, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+    }
+
+    @Test
+    fun threadRefreshOffNewestKeepsPage() {
+        val session = FakeMailSession()
+        session.exists = 61
+        session.threadNode = ThreadNode(null, (1L..61L).map { ThreadNode(it, emptyList()) })
+        (1L..61L).forEach { session.rows[it] = row(it) }
+        val store = MemorySettingsStore(
+            AccountSettings(defaultView = FolderView(SortKey.ThreadReferences, newestFirst = true)),
+        )
+        val model = IndexModel(session, store, "INBOX")
+        runImmediate { model.loadWindow() }
+        runImmediate { model.onFirstVisible(IndexPageSize) }
+        assertEquals(1, model.anchorPage)
+        assertFalse(model.showsNewestEnd)
+        val marked = model.rows.first().uid
+        val shown = model.rows.map { it.uid }
+        session.rows[marked] = row(marked, flags = setOf("\\Deleted"))
+        session.rows[62L] = row(62L)
+        session.exists = 62
+        session.threadNode = ThreadNode(null, (1L..62L).map { ThreadNode(it, emptyList()) })
+        runImmediate { model.refreshListed(shown, 62) }
+        assertEquals(1, model.anchorPage)
+        assertEquals(1, model.pendingNew)
+        assertFalse(model.newMailUnnumbered)
+        assertTrue("\\Deleted" in model.rows.first { it.uid == marked }.flags)
+    }
 }
 
 private fun scopedSession(): FakeMailSession {
@@ -2733,6 +2835,7 @@ private class FakeMailSession(
     var sortUids: List<Long> = emptyList()
     var searchUids: List<Long> = emptyList()
     var threadNode: ThreadNode = ThreadNode(null, emptyList())
+    var omitUids: Set<Long> = emptySet()
     var failure: MailFailure? = null
     /** When set, [failure] is thrown only from a fetch of this mode. */
     var failureFetchMode: IndexMode? = null
@@ -2783,7 +2886,9 @@ private class FakeMailSession(
         fetchRequests += request
         if (failureFetchMode == null || request.mode == failureFetchMode) throwIfArmed()
         return when (request.mode) {
-            IndexMode.ByUid -> request.uids.asReversed().map { uid -> rows[uid] ?: row(uid) }
+            IndexMode.ByUid -> request.uids.asReversed().mapNotNull { uid ->
+                if (uid in omitUids) null else rows[uid] ?: row(uid)
+            }
             IndexMode.ArrivalRange -> {
                 val first = request.firstSequence
                 val last = request.lastSequence
