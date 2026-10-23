@@ -147,6 +147,34 @@ POLICY_REFUSED = re.compile(r"disabled on the clear-text port|PRIVACYREQUIRED|cl
                             r"plaintext authentication disallowed|cleartext authentication disallowed", re.I)
 
 
+def login_policy(name):
+    """login-policy.tsv row for NAME: {"cleartext": "yes"|"no", "domain": "yes"|"no", "reason": str}.
+    A server with no row, or a malformed row, is an error (no default)."""
+    path = os.path.join(HERE, "login-policy.tsv")
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#"):
+                continue
+            f = line.rstrip("\n").split("\t")
+            if f[0] != name:
+                continue
+            if len(f) < 3 or f[1] not in ("yes", "no") or f[2] not in ("yes", "no"):
+                raise ValueError(f"login-policy.tsv {name}: want server, yes|no, yes|no, reason")
+            reason = f[3] if len(f) > 3 else ""
+            if "no" in (f[1], f[2]) and not reason:
+                raise ValueError(f"login-policy.tsv {name}: a 'no' needs a reason")
+            return {"cleartext": f[1], "domain": f[2], "reason": reason}
+    raise ValueError(f"login-policy.tsv has no row for {name}")
+
+
+def domain_account(name):
+    """user@login_domain for NAME's servers.tsv imap row (LAB_MAIL_DOMAIN resolved), or '' without one."""
+    login_domain, _expect = _imap_domain_columns(name)
+    if login_domain == "LAB_MAIL_DOMAIN":
+        login_domain = mail_domain()
+    return USER.split("@")[0] + "@" + login_domain if login_domain else ""
+
+
 def policy_refused(rows, files):
     """The open step failed because the server refuses plaintext login by policy. The app's open detail may
     carry the server text (dovecot, stalwart) or only "server rejected LOGIN" (zimbra), so the server lines of
@@ -275,12 +303,15 @@ def mode_caps(tls, port):
         return ""
 
 
-def mechanisms(caps):
-    """Every advertised SASL mechanism plus the IMAP LOGIN command (unless LOGINDISABLED)."""
+def mechanisms(caps, name=None):
+    """Every advertised SASL mechanism plus the IMAP LOGIN command (unless LOGINDISABLED), and LOGIN-DOMAIN (the LOGIN
+    command as user@login_domain) when login-policy.tsv says NAME accepts domain logins."""
     words = caps.upper().split()
     mechs = sorted({w[5:] for w in words if w.startswith("AUTH=")})
     if "LOGINDISABLED" not in words:
         mechs.append("LOGIN-CMD")
+        if name is not None and login_policy(name)["domain"] == "yes":
+            mechs.append("LOGIN-DOMAIN")
     return mechs
 
 
@@ -631,6 +662,16 @@ def client_cert_args(tls):
             "-e", "labClientCertKind", os.environ.get("LAB_CLIENT_CERT_KIND", "p12")]
 
 
+def login_user(name, mech):
+    """The suite's login name: user@login_domain for the LOGIN-DOMAIN variant, else USER."""
+    if mech != "LOGIN-DOMAIN":
+        return USER
+    account = domain_account(name)
+    if not account:
+        raise ValueError(f"{name}: LOGIN-DOMAIN without a servers.tsv login_domain")
+    return account
+
+
 def instrument(s, port, tls, run, commit, mech="", side=None):
     """side: replacement SMTP/ManageSieve extras (fake runs); None uses smtp.tsv / sieve.tsv."""
     a = ["shell", "am", "instrument", "-w", "-r",
@@ -641,12 +682,12 @@ def instrument(s, port, tls, run, commit, mech="", side=None):
          "-e", "labCa", lab_ca(),
          "-e", "labOldTls", "true" if s["name"] in OLD_TLS and os.environ.get("LAB_OLD_TLS", "1") != "0" else "false",
          "-e", "labMaxTls12", os.environ.get("LAB_MAX_TLS12", "false"),
-         *(["-e", "labMech", "IMAP-LOGIN" if mech == "LOGIN-CMD" else mech] if mech else []),
+         *(["-e", "labMech", "IMAP-LOGIN" if mech in ("LOGIN-CMD", "LOGIN-DOMAIN") else mech] if mech else []),
          *(side if side is not None else [*smtp_args(s, tls), *(sieve_args(s) if tls != "None" else [])]),
          *client_cert_args(tls),
          *(["-e", "labSteps", os.environ["LAB_STEPS"]] if os.environ.get("LAB_STEPS") else []),
          *(["-e", "labAltHost", HOSTENV["LAB_ALT_HOST"]] if HOSTENV.get("LAB_ALT_HOST") else []),
-         "-e", "labUser", USER, "-e", "labPass", PASS, RUNNER]
+         "-e", "labUser", login_user(s["name"], mech), "-e", "labPass", PASS, RUNNER]
     r = adb(*a, timeout=900)
     out = r.stdout
     if "OK (1 test)" in out:
@@ -1138,7 +1179,7 @@ def run_one(s, commit, stamp, out):
         plan = []
         for tls, port in modes:
             if MECHS:
-                for mech in mechanisms(mode_caps(tls, port)):
+                for mech in mechanisms(mode_caps(tls, port), name):
                     plan.append((tls, port, mech))
             else:
                 plan.append((tls, port, ""))
@@ -1158,8 +1199,13 @@ def run_one(s, commit, stamp, out):
                 steps = f"{len(rows)-len(bad)}/{len(rows)} ok" + (f" bad={','.join(bad)}" if bad else "")
                 # A server that refuses plaintext login by policy (e.g. Stalwart 0.16: "LOGIN is disabled on the
                 # clear-text port") is expected, not an app failure.
+                # Only for servers login-policy.tsv lists as unable; elsewhere the refusal is a FAIL, named as such.
                 if tls == "None" and bad == ["open"] and policy_refused(rows, files):
-                    res, msg = "expected", "server policy: plaintext login refused"
+                    policy = login_policy(name)
+                    if policy["cleartext"] == "no":
+                        res, msg = "expected", "server policy: plaintext login refused (" + policy["reason"] + ")"
+                    else:
+                        res, msg = "fail", "plaintext login refused but login-policy.tsv says cleartext=yes"
                 # UW-IMAP (mbox) checks for new mail every 60 s during IDLE but reports it only to SELECTed
                 # sessions; the app's watch uses EXAMINE on purpose (David, 2026-10-11), so no EXISTS ever arrives.
                 # The renewal step watches the same EXAMINEd mailbox, so it sees no EXISTS either.

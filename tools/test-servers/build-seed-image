@@ -187,7 +187,8 @@ try:
         else:
             parts.append(item)
     caps = " ".join(parts)
-    if "STARTTLS" in caps:  # Stalwart 0.15 refuses clear-text LOGIN without advertising LOGINDISABLED
+    # login-policy.tsv: a cleartext=yes server must take the bare LOGIN on the clear-text port, no STARTTLS.
+    if lab.login_policy(server)["cleartext"] == "no" and "STARTTLS" in caps:
         imap.starttls(lab._lab_ssl())
     typ, data = imap.login(user, secret)
 except Exception as exc:
@@ -210,7 +211,7 @@ if not login_domain or not expect:
 else:
     account = user.split("@")[0] + "@" + login_domain
     caps = lab.plain_caps(port)
-    if caps and "STARTTLS" in caps:
+    if lab.login_policy(server)["cleartext"] == "no" and caps and "STARTTLS" in caps:
         err = lab._starttls_login(port, account)
         reply = "OK" if not err else err
     else:
@@ -841,6 +842,9 @@ userdb static {
   }
 }
 auth_allow_weak_schemes = yes
+# login-policy.tsv: clear-text LOGIN/PLAIN on 31143 and user@domain logins (the domain is dropped).
+auth_allow_cleartext = yes
+auth_username_format = %{user | username}
 CFG
 cat > /etc/dovecot/conf.d/zz-lab-tls.conf <<'CFG'
 ssl_server {
@@ -1201,6 +1205,15 @@ for user, secret in users:
         sys.stderr.write("account create failed\n")
         sys.exit(1)
 PY
+  # login-policy.tsv cleartext=yes: allow LOGIN/PLAIN on the clear-text IMAP port (zimbra-tls.sh restarts services).
+  docker exec -i -u zimbra "liveimap-build-$server" /bin/bash -s <<'ZM'
+set -eu
+export HOME=/opt/zimbra PATH=/opt/zimbra/bin:$PATH LANG=C.UTF-8 LC_ALL=C.UTF-8
+zmprov mcf zimbraImapCleartextLoginEnabled TRUE zimbraReverseProxyImapStartTlsMode on
+zmhost=$(zmhostname)
+zmprov ms "$zmhost" zimbraImapCleartextLoginEnabled TRUE zimbraReverseProxyImapStartTlsMode on
+zmprov gs "$zmhost" zimbraImapCleartextLoginEnabled | grep -qx 'zimbraImapCleartextLoginEnabled: TRUE'
+ZM
   "$DIR/zimbra-tls.sh" "liveimap-build-$server"
   set +e
   python3 - "$lab_host" "$host_port" "$DIR" "$server" <<'PY'
@@ -1236,7 +1249,8 @@ try:
         else:
             parts.append(item)
     caps = " ".join(parts)
-    if "STARTTLS" in caps:  # Stalwart 0.15 refuses clear-text LOGIN without advertising LOGINDISABLED
+    # login-policy.tsv: a cleartext=yes server must take the bare LOGIN on the clear-text port, no STARTTLS.
+    if lab.login_policy(server)["cleartext"] == "no" and "STARTTLS" in caps:
         imap.starttls(lab._lab_ssl())
     typ, data = imap.login(user, secret)
 except Exception as exc:
@@ -1259,7 +1273,7 @@ if not login_domain or not expect:
 else:
     account = user.split("@")[0] + "@" + login_domain
     caps = lab.plain_caps(port)
-    if caps and "STARTTLS" in caps:
+    if lab.login_policy(server)["cleartext"] == "no" and caps and "STARTTLS" in caps:
         err = lab._starttls_login(port, account)
         reply = "OK" if not err else err
     else:
@@ -1397,6 +1411,8 @@ if [ -n "$phase" ]; then
 fi
 
 printf '%s\n' "$role" > "$work/lab-role"
+# The lab mail domain (servers.tsv LAB_MAIL_DOMAIN) for recipes that need it at build time (courier userdb keys).
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.mail_domain())' "$DIR" > "$work/mail-domain"
 # Container HTTP (JMAP) port from servers.tsv, "-" when the server has no http row.
 if grep -q "^${server}	http	" "$DIR/servers.tsv"; then
   python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import ports; print(ports.container_port(sys.argv[2], "http"))' "$DIR" "$server" > "$work/http-port"
@@ -1404,6 +1420,18 @@ else
   echo - > "$work/http-port"
 fi
 printf '%s\n' "$ver_pkg" > "$work/version-pkg"
+# JMAP EmailSubmission sink (cyrus-lab-sendmail) for every Cyrus server with a jmap.tsv row.
+case "$server" in
+  cyrus-*)
+    if grep -q "^${server}	" "$DIR/jmap.tsv"; then
+      echo yes > "$work/jmap-submit"
+    else
+      echo no > "$work/jmap-submit"
+    fi
+    ;;
+  *) echo no > "$work/jmap-submit" ;;
+esac
+cp "$DIR/cyrus-lab-sendmail" "$work/lab-sendmail"
 printf '%s\n' "$ver_pat" > "$work/version-pat"
 
 cat > "$work/liveimap-setup" <<'EOF'
@@ -1535,6 +1563,21 @@ sasldb_path: /etc/sasldb2'
   if [ "$lab_http_port" = - ] && [ -f /etc/cyrus.conf ]; then
     sed -i '/^[[:space:]]*[^#].*httpd/s/^/#/' /etc/cyrus.conf  # no servers.tsv http row: no httpd
   fi
+  jmap_submit=$(cat /etc/lab/jmap-submit)
+  if [ "$jmap_submit" = yes ]; then
+    # JMAP EmailSubmission: Cyrus forks "lab-sendmail -bs" (smtp_backend sendmail), which hands each message to
+    # deliver over the lmtpunix socket, so it lands in the recipient's INBOX; envelopes in /var/log/lab-sink/sink.log.
+    chmod 755 /usr/local/bin/lab-sendmail
+    set_key /etc/imapd.conf smtp_backend " sendmail" ":"
+    set_key /etc/imapd.conf sendmail " /usr/local/bin/lab-sendmail" ":"
+    set_key /etc/imapd.conf lmtpsocket " /run/cyrus/socket/lmtp" ":"
+    if ! grep -q 'cmd="lmtpd' /etc/cyrus.conf; then
+      sed -i '/^SERVICES {/a\  lmtpunix      cmd="lmtpd" listen="/run/cyrus/socket/lmtp" prefork=0' /etc/cyrus.conf
+    fi
+    grep -q 'cmd="lmtpd" listen="/run/cyrus/socket/lmtp"' /etc/cyrus.conf
+    mkdir -p /var/log/lab-sink /run/cyrus/socket
+    chown cyrus /var/log/lab-sink /run/cyrus/socket
+  fi
   write_cyrus_admin
   admin=$(cat /etc/lab/cyrus-admin)
   printf '%s\n' "$admin" | saslpasswd2 -p -c -u localhost cyrus
@@ -1612,6 +1655,8 @@ setup_dovecot_10() {
   cat > /etc/dovecot/dovecot.conf <<'CFG'
 protocols = imap
 disable_plaintext_auth = no
+# login-policy.tsv: user@domain logs in as user.
+auth_username_format = %n
 ssl_disable = no
 ssl_cert_file = /etc/lab/chain.crt
 ssl_key_file = /etc/lab/server.key
@@ -1634,6 +1679,8 @@ setup_dovecot_12() {
   cat > /etc/dovecot/dovecot.conf <<'CFG'
 protocols = imap
 disable_plaintext_auth = no
+# login-policy.tsv: user@domain logs in as user.
+auth_username_format = %n
 ssl = yes
 ssl_cert_file = /etc/lab/chain.crt
 ssl_key_file = /etc/lab/server.key
@@ -1667,6 +1714,8 @@ AUTH
   if [ -f /etc/dovecot/conf.d/10-auth.conf ]; then
     sed -i 's/^#\?disable_plaintext_auth.*/disable_plaintext_auth = no/' /etc/dovecot/conf.d/10-auth.conf
   fi
+  # login-policy.tsv: user@domain logs in as user.
+  printf '%s\n' 'auth_username_format = %n' > /etc/dovecot/conf.d/11-lab-username.conf
   printf '%s\n' 'ssl = yes' 'ssl_cert = </etc/lab/chain.crt' 'ssl_key = </etc/lab/server.key' > /etc/dovecot/conf.d/10-ssl.conf
   if [ -f /etc/dovecot/conf.d/10-mail.conf ]; then
     if grep -q '^mail_location' /etc/dovecot/conf.d/10-mail.conf; then
@@ -1684,6 +1733,8 @@ setup_dovecot_dev() {
   mkdir -p /etc/dovecot/conf.d
   cat > /etc/dovecot/conf.d/auth.conf <<'CFG'
   auth_allow_weak_schemes = yes
+  # login-policy.tsv: user@domain logs in as user (dovecot-lab.conf already has auth_allow_cleartext = yes).
+  auth_username_format = %{user | username}
   passdb passwd-file {
     passwd_file_path = /etc/dovecot/passwd
   }
@@ -1727,6 +1778,17 @@ courier_one() {
   fi
   mkdir -p "$home"
   userdb "$user" set "uid=$uid_now" "gid=$gid" "home=$home" "mail=$home/Maildir" >/dev/null
+  # login-policy.tsv: courier authuserdb has no username rewriting, so user@<lab mail domain> is a second key
+  # for the same home (servers.tsv login_domain LAB_MAIL_DOMAIN, /etc/lab/mail-domain).
+  mail_domain=$(cat /etc/lab/mail-domain)
+  domain_key="$user@$mail_domain"
+  userdb "$domain_key" set "uid=$uid_now" "gid=$gid" "home=$home" "mail=$home/Maildir" >/dev/null
+  if printf '%s\n' "$pass" | userdbpw -md5 | userdb "$domain_key" set systempw >/dev/null; then
+    :
+  elif [ "$user" != liveimap-utf8 ]; then
+    echo "userdb domain key failed" >&2
+    exit 1
+  fi
   if printf '%s\n' "$pass" | userdbpw -md5 | userdb "$user" set systempw >/dev/null; then
     if [ ! -d "$home/Maildir" ]; then
       if [ -n "$maildirmake" ]; then
@@ -1991,6 +2053,9 @@ if [ -n "$phase" ]; then
 FROM $phase
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
+COPY mail-domain /etc/lab/mail-domain
+COPY jmap-submit /etc/lab/jmap-submit
+COPY lab-sendmail /usr/local/bin/lab-sendmail
 COPY http-port /etc/lab/http-port
 COPY version-pkg /etc/lab/version-pkg
 COPY version-pat /etc/lab/version-pat
@@ -2033,6 +2098,9 @@ ${jessie_nofile}    && echo "apt-get update $base_image" \
     && rm -rf /var/lib/apt/lists/*
 COPY certs/ /etc/lab/
 COPY lab-role /etc/lab/role
+COPY mail-domain /etc/lab/mail-domain
+COPY jmap-submit /etc/lab/jmap-submit
+COPY lab-sendmail /usr/local/bin/lab-sendmail
 COPY http-port /etc/lab/http-port
 COPY version-pkg /etc/lab/version-pkg
 COPY version-pat /etc/lab/version-pat

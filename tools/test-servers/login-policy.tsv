@@ -1,0 +1,23 @@
+# server	cleartext	domain	reason (required for each "no")
+# cleartext: LOGIN and AUTHENTICATE PLAIN accepted on the clear-text port (no STARTTLS). domain: user@domain logs in
+# to the same account as the bare user (servers.tsv login_domain). lab.py treats a clear-text policy refusal as
+# expected only for cleartext=no rows; anywhere else it is a FAIL. test_lab_config.py checks servers.tsv agrees.
+dovecot-245	yes	yes	
+dovecot-dev	yes	yes	
+dovecot-10	yes	yes	
+dovecot-12	yes	yes	
+dovecot-22	yes	yes	
+stalwart	yes	yes	
+stalwart-01625	yes	yes	
+stalwart-dev	yes	yes	
+stalwart-0155	yes	yes	
+cyrus-3124	yes	yes	
+cyrus-3137	yes	yes	
+cyrus-22	yes	yes	
+cyrus-24	yes	yes	
+cyrus-25	yes	yes	
+cyrus-36	yes	yes	
+courier-606	yes	yes	
+courier-50	yes	yes	
+uwimap	yes	no	UW-IMAP logs in /etc/passwd users only; c-client has no virtual-domain or username rewriting
+zimbra-883	yes	yes	

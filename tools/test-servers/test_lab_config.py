@@ -612,7 +612,15 @@ assert "zimbra-883" in snap[max(0, snap_py - 600):snap_py]
 assert "lab.USER" in snap_chunk and "***" in snap_chunk and "sys.exit(1)" in snap_chunk
 assert "lab.mail_domain()" in snap
 # Domain login. Text and the pure check. This does not run docker or regress.
-accept_names = {"cyrus-3124", "cyrus-3137", "cyrus-22", "cyrus-24", "cyrus-25", "cyrus-36", "zimbra-883"}
+# login-policy.tsv decides: domain=yes rows accept the servers.tsv domain login, domain=no rows refuse it.
+policy_rows = {}
+for line in open(os.path.join(HERE, "login-policy.tsv"), encoding="utf-8"):
+    if not line.strip() or line.startswith("#"):
+        continue
+    f = line.rstrip("\n").split("\t")
+    policy_rows[f[0]] = lab.login_policy(f[0])
+accept_names = {n for n, p in policy_rows.items() if p["domain"] == "yes"}
+assert "uwimap" not in accept_names and lab.login_policy("uwimap")["reason"]
 imap_seen = set()
 for line in open(os.path.join(HERE, "servers.tsv"), encoding="utf-8"):
     if not line.strip() or line.startswith("#"):
@@ -626,19 +634,39 @@ for line in open(os.path.join(HERE, "servers.tsv"), encoding="utf-8"):
     assert fields[4] in ("accept", "refuse"), fields
     if fields[0] == "zimbra-883":
         assert fields[3] == "zimbra.zcs-foss.test" and fields[4] == "accept"
+    elif fields[0].startswith("stalwart"):
+        # Stalwart accounts live in the domain stalwart-accounts.sh / stalwart_015_accounts.py create.
+        assert fields[3] == "localhost.local", fields
     else:
         assert fields[3] == "LAB_MAIL_DOMAIN", fields
-        assert fields[4] == ("accept" if fields[0] in accept_names else "refuse"), fields
+    assert fields[4] == ("accept" if fields[0] in accept_names else "refuse"), fields
+assert imap_seen == set(policy_rows), sorted(imap_seen ^ set(policy_rows))
 assert accept_names <= imap_seen
 problem_fn = py_function(lab_py, "domain_login_problem")
 assert "sys.exit" not in problem_fn
 assert 'return ""' in problem_fn
 assert lab.domain_login_problem({"name": "cyrus-22"}, "OK") == ""
 assert lab.domain_login_problem({"name": "zimbra-883"}, "OK") == ""
-assert lab.domain_login_problem({"name": "dovecot-dev"}, "NO [AUTHENTICATIONFAILED] Authentication failed") == ""
+assert lab.domain_login_problem({"name": "dovecot-dev"}, "OK") == ""
 assert lab.domain_login_problem({"name": "uwimap"}, "NO LOGIN failed") == ""
-mismatch = lab.domain_login_problem({"name": "dovecot-dev"}, "OK")
-assert mismatch == "dovecot-dev OK"
+mismatch = lab.domain_login_problem({"name": "uwimap"}, "OK")
+assert mismatch == "uwimap OK"
+assert lab.domain_login_problem({"name": "dovecot-dev"}, "NO [AUTHENTICATIONFAILED] Authentication failed").startswith("dovecot-dev ")
+# Clear-text refusal is expected only where login-policy.tsv says cleartext=no; LOGIN-DOMAIN only where domain=yes.
+assert all(p["cleartext"] == "yes" for p in policy_rows.values())
+assert "LOGIN-DOMAIN" in lab.mechanisms("IMAP4rev1 AUTH=PLAIN", "dovecot-245")
+assert "LOGIN-DOMAIN" not in lab.mechanisms("IMAP4rev1 AUTH=PLAIN", "uwimap")
+assert "LOGIN-DOMAIN" not in lab.mechanisms("IMAP4rev1 LOGINDISABLED AUTH=PLAIN", "dovecot-245")
+assert lab.login_user("dovecot-245", "LOGIN-CMD") == lab.USER
+assert lab.login_user("stalwart", "LOGIN-DOMAIN") == lab.USER.split("@")[0] + "@localhost.local"
+assert lab.login_user("cyrus-22", "LOGIN-DOMAIN") == lab.USER.split("@")[0] + "@" + lab.mail_domain()
+try:
+    lab.login_policy("no-such-server")
+    raise AssertionError("login_policy default")
+except ValueError:
+    pass
+run_src = py_function(lab_py, "run_one")
+assert 'policy["cleartext"] == "no"' in run_src and "login-policy.tsv says cleartext=yes" in run_src
 refused = lab.domain_login_problem({"name": "cyrus-36"}, "NO LOGIN failed")
 assert refused.startswith("cyrus-36 ") and "NO LOGIN failed" in refused
 other = lab.domain_login_problem({"name": "courier-50"}, "timed out")
@@ -1207,7 +1235,7 @@ assert _ss["step_status"]({"open": ("fail", "x")}, "open", "fail")[0] == "fail"
 assert _ss["step_status"]({"idle": ("fail", "x")}, "idle", "expected")[0] == "fail"  # KNOWN via known-limits
 _kl = open(os.path.join(HERE, "known-limits.tsv")).read()
 assert "stalwart-0155\timap-idle\tidle" not in _kl and "uwimap\timap-idle\tidleRenew" in _kl
-assert "cyrus-3137\tjmap\tsubmit" in _kl and "cyrus-3124\tjmap\tsubmit" in _kl
+assert "\tjmap\tsubmit\t" not in _kl and "\tjmap\tdelivered\t" not in _kl  # cyrus JMAP submission now has a sendmail sink
 import lab_ports
 assert lab_ports.env_flags("dovecot-245", {}) == []
 _start = open(os.path.join(HERE, "start.sh")).read()

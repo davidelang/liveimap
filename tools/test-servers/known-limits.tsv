@@ -1,8 +1,6 @@
 server	suite	check	reason	expires
 uwimap	imap-idle	idle	no IDLE events, from the 10-10 run	
 uwimap	imap-idle	idleRenew	UW-IMAP reports no EXISTS to an EXAMINEd mailbox, even at IDLE completion	
-cyrus-3124	jmap	submit	Cyrus seed has no SMTP backend: account lacks submission (accountNotSupportedByMethod)	
-cyrus-3137	jmap	submit	Cyrus seed has no SMTP backend: account lacks submission (accountNotSupportedByMethod)	
 NTLM	imap-mechs	open	no lab credentials	
 XOAUTH2	imap-mechs	open	no lab credentials	
 OAUTHBEARER	imap-mechs	open	no lab credentials	

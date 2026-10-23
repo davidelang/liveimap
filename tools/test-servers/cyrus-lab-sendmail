@@ -1,0 +1,103 @@
+#!/usr/bin/perl
+# Lab only. Cyrus "smtp_backend: sendmail" target for JMAP EmailSubmission (cyrus-3124, cyrus-3137): Cyrus runs
+# "sendmail -bs" and speaks SMTP (RFC 5321 4.5.1 minimum) on stdin/stdout. Each message goes to its recipients'
+# mailboxes through Cyrus deliver (LMTP on lmtpsocket), so mail never leaves the container, and every envelope is
+# logged to /var/log/lab-sink/sink.log. A deliver or log failure is an SMTP error, never a silent 250.
+use strict;
+use warnings;
+
+my $DELIVER = "/usr/local/cyrus/sbin/deliver";
+my $LOG = "/var/log/lab-sink/sink.log";
+$| = 1;
+if (!@ARGV || $ARGV[0] ne "-bs") {
+    print STDERR "usage: lab-sendmail -bs\n";
+    exit 64;
+}
+
+sub out { print $_[0], "\r\n"; }
+
+sub logline {
+    my $l;
+    if (!open($l, ">>", $LOG)) {
+        print STDERR "lab-sendmail: $LOG: $!\n";
+        return 0;
+    }
+    my @t = gmtime();
+    printf $l "%04d-%02d-%02dT%02d:%02d:%02dZ %s\n", $t[5] + 1900, $t[4] + 1, @t[3, 2, 1, 0], $_[0];
+    return close($l);
+}
+
+my ($from, @rcpt);
+out("220 localhost lab-sendmail ESMTP");
+while (my $line = <STDIN>) {
+    $line =~ s/\r?\n\z//;
+    if ($line =~ /^(?:EHLO|HELO)\b/i) {
+        out("250-localhost");
+        out("250-8BITMIME");
+        out("250 SIZE 52428800");
+    } elsif ($line =~ /^MAIL FROM:\s*<([^>]*)>/i) {
+        $from = $1;
+        @rcpt = ();
+        out("250 2.1.0 ok");
+    } elsif ($line =~ /^RCPT TO:\s*<([^>\s]+)>/i) {
+        my $r = $1;
+        if (!defined $from) {
+            out("503 5.5.1 MAIL first");
+        } elsif ($r =~ /^-/ || $r !~ /^[^\s\@]+(?:\@[A-Za-z0-9.-]+)?\z/) {
+            out("553 5.1.3 bad recipient");
+        } else {
+            push @rcpt, $r;
+            out("250 2.1.5 ok");
+        }
+    } elsif ($line =~ /^DATA\s*\z/i) {
+        if (!@rcpt) {
+            out("503 5.5.1 RCPT first");
+            next;
+        }
+        out("354 end with <CRLF>.<CRLF>");
+        my ($msg, $ended) = ("", 0);
+        while (my $d = <STDIN>) {
+            if ($d =~ /^\.\r?\n\z/) {
+                $ended = 1;
+                last;
+            }
+            $d =~ s/^\.//;
+            $msg .= $d;
+        }
+        last if !$ended;
+        my ($subject) = $msg =~ /^Subject:[ \t]*([^\r\n]*)/mi;
+        $subject = "" if !defined $subject;
+        my @failed;
+        for my $r (@rcpt) {
+            my $status;
+            if (open(my $p, "|-", $DELIVER, "-f", ($from eq "" ? "<>" : $from), "--", $r)) {
+                print $p $msg;
+                close($p);
+                $status = $? >> 8;
+            } else {
+                $status = "exec: $!";
+            }
+            push @failed, $r if $status ne "0";
+            logline("from=<$from> rcpt=<$r> subject=\"$subject\" deliver=$status") or push @failed, "$r(log)";
+        }
+        if (@failed) {
+            out("554 5.3.0 deliver failed for " . join(",", @failed));
+        } else {
+            out("250 2.0.0 delivered");
+        }
+        ($from, @rcpt) = (undef);
+        @rcpt = ();
+    } elsif ($line =~ /^RSET\b/i) {
+        ($from, @rcpt) = (undef);
+        @rcpt = ();
+        out("250 2.0.0 ok");
+    } elsif ($line =~ /^NOOP\b/i) {
+        out("250 2.0.0 ok");
+    } elsif ($line =~ /^QUIT\b/i) {
+        out("221 2.0.0 bye");
+        last;
+    } else {
+        out("502 5.5.2 not implemented");
+    }
+}
+exit 0;

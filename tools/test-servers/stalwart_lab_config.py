@@ -50,6 +50,10 @@ r = jmap([["x:SystemSettings/set", {"update": {"singleton": {"defaultCertificate
           "defaultHostname": doms[0]["name"], "defaultDomainId": doms[0]["id"]}}}, "c"]])
 if "singleton" not in (r[0][1].get("updated") or {}):
     sys.exit("defaultCertificateId not set: " + json.dumps(r[0][1])[:400])
+# login-policy.tsv cleartext=yes: accept LOGIN/AUTHENTICATE PLAIN on the clear-text IMAP listener (applies after the restart).
+r = jmap([["x:Imap/set", {"update": {"singleton": {"allowPlainTextAuth": True}}}, "c"]])
+if "singleton" not in (r[0][1].get("updated") or {}):
+    sys.exit("allowPlainTextAuth not set: " + json.dumps(r[0][1])[:400])
 print("stalwart certificate", cid, "default; hostname", doms[0]["name"])
 
 rows = [line.rstrip("\n").split("\t") for line in open(os.path.join(HERE, "servers.tsv"), encoding="utf-8")

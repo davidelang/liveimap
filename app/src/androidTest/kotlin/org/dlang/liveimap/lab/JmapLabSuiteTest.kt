@@ -13,6 +13,7 @@ import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.platformJmapExchange
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
+import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.AccountSettings
@@ -111,17 +112,34 @@ class JmapLabSuiteTest {
         }
         // "Send over JMAP": EmailSubmission through JmapMailSession.smtpSend (Email/import into Sent, then
         // EmailSubmission/set), to the lab account itself (-e jmapRcpt, e.g. liveimap@<lab domain>). Lab only.
+        var submitted = ""
         if (arg("jmapRcpt").isNotEmpty()) step("submit") {
             val rcpt = arg("jmapRcpt")
             val sender = session()
             val jmapAccount = account.copy(email = rcpt, emailSubmission = true, sentMailbox = "Sent")
             if (sender.open(jmapAccount) != OpenResult.Connected) throw IllegalStateException("open for submit failed")
             try {
-                val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: LiveIMAP JMAP submission ${System.currentTimeMillis()}\r\n" +
+                submitted = "LiveIMAP JMAP submission ${System.currentTimeMillis()}"
+                val msg = ("From: $rcpt\r\nTo: $rcpt\r\nSubject: $submitted\r\n" +
                     "Message-ID: <jmap-${System.nanoTime()}@${rcpt.substringAfter('@')}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nJMAP lab submission.\r\n").toByteArray()
                 sender.smtpSend(msg, listOf(rcpt))
                 "EmailSubmission accepted for $rcpt"
             } finally { sender.close() }
+        }
+        // The submitted message must arrive in this account's INBOX (rcpt is the lab account itself); removed afterwards.
+        if (submitted.isNotEmpty()) step("delivered") {
+            val deadline = System.currentTimeMillis() + 60_000
+            var row: IndexRow? = null
+            while (row == null) {
+                s.select(inbox)
+                row = s.fetchIndex(IndexRequest(inbox, IndexMode.ArrivalNewest, limit = 20)).firstOrNull { it.subject == submitted }
+                if (row == null) {
+                    if (System.currentTimeMillis() > deadline) throw IllegalStateException("'$submitted' not in INBOX within 60 s")
+                    Thread.sleep(2000)
+                }
+            }
+            s.uidExpunge(listOf(row.uid))
+            "'$submitted' delivered to INBOX uid=${row.uid}"
         }
         step("push") {
             s.select(inbox)

@@ -1315,8 +1315,8 @@ def start_fake_smtp():
 def domain_login_reply(s, account):
     import lab
     caps = lab.plain_caps(s["imap"]).split()
-    # Stalwart 0.15 refuses clear-text LOGIN without advertising LOGINDISABLED, so use STARTTLS whenever offered.
-    if "STARTTLS" in caps or "LOGINDISABLED" in caps:
+    # Clear text unless login-policy.tsv says the server refuses it (or it advertises LOGINDISABLED).
+    if "LOGINDISABLED" in caps or (lab.login_policy(s["name"])["cleartext"] == "no" and "STARTTLS" in caps):
         err = lab._starttls_login(s["imap"], account)
         return "OK" if not err else err
     return lab._plain_login_reply(s["imap"], account)

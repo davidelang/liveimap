@@ -31,3 +31,24 @@ for row in csv.DictReader(open(os.path.join(HERE, "seed", "accounts.tsv"), newli
     if row.get("profile") == "base":
         post({"type": "individual", "name": row["user"], "secrets": [row["password"]],
               "emails": [row["user"] + "@" + DOMAIN], "roles": ["user"]})
+
+
+# login-policy.tsv cleartext=yes: accept plain-text logins on the clear-text IMAP listener, then reload the config.
+def api(method, path, body=None):
+    r = subprocess.run(["docker", "exec", "-i", container, "/bin/sh", "-c",
+                        'curl -sS -f -u "$STALWART_RECOVERY_ADMIN" -H "Content-Type: application/json" '
+                        f'-X {method} ' + ('--data-binary @- ' if body is not None else '') +
+                        f'http://127.0.0.1:8080/api/{path}'],
+                       input=json.dumps(body) if body is not None else "", capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"stalwart 0.15 {method} /api/{path} failed ({r.returncode}): {r.stderr[-300:]}")
+    out = json.loads(r.stdout)
+    if "error" in out:
+        sys.exit(f"stalwart 0.15 {method} /api/{path}: {json.dumps(out)[:300]}")
+    return out
+
+
+api("POST", "settings", [{"type": "insert", "prefix": None, "assert_empty": False,
+                          "values": [["imap.auth.allow-plain-text", "true"]]}])
+api("GET", "reload")
+print("stalwart 0.15 imap.auth.allow-plain-text = true")
