@@ -747,9 +747,13 @@ class LibetpanMailSession : MailSession {
         }
     }
 
-    /** Alpine completion loads this folder with no envelope fields. A mail index fetch does not take this path. */
+    /**
+     * Alpine completion loads this folder with no envelope fields. The index tail uses the same
+     * ArrivalNewest limit of 1 when one message arrives and preview is off, so the caller has to be the book load.
+     */
     private fun addressBookUidsOnly(request: IndexRequest): Boolean {
         if (request.prefetch != 0 || request.includePreview) return false
+        if (!calledFromAlpineBook()) return false
         val shaped = when (request.mode) {
             IndexMode.ArrivalRange -> true
             IndexMode.ArrivalOldest, IndexMode.ArrivalNewest -> request.limit == 1
@@ -757,6 +761,14 @@ class LibetpanMailSession : MailSession {
         }
         if (!shaped) return false
         return isAddressBookMailbox(request.mailbox)
+    }
+
+    /** True while [loadAlpineBook] or [readPineBook] is the fetch. The index tail is not. */
+    private fun calledFromAlpineBook(): Boolean {
+        for (frame in Thread.currentThread().stackTrace) {
+            if (frame.className.contains("AlpineBook")) return true
+        }
+        return false
     }
 
     private fun isAddressBookMailbox(mailbox: String): Boolean {
