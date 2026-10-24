@@ -9075,18 +9075,6 @@ std::vector<uint32_t> asUids(const std::vector<int64_t> & uids) {
 
 }  // namespace
 
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JNIEnv * env, jobject, jlong handle,
-    jstring, jint, jint) {
-    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobjectArray {
-        LiveSession * session = lockImapSession(env, handle);
-        if (session == nullptr) return nullptr;
-        throwFailure(env, "use client order");
-        unlockSession(session);
-        return nullptr;
-    });
-}
-
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchUids(JNIEnv * env, jobject, jlong handle) {
     return withOwnerCall(env, handle, [&](JNIEnv * env) -> jlongArray {

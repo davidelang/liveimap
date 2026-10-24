@@ -15,6 +15,7 @@ $CX -c "$R/app/src/main/cpp/keychain_key.cpp" -o "$O/k.o"
 $LL/clang -c sasl_stubs.c -o "$O/s.o"
 $CX -c fuzz_imap.cpp -o "$O/f.o"
 $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_imap" "$O/f.o" "$O/h.o" "$O/b.o" "$O/k.o" "$O/s.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
+# fuzz_client_thread calls co_thread_references, co_thread_subject, and co_order (the native sort).
 $CX -DLIVEIMAP_IMAP -DLIVEIMAP_FUZZ_CLIENT_THREAD -c "$R/app/src/main/cpp/client_order.cpp" -o "$O/client_order.o"
 $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_client_thread" "$O/client_order.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
 echo "$O/fuzz_imap"

@@ -3622,3 +3622,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-24 - A failed owner attach drops its session ref on an attached thread.
 
 - The attach-failure path no longer detaches the std::thread. joinOwner joins, then the attached caller drops selfHold, so ~LiveSession runs where GetEnv can delete the KeyChain global ref. The loop parameter is not that last ref.
+
+## 2026-10-24 - Client order uses one key path and one merge.
+
+- 3b04792c4 is the fuzz output-directory change.

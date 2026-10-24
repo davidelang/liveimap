@@ -1,10 +1,10 @@
 // Client order follows ClientSortCollation and does not match server SORT.
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <ctime>
-#include <regex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifdef LIVEIMAP_IMAP
@@ -39,298 +39,7 @@ std::string trimCopy(const std::string & s) {
     return s.substr(a, b - a);
 }
 
-std::string collapseWs(const std::string & s) {
-    std::string out;
-    out.reserve(s.size());
-    bool sp = false;
-    for (unsigned char c : s) {
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
-            sp = true;
-            continue;
-        }
-        if (sp && !out.empty()) out.push_back(' ');
-        sp = false;
-        out.push_back(static_cast<char>(c));
-    }
-    return out;
-}
-
-bool startsWithI(const std::string & s, const char * pfx) {
-    size_t n = std::strlen(pfx);
-    if (s.size() < n) return false;
-    for (size_t i = 0; i < n; ++i) {
-        char c = s[i];
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-        if (c != pfx[i]) return false;
-    }
-    return true;
-}
-
-int hexVal(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-std::string latin1Utf8(const std::string & bytes) {
-    std::string out;
-    for (unsigned char c : bytes) {
-        if (c < 0x80) out.push_back(static_cast<char>(c));
-        else {
-            out.push_back(static_cast<char>(0xC0 | (c >> 6)));
-            out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
-        }
-    }
-    return out;
-}
-
-std::string decodeB(const std::string & payload) {
-    std::string out;
-    int val = 0;
-    int bits = -8;
-    for (unsigned char c : payload) {
-        int d = -1;
-        if (c >= 'A' && c <= 'Z') d = c - 'A';
-        else if (c >= 'a' && c <= 'z') d = c - 'a' + 26;
-        else if (c >= '0' && c <= '9') d = c - '0' + 52;
-        else if (c == '+') d = 62;
-        else if (c == '/') d = 63;
-        else if (c == '=') break;
-        else continue;
-        val = (val << 6) + d;
-        bits += 6;
-        if (bits >= 0) {
-            out.push_back(static_cast<char>((val >> bits) & 0xFF));
-            bits -= 8;
-        }
-    }
-    return out;
-}
-
-std::string decodeQ(const std::string & payload) {
-    std::string out;
-    for (size_t i = 0; i < payload.size(); ++i) {
-        char c = payload[i];
-        if (c == '_') out.push_back(' ');
-        else if (c == '=' && i + 2 < payload.size()) {
-            int h = hexVal(payload[i + 1]);
-            int l = hexVal(payload[i + 2]);
-            if (h >= 0 && l >= 0) {
-                out.push_back(static_cast<char>((h << 4) | l));
-                i += 2;
-            } else out.push_back(c);
-        } else out.push_back(c);
-    }
-    return out;
-}
-
-std::string charsetBytes(const std::string & charset, const std::string & bytes) {
-    std::string name = lowerAscii(charset);
-    if (name == "utf-8" || name == "utf8" || name == "us-ascii" || name == "ascii") return bytes;
-    if (name == "iso-8859-1" || name == "latin1" || name == "windows-1252") return latin1Utf8(bytes);
-    return "";
-}
-
 }  // namespace
-
-std::string co_decode_words(const std::string & value) {
-    std::string out;
-    size_t i = 0;
-    while (i < value.size()) {
-        if (!(i + 1 < value.size() && value[i] == '=' && value[i + 1] == '?')) {
-            out.push_back(value[i]);
-            ++i;
-            continue;
-        }
-        size_t cs = i + 2;
-        size_t q1 = value.find('?', cs);
-        if (q1 == std::string::npos || q1 == cs) {
-            out.push_back(value[i]);
-            ++i;
-            continue;
-        }
-        if (q1 + 3 >= value.size() || value[q1 + 2] != '?') {
-            out.push_back(value[i]);
-            ++i;
-            continue;
-        }
-        char enc = value[q1 + 1];
-        if (enc != 'B' && enc != 'b' && enc != 'Q' && enc != 'q') {
-            out.push_back(value[i]);
-            ++i;
-            continue;
-        }
-        size_t pay = q1 + 3;
-        size_t q2 = value.find('?', pay);
-        if (q2 == std::string::npos || q2 == pay || q2 + 1 >= value.size() || value[q2 + 1] != '=') {
-            out.push_back(value[i]);
-            ++i;
-            continue;
-        }
-        std::string raw = value.substr(i, q2 + 2 - i);
-        std::string bytes = (enc == 'B' || enc == 'b') ? decodeB(value.substr(pay, q2 - pay))
-                                                        : decodeQ(value.substr(pay, q2 - pay));
-        std::string text = charsetBytes(value.substr(cs, q1 - cs), bytes);
-        if (text.empty() && !bytes.empty()) out += raw;
-        else out += text.empty() ? raw : text;
-        i = q2 + 2;
-        size_t gap = i;
-        while (gap < value.size() && (value[gap] == ' ' || value[gap] == '\t')) ++gap;
-        if (gap > i && gap + 1 < value.size() && value[gap] == '=' && value[gap + 1] == '?') i = gap;
-    }
-    return out;
-}
-
-std::string co_base_subject(const std::string & decoded) {
-    std::string s = trimCopy(collapseWs(decoded));
-    try {
-        static const std::regex trailer(R"(\s*\(fwd\)\s*$)", std::regex::icase);
-        static const std::regex refwd(R"(^(re|fwd?)\s*(\[[^\[\]]*\]\s*)?:\s*)", std::regex::icase);
-        static const std::regex blob(R"(^\[[^\[\]]*\]\s*)");
-        for (;;) {
-            std::string before = s;
-            for (;;) {
-                std::string t = trimCopy(std::regex_replace(s, trailer, ""));
-                if (t == s) break;
-                s = t;
-            }
-            for (;;) {
-                std::smatch m;
-                if (std::regex_search(s, m, refwd) && m.position() == 0) {
-                    s = trimCopy(s.substr(static_cast<size_t>(m.length())));
-                    continue;
-                }
-                if (std::regex_search(s, m, blob) && m.position() == 0 && s.size() > static_cast<size_t>(m.length())) {
-                    s = trimCopy(s.substr(static_cast<size_t>(m.length())));
-                    continue;
-                }
-                break;
-            }
-            if (startsWithI(s, "[fwd:") && !s.empty() && s.back() == ']') {
-                s = trimCopy(s.substr(5, s.size() - 6));
-            }
-            if (s == before) break;
-        }
-    } catch (const std::regex_error &) {
-        return lowerAscii(s);
-    }
-    return lowerAscii(s);
-}
-
-std::string co_first_mailbox(const std::string & header) {
-    std::string plain;
-    std::string angle;
-    bool inQuote = false;
-    int depth = 0;
-    bool inAngle = false;
-    bool sawAngle = false;
-    for (size_t i = 0; i < header.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(header[i]);
-        auto & dest = inAngle ? angle : plain;
-        if (inQuote) {
-            if (c == '\\' && i + 1 < header.size()) dest.push_back(header[++i]);
-            else if (c == '"') inQuote = false;
-            else dest.push_back(static_cast<char>(c));
-        } else if (depth > 0) {
-            if (c == '\\') ++i;
-            else if (c == '(') ++depth;
-            else if (c == ')') --depth;
-        } else if (c == '(') depth = 1;
-        else if (c == '"') inQuote = true;
-        else if (inAngle) {
-            if (c == '>') inAngle = false;
-            else angle.push_back(static_cast<char>(c));
-        } else if (c == '<') {
-            inAngle = true;
-            sawAngle = true;
-            angle.clear();
-        } else if (c == ':') plain.clear();
-        else if (c == ',' || c == ';') {
-            const std::string & cur = sawAngle ? angle : plain;
-            if (trimCopy(cur).size() > 0) break;
-            plain.clear();
-            angle.clear();
-            sawAngle = false;
-        } else plain.push_back(static_cast<char>(c));
-    }
-    std::string spec = trimCopy(sawAngle ? angle : plain);
-    if (sawAngle) {
-        auto pos = spec.rfind(':');
-        if (pos != std::string::npos) spec = spec.substr(pos + 1);
-        spec = trimCopy(spec);
-    }
-    auto at = spec.rfind('@');
-    std::string local = at == std::string::npos ? spec : spec.substr(0, at);
-    return lowerAscii(trimCopy(co_decode_words(trimCopy(local))));
-}
-
-bool co_date_epoch(const std::string & header, int64_t * out) {
-    std::string text = header;
-    try {
-        static const std::regex comments(R"(\([^)]*\))");
-        text = std::regex_replace(text, comments, " ");
-    } catch (const std::regex_error &) {
-        return false;
-    }
-    text = trimCopy(collapseWs(text));
-    if (text.empty()) return false;
-    std::smatch m;
-    try {
-        static const std::regex shape(
-            R"(^(?:[A-Za-z]+\s*,\s*)?(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([+-]\d{4}|[A-Za-z]{1,5})?)",
-            std::regex::icase);
-        if (!std::regex_search(text, m, shape)) return false;
-    } catch (const std::regex_error &) {
-        return false;
-    }
-    int day = std::stoi(m[1].str());
-    std::string mon = lowerAscii(m[2].str());
-    static const char * months[] = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"};
-    int month = 0;
-    for (int i = 0; i < 12; ++i) if (mon == months[i]) month = i + 1;
-    if (month == 0) return false;
-    std::string ys = m[3].str();
-    int year = std::stoi(ys);
-    if (ys.size() == 2) year = year < 50 ? 2000 + year : 1900 + year;
-    else if (ys.size() == 3) year = 1900 + year;
-    int hh = std::stoi(m[4].str());
-    int mm = std::stoi(m[5].str());
-    int ss = m[6].matched ? std::stoi(m[6].str()) : 0;
-    int offsetMin = 0;
-    if (m[7].matched && !m[7].str().empty()) {
-        std::string zone = m[7].str();
-        if (zone[0] == '+' || zone[0] == '-') {
-            int minutes = std::stoi(zone.substr(1, 2)) * 60 + std::stoi(zone.substr(3));
-            offsetMin = zone[0] == '-' ? -minutes : minutes;
-        } else {
-            std::string z = lowerAscii(zone);
-            if (z == "edt") offsetMin = -4 * 60;
-            else if (z == "est" || z == "cdt") offsetMin = -5 * 60;
-            else if (z == "cst" || z == "mdt") offsetMin = -6 * 60;
-            else if (z == "mst" || z == "pdt") offsetMin = -7 * 60;
-            else if (z == "pst") offsetMin = -8 * 60;
-        }
-    }
-    if (hh > 23 || mm > 59 || ss > 60 || day < 1 || day > 31) return false;
-    std::tm tm{};
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hh;
-    tm.tm_min = mm;
-    tm.tm_sec = ss;
-    tm.tm_isdst = 0;
-    time_t utc = timegm(&tm);
-    if (utc == static_cast<time_t>(-1) && (year < 1970)) {
-        // timegm can fail before the epoch on some libcs; compute from a known day when it does.
-    }
-    if (out != nullptr) *out = static_cast<int64_t>(utc) - static_cast<int64_t>(offsetMin) * 60;
-    std::tm back{};
-    if (gmtime_r(&utc, &back) == nullptr) return false;
-    if (back.tm_year != tm.tm_year || back.tm_mon != tm.tm_mon || back.tm_mday != tm.tm_mday) return false;
-    return true;
-}
 
 int co_order(const int64_t * uids, const int64_t * number, const uint8_t * blank, const uint8_t * bytes,
     const int32_t * off, const int32_t * len, int n, int numeric, int newestFirst, int64_t * out) {
@@ -432,28 +141,18 @@ std::vector<std::string> messageIds(const std::string & raw) {
     return found;
 }
 
-bool createsCycle(int64_t uid, int64_t parent, const std::vector<int64_t> & parentOf, const std::vector<int64_t> & uids) {
+bool createsCycle(int64_t uid, int64_t parent, const std::vector<int64_t> & parentOf,
+    const std::unordered_map<int64_t, int> & uidAt) {
     int64_t cursor = parent;
-    std::vector<int64_t> seen;
+    std::unordered_map<int64_t, int> seen;
     while (cursor != 0) {
         if (cursor == uid) return true;
-        for (int64_t s : seen) if (s == cursor) return true;
-        seen.push_back(cursor);
-        int64_t next = 0;
-        for (size_t i = 0; i < uids.size(); ++i) {
-            if (uids[i] == cursor) {
-                next = parentOf[i];
-                break;
-            }
-        }
-        cursor = next;
+        if (!seen.emplace(cursor, 1).second) return true;
+        auto at = uidAt.find(cursor);
+        if (at == uidAt.end()) return false;
+        cursor = parentOf[static_cast<size_t>(at->second)];
     }
     return false;
-}
-
-int indexOfUid(const std::vector<int64_t> & uids, int64_t uid) {
-    for (size_t i = 0; i < uids.size(); ++i) if (uids[i] == uid) return static_cast<int>(i);
-    return -1;
 }
 
 }  // namespace
@@ -481,19 +180,23 @@ CoFlat co_thread_subject(const int64_t * uids, const char * const * subjects, co
         item.subject = subjects != nullptr && subjects[i] != nullptr ? subjects[i] : "";
         rows.push_back(std::move(item));
     }
-    std::vector<std::string> keys;
+    std::unordered_map<std::string, size_t> groupAt;
     std::vector<std::vector<Item>> groups;
     std::vector<Item> blanks;
+    groupAt.reserve(rows.size());
     for (const Item & row : rows) {
         if (row.subject.empty()) {
             blanks.push_back(row);
             continue;
         }
-        size_t g = 0;
-        for (; g < keys.size(); ++g) if (keys[g] == row.subject) break;
-        if (g == keys.size()) {
-            keys.push_back(row.subject);
+        auto found = groupAt.find(row.subject);
+        size_t g;
+        if (found == groupAt.end()) {
+            g = groups.size();
+            groupAt.emplace(row.subject, g);
             groups.emplace_back();
+        } else {
+            g = found->second;
         }
         groups[g].push_back(row);
     }
@@ -555,20 +258,20 @@ CoFlat co_thread_references(const int64_t * uidIn, const char * const * messageI
         sr.push_back(refs[i]);
         si.push_back(reply[i]);
     }
-    std::vector<std::string> idKey;
-    std::vector<int64_t> idUid;
+    std::unordered_map<std::string, int64_t> idUid;
+    idUid.reserve(su.size() * 2);
     for (size_t i = 0; i < su.size(); ++i) {
         auto ids = messageIds(sm[i]);
         if (ids.empty()) continue;
-        bool seen = false;
-        for (const auto & k : idKey) if (k == ids[0]) seen = true;
-        if (seen) continue;
-        idKey.push_back(ids[0]);
-        idUid.push_back(su[i]);
+        if (idUid.find(ids[0]) != idUid.end()) continue;
+        idUid.emplace(ids[0], su[i]);
     }
+    std::unordered_map<int64_t, int> uidAt;
+    uidAt.reserve(su.size() * 2);
+    for (size_t i = 0; i < su.size(); ++i) uidAt.emplace(su[i], static_cast<int>(i));
     auto lookup = [&](const std::string & id) -> int64_t {
-        for (size_t i = 0; i < idKey.size(); ++i) if (idKey[i] == id) return idUid[i];
-        return 0;
+        auto found = idUid.find(id);
+        return found == idUid.end() ? 0 : found->second;
     };
     auto parentOfRow = [&](size_t i) -> int64_t {
         auto rev = messageIds(sr[i]);
@@ -588,7 +291,7 @@ CoFlat co_thread_references(const int64_t * uidIn, const char * const * messageI
     for (size_t i = 0; i < su.size(); ++i) {
         int64_t parent = parentOfRow(i);
         if (parent == 0 || parent == su[i]) continue;
-        if (!(allDescending && parent < su[i]) && createsCycle(su[i], parent, parentOf, su)) continue;
+        if (!(allDescending && parent < su[i]) && createsCycle(su[i], parent, parentOf, uidAt)) continue;
         if (parent > su[i]) allDescending = false;
         parentOf[i] = parent;
     }
@@ -597,8 +300,8 @@ CoFlat co_thread_references(const int64_t * uidIn, const char * const * messageI
     for (size_t i = 0; i < su.size(); ++i) {
         if (parentOf[i] == 0) roots.push_back(su[i]);
         else {
-            int p = indexOfUid(su, parentOf[i]);
-            if (p >= 0) kids[p].push_back(su[i]);
+            auto parent = uidAt.find(parentOf[i]);
+            if (parent != uidAt.end()) kids[static_cast<size_t>(parent->second)].push_back(su[i]);
             else roots.push_back(su[i]);
         }
     }
@@ -618,9 +321,9 @@ CoFlat co_thread_references(const int64_t * uidIn, const char * const * messageI
         stackDepth.pop_back();
         out.uids.push_back(uid);
         out.depths.push_back(static_cast<int16_t>(depth));
-        int ix = indexOfUid(su, uid);
-        if (ix < 0) continue;
-        const auto & ch = kids[ix];
+        auto at = uidAt.find(uid);
+        if (at == uidAt.end()) continue;
+        const auto & ch = kids[static_cast<size_t>(at->second)];
         for (int i = static_cast<int>(ch.size()) - 1; i >= 0; --i) {
             stackUid.push_back(ch[i]);
             stackDepth.push_back(depth + 1);
@@ -632,10 +335,6 @@ CoFlat co_thread_references(const int64_t * uidIn, const char * const * messageI
 extern "C" int liveimap_client_order_parse(const uint8_t * data, size_t size) {
     if (data == nullptr || size == 0) return 0;
     std::string block(reinterpret_cast<const char *>(data), size > (1 << 20) ? (1 << 20) : size);
-    co_base_subject(block);
-    co_first_mailbox(block);
-    int64_t epoch = 0;
-    co_date_epoch(block, &epoch);
     const int cap = 32;
     int n = 0;
     int64_t uids[32];
