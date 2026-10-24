@@ -3626,3 +3626,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-24 - Client order uses one key path and one merge.
 
 - 3b04792c4 is the fuzz output-directory change.
+
+## 2026-10-24 - Client order guards match the deleted stub.
+
+- Approved plan: sandbox/plans/client-order-test-guards-20261024-1121-plan.md
+- NativeGuardsPass4Test no longer names nativeFetchSortFieldsRange. It reads client_order.cpp and requires std::unordered_map in co_thread_subject and co_thread_references, and no co_decode_words.
+- Pass5GuardTest no longer asserts the deleted stub call. The sequencesStale early return stays.
+- The host fuzz binary is not built.

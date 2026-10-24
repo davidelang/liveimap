@@ -68,7 +68,6 @@ class Pass5GuardTest {
         val kt = listOf("src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt", "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt")
             .map(::File).first { it.exists() }.readText()
         assertTrue(kt.contains("if (!sequencesStale) return built"))
-        assertFalse(kt.contains("nativeFetchSortFieldsRange(requireHandle(), wireField, first, last) ?: throw"))
     }
 
     // F50 JMAP copy-first: was a source-text check; now every JMAP send goes through keepCopyUntilSubmitted, whose

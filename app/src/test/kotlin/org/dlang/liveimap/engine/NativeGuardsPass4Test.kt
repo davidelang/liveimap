@@ -20,12 +20,18 @@ class NativeGuardsPass4Test {
     fun imapEntryPointsRefuseADeadConnection() {
         // F110: every native that hands session->imap to libetpan locks through lockImapSession
         for (name in listOf("nativeSelect", "nativeFetchIndex", "nativeStoreFlags", "nativeUidExpunge", "nativePeekPart",
-                "nativeSearchCriterion", "nativeNoop", "nativeCopyThenDelete", "nativeFetchSortFieldsRange")) {
+                "nativeSearchCriterion", "nativeNoop", "nativeCopyThenDelete")) {
             val body = nativeBody(name)
             assertTrue(name, body.contains("lockImapSession(env, handle)"))
             assertFalse(name, body.contains("= lockSession(env, handle)"))
         }
         assertTrue(src.contains("if (session->imap == nullptr) {"))
+        val order = File("src/main/cpp/client_order.cpp").readText()
+        val subject = order.substring(order.indexOf("CoFlat co_thread_subject("), order.indexOf("CoFlat co_thread_references("))
+        val references = order.substring(order.indexOf("CoFlat co_thread_references("), order.indexOf("extern \"C\" int liveimap_client_order_parse("))
+        assertTrue(subject.contains("std::unordered_map"))
+        assertTrue(references.contains("std::unordered_map"))
+        assertFalse(order.contains("co_decode_words"))
     }
 
     @Test
