@@ -24,6 +24,14 @@ class BoxPass5GuardTest {
         assertFalse(jni.contains("poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, gWatchWakeMs.load())"))
     }
 
+    /** The job eventfd is exchanged to -1 only when the session is destroyed. */
+    @Test fun jobFdClosesWithTheSession() {
+        val marker = "jobFd.exchange(-1)"
+        val dtor = jni.substring(jni.indexOf("~LiveSession()"), jni.indexOf("std::string smtpHost"))
+        assertTrue(dtor.contains(marker))
+        assertEquals(jni.indexOf(marker), jni.lastIndexOf(marker))
+    }
+
     /** F42: native CR/LF backstop on every mailbox name the remaining entry points send. */
     @Test fun nativeWireBackstops() {
         for (name in listOf("StatusMessages", "ListLevel", "MailboxListed", "CopyThenDelete", "CopyAllThenDelete", "Append", "Watch")) {

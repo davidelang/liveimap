@@ -285,6 +285,8 @@ struct LiveSession {
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
     ~LiveSession() {
+        int fd = jobFd.exchange(-1);
+        if (fd >= 0) close(fd);
         JNIEnv * env = nullptr;
         if (keyChainKey != nullptr && gVm != nullptr
             && gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
@@ -877,13 +879,10 @@ void releaseUsers(LiveSession * session) {
 void kickOwner(LiveSession * session) {
     if (session == nullptr) return;
     int fd = session->jobFd.load();
-    if (fd >= 0 && session->jobHead.load() != kJobClosed) {
-        int again = session->jobFd.load();
-        if (again == fd) {
-            uint64_t one = 1;
-            ssize_t ignored = write(fd, &one, sizeof(one));
-            (void)ignored;
-        }
+    if (fd >= 0) {
+        uint64_t one = 1;
+        ssize_t ignored = write(fd, &one, sizeof(one));
+        (void)ignored;
     }
     session->jobKick.fetch_add(1);
     session->jobKick.notify_one();
@@ -978,8 +977,6 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     if (gVm == nullptr || gVm->AttachCurrentThread(&env, nullptr) != 0 || env == nullptr) {
         session->ownerAttachFailed.store(true);
         closeJobQueue(session.get());
-        int fd = session->jobFd.exchange(-1);
-        if (fd >= 0) close(fd);
         tlsOwner = nullptr;
         // Not attached. selfHold stays until an attached caller drops it after joinOwner
         // joins, so this parameter is not the last ref and ~std::thread is not joinable.
@@ -1022,12 +1019,10 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     }
     tlsOwner = nullptr;
     closeJobQueue(session.get());
-    int fd = session->jobFd.exchange(-1);
-    if (fd >= 0) close(fd);
     session->selfHold.reset();
     session->ownerFinished.store(true);
     session->ownerFinished.notify_all();
-    // Drop this ref while still attached, after the fd close, so an owner-thread close can DeleteGlobalRef.
+    // Drop this ref while still attached, so an owner-thread close can DeleteGlobalRef.
     session.reset();
 }
 
@@ -1043,16 +1038,15 @@ void joinOwner(LiveSession * session) {
     if (tlsOwner == session) return;
     while (!session->ownerFinished.load()) session->ownerFinished.wait(false);
     if (session->owner.joinable()) session->owner.join();
-    int fd = session->jobFd.exchange(-1);
-    if (fd >= 0) close(fd);
 }
 
 void discardUnpublished(std::shared_ptr<LiveSession> session) {
     if (!session) return;
     joinOwner(session.get());
-    if (session->ownerFinished.load()) {
-        int fd = session->jobFd.exchange(-1);
-        if (fd >= 0) close(fd);
+    while (session->users.load() != 0) {
+        int pending = session->users.load();
+        if (pending == 0) break;
+        session->users.wait(pending);
     }
     session->selfHold.reset();
 }

@@ -3642,3 +3642,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - takeStrings copies subject, Message-ID, References, and In-Reply-To with utf8FromJava. A null array element stays empty. nullopt pops the local frame and the JNI export returns null. GetStringUTFChars is gone from app/src/main/cpp.
 - ProGuard keeps SessionOpen, CopyMoveResult, NativeBoxes, ClientFetch, ClientHeaders, and ThreadFlat. The reorderable keeps are unchanged.
 - pass4NativeGuards asserts freeSession contains while (session->users.load() != 0). DeepNestingTest.depthOf is gone. The MIME tests stay.
+
+## 2026-10-24 - The job eventfd closes with the session.
