@@ -1436,7 +1436,7 @@ extern "C" char * mime_decode_phrase(const char * text, size_t len, const char *
 
 static std::string phraseUtf8(const char * text) {
     if (text == nullptr || text[0] == 0) return std::string();
-    char * decoded = mime_decode_phrase(text, strlen(text), "UTF-8");
+    char * decoded = mime_decode_phrase(text, strlen(text), "ISO-8859-1");
     std::string out = decoded != nullptr ? decoded : "";
     std::free(decoded);
     return out;
@@ -6469,7 +6469,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstrin
     auto utf = utf8FromJava(env, value);
     const std::string empty;
     const std::string & text = utf ? *utf : empty;
-    char * decoded = mime_decode_phrase(text.data(), text.size(), "UTF-8");
+    char * decoded = mime_decode_phrase(text.data(), text.size(), "ISO-8859-1");
     jstring out = newString(env, decoded != nullptr ? decoded : "");
     std::free(decoded);
     return out;

@@ -10419,9 +10419,34 @@ static std::string html_entity(const std::string & html, size_t amp, size_t * ne
     return "&";
 }
 
+static std::string tag_href(const std::string & tag) {
+    std::string href;
+    std::string lower = tag;
+    for (size_t k = 0; k < lower.size(); ++k) {
+        if (lower[k] >= 'A' && lower[k] <= 'Z') lower[k] = static_cast<char>(lower[k] - 'A' + 'a');
+    }
+    size_t href_at = lower.find("href");
+    if (href_at == std::string::npos) return href;
+    size_t eq = tag.find('=', href_at);
+    if (eq == std::string::npos) return href;
+    size_t v = eq + 1;
+    while (v < tag.size() && html_space(static_cast<unsigned char>(tag[v]))) ++v;
+    if (v < tag.size() && (tag[v] == '"' || tag[v] == '\'')) {
+        char q = tag[v];
+        size_t z = tag.find(q, v + 1);
+        if (z != std::string::npos) href = tag.substr(v + 1, z - v - 1);
+    } else {
+        size_t z = v;
+        while (z < tag.size() && !html_space(static_cast<unsigned char>(tag[z]))) ++z;
+        href = tag.substr(v, z - v);
+    }
+    return href;
+}
+
 static std::string html_as_text(const std::string & html) {
     std::string out;
     std::vector<std::string> links;
+    std::vector<std::string> open_anchors;
     bool skip = false;
     std::string skip_tag;
     for (size_t i = 0; i < html.size();) {
@@ -10466,29 +10491,10 @@ static std::string html_as_text(const std::string & html) {
             name == "blockquote" || name == "h1" || name == "h2" || name == "h3" || name == "h4" || name == "h5" ||
             name == "h6";
         if (breaks) out.push_back('\n');
-        if (close && name == "a") {
-            std::string href;
-            std::string lower = tag;
-            for (size_t k = 0; k < lower.size(); ++k) {
-                if (lower[k] >= 'A' && lower[k] <= 'Z') lower[k] = static_cast<char>(lower[k] - 'A' + 'a');
-            }
-            size_t href_at = lower.find("href");
-            if (href_at != std::string::npos) {
-                size_t eq = tag.find('=', href_at);
-                if (eq != std::string::npos) {
-                    size_t v = eq + 1;
-                    while (v < tag.size() && html_space(static_cast<unsigned char>(tag[v]))) ++v;
-                    if (v < tag.size() && (tag[v] == '"' || tag[v] == '\'')) {
-                        char q = tag[v];
-                        size_t z = tag.find(q, v + 1);
-                        if (z != std::string::npos) href = tag.substr(v + 1, z - v - 1);
-                    } else {
-                        size_t z = v;
-                        while (z < tag.size() && !html_space(static_cast<unsigned char>(tag[z]))) ++z;
-                        href = tag.substr(v, z - v);
-                    }
-                }
-            }
+        if (!close && name == "a") open_anchors.push_back(tag_href(tag));
+        if (close && name == "a" && !open_anchors.empty()) {
+            std::string href = open_anchors.back();
+            open_anchors.pop_back();
             bool web = false;
             size_t colon = href.find(':');
             if (colon != std::string::npos && colon > 0) {
@@ -10554,7 +10560,7 @@ extern "C" char * mime_preview_text(const char * bytes, size_t len, const char *
 extern "C" char * mime_decode_phrase(const char * text, size_t len, const char * fromcode) {
     mime_decode_ensure();
     if (text == nullptr) text = "";
-    const char * from = fromcode != nullptr && fromcode[0] != 0 ? fromcode : "UTF-8";
+    const char * from = fromcode != nullptr && fromcode[0] != 0 ? fromcode : "ISO-8859-1";
     size_t indx = 0;
     char * result = nullptr;
     int r = mailmime_encoded_phrase_parse(from, text, len, &indx, "UTF-8", &result);
@@ -10745,7 +10751,7 @@ static std::vector<HeaderRow> unfold_headers(const char * bytes, size_t len) {
         }
     }
     for (size_t i = 0; i < rows.size(); ++i) {
-        char * phrase = mime_decode_phrase(rows[i].raw.data(), rows[i].raw.size(), "UTF-8");
+        char * phrase = mime_decode_phrase(rows[i].raw.data(), rows[i].raw.size(), "ISO-8859-1");
         if (phrase != nullptr) {
             rows[i].value = phrase;
             free(phrase);
@@ -10764,7 +10770,7 @@ static std::vector<HeaderRow> unfold_headers(const char * bytes, size_t len) {
                 continue;
             }
             const char * sbj = field->fld_data.fld_subject->sbj_value;
-            char * phrase = mime_decode_phrase(sbj, strlen(sbj), "UTF-8");
+            char * phrase = mime_decode_phrase(sbj, strlen(sbj), "ISO-8859-1");
             for (size_t i = 0; i < rows.size(); ++i) {
                 if (rows[i].name.size() == 7 && strncasecmp(rows[i].name.c_str(), "subject", 7) == 0 && phrase != nullptr) {
                     rows[i].value = phrase;
@@ -10832,7 +10838,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
         char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u);
         free(text);
     } else if (op % 5u == 2u) {
-        char * text = mime_decode_phrase(bytes, n, "UTF-8");
+        char * text = mime_decode_phrase(bytes, n, "ISO-8859-1");
         free(text);
     } else if (op % 5u == 3u) {
         char * text = mime_decode_2231(bytes, n, "ISO-8859-1");
