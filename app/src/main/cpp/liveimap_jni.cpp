@@ -921,7 +921,11 @@ void closeJobQueue(LiveSession * session) {
 }
 
 OwnerJob * takeJobs(LiveSession * session) {
-    OwnerJob * head = session->jobHead.exchange(nullptr);
+    OwnerJob * head = session->jobHead.load();
+    for (;;) {
+        if (head == nullptr || head == kJobClosed) return nullptr;
+        if (session->jobHead.compare_exchange_weak(head, nullptr)) break;
+    }
     OwnerJob * fifo = nullptr;
     while (head != nullptr) {
         OwnerJob * nxt = head->next;
@@ -958,7 +962,8 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     tlsOwner = session.get();
     ensureOwnerEnv();
     while (!session->ownerStop.load()) {
-        if (session->jobHead.load() != nullptr) {
+        OwnerJob * queued = session->jobHead.load();
+        if (queued != nullptr && queued != kJobClosed) {
             runReadyJobs(session.get());
             continue;
         }
@@ -971,7 +976,8 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
             continue;
         }
         int kick = session->jobKick.load();
-        if (session->jobHead.load() != nullptr || session->ownerStop.load() || session->watchPhase.load() == 3) continue;
+        queued = session->jobHead.load();
+        if ((queued != nullptr && queued != kJobClosed) || session->ownerStop.load() || session->watchPhase.load() == 3) continue;
         session->jobKick.wait(kick);
     }
     runReadyJobs(session.get());
@@ -4052,7 +4058,17 @@ void freeSession(LiveSession * session, JNIEnv *) {
     session->ownerStop.store(true);
     kickOwner(session);
     // Closing from a watch callback runs on the owner. Joining it here would deadlock.
+    // Phase 0 lets a stop release its use count. The closed job queue lets queued commands do the same.
+    // The watch connection stays until the owner loop leaves the callback and calls finishIdleStop.
     if (tlsOwner == session) {
+        closeJobQueue(session);
+        session->watchPhase.store(0);
+        session->watchPhase.notify_all();
+        while (session->users.load() != 0) {
+            int pending = session->users.load();
+            if (pending == 0) break;
+            session->users.wait(pending);
+        }
         if (session->owner.joinable()) session->owner.detach();
         return;
     }
@@ -6815,7 +6831,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCompress(JNIEnv * env, 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeClose(JNIEnv * env, jobject, jlong handle) {
     auto * session = reinterpret_cast<LiveSession *>(handle);
-    if (retainSession(session) == nullptr) return;
+    // Keep the shared_ptr until freeSession returns. The use count is dropped first so this close
+    // does not wait on itself. A second close can still enter freeSession on live memory; unlink keeps one winner.
+    std::shared_ptr<LiveSession> kept = retainSession(session);
+    if (!kept) return;
     releaseUsers(session);
     freeSession(session, env);
 }
@@ -9656,6 +9675,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv *, job
     signalWatchStop(session);
     kickOwner(session);
     for (;;) {
+        if (session->closed.load() || session->ownerStop.load()) break;
         int phase = session->watchPhase.load();
         if (phase == 0) break;
         session->watchPhase.wait(phase);

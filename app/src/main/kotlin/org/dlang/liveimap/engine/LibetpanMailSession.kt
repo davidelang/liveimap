@@ -789,12 +789,16 @@ class LibetpanMailSession : MailSession {
         keeper.write("copy") {
             forgetSelected()
             ensureReadWrite()
-            nativeCopyThenDelete(
+            copiedUidStore = LongArray(0)
+            copiedEpochStore = 0L
+            val moved = nativeCopyThenDelete(
                 requireHandle(),
                 uids.toLongArray(),
                 wire(targetMailbox),
                 moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
-            )
+            ) ?: return@write
+            copiedUidStore = moved.copiedUids
+            copiedEpochStore = moved.targetEpoch
         }
     }
 
@@ -803,6 +807,8 @@ class LibetpanMailSession : MailSession {
         keeper.write("copy") {
             forgetSelected()
             ensureReadWrite()
+            copiedUidStore = LongArray(0)
+            copiedEpochStore = 0L
             val moved = nativeCopyThenDelete(
                 requireHandle(),
                 uids.toLongArray(),
@@ -818,6 +824,8 @@ class LibetpanMailSession : MailSession {
         keeper.write("copy") {
             forgetSelected()
             ensureReadWrite()
+            copiedUidStore = LongArray(0)
+            copiedEpochStore = 0L
             val moved = nativeCopyAllThenDelete(
                 requireHandle(),
                 wire(targetMailbox),
