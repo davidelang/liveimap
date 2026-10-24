@@ -3681,3 +3681,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-24 - Flowed reader text does not depend on chunk boundaries.
+
+## 2026-10-24 - Unfinished charsets decode, and a fetched message is copied once.
+
+- Approved plan: sandbox/plans/mime-remainder-20261024-1520-plan.md
+- A name the hand tables finish stays on those tables. Any other name, including GB18030, EUC-JP, and ISO-2022-JP-2, uses Charset.forName and Charset.decode. forName throwing keeps the unknown-charset note.
+- nativeFetchRfc822 copies the libetpan bytes into one jbyteArray with SetByteArrayRegion and frees the fetch list. It does not spill through tmpfile.
+- No install, and no message sent
