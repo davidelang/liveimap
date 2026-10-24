@@ -740,13 +740,7 @@ class LibetpanMailSession : MailSession {
                 settings?.email.orEmpty(),
                 settings?.altAddresses.orEmpty().joinToString("\n"),
             ) ?: throw MailFailure("fetch failed")
-            fetched.map { row ->
-                row.copy(
-                    from = decodeHeaderWords(row.from),
-                    subject = decodeHeaderWords(row.subject),
-                    recipients = decodeHeaderWords(row.recipients),
-                )
-            }
+            fetched
         }
         return rows
     }

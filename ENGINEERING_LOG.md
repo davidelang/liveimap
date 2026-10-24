@@ -3650,3 +3650,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: one native decoder for transfer encoding, charset, headers, and subjects; previews stay in native; bodies stream; attachments are files; a failed decode is an error or a note
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Index rows keep the native decoded subject.
+
+- Approved plan: sandbox/plans/index-subject-once-20261024-1307-plan.md
+- Work: fetchIndex returns the native index rows. It does not run decodeHeaderWords on from, subject, or recipients. sortPiece and threadOrder still decode raw header text.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
