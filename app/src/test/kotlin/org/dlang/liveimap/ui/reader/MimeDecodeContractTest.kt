@@ -2,8 +2,11 @@ package org.dlang.liveimap.ui.reader
 
 import androidx.compose.ui.text.AnnotatedString
 import org.dlang.liveimap.ui.compose.MimeDecodeException
+import org.dlang.liveimap.ui.compose.addresses
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
+import org.dlang.liveimap.ui.compose.headerValues
 import org.dlang.liveimap.ui.compose.loadEditor
+import org.dlang.liveimap.ui.compose.parseRfc822
 import org.dlang.liveimap.ui.index.indexSubjectText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -138,5 +141,24 @@ class MimeDecodeContractTest {
     @Test
     fun severalHtmlChunksCallThemedHtmlOnce() {
         assertEquals(1, themedHtmlChunkLoads(listOf("<p>one", " two", "</p>")))
+    }
+
+    @Test
+    fun addressAndIdFieldsKeepQuotesAndBrackets() {
+        val raw = (
+            "From: \"Last, First\" <c@d.e>\r\n" +
+                "To: \"Last,\r\n" +
+                " First\" <c@d.e>, d@e.f\r\n" +
+                "Message-ID: <id@host>\r\n" +
+                "In-Reply-To: <a@b> <c@d>\r\n" +
+                "References: <a@b> <c@d>\r\n" +
+                "Subject: hi\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        val parsed = parseRfc822(raw)
+        assertEquals(listOf("\"Last, First\" <c@d.e>"), addresses(parsed, "From"))
+        assertEquals(listOf("\"Last, First\" <c@d.e>", "d@e.f"), addresses(parsed, "To"))
+        assertEquals("<id@host>", headerValues(parsed, "Message-ID").first())
+        assertEquals("<a@b> <c@d>", headerValues(parsed, "In-Reply-To").first())
+        assertEquals("<a@b> <c@d>", headerValues(parsed, "References").first())
     }
 }

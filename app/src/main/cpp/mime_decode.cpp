@@ -10795,52 +10795,6 @@ static void join_clist(std::string * out, clist * list) {
     }
 }
 
-static void append_mailbox(std::string * out, struct mailimf_mailbox * mb) {
-    if (mb == nullptr) return;
-    if (mb->mb_display_name != nullptr && mb->mb_display_name[0] != 0) {
-        *out += mb->mb_display_name;
-        *out += " <";
-        if (mb->mb_addr_spec != nullptr) *out += mb->mb_addr_spec;
-        *out += '>';
-    } else if (mb->mb_addr_spec != nullptr) {
-        *out += mb->mb_addr_spec;
-    }
-}
-
-static void append_mailbox_list(std::string * out, struct mailimf_mailbox_list * list) {
-    if (list == nullptr || list->mb_list == nullptr) return;
-    bool first = true;
-    for (clistiter * cur = clist_begin(list->mb_list); cur != nullptr; cur = clist_next(cur)) {
-        if (!first) *out += ", ";
-        first = false;
-        append_mailbox(out, static_cast<struct mailimf_mailbox *>(clist_content(cur)));
-    }
-}
-
-static void append_address(std::string * out, struct mailimf_address * ad) {
-    if (ad == nullptr) return;
-    if (ad->ad_type == MAILIMF_ADDRESS_MAILBOX) {
-        append_mailbox(out, ad->ad_data.ad_mailbox);
-        return;
-    }
-    if (ad->ad_type != MAILIMF_ADDRESS_GROUP || ad->ad_data.ad_group == nullptr) return;
-    struct mailimf_group * group = ad->ad_data.ad_group;
-    if (group->grp_display_name != nullptr) *out += group->grp_display_name;
-    *out += ": ";
-    append_mailbox_list(out, group->grp_mb_list);
-    *out += ';';
-}
-
-static void append_address_list(std::string * out, struct mailimf_address_list * list) {
-    if (list == nullptr || list->ad_list == nullptr) return;
-    bool first = true;
-    for (clistiter * cur = clist_begin(list->ad_list); cur != nullptr; cur = clist_next(cur)) {
-        if (!first) *out += ", ";
-        first = false;
-        append_address(out, static_cast<struct mailimf_address *>(clist_content(cur)));
-    }
-}
-
 static std::string format_date(struct mailimf_date_time * dt) {
     if (dt == nullptr) return std::string();
     static const char * months[] = {
@@ -10864,6 +10818,123 @@ static void push_row(std::vector<HeaderRow> * rows, const char * name, const std
     rows->push_back(std::move(row));
 }
 
+struct WireField {
+    std::string name;
+    std::string value;
+};
+
+static bool same_name(const std::string & wire, const char * canon) {
+    if (canon == nullptr) return false;
+    size_t n = 0;
+    while (canon[n] != 0) ++n;
+    if (wire.size() != n) return false;
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char a = static_cast<unsigned char>(wire[i]);
+        unsigned char b = static_cast<unsigned char>(canon[i]);
+        if (a >= 'A' && a <= 'Z') a = static_cast<unsigned char>(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = static_cast<unsigned char>(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+// The one mailimf parse says which fields are valid. Address and id values stay the original
+// text, so quotes and angle brackets are still there for addresses() and replyDraft.
+static void collect_wire_fields(const char * bytes, size_t block, std::vector<WireField> * out) {
+    size_t i = 0;
+    while (i < block) {
+        unsigned char c = static_cast<unsigned char>(bytes[i]);
+        if (c == '\n' || c == '\r') break;
+        size_t start = i;
+        while (i < block && bytes[i] != '\n') ++i;
+        if (i < block && bytes[i] == '\n') ++i;
+        while (i < block && (bytes[i] == ' ' || bytes[i] == '\t')) {
+            while (i < block && bytes[i] != '\n') ++i;
+            if (i < block && bytes[i] == '\n') ++i;
+        }
+        std::string chunk(bytes + start, i - start);
+        size_t colon = chunk.find(':');
+        if (colon == std::string::npos) continue;
+        WireField field;
+        field.name = trim_copy(chunk.substr(0, colon));
+        field.value = unfold_value(chunk.substr(colon + 1));
+        if (!field.name.empty()) out->push_back(std::move(field));
+    }
+}
+
+static const char * field_canon(struct mailimf_field * field) {
+    if (field == nullptr) return nullptr;
+    switch (field->fld_type) {
+    case MAILIMF_FIELD_RETURN_PATH: return "Return-Path";
+    case MAILIMF_FIELD_RESENT_DATE: return "Resent-Date";
+    case MAILIMF_FIELD_RESENT_FROM: return "Resent-From";
+    case MAILIMF_FIELD_RESENT_SENDER: return "Resent-Sender";
+    case MAILIMF_FIELD_RESENT_TO: return "Resent-To";
+    case MAILIMF_FIELD_RESENT_CC: return "Resent-Cc";
+    case MAILIMF_FIELD_RESENT_BCC: return "Resent-Bcc";
+    case MAILIMF_FIELD_RESENT_MSG_ID: return "Resent-Message-ID";
+    case MAILIMF_FIELD_ORIG_DATE: return "Date";
+    case MAILIMF_FIELD_FROM: return "From";
+    case MAILIMF_FIELD_SENDER: return "Sender";
+    case MAILIMF_FIELD_REPLY_TO: return "Reply-To";
+    case MAILIMF_FIELD_TO: return "To";
+    case MAILIMF_FIELD_CC: return "Cc";
+    case MAILIMF_FIELD_BCC: return "Bcc";
+    case MAILIMF_FIELD_MESSAGE_ID: return "Message-ID";
+    case MAILIMF_FIELD_IN_REPLY_TO: return "In-Reply-To";
+    case MAILIMF_FIELD_REFERENCES: return "References";
+    case MAILIMF_FIELD_SUBJECT: return "Subject";
+    case MAILIMF_FIELD_COMMENTS: return "Comments";
+    case MAILIMF_FIELD_KEYWORDS: return "Keywords";
+    case MAILIMF_FIELD_OPTIONAL_FIELD:
+        if (field->fld_data.fld_optional_field == nullptr) return nullptr;
+        return field->fld_data.fld_optional_field->fld_name;
+    default:
+        return nullptr;
+    }
+}
+
+static bool wire_address_or_id(int type) {
+    switch (type) {
+    case MAILIMF_FIELD_RETURN_PATH:
+    case MAILIMF_FIELD_RESENT_FROM:
+    case MAILIMF_FIELD_RESENT_SENDER:
+    case MAILIMF_FIELD_RESENT_TO:
+    case MAILIMF_FIELD_RESENT_CC:
+    case MAILIMF_FIELD_RESENT_BCC:
+    case MAILIMF_FIELD_RESENT_MSG_ID:
+    case MAILIMF_FIELD_FROM:
+    case MAILIMF_FIELD_SENDER:
+    case MAILIMF_FIELD_REPLY_TO:
+    case MAILIMF_FIELD_TO:
+    case MAILIMF_FIELD_CC:
+    case MAILIMF_FIELD_BCC:
+    case MAILIMF_FIELD_MESSAGE_ID:
+    case MAILIMF_FIELD_IN_REPLY_TO:
+    case MAILIMF_FIELD_REFERENCES:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static std::string take_wire(const std::vector<WireField> & wires, size_t * at, const char * canon) {
+    if (at == nullptr) return std::string();
+    if (canon != nullptr) {
+        for (size_t i = *at; i < wires.size(); ++i) {
+            if (!same_name(wires[i].name, canon)) continue;
+            *at = i + 1;
+            return wires[i].value;
+        }
+    }
+    if (*at < wires.size()) {
+        std::string value = wires[*at].value;
+        *at += 1;
+        return value;
+    }
+    return std::string();
+}
+
 static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow> * rows) {
     if (rows == nullptr) return 1;
     rows->clear();
@@ -10883,55 +10954,23 @@ static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow>
         mailimf_fields_free(fields);
         return 1;
     }
+    std::vector<WireField> wires;
+    collect_wire_fields(bytes, block, &wires);
+    size_t wire_at = 0;
     if (fields->fld_list != nullptr) {
         for (clistiter * cur = clist_begin(fields->fld_list); cur != nullptr; cur = clist_next(cur)) {
             auto * field = static_cast<struct mailimf_field *>(clist_content(cur));
             if (field == nullptr) continue;
+            const char * canon = field_canon(field);
+            std::string wire_value = take_wire(wires, &wire_at, canon);
+            if (wire_address_or_id(field->fld_type)) {
+                if (canon != nullptr) push_row(rows, canon, wire_value);
+                continue;
+            }
             switch (field->fld_type) {
-            case MAILIMF_FIELD_RETURN_PATH:
-                if (field->fld_data.fld_return_path != nullptr && field->fld_data.fld_return_path->ret_path != nullptr &&
-                    field->fld_data.fld_return_path->ret_path->pt_addr_spec != nullptr) {
-                    push_row(rows, "Return-Path", field->fld_data.fld_return_path->ret_path->pt_addr_spec);
-                }
-                break;
             case MAILIMF_FIELD_RESENT_DATE:
                 if (field->fld_data.fld_resent_date != nullptr) {
                     push_row(rows, "Resent-Date", format_date(field->fld_data.fld_resent_date->dt_date_time));
-                }
-                break;
-            case MAILIMF_FIELD_RESENT_FROM: {
-                std::string raw;
-                if (field->fld_data.fld_resent_from != nullptr) append_mailbox_list(&raw, field->fld_data.fld_resent_from->frm_mb_list);
-                push_row(rows, "Resent-From", raw);
-                break;
-            }
-            case MAILIMF_FIELD_RESENT_SENDER: {
-                std::string raw;
-                if (field->fld_data.fld_resent_sender != nullptr) append_mailbox(&raw, field->fld_data.fld_resent_sender->snd_mb);
-                push_row(rows, "Resent-Sender", raw);
-                break;
-            }
-            case MAILIMF_FIELD_RESENT_TO: {
-                std::string raw;
-                if (field->fld_data.fld_resent_to != nullptr) append_address_list(&raw, field->fld_data.fld_resent_to->to_addr_list);
-                push_row(rows, "Resent-To", raw);
-                break;
-            }
-            case MAILIMF_FIELD_RESENT_CC: {
-                std::string raw;
-                if (field->fld_data.fld_resent_cc != nullptr) append_address_list(&raw, field->fld_data.fld_resent_cc->cc_addr_list);
-                push_row(rows, "Resent-Cc", raw);
-                break;
-            }
-            case MAILIMF_FIELD_RESENT_BCC: {
-                std::string raw;
-                if (field->fld_data.fld_resent_bcc != nullptr) append_address_list(&raw, field->fld_data.fld_resent_bcc->bcc_addr_list);
-                push_row(rows, "Resent-Bcc", raw);
-                break;
-            }
-            case MAILIMF_FIELD_RESENT_MSG_ID:
-                if (field->fld_data.fld_resent_msg_id != nullptr && field->fld_data.fld_resent_msg_id->mid_value != nullptr) {
-                    push_row(rows, "Resent-Message-ID", field->fld_data.fld_resent_msg_id->mid_value);
                 }
                 break;
             case MAILIMF_FIELD_ORIG_DATE:
@@ -10939,59 +10978,6 @@ static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow>
                     push_row(rows, "Date", format_date(field->fld_data.fld_orig_date->dt_date_time));
                 }
                 break;
-            case MAILIMF_FIELD_FROM: {
-                std::string raw;
-                if (field->fld_data.fld_from != nullptr) append_mailbox_list(&raw, field->fld_data.fld_from->frm_mb_list);
-                push_row(rows, "From", raw);
-                break;
-            }
-            case MAILIMF_FIELD_SENDER: {
-                std::string raw;
-                if (field->fld_data.fld_sender != nullptr) append_mailbox(&raw, field->fld_data.fld_sender->snd_mb);
-                push_row(rows, "Sender", raw);
-                break;
-            }
-            case MAILIMF_FIELD_REPLY_TO: {
-                std::string raw;
-                if (field->fld_data.fld_reply_to != nullptr) append_address_list(&raw, field->fld_data.fld_reply_to->rt_addr_list);
-                push_row(rows, "Reply-To", raw);
-                break;
-            }
-            case MAILIMF_FIELD_TO: {
-                std::string raw;
-                if (field->fld_data.fld_to != nullptr) append_address_list(&raw, field->fld_data.fld_to->to_addr_list);
-                push_row(rows, "To", raw);
-                break;
-            }
-            case MAILIMF_FIELD_CC: {
-                std::string raw;
-                if (field->fld_data.fld_cc != nullptr) append_address_list(&raw, field->fld_data.fld_cc->cc_addr_list);
-                push_row(rows, "Cc", raw);
-                break;
-            }
-            case MAILIMF_FIELD_BCC: {
-                std::string raw;
-                if (field->fld_data.fld_bcc != nullptr) append_address_list(&raw, field->fld_data.fld_bcc->bcc_addr_list);
-                push_row(rows, "Bcc", raw);
-                break;
-            }
-            case MAILIMF_FIELD_MESSAGE_ID:
-                if (field->fld_data.fld_message_id != nullptr && field->fld_data.fld_message_id->mid_value != nullptr) {
-                    push_row(rows, "Message-ID", field->fld_data.fld_message_id->mid_value);
-                }
-                break;
-            case MAILIMF_FIELD_IN_REPLY_TO: {
-                std::string raw;
-                if (field->fld_data.fld_in_reply_to != nullptr) join_clist(&raw, field->fld_data.fld_in_reply_to->mid_list);
-                push_row(rows, "In-Reply-To", raw);
-                break;
-            }
-            case MAILIMF_FIELD_REFERENCES: {
-                std::string raw;
-                if (field->fld_data.fld_references != nullptr) join_clist(&raw, field->fld_data.fld_references->mid_list);
-                push_row(rows, "References", raw);
-                break;
-            }
             case MAILIMF_FIELD_SUBJECT:
                 if (field->fld_data.fld_subject != nullptr && field->fld_data.fld_subject->sbj_value != nullptr) {
                     push_row(rows, "Subject", field->fld_data.fld_subject->sbj_value);
