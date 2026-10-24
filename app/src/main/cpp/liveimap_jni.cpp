@@ -1701,8 +1701,6 @@ jobjectArray indexRowsToArray(JNIEnv * env, jobject list) {
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore = false);
-jobject newSessionOpen(JNIEnv * env, jlong handle, const std::string & tls, const std::string & error,
-    bool authRejected, const std::vector<std::string> & cert);
 
 bool wireOk(const char * text);
 static bool capabilityLineOffersCondstore(const std::string & line) {
@@ -6203,6 +6201,9 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
     setPreviewDecoder(decodePreviewBytes);
     return JNI_VERSION_1_6;
 }
+
+jobject newSessionOpen(JNIEnv * env, jlong handle, const std::string & tls, const std::string & error,
+    bool authRejected, const std::vector<std::string> & cert);
 
 // Stores the account on a session and does not connect. nativeWatch is the one login.
 extern "C" JNIEXPORT jobject JNICALL
