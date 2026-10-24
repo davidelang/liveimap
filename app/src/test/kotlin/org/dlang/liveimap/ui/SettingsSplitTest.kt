@@ -121,6 +121,14 @@ class SettingsSplitTest {
         assertFalse(commit.substring(end).contains("onSave"))
     }
 
+    @Test fun editorDoesNotLoadOnRevision() {
+        val settings = src("main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
+        val editor = slice(settings, "private fun rememberSettingsEditor")
+        assertFalse(editor.contains("LaunchedEffect(revision)"))
+        assertFalse(editor.contains("SettingsRevision"))
+        assertTrue(editor.contains("LaunchedEffect(store) { editor.load() }"))
+    }
+
     private fun slice(source: String, signature: String): String {
         val start = source.indexOf(signature)
         assertTrue(signature, start >= 0)

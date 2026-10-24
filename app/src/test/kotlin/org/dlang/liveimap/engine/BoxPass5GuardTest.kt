@@ -57,11 +57,4 @@ class BoxPass5GuardTest {
             .map { it.name }.toList()
         assertEquals(emptyList<String>(), offenders)
     }
-
-    /** The two-pane group list reloads after a save (stale "Traffic log on"). */
-    @Test fun groupListFollowsSaves() {
-        val s = src("kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
-        assertTrue(s.contains("LaunchedEffect(revision) { if (revision > 0) editor.load() }"))
-        assertTrue(s.contains("SettingsRevision.bump()"))
-    }
 }
