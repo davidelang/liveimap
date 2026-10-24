@@ -73,22 +73,6 @@ class PartTextTest {
         }
     }
 
-    @Test
-    fun htmlQuotedPrintablePreview() {
-        val raw = "=3Ca href=3D\"https://e.com\"=3Elink=3C/a=3E".toByteArray(Charsets.US_ASCII)
-        val text = PartText.previewText(raw, "ISO-8859-1", "quoted-printable", true)
-        assertEquals("link [1]\n\n[1] https://e.com", text)
-        assertFalse(text.contains("<"))
-        assertFalse(text.contains("="))
-    }
-
-    @Test
-    fun previewOmitsCharsetNote() {
-        val text = PartText.previewText(byteArrayOf(0xE9.toByte()), "no-such", "", false)
-        assertEquals("é", text)
-        assertFalse(text.contains("Unknown charset"))
-    }
-
     private fun decodeNamed(charset: String, text: String): String {
         val bytes = text.toByteArray(Charset.forName(charset))
         val decoded = decodePart(bytes, charset, "")

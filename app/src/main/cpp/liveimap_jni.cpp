@@ -6516,10 +6516,17 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_parameter2231(JNIEnv * env, jclass,
 
 static jstring bytesAsLatin1(JNIEnv * env, const char * text) {
     if (text == nullptr) return nullptr;
-    size_t n = strlen(text);
-    std::vector<jchar> chars(n);
-    for (size_t i = 0; i < n; ++i) chars[i] = static_cast<unsigned char>(text[i]);
-    return env->NewString(chars.empty() ? nullptr : chars.data(), static_cast<jsize>(n));
+    std::string utf8;
+    for (const unsigned char * p = reinterpret_cast<const unsigned char *>(text); *p != 0; ++p) {
+        unsigned char b = *p;
+        if (b < 0x80) {
+            utf8.push_back(static_cast<char>(b));
+        } else {
+            utf8.push_back(static_cast<char>(0xC0 | (b >> 6)));
+            utf8.push_back(static_cast<char>(0x80 | (b & 0x3F)));
+        }
+    }
+    return newString(env, utf8.c_str());
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL

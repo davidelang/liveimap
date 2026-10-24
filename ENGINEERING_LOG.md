@@ -3662,3 +3662,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/mime-decode-contract-20261024-1322-plan.md
 - A failed phrase, header, body, or preview stays an error or a note. No span is dropped and no error sentence is used as body text.
+
+## 2026-10-24 - Unit tests no longer call the deleted MIME helpers.
+
+- Approved plan: sandbox/plans/mime-test-callers-20261024-1420-plan.md
+- PartTextTest drops htmlQuotedPrintablePreview and previewOmitsCharsetNote. The decodePart and WireTextDecoder tests stay. AttachmentStreamTest.kt is deleted. previewText and streamAttachment stay deleted.
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - The Latin-1 JNI string goes through newString, and MimeDecodeException is kept.

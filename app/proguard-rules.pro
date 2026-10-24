@@ -34,6 +34,7 @@
 -keep class org.dlang.liveimap.session.ClientHeaders { *; }
 -keep class org.dlang.liveimap.session.ThreadFlat { *; }
 -keep class org.dlang.liveimap.ui.reader.PartText** { *; }
+-keep class org.dlang.liveimap.ui.compose.MimeDecodeException { *; }
 
 # Reflection: BuildConfig.GIT_COMMIT is read with getField by the lab instrumentation (LabSuiteTest).
 -keep class com.davidlang.liveimap.BuildConfig { *; }

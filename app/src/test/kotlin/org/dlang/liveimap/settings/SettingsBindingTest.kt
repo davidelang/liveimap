@@ -116,7 +116,7 @@ class SettingsBindingTest {
         assertTrue(text.contains(call))
         assertTrue(html.contains("bodyTruncated = truncated"))
         assertTrue(text.contains("bodyTruncated = truncated"))
-        val read = reader.substring(reader.indexOf("suspend fun readPart("), reader.indexOf("fun showMissing("))
+        val read = reader.substring(reader.indexOf("suspend fun readPart("), reader.indexOf("suspend fun readSectionText("))
         assertTrue(read.contains("out.size() < cap"))
         assertTrue(read.contains("cap - out.size()"))
         val rendered = reader.substring(
@@ -180,7 +180,7 @@ class SettingsBindingTest {
         }
         afterPeek("suspend fun pullBody(", "suspend fun pullUnbounded(")
         afterPeek("suspend fun pullUnbounded(", "suspend fun readPart(")
-        afterPeek("suspend fun readPart(", "fun showMissing(")
+        afterPeek("suspend fun readPart(", "suspend fun readSectionText(")
         val scroll = reader.substring(
             reader.indexOf("LaunchedEffect(connected, bodySection)"),
             reader.indexOf("fun nextAfterDeleteOrMove"),
