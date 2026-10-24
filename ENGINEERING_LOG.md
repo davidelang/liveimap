@@ -3695,3 +3695,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - A picked attachment is a file under that draft's contents directory. The compose hold keeps the path, not the bytes. A resolver failure is shown. An orphan message directory is removed only when that draft is neither saved nor open.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Send and discard delete the draft directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- Send and discard delete the draft message directory. A kept unsent copy is left in place. Assemble reads a picked file on Dispatchers.IO.
+- No install, and no message sent

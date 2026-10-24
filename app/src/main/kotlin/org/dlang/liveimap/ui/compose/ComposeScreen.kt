@@ -630,6 +630,8 @@ private fun ComposeLoaded(
         if (life.releaseHold) releasePickedHold()
         if (life.closes) {
             composeLeft = true
+            // The device-copy id is not this directory. A kept unsent copy uses the directory name.
+            if (life.disk != ComposeCopyDisk.Keep) deleteCopy(appContext, draftId, accountId)
             closeCompose(draftId)
         }
     }
@@ -996,11 +998,12 @@ private fun ComposeLoaded(
         val uid = sourceUid
         for (row in forwardRows) {
             if (!row.included) continue
+            val path = row.path
             val payload = if (row.bytes != null) {
                 row.bytes
-            } else if (row.path != null) {
+            } else if (path != null) {
                 try {
-                    File(row.path).readBytes()
+                    withContext(Dispatchers.IO) { File(path).readBytes() }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
