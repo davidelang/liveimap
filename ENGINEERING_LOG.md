@@ -3679,3 +3679,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The reader remember keys the line version and the style keys. displayLines runs on newly appended lines. A style change resets both lists.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Flowed reader text does not depend on chunk boundaries.

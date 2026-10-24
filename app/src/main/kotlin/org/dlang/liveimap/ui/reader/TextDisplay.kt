@@ -124,3 +124,93 @@ internal fun reflow(lines: List<String>): List<String> {
     flush()
     return out
 }
+
+/**
+ * Display list for a body that arrives in pieces. Text and Monospaced append each piece. Format=flowed keeps the
+ * open paragraph (depth, text, and the first raw line it covers) and runs [unflow] again from that line. A plain
+ * body under the Flowed layout stays unjoined until [finished], then [reflow] sees every raw line since [reset].
+ */
+internal class FlowedStream {
+    private val raw = ArrayList<String>()
+    private val shown = ArrayList<String>()
+    private var open = false
+    private var openDepth = 0
+    private var openText = ""
+    private var openAt = 0
+
+    fun reset() {
+        raw.clear()
+        shown.clear()
+        open = false
+        openDepth = 0
+        openText = ""
+        openAt = 0
+    }
+
+    fun push(
+        newLines: List<String>,
+        layout: TextLayout,
+        flowed: Boolean,
+        delSp: Boolean,
+        finished: Boolean,
+    ): List<String> {
+        when (layout) {
+            TextLayout.Text, TextLayout.Monospaced -> shown.addAll(newLines)
+            TextLayout.Flowed -> if (flowed) pushFlowed(newLines, delSp) else pushPlain(newLines, finished)
+        }
+        return ArrayList(shown)
+    }
+
+    private fun pushFlowed(newLines: List<String>, delSp: Boolean) {
+        val start = if (open) openAt else raw.size
+        if (open && shown.lastOrNull() == prefix(openDepth) + openText) shown.removeAt(shown.lastIndex)
+        raw.addAll(newLines)
+        shown.addAll(unflow(raw.subList(start, raw.size), delSp))
+        rememberOpen(start, delSp)
+    }
+
+    private fun pushPlain(newLines: List<String>, finished: Boolean) {
+        raw.addAll(newLines)
+        open = false
+        openDepth = 0
+        openText = ""
+        openAt = raw.size
+        if (finished) {
+            shown.clear()
+            shown.addAll(reflow(raw))
+        } else {
+            shown.addAll(newLines)
+        }
+    }
+
+    /** The last paragraph stays open when its line is a soft break and nothing after it closed it. */
+    private fun rememberOpen(start: Int, delSp: Boolean) {
+        var depth = 0
+        var at = start
+        var active = false
+        val cur = StringBuilder()
+        for (i in start until raw.size) {
+            val q = quoted(raw[i], stuffed = true)
+            if (active && q.depth != depth) active = false
+            if (!active) {
+                at = i
+                cur.setLength(0)
+            }
+            depth = q.depth
+            val soft = q.text.endsWith(" ") && !isSignature(q.text)
+            cur.append(if (soft && delSp) q.text.dropLast(1) else q.text)
+            active = true
+            if (!soft) active = false
+        }
+        open = active
+        if (active) {
+            openDepth = depth
+            openText = cur.toString()
+            openAt = at
+        } else {
+            openDepth = 0
+            openText = ""
+            openAt = raw.size
+        }
+    }
+}

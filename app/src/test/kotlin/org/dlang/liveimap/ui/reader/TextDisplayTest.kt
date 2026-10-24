@@ -51,6 +51,44 @@ class TextDisplayTest {
         assertEquals(listOf("> $prose more", "plain"), out)
     }
 
+    @Test fun unflowOfDonauDampfMatchesOnePushAndASplit() {
+        val lines = listOf("Donau ", "dampf")
+        val joined = unflow(lines, delSp = false)
+        val one = FlowedStream().push(lines, TextLayout.Flowed, flowed = true, delSp = false, finished = true)
+        val stream = FlowedStream()
+        stream.push(listOf("Donau "), TextLayout.Flowed, flowed = true, delSp = false, finished = false)
+        val two = stream.push(listOf("dampf"), TextLayout.Flowed, flowed = true, delSp = false, finished = true)
+        assertEquals(joined, one)
+        assertEquals(joined, two)
+    }
+
+    @Test fun plainReflowWaitsUntilTheBodyIsFinished() {
+        val prose = "word ".repeat(14).trim()
+        val lines = listOf(prose, prose, "end.")
+        val expected = reflow(lines)
+        assertEquals(
+            expected,
+            FlowedStream().push(lines, TextLayout.Flowed, flowed = false, delSp = false, finished = true),
+        )
+        val stream = FlowedStream()
+        val partial = stream.push(lines.subList(0, 2), TextLayout.Flowed, flowed = false, delSp = false, finished = false)
+        assertEquals(lines.subList(0, 2), partial)
+        assertEquals(
+            expected,
+            stream.push(listOf(lines[2]), TextLayout.Flowed, flowed = false, delSp = false, finished = true),
+        )
+    }
+
+    @Test fun textAndMonospacedAppendEachChunk() {
+        val first = listOf("Donau ", "stay")
+        val second = listOf("dampf")
+        for (layout in listOf(TextLayout.Text, TextLayout.Monospaced)) {
+            val stream = FlowedStream()
+            assertEquals(first, stream.push(first, layout, flowed = true, delSp = true, finished = false))
+            assertEquals(first + second, stream.push(second, layout, flowed = true, delSp = true, finished = true))
+        }
+    }
+
     @Test fun selectorMapsToViewAndLayout() {
         assertEquals(ReaderDisplay.Html, readerDisplayOf(BodyView.PlainOrHtml, TextLayout.Monospaced))
         assertEquals(ReaderDisplay.Flowed, readerDisplayOf(BodyView.PlainOrError, TextLayout.Flowed))

@@ -298,6 +298,7 @@ internal class ReaderHeld : ViewModel() {
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
     val bodyLinesState = mutableStateListOf<String>()
+    val bodyCompleteState = mutableStateOf(false)
     val bodyTruncatedState = mutableStateOf(false)
     val charsetNoteState = mutableStateOf<String?>(null)
     val bodyOffsetState = mutableIntStateOf(0)
@@ -334,6 +335,7 @@ internal class ReaderHeld : ViewModel() {
         carry.closeDecoder()
         carry.clearText()
         bodyLinesState.clear()
+        bodyCompleteState.value = false
         scrollOffsetState.intValue = 0
         webScroll = 0
         accountState.value = AccountSettings()
@@ -677,10 +679,12 @@ private fun MessageReaderLoaded(
 
     var plainVersion by remember { mutableIntStateOf(0) }
     var bodyEpoch by remember { mutableIntStateOf(0) }
+    var bodyComplete by held.bodyCompleteState
     fun clearBodyLines() {
         val lines = bodyLines
         lines.clear()
         bodyEpoch += 1
+        bodyComplete = false
     }
 
     fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
@@ -704,6 +708,7 @@ private fun MessageReaderLoaded(
         val before = bodyLines.size
         val htmlBody = carry.appendPiece(piece, bodyLines, finished, renderedHtml)
         if (bodyLines.size > before) plainVersion += 1
+        if (finished) bodyComplete = true
         if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
         charsetNote = carry.decoder?.note
     }
@@ -820,6 +825,7 @@ private fun MessageReaderLoaded(
         bodyText = built.toString()
         clearBodyLines()
         bodyLines.addAll(readerLines(bodyText))
+        bodyComplete = true
     }
 
     suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
@@ -972,6 +978,7 @@ private fun MessageReaderLoaded(
                     bodyText = text
                     clearBodyLines()
                     bodyLines.addAll(readerLines(text))
+                    bodyComplete = true
                     bodyTruncated = truncated
                 }
             }
@@ -1018,6 +1025,7 @@ private fun MessageReaderLoaded(
                     bodyText = htmlAsText(text)
                     clearBodyLines()
                     bodyLines.addAll(readerLines(bodyText))
+                    bodyComplete = true
                     bodyTruncated = truncated
                 }
             }
@@ -1749,11 +1757,13 @@ private fun MessageReaderLoaded(
             var layout: TextLayout? = null
             var flowed = false
             var delSp = false
+            var pushedFinished = false
+            val stream = FlowedStream()
             val processed = ArrayList<String>()
             val annotated = ArrayList<Pair<Boolean, AnnotatedString>>()
         }
     }
-    val plainLines = remember(plainVersion, bodyEpoch, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+    val plainLines = remember(plainVersion, bodyEpoch, bodyComplete, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
         val styleChanged = !plainCache.styled ||
             plainCache.quote != quoteTint || plainCache.link != linkColor || plainCache.bridge != linkBridge ||
             plainCache.layout != textLayout || plainCache.flowed != plainFlowed || plainCache.delSp != plainDelSp
@@ -1769,16 +1779,27 @@ private fun MessageReaderLoaded(
             plainCache.layout = textLayout
             plainCache.flowed = plainFlowed
             plainCache.delSp = plainDelSp
+            plainCache.stream.reset()
+            plainCache.pushedFinished = false
         }
-        if (bodyLines.size > plainCache.consumed) {
+        if (bodyLines.size > plainCache.consumed || (bodyComplete && !plainCache.pushedFinished)) {
             val fresh = ArrayList<String>(bodyLines.size - plainCache.consumed)
             for (i in plainCache.consumed until bodyLines.size) fresh.add(bodyLines[i])
-            val displayed = displayLines(fresh, textLayout, plainFlowed, plainDelSp)
-            plainCache.processed.addAll(displayed)
-            for (line in displayed) {
+            val displayed = plainCache.stream.push(fresh, textLayout, plainFlowed, plainDelSp, bodyComplete)
+            plainCache.pushedFinished = bodyComplete
+            var kept = 0
+            val limit = minOf(plainCache.processed.size, displayed.size)
+            while (kept < limit && plainCache.processed[kept] == displayed[kept]) kept++
+            if (kept < plainCache.annotated.size) {
+                plainCache.annotated.subList(kept, plainCache.annotated.size).clear()
+            }
+            for (i in kept until displayed.size) {
+                val line = displayed[i]
                 val quoted = quotedReaderLine(line)
                 plainCache.annotated.add(quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge))
             }
+            plainCache.processed.clear()
+            plainCache.processed.addAll(displayed)
             plainCache.consumed = bodyLines.size
         }
         plainCache.annotated
