@@ -133,6 +133,8 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import org.dlang.liveimap.ui.compose.MimeDecodeException
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
@@ -209,6 +211,20 @@ import org.dlang.liveimap.ui.toolbar.visibleReaderActions
 internal class Utf8Carry {
     var pending: ByteArray = ByteArray(0)
     var decoder: WireTextDecoder? = null
+    val text = StringBuilder()
+    val committed = ArrayList<String>()
+    var linePartial: String = ""
+
+    fun closeDecoder() {
+        decoder?.close()
+        decoder = null
+    }
+
+    fun clearText() {
+        text.clear()
+        committed.clear()
+        linePartial = ""
+    }
 }
 
 private class ScrollBridge {
@@ -242,6 +258,8 @@ internal data class AttachmentRow(
     val subtype: String,
     val busy: Boolean = false,
     val filename: String? = null,
+    val path: String = "",
+    val encoding: String = "",
 )
 
 internal class ReaderHeld : ViewModel() {
@@ -257,6 +275,7 @@ internal class ReaderHeld : ViewModel() {
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
+    val bodyLinesState = mutableStateOf<List<String>>(emptyList())
     val bodyTruncatedState = mutableStateOf(false)
     val charsetNoteState = mutableStateOf<String?>(null)
     val bodyOffsetState = mutableIntStateOf(0)
@@ -290,7 +309,9 @@ internal class ReaderHeld : ViewModel() {
         ready = false
         recordScroll = true
         carry.pending = ByteArray(0)
-        carry.decoder = null
+        carry.closeDecoder()
+        carry.clearText()
+        bodyLinesState.value = emptyList()
         scrollOffsetState.intValue = 0
         webScroll = 0
         accountState.value = AccountSettings()
@@ -467,6 +488,7 @@ private fun MessageReaderLoaded(
     var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
     var bodyText by held.bodyTextState
+    var bodyLines by held.bodyLinesState
     var bodyTruncated by held.bodyTruncatedState
     var charsetNote by held.charsetNoteState
     var bodyOffset by held.bodyOffsetState
@@ -631,18 +653,41 @@ private fun MessageReaderLoaded(
         return bodyGeneration
     }
 
+    fun publishDecoded(piece: String) {
+        if (piece.isEmpty()) {
+            charsetNote = carry.decoder?.note
+            return
+        }
+        carry.text.append(piece)
+        val combined = carry.linePartial + piece
+        val parts = combined.split('\n')
+        carry.linePartial = parts.last().removeSuffix("\r")
+        val complete = parts.dropLast(1).map { it.removeSuffix("\r") }
+        if (complete.isNotEmpty()) carry.committed.addAll(complete)
+        bodyLines = if (carry.linePartial.isEmpty()) {
+            carry.committed.toList()
+        } else {
+            carry.committed + carry.linePartial
+        }
+        bodyText = carry.text.toString()
+        charsetNote = carry.decoder?.note
+    }
+
     suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean, token: Int) {
         if (token != bodyGeneration) return
         if (reset) {
             pageGeneration = token
             bodyText = ""
+            bodyLines = emptyList()
             bodyOffset = 0
             bodySize = part.size
             bodySection = part.section
             carry.pending = ByteArray(0)
+            carry.closeDecoder()
+            carry.clearText()
             val decoder = WireTextDecoder(part.charset, part.encoding)
             carry.decoder = decoder
-            charsetNote = if (decoder.unknownCharset) unknownCharsetNote else null
+            charsetNote = decoder.note
         }
         if (bodySection != part.section) return
         if (part.size > 0 && bodyOffset >= part.size) return
@@ -669,12 +714,12 @@ private fun MessageReaderLoaded(
         val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
         if (chunk.isEmpty()) {
             bodyOffset = if (part.size > 0) part.size else bodyOffset + length
-            bodyText += decoder.finish()
+            publishDecoded(decoder.finish())
             return
         }
         bodyOffset += chunk.size
-        bodyText += decoder.take(chunk)
-        if (part.size <= 0 || bodyOffset >= part.size) bodyText += decoder.finish()
+        publishDecoded(decoder.take(chunk))
+        if (part.size <= 0 || bodyOffset >= part.size) publishDecoded(decoder.finish())
     }
 
     suspend fun pullUnbounded(section: String, markSeen: Boolean, token: Int) {
@@ -684,10 +729,13 @@ private fun MessageReaderLoaded(
         noTextPart = false
         renderedHtml = false
         bodyText = ""
+        bodyLines = emptyList()
         bodyOffset = 0
         bodySize = 0
         bodySection = section
         carry.pending = ByteArray(0)
+        carry.closeDecoder()
+        carry.clearText()
         var marked = false
         val built = StringBuilder()
         rawTruncated = false
@@ -725,6 +773,7 @@ private fun MessageReaderLoaded(
             carry.pending = ByteArray(0)
         }
         bodyText = built.toString()
+        bodyLines = readerLines(bodyText)
     }
 
     suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
@@ -800,13 +849,15 @@ private fun MessageReaderLoaded(
         showHtmlButton = offerHtml && noText
         renderedHtml = false
         bodyText = ""
+        bodyLines = emptyList()
         bodyTruncated = false
         bodySection = null
         bodyOffset = 0
         bodySize = 0
         charsetNote = null
         carry.pending = ByteArray(0)
-        carry.decoder = null
+        carry.closeDecoder()
+        carry.clearText()
     }
 
     suspend fun readSectionText(section: String): String {
@@ -858,29 +909,33 @@ private fun MessageReaderLoaded(
                     missing = null
                     renderedHtml = true
                     bodyText = ""
+                    bodyLines = emptyList()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
                     bodySize = html.size
                     charsetNote = null
                     carry.pending = ByteArray(0)
-                    carry.decoder = null
+                    carry.closeDecoder()
+                    carry.clearText()
                     val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     if (token != bodyGeneration) return
                     val text: String
-                    val unknown: Boolean
+                    val note: String?
                     if (truncated) {
                         val decoder = WireTextDecoder(html.charset, html.encoding)
                         text = decoder.take(bytes)
-                        unknown = decoder.unknownCharset
+                        note = decoder.note
+                        decoder.close()
                     } else {
                         val decoded = decodePart(bytes, html.charset, html.encoding)
                         text = decoded.text
-                        unknown = decoded.unknownCharset
+                        note = decoded.note
                     }
                     bodyOffset = bytes.size
-                    charsetNote = if (unknown) unknownCharsetNote else null
+                    charsetNote = note
                     bodyText = text
+                    bodyLines = readerLines(text)
                     bodyTruncated = truncated
                 }
             }
@@ -893,29 +948,33 @@ private fun MessageReaderLoaded(
                     noTextPart = false
                     missing = null
                     bodyText = ""
+                    bodyLines = emptyList()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
                     bodySize = html.size
                     charsetNote = null
                     carry.pending = ByteArray(0)
-                    carry.decoder = null
+                    carry.closeDecoder()
+                    carry.clearText()
                     val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
                     if (token != bodyGeneration) return
                     val text: String
-                    val unknown: Boolean
+                    val note: String?
                     if (truncated) {
                         val decoder = WireTextDecoder(html.charset, html.encoding)
                         text = decoder.take(bytes)
-                        unknown = decoder.unknownCharset
+                        note = decoder.note
+                        decoder.close()
                     } else {
                         val decoded = decodePart(bytes, html.charset, html.encoding)
                         text = decoded.text
-                        unknown = decoded.unknownCharset
+                        note = decoded.note
                     }
                     bodyOffset = bytes.size
-                    charsetNote = if (unknown) unknownCharsetNote else null
+                    charsetNote = note
                     bodyText = htmlAsText(text)
+                    bodyLines = readerLines(bodyText)
                     bodyTruncated = truncated
                 }
             }
@@ -943,9 +1002,13 @@ private fun MessageReaderLoaded(
         }
     }
 
-    fun markAttachment(section: String, fetched: Int, done: Boolean, busy: Boolean) {
+    fun markAttachment(section: String, fetched: Int, done: Boolean, busy: Boolean, path: String? = null) {
         attachments = attachments.map { item ->
-            if (item.section == section) item.copy(fetched = fetched, done = done, busy = busy) else item
+            if (item.section == section) {
+                item.copy(fetched = fetched, done = done, busy = busy, path = path ?: item.path)
+            } else {
+                item
+            }
         }
     }
 
@@ -981,28 +1044,69 @@ private fun MessageReaderLoaded(
                 val current = attachments.firstOrNull { it.section == row.section } ?: return@launch
                 if (current.done || current.busy) return@launch
                 markAttachment(current.section, current.fetched, done = false, busy = true)
+                val dest = File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section))
+                val tmp = File(dest.parentFile, dest.name + ".part")
+                val handle = MimeDecode.xferOpen(current.encoding)
                 try {
-                    val offset = try {
-                        streamAttachment(
-                            File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section)),
-                            current.size,
-                            65536,
-                            fetch = { at, length -> peekRef(current.section, at, length) },
-                            progress = { bytes -> markAttachment(current.section, bytes, done = false, busy = true) },
-                        )
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: java.io.IOException) {
-                        markAttachment(current.section, current.fetched, done = false, busy = false)
-                        postSnack(error.message ?: notConnected)
-                        return@launch
+                    var offset = 0
+                    val base64 = current.encoding.equals("base64", ignoreCase = true)
+                    FileOutputStream(tmp).use { out ->
+                        while (true) {
+                            val finished = current.size > 0 && offset >= current.size
+                            if (finished) {
+                                val tail = MimeDecode.xferTake(handle, ByteArray(0), true)
+                                    ?: throw MimeDecodeException("could not decode this part")
+                                if (tail.isNotEmpty()) out.write(tail)
+                                break
+                            }
+                            val length = if (current.size > 0) {
+                                nextWireCount(offset, current.size, 65536, base64)
+                            } else {
+                                65536
+                            }
+                            if (length <= 0) break
+                            val chunk = peekRef(current.section, offset, length)
+                            if (chunk.isEmpty()) {
+                                val tail = MimeDecode.xferTake(handle, ByteArray(0), true)
+                                    ?: throw MimeDecodeException("could not decode this part")
+                                if (tail.isNotEmpty()) out.write(tail)
+                                break
+                            }
+                            val decoded = MimeDecode.xferTake(handle, chunk, false)
+                                ?: throw MimeDecodeException("could not decode this part")
+                            if (decoded.isNotEmpty()) out.write(decoded)
+                            offset += chunk.size
+                            markAttachment(current.section, offset, done = false, busy = true)
+                            if (current.size <= 0 && chunk.size < length) {
+                                val tail = MimeDecode.xferTake(handle, ByteArray(0), true)
+                                    ?: throw MimeDecodeException("could not decode this part")
+                                if (tail.isNotEmpty()) out.write(tail)
+                                break
+                            }
+                        }
                     }
-                    markAttachment(current.section, offset, done = true, busy = false)
+                    if (!tmp.renameTo(dest)) {
+                        tmp.delete()
+                        throw java.io.IOException(notConnected)
+                    }
+                    markAttachment(current.section, offset, done = true, busy = false, path = dest.absolutePath)
                 } catch (error: CancellationException) {
+                    tmp.delete()
                     throw error
+                } catch (error: MimeDecodeException) {
+                    tmp.delete()
+                    markAttachment(current.section, current.fetched, done = false, busy = false)
+                    postSnack(error.message ?: "could not decode this part")
+                } catch (error: java.io.IOException) {
+                    tmp.delete()
+                    markAttachment(current.section, current.fetched, done = false, busy = false)
+                    postSnack(error.message ?: notConnected)
                 } catch (error: MailFailure) {
+                    tmp.delete()
                     markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.text)
+                } finally {
+                    MimeDecode.xferClose(handle)
                 }
         }
     }
@@ -1591,8 +1695,8 @@ private fun MessageReaderLoaded(
     val noWrap = textLayout == TextLayout.Monospaced
     val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
-    val plainLines = remember(bodyText, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
-        displayLines(readerLines(bodyText), textLayout, plainFlowed, plainDelSp).map { line ->
+    val plainLines = remember(bodyLines, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+        displayLines(bodyLines, textLayout, plainFlowed, plainDelSp).map { line ->
             val quoted = quotedReaderLine(line)
             quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
         }
@@ -2320,10 +2424,10 @@ private fun MessageReaderLoaded(
                                 val recolor = dark && !originalColors
                                 view.setBackgroundColor(if (dark && originalColors) android.graphics.Color.WHITE else htmlBackground)
                                 applyHtmlDark(view.settings)
-                                val page = themedHtml(bodyText, recolor, htmlBackground, htmlForeground)
-                                val token = page to allowImages
+                                val token = bodyText to recolor to htmlBackground to htmlForeground to allowImages
                                 if (view.tag != token) {
                                     view.tag = token
+                                    val page = themedHtml(bodyText, recolor, htmlBackground, htmlForeground)
                                     view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
                                     val y = held.webScroll
                                     if (y > 0) view.post { view.scrollTo(0, y) }
@@ -3023,6 +3127,7 @@ internal fun attachmentRowOf(part: MimePart): AttachmentRow = AttachmentRow(
     type = part.type,
     subtype = part.subtype,
     filename = part.filename?.takeIf { it.isNotEmpty() },
+    encoding = part.encoding,
 )
 
 /** Rows that stand for a deeper subtree rather than content: tapping opens the next level. */

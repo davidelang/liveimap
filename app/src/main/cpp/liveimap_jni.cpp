@@ -7798,11 +7798,39 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * en
         unlockSession(session);
         return nullptr;
     }
-    jbyteArray arr = env->NewByteArray(static_cast<jsize>(n));
+    jbyteArray arr = nullptr;
+    FILE * tmp = nullptr;
+    bool spilled = false;
     if (n > 0 && bytes != nullptr) {
-        env->SetByteArrayRegion(arr, 0, static_cast<jsize>(n), reinterpret_cast<const jbyte *>(bytes));
+        tmp = tmpfile();
+        if (tmp != nullptr && fwrite(bytes, 1, n, tmp) == n) spilled = true;
+    }
+    if (!spilled) {
+        arr = env->NewByteArray(static_cast<jsize>(n));
+        if (n > 0 && bytes != nullptr && arr != nullptr) {
+            env->SetByteArrayRegion(arr, 0, static_cast<jsize>(n), reinterpret_cast<const jbyte *>(bytes));
+        }
+        if (tmp != nullptr) fclose(tmp);
+        if (list != nullptr) mailimap_fetch_list_free(list);
+        unlockSession(session);
+        return arr;
     }
     if (list != nullptr) mailimap_fetch_list_free(list);
+    arr = env->NewByteArray(static_cast<jsize>(n));
+    if (arr != nullptr) {
+        rewind(tmp);
+        jbyte buf[65536];
+        size_t off = 0;
+        while (off < n) {
+            size_t chunk = n - off;
+            if (chunk > sizeof(buf)) chunk = sizeof(buf);
+            size_t got = fread(buf, 1, chunk, tmp);
+            if (got == 0) break;
+            env->SetByteArrayRegion(arr, static_cast<jsize>(off), static_cast<jsize>(got), buf);
+            off += got;
+        }
+    }
+    fclose(tmp);
     unlockSession(session);
     return arr;
     });
