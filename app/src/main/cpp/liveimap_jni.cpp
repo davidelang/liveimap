@@ -981,12 +981,11 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
         int fd = session->jobFd.exchange(-1);
         if (fd >= 0) close(fd);
         tlsOwner = nullptr;
-        session->selfHold.reset();
+        // Not attached, so this thread must not run ~LiveSession. Detach before the last
+        // shared_ptr drops: nativeStage never joins, and a joinable ~std::thread terminates.
+        if (session->owner.joinable()) session->owner.detach();
         session->ownerFinished.store(true);
         session->ownerFinished.notify_all();
-        // ~LiveSession deletes keyChainKey only while GetEnv succeeds. This parameter
-        // dies after the detach guard, so drop it here, still attached, after the fd close.
-        session.reset();
         return;
     }
     tlsOwnerEnv = env;
