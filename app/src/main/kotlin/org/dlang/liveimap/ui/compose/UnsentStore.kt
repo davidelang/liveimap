@@ -1,7 +1,10 @@
 package org.dlang.liveimap.ui.compose
 
 import android.content.Context
+import android.util.Log
 import java.io.File
+import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 
 internal class DeviceCopy(
@@ -74,6 +77,35 @@ internal fun unsentAccountDir(filesDir: File, accountId: String): File {
 
 internal fun unsentDirs(filesDir: File, accountId: String): List<File> = listOf(unsentAccountDir(filesDir, accountId))
 
+/** Draft ids with a compose screen open. Rotation does not remove an id. */
+internal val openComposeIds = AtomicReference<Set<String>>(emptySet())
+
+internal fun messageDir(filesDir: File, accountId: String, draftId: String): File =
+    File(unsentAccountDir(filesDir, accountId), draftId)
+
+internal fun contentsDir(filesDir: File, accountId: String, draftId: String): File =
+    File(messageDir(filesDir, accountId, draftId), "contents")
+
+/**
+ * Creates the message directory. The caller does not call this when the directory already exists.
+ * A second call for one new id throws [java.nio.file.FileAlreadyExistsException].
+ */
+internal fun createMessageDir(filesDir: File, accountId: String, draftId: String) {
+    val dir = messageDir(filesDir, accountId, draftId)
+    val parent = dir.parentFile ?: throw java.io.IOException("missing parent")
+    Files.createDirectories(parent.toPath())
+    Files.createDirectory(dir.toPath())
+}
+
+/** Adds [id] before the caller creates the directory. */
+internal fun openCompose(id: String) {
+    openComposeIds.updateAndGet { current -> if (id in current) current else current + id }
+}
+
+internal fun closeCompose(id: String) {
+    openComposeIds.updateAndGet { current -> if (id !in current) current else current - id }
+}
+
 internal fun mergedAccountCopies(account: List<DeviceCopy>, legacy: List<DeviceCopy>): List<DeviceCopy> {
     val seen = HashSet<String>()
     for (copy in account) seen.add(copy.id)
@@ -115,10 +147,35 @@ private fun copiesIn(dir: File): List<DeviceCopy> {
 
 internal fun readCopies(filesDir: File, accountId: String): List<DeviceCopy> {
     var merged = emptyList<DeviceCopy>()
-    for (dir in unsentDirs(filesDir, accountId)) {
+    val dirs = unsentDirs(filesDir, accountId)
+    for (dir in dirs) {
         merged = mergedAccountCopies(merged, copiesIn(dir))
     }
+    val kept = HashSet<String>()
+    for (copy in merged) kept.add(copy.id)
+    for (dir in dirs) sweepOrphanMessageDirs(dir, kept)
     return merged
+}
+
+/** Deletes child message directories that are neither a listed copy nor open. Never the account directory or a file. */
+private fun sweepOrphanMessageDirs(dir: File, kept: Set<String>) {
+    if (!dir.isDirectory) return
+    val children = dir.listFiles() ?: return
+    for (child in children) {
+        if (!child.isDirectory) continue
+        if (child.name in kept) continue
+        // Re-read immediately before each delete so a draft that opens during the sweep is kept.
+        if (child.name in openComposeIds.get()) continue
+        try {
+            if (!child.deleteRecursively()) {
+                Log.w("LiveIMAP", "unsent message directory not deleted: ${child.path}")
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w("LiveIMAP", "unsent message directory not deleted: ${child.path}", error)
+        }
+    }
 }
 
 internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCopy> =
@@ -176,6 +233,8 @@ internal fun deleteCopy(filesDir: File, id: String, accountId: String) {
     for (dir in unsentDirs(filesDir, accountId)) {
         File(dir, "$id.rfc822").delete()
         File(dir, "$id.meta").delete()
+        val message = File(dir, id)
+        if (message.isDirectory) message.deleteRecursively()
     }
 }
 

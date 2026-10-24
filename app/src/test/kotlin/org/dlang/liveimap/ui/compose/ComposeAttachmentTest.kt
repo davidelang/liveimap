@@ -41,6 +41,33 @@ class ComposeAttachmentTest {
     }
 
     @Test
+    fun heldRowWithAPathHasNullBytes() {
+        val file = File(System.getProperty("java.io.tmpdir"), "liveimap-pick-" + System.nanoTime())
+        try {
+            file.writeBytes("hi".encodeToByteArray())
+            val row = fileAttachmentRow("k-path", "", "text/plain", null, file.path)
+            assertEquals("k-path", row.key)
+            assertEquals("attachment", row.filename)
+            assertEquals("text/plain", row.mediaType)
+            assertEquals(2, row.size)
+            assertNull(row.bytes)
+            assertEquals(file.path, row.path)
+            assertEquals(file.path, row.toggle().path)
+            assertFalse(row.toggle().included)
+            PickedAttachmentHold.put(row)
+            try {
+                val held = PickedAttachmentHold.get("k-path")
+                assertNull(held!!.bytes)
+                assertEquals(file.path, held.path)
+            } finally {
+                PickedAttachmentHold.remove("k-path")
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun pickedRowsRoundTripInOrder() {
         val first = fileAttachmentRow("k-one", "one.txt", "text/plain", "AAA".encodeToByteArray())
         val second = fileAttachmentRow("k-two", "two.bin", "application/octet-stream", byteArrayOf(9, 8))

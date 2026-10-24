@@ -133,4 +133,48 @@ class UnsentStoreTest {
         assertEquals("DATA: timeout", smtpFailureText("smtp-uncertain: DATA: timeout"))
         assertFalse(smtpUncertain("RCPT: 550 no"))
     }
+
+    @Test
+    fun secondCreateThrowsAndReadCopiesKeepsOpenAndListedDirs() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        val openId = "open-" + System.nanoTime()
+        try {
+            createMessageDir(root, "acct-1", "draft-1")
+            var threw = false
+            try {
+                createMessageDir(root, "acct-1", "draft-1")
+            } catch (error: java.nio.file.FileAlreadyExistsException) {
+                threw = true
+            }
+            assertTrue(threw)
+            assertTrue(messageDir(root, "acct-1", "draft-1").isDirectory)
+            val accountDir = unsentAccountDir(root, "acct-1")
+            assertTrue(writeCopy(root, DeviceCopy("listed", false, "Sent", emptyList(), "L".toByteArray()), "acct-1"))
+            val listedDir = messageDir(root, "acct-1", "listed")
+            File(listedDir, "contents").mkdirs()
+            File(messageDir(root, "acct-1", "orphan"), "contents").mkdirs()
+            File(messageDir(root, "acct-1", openId), "contents").mkdirs()
+            val stray = File(accountDir, "note.txt")
+            stray.writeText("stay", Charsets.UTF_8)
+            openCompose(openId)
+            assertEquals(listOf("listed"), readCopies(root, "acct-1").map { it.id })
+            assertTrue(listedDir.isDirectory)
+            assertTrue(messageDir(root, "acct-1", openId).isDirectory)
+            assertFalse(messageDir(root, "acct-1", "orphan").exists())
+            assertFalse(messageDir(root, "acct-1", "draft-1").exists())
+            assertTrue(stray.isFile)
+            assertEquals("stay", stray.readText(Charsets.UTF_8))
+            assertTrue(accountDir.isDirectory)
+            deleteCopy(root, "listed", "acct-1")
+            assertFalse(listedDir.exists())
+            assertFalse(File(accountDir, "listed.meta").exists())
+            assertFalse(File(accountDir, "listed.rfc822").exists())
+            assertTrue(accountDir.isDirectory)
+            assertTrue(messageDir(root, "acct-1", openId).isDirectory)
+            assertTrue(stray.isFile)
+        } finally {
+            closeCompose(openId)
+            root.deleteRecursively()
+        }
+    }
 }

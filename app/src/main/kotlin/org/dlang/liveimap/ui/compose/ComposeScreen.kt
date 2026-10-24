@@ -66,6 +66,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
+import java.io.File
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
 import java.util.UUID
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
@@ -142,6 +145,7 @@ internal class ForwardRow(
     val bytes: ByteArray?,
     val wireBase64: Boolean,
     val encoding: String?,
+    val path: String? = null,
 ) {
     fun toggle(): ForwardRow = ForwardRow(
         key,
@@ -153,21 +157,38 @@ internal class ForwardRow(
         bytes,
         wireBase64,
         encoding,
+        path,
     )
 }
 
-internal fun fileAttachmentRow(key: String, filename: String, mediaType: String, bytes: ByteArray): ForwardRow =
-    ForwardRow(
+internal fun fileAttachmentRow(
+    key: String,
+    filename: String,
+    mediaType: String,
+    bytes: ByteArray?,
+    path: String? = null,
+): ForwardRow {
+    val size = when {
+        bytes != null -> bytes.size
+        path != null -> {
+            val raw = File(path).length()
+            if (raw > Int.MAX_VALUE) Int.MAX_VALUE else raw.toInt()
+        }
+        else -> 0
+    }
+    return ForwardRow(
         key = key,
         section = "",
         filename = filename.ifEmpty { "attachment" },
         mediaType = mediaType.ifEmpty { "application/octet-stream" },
-        size = bytes.size,
+        size = size,
         included = true,
         bytes = bytes,
         wireBase64 = false,
         encoding = null,
+        path = path,
     )
+}
 
 internal object PickedAttachmentHold {
     private val rows = HashMap<String, ForwardRow>()
@@ -302,35 +323,33 @@ internal fun copyIdAfterDeleted(deleted: Boolean, currentId: String): String {
     return currentId
 }
 
-private class PickedBytes(val name: String, val type: String, val bytes: ByteArray?)
-
 private fun pickedDisplayName(resolver: ContentResolver, uri: Uri): String {
-    try {
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index >= 0) {
-                    val name = cursor.getString(index)
-                    if (!name.isNullOrEmpty()) return name
-                }
+    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0) {
+                val name = cursor.getString(index)
+                if (!name.isNullOrEmpty()) return name
             }
         }
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
     }
     return ""
 }
 
-private fun readPickedUri(resolver: ContentResolver, uri: Uri): PickedBytes {
+private class PickedFile(val name: String, val type: String, val path: String)
+
+private fun readPickedUri(resolver: ContentResolver, uri: Uri, contents: File, key: String): PickedFile {
     val name = pickedDisplayName(resolver, uri)
-    val bytes = try {
-        val stream = resolver.openInputStream(uri) ?: return PickedBytes(name, "", null)
-        stream.use { it.readBytes() }
-    } catch (error: CancellationException) {
+    Files.createDirectories(contents.toPath())
+    val dest = File(contents, key)
+    val stream = resolver.openInputStream(uri) ?: throw java.io.IOException("unreadable")
+    try {
+        stream.use { input ->
+            java.io.FileOutputStream(dest).use { output -> input.copyTo(output) }
+        }
+    } catch (error: Throwable) {
+        dest.delete()
         throw error
-    } catch (_: Exception) {
-        return PickedBytes(name, "", null)
     }
     val type = try {
         resolver.getType(uri).orEmpty()
@@ -339,7 +358,7 @@ private fun readPickedUri(resolver: ContentResolver, uri: Uri): PickedBytes {
     } catch (_: Exception) {
         ""
     }
-    return PickedBytes(name, type, bytes)
+    return PickedFile(name, type, dest.path)
 }
 
 private val headerValueSaver = mapSaver(
@@ -500,6 +519,37 @@ private fun ComposeLoaded(
     var pickedKeyText by rememberSaveable { mutableStateOf("") }
     var assembledCopyId by rememberSaveable { mutableStateOf("") }
     var reloadSuppressed by rememberSaveable { mutableStateOf(false) }
+    // Chosen once per open draft. A later assembled copy id does not move the directory.
+    val draftId = rememberSaveable(unsentId) {
+        val saved = unsentId
+        if (!saved.isNullOrEmpty()) saved
+        else if (assembledCopyId.isNotEmpty()) assembledCopyId
+        else UUID.randomUUID().toString()
+    }
+    var composeLeft by remember { mutableStateOf(false) }
+    LaunchedEffect(draftId, composeLeft) {
+        if (composeLeft) return@LaunchedEffect
+        openCompose(draftId)
+        withContext(Dispatchers.IO) {
+            val files = appContext.filesDir
+            val dir = messageDir(files, accountId, draftId)
+            if (!dir.isDirectory) {
+                try {
+                    createMessageDir(files, accountId, draftId)
+                } catch (error: FileAlreadyExistsException) {
+                    if (!dir.isDirectory) throw error
+                }
+            }
+            val contents = contentsDir(files, accountId, draftId)
+            if (!contents.exists()) {
+                try {
+                    Files.createDirectory(contents.toPath())
+                } catch (error: FileAlreadyExistsException) {
+                    if (!contents.isDirectory) throw error
+                }
+            }
+        }
+    }
     // Sending rules (design-decisions.md "Sending rules and roles").
     var sending by remember { mutableStateOf<Resolved?>(null) }
     var pinnedFrom by rememberSaveable { mutableStateOf<String?>(null) }
@@ -578,6 +628,10 @@ private fun ComposeLoaded(
         assembledCopyId = life.copyId
         reloadSuppressed = life.reloadSuppressed
         if (life.releaseHold) releasePickedHold()
+        if (life.closes) {
+            composeLeft = true
+            closeCompose(draftId)
+        }
     }
 
     fun clearShownCopy(deletedId: String) {
@@ -610,29 +664,25 @@ private fun ComposeLoaded(
     val pickDocuments = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         val resolver = pickerContext.contentResolver
+        val contents = contentsDir(appContext.filesDir, accountId, draftId)
         scope.launch {
-            val skipped = ArrayList<String>()
-            var added = 0
+            val errors = ArrayList<String>()
             for (uri in uris) {
-                val read = withContext(Dispatchers.IO) { readPickedUri(resolver, uri) }
-                val bytes = read.bytes
-                if (bytes == null) {
-                    skipped.add(read.name)
+                val key = UUID.randomUUID().toString()
+                val read = try {
+                    withContext(Dispatchers.IO) { readPickedUri(resolver, uri, contents, key) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    errors.add(error.message ?: attachUnreadable)
                     continue
                 }
-                val row = fileAttachmentRow(UUID.randomUUID().toString(), read.name, read.type, bytes)
+                val row = fileAttachmentRow(key, read.name, read.type, null, read.path)
                 PickedAttachmentHold.put(row)
                 addPickedKey(row.key)
                 forwardRows = forwardRows + row
-                added += 1
             }
-            if (added == 0) {
-                notice = attachUnreadable
-            } else if (skipped.isNotEmpty()) {
-                notice = skipped.joinToString("\n") { name ->
-                    if (name.isEmpty()) attachUnreadable else "$attachUnreadable $name"
-                }
-            }
+            if (errors.isNotEmpty()) notice = errors.joinToString("\n")
         }
     }
 
@@ -948,6 +998,14 @@ private fun ComposeLoaded(
             if (!row.included) continue
             val payload = if (row.bytes != null) {
                 row.bytes
+            } else if (row.path != null) {
+                try {
+                    File(row.path).readBytes()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw MailFailure(error.message ?: fetchFailed)
+                }
             } else {
                 if (uid == null) throw MailFailure(fetchFailed)
                 val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever

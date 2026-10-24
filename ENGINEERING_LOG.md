@@ -3688,3 +3688,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - A name the hand tables finish stays on those tables. Any other name, including GB18030, EUC-JP, and ISO-2022-JP-2, uses Charset.forName and Charset.decode. forName throwing keeps the unknown-charset note.
 - nativeFetchRfc822 copies the libetpan bytes into one jbyteArray with SetByteArrayRegion and frees the fetch list. It does not spill through tmpfile.
 - No install, and no message sent
+
+## 2026-10-24 - A draft's attachments live in its contents directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- A picked attachment is a file under that draft's contents directory. The compose hold keeps the path, not the bytes. A resolver failure is shown. An orphan message directory is removed only when that draft is neither saved nor open.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
