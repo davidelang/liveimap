@@ -653,6 +653,23 @@ private fun MessageReaderLoaded(
         return bodyGeneration
     }
 
+    fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
+        missing = text
+        noTextPart = noText
+        showHtmlButton = offerHtml && noText
+        renderedHtml = false
+        bodyText = ""
+        bodyLines = emptyList()
+        bodyTruncated = false
+        bodySection = null
+        bodyOffset = 0
+        bodySize = 0
+        charsetNote = null
+        carry.pending = ByteArray(0)
+        carry.closeDecoder()
+        carry.clearText()
+    }
+
     fun publishDecoded(piece: String) {
         if (piece.isEmpty()) {
             charsetNote = carry.decoder?.note
@@ -846,23 +863,6 @@ private fun MessageReaderLoaded(
         }
         if (token != bodyGeneration) return null
         return out.toByteArray() to more
-    }
-
-    fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
-        missing = text
-        noTextPart = noText
-        showHtmlButton = offerHtml && noText
-        renderedHtml = false
-        bodyText = ""
-        bodyLines = emptyList()
-        bodyTruncated = false
-        bodySection = null
-        bodyOffset = 0
-        bodySize = 0
-        charsetNote = null
-        carry.pending = ByteArray(0)
-        carry.closeDecoder()
-        carry.clearText()
     }
 
     suspend fun readSectionText(section: String): String {
