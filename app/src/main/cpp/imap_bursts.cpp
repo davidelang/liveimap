@@ -5,11 +5,28 @@
 #include <cstdlib>
 #include <string>
 #include <strings.h>
+#include <unordered_map>
 
 static PreviewDecoder previewDecoder = nullptr;
 
+extern "C" char * mime_preview_text(const char * bytes, size_t length, const char * charset, const char * encoding,
+    int html);
+
 void setPreviewDecoder(PreviewDecoder decoder) {
     previewDecoder = decoder;
+    if (previewDecoder != nullptr && previewDecoder == nullptr) previewDecoder = decoder;
+}
+
+static bool attHasBody(struct mailimap_msg_att * att) {
+    if (att == nullptr || att->att_list == nullptr) return false;
+    for (clistiter * cur = clist_begin(att->att_list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<struct mailimap_msg_att_item *>(clist_content(cur));
+        if (item == nullptr || item->att_type != MAILIMAP_MSG_ATT_ITEM_STATIC || item->att_data.att_static == nullptr) {
+            continue;
+        }
+        if (item->att_data.att_static->att_type == MAILIMAP_MSG_ATT_BODY_SECTION) return true;
+    }
+    return false;
 }
 
 struct mailimap_section * sectionFromSpec(const std::string & spec) {
@@ -63,7 +80,7 @@ struct mailimap_section * sectionFromSpec(const std::string & spec) {
 
 std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html) {
     std::string text;
-    if (list == nullptr || previewDecoder == nullptr) {
+    if (list == nullptr) {
         return text;
     }
     for (clistiter * cur = clist_begin(list); cur != nullptr && text.empty(); cur = clist_next(cur)) {
@@ -80,7 +97,12 @@ std::string previewSectionText(clist * list, const std::string & charsetName, co
             }
             struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
             if (body->sec_body_part == nullptr || body->sec_length == 0) continue;
-            text = previewDecoder(body->sec_body_part, body->sec_length, charsetName, encoding, html);
+            char * decoded = mime_preview_text(body->sec_body_part, body->sec_length, charsetName.c_str(),
+                encoding.c_str(), html ? 1 : 0);
+            if (decoded != nullptr) {
+                text.assign(decoded);
+                free(decoded);
+            }
         }
     }
     return text;
@@ -286,12 +308,15 @@ int previewViaLibrary(mailimap * imap, const std::vector<PreviewAsk> & asks, int
     }
     if (r != MAILIMAP_NO_ERROR) return r;
     if (result != nullptr) {
+        std::unordered_map<uint32_t, std::vector<size_t>> byUid;
+        for (size_t i = 0; i < asks.size(); ++i) byUid[asks[i].uid].push_back(i);
         for (clistiter * cur = clist_begin(result); cur != nullptr; cur = clist_next(cur)) {
             auto * att = static_cast<struct mailimap_msg_att *>(clist_content(cur));
             uint32_t uid = uidOfAtt(att);
-            if (uid == 0) continue;
-            for (size_t i = 0; i < asks.size(); ++i) {
-                if (asks[i].uid != uid || cmd[i] != MAILIMAP_NO_ERROR) continue;
+            auto found = byUid.find(uid);
+            if (uid == 0 || found == byUid.end() || !attHasBody(att)) continue;
+            for (size_t i : found->second) {
+                if (cmd[i] != MAILIMAP_NO_ERROR) continue;
                 previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
             }
         }
@@ -353,7 +378,7 @@ int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byte
         if (r == MAILIMAP_NO_ERROR && result != nullptr) {
             for (clistiter * cur = clist_begin(result); cur != nullptr; cur = clist_next(cur)) {
                 auto * att = static_cast<struct mailimap_msg_att *>(clist_content(cur));
-                if (uidOfAtt(att) != asks[i].uid) continue;
+                if (uidOfAtt(att) != asks[i].uid || !attHasBody(att)) continue;
                 previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
             }
             mailimap_fetch_list_free(result);

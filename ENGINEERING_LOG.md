@@ -3644,3 +3644,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - pass4NativeGuards asserts freeSession contains while (session->users.load() != 0). DeepNestingTest.depthOf is gone. The MIME tests stay.
 
 ## 2026-10-24 - The job eventfd closes with the session.
+
+## 2026-10-24 - Native incoming MIME.
+- Approved plan: sandbox/plans/incoming-mime-20261024-0530-plan.md
+- Work: one native decoder for transfer encoding, charset, headers, and subjects; previews stay in native; bodies stream; attachments are files; a failed decode is an error or a note
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -18,5 +18,8 @@ $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-bas
 # fuzz_client_thread calls co_thread_references, co_thread_subject, and co_order (the native sort).
 $CX -DLIVEIMAP_IMAP -DLIVEIMAP_FUZZ_CLIENT_THREAD -c "$R/app/src/main/cpp/client_order.cpp" -o "$O/client_order.o"
 $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_client_thread" "$O/client_order.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
+$CX -DLIVEIMAP_FUZZ_MIME -c "$R/app/src/main/cpp/mime_decode.cpp" -o "$O/mime_decode.o"
+$LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_mime_decode" "$O/mime_decode.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
 echo "$O/fuzz_imap"
 echo "$O/fuzz_client_thread"
+echo "$O/fuzz_mime_decode"

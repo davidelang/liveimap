@@ -6317,235 +6317,199 @@ std::optional<std::string> utf8FromJava(JNIEnv * env, jstring value) {
     return out;
 }
 
-std::string decodePreviewBytes(const char * bytes, size_t length, const std::string & charset,
-    const std::string & encoding, bool html) {
-    if (gVm == nullptr || bytes == nullptr || length == 0 || length > static_cast<size_t>(INT_MAX)) {
-        return std::string();
-    }
-    JNIEnv * env = nullptr;
-    if (gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
-        return std::string();
-    }
-    jclass cls = env->FindClass("org/dlang/liveimap/ui/reader/PartText");
-    if (cls == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return std::string();
-    }
-    jmethodID method = env->GetStaticMethodID(
-        cls, "previewText", "([BLjava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
-        return std::string();
-    }
-    jbyteArray array = env->NewByteArray(static_cast<jsize>(length));
-    jstring jCharset = newString(env, charset.c_str());
-    jstring jEncoding = newString(env, encoding.c_str());
-    if (array == nullptr || jCharset == nullptr || jEncoding == nullptr) {
-        env->ExceptionClear();
-        if (array != nullptr) env->DeleteLocalRef(array);
-        if (jCharset != nullptr) env->DeleteLocalRef(jCharset);
-        if (jEncoding != nullptr) env->DeleteLocalRef(jEncoding);
-        env->DeleteLocalRef(cls);
-        return std::string();
-    }
-    env->SetByteArrayRegion(array, 0, static_cast<jsize>(length), reinterpret_cast<const jbyte *>(bytes));
-    jobject result = env->CallStaticObjectMethod(
-        cls, method, array, jCharset, jEncoding, html ? JNI_TRUE : JNI_FALSE);
-    std::string text;
-    if (env->ExceptionCheck() || result == nullptr) {
-        env->ExceptionClear();
-    } else {
-        auto got = utf8FromJava(env, static_cast<jstring>(result));
-        env->DeleteLocalRef(result);
-        if (got) text = std::move(*got);
-    }
-    env->DeleteLocalRef(array);
-    env->DeleteLocalRef(jCharset);
-    env->DeleteLocalRef(jEncoding);
-    env->DeleteLocalRef(cls);
-    return text;
+struct MimeStream;
+struct MimeXfer;
+struct MimeHeaders {
+    char * name;
+    char * value;
+    char * raw;
+};
+
+extern "C" {
+void mime_decode_install(void);
+int mime_decode_text(const char * bytes, size_t len, const char * declared, const char * fallback,
+    const char * encoding, char ** text, char ** note, int * status);
+struct MimeStream * mime_stream_open(const char * declared, const char * fallback, const char * encoding);
+char * mime_stream_take(struct MimeStream * stream, const char * bytes, size_t len, int final, char ** note,
+    int * status);
+void mime_stream_close(struct MimeStream * stream);
+struct MimeXfer * mime_xfer_open(const char * encoding);
+char * mime_xfer_take(struct MimeXfer * xfer, const char * bytes, size_t len, int final, size_t * out_len,
+    int * status);
+void mime_xfer_close(struct MimeXfer * xfer);
+char * mime_decode_phrase(const char * text, size_t len, const char * fromcode);
+char * mime_decode_2231(const char * raw, size_t len, const char * fallback);
+int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count);
+void mime_headers_free(struct MimeHeaders * rows, int count);
 }
 
-jclass gMailCharsetsKt = nullptr;
-jclass gMailCharconvCls = nullptr;
-jmethodID gMailCharconv = nullptr;
-jmethodID gMailCharconvCode = nullptr;
-jmethodID gMailCharconvBytes = nullptr;
+static std::string bytesOf(JNIEnv * env, jbyteArray array) {
+    if (array == nullptr) return std::string();
+    jsize n = env->GetArrayLength(array);
+    if (n <= 0) return std::string();
+    std::string out(static_cast<size_t>(n), '\0');
+    env->GetByteArrayRegion(array, 0, n, reinterpret_cast<jbyte *>(&out[0]));
+    return out;
+}
 
-struct CharconvEnv {
-    JNIEnv * env = nullptr;
-    bool attached = false;
-    bool ok = false;
-    CharconvEnv() {
-        if (gVm == nullptr) return;
-        jint got = gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-        if (got != JNI_OK) {
-            if (gVm->AttachCurrentThread(&env, nullptr) != 0 || env == nullptr) {
-                env = nullptr;
-                return;
-            }
-            attached = true;
-        }
-        ok = env != nullptr;
+static jobjectArray stringTriple(JNIEnv * env, const char * a, const char * b, const char * c) {
+    jclass cls = env->FindClass("java/lang/String");
+    jobjectArray arr = cls != nullptr ? env->NewObjectArray(3, cls, nullptr) : nullptr;
+    if (cls != nullptr) env->DeleteLocalRef(cls);
+    if (arr == nullptr) return nullptr;
+    jstring s0 = newString(env, a != nullptr ? a : "");
+    jstring s1 = newString(env, b != nullptr ? b : "");
+    jstring s2 = newString(env, c != nullptr ? c : "");
+    env->SetObjectArrayElement(arr, 0, s0);
+    env->SetObjectArrayElement(arr, 1, s1);
+    env->SetObjectArrayElement(arr, 2, s2);
+    if (s0 != nullptr) env->DeleteLocalRef(s0);
+    if (s1 != nullptr) env->DeleteLocalRef(s1);
+    if (s2 != nullptr) env->DeleteLocalRef(s2);
+    return arr;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_text(JNIEnv * env, jclass, jbyteArray bytes, jstring declared,
+    jstring fallback, jstring encoding) {
+    std::string in = bytesOf(env, bytes);
+    auto declaredUtf = utf8FromJava(env, declared);
+    auto fallbackUtf = utf8FromJava(env, fallback);
+    auto encodingUtf = utf8FromJava(env, encoding);
+    char * text = nullptr;
+    char * note = nullptr;
+    int status = 1;
+    mime_decode_text(in.data(), in.size(),
+        declaredUtf ? declaredUtf->c_str() : "",
+        fallbackUtf ? fallbackUtf->c_str() : "ISO-8859-1",
+        encodingUtf ? encodingUtf->c_str() : "",
+        &text, &note, &status);
+    jobjectArray arr = stringTriple(env, status == 0 ? "ok" : "error", text != nullptr ? text : "", note != nullptr ? note : "");
+    std::free(text);
+    std::free(note);
+    return arr;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_streamOpen(JNIEnv * env, jclass, jstring declared, jstring fallback,
+    jstring encoding) {
+    auto declaredUtf = utf8FromJava(env, declared);
+    auto fallbackUtf = utf8FromJava(env, fallback);
+    auto encodingUtf = utf8FromJava(env, encoding);
+    MimeStream * stream = mime_stream_open(
+        declaredUtf ? declaredUtf->c_str() : "",
+        fallbackUtf ? fallbackUtf->c_str() : "ISO-8859-1",
+        encodingUtf ? encodingUtf->c_str() : "");
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(stream));
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_streamTake(JNIEnv * env, jclass, jlong handle, jbyteArray chunk,
+    jboolean finalChunk) {
+    std::string in = bytesOf(env, chunk);
+    char * note = nullptr;
+    int status = 1;
+    char * text = mime_stream_take(reinterpret_cast<MimeStream *>(static_cast<uintptr_t>(handle)),
+        in.data(), in.size(), finalChunk == JNI_TRUE ? 1 : 0, &note, &status);
+    jobjectArray arr = stringTriple(env, text != nullptr ? text : "", note != nullptr ? note : "", status == 0 ? "ok" : "error");
+    std::free(text);
+    std::free(note);
+    return arr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_streamClose(JNIEnv *, jclass, jlong handle) {
+    mime_stream_close(reinterpret_cast<MimeStream *>(static_cast<uintptr_t>(handle)));
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_xferOpen(JNIEnv * env, jclass, jstring encoding) {
+    auto encodingUtf = utf8FromJava(env, encoding);
+    MimeXfer * xfer = mime_xfer_open(encodingUtf ? encodingUtf->c_str() : "");
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(xfer));
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_xferTake(JNIEnv * env, jclass, jlong handle, jbyteArray chunk,
+    jboolean finalChunk) {
+    std::string in = bytesOf(env, chunk);
+    size_t n = 0;
+    int status = 1;
+    char * out = mime_xfer_take(reinterpret_cast<MimeXfer *>(static_cast<uintptr_t>(handle)),
+        in.data(), in.size(), finalChunk == JNI_TRUE ? 1 : 0, &n, &status);
+    if (status != 0 || out == nullptr) {
+        std::free(out);
+        return nullptr;
     }
-    ~CharconvEnv() {
-        if (attached && gVm != nullptr) gVm->DetachCurrentThread();
+    jbyteArray arr = env->NewByteArray(static_cast<jsize>(n));
+    if (arr != nullptr && n > 0) {
+        env->SetByteArrayRegion(arr, 0, static_cast<jsize>(n), reinterpret_cast<const jbyte *>(out));
     }
-};
+    std::free(out);
+    return arr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_xferClose(JNIEnv *, jclass, jlong handle) {
+    mime_xfer_close(reinterpret_cast<MimeXfer *>(static_cast<uintptr_t>(handle)));
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstring value) {
+    auto utf = utf8FromJava(env, value);
+    const std::string empty;
+    const std::string & text = utf ? *utf : empty;
+    char * decoded = mime_decode_phrase(text.data(), text.size(), "UTF-8");
+    jstring out = newString(env, decoded != nullptr ? decoded : "");
+    std::free(decoded);
+    return out;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_parameter2231(JNIEnv * env, jclass, jstring raw, jstring fallback) {
+    auto rawUtf = utf8FromJava(env, raw);
+    auto fallbackUtf = utf8FromJava(env, fallback);
+    const std::string empty;
+    const std::string & text = rawUtf ? *rawUtf : empty;
+    char * decoded = mime_decode_2231(text.data(), text.size(), fallbackUtf ? fallbackUtf->c_str() : "ISO-8859-1");
+    jstring out = newString(env, decoded != nullptr ? decoded : "");
+    std::free(decoded);
+    return out;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyteArray bytes) {
+    std::string in = bytesOf(env, bytes);
+    MimeHeaders * rows = nullptr;
+    int count = 0;
+    if (mime_parse_headers(in.data(), in.size(), &rows, &count) != 0 || count < 0) {
+        mime_headers_free(rows, count);
+        return nullptr;
+    }
+    jclass cls = env->FindClass("java/lang/String");
+    jobjectArray arr = cls != nullptr ? env->NewObjectArray(count * 3, cls, nullptr) : nullptr;
+    if (cls != nullptr) env->DeleteLocalRef(cls);
+    if (arr == nullptr) {
+        mime_headers_free(rows, count);
+        return nullptr;
+    }
+    for (int i = 0; i < count; ++i) {
+        jstring name = newString(env, rows[i].name != nullptr ? rows[i].name : "");
+        jstring value = newString(env, rows[i].value != nullptr ? rows[i].value : "");
+        jstring raw = newString(env, rows[i].raw != nullptr ? rows[i].raw : "");
+        env->SetObjectArrayElement(arr, i * 3, name);
+        env->SetObjectArrayElement(arr, i * 3 + 1, value);
+        env->SetObjectArrayElement(arr, i * 3 + 2, raw);
+        if (name != nullptr) env->DeleteLocalRef(name);
+        if (value != nullptr) env->DeleteLocalRef(value);
+        if (raw != nullptr) env->DeleteLocalRef(raw);
+    }
+    mime_headers_free(rows, count);
+    return arr;
+}
 
 void dropLocal(JNIEnv * env, jobject ref) {
     if (ref != nullptr) env->DeleteLocalRef(ref);
-}
-
-extern "C" int liveimapCharconv(const char * tocode, const char * fromcode, const char * str,
-    size_t length, char * result, size_t * result_len) {
-    if (tocode == nullptr || fromcode == nullptr || result == nullptr || result_len == nullptr) {
-        return 2;
-    }
-    if (str == nullptr && length != 0) return 2;
-    if (gVm == nullptr || gMailCharsetsKt == nullptr || gMailCharconvCls == nullptr
-        || gMailCharconv == nullptr || gMailCharconvCode == nullptr || gMailCharconvBytes == nullptr) {
-        return 2;
-    }
-    if (length > static_cast<size_t>(INT_MAX)) return 2;
-    const size_t capacity = *result_len;
-    CharconvEnv thread;
-    if (!thread.ok) return 2;
-    JNIEnv * env = thread.env;
-    if (env->ExceptionCheck()) env->ExceptionClear();
-
-    jstring jTo = newString(env, tocode);
-    jstring jFrom = newString(env, fromcode);
-    jbyteArray input = env->NewByteArray(static_cast<jsize>(length));
-    if (jTo == nullptr || jFrom == nullptr || input == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        dropLocal(env, jTo);
-        dropLocal(env, jFrom);
-        dropLocal(env, input);
-        return 2;
-    }
-    if (length > 0) {
-        env->SetByteArrayRegion(input, 0, static_cast<jsize>(length),
-            reinterpret_cast<const jbyte *>(str));
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            dropLocal(env, jTo);
-            dropLocal(env, jFrom);
-            dropLocal(env, input);
-            return 2;
-        }
-    }
-    jobject converted = env->CallStaticObjectMethod(gMailCharsetsKt, gMailCharconv, jTo, jFrom, input);
-    dropLocal(env, jTo);
-    dropLocal(env, jFrom);
-    dropLocal(env, input);
-    if (env->ExceptionCheck() || converted == nullptr) {
-        env->ExceptionClear();
-        dropLocal(env, converted);
-        return 2;
-    }
-    jint conv = env->CallIntMethod(converted, gMailCharconvCode);
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        dropLocal(env, converted);
-        return 2;
-    }
-    if (conv == 1) {
-        dropLocal(env, converted);
-        return 1;
-    }
-    if (conv != 0) {
-        dropLocal(env, converted);
-        return 2;
-    }
-    auto * bytes = static_cast<jbyteArray>(env->CallObjectMethod(converted, gMailCharconvBytes));
-    if (env->ExceptionCheck() || bytes == nullptr) {
-        env->ExceptionClear();
-        dropLocal(env, bytes);
-        dropLocal(env, converted);
-        return 2;
-    }
-    jsize count = env->GetArrayLength(bytes);
-    if (env->ExceptionCheck() || count < 0) {
-        env->ExceptionClear();
-        dropLocal(env, bytes);
-        dropLocal(env, converted);
-        return 2;
-    }
-    if (static_cast<size_t>(count) > capacity) {
-        dropLocal(env, bytes);
-        dropLocal(env, converted);
-        return 2;
-    }
-    if (count > 0) {
-        std::vector<jbyte> tmp(static_cast<size_t>(count));
-        env->GetByteArrayRegion(bytes, 0, count, tmp.data());
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            dropLocal(env, bytes);
-            dropLocal(env, converted);
-            return 2;
-        }
-        std::memcpy(result, tmp.data(), static_cast<size_t>(count));
-    }
-    *result_len = static_cast<size_t>(count);
-    dropLocal(env, bytes);
-    dropLocal(env, converted);
-    return 0;
-}
-
-bool installMailCharconv(JNIEnv * env) {
-    jclass kt = env->FindClass("org/dlang/liveimap/engine/MailCharsetsKt");
-    if (kt == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return false;
-    }
-    jmethodID method = env->GetStaticMethodID(
-        kt, "mailCharconv",
-        "(Ljava/lang/String;Ljava/lang/String;[B)Lorg/dlang/liveimap/engine/MailCharconv;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(kt);
-        return false;
-    }
-    jclass cls = env->FindClass("org/dlang/liveimap/engine/MailCharconv");
-    if (cls == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(kt);
-        return false;
-    }
-    jmethodID getCode = env->GetMethodID(cls, "getCode", "()I");
-    if (getCode == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
-        env->DeleteLocalRef(kt);
-        return false;
-    }
-    jmethodID getBytes = env->GetMethodID(cls, "getBytes", "()[B");
-    if (getBytes == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
-        env->DeleteLocalRef(kt);
-        return false;
-    }
-    jclass ktGlobal = static_cast<jclass>(env->NewGlobalRef(kt));
-    jclass clsGlobal = static_cast<jclass>(env->NewGlobalRef(cls));
-    env->DeleteLocalRef(kt);
-    env->DeleteLocalRef(cls);
-    if (ktGlobal == nullptr || clsGlobal == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        if (ktGlobal != nullptr) env->DeleteGlobalRef(ktGlobal);
-        if (clsGlobal != nullptr) env->DeleteGlobalRef(clsGlobal);
-        return false;
-    }
-    gMailCharsetsKt = ktGlobal;
-    gMailCharconvCls = clsGlobal;
-    gMailCharconv = method;
-    gMailCharconvCode = getCode;
-    gMailCharconvBytes = getBytes;
-    extended_charconv = liveimapCharconv;
-    return true;
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
@@ -6555,11 +6519,10 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
         return JNI_ERR;
     }
     if (!resolveJni(env)) return JNI_ERR;
-    installMailCharconv(env);
+    mime_decode_install();
     setupSaslClient();
     gKeepUnselect = mailimap_unselect;
     registerExtensions();
-    setPreviewDecoder(decodePreviewBytes);
     return JNI_VERSION_1_6;
 }
 

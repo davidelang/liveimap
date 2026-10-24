@@ -12,7 +12,7 @@ if(NOT EXISTS "${ART}/libetpan.a")
     message(FATAL_ERROR "missing ${ART}/libetpan.a")
 endif()
 
-add_library(liveimap SHARED liveimap_jni.cpp imap_bursts.cpp keychain_key.cpp client_order.cpp)
+add_library(liveimap SHARED liveimap_jni.cpp imap_bursts.cpp mime_decode.cpp keychain_key.cpp client_order.cpp)
 target_compile_definitions(liveimap PRIVATE LIVEIMAP_IMAP)
 target_include_directories(liveimap PRIVATE "${ETPAN_INCLUDE}")
 

@@ -2,9 +2,10 @@ package org.dlang.liveimap.ui.compose
 
 import org.dlang.liveimap.session.MaxMimeDepth
 import org.dlang.liveimap.session.MimePart
+import org.dlang.liveimap.ui.reader.MimeDecode
+import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
 import java.io.ByteArrayOutputStream
-import java.nio.charset.Charset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Base64
@@ -760,8 +761,8 @@ fun loadEditor(bytes: ByteArray): EditorLoad {
         parts = collected.parts
         html = collected.html
     } else {
-        val decoded = decodeTransfer(parsed.body, encoding)
-        text = decoded.toString(charsetOf(contentType)).replace("\r\n", "\n").replace('\r', '\n')
+        text = decodePart(parsed.body, headerParam(contentType, "charset"), encoding).text
+            .replace("\r\n", "\n").replace('\r', '\n')
         parts = emptyList()
         html = false
     }
@@ -1290,157 +1291,19 @@ private fun unfoldHeaderLines(headerBytes: ByteArray): List<String> {
     return out
 }
 
-private class EncodedWord(val end: Int, val text: String)
+internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)
 
-/** Linear whitespace between two encoded-words is removed. A word that fails stays intact. */
-internal fun decodeHeaderWords(value: String): String {
-    val out = StringBuilder()
-    var i = 0
-    while (i < value.length) {
-        val word = scanEncodedWord(value, i)
-        if (word == null) {
-            out.append(value[i])
-            i++
-            continue
-        }
-        out.append(word.text)
-        i = word.end
-        val gap = linearWhitespaceEnd(value, i)
-        if (gap > i && scanEncodedWord(value, gap) != null) i = gap
-    }
-    return out.toString()
-}
-
-private fun scanEncodedWord(value: String, start: Int): EncodedWord? {
-    if (!value.startsWith("=?", start)) return null
-    var i = start + 2
-    val charsetStart = i
-    while (i < value.length && value[i] != '?' && !isLinearWhitespace(value[i])) i++
-    if (i >= value.length || value[i] != '?' || i == charsetStart) return null
-    val charsetName = value.substring(charsetStart, i)
-    i++
-    if (i >= value.length) return null
-    val encoding = value[i]
-    if (encoding != 'B' && encoding != 'b' && encoding != 'Q' && encoding != 'q') return null
-    i++
-    if (i >= value.length || value[i] != '?') return null
-    i++
-    val payloadStart = i
-    while (i < value.length && value[i] != '?' && !isLinearWhitespace(value[i])) i++
-    if (i >= value.length || value[i] != '?' || i == payloadStart) return null
-    if (i + 1 >= value.length || value[i + 1] != '=') return null
-    val end = i + 2
-    val raw = value.substring(start, end)
-    val decoded = decodeEncodedWord(charsetName, encoding, value.substring(payloadStart, i))
-    return EncodedWord(end, decoded ?: raw)
-}
-
-private fun decodeEncodedWord(charsetName: String, encoding: Char, payload: String): String? {
-    val charset = try {
-        Charset.forName(charsetName)
-    } catch (_: Exception) {
-        return null
-    }
-    return try {
-        if (encoding == 'B' || encoding == 'b') {
-            Base64.getDecoder().decode(payload).toString(charset)
-        } else {
-            decodeQEncoding(payload, charset)
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-private fun isLinearWhitespace(ch: Char): Boolean =
-    ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
-
-private fun linearWhitespaceEnd(value: String, start: Int): Int {
-    var i = start
-    while (i < value.length && isLinearWhitespace(value[i])) i++
-    return i
-}
-
-private fun decodeQEncoding(data: String, charset: Charset): String {
-    val out = ByteArrayOutputStream()
-    var i = 0
-    while (i < data.length) {
-        val ch = data[i]
-        if (ch == '_') {
-            out.write(' '.code)
-            i++
-        } else if (ch == '=' && i + 2 < data.length) {
-            val hex = data.substring(i + 1, i + 3)
-            val value = hexByteOrNull(hex)
-            if (value != null) {
-                out.write(value)
-                i += 3
-            } else {
-                out.write(ch.code)
-                i++
-            }
-        } else {
-            out.write(ch.code)
-            i++
-        }
-    }
-    return out.toByteArray().toString(charset)
-}
+internal class MimeDecodeException(message: String) : Exception(message)
 
 internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray =
-    decodeTransferOrNull(bytes, encoding) ?: bytes
+    decodeTransferOrNull(bytes, encoding) ?: throw MimeDecodeException("could not decode this part")
 
 internal fun decodeTransferOrNull(bytes: ByteArray, encoding: String): ByteArray? {
-    val token = encoding.substringBefore(';').trim().lowercase()
-    return try {
-        when (token) {
-            "base64" -> Base64.getMimeDecoder().decode(bytes)
-            "quoted-printable" -> decodeQuotedPrintable(bytes)
-            else -> bytes
-        }
-    } catch (_: IllegalArgumentException) {
-        null
-    }
-}
-
-private fun decodeQuotedPrintable(bytes: ByteArray): ByteArray {
-    val out = ByteArrayOutputStream()
-    var i = 0
-    while (i < bytes.size) {
-        val c = bytes[i]
-        if (c == '='.code.toByte() && i + 1 < bytes.size) {
-            val next = bytes[i + 1]
-            if (next == '\n'.code.toByte()) {
-                i += 2
-                continue
-            }
-            if (next == '\r'.code.toByte()) {
-                i += if (i + 2 < bytes.size && bytes[i + 2] == '\n'.code.toByte()) 3 else 2
-                continue
-            }
-            if (i + 2 < bytes.size) {
-                val hex = bytes.copyOfRange(i + 1, i + 3).toString(Charsets.US_ASCII)
-                val value = hexByteOrNull(hex)
-                if (value != null) {
-                    out.write(value)
-                    i += 3
-                    continue
-                }
-            }
-        }
-        out.write(c.toInt())
-        i++
-    }
-    return out.toByteArray()
-}
-
-internal fun charsetOf(contentType: String): Charset {
-    val name = headerParam(contentType, "charset")
-    if (name.isEmpty()) return Charsets.ISO_8859_1
-    return try {
-        Charset.forName(name)
-    } catch (_: IllegalArgumentException) {
-        Charsets.ISO_8859_1
+    val handle = MimeDecode.xferOpen(encoding)
+    try {
+        return MimeDecode.xferTake(handle, bytes, true)
+    } finally {
+        MimeDecode.xferClose(handle)
     }
 }
 
@@ -1584,12 +1447,13 @@ private fun readAlternative(body: ByteArray, boundary: String): MultipartBody {
 }
 
 private fun partText(part: ParsedRfc822, type: String, cte: String): String {
-    val decoded = decodeTransfer(part.body, cte)
-    return decoded.toString(charsetOf(type)).replace("\r\n", "\n").replace('\r', '\n')
+    return decodePart(part.body, headerParam(type, "charset"), cte).text
+        .replace("\r\n", "\n").replace('\r', '\n')
 }
 
 private fun outgoingPart(part: ParsedRfc822, media: String, type: String, cte: String): OutgoingPart {
-    val decoded = decodeTransfer(part.body, cte)
+    val decoded = decodeTransferOrNull(part.body, cte)
+        ?: "could not decode this part".toByteArray(Charsets.UTF_8)
     return OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false)
 }
 
@@ -1615,40 +1479,7 @@ private fun filenameOf(part: ParsedRfc822): String {
     return "attachment"
 }
 
-private fun decode2231(raw: String): String {
-    val first = raw.indexOf('\'')
-    val second = if (first >= 0) raw.indexOf('\'', first + 1) else -1
-    val charsetName: String
-    val encoded: String
-    if (first >= 0 && second > first) {
-        charsetName = raw.substring(0, first)
-        encoded = raw.substring(second + 1)
-    } else {
-        charsetName = "UTF-8"
-        encoded = raw
-    }
-    val charset = try {
-        if (charsetName.isEmpty()) Charsets.UTF_8 else Charset.forName(charsetName)
-    } catch (_: Exception) {
-        Charsets.UTF_8
-    }
-    val out = ByteArrayOutputStream()
-    var i = 0
-    while (i < encoded.length) {
-        val c = encoded[i]
-        if (c == '%' && i + 2 < encoded.length) {
-            val value = hexByteOrNull(encoded.substring(i + 1, i + 3))
-            if (value != null) {
-                out.write(value)
-                i += 3
-                continue
-            }
-        }
-        out.write(c.toString().toByteArray(Charsets.UTF_8))
-        i++
-    }
-    return out.toByteArray().toString(charset)
-}
+private fun decode2231(raw: String): String = MimeDecode.parameter2231(raw, "ISO-8859-1")
 
 private fun splitMultipartChunks(body: ByteArray, boundary: String): List<ByteArray> {
     val marker = "--$boundary".toByteArray(Charsets.US_ASCII)
