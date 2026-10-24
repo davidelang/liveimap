@@ -134,4 +134,9 @@ class MimeDecodeContractTest {
         assertEquals("Hi", indexSubjectText(AnnotatedString("Hi"), "", false).text)
         assertEquals("Hi preview failed", indexSubjectText(AnnotatedString("Hi"), "", true).text)
     }
+
+    @Test
+    fun severalHtmlChunksCallThemedHtmlOnce() {
+        assertEquals(1, themedHtmlChunkLoads(listOf("<p>one", " two", "</p>")))
+    }
 }

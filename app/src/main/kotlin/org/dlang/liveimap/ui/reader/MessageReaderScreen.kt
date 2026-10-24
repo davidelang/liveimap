@@ -99,6 +99,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -225,6 +226,27 @@ internal class Utf8Carry {
         committed.clear()
         linePartial = ""
     }
+
+    /** Appends only newly complete lines. HTML body text is returned when the part is finished. */
+    fun appendPiece(piece: String, lines: MutableList<String>, finished: Boolean, html: Boolean): String? {
+        if (piece.isNotEmpty()) {
+            text.append(piece)
+            val parts = (linePartial + piece).split('\n')
+            linePartial = parts.last().removeSuffix("\r")
+            val complete = parts.dropLast(1).map { it.removeSuffix("\r") }
+            if (complete.isNotEmpty()) {
+                committed.addAll(complete)
+                lines.addAll(complete)
+            }
+        }
+        if (finished && linePartial.isNotEmpty()) {
+            committed.add(linePartial)
+            lines.add(linePartial)
+            linePartial = ""
+        }
+        if (finished && html) return text.toString()
+        return null
+    }
 }
 
 private class ScrollBridge {
@@ -275,7 +297,7 @@ internal class ReaderHeld : ViewModel() {
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
-    val bodyLinesState = mutableStateOf<List<String>>(emptyList())
+    val bodyLinesState = mutableStateListOf<String>()
     val bodyTruncatedState = mutableStateOf(false)
     val charsetNoteState = mutableStateOf<String?>(null)
     val bodyOffsetState = mutableIntStateOf(0)
@@ -311,7 +333,7 @@ internal class ReaderHeld : ViewModel() {
         carry.pending = ByteArray(0)
         carry.closeDecoder()
         carry.clearText()
-        bodyLinesState.value = emptyList()
+        bodyLinesState.clear()
         scrollOffsetState.intValue = 0
         webScroll = 0
         accountState.value = AccountSettings()
@@ -488,7 +510,7 @@ private fun MessageReaderLoaded(
     var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
     var bodyText by held.bodyTextState
-    var bodyLines by held.bodyLinesState
+    val bodyLines = held.bodyLinesState
     var bodyTruncated by held.bodyTruncatedState
     var charsetNote by held.charsetNoteState
     var bodyOffset by held.bodyOffsetState
@@ -659,7 +681,7 @@ private fun MessageReaderLoaded(
         showHtmlButton = offerHtml && noText
         renderedHtml = false
         bodyText = ""
-        bodyLines = emptyList()
+        bodyLines.clear()
         bodyTruncated = false
         bodySection = null
         bodyOffset = 0
@@ -670,23 +692,9 @@ private fun MessageReaderLoaded(
         carry.clearText()
     }
 
-    fun publishDecoded(piece: String) {
-        if (piece.isEmpty()) {
-            charsetNote = carry.decoder?.note
-            return
-        }
-        carry.text.append(piece)
-        val combined = carry.linePartial + piece
-        val parts = combined.split('\n')
-        carry.linePartial = parts.last().removeSuffix("\r")
-        val complete = parts.dropLast(1).map { it.removeSuffix("\r") }
-        if (complete.isNotEmpty()) carry.committed.addAll(complete)
-        bodyLines = if (carry.linePartial.isEmpty()) {
-            carry.committed.toList()
-        } else {
-            carry.committed + carry.linePartial
-        }
-        bodyText = carry.text.toString()
+    fun publishDecoded(piece: String, finished: Boolean = false) {
+        val htmlBody = carry.appendPiece(piece, bodyLines, finished, renderedHtml)
+        if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
         charsetNote = carry.decoder?.note
     }
 
@@ -695,7 +703,7 @@ private fun MessageReaderLoaded(
         if (reset) {
             pageGeneration = token
             bodyText = ""
-            bodyLines = emptyList()
+            bodyLines.clear()
             bodyOffset = 0
             bodySize = part.size
             bodySection = part.section
@@ -732,12 +740,17 @@ private fun MessageReaderLoaded(
         try {
             if (chunk.isEmpty()) {
                 bodyOffset = if (part.size > 0) part.size else bodyOffset + length
-                publishDecoded(decoder.finish())
+                publishDecoded(decoder.finish(), finished = true)
                 return
             }
             bodyOffset += chunk.size
-            publishDecoded(decoder.take(chunk))
-            if (part.size <= 0 || bodyOffset >= part.size) publishDecoded(decoder.finish())
+            val finished = part.size <= 0 || bodyOffset >= part.size
+            if (finished) {
+                publishDecoded(decoder.take(chunk))
+                publishDecoded(decoder.finish(), finished = true)
+            } else {
+                publishDecoded(decoder.take(chunk))
+            }
         } catch (error: MimeDecodeException) {
             if (token != bodyGeneration) return
             showMissing(error.text)
@@ -751,7 +764,7 @@ private fun MessageReaderLoaded(
         noTextPart = false
         renderedHtml = false
         bodyText = ""
-        bodyLines = emptyList()
+        bodyLines.clear()
         bodyOffset = 0
         bodySize = 0
         bodySection = section
@@ -795,7 +808,8 @@ private fun MessageReaderLoaded(
             carry.pending = ByteArray(0)
         }
         bodyText = built.toString()
-        bodyLines = readerLines(bodyText)
+        bodyLines.clear()
+        bodyLines.addAll(readerLines(bodyText))
     }
 
     suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
@@ -914,7 +928,7 @@ private fun MessageReaderLoaded(
                     missing = null
                     renderedHtml = true
                     bodyText = ""
-                    bodyLines = emptyList()
+                    bodyLines.clear()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
@@ -946,7 +960,8 @@ private fun MessageReaderLoaded(
                     bodyOffset = bytes.size
                     charsetNote = note
                     bodyText = text
-                    bodyLines = readerLines(text)
+                    bodyLines.clear()
+                    bodyLines.addAll(readerLines(text))
                     bodyTruncated = truncated
                 }
             }
@@ -959,7 +974,7 @@ private fun MessageReaderLoaded(
                     noTextPart = false
                     missing = null
                     bodyText = ""
-                    bodyLines = emptyList()
+                    bodyLines.clear()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
@@ -991,7 +1006,8 @@ private fun MessageReaderLoaded(
                     bodyOffset = bytes.size
                     charsetNote = note
                     bodyText = htmlAsText(text)
-                    bodyLines = readerLines(bodyText)
+                    bodyLines.clear()
+                    bodyLines.addAll(readerLines(bodyText))
                     bodyTruncated = truncated
                 }
             }
@@ -1712,7 +1728,7 @@ private fun MessageReaderLoaded(
     val noWrap = textLayout == TextLayout.Monospaced
     val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
-    val plainLines = remember(bodyLines, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+    val plainLines = remember(bodyLines.toList(), quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
         displayLines(bodyLines, textLayout, plainFlowed, plainDelSp).map { line ->
             val quoted = quotedReaderLine(line)
             quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
@@ -2441,11 +2457,10 @@ private fun MessageReaderLoaded(
                                 val recolor = dark && !originalColors
                                 view.setBackgroundColor(if (dark && originalColors) android.graphics.Color.WHITE else htmlBackground)
                                 applyHtmlDark(view.settings)
-                                val token = bodyText to recolor to htmlBackground to htmlForeground to allowImages
-                                if (view.tag != token) {
-                                    view.tag = token
-                                    val page = themedHtml(bodyText, recolor, htmlBackground, htmlForeground)
-                                    view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
+                                val loaded = loadThemedHtml(view.tag, bodyText, recolor, htmlBackground, htmlForeground, allowImages)
+                                if (loaded.second != null) {
+                                    view.tag = loaded.first
+                                    view.loadDataWithBaseURL(null, loaded.second, "text/html", "utf-8", null)
                                     val y = held.webScroll
                                     if (y > 0) view.post { view.scrollTo(0, y) }
                                 }
@@ -3064,6 +3079,40 @@ private fun ReaderHeaderCard(
             }
         }
     }
+}
+
+/** A chunk leaves [bodyText] empty, so the WebView token stays put and [themedHtml] does not run. */
+internal fun loadThemedHtml(
+    previous: Any?,
+    bodyText: String,
+    recolor: Boolean,
+    background: Int,
+    foreground: Int,
+    allowImages: Boolean,
+): Pair<Any?, String?> {
+    if (bodyText.isEmpty()) return previous to null
+    val token = bodyText to recolor to background to foreground to allowImages
+    if (previous == token) return previous to null
+    return token to themedHtml(bodyText, recolor, background, foreground)
+}
+
+/** Several HTML chunks theme the page once, when the part is complete. */
+internal fun themedHtmlChunkLoads(chunks: List<String>): Int {
+    val carry = Utf8Carry()
+    val lines = ArrayList<String>()
+    var bodyText = ""
+    var token: Any? = null
+    var calls = 0
+    chunks.forEachIndexed { index, chunk ->
+        val htmlBody = carry.appendPiece(chunk, lines, index == chunks.lastIndex, html = true)
+        if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
+        val loaded = loadThemedHtml(token, bodyText, false, 0, 0, false)
+        if (loaded.second != null) {
+            token = loaded.first
+            calls += 1
+        }
+    }
+    return calls
 }
 
 /** [dark] recolors the page to the app theme; "Original colors" passes dark = false (sender's colors, white page). */
