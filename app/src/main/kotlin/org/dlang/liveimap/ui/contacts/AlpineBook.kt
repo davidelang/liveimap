@@ -35,6 +35,7 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
                 mode = IndexMode.ArrivalOldest,
                 limit = 1,
                 prefetch = 0,
+                uidsOnly = true,
             ),
         )
         val newest = s.fetchIndex(
@@ -43,6 +44,7 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
                 mode = IndexMode.ArrivalNewest,
                 limit = 1,
                 prefetch = 0,
+                uidsOnly = true,
             ),
         )
         val first = earliest(oldest)
@@ -177,6 +179,7 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
                 lastSequence = selected.exists,
                 limit = selected.exists,
                 prefetch = 0,
+                uidsOnly = true,
             ),
         )
         if (rows.isEmpty()) return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")

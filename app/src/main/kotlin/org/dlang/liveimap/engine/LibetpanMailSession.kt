@@ -710,14 +710,13 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
-        val newestAfterOldest = takeBookNewest(request)
         val rows = keeper.read("fetch") {
             val name = wire(request.mailbox)
             if (sequencesStale || selectedMailbox != name) {
                 selectNow(name)
             }
             val h = requireHandle()
-            if (addressBookUidsOnly(request, newestAfterOldest)) {
+            if (request.uidsOnly) {
                 val ids = nativeSearchCriterion(h, "All", "", featureCaps.searchKind() == "Esearch", false)
                     ?: throw MailFailure("fetch failed")
                 return@read uidOnlyRows(request, ids)
@@ -749,55 +748,7 @@ class LibetpanMailSession : MailSession {
                 )
             }
         }
-        rememberBookOldest(request)
         return rows
-    }
-
-    /**
-     * Alpine loads the oldest row, then the newest, with no envelope fields. The index tail uses the same
-     * ArrivalNewest limit of 1, so that read counts only when it follows the oldest read on this session.
-     */
-    private var bookNewestMailbox: String? = null
-
-    private fun takeBookNewest(request: IndexRequest): Boolean {
-        val pending = bookNewestMailbox
-        bookNewestMailbox = null
-        if (pending == null || !sameWireMailbox(pending, request.mailbox)) return false
-        return request.mode == IndexMode.ArrivalNewest &&
-            request.limit == 1 &&
-            request.prefetch == 0 &&
-            !request.includePreview
-    }
-
-    private fun rememberBookOldest(request: IndexRequest) {
-        if (bookOldest(request)) bookNewestMailbox = request.mailbox
-    }
-
-    private fun bookOldest(request: IndexRequest): Boolean =
-        request.mode == IndexMode.ArrivalOldest &&
-            request.limit == 1 &&
-            request.prefetch == 0 &&
-            !request.includePreview &&
-            isAddressBookMailbox(request.mailbox)
-
-    private fun addressBookUidsOnly(request: IndexRequest, newestAfterOldest: Boolean): Boolean {
-        if (request.prefetch != 0 || request.includePreview) return false
-        if (!isAddressBookMailbox(request.mailbox)) return false
-        return when (request.mode) {
-            IndexMode.ArrivalOldest -> request.limit == 1
-            IndexMode.ArrivalNewest -> newestAfterOldest && request.limit == 1
-            IndexMode.ArrivalRange -> true
-            else -> false
-        }
-    }
-
-    private fun isAddressBookMailbox(mailbox: String): Boolean {
-        val settings = account ?: return false
-        fun book(name: String) = name.isNotEmpty() && sameWireMailbox(name, mailbox)
-        if (book(settings.addressBookMailbox)) return true
-        for (name in settings.extraAddressBooks) if (book(name)) return true
-        for (name in settings.globalAddressBooks) if (book(name)) return true
-        return false
     }
 
     /** Sequences follow the UID SEARCH ALL reply. Envelope fields stay empty. */

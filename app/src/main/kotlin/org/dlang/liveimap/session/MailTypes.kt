@@ -98,6 +98,7 @@ data class IndexRequest(
     val previewByteLimit: Int = 2048,
     val firstSequence: Int = 0,
     val lastSequence: Int = 0,
+    val uidsOnly: Boolean = false,
 )
 
 data class IndexRow(
