@@ -1269,6 +1269,7 @@ assert _ss["step_status"]({"open": ("fail", "x")}, "open", "fail")[0] == "fail"
 assert _ss["step_status"]({"idle": ("fail", "x")}, "idle", "expected")[0] == "fail"  # KNOWN via known-limits
 _kl = open(os.path.join(HERE, "known-limits.tsv")).read()
 assert "stalwart-0155\timap-idle\tidle" not in _kl and "uwimap\timap-idle\tidleRenew" in _kl
+assert "stalwart-0155\tjmap\tpush\t" in _kl and "stalwart\tjmap\tpush\t" not in _kl  # 0.15 EventSource emits no StateChange
 assert "\tjmap\tsubmit\t" not in _kl and "\tjmap\tdelivered\t" not in _kl  # cyrus JMAP submission now has a sendmail sink
 import lab_ports
 assert lab_ports.env_flags("dovecot-245", {}) == []

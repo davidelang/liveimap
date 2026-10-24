@@ -8,3 +8,4 @@ EXTERNAL	imap-mechs	open	no lab credentials
 stalwart-0155	jmap	identity	empty identity	
 cyrus-3124	jmap	push	EventSource, F151	
 cyrus-3137	jmap	push	EventSource, F151	
+stalwart-0155	jmap	push	Stalwart 0.15.5 EventSource sends no StateChange after an INBOX Email/import (0.16 sends one at once)	
