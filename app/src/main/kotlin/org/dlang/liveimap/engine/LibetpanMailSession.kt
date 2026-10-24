@@ -740,7 +740,7 @@ class LibetpanMailSession : MailSession {
                 settings?.email.orEmpty(),
                 settings?.altAddresses.orEmpty().joinToString("\n"),
             ) ?: throw MailFailure("fetch failed")
-            fetched
+            fetched.toList()
         }
         return rows
     }
