@@ -2,6 +2,7 @@ package org.dlang.liveimap.engine
 
 import android.content.Context
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.StateFlow
@@ -1262,7 +1263,8 @@ class LibetpanMailSession : MailSession {
         cancelled: () -> Boolean,
         collation: ClientSortCollation = ClientSortCollation.Locale,
     ): List<Long> {
-        val command = "CLIENT SORT ${sortToken(key)} $newestFirst ${collation.name}"
+        val localeTag = if (collation == ClientSortCollation.Locale) " ${Locale.getDefault().toLanguageTag()}" else ""
+        val command = "CLIENT SORT ${sortToken(key)} $newestFirst ${collation.name}$localeTag"
         val mailbox = selectedMailbox ?: throw MailFailure("sort failed")
         val cached = cache[command]
         if (cached != null && sameWireMailbox(cached.mailbox, mailbox) && cached.uidValidity != selected.uidValidity) {
@@ -1486,53 +1488,162 @@ class LibetpanMailSession : MailSession {
         collation: ClientSortCollation,
     ): MessageOrder {
         if (pieces.isEmpty()) return order
-        val numeric = key == SortKey.Date || key == SortKey.Size
-        val packed = if (numeric) null else textColumns(Array(pieces.size) { pieces[it].text }, collation)
-        var current = order
-        for (i in pieces.indices) {
-            val keyBytes = if (packed == null) {
-                ByteArray(0)
-            } else {
-                packed.first.copyOfRange(packed.second[i], packed.second[i] + packed.third[i])
-            }
-            current = insertOne(current, pieces[i], keyBytes, key, newestFirst)
-        }
-        return current
+        val fresh = orderFromPieces(pieces, key, newestFirst, collation)
+        return mergeSortedOrders(order, fresh, key, newestFirst)
     }
 
-    private fun insertOne(
-        order: MessageOrder,
-        piece: SortPiece,
-        keyBytes: ByteArray,
+    /** One native sort of [fresh], then a merge with [existing]. Same order as sorting both together. */
+    private fun mergeSortedOrders(
+        existing: MessageOrder,
+        fresh: MessageOrder,
         key: SortKey,
         newestFirst: Boolean,
     ): MessageOrder {
         val numeric = key == SortKey.Date || key == SortKey.Size
-        val n = order.uids.size
-        val numbers = when (key) {
-            SortKey.Date -> if (order.dateEpoch.size == n) order.dateEpoch else LongArray(n) { Long.MIN_VALUE }
-            SortKey.Size -> if (order.size.size == n) order.size else LongArray(n) { Long.MIN_VALUE }
-            else -> LongArray(n)
+        val existN = existing.uids.size
+        fun blankAt(pos: Int): Boolean {
+            if (!numeric) return false
+            val src = if (pos < existN) existing else fresh
+            val i = if (pos < existN) pos else pos - existN
+            val values = if (key == SortKey.Date) src.dateEpoch else src.size
+            return i < values.size && values[i] == Long.MIN_VALUE
         }
-        val blanks = BooleanArray(n) { numeric && numbers[it] == Long.MIN_VALUE }
-        val off = if (!numeric && order.textOff.size == n) order.textOff else IntArray(n)
-        val len = if (!numeric && order.textLen.size == n) order.textLen else IntArray(n)
-        val stored = if (piece.blank) Long.MIN_VALUE else piece.number
-        val index = nativeInsertAt(
-            order.uids,
-            numbers,
-            blanks,
-            if (numeric) ByteArray(0) else order.textKey,
-            off,
-            len,
-            numeric,
-            newestFirst,
-            piece.uid,
-            if (numeric) stored else 0L,
-            numeric && piece.blank,
-            keyBytes,
+        fun numberAt(pos: Int): Long {
+            val src = if (pos < existN) existing else fresh
+            val i = if (pos < existN) pos else pos - existN
+            val values = if (key == SortKey.Date) src.dateEpoch else src.size
+            return if (i < values.size) values[i] else Long.MIN_VALUE
+        }
+        fun uidAt(pos: Int): Long {
+            val src = if (pos < existN) existing else fresh
+            val i = if (pos < existN) pos else pos - existN
+            return src.uids[i]
+        }
+        fun cmpAsc(a: Int, b: Int): Int {
+            if (numeric) {
+                val av = numberAt(a)
+                val bv = numberAt(b)
+                if (av != bv) return if (av < bv) -1 else 1
+            } else {
+                val c = cmpKeyBytes(existing, fresh, existN, a, b)
+                if (c != 0) return c
+            }
+            val ua = uidAt(a)
+            val ub = uidAt(b)
+            if (ua != ub) return if (ua < ub) -1 else 1
+            return 0
+        }
+        fun split(src: MessageOrder, base: Int): Pair<IntArray, IntArray> {
+            var filledN = 0
+            var blankN = 0
+            for (i in src.uids.indices) if (blankAt(base + i)) blankN++ else filledN++
+            val filled = IntArray(filledN)
+            val blanks = IntArray(blankN)
+            var f = 0
+            var b = 0
+            for (i in src.uids.indices) {
+                val pos = base + i
+                if (blankAt(pos)) blanks[b++] = pos else filled[f++] = pos
+            }
+            return filled to blanks
+        }
+        fun mergeFilled(a: IntArray, b: IntArray): IntArray {
+            val out = IntArray(a.size + b.size)
+            var i = 0
+            var j = 0
+            var k = 0
+            while (i < a.size && j < b.size) {
+                val c = cmpAsc(a[i], b[j])
+                val takeA = if (newestFirst) c > 0 else c <= 0
+                if (takeA) out[k++] = a[i++] else out[k++] = b[j++]
+            }
+            while (i < a.size) out[k++] = a[i++]
+            while (j < b.size) out[k++] = b[j++]
+            return out
+        }
+        fun mergeBlanks(a: IntArray, b: IntArray): IntArray {
+            val out = IntArray(a.size + b.size)
+            var i = 0
+            var j = 0
+            var k = 0
+            while (i < a.size && j < b.size) {
+                if (uidAt(a[i]) <= uidAt(b[j])) out[k++] = a[i++] else out[k++] = b[j++]
+            }
+            while (i < a.size) out[k++] = a[i++]
+            while (j < b.size) out[k++] = b[j++]
+            return out
+        }
+        val (filledA, blankA) = split(existing, 0)
+        val (filledB, blankB) = split(fresh, existN)
+        val filled = mergeFilled(filledA, filledB)
+        val blanks = mergeBlanks(blankA, blankB)
+        val merged = IntArray(filled.size + blanks.size)
+        filled.copyInto(merged, 0)
+        blanks.copyInto(merged, filled.size)
+        return messageOrderFromPositions(existing, fresh, existN, merged, key)
+    }
+
+    private fun cmpKeyBytes(existing: MessageOrder, fresh: MessageOrder, existN: Int, a: Int, b: Int): Int {
+        fun span(pos: Int): Triple<ByteArray, Int, Int> {
+            val src = if (pos < existN) existing else fresh
+            val i = if (pos < existN) pos else pos - existN
+            if (i >= src.textOff.size || i >= src.textLen.size) return Triple(ByteArray(0), 0, 0)
+            return Triple(src.textKey, src.textOff[i], src.textLen[i])
+        }
+        val (ab, ao, al) = span(a)
+        val (bb, bo, bl) = span(b)
+        val n = minOf(al, bl)
+        for (k in 0 until n) {
+            val av = ab[ao + k].toInt() and 0xFF
+            val bv = bb[bo + k].toInt() and 0xFF
+            if (av != bv) return av - bv
+        }
+        return al - bl
+    }
+
+    private fun messageOrderFromPositions(
+        existing: MessageOrder,
+        fresh: MessageOrder,
+        existN: Int,
+        positions: IntArray,
+        key: SortKey,
+    ): MessageOrder {
+        fun srcAt(pos: Int): Pair<MessageOrder, Int> =
+            if (pos < existN) existing to pos else fresh to (pos - existN)
+        val n = positions.size
+        val uids = LongArray(n) { srcAt(positions[it]).let { (src, i) -> src.uids[i] } }
+        val dateEpoch = if (key == SortKey.Date) {
+            LongArray(n) {
+                val (src, i) = srcAt(positions[it])
+                if (i < src.dateEpoch.size) src.dateEpoch[i] else Long.MIN_VALUE
+            }
+        } else {
+            LongArray(0)
+        }
+        val sizes = if (key == SortKey.Size) {
+            LongArray(n) {
+                val (src, i) = srcAt(positions[it])
+                if (i < src.size.size) src.size[i] else Long.MIN_VALUE
+            }
+        } else {
+            LongArray(0)
+        }
+        val text = if (key == SortKey.Date || key == SortKey.Size) {
+            Triple(ByteArray(0), IntArray(0), IntArray(0))
+        } else {
+            packKeyBytes(Array(n) { at ->
+                val (src, i) = srcAt(positions[at])
+                if (i >= src.textOff.size || i >= src.textLen.size) {
+                    ByteArray(0)
+                } else {
+                    src.textKey.copyOfRange(src.textOff[i], src.textOff[i] + src.textLen[i])
+                }
+            })
+        }
+        return MessageOrder(
+            uids, ShortArray(0), existing.mailbox, existing.accountId, existing.uidValidity,
+            dateEpoch, sizes, text.first, text.second, text.third,
         )
-        return spliceOrder(order, index, piece.uid, stored, keyBytes, key)
     }
 
     private fun dropMissing(order: MessageOrder, keep: Set<Long>, key: SortKey): MessageOrder {
@@ -1566,61 +1677,6 @@ class LibetpanMailSession : MailSession {
             uids, ShortArray(0), order.mailbox, order.accountId, order.uidValidity, dateEpoch, sizes,
             text.first, text.second, text.third,
         )
-    }
-
-    private fun spliceOrder(
-        order: MessageOrder,
-        index: Int,
-        uid: Long,
-        number: Long,
-        keyBytes: ByteArray,
-        key: SortKey,
-    ): MessageOrder {
-        val uids = spliceLong(order.uids, index, uid)
-        val dateEpoch = if (key == SortKey.Date) {
-            val src = if (order.dateEpoch.size == order.uids.size) order.dateEpoch else LongArray(order.uids.size) { Long.MIN_VALUE }
-            spliceLong(src, index, number)
-        } else {
-            LongArray(0)
-        }
-        val sizes = if (key == SortKey.Size) {
-            val src = if (order.size.size == order.uids.size) order.size else LongArray(order.uids.size) { Long.MIN_VALUE }
-            spliceLong(src, index, number)
-        } else {
-            LongArray(0)
-        }
-        val text = if (key == SortKey.Date || key == SortKey.Size) {
-            Triple(ByteArray(0), IntArray(0), IntArray(0))
-        } else {
-            spliceText(order, index, keyBytes)
-        }
-        return MessageOrder(
-            uids, ShortArray(0), order.mailbox, order.accountId, order.uidValidity, dateEpoch, sizes,
-            text.first, text.second, text.third,
-        )
-    }
-
-    private fun spliceLong(src: LongArray, index: Int, value: Long): LongArray {
-        val out = LongArray(src.size + 1)
-        src.copyInto(out, 0, 0, index)
-        out[index] = value
-        src.copyInto(out, index + 1, index, src.size)
-        return out
-    }
-
-    private fun spliceText(order: MessageOrder, index: Int, keyBytes: ByteArray): Triple<ByteArray, IntArray, IntArray> {
-        val n = order.uids.size
-        val parts = Array(n + 1) { i ->
-            if (i == index) {
-                keyBytes
-            } else {
-                val src = if (i < index) i else i - 1
-                if (order.textOff.size != n) ByteArray(0) else {
-                    order.textKey.copyOfRange(order.textOff[src], order.textOff[src] + order.textLen[src])
-                }
-            }
-        }
-        return packKeyBytes(parts)
     }
 
     private fun textColumns(texts: Array<String>, collation: ClientSortCollation): Triple<ByteArray, IntArray, IntArray> =

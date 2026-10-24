@@ -48,7 +48,7 @@ class WindowedOrder(
             val last = minOf(total, first + windowSize - 1)
             val requested = last - first + 1
             val got = loader(first, last)
-            if (got.size < requested && last < total) throw MailFailure("anchor $first")
+            if (got.size < requested) throw MailFailure("anchor $first")
             windows[w] = got.toLongArray()
         }
     }
