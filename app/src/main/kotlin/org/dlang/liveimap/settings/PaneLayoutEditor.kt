@@ -50,8 +50,8 @@ fun paneContentLabel(content: PaneContent): String = stringResource(
 fun PaneLayoutEditor(saved: String, textZoom: Int, persist: Boolean = true, onSave: (String) -> Unit) {
     val configuration = LocalConfiguration.current
     val auto = autoPaneLayout(planLayout(configuration.screenWidthDp, configuration.screenHeightDp, configuration.fontScale * textZoom / 100f))
-    var tree by remember(saved) { mutableStateOf(decodePaneLayout(saved)) }
-    var selected by remember(saved) { mutableStateOf<List<Int>?>(null) }
+    var tree by remember(saved, persist) { mutableStateOf(decodePaneLayout(saved)) }
+    var selected by remember(saved, persist) { mutableStateOf<List<Int>?>(null) }
     val custom = tree != null
     fun commit(next: PaneNode?) {
         tree = next

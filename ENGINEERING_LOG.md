@@ -3589,3 +3589,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-24 - Toolbar drag offset is a graphics layer.
 
 - Pane edge-scroll adds the consumed scroll to a graphicsLayer translation. The reorderable reflection is gone.
+
+## 2026-10-24 - Custom layout follows the pane gate.
+
+- PaneLayoutEditor remembers saved and persist, so opening the gate drops an unsaved preview and shows the stored layout.

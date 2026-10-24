@@ -93,6 +93,7 @@ class SettingsSplitTest {
         val editor = src("main/kotlin/org/dlang/liveimap/settings/PaneLayoutEditor.kt")
         val pane = slice(editor, "fun PaneLayoutEditor")
         assertTrue(pane.contains("persist"))
+        assertTrue(pane.contains("remember(saved, persist)"))
         val commit = slice(editor, "fun commit")
         val gate = commit.indexOf("if (persist)")
         assertTrue(gate >= 0)
