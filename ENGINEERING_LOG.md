@@ -3657,3 +3657,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: fetchIndex returns the native index rows. It does not run decodeHeaderWords on from, subject, or recipients. sortPiece and threadOrder still decode raw header text.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - A failed MIME decode stays an error.
+
+- Approved plan: sandbox/plans/mime-decode-contract-20261024-1322-plan.md
+- A failed phrase, header, body, or preview stays an error or a note. No span is dropped and no error sentence is used as body text.

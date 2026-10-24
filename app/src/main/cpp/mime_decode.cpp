@@ -18,6 +18,7 @@
 extern "C" int mailmime_rfc2231_normalize_parameters(clist * parameters);
 
 static const char kDecodeError[] = "could not decode this part";
+static const char kHeaderNote[] = "could not decode this header";
 
 enum ConvKind {
     KIND_UTF8 = 0,
@@ -10557,18 +10558,44 @@ extern "C" char * mime_preview_text(const char * bytes, size_t len, const char *
     return dup_str(got.text);
 }
 
-extern "C" char * mime_decode_phrase(const char * text, size_t len, const char * fromcode) {
+extern "C" int mime_decode_phrase(const char * text, size_t len, const char * fromcode,
+    char ** out_text, char ** out_note, int * status) {
     mime_decode_ensure();
-    if (text == nullptr) text = "";
-    const char * from = fromcode != nullptr && fromcode[0] != 0 ? fromcode : "ISO-8859-1";
-    size_t indx = 0;
-    char * result = nullptr;
-    int r = mailmime_encoded_phrase_parse(from, text, len, &indx, "UTF-8", &result);
-    if (r != MAILIMF_NO_ERROR || result == nullptr) {
-        if (result != nullptr) free(result);
-        return dup_cstr(std::string(text, len).c_str());
+    if (text == nullptr) {
+        text = "";
+        len = 0;
     }
-    return result;
+    const char * from = fromcode != nullptr && fromcode[0] != 0 ? fromcode : "ISO-8859-1";
+    std::string out;
+    std::string note;
+    int st = 0;
+    size_t pos = 0;
+    while (pos < len) {
+        size_t indx = 0;
+        char * result = nullptr;
+        int r = mailmime_encoded_phrase_parse(from, text + pos, len - pos, &indx, "UTF-8", &result);
+        if (r == MAILIMF_NO_ERROR && result != nullptr && indx == len - pos) {
+            out.append(result);
+            free(result);
+            break;
+        }
+        st = 1;
+        if (note.empty()) note = kHeaderNote;
+        if (r == MAILIMF_NO_ERROR && result != nullptr && indx > 0 && pos + indx < len) {
+            out.append(result);
+            free(result);
+            out.push_back(text[pos + indx]);
+            pos += indx + 1;
+            continue;
+        }
+        if (result != nullptr) free(result);
+        out.push_back(text[pos]);
+        pos += 1;
+    }
+    if (out_text != nullptr) *out_text = dup_str(out);
+    if (out_note != nullptr) *out_note = dup_str(st == 0 ? std::string() : note);
+    if (status != nullptr) *status = st;
+    return st;
 }
 
 extern "C" char * mime_decode_2231(const char * raw, size_t len, const char * fallback) {
@@ -10751,13 +10778,14 @@ static std::vector<HeaderRow> unfold_headers(const char * bytes, size_t len) {
         }
     }
     for (size_t i = 0; i < rows.size(); ++i) {
-        char * phrase = mime_decode_phrase(rows[i].raw.data(), rows[i].raw.size(), "ISO-8859-1");
-        if (phrase != nullptr) {
-            rows[i].value = phrase;
-            free(phrase);
-        } else {
-            rows[i].value = rows[i].raw;
-        }
+        char * phrase = nullptr;
+        char * note = nullptr;
+        int status = 0;
+        mime_decode_phrase(rows[i].raw.data(), rows[i].raw.size(), "ISO-8859-1", &phrase, &note, &status);
+        if (phrase != nullptr) rows[i].value = phrase;
+        else rows[i].value = rows[i].raw;
+        free(phrase);
+        free(note);
     }
     size_t indx = 0;
     struct mailimf_fields * fields = nullptr;
@@ -10770,13 +10798,17 @@ static std::vector<HeaderRow> unfold_headers(const char * bytes, size_t len) {
                 continue;
             }
             const char * sbj = field->fld_data.fld_subject->sbj_value;
-            char * phrase = mime_decode_phrase(sbj, strlen(sbj), "ISO-8859-1");
+            char * phrase = nullptr;
+            char * note = nullptr;
+            int status = 0;
+            mime_decode_phrase(sbj, strlen(sbj), "ISO-8859-1", &phrase, &note, &status);
             for (size_t i = 0; i < rows.size(); ++i) {
                 if (rows[i].name.size() == 7 && strncasecmp(rows[i].name.c_str(), "subject", 7) == 0 && phrase != nullptr) {
                     rows[i].value = phrase;
                 }
             }
             free(phrase);
+            free(note);
         }
     }
     if (fields != nullptr) mailimf_fields_free(fields);
@@ -10838,8 +10870,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
         char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u);
         free(text);
     } else if (op % 5u == 2u) {
-        char * text = mime_decode_phrase(bytes, n, "ISO-8859-1");
+        char * text = nullptr;
+        char * note = nullptr;
+        int status = 0;
+        mime_decode_phrase(bytes, n, "ISO-8859-1", &text, &note, &status);
         free(text);
+        free(note);
     } else if (op % 5u == 3u) {
         char * text = mime_decode_2231(bytes, n, "ISO-8859-1");
         free(text);

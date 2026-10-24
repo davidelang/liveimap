@@ -115,6 +115,8 @@ data class IndexRow(
     val hasAttachment: Boolean = false,
     val recipients: String = "",
     val mailbox: String = "",
+    val headerNote: String = "",
+    val previewFailed: Boolean = false,
 )
 
 /** MIME parts nested deeper than this are listed as one openable "nested part" entry instead of being walked. */

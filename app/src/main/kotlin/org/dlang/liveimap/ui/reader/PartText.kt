@@ -35,7 +35,7 @@ internal object MimeDecode {
     external fun xferClose(handle: Long)
 
     @JvmStatic
-    external fun phrase(value: String): String
+    external fun phrase(value: String): Array<String>
 
     @JvmStatic
     external fun parameter2231(raw: String, fallback: String): String

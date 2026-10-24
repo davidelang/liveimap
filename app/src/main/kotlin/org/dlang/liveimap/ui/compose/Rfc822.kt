@@ -1276,7 +1276,7 @@ private fun splitHeaderBody(bytes: ByteArray): Pair<ByteArray, ByteArray> {
     return bytes to ByteArray(0)
 }
 
-internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)
+internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)[1]
 
 internal class MimeDecodeException(message: String) : Exception(message)
 

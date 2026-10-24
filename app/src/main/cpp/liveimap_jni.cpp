@@ -661,7 +661,7 @@ bool resolveJni(JNIEnv * env) {
     if (!requireClass(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) return false;
     if (!requireClass(env, &gJni.trafficLog, "org/dlang/liveimap/engine/TrafficLog")) return false;
     if (!requireMethod(env, &gJni.indexRowInit, gJni.indexRow, "<init>",
-        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;)V")) return false;
+        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V")) return false;
     if (!requireMethod(env, &gJni.folderInit, gJni.folderEntry, "<init>",
         "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V")) return false;
     if (!requireMethod(env, &gJni.nsInit, gJni.ns, "<init>",
@@ -1432,13 +1432,25 @@ int64_t internalDateEpoch(struct mailimap_date_time * dt) {
     return static_cast<int64_t>(asUtc) - offset;
 }
 
-extern "C" char * mime_decode_phrase(const char * text, size_t len, const char * fromcode);
+extern "C" int mime_decode_phrase(const char * text, size_t len, const char * fromcode,
+    char ** out_text, char ** out_note, int * status);
 
-static std::string phraseUtf8(const char * text) {
-    if (text == nullptr || text[0] == 0) return std::string();
-    char * decoded = mime_decode_phrase(text, strlen(text), "ISO-8859-1");
-    std::string out = decoded != nullptr ? decoded : "";
+struct PhraseUtf8 {
+    std::string text;
+    std::string note;
+};
+
+static PhraseUtf8 phraseUtf8(const char * text) {
+    PhraseUtf8 out;
+    if (text == nullptr || text[0] == 0) return out;
+    char * decoded = nullptr;
+    char * note = nullptr;
+    int status = 0;
+    mime_decode_phrase(text, strlen(text), "ISO-8859-1", &decoded, &note, &status);
+    if (decoded != nullptr) out.text = decoded;
+    if (note != nullptr) out.note = note;
     std::free(decoded);
+    std::free(note);
     return out;
 }
 
@@ -1447,7 +1459,7 @@ std::string addressText(struct mailimap_address * addr) {
         return "";
     }
     if (addr->ad_personal_name != nullptr && addr->ad_personal_name[0] != 0) {
-        return phraseUtf8(addr->ad_personal_name);
+        return phraseUtf8(addr->ad_personal_name).text;
     }
     std::string box = addr->ad_mailbox_name != nullptr ? addr->ad_mailbox_name : "";
     std::string host = addr->ad_host_name != nullptr ? addr->ad_host_name : "";
@@ -1789,6 +1801,8 @@ struct Row {
     std::string preview;
     bool hasPreview = false;
     std::string recipients;
+    std::string headerNote;
+    bool previewFailed = false;
     bool hasEnvelope = false; // F113: index rows need it; an unsolicited flags-only FETCH has none
 };
 
@@ -1996,7 +2010,11 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
                 if (st->att_data.att_env != nullptr) {
                     row->hasEnvelope = true;
                     struct mailimap_envelope * env = st->att_data.att_env;
-                    if (env->env_subject != nullptr) row->subject = phraseUtf8(env->env_subject);
+                    if (env->env_subject != nullptr) {
+                        PhraseUtf8 phrase = phraseUtf8(env->env_subject);
+                        row->subject = std::move(phrase.text);
+                        row->headerNote = std::move(phrase.note);
+                    }
                     if (env->env_date != nullptr) row->date = env->env_date;
                     if (env->env_from != nullptr && env->env_from->frm_list != nullptr) {
                         clistiter * a = clist_begin(env->env_from->frm_list);
@@ -2053,12 +2071,13 @@ jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bo
     jstring prev = hasPreview ? newString(env, preview.c_str()) : nullptr;
     jstring recipients = newString(env, row.recipients.c_str());
     jstring mailbox = newString(env, "");
+    jstring headerNote = newString(env, row.headerNote.c_str());
     jobject obj = env->NewObject(gJni.indexRow, gJni.indexRowInit,
         static_cast<jlong>(row.uid), static_cast<jint>(row.sequence), flags,
         static_cast<jlong>(row.epoch), static_cast<jint>(row.size),
         from, subject, date, prev,
         static_cast<jboolean>(row.toMe), static_cast<jboolean>(row.hasAttachment),
-        recipients, mailbox);
+        recipients, mailbox, headerNote, static_cast<jboolean>(row.previewFailed));
     env->DeleteLocalRef(flags);
     env->DeleteLocalRef(from);
     env->DeleteLocalRef(subject);
@@ -2066,6 +2085,7 @@ jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bo
     if (prev != nullptr) env->DeleteLocalRef(prev);
     if (recipients != nullptr) env->DeleteLocalRef(recipients);
     if (mailbox != nullptr) env->DeleteLocalRef(mailbox);
+    if (headerNote != nullptr) env->DeleteLocalRef(headerNote);
     return obj;
 }
 
@@ -2081,6 +2101,7 @@ void releaseRow(Row & row) {
     wipe(row.date);
     wipe(row.preview);
     wipe(row.recipients);
+    wipe(row.headerNote);
     row.structure = nullptr;
 }
 
@@ -6347,7 +6368,8 @@ struct MimeXfer * mime_xfer_open(const char * encoding);
 char * mime_xfer_take(struct MimeXfer * xfer, const char * bytes, size_t len, int final, size_t * out_len,
     int * status);
 void mime_xfer_close(struct MimeXfer * xfer);
-char * mime_decode_phrase(const char * text, size_t len, const char * fromcode);
+int mime_decode_phrase(const char * text, size_t len, const char * fromcode,
+    char ** out_text, char ** out_note, int * status);
 char * mime_decode_2231(const char * raw, size_t len, const char * fallback);
 int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count);
 void mime_headers_free(struct MimeHeaders * rows, int count);
@@ -6464,15 +6486,20 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_xferClose(JNIEnv *, jclass, jlong h
     mime_xfer_close(reinterpret_cast<MimeXfer *>(static_cast<uintptr_t>(handle)));
 }
 
-extern "C" JNIEXPORT jstring JNICALL
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstring value) {
     auto utf = utf8FromJava(env, value);
     const std::string empty;
     const std::string & text = utf ? *utf : empty;
-    char * decoded = mime_decode_phrase(text.data(), text.size(), "ISO-8859-1");
-    jstring out = newString(env, decoded != nullptr ? decoded : "");
+    char * decoded = nullptr;
+    char * note = nullptr;
+    int status = 1;
+    mime_decode_phrase(text.data(), text.size(), "ISO-8859-1", &decoded, &note, &status);
+    jobjectArray arr = stringTriple(env, status == 0 ? "ok" : "error", decoded != nullptr ? decoded : "",
+        note != nullptr ? note : "");
     std::free(decoded);
-    return out;
+    std::free(note);
+    return arr;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
