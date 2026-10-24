@@ -2458,9 +2458,10 @@ private fun MessageReaderLoaded(
                                 view.setBackgroundColor(if (dark && originalColors) android.graphics.Color.WHITE else htmlBackground)
                                 applyHtmlDark(view.settings)
                                 val loaded = loadThemedHtml(view.tag, bodyText, recolor, htmlBackground, htmlForeground, allowImages)
-                                if (loaded.second != null) {
+                                val page = loaded.second
+                                if (page != null) {
                                     view.tag = loaded.first
-                                    view.loadDataWithBaseURL(null, loaded.second, "text/html", "utf-8", null)
+                                    view.loadDataWithBaseURL(null, page, "text/html", "utf-8", null)
                                     val y = held.webScroll
                                     if (y > 0) view.post { view.scrollTo(0, y) }
                                 }
