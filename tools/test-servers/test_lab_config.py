@@ -1348,3 +1348,16 @@ assert "|| true" not in _ca, "lab-ca.sh must not swallow errors"
 assert "-ext subjectAltName 2>/dev/null" not in _ca and "-extfile server.ext 2>/dev/null" not in _ca
 assert "if [ -e server.crt ]; then" in _ca and "exit 1" in _ca
 print("lab-ca ok")
+
+
+# stalwart-0155 jmap: since liveimap-send has a valid identity, only push is a known limit. A stale identity row made
+# the whole unit "unexpected pass identity" once push stopped being a plain FAIL (run 698730c5).
+_kr = {"__file__": os.path.join(HERE, "regress"), "__name__": "regress_known_test"}
+exec(compile(open(os.path.join(HERE, "regress")).read(), "regress", "exec"), _kr)
+assert not _kr["known_match"]("stalwart-0155", "jmap", "identity")
+_st = [_kr["classify"]("stalwart-0155", "jmap", c, "ok") for c in
+       ("open", "folders", "list", "read", "flags", "move", "submit", "delivered")]
+_st.append(_kr["classify"]("stalwart-0155", "jmap", "push", "fail"))
+assert _st == ["PASS"] * 8 + ["KNOWN"] and _kr["worst"](_st) == "KNOWN", _st
+assert _kr["classify"]("stalwart-0155", "jmap", "push", "ok") == "unexpected pass"
+print("stalwart-0155 jmap known rows ok")
