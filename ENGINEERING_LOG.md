@@ -3670,3 +3670,12 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-24 - The Latin-1 JNI string goes through newString, and MimeDecodeException is kept.
+
+## 2026-10-24 - Header rows keep the wire text, and compose shows a decode error.
+
+- Approved plan: sandbox/plans/mime-header-reader-20261024-1425-plan.md
+- A stored copy whose header does not parse sets notice and leaves the copy unopened. loadEditor on that header throws MailFailure and does not return an editor.
+- Header rows are slices of the one mailimf parse. Date, Keywords, and the header name stay the wire text.
+- The reader remember keys the line version and the style keys. displayLines runs on newly appended lines. A style change resets both lists.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

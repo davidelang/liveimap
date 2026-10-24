@@ -1365,10 +1365,10 @@ private fun ComposeLoaded(
             notice = unsentGone
             return null
         }
-        held = copy
         if (!(draftLoaded && forwardRows.isNotEmpty())) {
             applyEditor(loadEditor(copy.bytes))
         }
+        held = copy
         if (!baselineReady) captureBaseline()
         draftLoaded = true
         return copy
@@ -1403,7 +1403,18 @@ private fun ComposeLoaded(
             seed.kind == ComposeKind.Forward ||
             seed.kind == ComposeKind.ResumePostpone
         if (!replacesAttachmentRows) appendHeldPickedRows()
-        val stored = if (storedId == null) null else loadStoredCopy(storedId)
+        val stored = if (storedId == null) {
+            null
+        } else {
+            try {
+                loadStoredCopy(storedId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                null
+            }
+        }
         var leave = false
         gate.withLock {
             val settings = try {

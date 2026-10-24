@@ -1,11 +1,13 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class Rfc822Test {
@@ -487,6 +489,17 @@ class Rfc822Test {
     @Test
     fun longWordIsNotSplit() {
         assertEquals("abcdefghijk", wrapPlain("abcdefghijk", 5))
+    }
+
+    @Test
+    fun unparsableHeaderDoesNotReturnAnEditor() {
+        val bytes = "Subject: hi\r\nNot a header\r\n\r\nbody\r\n".toByteArray(Charsets.US_ASCII)
+        try {
+            val loaded = loadEditor(bytes)
+            fail("loadEditor returned an editor: ${loaded.subject}")
+        } catch (error: MailFailure) {
+            assertTrue(error.text.isNotEmpty())
+        }
     }
 
     private fun partBody(raw: String, subtype: String): String {
