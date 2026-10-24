@@ -3635,3 +3635,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The host fuzz binary is not built.
 
 ## 2026-10-24 - Unit tests no longer call the deleted client thread.
+
+## 2026-10-24 - Client thread strings use standard UTF-8, and the new JNI classes are kept.
+
+- Approved plan: sandbox/plans/suite-utf8-keeps-20261024-1142-plan.md
+- takeStrings copies subject, Message-ID, References, and In-Reply-To with utf8FromJava. A null array element stays empty. nullopt pops the local frame and the JNI export returns null. GetStringUTFChars is gone from app/src/main/cpp.
+- ProGuard keeps SessionOpen, CopyMoveResult, NativeBoxes, ClientFetch, ClientHeaders, and ThreadFlat. The reorderable keeps are unchanged.
+- pass4NativeGuards asserts freeSession contains while (session->users.load() != 0). DeepNestingTest.depthOf is gone. The MIME tests stay.

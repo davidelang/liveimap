@@ -12,17 +12,6 @@ import org.junit.Test
 
 /** Sender-controlled nesting (MIME trees, References chains) must not recurse without bound. */
 class DeepNestingTest {
-    private fun depthOf(node: ThreadNode): Int {
-        var best = 0
-        val stack = ArrayDeque(listOf(node to 0))
-        while (stack.isNotEmpty()) {
-            val (n, d) = stack.removeLast()
-            if (d > best) best = d
-            n.children.forEach { stack.addLast(it to d + 1) }
-        }
-        return best
-    }
-
     private fun nested(levels: Int): MimePart {
         var part = MimePart("x", "text", "plain", "", null, 1, emptyList())
         repeat(levels) { part = MimePart("x", "multipart", "mixed", "", null, 0, listOf(part)) }

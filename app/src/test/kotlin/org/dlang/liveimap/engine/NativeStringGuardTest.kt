@@ -66,8 +66,8 @@ class NativeStringGuardTest {
         assertTrue(login.contains("*error = \"user name is empty\";"))
         assertTrue(!login.contains("name[0] != '\\0') {"))
         assertTrue(login.contains("!wireOk(name)"))
-        val watchExit = src.substringAfter("if (session->deleteAfterWatch) {").substringBefore("delete session;")
-        assertTrue(watchExit.contains("while (session->users.load() > 0)"))
+        val freeSession = src.substringAfter("void freeSession(").substringBefore("\n}\n")
+        assertTrue(freeSession.contains("while (session->users.load() != 0)"))
         assertTrue(src.substringAfter("bool selectMailbox(JNIEnv * env, LiveSession * session").substringBefore("int r;").contains("wireOk(mailbox)"))
     }
 }

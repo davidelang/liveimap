@@ -8975,13 +8975,12 @@ bool takeStrings(JNIEnv * env, jobjectArray arr, int n, std::vector<std::string>
         if (env->PushLocalFrame(4) < 0) return false;
         jstring text = static_cast<jstring>(env->GetObjectArrayElement(arr, i));
         if (text != nullptr) {
-            const char * chars = env->GetStringUTFChars(text, nullptr);
-            if (chars == nullptr) {
+            auto got = utf8FromJava(env, text);
+            if (!got) {
                 env->PopLocalFrame(nullptr);
                 return false;
             }
-            (*out)[static_cast<size_t>(i)] = chars;
-            env->ReleaseStringUTFChars(text, chars);
+            (*out)[static_cast<size_t>(i)] = std::move(*got);
         }
         env->PopLocalFrame(nullptr);
     }

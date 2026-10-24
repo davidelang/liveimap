@@ -27,6 +27,12 @@
 -keep class org.dlang.liveimap.session.SortField { *; }
 -keep class org.dlang.liveimap.session.ThreadHeader { *; }
 -keep class org.dlang.liveimap.session.ThreadNode { *; }
+-keep class org.dlang.liveimap.engine.SessionOpen { *; }
+-keep class org.dlang.liveimap.engine.CopyMoveResult { *; }
+-keep class org.dlang.liveimap.engine.NativeBoxes { *; }
+-keep class org.dlang.liveimap.session.ClientFetch { *; }
+-keep class org.dlang.liveimap.session.ClientHeaders { *; }
+-keep class org.dlang.liveimap.session.ThreadFlat { *; }
 -keep class org.dlang.liveimap.ui.reader.PartText** { *; }
 
 # Reflection: BuildConfig.GIT_COMMIT is read with getField by the lab instrumentation (LabSuiteTest).
