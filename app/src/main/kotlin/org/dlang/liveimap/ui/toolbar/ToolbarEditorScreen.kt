@@ -704,8 +704,15 @@ private object ReorderAccess {
         "access\$getState\$p",
         ReorderableListScope::class.java,
     )
-    private val offsetsOf = ReorderableListState::class.java.getMethod("getItemOffsets\$reorderable_release")
-    private val dragsOf = ReorderableListState::class.java.getMethod("getDraggableStates\$reorderable_release")
+    // Debug APKs suffix internal accessors with $reorderable_debug, not $reorderable_release.
+    private val offsetsOf = member("getItemOffsets")
+    private val dragsOf = member("getDraggableStates")
+
+    private fun member(base: String): java.lang.reflect.Method {
+        val type = ReorderableListState::class.java
+        return type.methods.firstOrNull { it.name == "$base\$reorderable_debug" }
+            ?: type.getMethod("$base\$reorderable_release")
+    }
 
     fun state(scope: ReorderableListScope): ReorderableListState =
         stateOf.invoke(null, scope) as ReorderableListState
