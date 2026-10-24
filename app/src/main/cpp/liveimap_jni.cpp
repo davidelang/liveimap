@@ -981,9 +981,9 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
         int fd = session->jobFd.exchange(-1);
         if (fd >= 0) close(fd);
         tlsOwner = nullptr;
-        // Not attached, so this thread must not run ~LiveSession. Detach before the last
-        // shared_ptr drops: nativeStage never joins, and a joinable ~std::thread terminates.
-        if (session->owner.joinable()) session->owner.detach();
+        // Not attached. selfHold stays until an attached caller drops it after joinOwner
+        // joins, so this parameter is not the last ref and ~std::thread is not joinable.
+        // Detach would let that caller clear selfHold while this parameter is still last.
         session->ownerFinished.store(true);
         session->ownerFinished.notify_all();
         return;

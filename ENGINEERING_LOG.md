@@ -3618,3 +3618,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/jni-owner-cleanup-20261024-0834-plan.md
 - The owner attaches once and detaches on every exit, including a failed attach. A failed attach closes the job queue and fails queued and later commands with the attach error instead of an empty result. The job eventfd is exchanged to -1 and closed after the queue closes, and again after the owner has finished.
 - Host: /home/dlang/git/liveimap/master. Do not deploy.
+
+## 2026-10-24 - A failed owner attach drops its session ref on an attached thread.
+
+- The attach-failure path no longer detaches the std::thread. joinOwner joins, then the attached caller drops selfHold, so ~LiveSession runs where GetEnv can delete the KeyChain global ref. The loop parameter is not that last ref.
