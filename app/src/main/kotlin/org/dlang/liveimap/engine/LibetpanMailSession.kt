@@ -708,67 +708,86 @@ class LibetpanMailSession : MailSession {
         noteTraffic("Selected $name")
     }
 
-    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = keeper.read("fetch") {
-        val name = wire(request.mailbox)
-        if (sequencesStale || selectedMailbox != name) {
-            selectNow(name)
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> {
+        val newestAfterOldest = takeBookNewest(request)
+        val rows = keeper.read("fetch") {
+            val name = wire(request.mailbox)
+            if (sequencesStale || selectedMailbox != name) {
+                selectNow(name)
+            }
+            val h = requireHandle()
+            if (addressBookUidsOnly(request, newestAfterOldest)) {
+                val ids = nativeSearchCriterion(h, "All", "", featureCaps.searchKind() == "Esearch", false)
+                    ?: throw MailFailure("fetch failed")
+                return@read uidOnlyRows(request, ids)
+            }
+            val settings = account
+            val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
+            val fetched = nativeFetchIndex(
+                h,
+                name,
+                request.mode.ordinal,
+                request.firstSequence,
+                request.lastSequence,
+                request.uids.toLongArray(),
+                request.limit,
+                request.prefetch,
+                request.includePreview,
+                request.previewByteLimit,
+                settings?.preferHtml == true,
+                settings?.showDeleted != false,
+                useServerPreview,
+                settings?.email.orEmpty(),
+                settings?.altAddresses.orEmpty().joinToString("\n"),
+            ) ?: throw MailFailure("fetch failed")
+            fetched.map { row ->
+                row.copy(
+                    from = decodeHeaderWords(row.from),
+                    subject = decodeHeaderWords(row.subject),
+                    recipients = decodeHeaderWords(row.recipients),
+                )
+            }
         }
-        val h = requireHandle()
-        if (addressBookUidsOnly(request)) {
-            val ids = nativeSearchCriterion(h, "All", "", featureCaps.searchKind() == "Esearch", false)
-                ?: throw MailFailure("fetch failed")
-            return@read uidOnlyRows(request, ids)
-        }
-        val settings = account
-        val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
-        val rows = nativeFetchIndex(
-            h,
-            name,
-            request.mode.ordinal,
-            request.firstSequence,
-            request.lastSequence,
-            request.uids.toLongArray(),
-            request.limit,
-            request.prefetch,
-            request.includePreview,
-            request.previewByteLimit,
-            settings?.preferHtml == true,
-            settings?.showDeleted != false,
-            useServerPreview,
-            settings?.email.orEmpty(),
-            settings?.altAddresses.orEmpty().joinToString("\n"),
-        ) ?: throw MailFailure("fetch failed")
-        rows.map { row ->
-            row.copy(
-                from = decodeHeaderWords(row.from),
-                subject = decodeHeaderWords(row.subject),
-                recipients = decodeHeaderWords(row.recipients),
-            )
-        }
+        rememberBookOldest(request)
+        return rows
     }
 
     /**
-     * Alpine completion loads this folder with no envelope fields. The index tail uses the same
-     * ArrivalNewest limit of 1 when one message arrives and preview is off, so the caller has to be the book load.
+     * Alpine loads the oldest row, then the newest, with no envelope fields. The index tail uses the same
+     * ArrivalNewest limit of 1, so that read counts only when it follows the oldest read on this session.
      */
-    private fun addressBookUidsOnly(request: IndexRequest): Boolean {
-        if (request.prefetch != 0 || request.includePreview) return false
-        if (!calledFromAlpineBook()) return false
-        val shaped = when (request.mode) {
-            IndexMode.ArrivalRange -> true
-            IndexMode.ArrivalOldest, IndexMode.ArrivalNewest -> request.limit == 1
-            else -> false
-        }
-        if (!shaped) return false
-        return isAddressBookMailbox(request.mailbox)
+    private var bookNewestMailbox: String? = null
+
+    private fun takeBookNewest(request: IndexRequest): Boolean {
+        val pending = bookNewestMailbox
+        bookNewestMailbox = null
+        if (pending == null || !sameWireMailbox(pending, request.mailbox)) return false
+        return request.mode == IndexMode.ArrivalNewest &&
+            request.limit == 1 &&
+            request.prefetch == 0 &&
+            !request.includePreview
     }
 
-    /** True while [loadAlpineBook] or [readPineBook] is the fetch. The index tail is not. */
-    private fun calledFromAlpineBook(): Boolean {
-        for (frame in Thread.currentThread().stackTrace) {
-            if (frame.className.contains("AlpineBook")) return true
+    private fun rememberBookOldest(request: IndexRequest) {
+        if (bookOldest(request)) bookNewestMailbox = request.mailbox
+    }
+
+    private fun bookOldest(request: IndexRequest): Boolean =
+        request.mode == IndexMode.ArrivalOldest &&
+            request.limit == 1 &&
+            request.prefetch == 0 &&
+            !request.includePreview &&
+            isAddressBookMailbox(request.mailbox)
+
+    private fun addressBookUidsOnly(request: IndexRequest, newestAfterOldest: Boolean): Boolean {
+        if (request.prefetch != 0 || request.includePreview) return false
+        if (!isAddressBookMailbox(request.mailbox)) return false
+        return when (request.mode) {
+            IndexMode.ArrivalOldest -> request.limit == 1
+            IndexMode.ArrivalNewest -> newestAfterOldest && request.limit == 1
+            IndexMode.ArrivalRange -> true
+            else -> false
         }
-        return false
     }
 
     private fun isAddressBookMailbox(mailbox: String): Boolean {
