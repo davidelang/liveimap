@@ -421,7 +421,7 @@ private fun <A : Enum<A>> SectionEditor(
                                         minOf(24f, (scrollState.maxValue - scrollState.value).toFloat())
                                     else -> 0f
                                 }
-                                if (step != 0f) scrollState.scrollBy(step)
+                                if (step != 0f) scrollState.scroll { scrollBy(step) }
                             }
                         }
                     }
