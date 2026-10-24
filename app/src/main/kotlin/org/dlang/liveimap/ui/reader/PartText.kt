@@ -88,12 +88,3 @@ class WireTextDecoder(charsetName: String, encoding: String) {
         return row[0]
     }
 }
-
-object PartText {
-    @JvmStatic
-    fun previewText(bytes: ByteArray, charset: String, encoding: String, html: Boolean): String {
-        val row = MimeDecode.text(bytes, charset, "ISO-8859-1", encoding)
-        if (row[0] == "error") return row[1]
-        return if (html) htmlAsText(row[1]) else row[1]
-    }
-}

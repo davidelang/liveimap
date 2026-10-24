@@ -14,11 +14,7 @@ struct PreviewAsk {
     bool html = false;
 };
 
-using PreviewDecoder = std::string (*)(const char * bytes, size_t length, const std::string & charset,
-    const std::string & encoding, bool html);
-
 struct mailimap_section * sectionFromSpec(const std::string & spec);
-void setPreviewDecoder(PreviewDecoder decoder);
 std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html,
     bool * failed = nullptr);
 bool taggedOk(struct mailimap_response * response);

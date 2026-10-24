@@ -7,15 +7,8 @@
 #include <strings.h>
 #include <unordered_map>
 
-static PreviewDecoder previewDecoder = nullptr;
-
 extern "C" char * mime_preview_text(const char * bytes, size_t length, const char * charset, const char * encoding,
     int html, int * failed);
-
-void setPreviewDecoder(PreviewDecoder decoder) {
-    previewDecoder = decoder;
-    if (previewDecoder != nullptr && previewDecoder == nullptr) previewDecoder = decoder;
-}
 
 static bool attHasBody(struct mailimap_msg_att * att) {
     if (att == nullptr || att->att_list == nullptr) return false;
