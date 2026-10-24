@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MaxMimeDepth
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.ui.reader.MimeDecode
@@ -176,7 +177,7 @@ suspend fun peekWireBytes(
 
 fun parseRfc822(bytes: ByteArray): ParsedRfc822 {
     val (headerBytes, body) = splitHeaderBody(bytes)
-    val rows = MimeDecode.headers(headerBytes) ?: emptyArray()
+    val rows = MimeDecode.headers(headerBytes)
     val headers = ArrayList<HeaderField>(rows.size / 3)
     var i = 0
     while (i + 2 < rows.size) {
@@ -1020,7 +1021,7 @@ private fun indexOfCrlfCrlf(bytes: ByteArray): Int {
 }
 
 private fun unfoldedHeader(header: ByteArray, name: String): String {
-    val rows = MimeDecode.headers(header) ?: return ""
+    val rows = MimeDecode.headers(header)
     var i = 0
     while (i + 2 < rows.size) {
         if (rows[i].equals(name, ignoreCase = true)) return rows[i + 2]
@@ -1278,7 +1279,7 @@ private fun splitHeaderBody(bytes: ByteArray): Pair<ByteArray, ByteArray> {
 
 internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)[1]
 
-internal class MimeDecodeException(message: String) : Exception(message)
+internal class MimeDecodeException(message: String) : MailFailure(message)
 
 internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray =
     decodeTransferOrNull(bytes, encoding) ?: throw MimeDecodeException("could not decode this part")

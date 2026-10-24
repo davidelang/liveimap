@@ -10731,88 +10731,292 @@ struct HeaderRow {
     std::string raw;
 };
 
-static std::vector<HeaderRow> unfold_headers(const char * bytes, size_t len) {
-    std::vector<std::string> lines;
-    std::string cur;
-    for (size_t i = 0; i <= len; ++i) {
-        char c = i < len ? bytes[i] : '\n';
-        if (c == '\n' || i == len) {
-            while (!cur.empty() && cur[cur.size() - 1] == '\r') cur.erase(cur.size() - 1);
-            lines.push_back(cur);
-            cur.clear();
-            if (i == len) break;
-        } else {
-            cur.push_back(c);
+static bool only_ws(const char * s, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') return false;
+    }
+    return true;
+}
+
+static size_t header_block_len(const char * bytes, size_t len) {
+    if (bytes == nullptr) return 0;
+    size_t line = 0;
+    for (size_t i = 0; i < len; ++i) {
+        if (bytes[i] != '\n') continue;
+        size_t content = i;
+        if (content > line && bytes[content - 1] == '\r') --content;
+        if (content == line) return line;
+        line = i + 1;
+    }
+    return len;
+}
+
+static std::string unfold_value(const std::string & raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        char c = raw[i];
+        if (c != '\r' && c != '\n') {
+            out.push_back(c);
+            continue;
         }
+        size_t j = i + 1;
+        if (c == '\r' && j < raw.size() && raw[j] == '\n') ++j;
+        out.push_back(' ');
+        while (j < raw.size() && (raw[j] == ' ' || raw[j] == '\t')) ++j;
+        i = j - 1;
     }
-    std::vector<HeaderRow> rows;
-    std::string current;
-    bool have = false;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        const std::string & line = lines[i];
-        if (line.empty()) continue;
-        if ((line[0] == ' ' || line[0] == '\t') && have) {
-            current.push_back(' ');
-            current += trim_copy(line);
-        } else {
-            if (have) {
-                size_t colon = current.find(':');
-                if (colon != std::string::npos && colon > 0) {
-                    HeaderRow row;
-                    row.name = trim_copy(current.substr(0, colon));
-                    row.raw = trim_copy(current.substr(colon + 1));
-                    if (!row.name.empty()) rows.push_back(row);
-                }
-            }
-            current = line;
-            have = true;
-        }
+    return trim_copy(out);
+}
+
+static void decode_row(HeaderRow * row, const std::string & raw) {
+    row->raw = unfold_value(raw);
+    char * phrase = nullptr;
+    char * note = nullptr;
+    int status = 0;
+    mime_decode_phrase(row->raw.data(), row->raw.size(), "ISO-8859-1", &phrase, &note, &status);
+    row->value = phrase != nullptr ? phrase : row->raw;
+    free(phrase);
+    free(note);
+}
+
+static void join_clist(std::string * out, clist * list) {
+    if (list == nullptr) return;
+    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+        auto * item = static_cast<char *>(clist_content(cur));
+        if (item == nullptr) continue;
+        if (!out->empty()) out->push_back(' ');
+        *out += item;
     }
-    if (have) {
-        size_t colon = current.find(':');
-        if (colon != std::string::npos && colon > 0) {
-            HeaderRow row;
-            row.name = trim_copy(current.substr(0, colon));
-            row.raw = trim_copy(current.substr(colon + 1));
-            if (!row.name.empty()) rows.push_back(row);
-        }
+}
+
+static void append_mailbox(std::string * out, struct mailimf_mailbox * mb) {
+    if (mb == nullptr) return;
+    if (mb->mb_display_name != nullptr && mb->mb_display_name[0] != 0) {
+        *out += mb->mb_display_name;
+        *out += " <";
+        if (mb->mb_addr_spec != nullptr) *out += mb->mb_addr_spec;
+        *out += '>';
+    } else if (mb->mb_addr_spec != nullptr) {
+        *out += mb->mb_addr_spec;
     }
-    for (size_t i = 0; i < rows.size(); ++i) {
-        char * phrase = nullptr;
-        char * note = nullptr;
-        int status = 0;
-        mime_decode_phrase(rows[i].raw.data(), rows[i].raw.size(), "ISO-8859-1", &phrase, &note, &status);
-        if (phrase != nullptr) rows[i].value = phrase;
-        else rows[i].value = rows[i].raw;
-        free(phrase);
-        free(note);
+}
+
+static void append_mailbox_list(std::string * out, struct mailimf_mailbox_list * list) {
+    if (list == nullptr || list->mb_list == nullptr) return;
+    bool first = true;
+    for (clistiter * cur = clist_begin(list->mb_list); cur != nullptr; cur = clist_next(cur)) {
+        if (!first) *out += ", ";
+        first = false;
+        append_mailbox(out, static_cast<struct mailimf_mailbox *>(clist_content(cur)));
     }
+}
+
+static void append_address(std::string * out, struct mailimf_address * ad) {
+    if (ad == nullptr) return;
+    if (ad->ad_type == MAILIMF_ADDRESS_MAILBOX) {
+        append_mailbox(out, ad->ad_data.ad_mailbox);
+        return;
+    }
+    if (ad->ad_type != MAILIMF_ADDRESS_GROUP || ad->ad_data.ad_group == nullptr) return;
+    struct mailimf_group * group = ad->ad_data.ad_group;
+    if (group->grp_display_name != nullptr) *out += group->grp_display_name;
+    *out += ": ";
+    append_mailbox_list(out, group->grp_mb_list);
+    *out += ';';
+}
+
+static void append_address_list(std::string * out, struct mailimf_address_list * list) {
+    if (list == nullptr || list->ad_list == nullptr) return;
+    bool first = true;
+    for (clistiter * cur = clist_begin(list->ad_list); cur != nullptr; cur = clist_next(cur)) {
+        if (!first) *out += ", ";
+        first = false;
+        append_address(out, static_cast<struct mailimf_address *>(clist_content(cur)));
+    }
+}
+
+static std::string format_date(struct mailimf_date_time * dt) {
+    if (dt == nullptr) return std::string();
+    static const char * months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    };
+    int month = dt->dt_month >= 1 && dt->dt_month <= 12 ? dt->dt_month : 1;
+    int zone = dt->dt_zone;
+    char sign = zone < 0 ? '-' : '+';
+    int absz = zone < 0 ? -zone : zone;
+    char buf[80];
+    snprintf(buf, sizeof(buf), "%d %s %d %02d:%02d:%02d %c%04d",
+        dt->dt_day, months[month - 1], dt->dt_year, dt->dt_hour, dt->dt_min, dt->dt_sec, sign, absz);
+    return std::string(buf);
+}
+
+static void push_row(std::vector<HeaderRow> * rows, const char * name, const std::string & raw) {
+    if (name == nullptr || name[0] == 0) return;
+    HeaderRow row;
+    row.name = name;
+    decode_row(&row, raw);
+    rows->push_back(std::move(row));
+}
+
+static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow> * rows) {
+    if (rows == nullptr) return 1;
+    rows->clear();
+    if (bytes == nullptr) {
+        bytes = "";
+        len = 0;
+    }
+    size_t block = header_block_len(bytes, len);
     size_t indx = 0;
     struct mailimf_fields * fields = nullptr;
-    int parsed = mailimf_fields_parse(bytes == nullptr ? "" : bytes, len, &indx, &fields);
-    if (parsed == MAILIMF_NO_ERROR && fields != nullptr && fields->fld_list != nullptr) {
+    int parsed = mailimf_fields_parse(bytes, block, &indx, &fields);
+    if (parsed != MAILIMF_NO_ERROR || fields == nullptr) {
+        if (fields != nullptr) mailimf_fields_free(fields);
+        return 1;
+    }
+    if (indx > block || !only_ws(bytes + indx, block - indx)) {
+        mailimf_fields_free(fields);
+        return 1;
+    }
+    if (fields->fld_list != nullptr) {
         for (clistiter * cur = clist_begin(fields->fld_list); cur != nullptr; cur = clist_next(cur)) {
             auto * field = static_cast<struct mailimf_field *>(clist_content(cur));
-            if (field == nullptr || field->fld_type != MAILIMF_FIELD_SUBJECT || field->fld_data.fld_subject == nullptr ||
-                field->fld_data.fld_subject->sbj_value == nullptr) {
-                continue;
-            }
-            const char * sbj = field->fld_data.fld_subject->sbj_value;
-            char * phrase = nullptr;
-            char * note = nullptr;
-            int status = 0;
-            mime_decode_phrase(sbj, strlen(sbj), "ISO-8859-1", &phrase, &note, &status);
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].name.size() == 7 && strncasecmp(rows[i].name.c_str(), "subject", 7) == 0 && phrase != nullptr) {
-                    rows[i].value = phrase;
+            if (field == nullptr) continue;
+            switch (field->fld_type) {
+            case MAILIMF_FIELD_RETURN_PATH:
+                if (field->fld_data.fld_return_path != nullptr && field->fld_data.fld_return_path->ret_path != nullptr &&
+                    field->fld_data.fld_return_path->ret_path->pt_addr_spec != nullptr) {
+                    push_row(rows, "Return-Path", field->fld_data.fld_return_path->ret_path->pt_addr_spec);
                 }
+                break;
+            case MAILIMF_FIELD_RESENT_DATE:
+                if (field->fld_data.fld_resent_date != nullptr) {
+                    push_row(rows, "Resent-Date", format_date(field->fld_data.fld_resent_date->dt_date_time));
+                }
+                break;
+            case MAILIMF_FIELD_RESENT_FROM: {
+                std::string raw;
+                if (field->fld_data.fld_resent_from != nullptr) append_mailbox_list(&raw, field->fld_data.fld_resent_from->frm_mb_list);
+                push_row(rows, "Resent-From", raw);
+                break;
             }
-            free(phrase);
-            free(note);
+            case MAILIMF_FIELD_RESENT_SENDER: {
+                std::string raw;
+                if (field->fld_data.fld_resent_sender != nullptr) append_mailbox(&raw, field->fld_data.fld_resent_sender->snd_mb);
+                push_row(rows, "Resent-Sender", raw);
+                break;
+            }
+            case MAILIMF_FIELD_RESENT_TO: {
+                std::string raw;
+                if (field->fld_data.fld_resent_to != nullptr) append_address_list(&raw, field->fld_data.fld_resent_to->to_addr_list);
+                push_row(rows, "Resent-To", raw);
+                break;
+            }
+            case MAILIMF_FIELD_RESENT_CC: {
+                std::string raw;
+                if (field->fld_data.fld_resent_cc != nullptr) append_address_list(&raw, field->fld_data.fld_resent_cc->cc_addr_list);
+                push_row(rows, "Resent-Cc", raw);
+                break;
+            }
+            case MAILIMF_FIELD_RESENT_BCC: {
+                std::string raw;
+                if (field->fld_data.fld_resent_bcc != nullptr) append_address_list(&raw, field->fld_data.fld_resent_bcc->bcc_addr_list);
+                push_row(rows, "Resent-Bcc", raw);
+                break;
+            }
+            case MAILIMF_FIELD_RESENT_MSG_ID:
+                if (field->fld_data.fld_resent_msg_id != nullptr && field->fld_data.fld_resent_msg_id->mid_value != nullptr) {
+                    push_row(rows, "Resent-Message-ID", field->fld_data.fld_resent_msg_id->mid_value);
+                }
+                break;
+            case MAILIMF_FIELD_ORIG_DATE:
+                if (field->fld_data.fld_orig_date != nullptr) {
+                    push_row(rows, "Date", format_date(field->fld_data.fld_orig_date->dt_date_time));
+                }
+                break;
+            case MAILIMF_FIELD_FROM: {
+                std::string raw;
+                if (field->fld_data.fld_from != nullptr) append_mailbox_list(&raw, field->fld_data.fld_from->frm_mb_list);
+                push_row(rows, "From", raw);
+                break;
+            }
+            case MAILIMF_FIELD_SENDER: {
+                std::string raw;
+                if (field->fld_data.fld_sender != nullptr) append_mailbox(&raw, field->fld_data.fld_sender->snd_mb);
+                push_row(rows, "Sender", raw);
+                break;
+            }
+            case MAILIMF_FIELD_REPLY_TO: {
+                std::string raw;
+                if (field->fld_data.fld_reply_to != nullptr) append_address_list(&raw, field->fld_data.fld_reply_to->rt_addr_list);
+                push_row(rows, "Reply-To", raw);
+                break;
+            }
+            case MAILIMF_FIELD_TO: {
+                std::string raw;
+                if (field->fld_data.fld_to != nullptr) append_address_list(&raw, field->fld_data.fld_to->to_addr_list);
+                push_row(rows, "To", raw);
+                break;
+            }
+            case MAILIMF_FIELD_CC: {
+                std::string raw;
+                if (field->fld_data.fld_cc != nullptr) append_address_list(&raw, field->fld_data.fld_cc->cc_addr_list);
+                push_row(rows, "Cc", raw);
+                break;
+            }
+            case MAILIMF_FIELD_BCC: {
+                std::string raw;
+                if (field->fld_data.fld_bcc != nullptr) append_address_list(&raw, field->fld_data.fld_bcc->bcc_addr_list);
+                push_row(rows, "Bcc", raw);
+                break;
+            }
+            case MAILIMF_FIELD_MESSAGE_ID:
+                if (field->fld_data.fld_message_id != nullptr && field->fld_data.fld_message_id->mid_value != nullptr) {
+                    push_row(rows, "Message-ID", field->fld_data.fld_message_id->mid_value);
+                }
+                break;
+            case MAILIMF_FIELD_IN_REPLY_TO: {
+                std::string raw;
+                if (field->fld_data.fld_in_reply_to != nullptr) join_clist(&raw, field->fld_data.fld_in_reply_to->mid_list);
+                push_row(rows, "In-Reply-To", raw);
+                break;
+            }
+            case MAILIMF_FIELD_REFERENCES: {
+                std::string raw;
+                if (field->fld_data.fld_references != nullptr) join_clist(&raw, field->fld_data.fld_references->mid_list);
+                push_row(rows, "References", raw);
+                break;
+            }
+            case MAILIMF_FIELD_SUBJECT:
+                if (field->fld_data.fld_subject != nullptr && field->fld_data.fld_subject->sbj_value != nullptr) {
+                    push_row(rows, "Subject", field->fld_data.fld_subject->sbj_value);
+                }
+                break;
+            case MAILIMF_FIELD_COMMENTS:
+                if (field->fld_data.fld_comments != nullptr && field->fld_data.fld_comments->cm_value != nullptr) {
+                    push_row(rows, "Comments", field->fld_data.fld_comments->cm_value);
+                }
+                break;
+            case MAILIMF_FIELD_KEYWORDS: {
+                std::string raw;
+                if (field->fld_data.fld_keywords != nullptr) join_clist(&raw, field->fld_data.fld_keywords->kw_list);
+                push_row(rows, "Keywords", raw);
+                break;
+            }
+            case MAILIMF_FIELD_OPTIONAL_FIELD:
+                if (field->fld_data.fld_optional_field != nullptr && field->fld_data.fld_optional_field->fld_name != nullptr) {
+                    const char * value = field->fld_data.fld_optional_field->fld_value;
+                    push_row(rows, field->fld_data.fld_optional_field->fld_name, value != nullptr ? value : "");
+                }
+                break;
+            default:
+                break;
+            }
         }
     }
-    if (fields != nullptr) mailimf_fields_free(fields);
-    return rows;
+    mailimf_fields_free(fields);
+    return 0;
 }
 
 struct MimeHeaders {
@@ -10826,7 +11030,8 @@ extern "C" int mime_parse_headers(const char * bytes, size_t len, struct MimeHea
     if (out == nullptr || count == nullptr) return 1;
     *out = nullptr;
     *count = 0;
-    std::vector<HeaderRow> rows = unfold_headers(bytes, len);
+    std::vector<HeaderRow> rows;
+    if (unfold_headers(bytes, len, &rows) != 0) return 1;
     if (rows.empty()) return 0;
     MimeHeaders * list = static_cast<MimeHeaders *>(calloc(rows.size(), sizeof(MimeHeaders)));
     if (list == nullptr) return 1;

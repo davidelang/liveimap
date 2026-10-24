@@ -6529,6 +6529,11 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyte
     int count = 0;
     if (mime_parse_headers(in.data(), in.size(), &rows, &count) != 0 || count < 0) {
         mime_headers_free(rows, count);
+        jclass ex = env->FindClass("org/dlang/liveimap/ui/compose/MimeDecodeException");
+        if (ex != nullptr) {
+            env->ThrowNew(ex, "could not parse these headers");
+            env->DeleteLocalRef(ex);
+        }
         return nullptr;
     }
     jclass cls = env->FindClass("java/lang/String");

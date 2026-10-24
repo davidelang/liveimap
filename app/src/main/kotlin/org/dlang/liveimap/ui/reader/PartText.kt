@@ -41,7 +41,7 @@ internal object MimeDecode {
     external fun parameter2231(raw: String, fallback: String): String
 
     @JvmStatic
-    external fun headers(bytes: ByteArray): Array<String>?
+    external fun headers(bytes: ByteArray): Array<String>
 }
 
 fun decodePart(bytes: ByteArray, charset: String, encoding: String): DecodedPart {
