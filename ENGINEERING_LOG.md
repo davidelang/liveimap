@@ -3633,3 +3633,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - NativeGuardsPass4Test no longer names nativeFetchSortFieldsRange. It reads client_order.cpp and requires std::unordered_map in co_thread_subject and co_thread_references, and no co_decode_words.
 - Pass5GuardTest no longer asserts the deleted stub call. The sequencesStale early return stays.
 - The host fuzz binary is not built.
+
+## 2026-10-24 - Unit tests no longer call the deleted client thread.

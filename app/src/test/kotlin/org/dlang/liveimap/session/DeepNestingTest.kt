@@ -1,6 +1,5 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.ui.compose.attachmentParts
 import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.ui.compose.textPart
@@ -22,25 +21,6 @@ class DeepNestingTest {
             n.children.forEach { stack.addLast(it to d + 1) }
         }
         return best
-    }
-
-    @Test(timeout = 30_000)
-    fun longReferencesChainKeepsItsFullDepthAndEveryMessage() {
-        val n = 20_000
-        val rows = (1..n).map { i ->
-            ThreadHeader(i.toLong(), "<m$i@x>", if (i > 1) "<m${i - 1}@x>" else "", "", "chain")
-        }
-        val root = clientThreads(rows, SortKey.ThreadReferences)
-        assertEquals(n, depthOf(root))   // placeholder root + one level per reply: no depth limit
-        assertEquals(n, root.messageCount())
-        assertEquals(root, clientThreads(rows, SortKey.ThreadReferences))   // iterative equals on a deep tree
-        root.hashCode()
-        root.toString()
-        val uids = orderedThreadUids(root, newestFirst = false)
-        assertEquals((1L..n.toLong()).toList(), uids)
-        val collapsed = collapsedThreads(root, newestFirst = false)
-        assertEquals(1, collapsed.size)
-        assertEquals(n - 1, collapsed[0].depthByUid.values.max())
     }
 
     private fun nested(levels: Int): MimePart {
