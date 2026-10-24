@@ -3585,3 +3585,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-23 - Index sort, filter line, and collapsed-thread swipe.
 
 ## 2026-10-21 - A settings save does not reload itself, and a toolbar drag scrolls the pane.
+
+## 2026-10-24 - Toolbar drag offset is a graphics layer.
+
+- Pane edge-scroll adds the consumed scroll to a graphicsLayer translation. The reorderable reflection is gone.

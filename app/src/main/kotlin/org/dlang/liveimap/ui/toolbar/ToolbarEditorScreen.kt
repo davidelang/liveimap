@@ -1,9 +1,6 @@
 package org.dlang.liveimap.ui.toolbar
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.horizontalScroll
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -50,8 +48,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import sh.calvin.reorderable.ReorderableColumn
 import sh.calvin.reorderable.ReorderableListItemScope
-import sh.calvin.reorderable.ReorderableListScope
-import sh.calvin.reorderable.ReorderableListState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -405,12 +401,13 @@ private fun <A : Enum<A>> SectionEditor(
             onSettle = { from, to -> drag.value(from, to) },
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) { index, line, isDragging ->
-            val reorderScope = this
+        ) { _, line, isDragging ->
             key(line.key) {
                 ReorderableItem {
                     // Drag draws with graphicsLayer translation, which does not place the item again.
                     var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                    var compensation by remember { mutableStateOf(0f) }
+                    if (!isDragging) compensation = 0f
                     if (isDragging) {
                         val edgePx = with(LocalDensity.current) { 48.dp.toPx() }
                         LaunchedEffect(scrollState) {
@@ -430,13 +427,15 @@ private fun <A : Enum<A>> SectionEditor(
                                 if (step == 0f) continue
                                 var consumed = 0f
                                 scrollState.scroll { consumed = scrollBy(step) }
-                                // itemOffsets is only the finger delta. Add the scroll or the row leaves the finger.
-                                if (consumed != 0f) addDragOffset(reorderScope, index, consumed)
+                                // Library translation stays the finger delta. This layer adds the pane scroll.
+                                compensation += consumed
                             }
                         }
                     }
                     Column(
-                        Modifier.onGloballyPositioned { itemCoords = it },
+                        Modifier
+                            .graphicsLayer { translationY = compensation }
+                            .onGloballyPositioned { itemCoords = it },
                     ) {
                         when (line) {
                             is EditorLine.Header -> Text(
@@ -689,43 +688,3 @@ internal fun notePaneScroll(scroll: ScrollState, top: Float, bottom: Float) {
 }
 
 private fun paneEdge(scroll: ScrollState): PaneEdge? = paneEdges[scroll]
-
-// Reorderable 3.1.0 keeps the drag offset internal. The same scroll must be added there or positionInParent stays put.
-private suspend fun addDragOffset(scope: ReorderableListScope, index: Int, delta: Float) {
-    val state = ReorderAccess.state(scope)
-    val anim = ReorderAccess.offset(state, index) ?: return
-    val drag = ReorderAccess.drag(state, index) ?: return
-    anim.snapTo(anim.targetValue + delta)
-    drag.dispatchRawDelta(0f)
-}
-
-private object ReorderAccess {
-    private val stateOf = ReorderableListScope::class.java.getMethod(
-        "access\$getState\$p",
-        ReorderableListScope::class.java,
-    )
-    // Debug APKs suffix internal accessors with $reorderable_debug, not $reorderable_release.
-    private val offsetsOf = member("getItemOffsets")
-    private val dragsOf = member("getDraggableStates")
-
-    private fun member(base: String): java.lang.reflect.Method {
-        val type = ReorderableListState::class.java
-        return type.methods.firstOrNull { it.name == "$base\$reorderable_debug" }
-            ?: type.getMethod("$base\$reorderable_release")
-    }
-
-    fun state(scope: ReorderableListScope): ReorderableListState =
-        stateOf.invoke(null, scope) as ReorderableListState
-
-    @Suppress("UNCHECKED_CAST")
-    fun offset(state: ReorderableListState, index: Int): Animatable<Float, AnimationVector1D>? {
-        val offsets = offsetsOf.invoke(state) as List<Animatable<Float, AnimationVector1D>>
-        return offsets.getOrNull(index)
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    fun drag(state: ReorderableListState, index: Int): DraggableState? {
-        val drags = dragsOf.invoke(state) as List<DraggableState>
-        return drags.getOrNull(index)
-    }
-}

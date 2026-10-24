@@ -131,7 +131,12 @@ class SettingsSplitTest {
 
     @Test fun dragScrollsTheParentPane() {
         val toolbar = src("main/kotlin/org/dlang/liveimap/ui/toolbar/ToolbarEditorScreen.kt")
-        assertTrue(slice(toolbar, "fun <A : Enum<A>> SectionEditor").contains("scrollBy"))
+        val section = slice(toolbar, "fun <A : Enum<A>> SectionEditor")
+        assertTrue(section.contains("scrollBy"))
+        assertTrue(section.contains("translationY = compensation"))
+        assertFalse(section.contains("getMethod"))
+        assertFalse(section.contains("access\$getState"))
+        assertFalse(section.contains("reorderable_release"))
         val page = slice(toolbar, "fun ToolbarEditorPage")
         assertTrue(page.contains("rememberScrollState"))
         assertTrue(page.contains("ToolbarEditorScreen("))
