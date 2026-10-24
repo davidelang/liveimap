@@ -984,6 +984,9 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
         session->selfHold.reset();
         session->ownerFinished.store(true);
         session->ownerFinished.notify_all();
+        // ~LiveSession deletes keyChainKey only while GetEnv succeeds. This parameter
+        // dies after the detach guard, so drop it here, still attached, after the fd close.
+        session.reset();
         return;
     }
     tlsOwnerEnv = env;
@@ -1025,6 +1028,8 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     session->selfHold.reset();
     session->ownerFinished.store(true);
     session->ownerFinished.notify_all();
+    // Drop this ref while still attached, after the fd close, so an owner-thread close can DeleteGlobalRef.
+    session.reset();
 }
 
 void startOwner(const std::shared_ptr<LiveSession> & session) {
