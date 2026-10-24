@@ -675,13 +675,21 @@ private fun MessageReaderLoaded(
         return bodyGeneration
     }
 
+    var plainVersion by remember { mutableIntStateOf(0) }
+    var bodyEpoch by remember { mutableIntStateOf(0) }
+    fun clearBodyLines() {
+        val lines = bodyLines
+        lines.clear()
+        bodyEpoch += 1
+    }
+
     fun showMissing(text: String, noText: Boolean = false, offerHtml: Boolean = false) {
         missing = text
         noTextPart = noText
         showHtmlButton = offerHtml && noText
         renderedHtml = false
         bodyText = ""
-        bodyLines.clear()
+        clearBodyLines()
         bodyTruncated = false
         bodySection = null
         bodyOffset = 0
@@ -693,7 +701,9 @@ private fun MessageReaderLoaded(
     }
 
     fun publishDecoded(piece: String, finished: Boolean = false) {
+        val before = bodyLines.size
         val htmlBody = carry.appendPiece(piece, bodyLines, finished, renderedHtml)
+        if (bodyLines.size > before) plainVersion += 1
         if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
         charsetNote = carry.decoder?.note
     }
@@ -703,7 +713,7 @@ private fun MessageReaderLoaded(
         if (reset) {
             pageGeneration = token
             bodyText = ""
-            bodyLines.clear()
+            clearBodyLines()
             bodyOffset = 0
             bodySize = part.size
             bodySection = part.section
@@ -764,7 +774,7 @@ private fun MessageReaderLoaded(
         noTextPart = false
         renderedHtml = false
         bodyText = ""
-        bodyLines.clear()
+        clearBodyLines()
         bodyOffset = 0
         bodySize = 0
         bodySection = section
@@ -808,7 +818,7 @@ private fun MessageReaderLoaded(
             carry.pending = ByteArray(0)
         }
         bodyText = built.toString()
-        bodyLines.clear()
+        clearBodyLines()
         bodyLines.addAll(readerLines(bodyText))
     }
 
@@ -928,7 +938,7 @@ private fun MessageReaderLoaded(
                     missing = null
                     renderedHtml = true
                     bodyText = ""
-                    bodyLines.clear()
+                    clearBodyLines()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
@@ -960,7 +970,7 @@ private fun MessageReaderLoaded(
                     bodyOffset = bytes.size
                     charsetNote = note
                     bodyText = text
-                    bodyLines.clear()
+                    clearBodyLines()
                     bodyLines.addAll(readerLines(text))
                     bodyTruncated = truncated
                 }
@@ -974,7 +984,7 @@ private fun MessageReaderLoaded(
                     noTextPart = false
                     missing = null
                     bodyText = ""
-                    bodyLines.clear()
+                    clearBodyLines()
                     bodyTruncated = false
                     bodySection = html.section
                     bodyOffset = 0
@@ -1006,7 +1016,7 @@ private fun MessageReaderLoaded(
                     bodyOffset = bytes.size
                     charsetNote = note
                     bodyText = htmlAsText(text)
-                    bodyLines.clear()
+                    clearBodyLines()
                     bodyLines.addAll(readerLines(bodyText))
                     bodyTruncated = truncated
                 }
@@ -1728,11 +1738,50 @@ private fun MessageReaderLoaded(
     val noWrap = textLayout == TextLayout.Monospaced
     val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
-    val plainLines = remember(bodyLines.toList(), quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
-        displayLines(bodyLines, textLayout, plainFlowed, plainDelSp).map { line ->
-            val quoted = quotedReaderLine(line)
-            quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge)
+    val plainCache = remember {
+        object {
+            var consumed = 0
+            var epoch = -1
+            var styled = false
+            var quote = Color.Unspecified
+            var link = Color.Unspecified
+            var bridge: LinkBridge? = null
+            var layout: TextLayout? = null
+            var flowed = false
+            var delSp = false
+            val processed = ArrayList<String>()
+            val annotated = ArrayList<Pair<Boolean, AnnotatedString>>()
         }
+    }
+    val plainLines = remember(plainVersion, bodyEpoch, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+        val styleChanged = !plainCache.styled ||
+            plainCache.quote != quoteTint || plainCache.link != linkColor || plainCache.bridge != linkBridge ||
+            plainCache.layout != textLayout || plainCache.flowed != plainFlowed || plainCache.delSp != plainDelSp
+        if (styleChanged || plainCache.epoch != bodyEpoch || bodyLines.size < plainCache.consumed) {
+            plainCache.processed.clear()
+            plainCache.annotated.clear()
+            plainCache.consumed = 0
+            plainCache.epoch = bodyEpoch
+            plainCache.styled = true
+            plainCache.quote = quoteTint
+            plainCache.link = linkColor
+            plainCache.bridge = linkBridge
+            plainCache.layout = textLayout
+            plainCache.flowed = plainFlowed
+            plainCache.delSp = plainDelSp
+        }
+        if (bodyLines.size > plainCache.consumed) {
+            val fresh = ArrayList<String>(bodyLines.size - plainCache.consumed)
+            for (i in plainCache.consumed until bodyLines.size) fresh.add(bodyLines[i])
+            val displayed = displayLines(fresh, textLayout, plainFlowed, plainDelSp)
+            plainCache.processed.addAll(displayed)
+            for (line in displayed) {
+                val quoted = quotedReaderLine(line)
+                plainCache.annotated.add(quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge))
+            }
+            plainCache.consumed = bodyLines.size
+        }
+        plainCache.annotated
     }
     val readerLayout = effectiveReaderToolbar(account)
     val barActions = visibleReaderActions(readerLayout.toolbar, account.spamMailbox)
