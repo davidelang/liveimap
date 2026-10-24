@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.toolbar
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +29,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -42,7 +48,9 @@ import androidx.compose.ui.unit.dp
 import sh.calvin.reorderable.ReorderableColumn
 import sh.calvin.reorderable.ReorderableListItemScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.WeakHashMap
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
@@ -140,7 +148,7 @@ private class ToolbarSettings(
 }
 
 @Composable
-fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
+fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: ScrollState) {
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
@@ -192,6 +200,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
             onReset = { holder.persistIndex(resetIndexBar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            scrollState = scrollState,
         )
         ToolbarScreen.Selection -> SectionEditor(
             rowsIn = { section -> loaded.selectionBar.actionsIn(section) },
@@ -224,6 +233,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
             onReset = { holder.persistSelection(resetSelectionBar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            scrollState = scrollState,
         )
         ToolbarScreen.Folders -> SectionEditor(
             rowsIn = { section -> loaded.folderBar.actionsIn(section) },
@@ -256,6 +266,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
             onReset = { holder.persistFolder(resetFolderBar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            scrollState = scrollState,
         )
         ToolbarScreen.Reader -> SectionEditor(
             rowsIn = { section -> effectiveReaderToolbar(loaded).actionsIn(section) },
@@ -288,6 +299,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
             onReset = { holder.persistReader(resetReaderToolbar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            scrollState = scrollState,
         )
         ToolbarScreen.Compose -> SectionEditor(
             rowsIn = { section -> loaded.composeBar.actionsIn(section) },
@@ -320,6 +332,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
             onReset = { holder.persistCompose(resetComposeBar()) },
             toolbarRows = loaded.toolbarRows,
             onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            scrollState = scrollState,
         )
         }
     }
@@ -329,14 +342,18 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String) {
 fun ToolbarEditorPage(
     screen: ToolbarScreen,
     accountId: String,
-    content: @Composable () -> Unit = { ToolbarEditorScreen(screen, accountId) },
 ) {
+    val scroll = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInRoot()
+                notePaneScroll(scroll, bounds.top, bounds.bottom)
+            }
+            .verticalScroll(scroll),
     ) {
-        content()
+        ToolbarEditorScreen(screen, accountId, scroll)
     }
 }
 
@@ -362,6 +379,7 @@ private fun <A : Enum<A>> SectionEditor(
     onReset: () -> Unit,
     toolbarRows: Int,
     onToolbarRows: (Int) -> Unit,
+    scrollState: ScrollState,
 ) {
     val lines = buildList {
         for (section in BarSection.entries) {
@@ -382,22 +400,48 @@ private fun <A : Enum<A>> SectionEditor(
             onSettle = { from, to -> drag.value(from, to) },
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) { _, line, _ ->
+        ) { _, line, isDragging ->
             key(line.key) {
                 ReorderableItem {
-                    when (line) {
-                        is EditorLine.Header -> Text(
-                            text = sectionTitle(line.section),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        is EditorLine.Action -> ToolbarEditorRow(
-                            labelRes = labelRes(line.action),
-                            section = line.section,
-                            index = line.index,
-                            count = line.count,
-                            onMoveBy = { delta -> onMoveBy(line.action, delta) },
-                            onMoveTo = { target -> onMoveTo(line.action, target) },
-                        )
+                    // Drag draws with graphicsLayer translation, which does not place the item again.
+                    var itemCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                    if (isDragging) {
+                        val edgePx = with(LocalDensity.current) { 48.dp.toPx() }
+                        LaunchedEffect(scrollState) {
+                            while (isActive) {
+                                withFrameNanos { }
+                                val pane = paneEdge(scrollState)
+                                val coords = itemCoords
+                                if (pane == null || pane.top.isNaN() || coords == null || !coords.isAttached) continue
+                                val item = coords.boundsInRoot()
+                                val step = when {
+                                    item.top <= pane.top + edgePx && scrollState.value > 0 ->
+                                        -minOf(24f, scrollState.value.toFloat())
+                                    item.bottom >= pane.bottom - edgePx && scrollState.value < scrollState.maxValue ->
+                                        minOf(24f, (scrollState.maxValue - scrollState.value).toFloat())
+                                    else -> 0f
+                                }
+                                if (step != 0f) scrollState.scrollBy(step)
+                            }
+                        }
+                    }
+                    Column(
+                        Modifier.onGloballyPositioned { itemCoords = it },
+                    ) {
+                        when (line) {
+                            is EditorLine.Header -> Text(
+                                text = sectionTitle(line.section),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            is EditorLine.Action -> ToolbarEditorRow(
+                                labelRes = labelRes(line.action),
+                                section = line.section,
+                                index = line.index,
+                                count = line.count,
+                                onMoveBy = { delta -> onMoveBy(line.action, delta) },
+                                onMoveTo = { target -> onMoveTo(line.action, target) },
+                            )
+                        }
                     }
                 }
             }
@@ -620,3 +664,18 @@ private fun ComposeBarLayout.actionsIn(section: BarSection): List<ComposeBarActi
     BarSection.Overflow -> overflow
     BarSection.Hidden -> hidden
 }
+
+private class PaneEdge {
+    var top = Float.NaN
+    var bottom = Float.NaN
+}
+
+private val paneEdges = WeakHashMap<ScrollState, PaneEdge>()
+
+internal fun notePaneScroll(scroll: ScrollState, top: Float, bottom: Float) {
+    val edge = paneEdges.getOrPut(scroll) { PaneEdge() }
+    edge.top = top
+    edge.bottom = bottom
+}
+
+private fun paneEdge(scroll: ScrollState): PaneEdge? = paneEdges[scroll]

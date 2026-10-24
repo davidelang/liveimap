@@ -157,7 +157,6 @@ import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
-import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 
 private class PendingCert(
@@ -761,9 +760,7 @@ fun LiveImapNavHost() {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Index, accountId) {
-                            ToolbarEditorScreen(ToolbarScreen.Index, accountId)
-                        }
+                        ToolbarEditorPage(ToolbarScreen.Index, accountId)
                     }
                 }
             }
@@ -771,9 +768,7 @@ fun LiveImapNavHost() {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Selection, accountId) {
-                            ToolbarEditorScreen(ToolbarScreen.Selection, accountId)
-                        }
+                        ToolbarEditorPage(ToolbarScreen.Selection, accountId)
                     }
                 }
             }
@@ -781,9 +776,7 @@ fun LiveImapNavHost() {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Folders, accountId) {
-                            ToolbarEditorScreen(ToolbarScreen.Folders, accountId)
-                        }
+                        ToolbarEditorPage(ToolbarScreen.Folders, accountId)
                     }
                 }
             }
@@ -791,9 +784,7 @@ fun LiveImapNavHost() {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Reader, accountId) {
-                            ToolbarEditorScreen(ToolbarScreen.Reader, accountId)
-                        }
+                        ToolbarEditorPage(ToolbarScreen.Reader, accountId)
                     }
                 }
             }
@@ -801,9 +792,7 @@ fun LiveImapNavHost() {
                 val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Compose, accountId) {
-                            ToolbarEditorScreen(ToolbarScreen.Compose, accountId)
-                        }
+                        ToolbarEditorPage(ToolbarScreen.Compose, accountId)
                     }
                 }
             }

@@ -3583,3 +3583,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-23 - Reader header, display menu, quotes, and message swipes.
 
 ## 2026-10-23 - Index sort, filter line, and collapsed-thread swipe.
+
+## 2026-10-21 - A settings save does not reload itself, and a toolbar drag scrolls the pane.

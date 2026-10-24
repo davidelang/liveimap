@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
@@ -81,6 +82,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
@@ -144,6 +147,7 @@ import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.paneControlsEnabled
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
+import org.dlang.liveimap.ui.toolbar.notePaneScroll
 
 /**
  * F96: a failed save (e.g. Keystore unavailable, so a password is refused) is shown, never an uncaught
@@ -446,12 +450,17 @@ fun SettingsTree(
     val sections = rememberSectionOpen()
     val settings = editor.settings
     val depth = 0
+    val scroll = rememberScrollState()
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInRoot()
+                notePaneScroll(scroll, bounds.top, bounds.bottom)
+            }
+            .verticalScroll(scroll)
             .padding(16.dp)
             .testTag("smoke-settings"),
     ) {
@@ -476,7 +485,7 @@ fun SettingsTree(
                     }
                 }
             }
-            ToolbarsSection(editor, depth)
+            ToolbarsSection(editor, depth, scroll)
             FavoritesSection(editor, depth) { favorite ->
                 editingFavorite = favorite
                 favoriteDraft = if (favorite.label.isNotBlank()) {
@@ -542,7 +551,7 @@ private fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, de
 }
 
 @Composable
-private fun ToolbarsSection(editor: SettingsEditor, depth: Int) {
+private fun ToolbarsSection(editor: SettingsEditor, depth: Int, scroll: ScrollState) {
     val bars = rememberSectionOpen()
     val accountId = editor.editingId.orEmpty()
     LaunchedEffect(editor.editingId) {
@@ -569,11 +578,11 @@ private fun ToolbarsSection(editor: SettingsEditor, depth: Int) {
         expanded = "toolbars" in bars.open,
         onToggle = { bars.toggle("toolbars") },
     ) {
-        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId, depth + 1)
-        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId, depth + 1)
-        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId, depth + 1)
-        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId, depth + 1)
-        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId, depth + 1)
+        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId, depth + 1, scroll)
+        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId, depth + 1, scroll)
+        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId, depth + 1, scroll)
+        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId, depth + 1, scroll)
+        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId, depth + 1, scroll)
     }
 }
 
@@ -585,6 +594,7 @@ private fun ToolbarBlock(
     screen: ToolbarScreen,
     accountId: String,
     depth: Int,
+    scroll: ScrollState,
 ) {
     val title = stringResource(titleRes)
     SettingsNode(
@@ -595,7 +605,7 @@ private fun ToolbarBlock(
         onToggle = { bars.toggle(id) },
     ) {
         key(ToolbarRevision.value) {
-            ToolbarEditorScreen(screen, accountId)
+            ToolbarEditorScreen(screen, accountId, scroll)
         }
     }
 }

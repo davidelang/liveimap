@@ -68,7 +68,7 @@ class ToolbarAccountTest {
         assertTrue(nav.contains("toolbarAccountId.value = accountId"))
         assertTrue(nav.contains("rememberSaveable { toolbarAccountId.value }"))
         for (screen in listOf("Index", "Selection", "Folders", "Reader", "Compose")) {
-            assertTrue(nav.contains("ToolbarEditorScreen(ToolbarScreen.$screen, accountId)"))
+            assertTrue(nav.contains("ToolbarEditorPage(ToolbarScreen.$screen, accountId)"))
         }
         assertTrue(nav.contains("onCustomize = { accountId -> openToolbar(\"index\", accountId) }"))
         assertTrue(nav.contains("onCustomizeSelection = { accountId -> openToolbar(\"selection\", accountId) }"))

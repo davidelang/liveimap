@@ -129,6 +129,20 @@ class SettingsSplitTest {
         assertTrue(editor.contains("LaunchedEffect(store) { editor.load() }"))
     }
 
+    @Test fun dragScrollsTheParentPane() {
+        val toolbar = src("main/kotlin/org/dlang/liveimap/ui/toolbar/ToolbarEditorScreen.kt")
+        assertTrue(slice(toolbar, "fun <A : Enum<A>> SectionEditor").contains("scrollBy"))
+        val page = slice(toolbar, "fun ToolbarEditorPage")
+        assertTrue(page.contains("rememberScrollState"))
+        assertTrue(page.contains("ToolbarEditorScreen("))
+        val nav = src("main/kotlin/org/dlang/liveimap/ui/NavHost.kt")
+        for (name in listOf("index", "selection", "folders", "reader", "compose")) {
+            val route = nav.substringAfter("composable(\"toolbar/$name\")").substringBefore("\n            composable(")
+            assertFalse(name, route.contains("ToolbarEditorScreen("))
+            assertTrue(name, route.contains("ToolbarEditorPage("))
+        }
+    }
+
     private fun slice(source: String, signature: String): String {
         val start = source.indexOf(signature)
         assertTrue(signature, start >= 0)
