@@ -178,6 +178,8 @@ const char * sniName(const char * host);
 extern std::atomic<bool> gLabMaxTls12;
 std::string tlsFailureReason();
 
+extern thread_local JNIEnv * mimeEnv;
+
 namespace {
 
 struct LiveThread {
@@ -1051,6 +1053,15 @@ void discardUnpublished(std::shared_ptr<LiveSession> session) {
     session->selfHold.reset();
 }
 
+// A nested call restores the caller's env. The outermost return clears it.
+struct MimeEnvScope {
+    JNIEnv * prev;
+    explicit MimeEnvScope(JNIEnv * env) : prev(mimeEnv) { mimeEnv = env; }
+    ~MimeEnvScope() { mimeEnv = prev; }
+    MimeEnvScope(const MimeEnvScope &) = delete;
+    MimeEnvScope & operator=(const MimeEnvScope &) = delete;
+};
+
 template <typename R, typename F>
 R withOwner(JNIEnv * caller, jlong handle, F && fn) {
     auto failed = []() -> R {
@@ -1063,6 +1074,7 @@ R withOwner(JNIEnv * caller, jlong handle, F && fn) {
     }
     auto * raw = reinterpret_cast<LiveSession *>(handle);
     if (tlsOwner == raw) {
+        MimeEnvScope scope(caller);
         if constexpr (std::is_void_v<R>) {
             fn(caller);
             return;
@@ -1083,6 +1095,7 @@ R withOwner(JNIEnv * caller, jlong handle, F && fn) {
         ensureOwnerEnv();
         JNIEnv * env = tlsOwnerEnv;
         if (env == nullptr) return;
+        MimeEnvScope scope(env);
         if constexpr (std::is_void_v<R>) fn(env);
         else value = fn(env);
         if (env->ExceptionCheck()) {
@@ -6356,6 +6369,8 @@ struct MimeHeaders {
     char * raw;
 };
 
+extern thread_local JNIEnv * mimeEnv;
+
 extern "C" {
 void mime_decode_install(void);
 int mime_decode_text(const char * bytes, size_t len, const char * declared, const char * fallback,
@@ -6404,6 +6419,7 @@ static jobjectArray stringTriple(JNIEnv * env, const char * a, const char * b, c
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_text(JNIEnv * env, jclass, jbyteArray bytes, jstring declared,
     jstring fallback, jstring encoding) {
+    MimeEnvScope scope(env);
     std::string in = bytesOf(env, bytes);
     auto declaredUtf = utf8FromJava(env, declared);
     auto fallbackUtf = utf8FromJava(env, fallback);
@@ -6425,6 +6441,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_text(JNIEnv * env, jclass, jbyteArr
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_streamOpen(JNIEnv * env, jclass, jstring declared, jstring fallback,
     jstring encoding) {
+    MimeEnvScope scope(env);
     auto declaredUtf = utf8FromJava(env, declared);
     auto fallbackUtf = utf8FromJava(env, fallback);
     auto encodingUtf = utf8FromJava(env, encoding);
@@ -6438,6 +6455,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_streamOpen(JNIEnv * env, jclass, js
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_streamTake(JNIEnv * env, jclass, jlong handle, jbyteArray chunk,
     jboolean finalChunk) {
+    MimeEnvScope scope(env);
     std::string in = bytesOf(env, chunk);
     char * note = nullptr;
     int status = 1;
@@ -6488,6 +6506,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_xferClose(JNIEnv *, jclass, jlong h
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstring value) {
+    MimeEnvScope scope(env);
     auto utf = utf8FromJava(env, value);
     const std::string empty;
     const std::string & text = utf ? *utf : empty;
@@ -6504,6 +6523,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstrin
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_parameter2231(JNIEnv * env, jclass, jstring raw, jstring fallback) {
+    MimeEnvScope scope(env);
     auto rawUtf = utf8FromJava(env, raw);
     auto fallbackUtf = utf8FromJava(env, fallback);
     const std::string empty;
@@ -6531,6 +6551,7 @@ static jstring bytesAsLatin1(JNIEnv * env, const char * text) {
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyteArray bytes) {
+    MimeEnvScope scope(env);
     std::string in = bytesOf(env, bytes);
     MimeHeaders * rows = nullptr;
     int count = 0;

@@ -73,6 +73,28 @@ class PartTextTest {
         }
     }
 
+    @Test
+    fun unfinishedCharsetBytes() {
+        assertDecoded("GB18030", raw(0x95, 0x32, 0x82, 0x36), "𠀀")
+        assertDecoded("EUC-JP", raw(0x8F, 0xB0, 0xA1), "丂")
+        assertDecoded("ISO-2022-JP-2", raw(0x1B, 0x24, 0x28, 0x44, 0x22, 0x42, 0x1B, 0x28, 0x42), "¡")
+        assertDecoded("windows-874", raw(0xA1), "ก")
+        assertDecoded("UTF-16", raw(0xFE, 0xFF, 0x00, 0x41), "A")
+        assertDecoded("UTF-7", raw(0x2B, 0x41, 0x4F, 0x6B, 0x2D), "é")
+        assertDecoded("Big5-HKSCS", raw(0x9E, 0xB3), "丄")
+        assertDecoded("ISO-2022-KR", raw(0x1B, 0x24, 0x29, 0x43, 0x0E, 0x30, 0x21, 0x0F), "가")
+        assertDecoded("IBM866", raw(0x80), "А")
+        assertDecoded("macintosh", raw(0x80), "Ä")
+    }
+
+    private fun raw(vararg bytes: Int): ByteArray = ByteArray(bytes.size) { bytes[it].toByte() }
+
+    private fun assertDecoded(charset: String, bytes: ByteArray, text: String) {
+        val decoded = decodePart(bytes, charset, "")
+        assertEquals(text, decoded.text)
+        assertFalse(decoded.unknownCharset)
+    }
+
     private fun decodeNamed(charset: String, text: String): String {
         val bytes = text.toByteArray(Charset.forName(charset))
         val decoded = decodePart(bytes, charset, "")

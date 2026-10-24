@@ -7,6 +7,8 @@
 #include <libetpan/mmapstring.h>
 
 #include <ctype.h>
+#include <jni.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,8 +44,10 @@ struct ConvState {
     int partial_len;
     int iso_mode;
     bool saw;
+    bool use_java;
 };
 
+thread_local JNIEnv * mimeEnv = nullptr;
 static thread_local bool g_saw_illegal = false;
 static int mime_extended_charconv(const char * tocode, const char * fromcode, const char * str, size_t length,
     char * result, size_t * result_len);
@@ -9706,9 +9710,270 @@ static bool setup_conv(ConvState * st, const char * name) {
     return false;
 }
 
-static bool known_charset(const char * name) {
+static bool table_gap(const std::string & n) {
+    return n == "gb18030" || n == "euc-jp" || n == "eucjp" || n == "cseucpkdfmtjapanese" || n == "iso-2022-jp-2";
+}
+
+static bool tables_claim(const char * name) {
     ConvState st;
     return setup_conv(&st, name);
+}
+
+static bool tables_finish(const char * name) {
+    if (table_gap(canon_name(name))) return false;
+    return tables_claim(name);
+}
+
+static std::string java_charset_label(const char * name) {
+    std::string n = canon_name(name);
+    if (n == "euc-jp" || n == "eucjp" || n == "cseucpkdfmtjapanese") return "EUC-JP";
+    if (n == "gb18030") return "GB18030";
+    if (n == "iso-2022-jp-2") return "ISO-2022-JP-2";
+    if (name == nullptr) return std::string();
+    return std::string(name);
+}
+
+struct JniFrame {
+    JNIEnv * env;
+    bool open;
+    JniFrame(JNIEnv * e, jint n) : env(e), open(false) {
+        if (e->PushLocalFrame(n) == 0) open = true;
+        else e->ExceptionClear();
+    }
+    ~JniFrame() {
+        if (open) env->PopLocalFrame(nullptr);
+    }
+    JniFrame(const JniFrame &) = delete;
+    JniFrame & operator=(const JniFrame &) = delete;
+};
+
+static bool jni_threw(JNIEnv * env) {
+    if (!env->ExceptionCheck()) return false;
+    env->ExceptionClear();
+    return true;
+}
+
+static int java_copy_utf8(JNIEnv * env, jstring text, std::string * utf8) {
+    if (text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (stringClass == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jmethodID getBytes = env->GetMethodID(stringClass, "getBytes", "(Ljava/lang/String;)[B");
+    jstring utf8Name = env->NewStringUTF("UTF-8");
+    if (getBytes == nullptr || utf8Name == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jobject raw = env->CallObjectMethod(text, getBytes, utf8Name);
+    if (jni_threw(env) || raw == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jsize n = env->GetArrayLength(static_cast<jbyteArray>(raw));
+    if (jni_threw(env) || n < 0) return MAIL_CHARCONV_ERROR_CONV;
+    utf8->assign(static_cast<size_t>(n), '\0');
+    if (n > 0) {
+        env->GetByteArrayRegion(static_cast<jbyteArray>(raw), 0, n, reinterpret_cast<jbyte *>(&(*utf8)[0]));
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    }
+    return MAIL_CHARCONV_NO_ERROR;
+}
+
+static int java_for_name(JNIEnv * env, const char * name, jobject * charset) {
+    std::string label = java_charset_label(name);
+    if (label.empty()) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+    jclass cls = env->FindClass("java/nio/charset/Charset");
+    if (cls == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jmethodID forName = env->GetStaticMethodID(cls, "forName", "(Ljava/lang/String;)Ljava/nio/charset/Charset;");
+    jstring jname = env->NewStringUTF(label.c_str());
+    if (forName == nullptr || jname == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jobject cs = env->CallStaticObjectMethod(cls, forName, jname);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+    }
+    if (cs == nullptr) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+    *charset = cs;
+    return MAIL_CHARCONV_NO_ERROR;
+}
+
+static bool java_for_name_ok(const char * name) {
+    if (mimeEnv == nullptr || name == nullptr || name[0] == 0) return false;
+    JNIEnv * env = mimeEnv;
+    if (env->ExceptionCheck()) return false;
+    JniFrame frame(env, 16);
+    if (!frame.open) return false;
+    jobject cs = nullptr;
+    return java_for_name(env, name, &cs) == MAIL_CHARCONV_NO_ERROR;
+}
+
+static int java_charset_decode(const char * name, const char * bytes, size_t len, std::string * utf8) {
+    if (mimeEnv == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    if (bytes == nullptr) {
+        if (len != 0) return MAIL_CHARCONV_ERROR_MEMORY;
+        bytes = "";
+    }
+    if (len > static_cast<size_t>(INT_MAX)) return MAIL_CHARCONV_ERROR_MEMORY;
+    JNIEnv * env = mimeEnv;
+    if (env->ExceptionCheck()) return MAIL_CHARCONV_ERROR_CONV;
+    JniFrame frame(env, 32);
+    if (!frame.open) return MAIL_CHARCONV_ERROR_MEMORY;
+    jobject cs = nullptr;
+    int named = java_for_name(env, name, &cs);
+    if (named != MAIL_CHARCONV_NO_ERROR) return named;
+    jclass csClass = env->FindClass("java/nio/charset/Charset");
+    jmethodID decode = csClass != nullptr ? env->GetMethodID(csClass, "decode", "(Ljava/nio/ByteBuffer;)Ljava/nio/CharBuffer;") : nullptr;
+    jbyteArray raw = env->NewByteArray(static_cast<jsize>(len));
+    jclass bbClass = env->FindClass("java/nio/ByteBuffer");
+    jmethodID wrap = bbClass != nullptr ? env->GetStaticMethodID(bbClass, "wrap", "([B)Ljava/nio/ByteBuffer;") : nullptr;
+    if (decode == nullptr || raw == nullptr || wrap == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    if (len > 0) {
+        env->SetByteArrayRegion(raw, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(bytes));
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    }
+    jobject bb = env->CallStaticObjectMethod(bbClass, wrap, raw);
+    if (jni_threw(env) || bb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jobject cb = env->CallObjectMethod(cs, decode, bb);
+    if (jni_threw(env) || cb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jclass cbClass = env->GetObjectClass(cb);
+    jmethodID toString = cbClass != nullptr ? env->GetMethodID(cbClass, "toString", "()Ljava/lang/String;") : nullptr;
+    jobject text = toString != nullptr ? env->CallObjectMethod(cb, toString) : nullptr;
+    if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    return java_copy_utf8(env, static_cast<jstring>(text), utf8);
+}
+
+static int java_charset_prefix(const char * name, const char * bytes, size_t len, std::string * utf8) {
+    if (mimeEnv == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    if (bytes == nullptr) {
+        if (len != 0) return MAIL_CHARCONV_ERROR_MEMORY;
+        bytes = "";
+    }
+    if (len > static_cast<size_t>(INT_MAX)) return MAIL_CHARCONV_ERROR_MEMORY;
+    JNIEnv * env = mimeEnv;
+    if (env->ExceptionCheck()) return MAIL_CHARCONV_ERROR_CONV;
+    JniFrame frame(env, 64);
+    if (!frame.open) return MAIL_CHARCONV_ERROR_MEMORY;
+    jobject cs = nullptr;
+    int named = java_for_name(env, name, &cs);
+    if (named != MAIL_CHARCONV_NO_ERROR) return named;
+    jclass csClass = env->FindClass("java/nio/charset/Charset");
+    jmethodID newDecoder = csClass != nullptr ? env->GetMethodID(csClass, "newDecoder", "()Ljava/nio/charset/CharsetDecoder;") : nullptr;
+    jobject dec = newDecoder != nullptr ? env->CallObjectMethod(cs, newDecoder) : nullptr;
+    jclass actionClass = env->FindClass("java/nio/charset/CodingErrorAction");
+    jfieldID replaceId = actionClass != nullptr ? env->GetStaticFieldID(actionClass, "REPLACE", "Ljava/nio/charset/CodingErrorAction;") : nullptr;
+    jobject replace = replaceId != nullptr ? env->GetStaticObjectField(actionClass, replaceId) : nullptr;
+    jclass decClass = env->FindClass("java/nio/charset/CharsetDecoder");
+    jmethodID onMal = decClass != nullptr ? env->GetMethodID(decClass, "onMalformedInput", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;") : nullptr;
+    jmethodID onUnm = decClass != nullptr ? env->GetMethodID(decClass, "onUnmappableCharacter", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;") : nullptr;
+    jmethodID reset = decClass != nullptr ? env->GetMethodID(decClass, "reset", "()Ljava/nio/charset/CharsetDecoder;") : nullptr;
+    jmethodID decode3 = decClass != nullptr ? env->GetMethodID(decClass, "decode", "(Ljava/nio/ByteBuffer;Ljava/nio/CharBuffer;Z)Ljava/nio/charset/CoderResult;") : nullptr;
+    jbyteArray raw = env->NewByteArray(static_cast<jsize>(len));
+    jclass bbClass = env->FindClass("java/nio/ByteBuffer");
+    jmethodID wrap = bbClass != nullptr ? env->GetStaticMethodID(bbClass, "wrap", "([B)Ljava/nio/ByteBuffer;") : nullptr;
+    jclass bufferClass = env->FindClass("java/nio/Buffer");
+    jmethodID rewind = bufferClass != nullptr ? env->GetMethodID(bufferClass, "rewind", "()Ljava/nio/Buffer;") : nullptr;
+    jclass cbClass = env->FindClass("java/nio/CharBuffer");
+    jmethodID allocate = cbClass != nullptr ? env->GetStaticMethodID(cbClass, "allocate", "(I)Ljava/nio/CharBuffer;") : nullptr;
+    jmethodID flip = cbClass != nullptr ? env->GetMethodID(cbClass, "flip", "()Ljava/nio/Buffer;") : nullptr;
+    jclass crClass = env->FindClass("java/nio/charset/CoderResult");
+    jmethodID isOverflow = crClass != nullptr ? env->GetMethodID(crClass, "isOverflow", "()Z") : nullptr;
+    jmethodID isError = crClass != nullptr ? env->GetMethodID(crClass, "isError", "()Z") : nullptr;
+    if (dec == nullptr || replace == nullptr || onMal == nullptr || onUnm == nullptr || reset == nullptr || decode3 == nullptr ||
+        raw == nullptr || wrap == nullptr || rewind == nullptr || allocate == nullptr || flip == nullptr || isOverflow == nullptr ||
+        isError == nullptr || jni_threw(env)) {
+        return MAIL_CHARCONV_ERROR_CONV;
+    }
+    env->SetByteArrayRegion(raw, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(bytes));
+    if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jobject bb = env->CallStaticObjectMethod(bbClass, wrap, raw);
+    env->CallObjectMethod(dec, onMal, replace);
+    env->CallObjectMethod(dec, onUnm, replace);
+    if (jni_threw(env) || bb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jint cap = static_cast<jint>(len);
+    if (cap < 1) cap = 1;
+    for (int spins = 0; spins < 4; ++spins) {
+        env->CallObjectMethod(dec, reset);
+        env->CallObjectMethod(bb, rewind);
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+        jobject outBuf = env->CallStaticObjectMethod(cbClass, allocate, cap);
+        if (jni_threw(env) || outBuf == nullptr) return MAIL_CHARCONV_ERROR_MEMORY;
+        jobject result = env->CallObjectMethod(dec, decode3, bb, outBuf, JNI_FALSE);
+        if (jni_threw(env) || result == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+        if (env->CallBooleanMethod(result, isError) == JNI_TRUE || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+        if (env->CallBooleanMethod(result, isOverflow) == JNI_TRUE) {
+            if (cap > (INT_MAX / 2)) return MAIL_CHARCONV_ERROR_MEMORY;
+            cap *= 2;
+            continue;
+        }
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+        env->CallObjectMethod(outBuf, flip);
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+        jmethodID toString = env->GetMethodID(cbClass, "toString", "()Ljava/lang/String;");
+        jobject text = toString != nullptr ? env->CallObjectMethod(outBuf, toString) : nullptr;
+        if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+        return java_copy_utf8(env, static_cast<jstring>(text), utf8);
+    }
+    return MAIL_CHARCONV_ERROR_MEMORY;
+}
+
+static int java_charset_utf8(const char * name, const char * bytes, size_t len, bool final, std::string * utf8) {
+    if (bytes == nullptr) {
+        if (len != 0) return MAIL_CHARCONV_ERROR_MEMORY;
+        bytes = "";
+    }
+    if (final || len == 0) {
+        if (len > (SIZE_MAX / 6)) return MAIL_CHARCONV_ERROR_MEMORY;
+        size_t cap = len * 6 + 1;
+        std::string buf(cap, '\0');
+        size_t n = cap;
+        int r = mime_extended_charconv("UTF-8", name, bytes, len, &buf[0], &n);
+        if (r != MAIL_CHARCONV_NO_ERROR) return r;
+        if (n > cap) return MAIL_CHARCONV_ERROR_MEMORY;
+        utf8->assign(buf.data(), n);
+        return MAIL_CHARCONV_NO_ERROR;
+    }
+    return java_charset_prefix(name, bytes, len, utf8);
+}
+
+static int java_charset_encode(const char * name, const std::string & utf8, std::string * out) {
+    if (mimeEnv == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    if (utf8.size() > static_cast<size_t>(INT_MAX)) return MAIL_CHARCONV_ERROR_MEMORY;
+    JNIEnv * env = mimeEnv;
+    if (env->ExceptionCheck()) return MAIL_CHARCONV_ERROR_CONV;
+    JniFrame frame(env, 32);
+    if (!frame.open) return MAIL_CHARCONV_ERROR_MEMORY;
+    jobject cs = nullptr;
+    int named = java_for_name(env, name, &cs);
+    if (named != MAIL_CHARCONV_NO_ERROR) return named;
+    (void)cs;
+    std::string label = java_charset_label(name);
+    jclass stringClass = env->FindClass("java/lang/String");
+    jmethodID ctor = stringClass != nullptr ? env->GetMethodID(stringClass, "<init>", "([BLjava/lang/String;)V") : nullptr;
+    jmethodID getBytes = stringClass != nullptr ? env->GetMethodID(stringClass, "getBytes", "(Ljava/lang/String;)[B") : nullptr;
+    jstring utf8Name = env->NewStringUTF("UTF-8");
+    jstring csName = env->NewStringUTF(label.c_str());
+    jbyteArray raw = env->NewByteArray(static_cast<jsize>(utf8.size()));
+    if (ctor == nullptr || getBytes == nullptr || utf8Name == nullptr || csName == nullptr || raw == nullptr || jni_threw(env)) {
+        return MAIL_CHARCONV_ERROR_CONV;
+    }
+    if (!utf8.empty()) {
+        env->SetByteArrayRegion(raw, 0, static_cast<jsize>(utf8.size()), reinterpret_cast<const jbyte *>(utf8.data()));
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    }
+    jobject text = env->NewObject(stringClass, ctor, raw, utf8Name);
+    if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jobject encoded = env->CallObjectMethod(text, getBytes, csName);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return MAIL_CHARCONV_ERROR_CONV;
+    }
+    if (encoded == nullptr) return MAIL_CHARCONV_ERROR_CONV;
+    jsize n = env->GetArrayLength(static_cast<jbyteArray>(encoded));
+    if (jni_threw(env) || n < 0) return MAIL_CHARCONV_ERROR_CONV;
+    out->assign(static_cast<size_t>(n), '\0');
+    if (n > 0) {
+        env->GetByteArrayRegion(static_cast<jbyteArray>(encoded), 0, n, reinterpret_cast<jbyte *>(&(*out)[0]));
+        if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    }
+    return MAIL_CHARCONV_NO_ERROR;
+}
+
+static bool known_charset(const char * name) {
+    if (tables_finish(name)) return true;
+    return java_for_name_ok(name);
 }
 
 static void hold_rest(ConvState * st, const unsigned char * p, size_t n) {
@@ -10012,15 +10277,25 @@ static int mime_extended_charconv(const char * tocode, const char * fromcode, co
     std::string to = canon_name(tocode);
     bool to_utf8 = to == "utf-8" || to == "utf8" || to == "csutf8";
     if (!from_utf8) {
-        if (!setup_conv(&st, fromcode)) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
-        convert_feed(&utf8, &st, str, length, true);
-        g_saw_illegal = st.saw;
+        if (tables_finish(fromcode)) {
+            if (!setup_conv(&st, fromcode)) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+            convert_feed(&utf8, &st, str, length, true);
+            g_saw_illegal = st.saw;
+        } else {
+            int jr = java_charset_decode(fromcode, str, length, &utf8);
+            if (jr != MAIL_CHARCONV_NO_ERROR) return jr;
+        }
     } else {
         utf8.assign(str == nullptr ? "" : str, str == nullptr ? 0 : length);
     }
     std::string produced;
     if (to_utf8) produced.swap(utf8);
-    else if (!encode_out(tocode, utf8, &produced)) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+    else if (tables_finish(tocode)) {
+        if (!encode_out(tocode, utf8, &produced)) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
+    } else {
+        int jr = java_charset_encode(tocode, utf8, &produced);
+        if (jr != MAIL_CHARCONV_NO_ERROR) return jr;
+    }
     if (produced.size() > *result_len) return MAIL_CHARCONV_ERROR_MEMORY;
     if (!produced.empty()) memcpy(result, produced.data(), produced.size());
     *result_len = produced.size();
@@ -10198,15 +10473,19 @@ struct TextDecode {
 };
 
 static void apply_charset(const std::string & binary, const char * declared, const char * fallback, bool final,
-    ConvState * st, bool reset, TextDecode * out) {
+    ConvState * st, bool reset, TextDecode * out, std::string * java_name) {
     const char * used = fallback != nullptr && fallback[0] != 0 ? fallback : "ISO-8859-1";
     const char * label = declared != nullptr ? declared : "";
     while (*label == ' ' || *label == '\t') ++label;
     bool missing = label[0] == 0;
+    if (reset && !missing && mimeEnv == nullptr && !tables_finish(label) && tables_claim(label)) {
+        out->status = 1;
+        out->text = kDecodeError;
+        return;
+    }
     bool known = !missing && known_charset(label);
     const char * decode_as = known ? label : used;
     if (reset) {
-        if (!setup_conv(st, decode_as)) setup_conv(st, "ISO-8859-1");
         if (!known) {
             if (missing) {
                 out->note = "no character set was declared; shown as ";
@@ -10218,6 +10497,24 @@ static void apply_charset(const std::string & binary, const char * declared, con
                 out->note += used;
             }
         }
+        if (known && !tables_finish(decode_as)) {
+            memset(st, 0, sizeof(*st));
+            st->use_java = true;
+            if (java_name != nullptr) *java_name = decode_as;
+        } else if (!setup_conv(st, decode_as)) {
+            setup_conv(st, "ISO-8859-1");
+        }
+    }
+    if (st->use_java) {
+        std::string utf8;
+        int r = java_charset_utf8(decode_as, binary.data(), binary.size(), final, &utf8);
+        if (r != MAIL_CHARCONV_NO_ERROR) {
+            out->status = 1;
+            out->text = kDecodeError;
+            return;
+        }
+        out->text.append(utf8);
+        return;
     }
     size_t before = out->text.size();
     bool saw_before = st->saw;
@@ -10241,6 +10538,9 @@ struct MimeStream {
     bool failed;
     bool error_sent;
     std::string note;
+    std::string java_name;
+    std::string java_raw;
+    std::string java_shown;
 };
 
 struct MimeXfer {
@@ -10269,7 +10569,7 @@ static TextDecode decode_all(const char * bytes, size_t len, const char * declar
         return out;
     }
     ConvState st;
-    apply_charset(binary, declared, fallback, true, &st, true, &out);
+    apply_charset(binary, declared, fallback, true, &st, true, &out, nullptr);
     return out;
 }
 
@@ -10343,9 +10643,39 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
     TextDecode part;
     part.status = 0;
     if (!stream->conv_ready) {
-        apply_charset(binary, stream->declared.c_str(), stream->fallback.c_str(), final != 0, &stream->conv, true, &part);
+        apply_charset(binary, stream->declared.c_str(), stream->fallback.c_str(), final != 0, &stream->conv, true, &part,
+            &stream->java_name);
         stream->conv_ready = true;
         stream->note = part.note;
+        if (part.status != 0) {
+            stream->failed = true;
+            stream->error_sent = true;
+            if (status != nullptr) *status = 1;
+            if (note != nullptr) *note = dup_str(stream->note);
+            return dup_cstr(part.text.empty() ? kDecodeError : part.text.c_str());
+        }
+        if (stream->conv.use_java) {
+            stream->java_raw = binary;
+            stream->java_shown = part.text;
+        }
+    } else if (stream->conv.use_java) {
+        part.note = stream->note;
+        stream->java_raw.append(binary);
+        std::string utf8;
+        int r = java_charset_utf8(stream->java_name.c_str(), stream->java_raw.data(), stream->java_raw.size(), final != 0, &utf8);
+        if (r != MAIL_CHARCONV_NO_ERROR) {
+            stream->failed = true;
+            stream->error_sent = true;
+            if (status != nullptr) *status = 1;
+            if (note != nullptr) *note = dup_str(stream->note);
+            return dup_cstr(kDecodeError);
+        }
+        if (utf8.size() >= stream->java_shown.size() && utf8.compare(0, stream->java_shown.size(), stream->java_shown) == 0) {
+            part.text.assign(utf8, stream->java_shown.size(), std::string::npos);
+        } else {
+            part.text = utf8;
+        }
+        stream->java_shown.swap(utf8);
     } else {
         part.note = stream->note;
         bool known = !stream->declared.empty() && known_charset(stream->declared.c_str());
@@ -10669,7 +10999,7 @@ extern "C" char * mime_decode_2231(const char * raw, size_t len, const char * fa
     TextDecode part;
     part.status = 0;
     ConvState st;
-    apply_charset(bytes, charset.c_str(), used, true, &st, true, &part);
+    apply_charset(bytes, charset.c_str(), used, true, &st, true, &part, nullptr);
     return dup_str(part.text);
 }
 
