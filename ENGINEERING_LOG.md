@@ -3593,3 +3593,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-24 - Custom layout follows the pane gate.
 
 - PaneLayoutEditor remembers saved and persist, so opening the gate drops an unsaved preview and shows the stored layout.
+
+## 2026-10-24 - Toolbar drag offset is kept through R8.
+
+- Edge-scroll adds the consumed pane delta to the reorderable drag offset. Keep rules hold the release member names.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

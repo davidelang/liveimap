@@ -35,3 +35,14 @@
 # Readable release stack traces (David reads them from logcat); the mapping file is kept in build/outputs.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Toolbar edge-scroll adds the pane delta through these reorderable 3.1.0 members. R8 sees the release suffix.
+-keepclassmembers class sh.calvin.reorderable.ReorderableListScope {
+    *** access$getState$p(...);
+}
+-keepclassmembers class sh.calvin.reorderable.ReorderableListState {
+    *** getItemOffsets$reorderable_debug();
+    *** getItemOffsets$reorderable_release();
+    *** getDraggableStates$reorderable_debug();
+    *** getDraggableStates$reorderable_release();
+}
