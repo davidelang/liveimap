@@ -15,6 +15,7 @@ import org.dlang.liveimap.session.ClientSortCollation
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
+import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.LifecycleCall
@@ -713,6 +714,11 @@ class LibetpanMailSession : MailSession {
             selectNow(name)
         }
         val h = requireHandle()
+        if (addressBookUidsOnly(request)) {
+            val ids = nativeSearchCriterion(h, "All", "", featureCaps.searchKind() == "Esearch", false)
+                ?: throw MailFailure("fetch failed")
+            return@read uidOnlyRows(request, ids)
+        }
         val settings = account
         val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
         val rows = nativeFetchIndex(
@@ -737,6 +743,55 @@ class LibetpanMailSession : MailSession {
                 from = decodeHeaderWords(row.from),
                 subject = decodeHeaderWords(row.subject),
                 recipients = decodeHeaderWords(row.recipients),
+            )
+        }
+    }
+
+    /** Alpine completion loads this folder with no envelope fields. A mail index fetch does not take this path. */
+    private fun addressBookUidsOnly(request: IndexRequest): Boolean {
+        if (request.prefetch != 0 || request.includePreview) return false
+        val shaped = when (request.mode) {
+            IndexMode.ArrivalRange -> true
+            IndexMode.ArrivalOldest, IndexMode.ArrivalNewest -> request.limit == 1
+            else -> false
+        }
+        if (!shaped) return false
+        return isAddressBookMailbox(request.mailbox)
+    }
+
+    private fun isAddressBookMailbox(mailbox: String): Boolean {
+        val settings = account ?: return false
+        fun book(name: String) = name.isNotEmpty() && sameWireMailbox(name, mailbox)
+        if (book(settings.addressBookMailbox)) return true
+        for (name in settings.extraAddressBooks) if (book(name)) return true
+        for (name in settings.globalAddressBooks) if (book(name)) return true
+        return false
+    }
+
+    /** Sequences follow the UID SEARCH ALL reply. Envelope fields stay empty. */
+    private fun uidOnlyRows(request: IndexRequest, ids: LongArray): List<IndexRow> {
+        if (ids.isEmpty()) return emptyList()
+        val indexes = when (request.mode) {
+            IndexMode.ArrivalOldest -> listOf(0)
+            IndexMode.ArrivalNewest -> listOf(ids.lastIndex)
+            IndexMode.ArrivalRange -> {
+                val first = request.firstSequence.coerceAtLeast(1)
+                val last = request.lastSequence.coerceAtMost(ids.size)
+                if (first > last) emptyList() else (first - 1 until last).toList()
+            }
+            else -> emptyList()
+        }
+        return indexes.map { index ->
+            IndexRow(
+                uid = ids[index],
+                sequence = index + 1,
+                flags = emptySet(),
+                internalDateEpoch = 0L,
+                size = 0,
+                from = "",
+                subject = "",
+                envelopeDate = "",
+                preview = null,
             )
         }
     }
