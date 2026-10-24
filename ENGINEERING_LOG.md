@@ -3612,3 +3612,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/client-order-20261024-0529-plan.md
 - Client sort and thread run over one captured UID set. The order type is arrays. A server-sorted folder keeps the server reply. The Alpine address book asks for UIDs only.
+
+## 2026-10-24 - The owner thread detaches and closes its fd.
+
+- Approved plan: sandbox/plans/jni-owner-cleanup-20261024-0834-plan.md
+- The owner attaches once and detaches on every exit, including a failed attach. A failed attach closes the job queue and fails queued and later commands with the attach error instead of an empty result. The job eventfd is exchanged to -1 and closed after the queue closes, and again after the owner has finished.
+- Host: /home/dlang/git/liveimap/master. Do not deploy.

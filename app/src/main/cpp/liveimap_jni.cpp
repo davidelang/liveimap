@@ -316,11 +316,13 @@ struct LiveSession {
     // Logged-in watch connection waiting for the capability gate, before EXAMINE and IDLE.
     mailimap * stagedReady = nullptr;
     std::thread owner;
-    int jobFd = -1;
+    std::atomic<int> jobFd{-1};
     std::atomic<OwnerJob *> jobHead{nullptr};
     std::atomic<int> jobKick{0};
     std::atomic<bool> ownerStop{false};
     std::atomic<bool> ownerFinished{false};
+    // Set before the queue is closed when AttachCurrentThread failed, so skipped jobs say so.
+    std::atomic<bool> ownerAttachFailed{false};
     std::atomic<bool> watchStop{false};
     // 0 stopped, 2 IDLE running, 3 stopping. Waited with atomic::wait.
     std::atomic<int> watchPhase{0};
@@ -874,11 +876,14 @@ void releaseUsers(LiveSession * session) {
 
 void kickOwner(LiveSession * session) {
     if (session == nullptr) return;
-    int fd = session->jobFd;
-    if (fd >= 0) {
-        uint64_t one = 1;
-        ssize_t ignored = write(fd, &one, sizeof(one));
-        (void)ignored;
+    int fd = session->jobFd.load();
+    if (fd >= 0 && session->jobHead.load() != kJobClosed) {
+        int again = session->jobFd.load();
+        if (again == fd) {
+            uint64_t one = 1;
+            ssize_t ignored = write(fd, &one, sizeof(one));
+            (void)ignored;
+        }
     }
     session->jobKick.fetch_add(1);
     session->jobKick.notify_one();
@@ -952,9 +957,36 @@ void runReadyJobs(LiveSession * session) {
     }
 }
 
+const char * jobSkipReason(LiveSession * session) {
+    if (session != nullptr && session->ownerAttachFailed.load()) {
+        return "owner thread could not attach to the JVM";
+    }
+    return "not connected";
+}
+
 void ownerLoop(std::shared_ptr<LiveSession> session) {
+    // Last step on every exit, including the attach-failure return after the queue is closed.
+    struct OwnerJvmDetach {
+        ~OwnerJvmDetach() {
+            if (gVm != nullptr) gVm->DetachCurrentThread();
+            tlsOwnerEnv = nullptr;
+        }
+    } ownerJvmDetach;
+    (void)ownerJvmDetach;
     tlsOwner = session.get();
-    ensureOwnerEnv();
+    JNIEnv * env = nullptr;
+    if (gVm == nullptr || gVm->AttachCurrentThread(&env, nullptr) != 0 || env == nullptr) {
+        session->ownerAttachFailed.store(true);
+        closeJobQueue(session.get());
+        int fd = session->jobFd.exchange(-1);
+        if (fd >= 0) close(fd);
+        tlsOwner = nullptr;
+        session->selfHold.reset();
+        session->ownerFinished.store(true);
+        session->ownerFinished.notify_all();
+        return;
+    }
+    tlsOwnerEnv = env;
     while (!session->ownerStop.load()) {
         OwnerJob * queued = session->jobHead.load();
         if (queued != nullptr && queued != kJobClosed) {
@@ -988,13 +1020,15 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     }
     tlsOwner = nullptr;
     closeJobQueue(session.get());
+    int fd = session->jobFd.exchange(-1);
+    if (fd >= 0) close(fd);
     session->selfHold.reset();
     session->ownerFinished.store(true);
     session->ownerFinished.notify_all();
 }
 
 void startOwner(const std::shared_ptr<LiveSession> & session) {
-    if (session->jobFd < 0) session->jobFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (session->jobFd.load() < 0) session->jobFd.store(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK));
     session->owner = std::thread(ownerLoop, session);
 }
 
@@ -1005,11 +1039,17 @@ void joinOwner(LiveSession * session) {
     if (tlsOwner == session) return;
     while (!session->ownerFinished.load()) session->ownerFinished.wait(false);
     if (session->owner.joinable()) session->owner.join();
+    int fd = session->jobFd.exchange(-1);
+    if (fd >= 0) close(fd);
 }
 
 void discardUnpublished(std::shared_ptr<LiveSession> session) {
     if (!session) return;
     joinOwner(session.get());
+    if (session->ownerFinished.load()) {
+        int fd = session->jobFd.exchange(-1);
+        if (fd >= 0) close(fd);
+    }
     session->selfHold.reset();
 }
 
@@ -1066,7 +1106,7 @@ R withOwner(JNIEnv * caller, jlong handle, F && fn) {
     while (!job.done.load()) job.done.wait(false);
     if (job.skipped) {
         releaseUsers(raw);
-        throwFailure(caller, "not connected");
+        throwFailure(caller, jobSkipReason(raw));
         return failed();
     }
     releaseUsers(raw);
@@ -1131,7 +1171,7 @@ R runFresh(JNIEnv * caller, LiveSession * raw, F && fn) {
     postJob(raw, &job);
     while (!job.done.load()) job.done.wait(false);
     if (job.skipped) {
-        throwFailure(caller, "not connected");
+        throwFailure(caller, jobSkipReason(raw));
         return failed();
     }
     if (exc != nullptr) {
@@ -2542,6 +2582,7 @@ void finishIdleStop(LiveSession * session) {
 }
 
 void emitWatch(LiveSession * session, int kind, int exists, jlong uid, jobjectArray flags, jlong generation) {
+    if (session->watchPhase.load() != 2) return;
     if (gVm == nullptr || session->selfGlobal == nullptr) {
         return;
     }
@@ -2819,15 +2860,15 @@ bool watchStep(LiveSession * session) {
             pfd[nfd].events = POLLIN;
             nfd++;
         }
-        if (session->jobFd >= 0) {
+        if (session->jobFd.load() >= 0) {
             jobSlot = nfd;
-            pfd[nfd].fd = session->jobFd;
+            pfd[nfd].fd = session->jobFd.load();
             pfd[nfd].events = POLLIN;
             nfd++;
         }
         long renewLeft = gIdleRenewSec.load() - (long) std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - session->watchIdleSince).count();
-        int pollMs = watchPollMs(session->watchWakeFd >= 0 || session->jobFd >= 0, renewLeft,
+        int pollMs = watchPollMs(session->watchWakeFd >= 0 || session->jobFd.load() >= 0, renewLeft,
             (long) mailimap_idle_get_done_delay(session->watch), gWatchWakeMs.load());
         int pr = poll(pfd, nfd, pollMs);
         if (pr > 0 && wakeSlot >= 0 && (pfd[wakeSlot].revents & POLLIN) != 0) {
@@ -2838,7 +2879,7 @@ bool watchStep(LiveSession * session) {
         bool jobReady = pr > 0 && jobSlot >= 0 && (pfd[jobSlot].revents & POLLIN) != 0;
         if (jobReady) {
             uint64_t drained = 0;
-            ssize_t ignored = read(session->jobFd, &drained, sizeof(drained));
+            ssize_t ignored = read(session->jobFd.load(), &drained, sizeof(drained));
             (void)ignored;
         }
         if (session->watchStop.load() || session->watchPhase.load() == 3 || session->ownerStop.load()) {

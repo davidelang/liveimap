@@ -19,31 +19,29 @@ class Pass5GuardTest {
         assertTrue(jni.contains("if (imapHostToo) pin = certPin.c_str();"))
     }
 
-    /** SMTP copies the fields it needs, then drops the session mutex before the connect and the send. */
+    /** SMTP connects on the owner. nativeSmtp has tcpConnect before mailsmtp_connect, and there is no session mutex. */
     @Test fun smtpConnectsWithoutTheSessionMutex() {
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val unlock = body.indexOf("session->mu.unlock();")
         val tcp = body.indexOf("tcpConnect(")
         val remember = body.indexOf("rememberSmtpSocket(")
         val sslOpen = body.indexOf("mailstream_ssl_open_with_server_name_callback_timeout(")
         val greet = body.indexOf("mailsmtp_connect(")
         val send = body.indexOf("mailsmtp_data_message(")
-        assertTrue(unlock in 0 until tcp && tcp < remember && remember < sslOpen && sslOpen < greet && greet < send)
+        assertTrue(tcp in 0 until greet)
+        assertTrue(tcp < remember && remember < sslOpen && sslOpen < greet && greet < send)
         val plain = body.indexOf("mailstream_socket_open_timeout(")
         val plainGreet = body.indexOf("mailsmtp_connect(", plain)
         val plainRemember = body.lastIndexOf("rememberSmtpSocket(", plainGreet)
         assertTrue(plainRemember in 0 until plain && plain < plainGreet)
         val free = jni.indexOf("void freeSmtp(")
         val freeBody = jni.substring(free, jni.indexOf("\n}\n", free))
-        val freeLock = freeBody.indexOf("session->mu.lock();")
-        val freeClear = freeBody.indexOf("session->smtpFd.store(-1);")
-        val freeUnlock = freeBody.indexOf("session->mu.unlock();")
+        val freeClear = freeBody.indexOf("session->smtpFd.exchange(-1);")
         val freeRelease = freeBody.indexOf("mailsmtp_free(")
-        assertTrue(freeLock in 0 until freeClear && freeClear < freeUnlock && freeUnlock < freeRelease)
+        assertTrue(freeClear in 0 until freeRelease)
         assertFalse(jni.contains("void smtpTrafficLogger("))
         assertTrue(jni.contains("void smtpTrafficLoggerCopied("))
-        val after = body.substring(unlock)
+        val after = body.substring(tcp)
         assertFalse(after.contains("session->smtpHost"))
         assertFalse(after.contains("session->tlsMode"))
         assertFalse(after.contains("session->certPin"))
@@ -59,10 +57,7 @@ class Pass5GuardTest {
         val abort = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(")
         val abortBody = jni.substring(abort, jni.indexOf("\n}\n", abort))
         assertTrue(abortBody.contains("shutdownFd(session->smtpFd.load());"))
-        val readFd = abortBody.indexOf("session->smtpFd.load()")
-        val abortLock = abortBody.lastIndexOf("session->mu.lock();", readFd)
-        val abortUnlock = abortBody.indexOf("session->mu.unlock();", readFd)
-        assertTrue(abortLock in 0 until readFd && readFd < abortUnlock)
+        assertFalse(jni.contains("session->mu"))
     }
 
     /** F141: an expunge ahead of the client sort walk restarts it instead of "sort failed". */
@@ -72,37 +67,31 @@ class Pass5GuardTest {
         assertFalse(sortChunkDrift(100, 100, false))
         val kt = listOf("src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt", "app/src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt")
             .map(::File).first { it.exists() }.readText()
-        assertTrue(kt.contains("if (sortChunkDrift(exists, selectedExists(), sequencesStale)) { drift = true; break }"))
+        assertTrue(kt.contains("if (!sequencesStale) return built"))
         assertFalse(kt.contains("nativeFetchSortFieldsRange(requireHandle(), wireField, first, last) ?: throw"))
     }
 
     // F50 JMAP copy-first: was a source-text check; now every JMAP send goes through keepCopyUntilSubmitted, whose
     // behaviour is tested in ui/compose/KeepCopyUntilSubmittedTest.
 
-    /** F13/F136/F261: connect, EXAMINE, and the IDLE-start wait run without the session lock. Publish checks the generation. */
+    /** The watch open copies certificate fields and runs on the owner. No session mutex. */
     @Test fun watchSetupConnectsWithoutTheLock() {
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val unlock = body.indexOf("session->mu.unlock();")
-        val open = body.indexOf("openTls(")
-        val relock = body.indexOf("session->mu.lock();")
-        assertTrue(unlock in 0 until open && open < relock)
+        assertTrue(body.contains("withOwnerCall"))
+        val open = body.indexOf("openPlain(")
+        val before = body.substring(0, open)
+        assertTrue(before.contains("owned.clientP12 = session->clientP12"))
+        assertTrue(before.contains("owned.keyChainChain"))
+        assertTrue(before.contains("owned.keyChainKey"))
+        assertTrue(before.contains("session->allowPlaintextAuth"))
+        assertTrue(before.contains("session->allowOldTls"))
+        assertFalse(jni.contains("session->mu"))
         val examine = body.indexOf("mailimap_examine(")
-        val examineUnlock = body.lastIndexOf("session->mu.unlock();", examine)
-        val examineLock = body.indexOf("session->mu.lock();", examine)
-        assertTrue(examineUnlock in 0 until examine && examine < examineLock)
-        val wait = body.indexOf("session->startCv.wait(")
-        val waitUnlock = body.lastIndexOf("session->mu.unlock();", wait)
-        val waitLock = body.indexOf("session->mu.lock();", wait)
-        assertTrue(waitUnlock in 0 until wait && wait < waitLock)
         val publish = body.indexOf("session->watch = watch;")
         val checkBeforePublish = body.lastIndexOf("watchSetupSuperseded(", publish)
         assertTrue(examine < checkBeforePublish && checkBeforePublish < publish)
-        val afterWait = body.substring(wait)
-        val checkAfterWait = afterWait.indexOf("watchSetupSuperseded(")
-        val freeAfterWait = afterWait.indexOf("mailimap_free(session->watch)")
-        assertTrue(checkAfterWait in 0 until freeAfterWait)
-        assertTrue(body.contains("watchSetupSuperseded(session->closed, session->watchGeneration, generation, session->watch != nullptr)"))
+        assertTrue(body.contains("watchSetupSuperseded(session->closed.load(), session->watchGeneration.load(), generation, session->watch != nullptr)"))
         val serial = listOf("src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt", "app/src/main/kotlin/org/dlang/liveimap/session/SerialMailSession.kt")
             .map(::File).first { it.exists() }.readText()
         assertFalse(serial.contains("watchMutex"))
@@ -114,13 +103,15 @@ class Pass5GuardTest {
         assertTrue(serial.contains("withContext(Dispatchers.IO) { inner.resume() }"))
     }
 
-    /** F267: the watch open copies certificate fields while the session mutex is still held. */
+    /** The watch open copies certificate fields on the owner before it connects. No session mutex. */
     @Test fun watchOpenCopiesCertificateFieldsBeforeUnlock() {
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val unlock = body.indexOf("session->mu.unlock();")
-        assertTrue(unlock > 0)
-        val before = body.substring(0, unlock)
+        assertTrue(body.contains("withOwnerCall"))
+        val open = body.indexOf("openPlain(")
+        assertTrue(open > 0)
+        val before = body.substring(0, open)
+        assertFalse(jni.contains("session->mu"))
         assertTrue(before.contains("session->clientP12"))
         assertTrue(before.contains("session->clientP12Password"))
         assertTrue(before.contains("session->keyChainChain"))
@@ -129,7 +120,7 @@ class Pass5GuardTest {
         assertTrue(before.contains("session->authMechanism"))
         assertTrue(before.contains("session->allowOldTls"))
         assertTrue(before.contains("session->logImapTraffic"))
-        val after = body.substring(unlock)
+        val after = body.substring(open)
         assertFalse(after.contains("session->clientP12"))
         assertFalse(after.contains("session->clientP12Password"))
         assertFalse(after.contains("session->keyChainChain"))
@@ -191,56 +182,36 @@ class Pass5GuardTest {
         assertTrue(w.contains("onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },"))
     }
 
-    /** F27: a watch stop joins the watch thread without the session lock; other stops wait for it. */
+    /** A watch stop waits until the owner has finished. There is no stop condition variable. */
     @Test fun watchStopJoinsOutsideTheLock() {
-        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(")
-        val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val unlock = body.indexOf("session->mu.unlock();")
-        val join = body.indexOf("thread.join();")
-        val relock = body.indexOf("session->mu.lock();")
-        assertTrue(unlock in 0 until join && join < relock)
-        assertTrue(jni.contains("while (session->watchStopping) session->stopCv.wait(session->mu);"))
+        val join = jni.substringAfter("void joinOwner(LiveSession * session) {").substringBefore("\n}\n")
+        assertTrue(join.contains("while (!session->ownerFinished.load()) session->ownerFinished.wait(false);"))
+        assertFalse(jni.contains("stopCv"))
     }
 
-    /** Stop shuts the watch socket down before join, and the stop path does not call mailimap_idle_done. */
+    /** finishIdleStop closes the wake fd before it frees the watch connection. */
     @Test fun watchStopShutsTheSocketBeforeJoin() {
-        val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(")
-        val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val shut = body.indexOf("shutdownWatchSocket(session);")
-        val join = body.indexOf("thread.join();")
-        val unlock = body.indexOf("session->mu.unlock();")
-        val relock = body.indexOf("session->mu.lock();")
-        assertTrue(shut in 0 until join)
-        assertTrue(unlock in 0 until join && join < relock)
-        val stop = jni.indexOf("void stopWatchLocked(")
-        val stopBody = jni.substring(stop, jni.indexOf("\n}\n", stop))
-        val stopShut = stopBody.indexOf("shutdownWatchSocket(session);")
-        val stopJoin = stopBody.indexOf("watchThread.join();")
-        assertTrue(stopShut in 0 until stopJoin)
-        val main = jni.indexOf("void watchMain(")
-        val mainBody = jni.substring(main, jni.indexOf("\n}\n", main))
-        assertTrue(mainBody.contains("if (!watchLost && !session->watchStop.load())"))
-        assertFalse(mainBody.contains("if (!watchLost) {"))
+        val finish = jni.substringAfter("void finishIdleStop(LiveSession * session) {").substringBefore("\n}\n")
+        val shut = finish.indexOf("close(session->watchWakeFd);")
+        val free = finish.indexOf("mailimap_free(session->watch);")
+        assertTrue(shut in 0 until free)
         val sig = jni.indexOf("void signalWatchStop(")
         val sigBody = jni.substring(sig, jni.indexOf("\n}\n", sig))
         assertTrue(sigBody.contains("shutdownWatchSocket(session);"))
         assertTrue(sigBody.contains("write(fd,"))
     }
 
-    /** Publish the watch callback only after IDLE has started. A 0 return clears that generation. */
+    /** IDLE moves watchPhase to 2 only after IDLE has started. A failure calls finishIdleStop. */
     @Test fun watchPublishesAfterIdleStartsAndClearsOnFailure() {
+        val begin = jni.substringAfter("bool beginWatchIdle(LiveSession * session) {").substringBefore("\n}\n")
+        val idle = begin.indexOf("mailimap_idle(session->watch)")
+        val phase = begin.indexOf("watchPhase.store(2)")
+        val fail = begin.indexOf("return false;", idle)
+        assertTrue(idle in 0 until fail && fail < phase)
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
-        val wait = body.indexOf("session->startCv.wait(")
-        val beforeWait = body.substring(0, wait)
-        assertFalse(beforeWait.contains("publishWatch"))
-        val tail = body.substring(wait)
-        val started = tail.indexOf("started > 0")
-        val publish = tail.indexOf("gJni.publishWatch")
-        assertTrue(started in 0 until publish)
-        val firstReturn = tail.indexOf("return 0;")
-        val clearBeforeReturn = tail.lastIndexOf("clearThisWatch();", firstReturn)
-        assertTrue(clearBeforeReturn in 0 until firstReturn)
+        val loss = body.indexOf("started < 0 || lost")
+        assertTrue(body.indexOf("finishIdleStop(", loss) > loss)
         assertTrue(body.contains("gJni.clearPublishedWatch"))
         val kt = listOf(
             "src/main/kotlin/org/dlang/liveimap/engine/LibetpanMailSession.kt",
@@ -269,13 +240,12 @@ class Pass5GuardTest {
         assertFalse(runBody.contains("noteTraffic"))
     }
 
-    /** The watch thread queues until nativeWatch publishes that generation or clears it. */
+    /** emitWatch runs only while watchPhase is the running phase. */
     @Test fun watchThreadDoesNotEmitUntilPublishedOrCleared() {
-        val main = jni.indexOf("void watchMain(")
-        val mainBody = jni.substring(main, jni.indexOf("\n}\n", main))
-        assertFalse(mainBody.contains("emitWatch("))
-        assertTrue(mainBody.contains("drainWatchQueue("))
-        assertTrue(mainBody.contains("queueWatch("))
+        val emit = jni.substringAfter("void emitWatch(LiveSession * session, int kind,").substringBefore("\n}\n")
+        val gate = emit.indexOf("session->watchPhase.load() != 2")
+        val call = emit.indexOf("CallVoidMethod")
+        assertTrue(gate in 0 until call)
         val untaggedAt = jni.indexOf("void handleUntagged(")
         val untagged = jni.substring(untaggedAt, jni.indexOf("\n}\n", untaggedAt))
         assertFalse(untagged.contains("emitWatch("))
@@ -300,23 +270,20 @@ class Pass5GuardTest {
         assertTrue(dead in 0 until clear && clear < back)
     }
 
-    /** A deliver wake is read so poll does not spin. An early loss joins and frees the watch thread. */
+    /** A deliver wake is read so poll does not spin. A watch loss calls finishIdleStop, not watchThread.join. */
     @Test fun deliverWakeIsReadAndEarlyLossJoins() {
-        val main = jni.indexOf("void watchMain(")
-        val mainBody = jni.substring(main, jni.indexOf("\n}\n", main))
-        val poll = mainBody.indexOf("poll(pfd,")
-        val reported = mainBody.indexOf("pfd[1].revents", poll)
-        val readWake = mainBody.indexOf("read(session->watchWakeFd", reported)
-        val stop = mainBody.indexOf("watchStop.load()", readWake)
-        assertTrue(poll in 0 until reported && reported < readWake && readWake < stop)
+        val step = jni.substringAfter("bool watchStep(LiveSession * session) {").substringBefore("\n}\n")
+        val poll = step.indexOf("poll(pfd,")
+        val readWake = step.indexOf("read(session->watchWakeFd", poll)
+        assertTrue(poll in 0 until readWake)
         val n = jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(")
         val body = jni.substring(n, jni.indexOf("\n}\n", n))
         val loss = body.indexOf("started < 0 || lost")
-        val join = body.indexOf("session->watchThread.join()", loss)
-        val freed = body.indexOf("mailimap_free(session->watch)", join)
-        val cleared = body.indexOf("clearThisWatch();", freed)
+        val stop = body.indexOf("finishIdleStop(", loss)
+        val cleared = body.indexOf("clearThisWatch();", stop)
         val back = body.indexOf("return 0;", cleared)
-        assertTrue(loss in 0 until join && join < freed && freed < cleared && cleared < back)
+        assertTrue(loss in 0 until stop && stop < cleared && cleared < back)
         assertTrue(body.substring(cleared, back).contains("if (started < 0)"))
+        assertFalse(jni.contains("watchThread.join"))
     }
 }

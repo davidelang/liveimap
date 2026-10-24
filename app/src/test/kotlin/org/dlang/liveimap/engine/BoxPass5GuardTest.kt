@@ -20,7 +20,7 @@ class BoxPass5GuardTest {
 
     /** F38: the watch poll sleeps until the renew when a wake fd exists. */
     @Test fun watchPollIsNotAFixedWake() {
-        assertTrue(jni.contains("int pollMs = watchPollMs(session->watchWakeFd >= 0, renewLeft,"))
+        assertTrue(jni.contains("int pollMs = watchPollMs(session->watchWakeFd >= 0 || session->jobFd.load() >= 0, renewLeft,"))
         assertFalse(jni.contains("poll(pfd, session->watchWakeFd >= 0 ? 2 : 1, gWatchWakeMs.load())"))
     }
 
@@ -39,7 +39,11 @@ class BoxPass5GuardTest {
         assertTrue(jni.contains("xorMask(session->password, session->passwordMask);"))
         assertTrue(jni.contains("wipeSecret(passwordMask);"))
         assertFalse(jni.contains("const std::string password = session->password;"))
-        assertTrue(jni.contains("    wipeSecret(password);\n    session->mu.lock();"))
+        val watch = jni.substring(jni.indexOf("Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch("))
+        val wipe = watch.indexOf("wipeSecret(password);")
+        val cap = watch.indexOf("mailimap_capability(")
+        assertTrue(wipe in 0 until cap)
+        assertFalse(jni.contains("session->mu"))
     }
 
     /** F64: a channel-binding downgrade is recorded and shown, and a pin confirmed this open carries to later retries. */

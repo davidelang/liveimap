@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** JNI FindClass names in src/main/cpp must have a -keep line. holdGlobal passes its name to FindClass. */
+/** JNI FindClass names in src/main/cpp must have a -keep line. requireClass passes the name to FindClass. */
 class ProguardKeepSyncTest {
     private val rules = text("proguard-rules.pro")
     private val gradle = text("build.gradle.kts")
