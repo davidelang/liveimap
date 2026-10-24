@@ -87,6 +87,32 @@ internal class SmtpProbeMaterial(
     val smtpPassword: String,
 )
 
+/** One open or stage: the handle, the TLS line, and the failure, together. */
+internal class SessionOpen(
+    @JvmField val handle: Long,
+    @JvmField val tls: String,
+    @JvmField val error: String,
+    @JvmField val authRejected: Boolean,
+    @JvmField val certSubject: String,
+    @JvmField val certIssuer: String,
+    @JvmField val certNotBefore: String,
+    @JvmField val certNotAfter: String,
+    @JvmField val certFingerprint: String,
+)
+
+/** UIDs created by one copy or move, and the target mailbox epoch. */
+internal class CopyMoveResult(
+    @JvmField val copiedUids: LongArray,
+    @JvmField val targetEpoch: Long,
+)
+
+/** Builds a mailbox UID list from a primitive array. */
+internal object NativeBoxes {
+    @JvmStatic
+    fun mailboxUids(name: String, uids: LongArray): MailboxUids =
+        MailboxUids(name, uids.asList())
+}
+
 /** Mailbox and callback from the last watch request. [clearPublishedWatch] does not drop this. */
 internal class WatchTarget(
     val mailbox: String,
@@ -117,6 +143,9 @@ internal fun runRewatch(
 
 class LibetpanMailSession : MailSession {
     private var handle: Long = 0
+    private var copiedUidStore = LongArray(0)
+    private var copiedEpochStore = 0L
+    private var pendingCertOffer: Array<String>? = null
 
     @Volatile
     private var capabilityLine: String = ""
@@ -280,7 +309,7 @@ class LibetpanMailSession : MailSession {
         // F64: the account as trusted so far in this open (a pin confirmed below carries into later retries).
         var trustedAccount = account
         if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && promptableCert(opened.text)) {
-            val parts = nativeTakeCertOffer()
+            val parts = pendingCertOffer
             val confirm = certConfirmer
             if (parts != null && parts.size == 5 && confirm != null) {
                 val prompt = CertPrompt(
@@ -456,10 +485,21 @@ class LibetpanMailSession : MailSession {
                 keyChain?.key,
             )
         }
-        nativeTakeTls().takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
-        if (opened == 0L) {
-            val text = nativeTakeError()
-            val serverRejected = !stageCommand && nativeTakeAuthRejected()
+        pendingCertOffer = if (opened.certFingerprint.isNotEmpty()) {
+            arrayOf(
+                opened.certSubject,
+                opened.certIssuer,
+                opened.certNotBefore,
+                opened.certNotAfter,
+                opened.certFingerprint,
+            )
+        } else {
+            null
+        }
+        opened.tls.takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
+        if (opened.handle == 0L) {
+            val text = opened.error
+            val serverRejected = !stageCommand && opened.authRejected
             if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
             TrafficRecorder.event("main", "error", text)
             finishTraffic(account)
@@ -467,7 +507,7 @@ class LibetpanMailSession : MailSession {
             return OpenResult.Failed(text)
         }
         if (stageCommand) {
-            handle = opened
+            handle = opened.handle
             this.account = account
             loggedInPassword = password
             capabilityLine = ""
@@ -476,15 +516,15 @@ class LibetpanMailSession : MailSession {
             finishTraffic(account)
             return OpenResult.Connected
         }
-        val line = nativeCapabilityLine(opened)
+        val line = nativeCapabilityLine(opened.handle)
         val gate = capabilityGate(line)
         if (gate is OpenResult.Rejected) {
-            nativeClose(opened)
+            nativeClose(opened.handle)
             finishTraffic(account)
             return gate
         }
         if (account.logImapTraffic) TrafficLog.noteCapability(line)
-        handle = opened
+        handle = opened.handle
         this.account = account
         loggedInPassword = password
         capabilityLine = line
@@ -493,18 +533,18 @@ class LibetpanMailSession : MailSession {
         // F30: QRESYNC is not enabled. Its VANISHED/changed-FETCH answers were never processed, and once enabled the
         // server sends VANISHED instead of EXPUNGE on this connection. CONDSTORE keeps HIGHESTMODSEQ and EXPUNGE.
         when (featureCaps.resyncKind()) {
-            "Qresync", "Condstore" -> nativeEnable(opened, enableForResync(featureCaps.resyncKind()))
+            "Qresync", "Condstore" -> nativeEnable(opened.handle, enableForResync(featureCaps.resyncKind()))
         }
         // RFC 6855: UTF-8 mailbox names (and quoted strings) instead of modified UTF-7.
         utf8Names = false
         if (featureCaps.utf8Accept) {
-            nativeEnable(opened, "UTF8=ACCEPT")
+            nativeEnable(opened.handle, "UTF8=ACCEPT")
             utf8Names = true
         }
         if (featureCaps.compressDeflate && !account.logImapTraffic &&
             compressionWanted(account.compression, onCellular())
         ) {
-            nativeCompress(opened)
+            nativeCompress(opened.handle)
             compressed = true
         }
         finishTraffic(account)
@@ -763,12 +803,14 @@ class LibetpanMailSession : MailSession {
         keeper.write("copy") {
             forgetSelected()
             ensureReadWrite()
-            nativeCopyThenDelete(
+            val moved = nativeCopyThenDelete(
                 requireHandle(),
                 uids.toLongArray(),
                 wire(targetMailbox),
                 "Copy",
-            )
+            ) ?: return@write
+            copiedUidStore = moved.copiedUids
+            copiedEpochStore = moved.targetEpoch
         }
     }
 
@@ -776,26 +818,28 @@ class LibetpanMailSession : MailSession {
         keeper.write("copy") {
             forgetSelected()
             ensureReadWrite()
-            nativeCopyAllThenDelete(
+            val moved = nativeCopyAllThenDelete(
                 requireHandle(),
                 wire(targetMailbox),
                 moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
-            )
+            ) ?: return@write
+            copiedUidStore = moved.copiedUids
+            copiedEpochStore = moved.targetEpoch
         }
     }
 
     override suspend fun selectedExists(): Int = selected.exists
 
     override suspend fun copiedEpoch(): Long {
-        val h = handle
-        if (h == 0L) return 0L
-        return nativeCopiedEpoch(h)
+        if (handle == 0L) throw MailFailure("not connected")
+        return copiedEpochStore
     }
 
     override suspend fun takeCopiedUids(): List<Long> {
-        val h = handle
-        if (h == 0L) return emptyList()
-        return nativeTakeCopiedUids(h)?.asList().orEmpty()
+        if (handle == 0L) throw MailFailure("not connected")
+        val ids = copiedUidStore
+        copiedUidStore = LongArray(0)
+        return ids.asList()
     }
 
     override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
@@ -1179,7 +1223,7 @@ class LibetpanMailSession : MailSession {
         when (opened) {
             OpenResult.Connected -> {
                 try {
-                    val line = nativeWatchLogin(requireHandle()) ?: throw MailFailure(nativeTakeError())
+                    val line = nativeWatchLogin(requireHandle()) ?: throw MailFailure("")
                     capabilityLine = line
                     if (capabilityGate(line) is OpenResult.Rejected) {
                         close()
@@ -1378,20 +1422,20 @@ class LibetpanMailSession : MailSession {
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         // A staged session has no IMAP handle and does not dial imapHost.
         val staged = stageSmtp(acct, imapPassword)
-        if (staged == 0L) throw MailFailure(nativeTakeError().ifEmpty { "smtp error" })
+        if (staged.handle == 0L) throw MailFailure(staged.error)
         try {
-            val code = nativeSmtp(staged, null, emptyArray(), smtpUser, smtpPassword, 0, "")
+            val code = nativeSmtp(staged.handle, null, emptyArray(), smtpUser, smtpPassword, 0, "")
             return when (code) {
                 2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
                 3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
                 else -> org.dlang.liveimap.session.SmtpLoginCheck.NoPassword
             }
         } finally {
-            nativeClose(staged)
+            nativeClose(staged.handle)
         }
     }
 
-    private fun stageSmtp(account: AccountSettings, password: String): Long {
+    private fun stageSmtp(account: AccountSettings, password: String): SessionOpen {
         val from = if (account.email.isNotEmpty()) account.email else account.username
         val trafficPath = prepareTraffic(account)
         val clientCert = ClientCertStore.load(account.clientCert)
@@ -1611,7 +1655,7 @@ class LibetpanMailSession : MailSession {
         clientP12Password: String,
         keyChainChain: Array<ByteArray>?,
         keyChainKey: Any?,
-    ): Long
+    ): SessionOpen
 
     private external fun nativeOpen(
         host: String,
@@ -1634,7 +1678,7 @@ class LibetpanMailSession : MailSession {
         clientP12Password: String,
         keyChainChain: Array<ByteArray>?,
         keyChainKey: Any?,
-    ): Long
+    ): SessionOpen
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
 
@@ -1662,7 +1706,6 @@ class LibetpanMailSession : MailSession {
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeCloseMailbox(handle: Long)
-    private external fun nativeCopiedEpoch(handle: Long): Long
     private external fun nativeFetchIndex(
         handle: Long,
         mailbox: String,
@@ -1696,9 +1739,8 @@ class LibetpanMailSession : MailSession {
     private external fun nativeStoreFlagsAll(handle: Long, add: Array<String>, remove: Array<String>)
     private external fun nativeUidExpungeDeleted(handle: Long)
     private external fun nativeUidExpunge(handle: Long, uids: LongArray)
-    private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String)
-    private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String)
-    private external fun nativeTakeCopiedUids(handle: Long): LongArray?
+    private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String): CopyMoveResult?
+    private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String): CopyMoveResult?
     private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>): Long
     private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean, withCharset: Boolean): LongArray?
     private external fun nativeSearchCriterion(
@@ -1829,21 +1871,8 @@ class LibetpanMailSession : MailSession {
         @JvmStatic
         external fun nativeIdleRenews(): Int
 
-        @JvmStatic
-        private external fun nativeTakeError(): String
-
-        @JvmStatic
-        private external fun nativeTakeAuthRejected(): Boolean
-
         @Volatile
         internal var smtpProbe: SmtpProbeMaterial? = null
-
-        /** "TLSv1.3 <cipher> binding=<type>" of the last login on this thread, or "" for plaintext. */
-        @JvmStatic
-        private external fun nativeTakeTls(): String
-
-        @JvmStatic
-        private external fun nativeTakeCertOffer(): Array<String>?
 
         @JvmStatic
         private external fun nativeProbe(

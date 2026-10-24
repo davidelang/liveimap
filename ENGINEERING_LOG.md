@@ -3599,3 +3599,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Edge-scroll adds the consumed pane delta to the reorderable drag offset. Keep rules hold the release member names.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - JNI results and session owner thread.
+
+- Approved plan: sandbox/plans/jni-session-20261024-0528-plan.md
+- Class and member ids are resolved in JNI_OnLoad. A missing class or member fails System.loadLibrary with that name.
+- Open, TLS, auth rejection, certificate offer, and copy UIDs come back on the call that caused them. An empty error stays empty. handle 0 throws MailFailure. No second JNI call for a copy result.
+- UID lists are long arrays. Index fetch releases each row's native strings before the next row. Dead QRESYNC select is gone. CONDSTORE keeps the selected mailbox modseq from the select result.
+- One owner thread is the only libetpan caller for a session. Publish and unlink use a CAS intrusive list. freeSession waits until the atomic use count is zero. IDLE DONE is a command on that owner. No native mutex or condition variable.

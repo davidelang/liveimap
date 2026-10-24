@@ -133,16 +133,13 @@ void EVP_PKEY_free(evp_pkey_st * pkey);
 void OPENSSL_sk_pop_free(stack_st * sk, void (* fn)(void *));
 }
 
-// Negotiated TLS of the last IMAP login on this thread, for the recording's tls event.
-thread_local std::string gLastTls;
-
-static void noteTls(mailstream * stream, const char * bindingName) {
-    gLastTls.clear();
-    if (stream == nullptr) return;
+// Negotiated TLS of this login, returned on the open that produced it.
+static std::string negotiatedTls(mailstream * stream, const char * bindingName) {
+    if (stream == nullptr) return {};
     ssl_st * ssl = static_cast<ssl_st *>(mailstream_ssl_get_openssl_ssl(stream));
-    if (ssl == nullptr) return;
+    if (ssl == nullptr) return {};
     const void * cipher = SSL_get_current_cipher(ssl);
-    gLastTls = std::string(SSL_get_version(ssl)) + " " + (cipher ? SSL_CIPHER_get_name(cipher) : "?") +
+    return std::string(SSL_get_version(ssl)) + " " + (cipher ? SSL_CIPHER_get_name(cipher) : "?") +
         " binding=" + (bindingName ? bindingName : "none");
 }
 
@@ -177,7 +174,7 @@ static void fillTlsChannelBinding(mailstream * stream, unsigned char * binding,
 std::optional<std::string> utf8FromJava(JNIEnv * env, jstring value);
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void * data);
 const char * sniName(const char * host);
-extern thread_local std::string gTlsAlert;
+
 extern std::atomic<bool> gLabMaxTls12;
 std::string tlsFailureReason();
 
@@ -208,11 +205,6 @@ struct LiveBlob {
     char * data;
     size_t len;
     int isNil;
-};
-
-struct ResyncState {
-    uint32_t uidvalidity = 0;
-    uint64_t modseq = 0;
 };
 
 extern JavaVM * gVm;
@@ -314,9 +306,10 @@ struct LiveSession {
     bool qresync = false;
     // ENABLE UTF8=ACCEPT accepted (RFC 6855): mailbox names on the wire are UTF-8, not modified UTF-7.
     bool utf8 = false;
-    std::map<std::string, ResyncState> resyncByMailbox;
     std::string selectedMailbox;
     bool selectedReadWrite = false;
+    // Highest modseq from the last CONDSTORE select of the selected mailbox only.
+    uint64_t selectedModseq = 0;
 
     mailimap * watch = nullptr;
     // Logged-in watch connection waiting for the capability gate, before EXAMINE and IDLE.
@@ -347,29 +340,15 @@ struct LiveSession {
     // F136: under mu. Every bump also takes startMu so the IDLE-start wait can read it.
     uint64_t watchGeneration = 0;
     bool closed = false;  // under mu; close takes startMu too so the IDLE-start wait can read it
-    std::vector<uint32_t> copiedUids;
-    uint32_t copiedUidValidity = 0; // COPYUID's destination UIDVALIDITY (F105 refs for undo)
     int64_t esearchCount = -1;
 };
 
 JavaVM * gVm = nullptr;
 std::mutex gLiveMu;
 std::unordered_set<LiveSession *> gLive;
-// Server rejected AUTH or LOGIN. Not a local SASL failure. Same thread as nativeOpen / nativeTakeAuthRejected.
-thread_local bool gServerAuthRejected = false;
-// F12 addendum: per thread, like the cert offer, so another thread's error text can never be shown here.
-thread_local std::string gLastError;
-// Per thread (F12): the offer is recorded during a handshake and taken right after the failed open on the
-// same thread, so a watch or probe connection on another thread can never swap in its certificate.
-thread_local std::vector<std::string> gCertOffer;
-
-void clearCertOffer() {
-    gCertOffer.clear();
-}
 int (* gKeepUnselect)(mailimap *) = mailimap_unselect;
 
 struct JniCache {
-    bool ready = false;
     jclass mailFailure = nullptr;
     jclass connectionLost = nullptr;
     jclass indexRow = nullptr;
@@ -383,6 +362,9 @@ struct JniCache {
     jclass hashSet = nullptr;
     jclass longCls = nullptr;
     jclass integerCls = nullptr;
+    jclass sessionOpen = nullptr;
+    jclass copyMove = nullptr;
+    jclass nativeBoxes = nullptr;
     jmethodID indexRowInit = nullptr;
     jmethodID folderInit = nullptr;
     jmethodID nsInit = nullptr;
@@ -397,10 +379,15 @@ struct JniCache {
     jmethodID mailboxUidsInit = nullptr;
     jmethodID listInit = nullptr;
     jmethodID listAdd = nullptr;
+    jmethodID listSize = nullptr;
+    jmethodID listGet = nullptr;
     jmethodID setInit = nullptr;
     jmethodID setAdd = nullptr;
     jmethodID longValueOf = nullptr;
     jmethodID integerValueOf = nullptr;
+    jmethodID sessionOpenInit = nullptr;
+    jmethodID copyMoveInit = nullptr;
+    jmethodID mailboxUidsOf = nullptr;
     jmethodID onWatch = nullptr;
     jmethodID publishWatch = nullptr;
     jmethodID clearPublishedWatch = nullptr;
@@ -566,16 +553,6 @@ std::string asciiSafe(const char * text, const char * fallback) {
     return out;
 }
 
-void setLastError(const std::string & text) {
-    gLastError = text;
-}
-
-std::string takeLastError() {
-    std::string out = gLastError.empty() ? "imap error" : gLastError;
-    gLastError.clear();
-    return out;
-}
-
 std::string imapText(mailimap * session, const char * fallback) {
     if (session != nullptr && session->imap_response != nullptr && session->imap_response[0] != 0) {
         return asciiSafe(session->imap_response, fallback);
@@ -590,24 +567,10 @@ void throwFailure(JNIEnv * env, const std::string & text) {
     env->ThrowNew(gJni.mailFailure, text.c_str());
 }
 
-void cacheConnectionLost(JNIEnv * env) {
-    if (gJni.connectionLost != nullptr) {
-        return;
-    }
-    jclass local = env->FindClass("org/dlang/liveimap/session/ConnectionLost");
-    if (local != nullptr) {
-        gJni.connectionLost = static_cast<jclass>(env->NewGlobalRef(local));
-        env->DeleteLocalRef(local);
-    } else {
-        env->ExceptionClear();
-    }
-}
-
 void throwConnectionLost(JNIEnv * env, const std::string & text) {
     if (env->ExceptionCheck()) {
         return;
     }
-    cacheConnectionLost(env);
     jclass cls = gJni.connectionLost != nullptr ? gJni.connectionLost : gJni.mailFailure;
     if (cls == nullptr) {
         return;
@@ -639,103 +602,113 @@ void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback
     throwFailure(env, text);
 }
 
-static bool holdGlobal(JNIEnv * env, jclass * slot, const char * name) {
-    if (*slot != nullptr) {
-        return true;
-    }
+static bool requireClass(JNIEnv * env, jclass * slot, const char * name) {
     jclass local = env->FindClass(name);
-    if (local == nullptr || env->ExceptionCheck()) {
-        if (local != nullptr) env->DeleteLocalRef(local);
-        env->ExceptionClear();
-        return false;
-    }
+    if (local == nullptr) return false;
     *slot = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
     if (*slot == nullptr) {
-        env->ExceptionClear();
+        jclass err = env->FindClass("java/lang/NoClassDefFoundError");
+        if (err != nullptr) env->ThrowNew(err, name);
         return false;
     }
     return true;
 }
 
-bool ensureJni(JNIEnv * env) {
-    if (gJni.ready) {
-        return true;
-    }
-    if (!holdGlobal(env, &gJni.mailFailure, "org/dlang/liveimap/session/MailFailure")) return false;
-    cacheConnectionLost(env);
-    if (!holdGlobal(env, &gJni.indexRow, "org/dlang/liveimap/session/IndexRow")) return false;
-    if (!holdGlobal(env, &gJni.folderEntry, "org/dlang/liveimap/session/FolderEntry")) return false;
-    if (!holdGlobal(env, &gJni.ns, "org/dlang/liveimap/session/Namespace")) return false;
-    if (!holdGlobal(env, &gJni.nsKind, "org/dlang/liveimap/session/NamespaceKind")) return false;
-    if (!holdGlobal(env, &gJni.selectResult, "org/dlang/liveimap/session/SelectResult")) return false;
-    if (!holdGlobal(env, &gJni.mimePart, "org/dlang/liveimap/session/MimePart")) return false;
-    if (!holdGlobal(env, &gJni.threadNode, "org/dlang/liveimap/session/ThreadNode")) return false;
-    if (!holdGlobal(env, &gJni.arrayList, "java/util/ArrayList")) return false;
-    if (!holdGlobal(env, &gJni.hashSet, "java/util/HashSet")) return false;
-    if (!holdGlobal(env, &gJni.longCls, "java/lang/Long")) return false;
-    if (!holdGlobal(env, &gJni.integerCls, "java/lang/Integer")) return false;
-    gJni.indexRowInit = env->GetMethodID(gJni.indexRow, "<init>",
-        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;)V");
-    gJni.folderInit = env->GetMethodID(gJni.folderEntry, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V");
-    gJni.nsInit = env->GetMethodID(gJni.ns, "<init>",
-        "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V");
-    gJni.selectInit = env->GetMethodID(gJni.selectResult, "<init>", "(JJI)V");
-    gJni.mimeInit = env->GetMethodID(gJni.mimePart, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
-    gJni.threadInit = env->GetMethodID(gJni.threadNode, "<init>",
-        "(Ljava/lang/Long;Ljava/util/List;)V");
-    gJni.listInit = env->GetMethodID(gJni.arrayList, "<init>", "()V");
-    gJni.listAdd = env->GetMethodID(gJni.arrayList, "add", "(Ljava/lang/Object;)Z");
-    gJni.setInit = env->GetMethodID(gJni.hashSet, "<init>", "()V");
-    gJni.setAdd = env->GetMethodID(gJni.hashSet, "add", "(Ljava/lang/Object;)Z");
-    gJni.longValueOf = env->GetStaticMethodID(gJni.longCls, "valueOf", "(J)Ljava/lang/Long;");
-    gJni.integerValueOf = env->GetStaticMethodID(gJni.integerCls, "valueOf", "(I)Ljava/lang/Integer;");
-    gJni.personal = env->GetStaticFieldID(gJni.nsKind, "Personal",
-        "Lorg/dlang/liveimap/session/NamespaceKind;");
-    gJni.other = env->GetStaticFieldID(gJni.nsKind, "Other",
-        "Lorg/dlang/liveimap/session/NamespaceKind;");
-    gJni.shared = env->GetStaticFieldID(gJni.nsKind, "Shared",
-        "Lorg/dlang/liveimap/session/NamespaceKind;");
+static bool requireMethod(JNIEnv * env, jmethodID * slot, jclass cls, const char * name, const char * sig) {
+    *slot = env->GetMethodID(cls, name, sig);
+    return *slot != nullptr;
+}
+
+static bool requireStatic(JNIEnv * env, jmethodID * slot, jclass cls, const char * name, const char * sig) {
+    *slot = env->GetStaticMethodID(cls, name, sig);
+    return *slot != nullptr;
+}
+
+static bool requireField(JNIEnv * env, jfieldID * slot, jclass cls, const char * name, const char * sig) {
+    *slot = env->GetStaticFieldID(cls, name, sig);
+    return *slot != nullptr;
+}
+
+// Every id used from native code. A failed FindClass, GetMethodID, or GetFieldID leaves its exception
+// pending (the class or member name) and JNI_OnLoad returns JNI_ERR.
+bool resolveJni(JNIEnv * env) {
+    if (!requireClass(env, &gJni.mailFailure, "org/dlang/liveimap/session/MailFailure")) return false;
+    if (!requireClass(env, &gJni.connectionLost, "org/dlang/liveimap/session/ConnectionLost")) return false;
+    if (!requireClass(env, &gJni.indexRow, "org/dlang/liveimap/session/IndexRow")) return false;
+    if (!requireClass(env, &gJni.folderEntry, "org/dlang/liveimap/session/FolderEntry")) return false;
+    if (!requireClass(env, &gJni.ns, "org/dlang/liveimap/session/Namespace")) return false;
+    if (!requireClass(env, &gJni.nsKind, "org/dlang/liveimap/session/NamespaceKind")) return false;
+    if (!requireClass(env, &gJni.selectResult, "org/dlang/liveimap/session/SelectResult")) return false;
+    if (!requireClass(env, &gJni.mimePart, "org/dlang/liveimap/session/MimePart")) return false;
+    if (!requireClass(env, &gJni.threadNode, "org/dlang/liveimap/session/ThreadNode")) return false;
+    if (!requireClass(env, &gJni.arrayList, "java/util/ArrayList")) return false;
+    if (!requireClass(env, &gJni.hashSet, "java/util/HashSet")) return false;
+    if (!requireClass(env, &gJni.longCls, "java/lang/Long")) return false;
+    if (!requireClass(env, &gJni.integerCls, "java/lang/Integer")) return false;
+    if (!requireClass(env, &gJni.sessionOpen, "org/dlang/liveimap/engine/SessionOpen")) return false;
+    if (!requireClass(env, &gJni.copyMove, "org/dlang/liveimap/engine/CopyMoveResult")) return false;
+    if (!requireClass(env, &gJni.nativeBoxes, "org/dlang/liveimap/engine/NativeBoxes")) return false;
+    if (!requireClass(env, &gJni.sortField, "org/dlang/liveimap/session/SortField")) return false;
+    if (!requireClass(env, &gJni.threadHeader, "org/dlang/liveimap/session/ThreadHeader")) return false;
+    if (!requireClass(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) return false;
+    if (!requireClass(env, &gJni.trafficLog, "org/dlang/liveimap/engine/TrafficLog")) return false;
+    if (!requireMethod(env, &gJni.indexRowInit, gJni.indexRow, "<init>",
+        "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;)V")) return false;
+    if (!requireMethod(env, &gJni.folderInit, gJni.folderEntry, "<init>",
+        "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V")) return false;
+    if (!requireMethod(env, &gJni.nsInit, gJni.ns, "<init>",
+        "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V")) return false;
+    if (!requireMethod(env, &gJni.selectInit, gJni.selectResult, "<init>", "(JJI)V")) return false;
+    if (!requireMethod(env, &gJni.mimeInit, gJni.mimePart, "<init>",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V")) return false;
+    if (!requireMethod(env, &gJni.threadInit, gJni.threadNode, "<init>",
+        "(Ljava/lang/Long;Ljava/util/List;)V")) return false;
+    if (!requireMethod(env, &gJni.listInit, gJni.arrayList, "<init>", "()V")) return false;
+    if (!requireMethod(env, &gJni.listAdd, gJni.arrayList, "add", "(Ljava/lang/Object;)Z")) return false;
+    if (!requireMethod(env, &gJni.listSize, gJni.arrayList, "size", "()I")) return false;
+    if (!requireMethod(env, &gJni.listGet, gJni.arrayList, "get", "(I)Ljava/lang/Object;")) return false;
+    if (!requireMethod(env, &gJni.setInit, gJni.hashSet, "<init>", "()V")) return false;
+    if (!requireMethod(env, &gJni.setAdd, gJni.hashSet, "add", "(Ljava/lang/Object;)Z")) return false;
+    if (!requireStatic(env, &gJni.longValueOf, gJni.longCls, "valueOf", "(J)Ljava/lang/Long;")) return false;
+    if (!requireStatic(env, &gJni.integerValueOf, gJni.integerCls, "valueOf", "(I)Ljava/lang/Integer;")) return false;
+    if (!requireMethod(env, &gJni.sessionOpenInit, gJni.sessionOpen, "<init>",
+        "(JLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V")) return false;
+    if (!requireMethod(env, &gJni.copyMoveInit, gJni.copyMove, "<init>", "([JJ)V")) return false;
+    if (!requireStatic(env, &gJni.mailboxUidsOf, gJni.nativeBoxes, "mailboxUids",
+        "(Ljava/lang/String;[J)Lorg/dlang/liveimap/session/MailboxUids;")) return false;
+    if (!requireMethod(env, &gJni.sortFieldInit, gJni.sortField, "<init>", "(JLjava/lang/String;JZ)V")) return false;
+    if (!requireMethod(env, &gJni.threadHeaderInit, gJni.threadHeader, "<init>",
+        "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V")) return false;
+    if (!requireMethod(env, &gJni.mailboxUidsInit, gJni.mailboxUids, "<init>",
+        "(Ljava/lang/String;Ljava/util/List;)V")) return false;
+    if (!requireStatic(env, &gJni.trafficAccept, gJni.trafficLog, "acceptNative",
+        "(Ljava/lang/String;I[B)V")) return false;
+    if (!requireStatic(env, &gJni.trafficFlush, gJni.trafficLog, "flushNative", "()V")) return false;
+    if (!requireStatic(env, &gJni.trafficNote, gJni.trafficLog, "noteNative",
+        "(Ljava/lang/String;Ljava/lang/String;)V")) return false;
+    if (!requireField(env, &gJni.personal, gJni.nsKind, "Personal",
+        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
+    if (!requireField(env, &gJni.other, gJni.nsKind, "Other",
+        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
+    if (!requireField(env, &gJni.shared, gJni.nsKind, "Shared",
+        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
     jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
-    if (sessionCls == nullptr || env->ExceptionCheck()) {
-        if (sessionCls != nullptr) env->DeleteLocalRef(sessionCls);
-        env->ExceptionClear();
+    if (sessionCls == nullptr) return false;
+    if (!requireMethod(env, &gJni.onWatch, sessionCls, "onNativeWatch", "(JIIJ[Ljava/lang/String;)V")) {
+        env->DeleteLocalRef(sessionCls);
         return false;
     }
-    gJni.onWatch = env->GetMethodID(sessionCls, "onNativeWatch", "(JIIJ[Ljava/lang/String;)V");
-    gJni.publishWatch = env->GetMethodID(sessionCls, "publishWatch", "(JLjava/lang/Object;)V");
-    gJni.clearPublishedWatch = env->GetMethodID(sessionCls, "clearPublishedWatch", "(J)V");
+    if (!requireMethod(env, &gJni.publishWatch, sessionCls, "publishWatch", "(JLjava/lang/Object;)V")) {
+        env->DeleteLocalRef(sessionCls);
+        return false;
+    }
+    if (!requireMethod(env, &gJni.clearPublishedWatch, sessionCls, "clearPublishedWatch", "(J)V")) {
+        env->DeleteLocalRef(sessionCls);
+        return false;
+    }
     env->DeleteLocalRef(sessionCls);
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (holdGlobal(env, &gJni.trafficLog, "org/dlang/liveimap/engine/TrafficLog")) {
-        gJni.trafficAccept = env->GetStaticMethodID(
-            gJni.trafficLog, "acceptNative", "(Ljava/lang/String;I[B)V");
-        gJni.trafficFlush = env->GetStaticMethodID(gJni.trafficLog, "flushNative", "()V");
-        gJni.trafficNote = env->GetStaticMethodID(
-            gJni.trafficLog, "noteNative", "(Ljava/lang/String;Ljava/lang/String;)V");
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (holdGlobal(env, &gJni.sortField, "org/dlang/liveimap/session/SortField")) {
-        gJni.sortFieldInit = env->GetMethodID(gJni.sortField, "<init>", "(JLjava/lang/String;JZ)V");
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (holdGlobal(env, &gJni.threadHeader, "org/dlang/liveimap/session/ThreadHeader")) {
-        gJni.threadHeaderInit = env->GetMethodID(
-            gJni.threadHeader,
-            "<init>",
-            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (holdGlobal(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) {
-        gJni.mailboxUidsInit = env->GetMethodID(
-            gJni.mailboxUids, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    gJni.ready = gJni.mailFailure != nullptr && gJni.indexRowInit != nullptr &&
-        gJni.folderInit != nullptr && gJni.onWatch != nullptr && gJni.integerValueOf != nullptr;
-    return gJni.ready;
+    return true;
 }
 
 /* Standard UTF-8 (not JNI modified UTF-8) because these strings go on the wire (F41): a supplementary character
@@ -813,6 +786,10 @@ bool cmdOk(int r) {
 // F27: look the session up under gLiveMu and take a use count, then wait for its own mutex with gLiveMu
 // released, so one slow session (connect, IDLE start, big fetch) no longer stalls every other account.
 LiveSession * lockSession(JNIEnv * env, jlong handle) {
+    if (handle == 0) {
+        throwFailure(env, "not connected");
+        return nullptr;
+    }
     auto * session = reinterpret_cast<LiveSession *>(handle);
     {
         std::lock_guard<std::mutex> lock(gLiveMu);
@@ -1690,26 +1667,40 @@ jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bo
     return obj;
 }
 
-std::vector<Row> rowsFromList(clist * list, const char * accountEmail, const char * altSpecs) {
-    std::vector<Row> rows;
-    if (list == nullptr) {
-        return rows;
-    }
-    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
-        Row row;
-        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs);
-        // F113: only answers to our FETCH (they carry ENVELOPE). Another client's flag change arriving mid-fetch
-        // carries UID too, with any extension enabled or none, and must not become a blank row.
-        if (row.uid != 0 && row.hasEnvelope) {
-            rows.push_back(row);
+void releaseRow(Row & row) {
+    row.flags.clear();
+    row.flags.shrink_to_fit();
+    auto wipe = [](std::string & s) {
+        s.clear();
+        s.shrink_to_fit();
+    };
+    wipe(row.from);
+    wipe(row.subject);
+    wipe(row.date);
+    wipe(row.preview);
+    wipe(row.recipients);
+    row.structure = nullptr;
+}
+
+jobjectArray indexRowsToArray(JNIEnv * env, jobject list) {
+    jint n = env->CallIntMethod(list, gJni.listSize);
+    if (env->ExceptionCheck()) return nullptr;
+    jobjectArray arr = env->NewObjectArray(n, gJni.indexRow, nullptr);
+    if (arr == nullptr) return nullptr;
+    for (jint i = 0; i < n; ++i) {
+        jobject row = env->CallObjectMethod(list, gJni.listGet, i);
+        if (row == nullptr || env->ExceptionCheck()) {
+            env->DeleteLocalRef(arr);
+            if (row != nullptr) env->DeleteLocalRef(row);
+            return nullptr;
         }
+        env->SetObjectArrayElement(arr, i, row);
+        env->DeleteLocalRef(row);
     }
-    return rows;
+    return arr;
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore = false);
-int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
-    uint64_t knownModseq, uint64_t * modseq, const char * command);
 
 bool wireOk(const char * text);
 static bool capabilityLineOffersCondstore(const std::string & line) {
@@ -1736,9 +1727,6 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bo
     uint64_t mod = 0;
     const char * command = readWrite ? "SELECT" : "EXAMINE";
     std::string name = mailbox != nullptr ? mailbox : "";
-    auto stored = session->resyncByMailbox.find(name);
-    bool haveStored = stored != session->resyncByMailbox.end()
-        && stored->second.uidvalidity != 0 && stored->second.modseq != 0;
     const bool condstore = capabilityLineOffersCondstore(session->capabilityLine);
     if (condstore) {
         r = selectFullCapture(session->imap, mailbox, &mod, command, true);
@@ -1751,14 +1739,8 @@ bool selectMailbox(JNIEnv * env, LiveSession * session, const char * mailbox, bo
         throwImap(env, session, r, "select failed");
         return false;
     }
-    if (condstore) {
-        struct mailimap_selection_info * info = session->imap->imap_selection_info;
-        if (info != nullptr && info->sel_uidvalidity != 0 && mod != 0) {
-            session->resyncByMailbox[name] = ResyncState{info->sel_uidvalidity, mod};
-        } else if (haveStored && mod == 0) {
-            session->resyncByMailbox.erase(name);
-        }
-    }
+    // One mailbox: the modseq just returned by this select, not a per-folder resync map.
+    session->selectedModseq = condstore ? mod : 0;
     session->selectedMailbox = name;
     session->selectedReadWrite = readWrite;
     return true;
@@ -2859,7 +2841,7 @@ std::string trafficConnectionId(LiveSession * live, mailimap * imap, mailstream 
 bool beginTrafficJni(JNIEnv ** env, bool * attached) {
     *env = nullptr;
     *attached = false;
-    if (gVm == nullptr || !gJni.ready || gJni.trafficLog == nullptr) return false;
+    if (gVm == nullptr || gJni.trafficLog == nullptr) return false;
     JNIEnv * local = nullptr;
     jint got = gVm->GetEnv(reinterpret_cast<void **>(&local), JNI_VERSION_1_6);
     if (got == JNI_EDETACHED) {
@@ -3053,6 +3035,8 @@ struct TlsCapture {
     const std::string * clientP12Password = nullptr;
     const std::vector<std::string> * keyChainChain = nullptr;
     jobject keyChainKey = nullptr;
+    std::string alert;
+    std::string state;
 };
 
 // True when prepareTls loaded a client certificate into the current connection (same thread, cleared per TLS
@@ -3098,19 +3082,17 @@ bool promptableTrust(const std::string & text) {
     return text == "certificate untrusted" || text == "certificate changed";
 }
 
-void storePeerOffer(JNIEnv * env, jclass cls, jobject list) {
+bool storePeerOffer(JNIEnv * env, jclass cls, jobject list, std::vector<std::string> * offer) {
     jmethodID method = env->GetStaticMethodID(cls, "offer", "(Ljava/util/List;)[Ljava/lang/String;");
     if (method == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
-        clearCertOffer();
-        return;
+        return false;
     }
     jobject result = env->CallStaticObjectMethod(cls, method, list);
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
         if (result != nullptr) env->DeleteLocalRef(result);
-        clearCertOffer();
-        return;
+        return false;
     }
     auto * arr = static_cast<jobjectArray>(result);
     jsize count = env->GetArrayLength(arr);
@@ -3134,19 +3116,22 @@ void storePeerOffer(JNIEnv * env, jclass cls, jobject list) {
         }
     }
     env->DeleteLocalRef(result);
-    if (lines.size() == 5) gCertOffer = std::move(lines);
-    else gCertOffer.clear();
+    if (lines.size() != 5 || offer == nullptr) return false;
+    *offer = std::move(lines);
+    return true;
 }
 
 std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<std::vector<unsigned char>> & ders,
-    const char * pin, bool publish) {
+    const char * pin, bool publish, std::vector<std::string> * offer = nullptr) {
     struct OfferGate {
         bool publish;
         bool keep = false;
+        std::vector<std::string> * offer;
+        std::vector<std::string> pending;
         ~OfferGate() {
-            if (publish && !keep) clearCertOffer();
+            if (publish && keep && offer != nullptr) *offer = std::move(pending);
         }
-    } gate{publish};
+    } gate{publish, false, offer, {}};
     if (env == nullptr) return "certificate rejected";
     if (env->ExceptionCheck()) env->ExceptionClear();
     jclass cls = env->FindClass("org/dlang/liveimap/engine/PeerTrust");
@@ -3222,8 +3207,7 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         if (got) text = std::move(*got);
     }
     if (gate.publish && promptableTrust(text)) {
-        storePeerOffer(env, cls, list);
-        gate.keep = true;
+        gate.keep = storePeerOffer(env, cls, list, &gate.pending);
     }
     env->DeleteLocalRef(jpin);
     env->DeleteLocalRef(jhost);
@@ -3344,8 +3328,8 @@ bool wireOk(const char * text) {
 
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
     const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk,
-    const std::string & forced) {
-    gServerAuthRejected = false;
+    const std::string & forced, bool * authRejected = nullptr, std::string * tlsOut = nullptr) {
+    if (authRejected != nullptr) *authRejected = false;
     struct mailimap_capability_data * caps = nullptr;
     int r = mailimap_capability(imap, &caps);
     if (!cmdOk(r) || caps == nullptr) {
@@ -3361,7 +3345,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     const char * bindingName = nullptr;
     if (tls) {
         fillTlsChannelBinding(imap->imap_stream, binding, &bindingLen, &bindingName);
-        noteTls(imap->imap_stream, bindingName);
+        if (tlsOut != nullptr) *tlsOut = negotiatedTls(imap->imap_stream, bindingName);
     }
     jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
     if (cls == nullptr || env->ExceptionCheck()) {
@@ -3522,7 +3506,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
                 + (gSaslSetup.empty() ? "" : "; plugin errors: " + gSaslSetup) + ")";
             return false;
         }
-        gServerAuthRejected = true;
+        if (authRejected != nullptr) *authRejected = true;
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + name
             + ": login failed: " + imapText(imap, "login failed")
             + (mechanism.empty() ? std::string(" (server rejected LOGIN)") : " (server rejected SASL " + mechanism + ")");
@@ -3558,7 +3542,8 @@ struct ImapOpenMaterial {
 };
 
 mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * user, const char * password,
-    LiveSession * live, std::string * error, std::string * connectedAddress, const ImapOpenMaterial * owned = nullptr) {
+    LiveSession * live, std::string * error, std::string * connectedAddress, const ImapOpenMaterial * owned = nullptr,
+    bool * authRejected = nullptr, std::string * tlsOut = nullptr) {
     std::string address;
     bool logTraffic = owned != nullptr ? owned->logImapTraffic : (live != nullptr && live->logImapTraffic);
     bool plaintextOk = owned != nullptr ? owned->allowPlaintextAuth : (live != nullptr && live->allowPlaintextAuth);
@@ -3567,7 +3552,8 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
         ? openTcp(host, port, nullptr, error, &address, logTraffic, "watch")
         : openTcp(host, port, live, error, &address, logTraffic, nullptr);
     if (imap == nullptr) return nullptr;
-    if (!loginImap(env, imap, host, port, user, password, address, error, false, plaintextOk, mechanism)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, false, plaintextOk, mechanism,
+            authRejected, tlsOut)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -3577,7 +3563,8 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
 
 mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port, const char * user,
     const char * password, LiveSession * live, std::string * error, std::string * connectedAddress,
-    const char * pin, bool publishOffer, const ImapOpenMaterial * owned = nullptr) {
+    const char * pin, bool publishOffer, const ImapOpenMaterial * owned = nullptr,
+    bool * authRejected = nullptr, std::string * tlsOut = nullptr, std::vector<std::string> * certOffer = nullptr) {
     TlsCapture capture;
     bool logTraffic = false;
     std::string mechanism;
@@ -3707,10 +3694,10 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         tlsCapture = nullptr;
         return nullptr;
     }
-    std::string trust = peerTrustCheck(env, host, capture.ders, pin, publishOffer);
+    std::string trust = peerTrustCheck(env, host, capture.ders, pin, publishOffer, certOffer);
     tlsCapture = nullptr;
     if (!trust.empty() && acceptInvalid && certificateVerdict(trust) && trust != "certificate changed") {
-        clearCertOffer();
+        if (certOffer != nullptr) certOffer->clear();
         trust.clear();
     }
     if (!trust.empty()) {
@@ -3718,7 +3705,8 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         rejectImap(imap);
         return nullptr;
     }
-    if (!loginImap(env, imap, host, port, user, password, address, error, true, true, mechanism)) {
+    if (!loginImap(env, imap, host, port, user, password, address, error, true, true, mechanism,
+            authRejected, tlsOut)) {
         mailimap_free(imap);
         return nullptr;
     }
@@ -3864,65 +3852,6 @@ void freeExtensionList(mailimap * imap) {
         reinterpret_cast<clist_func>(mailimap_extension_data_free), nullptr);
     clist_free(imap->imap_response_info->rsp_extension_list);
     imap->imap_response_info->rsp_extension_list = nullptr;
-}
-
-int selectQresyncCapture(mailimap * imap, const char * mailbox, uint32_t uidvalidity,
-    uint64_t knownModseq, uint64_t * modseq, const char * command) {
-    *modseq = 0;
-    int r = mailimap_send_current_tag(imap);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_token_send(imap->imap_stream, command);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_space_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_mailbox_send(imap->imap_stream, mailbox);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_space_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_oparenth_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_token_send(imap->imap_stream, "QRESYNC");
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_space_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_oparenth_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_number_send(imap->imap_stream, uidvalidity);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_space_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_uint64_send(imap->imap_stream, knownModseq);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_cparenth_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_cparenth_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    r = mailimap_crlf_send(imap->imap_stream);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    if (mailstream_flush(imap->imap_stream) == -1) return MAILIMAP_ERROR_STREAM;
-    if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
-    if (imap->imap_selection_info != nullptr) {
-        mailimap_selection_info_free(imap->imap_selection_info);
-    }
-    imap->imap_selection_info = mailimap_selection_info_new();
-    struct mailimap_response * response = nullptr;
-    r = mailimap_parse_response(imap, &response);
-    if (r != MAILIMAP_NO_ERROR) return r;
-    uint64_t parsed = highestModseq(imap);
-    freeExtensionList(imap);
-    bool ok = taggedOk(response);
-    mailimap_response_free(response);
-    if (!ok) {
-        if (imap->imap_selection_info != nullptr) {
-            mailimap_selection_info_free(imap->imap_selection_info);
-            imap->imap_selection_info = nullptr;
-        }
-        imap->imap_state = MAILIMAP_STATE_AUTHENTICATED;
-        return MAILIMAP_ERROR_SELECT;
-    }
-    imap->imap_state = MAILIMAP_STATE_SELECTED;
-    *modseq = parsed;
-    return MAILIMAP_NO_ERROR;
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore) {
@@ -4820,18 +4749,8 @@ clist * takeScopeHits(mailimap * imap) {
     return hits;
 }
 
-jobject scopeUidList(JNIEnv * env, clist * uids) {
-    jobject list = env->NewObject(gJni.arrayList, gJni.listInit);
-    if (list == nullptr || uids == nullptr) return list;
-    for (clistiter * cur = clist_begin(uids); cur != nullptr; cur = clist_next(cur)) {
-        auto * n = static_cast<uint32_t *>(clist_content(cur));
-        if (n == nullptr) continue;
-        jobject boxed = env->CallStaticObjectMethod(gJni.longCls, gJni.longValueOf, static_cast<jlong>(*n));
-        if (boxed == nullptr) continue;
-        env->CallBooleanMethod(list, gJni.listAdd, boxed);
-        env->DeleteLocalRef(boxed);
-    }
-    return list;
+jlongArray scopeUidList(JNIEnv * env, clist * uids) {
+    return uidArray(env, uids);
 }
 
 jobjectArray scopeUidArray(JNIEnv * env, clist * hits) {
@@ -4841,10 +4760,10 @@ jobjectArray scopeUidArray(JNIEnv * env, clist * hits) {
             auto * hit = static_cast<LiveScopeHit *>(clist_content(cur));
             if (hit == nullptr || hit->mailbox == nullptr || !hit->hasAll) continue;
             jstring name = newString(env, hit->mailbox);
-            jobject list = scopeUidList(env, hit->uids);
-            jobject obj = env->NewObject(gJni.mailboxUids, gJni.mailboxUidsInit, name, list);
+            jlongArray ids = scopeUidList(env, hit->uids);
+            jobject obj = env->CallStaticObjectMethod(gJni.nativeBoxes, gJni.mailboxUidsOf, name, ids);
             if (name != nullptr) env->DeleteLocalRef(name);
-            if (list != nullptr) env->DeleteLocalRef(list);
+            if (ids != nullptr) env->DeleteLocalRef(ids);
             if (env->ExceptionCheck() || obj == nullptr) {
                 for (jobject old : built) env->DeleteLocalRef(old);
                 return nullptr;
@@ -5886,10 +5805,8 @@ const char * sniName(const char * host) {
     return host;
 }
 
-// Last TLS alert or handshake state on this thread, for the error text when a handshake fails.
+// Last TLS alert or handshake state on this handshake's capture, returned by the call that failed.
 std::atomic<bool> gLabMaxTls12{false};
-thread_local std::string gTlsAlert;
-thread_local std::string gTlsState;
 
 // The reason a TLS handshake failed: the OpenSSL error (e.g. "dh key too small"), else the alert, else the last state.
 std::string tlsFailureReason() {
@@ -5899,18 +5816,19 @@ std::string tlsFailureReason() {
         ERR_error_string_n(e, buf, sizeof buf);
         reason = buf;  // keep the last (most specific) entry
     }
-    if (reason.empty()) reason = gTlsAlert;
-    if (reason.empty()) reason = gTlsState;
+    if (reason.empty() && tlsCapture != nullptr) reason = tlsCapture->alert;
+    if (reason.empty() && tlsCapture != nullptr) reason = tlsCapture->state;
     return reason;
 }
 
 void recordTlsInfo(const ssl_st * s, int where, int ret) {
+    if (tlsCapture == nullptr) return;
     constexpr int kAlert = 0x4000, kRead = 0x04, kExit = 0x02;
     if (where & kAlert) {
-        gTlsAlert = std::string((where & kRead) ? "server alert: " : "client alert: ") + SSL_alert_desc_string_long(ret);
+        tlsCapture->alert = std::string((where & kRead) ? "server alert: " : "client alert: ") + SSL_alert_desc_string_long(ret);
     } else if ((where & kExit) && ret <= 0) {
         // Kept as the last handshake state; used only when the handshake really failed and nothing better is known.
-        gTlsState = std::string("stopped in ") + SSL_state_string_long(s);
+        tlsCapture->state = std::string("stopped in ") + SSL_state_string_long(s);
     }
 }
 
@@ -5955,8 +5873,10 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
     gClientCertLoaded = false;
     gClientCertError.clear();
     if (ssl_context == nullptr) return;
-    gTlsAlert.clear();
-    gTlsState.clear();
+    if (tlsCapture != nullptr) {
+        tlsCapture->alert.clear();
+        tlsCapture->state.clear();
+    }
     auto * ctx = static_cast<ssl_ctx_st *>(mailstream_ssl_get_openssl_ssl_ctx(ssl_context));
     if (ctx == nullptr) return;
     if (tlsCapture != nullptr && tlsCapture->allowOldTls) {
@@ -6270,10 +6190,11 @@ bool installMailCharconv(JNIEnv * env) {
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
     gVm = vm;
     JNIEnv * env = nullptr;
-    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        installMailCharconv(env);
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
+        return JNI_ERR;
     }
+    if (!resolveJni(env)) return JNI_ERR;
+    installMailCharconv(env);
     setupSaslClient();
     gKeepUnselect = mailimap_unselect;
     registerExtensions();
@@ -6281,61 +6202,14 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * vm, void *) {
     return JNI_VERSION_1_6;
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeError(JNIEnv * env, jclass) {
-    registerExtensions();
-    if (!ensureJni(env)) return nullptr;
-    return newString(env, takeLastError().c_str());
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeAuthRejected(JNIEnv *, jclass) {
-    bool rejected = gServerAuthRejected;
-    gServerAuthRejected = false;
-    return rejected ? JNI_TRUE : JNI_FALSE;
-}
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCertOffer(JNIEnv * env, jclass) {
-    if (!ensureJni(env)) return nullptr;
-    std::vector<std::string> lines;
-    lines.swap(gCertOffer);
-    if (lines.size() != 5) return nullptr;
-    jclass stringCls = env->FindClass("java/lang/String");
-    if (stringCls == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return nullptr;
-    }
-    jobjectArray arr = env->NewObjectArray(5, stringCls, nullptr);
-    env->DeleteLocalRef(stringCls);
-    if (arr == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return nullptr;
-    }
-    for (jsize i = 0; i < 5; ++i) {
-        jstring js = newString(env, lines[static_cast<size_t>(i)].c_str());
-        if (js == nullptr || env->ExceptionCheck()) {
-            env->ExceptionClear();
-            env->DeleteLocalRef(arr);
-            return nullptr;
-        }
-        env->SetObjectArrayElement(arr, i, js);
-        env->DeleteLocalRef(js);
-    }
-    return arr;
-}
-
 // Stores the account on a session and does not connect. nativeWatch is the one login.
-extern "C" JNIEXPORT jlong JNICALL
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
-    if (!ensureJni(env)) return 0;
-    clearCertOffer();
-    setLastError("");
     JChars h(env, host);
     JChars u(env, user);
     JChars p(env, password);
@@ -6344,7 +6218,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) return 0;
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) {
+        return newSessionOpen(env, 0, "", "", false, {});
+    }
     auto * session = new LiveSession();
     session->stagedWatch = true;
     session->host = h.c();
@@ -6368,7 +6244,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
         JChars mech(env, authMechanism);
         if (!mech.s) {
             delete session;
-            return 0;
+            return newSessionOpen(env, 0, "", "", false, {});
         }
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
@@ -6380,7 +6256,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
         JChars cpw(env, clientP12Password);
         if (!cpw.s) {
             delete session;
-            return 0;
+            return newSessionOpen(env, 0, "", "", false, {});
         }
         session->clientP12Password = cpw.c();
         if (!session->clientP12Password.empty()) {
@@ -6403,20 +6279,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     }
     std::lock_guard<std::mutex> lock(gLiveMu);
     gLive.insert(session);
-    return reinterpret_cast<jlong>(session);
+    return newSessionOpen(env, reinterpret_cast<jlong>(session), "", "", false, {});
 }
 
-extern "C" JNIEXPORT jlong JNICALL
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
-    if (!ensureJni(env)) return 0;
-    clearCertOffer();  // F12: a pooled thread must not keep an offer from an earlier failed connection
-    setLastError("");
-    gServerAuthRejected = false;
     JChars h(env, host);
     JChars u(env, user);
     JChars p(env, password);
@@ -6425,8 +6297,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) return 0;
-    clearCertOffer();
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) {
+        return newSessionOpen(env, 0, "", "", false, {});
+    }
     auto * session = new LiveSession();
     session->host = h.c();
     session->imapPort = port;
@@ -6449,7 +6322,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         JChars mech(env, authMechanism);
         if (!mech.s) {
             delete session;
-            return 0;
+            return newSessionOpen(env, 0, "", "", false, {});
         }
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
@@ -6461,7 +6334,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         JChars cpw(env, clientP12Password);
         if (!cpw.s) {
             delete session;
-            return 0;
+            return newSessionOpen(env, 0, "", "", false, {});
         }
         session->clientP12Password = cpw.c();
         if (!session->clientP12Password.empty()) {
@@ -6485,39 +6358,41 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     TrafficIdScope idScope("main");
     std::string error;
     std::string address;
+    std::string tls;
+    bool authRejected = false;
+    std::vector<std::string> certOffer;
     mailimap * imap = nullptr;
     if (strcmp(mode.c(), "None") == 0) {
-        imap = openPlain(env, h.c(), port, u.c(), p.c(), session, &error, &address);
+        imap = openPlain(env, h.c(), port, u.c(), p.c(), session, &error, &address, nullptr, &authRejected, &tls);
     } else {
-        imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address, session->certPin.c_str(), true);
+        imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address, session->certPin.c_str(), true,
+            nullptr, &authRejected, &tls, &certOffer);
     }
     if (imap == nullptr) {
         flushTrafficTail(session);
         delete session;
-        setLastError(error);
-        return 0;
+        return newSessionOpen(env, 0, tls, error, authRejected, certOffer);
     }
     struct mailimap_capability_data * caps = nullptr;
     int r = mailimap_capability(imap, &caps);
     if (!cmdOk(r) || caps == nullptr) {
-        setLastError(serviceLabel("IMAP", h.c(), port) + " (" + address + "): capability failed: "
-            + imapText(imap, "capability failed"));
+        std::string why = serviceLabel("IMAP", h.c(), port) + " (" + address + "): capability failed: "
+            + imapText(imap, "capability failed");
         mailimap_free(imap);
         flushTrafficTail(session);
         delete session;
-        return 0;
+        return newSessionOpen(env, 0, tls, why, false, certOffer);
     }
     session->imap = imap;
     session->capabilityLine = joinCapabilities(caps);
     mailimap_capability_data_free(caps);
     std::lock_guard<std::mutex> lock(gLiveMu);
     gLive.insert(session);
-    return reinterpret_cast<jlong>(session);
+    return newSessionOpen(env, reinterpret_cast<jlong>(session), tls, "", false, {});
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCapabilityLine(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     jstring line = newString(env, session->capabilityLine.c_str());
@@ -6527,7 +6402,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCapabilityLine(JNIEnv *
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeEnable(JNIEnv * env, jobject, jlong handle, jstring capability) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     JChars name(env, capability);
@@ -6538,7 +6412,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeEnable(JNIEnv * env, jo
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetSessionFlags(JNIEnv * env, jobject, jlong handle,
     jboolean pipelineFlag, jboolean logFlag, jstring logPath) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
     JChars path(env, logPath);
@@ -6552,7 +6425,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetSessionFlags(JNIEnv 
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSessionDead(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return JNI_TRUE;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return JNI_TRUE;
     jboolean dead = session->imap == nullptr ? JNI_TRUE : JNI_FALSE;
@@ -6562,7 +6434,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSessionDead(JNIEnv * en
 
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return -1;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     if (session->imap == nullptr) {
@@ -6584,7 +6455,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNoop(JNIEnv * env, jobj
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCompress(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     compressSession(session);
@@ -6593,7 +6463,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCompress(JNIEnv * env, 
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeClose(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = nullptr;
     {
         std::lock_guard<std::mutex> lock(gLiveMu);
@@ -6605,7 +6474,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeClose(JNIEnv * env, job
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     struct mailimap_namespace_data * data = nullptr;
@@ -6649,7 +6517,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
 
 extern "C" JNIEXPORT jchar JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeHierarchyDelimiter(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return 0;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return 0;
     if (session->imap == nullptr) {
@@ -6687,7 +6554,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeHierarchyDelimiter(JNIE
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv * env, jobject, jlong handle,
     jobjectArray mailboxes) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     std::vector<std::string> names;
@@ -6759,7 +6625,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv *
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env, jobject, jlong handle,
     jstring prefix, jstring parent, jstring kind) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars pref(env, prefix);
@@ -6841,10 +6706,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
 extern "C" JNIEXPORT jboolean JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeMailboxListed(JNIEnv * env, jobject, jlong handle,
     jstring mailbox) {
-    if (!ensureJni(env)) {
-        throwFailure(env, "list failed");
-        return JNI_FALSE;
-    }
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return JNI_FALSE;
     JChars name(env, mailbox);
@@ -6880,7 +6741,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeMailboxListed(JNIEnv * 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSubscribedMailboxes(JNIEnv * env, jobject, jlong handle,
     jboolean extended) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (session->imap == nullptr) {
@@ -6923,7 +6783,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSubscribedMailboxes(JNI
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jobject, jlong handle, jstring mailbox,
     jboolean readWrite) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars mb(env, mailbox);
@@ -6942,7 +6801,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSelect(JNIEnv * env, jo
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     int r = mailimap_unselect(session->imap);
@@ -6957,7 +6815,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUnselect(JNIEnv * env, 
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     if (session->selectedMailbox.empty() || session->imap == nullptr) {
@@ -6975,12 +6832,80 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * e
     unlockSession(session);
 }
 
+
+// One row at a time: the Java list gains the row, then that row's native strings are released
+// before the next FETCH item is read. The C++ rows and the Java array are not both full.
+bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
+    bool serverPreview, bool bodyPreview, int peekLimit, jboolean preferHtml, jboolean showDeleted,
+    int * envelopeRows) {
+    // F113: only answers to our FETCH (they carry ENVELOPE).
+    if (row.uid != 0 && row.hasEnvelope) {
+        *envelopeRows += 1;
+    } else {
+        releaseRow(row);
+        return true;
+    }
+    std::string preview;
+    bool hasPreview = false;
+    if (serverPreview && row.hasPreview && !row.preview.empty()) {
+        preview = std::move(row.preview);
+        hasPreview = true;
+    } else if (bodyPreview && row.structure != nullptr) {
+        PartWant want;
+        findPreferred(row.structure, "", preferHtml == JNI_TRUE, &want);
+        if (want.found) {
+            std::vector<PreviewAsk> asks;
+            asks.push_back(PreviewAsk{row.uid, want.section, want.charset, want.encoding, want.html});
+            std::vector<std::string> got;
+            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
+            if (br != MAILIMAP_NO_ERROR) {
+                preview.clear();
+                preview.shrink_to_fit();
+                releaseRow(row);
+                throwImap(env, session, br, "fetch failed");
+                return false;
+            }
+            if (!got.empty() && !got[0].empty()) {
+                preview = std::move(got[0]);
+                hasPreview = true;
+            }
+        }
+    }
+    bool keep = !(showDeleted == JNI_FALSE && row.deleted);
+    jobject obj = keep ? rowObject(env, row, preview, hasPreview) : nullptr;
+    preview.clear();
+    preview.shrink_to_fit();
+    releaseRow(row);
+    if (!keep) return !env->ExceptionCheck();
+    if (obj == nullptr || env->ExceptionCheck()) {
+        if (obj != nullptr) env->DeleteLocalRef(obj);
+        return false;
+    }
+    env->CallBooleanMethod(out, gJni.listAdd, obj);
+    env->DeleteLocalRef(obj);
+    return !env->ExceptionCheck();
+}
+
+bool consumeIndexList(JNIEnv * env, LiveSession * session, jobject out, clist * list,
+    const char * accountEmail, const char * altSpecs, bool serverPreview, bool bodyPreview,
+    int peekLimit, jboolean preferHtml, jboolean showDeleted, int * envelopeRows) {
+    if (list == nullptr) return true;
+    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
+        Row row;
+        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs);
+        if (!emitIndexRow(env, session, out, row, serverPreview, bodyPreview, peekLimit, preferHtml,
+                showDeleted, envelopeRows)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jint mode, jint firstSequence, jint lastSequence, jlongArray uids, jint limit,
     jint prefetch, jboolean includePreview, jint previewByteLimit, jboolean preferHtml, jboolean showDeleted,
     jboolean useServerPreview, jstring accountEmail, jstring altAddresses) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars accountEmailChars(env, accountEmail);
@@ -7036,56 +6961,29 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             unlockSession(session);
             return nullptr;
         }
-        std::vector<Row> rows = rowsFromList(list, accountEmailChars.c(), altChars.c());
-        noteParsedRows(session, rows.size());
-        if (exists > 0 && first <= last && rows.empty()) {
+        jobject rowsOut = newList(env);
+        if (rowsOut == nullptr) {
+            if (list != nullptr) mailimap_fetch_list_free(list);
+            unlockSession(session);
+            return nullptr;
+        }
+        int envelopeRows = 0;
+        if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows)) {
+            if (list != nullptr) mailimap_fetch_list_free(list);
+            env->DeleteLocalRef(rowsOut);
+            unlockSession(session);
+            return nullptr;
+        }
+        noteParsedRows(session, static_cast<size_t>(envelopeRows));
+        if (exists > 0 && first <= last && envelopeRows == 0) {
+            env->DeleteLocalRef(rowsOut);
             abortEmptyIndexFetch(env, session, list);
             return nullptr;
         }
-        std::vector<std::string> previews(rows.size());
-        std::vector<char> havePreview(rows.size(), 0);
-        if (serverPreview) {
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (!rows[i].hasPreview || rows[i].preview.empty()) continue;
-                previews[i] = rows[i].preview;
-                havePreview[i] = 1;
-            }
-        } else if (bodyPreview) {
-            std::vector<PreviewAsk> asks;
-            std::vector<size_t> at;
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].structure == nullptr) continue;
-                PartWant want;
-                findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
-                if (!want.found) continue;
-                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
-                at.push_back(i);
-            }
-            std::vector<std::string> got;
-            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
-            if (br != MAILIMAP_NO_ERROR) {
-                if (list != nullptr) mailimap_fetch_list_free(list);
-                releaseBurstFailure(env, session, br, "fetch failed");
-                return nullptr;
-            }
-            for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
-                if (got[n].empty()) continue;
-                previews[at[n]] = got[n];
-                havePreview[at[n]] = 1;
-            }
-        }
         if (list != nullptr) mailimap_fetch_list_free(list);
-        std::vector<jobject> built;
-        for (size_t i = 0; i < rows.size(); ++i) {
-            const Row & row = rows[i];
-            if (showDeleted == JNI_FALSE && row.deleted) continue;
-            built.push_back(rowObject(env, row, previews[i], havePreview[i] != 0));
-        }
-        jobjectArray arr = env->NewObjectArray(static_cast<jsize>(built.size()), gJni.indexRow, nullptr);
-        for (jsize i = 0; i < static_cast<jsize>(built.size()); ++i) {
-            env->SetObjectArrayElement(arr, i, built[static_cast<size_t>(i)]);
-            env->DeleteLocalRef(built[static_cast<size_t>(i)]);
-        }
+        jobjectArray arr = indexRowsToArray(env, rowsOut);
+        env->DeleteLocalRef(rowsOut);
         unlockSession(session);
         return arr;
     }
@@ -7103,7 +7001,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             all.push_back(static_cast<uint32_t>(value));
         }
     }
-    std::vector<jobject> built;
+    jobject rowsOut = newList(env);
+    if (rowsOut == nullptr) {
+        unlockSession(session);
+        return nullptr;
+    }
     const size_t pageSize = 60;
     for (size_t off = 0; off < all.size(); off += pageSize) {
         size_t end = std::min(all.size(), off + pageSize);
@@ -7113,60 +7015,30 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         int r = fetchRows(session->imap, set, true, true, serverPreview, &list);
         if (set != nullptr) mailimap_set_free(set);
         if (!cmdOk(r)) {
+            if (list != nullptr) mailimap_fetch_list_free(list);
+            env->DeleteLocalRef(rowsOut);
             throwImap(env, session, r, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
-        std::vector<Row> rows = rowsFromList(list, accountEmailChars.c(), altChars.c());
-        noteParsedRows(session, rows.size());
-        if (exists > 0 && !page.empty() && rows.empty()) {
+        int envelopeRows = 0;
+        if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows)) {
+            if (list != nullptr) mailimap_fetch_list_free(list);
+            env->DeleteLocalRef(rowsOut);
+            unlockSession(session);
+            return nullptr;
+        }
+        noteParsedRows(session, static_cast<size_t>(envelopeRows));
+        if (exists > 0 && !page.empty() && envelopeRows == 0) {
+            env->DeleteLocalRef(rowsOut);
             abortEmptyIndexFetch(env, session, list);
             return nullptr;
         }
-        std::vector<std::string> previews(rows.size());
-        std::vector<char> havePreview(rows.size(), 0);
-        if (serverPreview) {
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (!rows[i].hasPreview || rows[i].preview.empty()) continue;
-                previews[i] = rows[i].preview;
-                havePreview[i] = 1;
-            }
-        } else if (bodyPreview) {
-            std::vector<PreviewAsk> asks;
-            std::vector<size_t> at;
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (rows[i].structure == nullptr) continue;
-                PartWant want;
-                findPreferred(rows[i].structure, "", preferHtml == JNI_TRUE, &want);
-                if (!want.found) continue;
-                asks.push_back(PreviewAsk{rows[i].uid, want.section, want.charset, want.encoding, want.html});
-                at.push_back(i);
-            }
-            std::vector<std::string> got;
-            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
-            if (br != MAILIMAP_NO_ERROR) {
-                if (list != nullptr) mailimap_fetch_list_free(list);
-                releaseBurstFailure(env, session, br, "fetch failed");
-                return nullptr;
-            }
-            for (size_t n = 0; n < at.size() && n < got.size(); ++n) {
-                if (got[n].empty()) continue;
-                previews[at[n]] = got[n];
-                havePreview[at[n]] = 1;
-            }
-        }
         if (list != nullptr) mailimap_fetch_list_free(list);
-        for (size_t i = 0; i < rows.size(); ++i) {
-            const Row & row = rows[i];
-            if (showDeleted == JNI_FALSE && row.deleted) continue;
-            built.push_back(rowObject(env, row, previews[i], havePreview[i] != 0));
-        }
     }
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(built.size()), gJni.indexRow, nullptr);
-    for (jsize i = 0; i < static_cast<jsize>(built.size()); ++i) {
-        env->SetObjectArrayElement(arr, i, built[static_cast<size_t>(i)]);
-        env->DeleteLocalRef(built[static_cast<size_t>(i)]);
-    }
+    jobjectArray arr = indexRowsToArray(env, rowsOut);
+    env->DeleteLocalRef(rowsOut);
     unlockSession(session);
     return arr;
 }
@@ -7232,7 +7104,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv *
 }
 
 jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
@@ -7327,7 +7198,6 @@ struct mailimap_fetch_att * peekSectionAtt(struct mailimap_section * sec, jint o
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, jobject, jlong handle,
     jlong uid, jstring section, jint offset, jint length, jboolean useBinary) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
@@ -7443,7 +7313,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePeekPart(JNIEnv * env, 
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchRfc822(JNIEnv * env, jobject, jlong handle, jlong uid) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
@@ -7555,8 +7424,13 @@ uint64_t requestedCount(struct mailimap_set * set) {
 
 // COPYUID's destination set, expanded. A server cannot make the client expand more UIDs than it asked to copy
 // (a dest of 1:4294967295 once meant 4 billion push_backs); an oversized or inconsistent set is dropped.
-void rememberDestUids(LiveSession * session, struct mailimap_set * dest, uint64_t limit) {
-    session->copiedUids.clear();
+struct CopyMoveOut {
+    std::vector<uint32_t> uids;
+    uint32_t uidvalidity = 0;
+};
+
+void rememberDestUids(CopyMoveOut * out, struct mailimap_set * dest, uint64_t limit) {
+    out->uids.clear();
     if (dest == nullptr || dest->set_list == nullptr) return;
     if (limit > kMaxSetExpand) limit = kMaxSetExpand;
     for (clistiter * cur = clist_begin(dest->set_list); cur != nullptr; cur = clist_next(cur)) {
@@ -7569,15 +7443,52 @@ void rememberDestUids(LiveSession * session, struct mailimap_set * dest, uint64_
             first = last;
             last = swap;
         }
-        if (static_cast<uint64_t>(last) - first + 1 + session->copiedUids.size() > limit) {
-            session->copiedUids.clear();
+        if (static_cast<uint64_t>(last) - first + 1 + out->uids.size() > limit) {
+            out->uids.clear();
             return;
         }
         for (uint32_t uid = first;; ++uid) {
-            if (uid != 0) session->copiedUids.push_back(uid);
+            if (uid != 0) out->uids.push_back(uid);
             if (uid == last) break;
         }
     }
+}
+
+jobject newCopyMove(JNIEnv * env, const CopyMoveOut & out) {
+    std::vector<jlong> raw;
+    raw.reserve(out.uids.size());
+    for (uint32_t uid : out.uids) raw.push_back(static_cast<jlong>(uid));
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(raw.size()));
+    if (arr != nullptr && !raw.empty()) {
+        env->SetLongArrayRegion(arr, 0, static_cast<jsize>(raw.size()), raw.data());
+    }
+    jobject obj = env->NewObject(gJni.copyMove, gJni.copyMoveInit, arr, static_cast<jlong>(out.uidvalidity));
+    if (arr != nullptr) env->DeleteLocalRef(arr);
+    return obj;
+}
+
+jobject newSessionOpen(JNIEnv * env, jlong handle, const std::string & tls, const std::string & error,
+    bool authRejected, const std::vector<std::string> & cert) {
+    auto at = [&](size_t i) -> const char * {
+        return i < cert.size() ? cert[i].c_str() : "";
+    };
+    jstring jtls = newString(env, tls.c_str());
+    jstring jerr = newString(env, error.c_str());
+    jstring c0 = newString(env, at(0));
+    jstring c1 = newString(env, at(1));
+    jstring c2 = newString(env, at(2));
+    jstring c3 = newString(env, at(3));
+    jstring c4 = newString(env, at(4));
+    jobject obj = env->NewObject(gJni.sessionOpen, gJni.sessionOpenInit, handle, jtls, jerr,
+        authRejected ? JNI_TRUE : JNI_FALSE, c0, c1, c2, c3, c4);
+    dropLocal(env, jtls);
+    dropLocal(env, jerr);
+    dropLocal(env, c0);
+    dropLocal(env, c1);
+    dropLocal(env, c2);
+    dropLocal(env, c3);
+    dropLocal(env, c4);
+    return obj;
 }
 
 void freeUidSets(struct mailimap_set * source, struct mailimap_set * dest) {
@@ -7586,9 +7497,9 @@ void freeUidSets(struct mailimap_set * source, struct mailimap_set * dest) {
 }
 
 bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * set,
-    const char * destMailbox, const char * kind) {
-    session->copiedUids.clear();
-    session->copiedUidValidity = 0;
+    const char * destMailbox, const char * kind, CopyMoveOut * out) {
+    out->uids.clear();
+    out->uidvalidity = 0;
     uint32_t uidvalidity = 0;
     struct mailimap_set * source = nullptr;
     struct mailimap_set * copied = nullptr;
@@ -7602,8 +7513,8 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
         throwImap(env, session, r, move ? "move failed" : "copy failed");
         return false;
     }
-    rememberDestUids(session, copied, requestedCount(set));
-    if (!session->copiedUids.empty()) session->copiedUidValidity = uidvalidity;
+    rememberDestUids(out, copied, requestedCount(set));
+    if (!out->uids.empty()) out->uidvalidity = uidvalidity;
     freeUidSets(source, copied);
     if (move || copyOnly) return true;
     struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
@@ -7638,7 +7549,6 @@ std::vector<uint32_t> uidsFromArray(JNIEnv * env, jlongArray uids) {
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env, jobject, jlong handle,
     jlongArray uids, jobjectArray add, jobjectArray remove) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
@@ -7661,7 +7571,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlags(JNIEnv * env
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * env, jobject, jlong handle,
     jobjectArray add, jobjectArray remove) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
@@ -7677,7 +7586,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * 
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
@@ -7690,7 +7598,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEn
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env, jobject, jlong handle,
     jlongArray uids) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
@@ -7710,46 +7617,47 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpunge(JNIEnv * env
     unlockSession(session);
 }
 
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyThenDelete(JNIEnv * env, jobject, jlong handle,
     jlongArray uids, jstring target, jstring moveKind) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
-    if (session == nullptr) return;
+    if (session == nullptr) return nullptr;
     std::vector<uint32_t> values = uidsFromArray(env, uids);
     if (env->ExceptionCheck() || values.empty()) {
         unlockSession(session);
-        return;
+        return nullptr;
     }
     JChars dest(env, target);
     JChars kindChars(env, moveKind);
     if (!wireOk(dest.c())) {  // F42 native backstop
         throwFailure(env, "refused: CR or LF in a mailbox name");
         unlockSession(session);
-        return;
+        return nullptr;
     }
     struct mailimap_set * set = setFromUids(values);
     if (set == nullptr) {
         throwFailure(env, "copy failed");
         unlockSession(session);
-        return;
+        return nullptr;
     }
-    copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
+    CopyMoveOut moved;
+    bool ok = copyOrMoveSet(env, session, set, dest.c(), kindChars.c(), &moved);
     mailimap_set_free(set);
+    jobject result = ok ? newCopyMove(env, moved) : nullptr;
     unlockSession(session);
+    return result;
 }
 
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEnv * env, jobject, jlong handle,
     jstring target, jstring moveKind) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
-    if (session == nullptr) return;
+    if (session == nullptr) return nullptr;
     struct mailimap_set * set = mailimap_set_new_interval(1, 0);
     if (set == nullptr) {
         throwFailure(env, "copy failed");
         unlockSession(session);
-        return;
+        return nullptr;
     }
     JChars dest(env, target);
     JChars kindChars(env, moveKind);
@@ -7757,38 +7665,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopyAllThenDelete(JNIEn
         throwFailure(env, "refused: CR or LF in a mailbox name");
         mailimap_set_free(set);
         unlockSession(session);
-        return;
+        return nullptr;
     }
-    copyOrMoveSet(env, session, set, dest.c(), kindChars.c());
+    CopyMoveOut moved;
+    bool ok = copyOrMoveSet(env, session, set, dest.c(), kindChars.c(), &moved);
     mailimap_set_free(set);
+    jobject result = ok ? newCopyMove(env, moved) : nullptr;
     unlockSession(session);
-}
-
-extern "C" JNIEXPORT jlong JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCopiedEpoch(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return 0;
-    LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return 0;
-    jlong epoch = static_cast<jlong>(session->copiedUidValidity);
-    unlockSession(session);
-    return epoch;
-}
-
-extern "C" JNIEXPORT jlongArray JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeCopiedUids(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return nullptr;
-    LiveSession * session = lockSession(env, handle);
-    if (session == nullptr) return nullptr;
-    std::vector<jlong> raw;
-    raw.reserve(session->copiedUids.size());
-    for (uint32_t uid : session->copiedUids) raw.push_back(static_cast<jlong>(uid));
-    session->copiedUids.clear();
-    jlongArray arr = env->NewLongArray(static_cast<jsize>(raw.size()));
-    if (arr != nullptr && !raw.empty()) {
-        env->SetLongArrayRegion(arr, 0, static_cast<jsize>(raw.size()), raw.data());
-    }
-    unlockSession(session);
-    return arr;
+    return result;
 }
 
 bool appendFlagsAreDraft(JNIEnv * env, jobjectArray flags) {
@@ -7857,7 +7741,6 @@ jlong appendUidFromBuffer(mailimap * imap) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jbyteArray message, jobjectArray flags) {
-    if (!ensureJni(env)) return 0;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return 0;
     if (!appendFlagsAreDraft(env, flags)) {
@@ -7896,7 +7779,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env, jobject, jlong handle,
     jstring query, jboolean useEsearch, jboolean withCharset) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars q(env, query);
@@ -7947,7 +7829,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchText(JNIEnv * env
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterion(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean useEsearch, jboolean withCharset) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars kindChars(env, kind);
@@ -8035,7 +7916,6 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv * env, jobject, jlong handle,
     jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean useEsearch, jboolean withCharset, jboolean fuzzy) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars combinerChars(env, combiner);
@@ -8052,7 +7932,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvanced(JNIEnv *
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionCount(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean withCharset) {
-    if (!ensureJni(env)) return -1;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars kindChars(env, kind);
@@ -8071,7 +7950,6 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchAdvancedCount(JNIEnv * env, jobject, jlong handle,
     jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments, jboolean withCharset,
     jboolean fuzzy) {
-    if (!ensureJni(env)) return -1;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars combinerChars(env, combiner);
@@ -8089,7 +7967,6 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScope(JNIEnv * env, jobject, jlong handle,
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean withCharset, jboolean fuzzy) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars scopeChars(env, scope);
@@ -8109,7 +7986,6 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv * env, jobject, jlong handle,
     jstring scope, jstring home, jstring combiner, jbooleanArray negated, jobjectArray kinds, jobjectArray arguments,
     jboolean withCharset, jboolean fuzzy) {
-    if (!ensureJni(env)) return -1;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return -1;
     JChars scopeChars(env, scope);
@@ -8128,7 +8004,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchScopeCount(JNIEnv
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchStart(JNIEnv * env, jobject, jlong handle,
     jstring rule, jboolean byUid, jstring edge, jboolean useEsearch) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars ruleChars(env, rule);
@@ -8157,7 +8032,6 @@ struct mailimap_search_key * uidOnlyKey(uint32_t uid) {
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeLocateUid(JNIEnv * env, jobject, jlong handle,
     jlong uid, jboolean useEsearch) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > 0xffffffffll) {
@@ -8417,7 +8291,6 @@ jstring jStringOrEmpty(JNIEnv * env, const std::string & text) {
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchSortFieldsRange(JNIEnv * env, jobject, jlong handle,
     jstring fieldName, jint first, jint last) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars fieldChars(env, fieldName);
@@ -8506,7 +8379,6 @@ struct HeaderRow {
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchThreadHeaders(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     const char * names[] = { "Message-ID", "References", "In-Reply-To", "Subject", "Date" };
@@ -8594,7 +8466,6 @@ struct mailimap_search_key * chainKey(JNIEnv * env, jstring criteria, bool * utf
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSort(JNIEnv * env, jobject, jlong handle,
     jstring keyName, jboolean newestFirst, jboolean useEsort, jstring criteria) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
@@ -8696,7 +8567,6 @@ std::string partialReturn(jint first, jint last) {
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env, jobject, jlong handle,
     jstring keyName, jboolean newestFirst, jint first, jint last, jstring criteria) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
@@ -8746,7 +8616,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSortWindow(JNIEnv * env
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(JNIEnv * env, jobject, jlong handle,
     jstring kind, jstring argument, jboolean withCharset, jint first, jint last) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars kindChars(env, kind);
@@ -8789,7 +8658,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSearchCriterionWindow(J
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeThread(JNIEnv * env, jobject, jlong handle, jstring algorithm,
     jstring criteria) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     bool utf8 = false, bad = false;
@@ -8885,7 +8753,6 @@ void enableUtf8On(mailimap * imap) {
 // Watch-only login: connect and CAPABILITY, no EXAMINE and no IDLE. The Kotlin gate decides.
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchLogin(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return nullptr;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return nullptr;
     if (!session->stagedWatch) {
@@ -8956,7 +8823,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchLogin(JNIEnv * env
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUseStagedImap(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
     if (session->imap == nullptr && session->stagedReady != nullptr) {
@@ -8969,7 +8835,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUseStagedImap(JNIEnv * 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject thiz, jlong handle, jstring mailbox,
     jobject callback) {
-    if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
     if (session->imap == nullptr && !session->stagedWatch) {
@@ -9181,7 +9046,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv * env, jobject, jlong handle) {
-    if (!ensureJni(env)) return 0;
     if (tlsWatch != nullptr && reinterpret_cast<jlong>(tlsWatch) == handle) {
         signalWatchStop(tlsWatch);
         return 0;
@@ -9469,7 +9333,6 @@ void freeSmtp(LiveSession * session, mailsmtp * smtp) {
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
     jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
-    if (!ensureJni(env)) return 0;
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
     SmtpHold hold;
@@ -9961,9 +9824,6 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jclass,
     jstring host, jint port, jstring tlsMode, jstring certPin, jboolean acceptInvalidCert, jboolean allowOldTls) {
     registerExtensions();
-    if (!ensureJni(env)) return nullptr;
-    clearCertOffer();  // F12
-    setLastError("");
     JChars h(env, host);
     JChars mode(env, tlsMode);
     JChars pin(env, certPin);
@@ -10076,19 +9936,11 @@ Java_org_dlang_liveimap_engine_LabTestHooks_nativeSetMaxTls12(JNIEnv *, jobject,
     gLabMaxTls12.store(on == JNI_TRUE);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeTakeTls(JNIEnv * env, jclass) {
-    std::string text = gLastTls;
-    gLastTls.clear();
-    return newString(env, text.c_str());
-}
-
 // Side connection for one long search: watch INPROGRESS, give reads [timeoutSec] (each line received restarts it),
 // and remember the socket so nativeAbort can drop the connection mid-command.
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePrepareLongSearch(JNIEnv * env, jobject, jlong handle,
     jint timeoutSec) {
-    if (!ensureJni(env)) return;
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return;
     session->progressDone.store(-1);
