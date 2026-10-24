@@ -9,6 +9,9 @@ import kotlinx.coroutines.runBlocking
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.CertPrompt
+import org.dlang.liveimap.session.ClientFetch
+import org.dlang.liveimap.session.ClientHeaders
+import org.dlang.liveimap.session.ClientSortCollation
 import org.dlang.liveimap.session.ConnectionLost
 import org.dlang.liveimap.session.ConnectionState
 import org.dlang.liveimap.session.FolderEntry
@@ -19,19 +22,27 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.MailboxUids
+import org.dlang.liveimap.session.MessageOrder
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.SelectResult
-import org.dlang.liveimap.session.SortField
-import org.dlang.liveimap.session.ThreadHeader
+import org.dlang.liveimap.session.ThreadFlat
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.session.UidWindow
 import org.dlang.liveimap.session.SearchProgress
-import org.dlang.liveimap.session.clientThreads
+import org.dlang.liveimap.session.baseSubject
+import org.dlang.liveimap.session.dateHeaderEpoch
+import org.dlang.liveimap.session.firstAddrMailbox
+import org.dlang.liveimap.session.flattenThread
+import org.dlang.liveimap.session.localeKeyBytes
 import org.dlang.liveimap.session.mailboxMarkedTrash
+import org.dlang.liveimap.session.messageOrderThread
+import org.dlang.liveimap.session.packKeyBytes
+import org.dlang.liveimap.session.plainKeyBytes
+import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
@@ -198,20 +209,14 @@ class LibetpanMailSession : MailSession {
     private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
     // Concurrent: onNativeWatch prunes it from the native IDLE thread while the lane reads it (F25).
-    private val cache = java.util.concurrent.ConcurrentHashMap<CacheKey, Any>()
+    // One MessageOrder per command for the selected folder. No Any cast.
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, MessageOrder>()
+    private val threadHeaders = java.util.concurrent.ConcurrentHashMap<String, ClientHeaders>()
     private val link = SessionLink()
     private val keeper = ConnectionKeeper(
         link,
         clock = { System.nanoTime() / 1_000_000L },
         sleep = { Thread.sleep(it) },
-    )
-
-    private data class CacheKey(
-        val mailbox: String,
-        val uidValidity: Long,
-        val uidNext: Long,
-        val exists: Int,
-        val command: String,
     )
 
     override val capabilities: Set<String>
@@ -511,7 +516,7 @@ class LibetpanMailSession : MailSession {
             this.account = account
             loggedInPassword = password
             capabilityLine = ""
-            cache.clear()
+            clearOrderCache()
             compressed = false
             finishTraffic(account)
             return OpenResult.Connected
@@ -528,7 +533,7 @@ class LibetpanMailSession : MailSession {
         this.account = account
         loggedInPassword = password
         capabilityLine = line
-        cache.clear()
+        clearOrderCache()
         compressed = false
         // F30: QRESYNC is not enabled. Its VANISHED/changed-FETCH answers were never processed, and once enabled the
         // server sends VANISHED instead of EXPUNGE on this connection. CONDSTORE keeps HIGHESTMODSEQ and EXPUNGE.
@@ -597,6 +602,7 @@ class LibetpanMailSession : MailSession {
             return selected
         }
         val current = selectedMailbox
+        if (current != null && !sameWireMailbox(current, name)) clearOrderCache()
         // F101: switching folders is never an expunge. Only an explicit user leave (expungeOnLeave) sends CLOSE;
         // otherwise UNSELECT, or the SELECT below, which closes the old folder without expunging (RFC 3501 6.3.1).
         if (current != null && current != name && featureCaps.unselect) {
@@ -607,6 +613,7 @@ class LibetpanMailSession : MailSession {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
+        noteValidity(name, result.uidValidity)
         selectedMailbox = name
         selectedReadWrite = readWrite
         selected = result
@@ -683,6 +690,7 @@ class LibetpanMailSession : MailSession {
         if (mailbox == null) return
         if (featureCaps.unselect) {
             unselectSelectedMailbox()
+            clearOrderCache()
             return
         }
         val name = wire(mailbox)
@@ -690,6 +698,7 @@ class LibetpanMailSession : MailSession {
             noteTraffic("Error select failed")
             throw MailFailure("select failed")
         }
+        noteValidity(name, result.uidValidity)
         selectedMailbox = name
         selectedReadWrite = false
         selected = result
@@ -855,8 +864,8 @@ class LibetpanMailSession : MailSession {
         remember("SEARCH $query") {
             val ids = nativeSearchText(h, requireWireText(query), featureCaps.searchKind() == "Esearch", !utf8Names)
                 ?: throw MailFailure("search failed")
-            ids.asList()
-        }
+            orderOf(ids)
+        }.uids.asList()
     }
 
     override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
@@ -885,8 +894,8 @@ class LibetpanMailSession : MailSession {
                     withCharset,
                 )
             }) ?: throw MailFailure("search failed")
-            ids.asList()
-        }
+            orderOf(ids)
+        }.uids.asList()
     }
 
     override suspend fun searchCount(kind: String, argument: String): Int {
@@ -1020,9 +1029,10 @@ class LibetpanMailSession : MailSession {
             val command = featureCaps.sortKind()
             val token = featureCaps.imapSortKey(sortToken(key))
             remember("SORT $token $newestFirst ${criteria.orEmpty()}") {
-                val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria?.let(::requireCriteria)) ?: throw MailFailure("sort failed")
-                ids.asList()
-            }
+                val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria?.let(::requireCriteria))
+                    ?: throw MailFailure("sort failed")
+                orderOf(ids)
+            }.uids.asList()
         }
     }
 
@@ -1142,9 +1152,12 @@ class LibetpanMailSession : MailSession {
         }
         return keeper.read("thread") {
             val h = requireHandle()
-            remember("THREAD $algorithm ${criteria.orEmpty()}") {
-                nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
+            val order = remember("THREAD $algorithm ${criteria.orEmpty()}") {
+                val node = nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
+                val flat = flattenThread(node)
+                orderOf(flat.uids, flat.depths)
             }
+            messageOrderThread(order)
         }
     }
 
@@ -1153,69 +1166,492 @@ class LibetpanMailSession : MailSession {
         newestFirst: Boolean,
         onProgress: (Int, Int) -> Unit,
         cancelled: () -> Boolean,
+    ): List<Long> = clientOrderCollated(key, newestFirst, onProgress, cancelled)
+
+    /** [collation] defaults to [ClientSortCollation.Locale]. A different value is a different command, so a full rebuild. */
+    internal suspend fun clientOrderCollated(
+        key: SortKey,
+        newestFirst: Boolean,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+        collation: ClientSortCollation = ClientSortCollation.Locale,
     ): List<Long> {
-        val field = when (key) {
-            SortKey.Date -> "DATE"
-            SortKey.From -> "FROM"
-            SortKey.Subject -> "SUBJECT"
-            SortKey.To -> "TO"
-            SortKey.Cc -> "CC"
-            SortKey.Size -> "SIZE"
-            else -> throw MailFailure("use an arrival IndexMode")
+        val command = "CLIENT SORT ${sortToken(key)} $newestFirst ${collation.name}"
+        val mailbox = selectedMailbox ?: throw MailFailure("sort failed")
+        val cached = cache[command]
+        if (cached != null && sameWireMailbox(cached.mailbox, mailbox) && cached.uidValidity != selected.uidValidity) {
+            toastRebuilt(mailbox)
+            cache.remove(command)
         }
-        // F108: RFC 5256 keys (Date: header, base subject, first addr-mailbox), and a walk that is restarted when
-        // another client's expunge shifts sequence numbers under it (a missing or doubled UID shows that).
-        val wireField = if (field == "DATE") "DATEHDR" else field
-        var attempt = 0
-        while (true) {
-            val exists = selectedExists()
-            val keys = ClientSortKeys(exists, numeric = key == SortKey.Date || key == SortKey.Size)
-            val seen = HashSet<Long>(exists * 2)
-            var drift = false
-            var first = 1
-            while (first <= exists) {
-                if (cancelled()) throw MailFailure("sort cancelled")
-                val last = minOf(exists, first + ClientSortChunk - 1)
-                val rows = keeper.read("client-sort") {
-                    nativeFetchSortFieldsRange(requireHandle(), wireField, first, last)
-                }
-                if (rows == null) {
-                    // F141: a chunk past a shrunken EXISTS (another client expunged ahead of the walk) is drift:
-                    // re-select and restart instead of failing.
-                    if (sortChunkDrift(exists, selectedExists(), sequencesStale)) { drift = true; break }
-                    throw MailFailure("sort failed")
-                }
-                for (row in rows) {
-                    if (!seen.add(row.uid)) drift = true
-                    keys.add(sortKeyRow(key, row))
-                }
-                onProgress(last, exists)
-                first = last + 1
-            }
-            if (!drift && seen.size == exists && selectedExists() == exists && !sequencesStale) {
-                return keys.order(newestFirst).asList()
-            }
-            attempt += 1
-            if (attempt >= 3) throw MailFailure("the folder kept changing during the sort; try again")
-            keeper.read("select") {
-                sequencesStale = true
-                selectNow(selectedMailbox ?: throw MailFailure("sort failed"))
-            }
+        val hit = cache[command]
+        val order = if (
+            hit != null && sameWireMailbox(hit.mailbox, mailbox) && hit.uidValidity == selected.uidValidity
+        ) {
+            updateClientSort(command, hit, key, newestFirst, collation, onProgress, cancelled)
+        } else {
+            rebuildClientSort(command, key, newestFirst, collation, onProgress, cancelled)
         }
+        return order.uids.asList()
     }
 
     override suspend fun clientThread(key: SortKey): ThreadNode {
         if (key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject) {
             throw MailFailure("use thread")
         }
-        return keeper.read("client-thread") {
-            val h = requireHandle()
-            remember("CLIENT THREAD ${key.name}") {
-                val rows = nativeFetchThreadHeaders(h) ?: throw MailFailure("thread failed")
-                clientThreads(rows.toList(), key)
-            }
+        val command = "CLIENT THREAD ${key.name}"
+        val mailbox = selectedMailbox ?: throw MailFailure("thread failed")
+        val cached = cache[command]
+        if (cached != null && sameWireMailbox(cached.mailbox, mailbox) && cached.uidValidity != selected.uidValidity) {
+            toastRebuilt(mailbox)
+            cache.remove(command)
+            threadHeaders.remove(command)
+        }
+        val hit = cache[command]
+        val headers = threadHeaders[command]
+        val order = if (
+            hit != null && headers != null && sameWireMailbox(hit.mailbox, mailbox) &&
+            hit.uidValidity == selected.uidValidity
+        ) {
+            updateClientThread(command, headers, key)
+        } else {
+            rebuildClientThread(command, key)
+        }
+        return messageOrderThread(order)
+    }
+
+    private suspend fun rebuildClientSort(
+        command: String,
+        key: SortKey,
+        newestFirst: Boolean,
+        collation: ClientSortCollation,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+    ): MessageOrder {
+        val before = selected.uidValidity
+        val built = walkClientSort(key, newestFirst, collation, onProgress, cancelled)
+        return finishClientWalk(command, before, built) {
+            walkClientSort(key, newestFirst, collation, onProgress, cancelled)
         }
     }
+
+    private suspend fun updateClientSort(
+        command: String,
+        cached: MessageOrder,
+        key: SortKey,
+        newestFirst: Boolean,
+        collation: ClientSortCollation,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+    ): MessageOrder {
+        if (cancelled()) throw MailFailure("sort cancelled")
+        val before = selected.uidValidity
+        val all = searchCapturedUids()
+        val now = all.toHashSet()
+        var order = dropMissing(cached, now, key)
+        val have = order.uids.toHashSet()
+        val fresh = LongArray(all.count { it !in have })
+        var n = 0
+        for (uid in all) if (uid !in have) fresh[n++] = uid
+        if (fresh.isNotEmpty()) {
+            val pieces = fetchSortPieces(fresh, key, onProgress, cancelled, all.size, order.uids.size)
+            order = insertPieces(order, pieces, key, newestFirst, collation)
+        }
+        onProgress(all.size, all.size)
+        return finishClientWalk(command, before, order) {
+            walkClientSort(key, newestFirst, collation, onProgress, cancelled)
+        }
+    }
+
+    private suspend fun finishClientWalk(command: String, before: Long, built: MessageOrder, again: suspend () -> MessageOrder): MessageOrder {
+        storeClient(command, built)
+        if (!sequencesStale) return built
+        val mailbox = selectedMailbox ?: return built
+        keeper.read("select") { selectNow(mailbox) }
+        if (selected.uidValidity == before && cache[command] != null) return built
+        val next = again()
+        storeClient(command, next)
+        return next
+    }
+
+    private suspend fun walkClientSort(
+        key: SortKey,
+        newestFirst: Boolean,
+        collation: ClientSortCollation,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+    ): MessageOrder {
+        if (cancelled()) throw MailFailure("sort cancelled")
+        val all = searchCapturedUids()
+        val pieces = fetchSortPieces(all, key, onProgress, cancelled, all.size, 0)
+        return orderFromPieces(pieces, key, newestFirst, collation)
+    }
+
+    private suspend fun searchCapturedUids(): LongArray = keeper.read("client-sort") {
+        nativeSearchUids(requireHandle()) ?: throw MailFailure("sort failed")
+    }
+
+    private suspend fun fetchSortPieces(
+        uids: LongArray,
+        key: SortKey,
+        onProgress: (Int, Int) -> Unit,
+        cancelled: () -> Boolean,
+        total: Int,
+        doneBase: Int,
+    ): List<SortPiece> {
+        val code = sortFieldCode(key)
+        val out = ArrayList<SortPiece>()
+        var at = 0
+        while (at < uids.size) {
+            if (cancelled()) throw MailFailure("sort cancelled")
+            val end = minOf(uids.size, at + ClientSortChunk)
+            val slice = uids.copyOfRange(at, end)
+            val fetched = keeper.read("client-sort") {
+                nativeFetchSortChunk(requireHandle(), slice, code) ?: throw MailFailure("sort failed")
+            }
+            for (i in fetched.uids.indices) out.add(sortPiece(key, fetched, i))
+            at = end
+            onProgress(doneBase + at, total)
+        }
+        return out
+    }
+
+    private fun sortPiece(key: SortKey, row: ClientFetch, i: Int): SortPiece {
+        val uid = row.uids[i]
+        return when (key) {
+            SortKey.Date -> {
+                val epoch = dateHeaderEpoch(row.texts[i])
+                SortPiece(uid, epoch ?: 0L, epoch == null, "")
+            }
+            SortKey.Size -> SortPiece(uid, row.numbers[i], row.blanks[i], "")
+            SortKey.Subject -> SortPiece(uid, 0L, false, baseSubject(decodeHeaderWords(row.texts[i])))
+            SortKey.From, SortKey.To, SortKey.Cc -> SortPiece(
+                uid,
+                0L,
+                false,
+                firstAddrMailbox(row.texts[i]) { decodeHeaderWords(it) },
+            )
+            else -> throw MailFailure("use an arrival IndexMode")
+        }
+    }
+
+    private fun orderFromPieces(
+        pieces: List<SortPiece>,
+        key: SortKey,
+        newestFirst: Boolean,
+        collation: ClientSortCollation,
+    ): MessageOrder {
+        val numeric = key == SortKey.Date || key == SortKey.Size
+        val n = pieces.size
+        if (n == 0) return orderOf(LongArray(0))
+        val uids = LongArray(n) { pieces[it].uid }
+        val numbers = LongArray(n) { if (pieces[it].blank) Long.MIN_VALUE else pieces[it].number }
+        val blanks = BooleanArray(n) { pieces[it].blank }
+        val packed = if (numeric) {
+            Triple(ByteArray(0), IntArray(n), IntArray(n))
+        } else {
+            textColumns(Array(n) { pieces[it].text }, collation)
+        }
+        val ordered = nativeSortClient(uids, numbers, blanks, packed.first, packed.second, packed.third, numeric, newestFirst)
+            ?: throw MailFailure("sort failed")
+        val at = HashMap<Long, Int>(n * 2)
+        for (i in pieces.indices) at[pieces[i].uid] = i
+        val perm = IntArray(ordered.size) { at.getValue(ordered[it]) }
+        return messageOrderFromPerm(pieces, perm, key, if (numeric) null else packed)
+    }
+
+    private fun messageOrderFromPerm(
+        pieces: List<SortPiece>,
+        perm: IntArray,
+        key: SortKey,
+        packed: Triple<ByteArray, IntArray, IntArray>?,
+    ): MessageOrder {
+        val n = perm.size
+        val uids = LongArray(n) { pieces[perm[it]].uid }
+        val dateEpoch = if (key == SortKey.Date) {
+            LongArray(n) { val p = pieces[perm[it]]; if (p.blank) Long.MIN_VALUE else p.number }
+        } else {
+            LongArray(0)
+        }
+        val sizes = if (key == SortKey.Size) {
+            LongArray(n) { val p = pieces[perm[it]]; if (p.blank) Long.MIN_VALUE else p.number }
+        } else {
+            LongArray(0)
+        }
+        val text = if (packed == null) Triple(ByteArray(0), IntArray(0), IntArray(0)) else permuteText(packed, perm)
+        return MessageOrder(
+            uids,
+            ShortArray(0),
+            selectedMailbox ?: "",
+            ownerId.orEmpty(),
+            selected.uidValidity,
+            dateEpoch,
+            sizes,
+            text.first,
+            text.second,
+            text.third,
+        )
+    }
+
+    private fun insertPieces(
+        order: MessageOrder,
+        pieces: List<SortPiece>,
+        key: SortKey,
+        newestFirst: Boolean,
+        collation: ClientSortCollation,
+    ): MessageOrder {
+        if (pieces.isEmpty()) return order
+        val numeric = key == SortKey.Date || key == SortKey.Size
+        val packed = if (numeric) null else textColumns(Array(pieces.size) { pieces[it].text }, collation)
+        var current = order
+        for (i in pieces.indices) {
+            val keyBytes = if (packed == null) {
+                ByteArray(0)
+            } else {
+                packed.first.copyOfRange(packed.second[i], packed.second[i] + packed.third[i])
+            }
+            current = insertOne(current, pieces[i], keyBytes, key, newestFirst)
+        }
+        return current
+    }
+
+    private fun insertOne(
+        order: MessageOrder,
+        piece: SortPiece,
+        keyBytes: ByteArray,
+        key: SortKey,
+        newestFirst: Boolean,
+    ): MessageOrder {
+        val numeric = key == SortKey.Date || key == SortKey.Size
+        val n = order.uids.size
+        val numbers = when (key) {
+            SortKey.Date -> if (order.dateEpoch.size == n) order.dateEpoch else LongArray(n) { Long.MIN_VALUE }
+            SortKey.Size -> if (order.size.size == n) order.size else LongArray(n) { Long.MIN_VALUE }
+            else -> LongArray(n)
+        }
+        val blanks = BooleanArray(n) { numeric && numbers[it] == Long.MIN_VALUE }
+        val off = if (!numeric && order.textOff.size == n) order.textOff else IntArray(n)
+        val len = if (!numeric && order.textLen.size == n) order.textLen else IntArray(n)
+        val stored = if (piece.blank) Long.MIN_VALUE else piece.number
+        val index = nativeInsertAt(
+            order.uids,
+            numbers,
+            blanks,
+            if (numeric) ByteArray(0) else order.textKey,
+            off,
+            len,
+            numeric,
+            newestFirst,
+            piece.uid,
+            if (numeric) stored else 0L,
+            numeric && piece.blank,
+            keyBytes,
+        )
+        return spliceOrder(order, index, piece.uid, stored, keyBytes, key)
+    }
+
+    private fun dropMissing(order: MessageOrder, keep: Set<Long>, key: SortKey): MessageOrder {
+        if (order.uids.all { it in keep }) return order
+        val idx = ArrayList<Int>()
+        for (i in order.uids.indices) if (order.uids[i] in keep) idx.add(i)
+        return takeIndexes(order, idx, key)
+    }
+
+    private fun takeIndexes(order: MessageOrder, idx: List<Int>, key: SortKey): MessageOrder {
+        val uids = LongArray(idx.size) { order.uids[idx[it]] }
+        val dateEpoch = if (key == SortKey.Date && order.dateEpoch.size == order.uids.size) {
+            LongArray(idx.size) { order.dateEpoch[idx[it]] }
+        } else {
+            LongArray(0)
+        }
+        val sizes = if (key == SortKey.Size && order.size.size == order.uids.size) {
+            LongArray(idx.size) { order.size[idx[it]] }
+        } else {
+            LongArray(0)
+        }
+        val text = if (key != SortKey.Date && key != SortKey.Size && order.textOff.size == order.uids.size) {
+            packKeyBytes(Array(idx.size) { i ->
+                val at = idx[i]
+                order.textKey.copyOfRange(order.textOff[at], order.textOff[at] + order.textLen[at])
+            })
+        } else {
+            Triple(ByteArray(0), IntArray(0), IntArray(0))
+        }
+        return MessageOrder(
+            uids, ShortArray(0), order.mailbox, order.accountId, order.uidValidity, dateEpoch, sizes,
+            text.first, text.second, text.third,
+        )
+    }
+
+    private fun spliceOrder(
+        order: MessageOrder,
+        index: Int,
+        uid: Long,
+        number: Long,
+        keyBytes: ByteArray,
+        key: SortKey,
+    ): MessageOrder {
+        val uids = spliceLong(order.uids, index, uid)
+        val dateEpoch = if (key == SortKey.Date) {
+            val src = if (order.dateEpoch.size == order.uids.size) order.dateEpoch else LongArray(order.uids.size) { Long.MIN_VALUE }
+            spliceLong(src, index, number)
+        } else {
+            LongArray(0)
+        }
+        val sizes = if (key == SortKey.Size) {
+            val src = if (order.size.size == order.uids.size) order.size else LongArray(order.uids.size) { Long.MIN_VALUE }
+            spliceLong(src, index, number)
+        } else {
+            LongArray(0)
+        }
+        val text = if (key == SortKey.Date || key == SortKey.Size) {
+            Triple(ByteArray(0), IntArray(0), IntArray(0))
+        } else {
+            spliceText(order, index, keyBytes)
+        }
+        return MessageOrder(
+            uids, ShortArray(0), order.mailbox, order.accountId, order.uidValidity, dateEpoch, sizes,
+            text.first, text.second, text.third,
+        )
+    }
+
+    private fun spliceLong(src: LongArray, index: Int, value: Long): LongArray {
+        val out = LongArray(src.size + 1)
+        src.copyInto(out, 0, 0, index)
+        out[index] = value
+        src.copyInto(out, index + 1, index, src.size)
+        return out
+    }
+
+    private fun spliceText(order: MessageOrder, index: Int, keyBytes: ByteArray): Triple<ByteArray, IntArray, IntArray> {
+        val n = order.uids.size
+        val parts = Array(n + 1) { i ->
+            if (i == index) {
+                keyBytes
+            } else {
+                val src = if (i < index) i else i - 1
+                if (order.textOff.size != n) ByteArray(0) else {
+                    order.textKey.copyOfRange(order.textOff[src], order.textOff[src] + order.textLen[src])
+                }
+            }
+        }
+        return packKeyBytes(parts)
+    }
+
+    private fun textColumns(texts: Array<String>, collation: ClientSortCollation): Triple<ByteArray, IntArray, IntArray> =
+        if (collation == ClientSortCollation.Plain) packKeyBytes(Array(texts.size) { plainKeyBytes(texts[it]) })
+        else localeKeyBytes(texts)
+
+    private fun permuteText(packed: Triple<ByteArray, IntArray, IntArray>, perm: IntArray): Triple<ByteArray, IntArray, IntArray> {
+        val (bytes, off, len) = packed
+        return packKeyBytes(Array(perm.size) { i ->
+            bytes.copyOfRange(off[perm[i]], off[perm[i]] + len[perm[i]])
+        })
+    }
+
+    private fun sortFieldCode(key: SortKey): Int = when (key) {
+        SortKey.Date -> 0
+        SortKey.Size -> 1
+        SortKey.Subject -> 2
+        SortKey.From -> 3
+        SortKey.To -> 4
+        SortKey.Cc -> 5
+        else -> throw MailFailure("use an arrival IndexMode")
+    }
+
+    private suspend fun rebuildClientThread(command: String, key: SortKey): MessageOrder {
+        val before = selected.uidValidity
+        val headers = fetchAllThreadHeaders()
+        val built = threadOrder(key, headers)
+        val order = finishClientWalk(command, before, built) {
+            val again = fetchAllThreadHeaders()
+            threadHeaders[command] = again
+            threadOrder(key, again)
+        }
+        threadHeaders.putIfAbsent(command, headers)
+        return order
+    }
+
+    private suspend fun updateClientThread(command: String, headers: ClientHeaders, key: SortKey): MessageOrder {
+        val before = selected.uidValidity
+        val all = searchCapturedUids()
+        val now = all.toHashSet()
+        val kept = filterHeaders(headers, now)
+        val have = kept.uids.toHashSet()
+        if (kept.uids.size == headers.uids.size && all.all { it in have }) {
+            val hit = cache[command]
+            if (hit != null) return hit
+        }
+        val fresh = LongArray(all.count { it !in have })
+        var n = 0
+        for (uid in all) if (uid !in have) fresh[n++] = uid
+        val merged = if (fresh.isEmpty()) kept else mergeHeaders(kept, fetchThreadHeaders(fresh))
+        val built = threadOrder(key, merged)
+        threadHeaders[command] = merged
+        return finishClientWalk(command, before, built) {
+            val again = fetchAllThreadHeaders()
+            threadHeaders[command] = again
+            threadOrder(key, again)
+        }
+    }
+
+    private suspend fun fetchAllThreadHeaders(): ClientHeaders {
+        val all = searchCapturedUids()
+        return fetchThreadHeaders(all)
+    }
+
+    private suspend fun fetchThreadHeaders(uids: LongArray): ClientHeaders {
+        var acc = ClientHeaders(LongArray(0), emptyArray(), emptyArray(), emptyArray(), emptyArray(), emptyArray())
+        var at = 0
+        while (at < uids.size) {
+            val end = minOf(uids.size, at + ClientSortChunk)
+            val slice = uids.copyOfRange(at, end)
+            val rows = keeper.read("client-thread") {
+                nativeFetchThreadChunk(requireHandle(), slice) ?: throw MailFailure("thread failed")
+            }
+            acc = mergeHeaders(acc, rows)
+            at = end
+        }
+        return acc
+    }
+
+    private fun threadOrder(key: SortKey, headers: ClientHeaders): MessageOrder {
+        val flat = if (key == SortKey.ThreadOrderedSubject) {
+            val subjects = Array(headers.uids.size) { baseSubject(decodeHeaderWords(headers.subject[it])) }
+            val epochs = LongArray(headers.uids.size) { dateHeaderEpoch(headers.date[it]) ?: Long.MIN_VALUE }
+            nativeThreadSubject(headers.uids, subjects, epochs) ?: throw MailFailure("thread failed")
+        } else {
+            nativeThreadReferences(headers.uids, headers.messageId, headers.references, headers.inReplyTo)
+                ?: throw MailFailure("thread failed")
+        }
+        return orderOf(flat.uids, flat.depths)
+    }
+
+    private fun filterHeaders(rows: ClientHeaders, keep: Set<Long>): ClientHeaders {
+        val idx = rows.uids.indices.filter { rows.uids[it] in keep }
+        return ClientHeaders(
+            LongArray(idx.size) { rows.uids[idx[it]] },
+            Array(idx.size) { rows.messageId[idx[it]] },
+            Array(idx.size) { rows.references[idx[it]] },
+            Array(idx.size) { rows.inReplyTo[idx[it]] },
+            Array(idx.size) { rows.subject[idx[it]] },
+            Array(idx.size) { rows.date[idx[it]] },
+        )
+    }
+
+    private fun mergeHeaders(a: ClientHeaders, b: ClientHeaders): ClientHeaders {
+        val n = a.uids.size + b.uids.size
+        fun pick(i: Int, left: Array<String>, right: Array<String>) = if (i < a.uids.size) left[i] else right[i - a.uids.size]
+        return ClientHeaders(
+            LongArray(n) { if (it < a.uids.size) a.uids[it] else b.uids[it - a.uids.size] },
+            Array(n) { pick(it, a.messageId, b.messageId) },
+            Array(n) { pick(it, a.references, b.references) },
+            Array(n) { pick(it, a.inReplyTo, b.inReplyTo) },
+            Array(n) { pick(it, a.subject, b.subject) },
+            Array(n) { pick(it, a.date, b.date) },
+        )
+    }
+
+    private data class SortPiece(val uid: Long, val number: Long, val blank: Boolean, val text: String)
 
     /**
      * Extra IDLE: the watch connection is the only login (connect, log in, EXAMINE, IDLE). The command
@@ -1486,7 +1922,7 @@ class LibetpanMailSession : MailSession {
         watchCallback = null
         watchMailbox = null
         requestedWatch = null
-        cache.clear()
+        clearOrderCache()
         keeper.onSessionClosed()
     }
 
@@ -1507,7 +1943,7 @@ class LibetpanMailSession : MailSession {
             }
             else -> MailboxChange.UidValidityReset
         }
-        cache.keys.retainAll { it.mailbox != mailbox }
+        dropCached(mailbox, keepClient = true)
         sequencesStale = true
         callback.invoke(change)
     }
@@ -1530,7 +1966,7 @@ class LibetpanMailSession : MailSession {
                 }
                 throw MailFailure(text)
             }
-            cache.clear()
+            clearOrderCache()
             sequencesStale = true
         }
 
@@ -1543,10 +1979,11 @@ class LibetpanMailSession : MailSession {
             val name = wire(mailbox)
             val readWrite = selectedReadWrite
             val result = nativeSelect(requireHandle(), name, readWrite) ?: throw MailFailure("select failed")
+            noteValidity(name, result.uidValidity)
             selectedMailbox = name
             selectedReadWrite = readWrite
             selected = result
-            cache.clear()
+            clearOrderCache()
             sequencesStale = true
             noteTraffic("Selected $name")
             return result
@@ -1582,9 +2019,7 @@ class LibetpanMailSession : MailSession {
 
         override fun emit(change: MailboxChange) {
             val mailbox = selectedMailbox
-            if (mailbox != null) {
-                cache.keys.retainAll { it.mailbox != mailbox }
-            }
+            if (mailbox != null) dropCached(mailbox, keepClient = true)
             if (change !is MailboxChange.Flags && change !is MailboxChange.ShownFlags) {
                 sequencesStale = true
             }
@@ -1608,27 +2043,74 @@ class LibetpanMailSession : MailSession {
         return h
     }
 
-    /** Drops remembered results for the selected mailbox: after any change the app makes, and after NOOP. */
+    /** Drops remembered server results for the selected mailbox. A client order stays so the next walk can update it. */
     private fun forgetSelected() {
         val mailbox = selectedMailbox ?: return
-        cache.keys.retainAll { it.mailbox != mailbox }
+        dropCached(mailbox, keepClient = true)
     }
 
-        private fun <T : Any> remember(command: String, load: () -> T): T {
-        val key = CacheKey(
-            selectedMailbox ?: "",
-            selected.uidValidity,
-            selected.uidNext,
-            selected.exists,
-            command,
-        )
-        val found = cache[key]
-        if (found != null) {
-            @Suppress("UNCHECKED_CAST")
-            return found as T
+    private fun clearOrderCache() {
+        cache.clear()
+        threadHeaders.clear()
+    }
+
+    /** A folder change, or a server reply that must be fetched again. Client orders stay when [keepClient] is set. */
+    private fun dropCached(mailbox: String, keepClient: Boolean) {
+        val drop = ArrayList<String>()
+        for ((command, order) in cache) {
+            if (!sameWireMailbox(order.mailbox, mailbox)) continue
+            if (keepClient && command.startsWith("CLIENT ")) continue
+            drop.add(command)
         }
+        for (command in drop) {
+            cache.remove(command)
+            threadHeaders.remove(command)
+        }
+    }
+
+    /** UIDVALIDITY moved: the client order is rebuilt, and the folder name is toasted. */
+    private fun noteValidity(mailbox: String, validity: Long) {
+        var stale = false
+        for ((command, order) in cache) {
+            if (!command.startsWith("CLIENT ")) continue
+            if (sameWireMailbox(order.mailbox, mailbox) && order.uidValidity != validity) stale = true
+        }
+        if (!stale) return
+        toastRebuilt(mailbox)
+        clearOrderCache()
+    }
+
+    private fun toastRebuilt(mailbox: String) {
+        val app = currentApplication() ?: return
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(app, "$mailbox order was rebuilt", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun storeClient(command: String, order: MessageOrder) {
+        cache.compute(command) { _, _ -> order }
+    }
+
+    private fun orderOf(uids: LongArray, depths: ShortArray = ShortArray(0)): MessageOrder = MessageOrder(
+        uids,
+        depths,
+        selectedMailbox ?: "",
+        ownerId.orEmpty(),
+        selected.uidValidity,
+        LongArray(0),
+        LongArray(0),
+        ByteArray(0),
+        IntArray(0),
+        IntArray(0),
+    )
+
+    private fun remember(command: String, load: () -> MessageOrder): MessageOrder {
+        val mailbox = selectedMailbox ?: ""
+        val validity = selected.uidValidity
+        val found = cache[command]
+        if (found != null && sameWireMailbox(found.mailbox, mailbox) && found.uidValidity == validity) return found
         val value = load()
-        cache[key] = value
+        cache.compute(command) { _, _ -> value }
         return value
     }
 
@@ -1846,8 +2328,40 @@ class LibetpanMailSession : MailSession {
         first: Int,
         last: Int,
     ): LongArray?
-    private external fun nativeFetchSortFieldsRange(handle: Long, field: String, first: Int, last: Int): Array<SortField>?
-    private external fun nativeFetchThreadHeaders(handle: Long): Array<ThreadHeader>?
+    private external fun nativeSearchUids(handle: Long): LongArray?
+    private external fun nativeFetchSortChunk(handle: Long, uids: LongArray, field: Int): ClientFetch?
+    private external fun nativeFetchThreadChunk(handle: Long, uids: LongArray): ClientHeaders?
+    private external fun nativeSortClient(
+        uids: LongArray,
+        numbers: LongArray,
+        blanks: BooleanArray,
+        keyBytes: ByteArray,
+        keyOff: IntArray,
+        keyLen: IntArray,
+        numeric: Boolean,
+        newestFirst: Boolean,
+    ): LongArray?
+    private external fun nativeInsertAt(
+        uids: LongArray,
+        numbers: LongArray,
+        blanks: BooleanArray,
+        keyBytes: ByteArray,
+        keyOff: IntArray,
+        keyLen: IntArray,
+        numeric: Boolean,
+        newestFirst: Boolean,
+        newUid: Long,
+        newNumber: Long,
+        newBlank: Boolean,
+        newBytes: ByteArray,
+    ): Int
+    private external fun nativeThreadSubject(uids: LongArray, subjects: Array<String>, epochs: LongArray): ThreadFlat?
+    private external fun nativeThreadReferences(
+        uids: LongArray,
+        messageId: Array<String>,
+        references: Array<String>,
+        inReplyTo: Array<String>,
+    ): ThreadFlat?
     private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
     private external fun nativeWatchLogin(handle: Long): String?
     private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
@@ -1984,66 +2498,8 @@ internal fun onCellular(): Boolean {
     return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
 }
 
-/**
- * Client-side sort keys in primitive arrays: uid and numeric key as longs, text keys lowercased once. Blank keys
- * sort after the rest by uid, as before.
- */
-/** F108: turn a fetched header into its RFC 5256 sort key. */
-internal fun sortKeyRow(key: SortKey, row: SortField): SortField = when (key) {
-    SortKey.Date -> {
-        val epoch = org.dlang.liveimap.session.dateHeaderEpoch(row.text)
-        SortField(row.uid, "", epoch ?: row.number, epoch == null && row.number == 0L)
-    }
-    SortKey.Subject -> row.copy(text = org.dlang.liveimap.session.baseSubject(
-        org.dlang.liveimap.ui.compose.decodeHeaderWords(row.text)), empty = false)
-    SortKey.From, SortKey.To, SortKey.Cc -> row.copy(text = org.dlang.liveimap.session.firstAddrMailbox(
-        row.text) { org.dlang.liveimap.ui.compose.decodeHeaderWords(it) }, empty = false) // F137: parse raw, then decode
-    else -> row
-}
-
 /** F141: a failed sort chunk is drift (restart the walk) when the folder shrank or sequence numbers went stale. */
 internal fun sortChunkDrift(existsAtStart: Int, existsNow: Int, stale: Boolean): Boolean = stale || existsNow < existsAtStart
-
-internal class ClientSortKeys(capacity: Int, private val numeric: Boolean) {
-    private var uids = LongArray(capacity.coerceAtLeast(16))
-    private var numbers = if (numeric) LongArray(uids.size) else LongArray(0)
-    private var texts: Array<String?> = if (numeric) emptyArray() else arrayOfNulls(uids.size)
-    private var blank = BooleanArray(uids.size)
-    var size = 0
-        private set
-
-    fun add(row: SortField) {
-        if (row.uid <= 0L) return
-        if (size == uids.size) grow()
-        uids[size] = row.uid
-        if (numeric) numbers[size] = row.number else texts[size] = row.text.lowercase()
-        blank[size] = row.empty
-        size += 1
-    }
-
-    private fun grow() {
-        val n = uids.size * 2
-        uids = uids.copyOf(n)
-        blank = blank.copyOf(n)
-        if (numeric) numbers = numbers.copyOf(n) else texts = texts.copyOf(n)
-    }
-
-    fun order(newestFirst: Boolean): LongArray {
-        val filled = (0 until size).filter { !blank[it] }
-        val byValue: Comparator<Int> = if (numeric) {
-            compareBy<Int> { numbers[it] }.thenBy { uids[it] }
-        } else {
-            compareBy<Int> { texts[it] }.thenBy { uids[it] }
-        }
-        val sorted = filled.sortedWith(byValue).let { if (newestFirst) it.asReversed() else it }
-        val blanks = (0 until size).filter { blank[it] }.sortedBy { uids[it] }
-        val out = LongArray(size)
-        var k = 0
-        for (i in sorted) out[k++] = uids[i]
-        for (i in blanks) out[k++] = uids[i]
-        return out
-    }
-}
 
 /** F30: the ENABLE token for a resync kind. QRESYNC data is not processed, so QRESYNC servers get CONDSTORE. */
 internal fun enableForResync(kind: String): String = when (kind) {

@@ -1,5 +1,7 @@
 package org.dlang.liveimap.ui.index
 
+import org.dlang.liveimap.session.MailFailure
+
 /**
  * A sorted message order known only window by window (ESORT PARTIAL). [size] is the server's COUNT; positions
  * not loaded yet read as [Unknown] (0, never a real UID). [ensure] loads the windows covering a range on demand.
@@ -10,21 +12,29 @@ class WindowedOrder(
     private val windowSize: Int,
     private val loader: suspend (first: Int, last: Int) -> List<Long>,
 ) : AbstractList<Long>() {
-    private val windows = HashMap<Int, List<Long>>()
+    private val windows = HashMap<Int, LongArray>()
 
     override val size: Int get() = total
 
     override fun get(index: Int): Long {
         if (index < 0 || index >= total) throw IndexOutOfBoundsException("$index of $total")
         val w = windows[index / windowSize] ?: return Unknown
-        return w.getOrElse(index % windowSize) { Unknown }
+        val off = index % windowSize
+        if (off >= w.size) throw MailFailure("anchor $index")
+        return w[off]
+    }
+
+    /** 1-based position in a loaded window. An unknown uid is a failure, not position 0. */
+    fun sequence(uid: Long): Int {
+        val index = indexOfLoaded(uid) ?: throw MailFailure("anchor $uid")
+        return index + 1
     }
 
     fun loadedWindows(): Int = windows.size
 
     /** Stores a window already fetched (the first one comes with the COUNT). */
     fun seed(window: Int, uids: List<Long>) {
-        windows[window] = uids
+        windows[window] = uids.toLongArray()
     }
 
     /** Loads every window overlapping positions [start] until [start]+[count] (0-based). */
@@ -36,7 +46,10 @@ class WindowedOrder(
             if (w in windows) continue
             val first = w * windowSize + 1
             val last = minOf(total, first + windowSize - 1)
-            windows[w] = loader(first, last)
+            val requested = last - first + 1
+            val got = loader(first, last)
+            if (got.size < requested && last < total) throw MailFailure("anchor $first")
+            windows[w] = got.toLongArray()
         }
     }
 
@@ -44,9 +57,18 @@ class WindowedOrder(
      * Known UIDs, in order, skipping unloaded positions. F81: walks the loaded windows only, so a huge server COUNT
      * (e.g. 2147483647) costs nothing here.
      */
-    fun known(): List<Long> = windows.keys.sorted().flatMap { w ->
-        val start = w * windowSize
-        windows.getValue(w).take((total - start).coerceAtLeast(0)).filter { it != Unknown }
+    fun known(): List<Long> {
+        val out = ArrayList<Long>()
+        for (w in windows.keys.sorted()) {
+            val list = windows.getValue(w)
+            val start = w * windowSize
+            val limit = minOf(list.size, (total - start).coerceAtLeast(0))
+            for (i in 0 until limit) {
+                val id = list[i]
+                if (id != Unknown) out.add(id)
+            }
+        }
+        return out
     }
 
     /** First loaded position matching [uid], or null when that UID is not in a loaded window. */

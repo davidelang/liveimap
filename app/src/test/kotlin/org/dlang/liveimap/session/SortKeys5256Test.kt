@@ -2,10 +2,12 @@ package org.dlang.liveimap.session
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** F108: the client sort fallback uses RFC 5256 keys. */
+/** F108: the client sort fallback uses RFC 5256 keys. These cases run under [ClientSortCollation.Plain]. */
 class SortKeys5256Test {
+    private val collation = ClientSortCollation.Plain
     @Test
     fun baseSubjectStripsReplyForwardAndBlobs() {
         assertEquals("hello", baseSubject("Re: Hello"))
@@ -44,5 +46,29 @@ class SortKeys5256Test {
         assertEquals(0L, dateHeaderEpoch("1 Jan 1970 00:00:00 A"))
         assertNull(dateHeaderEpoch("not a date"))
         assertNull(dateHeaderEpoch(""))
+    }
+
+    @Test
+    fun plainKeepsTodaysOrder() {
+        assertEquals(ClientSortCollation.Plain, collation)
+        assertEquals(ClientSortCollation.Locale, ClientSortCollation.values().first())
+        assertEquals("hello", plainKeyBytes(baseSubject("Re: Hello")).decodeToString())
+        assertEquals(
+            plainKeyBytes(baseSubject("Re: Hello")).decodeToString(),
+            plainKeyBytes(baseSubject("RE: [list] Fwd: re[2]: Hello (fwd)")).decodeToString(),
+        )
+        assertEquals("alpha", plainKeyBytes("Alpha").decodeToString())
+        assertEquals("é", plainKeyBytes("É").decodeToString())
+        val keys = listOf("beta", "Alpha").map { plainKeyBytes(it) }
+        assertTrue(memcmp(keys[1], keys[0]) < 0)
+    }
+
+    private fun memcmp(a: ByteArray, b: ByteArray): Int {
+        val n = minOf(a.size, b.size)
+        for (i in 0 until n) {
+            val c = (a[i].toInt() and 0xff) - (b[i].toInt() and 0xff)
+            if (c != 0) return c
+        }
+        return a.size - b.size
     }
 }
