@@ -8,7 +8,6 @@
 
 #include <ctype.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10756,26 +10755,22 @@ static size_t header_block_len(const char * bytes, size_t len) {
     return len;
 }
 
-static std::string unfold_value(const std::string & raw) {
-    std::string out;
-    out.reserve(raw.size());
+static void decode_row(HeaderRow * row, const std::string & raw) {
+    std::string unfolded;
+    unfolded.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); ++i) {
         char c = raw[i];
         if (c != '\r' && c != '\n') {
-            out.push_back(c);
+            unfolded.push_back(c);
             continue;
         }
         size_t j = i + 1;
         if (c == '\r' && j < raw.size() && raw[j] == '\n') ++j;
-        out.push_back(' ');
+        unfolded.push_back(' ');
         while (j < raw.size() && (raw[j] == ' ' || raw[j] == '\t')) ++j;
         i = j - 1;
     }
-    return trim_copy(out);
-}
-
-static void decode_row(HeaderRow * row, const std::string & raw) {
-    row->raw = unfold_value(raw);
+    row->raw = trim_copy(unfolded);
     char * phrase = nullptr;
     char * note = nullptr;
     int status = 0;
@@ -10783,31 +10778,6 @@ static void decode_row(HeaderRow * row, const std::string & raw) {
     row->value = phrase != nullptr ? phrase : row->raw;
     free(phrase);
     free(note);
-}
-
-static void join_clist(std::string * out, clist * list) {
-    if (list == nullptr) return;
-    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
-        auto * item = static_cast<char *>(clist_content(cur));
-        if (item == nullptr) continue;
-        if (!out->empty()) out->push_back(' ');
-        *out += item;
-    }
-}
-
-static std::string format_date(struct mailimf_date_time * dt) {
-    if (dt == nullptr) return std::string();
-    static const char * months[] = {
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    };
-    int month = dt->dt_month >= 1 && dt->dt_month <= 12 ? dt->dt_month : 1;
-    int zone = dt->dt_zone;
-    char sign = zone < 0 ? '-' : '+';
-    int absz = zone < 0 ? -zone : zone;
-    char buf[80];
-    snprintf(buf, sizeof(buf), "%d %s %d %02d:%02d:%02d %c%04d",
-        dt->dt_day, months[month - 1], dt->dt_year, dt->dt_hour, dt->dt_min, dt->dt_sec, sign, absz);
-    return std::string(buf);
 }
 
 static void push_row(std::vector<HeaderRow> * rows, const char * name, const std::string & raw) {
@@ -10818,121 +10788,36 @@ static void push_row(std::vector<HeaderRow> * rows, const char * name, const std
     rows->push_back(std::move(row));
 }
 
-struct WireField {
-    std::string name;
-    std::string value;
-};
-
-static bool same_name(const std::string & wire, const char * canon) {
-    if (canon == nullptr) return false;
-    size_t n = 0;
-    while (canon[n] != 0) ++n;
-    if (wire.size() != n) return false;
-    for (size_t i = 0; i < n; ++i) {
-        unsigned char a = static_cast<unsigned char>(wire[i]);
-        unsigned char b = static_cast<unsigned char>(canon[i]);
-        if (a >= 'A' && a <= 'Z') a = static_cast<unsigned char>(a - 'A' + 'a');
-        if (b >= 'A' && b <= 'Z') b = static_cast<unsigned char>(b - 'A' + 'a');
-        if (a != b) return false;
+// One field's original name and value, in the order mailimf_fields_parse returned.
+static bool slice_field(const char * bytes, size_t end, size_t * cursor,
+    size_t * name_b, size_t * name_e, size_t * val_b, size_t * val_e) {
+    size_t i = *cursor;
+    if (i >= end) return false;
+    unsigned char lead = static_cast<unsigned char>(bytes[i]);
+    if (lead == ' ' || lead == '\t' || lead == '\r' || lead == '\n') return false;
+    size_t start = i;
+    size_t colon = static_cast<size_t>(-1);
+    while (i < end && bytes[i] != '\n' && bytes[i] != '\r') {
+        if (colon == static_cast<size_t>(-1) && bytes[i] == ':') colon = i;
+        ++i;
     }
+    if (colon == static_cast<size_t>(-1) || colon == start) return false;
+    if (i < end && bytes[i] == '\r') ++i;
+    if (i < end && bytes[i] == '\n') ++i;
+    while (i < end && (bytes[i] == ' ' || bytes[i] == '\t')) {
+        while (i < end && bytes[i] != '\n' && bytes[i] != '\r') ++i;
+        if (i < end && bytes[i] == '\r') ++i;
+        if (i < end && bytes[i] == '\n') ++i;
+    }
+    size_t value_end = i;
+    if (value_end > colon + 1 && bytes[value_end - 1] == '\n') --value_end;
+    if (value_end > colon + 1 && bytes[value_end - 1] == '\r') --value_end;
+    *name_b = start;
+    *name_e = colon;
+    *val_b = colon + 1;
+    *val_e = value_end;
+    *cursor = i;
     return true;
-}
-
-// The one mailimf parse says which fields are valid. Address and id values stay the original
-// text, so quotes and angle brackets are still there for addresses() and replyDraft.
-static void collect_wire_fields(const char * bytes, size_t block, std::vector<WireField> * out) {
-    size_t i = 0;
-    while (i < block) {
-        unsigned char c = static_cast<unsigned char>(bytes[i]);
-        if (c == '\n' || c == '\r') break;
-        size_t start = i;
-        while (i < block && bytes[i] != '\n') ++i;
-        if (i < block && bytes[i] == '\n') ++i;
-        while (i < block && (bytes[i] == ' ' || bytes[i] == '\t')) {
-            while (i < block && bytes[i] != '\n') ++i;
-            if (i < block && bytes[i] == '\n') ++i;
-        }
-        std::string chunk(bytes + start, i - start);
-        size_t colon = chunk.find(':');
-        if (colon == std::string::npos) continue;
-        WireField field;
-        field.name = trim_copy(chunk.substr(0, colon));
-        field.value = unfold_value(chunk.substr(colon + 1));
-        if (!field.name.empty()) out->push_back(std::move(field));
-    }
-}
-
-static const char * field_canon(struct mailimf_field * field) {
-    if (field == nullptr) return nullptr;
-    switch (field->fld_type) {
-    case MAILIMF_FIELD_RETURN_PATH: return "Return-Path";
-    case MAILIMF_FIELD_RESENT_DATE: return "Resent-Date";
-    case MAILIMF_FIELD_RESENT_FROM: return "Resent-From";
-    case MAILIMF_FIELD_RESENT_SENDER: return "Resent-Sender";
-    case MAILIMF_FIELD_RESENT_TO: return "Resent-To";
-    case MAILIMF_FIELD_RESENT_CC: return "Resent-Cc";
-    case MAILIMF_FIELD_RESENT_BCC: return "Resent-Bcc";
-    case MAILIMF_FIELD_RESENT_MSG_ID: return "Resent-Message-ID";
-    case MAILIMF_FIELD_ORIG_DATE: return "Date";
-    case MAILIMF_FIELD_FROM: return "From";
-    case MAILIMF_FIELD_SENDER: return "Sender";
-    case MAILIMF_FIELD_REPLY_TO: return "Reply-To";
-    case MAILIMF_FIELD_TO: return "To";
-    case MAILIMF_FIELD_CC: return "Cc";
-    case MAILIMF_FIELD_BCC: return "Bcc";
-    case MAILIMF_FIELD_MESSAGE_ID: return "Message-ID";
-    case MAILIMF_FIELD_IN_REPLY_TO: return "In-Reply-To";
-    case MAILIMF_FIELD_REFERENCES: return "References";
-    case MAILIMF_FIELD_SUBJECT: return "Subject";
-    case MAILIMF_FIELD_COMMENTS: return "Comments";
-    case MAILIMF_FIELD_KEYWORDS: return "Keywords";
-    case MAILIMF_FIELD_OPTIONAL_FIELD:
-        if (field->fld_data.fld_optional_field == nullptr) return nullptr;
-        return field->fld_data.fld_optional_field->fld_name;
-    default:
-        return nullptr;
-    }
-}
-
-static bool wire_address_or_id(int type) {
-    switch (type) {
-    case MAILIMF_FIELD_RETURN_PATH:
-    case MAILIMF_FIELD_RESENT_FROM:
-    case MAILIMF_FIELD_RESENT_SENDER:
-    case MAILIMF_FIELD_RESENT_TO:
-    case MAILIMF_FIELD_RESENT_CC:
-    case MAILIMF_FIELD_RESENT_BCC:
-    case MAILIMF_FIELD_RESENT_MSG_ID:
-    case MAILIMF_FIELD_FROM:
-    case MAILIMF_FIELD_SENDER:
-    case MAILIMF_FIELD_REPLY_TO:
-    case MAILIMF_FIELD_TO:
-    case MAILIMF_FIELD_CC:
-    case MAILIMF_FIELD_BCC:
-    case MAILIMF_FIELD_MESSAGE_ID:
-    case MAILIMF_FIELD_IN_REPLY_TO:
-    case MAILIMF_FIELD_REFERENCES:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static std::string take_wire(const std::vector<WireField> & wires, size_t * at, const char * canon) {
-    if (at == nullptr) return std::string();
-    if (canon != nullptr) {
-        for (size_t i = *at; i < wires.size(); ++i) {
-            if (!same_name(wires[i].name, canon)) continue;
-            *at = i + 1;
-            return wires[i].value;
-        }
-    }
-    if (*at < wires.size()) {
-        std::string value = wires[*at].value;
-        *at += 1;
-        return value;
-    }
-    return std::string();
 }
 
 static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow> * rows) {
@@ -10954,56 +10839,33 @@ static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow>
         mailimf_fields_free(fields);
         return 1;
     }
-    std::vector<WireField> wires;
-    collect_wire_fields(bytes, block, &wires);
-    size_t wire_at = 0;
+    size_t cursor = 0;
     if (fields->fld_list != nullptr) {
         for (clistiter * cur = clist_begin(fields->fld_list); cur != nullptr; cur = clist_next(cur)) {
             auto * field = static_cast<struct mailimf_field *>(clist_content(cur));
-            if (field == nullptr) continue;
-            const char * canon = field_canon(field);
-            std::string wire_value = take_wire(wires, &wire_at, canon);
-            if (wire_address_or_id(field->fld_type)) {
-                if (canon != nullptr) push_row(rows, canon, wire_value);
-                continue;
+            size_t name_b = 0;
+            size_t name_e = 0;
+            size_t val_b = 0;
+            size_t val_e = 0;
+            if (field == nullptr || field->fld_type == MAILIMF_FIELD_NONE ||
+                !slice_field(bytes, indx, &cursor, &name_b, &name_e, &val_b, &val_e)) {
+                rows->clear();
+                mailimf_fields_free(fields);
+                return 1;
             }
-            switch (field->fld_type) {
-            case MAILIMF_FIELD_RESENT_DATE:
-                if (field->fld_data.fld_resent_date != nullptr) {
-                    push_row(rows, "Resent-Date", format_date(field->fld_data.fld_resent_date->dt_date_time));
-                }
-                break;
-            case MAILIMF_FIELD_ORIG_DATE:
-                if (field->fld_data.fld_orig_date != nullptr) {
-                    push_row(rows, "Date", format_date(field->fld_data.fld_orig_date->dt_date_time));
-                }
-                break;
-            case MAILIMF_FIELD_SUBJECT:
-                if (field->fld_data.fld_subject != nullptr && field->fld_data.fld_subject->sbj_value != nullptr) {
-                    push_row(rows, "Subject", field->fld_data.fld_subject->sbj_value);
-                }
-                break;
-            case MAILIMF_FIELD_COMMENTS:
-                if (field->fld_data.fld_comments != nullptr && field->fld_data.fld_comments->cm_value != nullptr) {
-                    push_row(rows, "Comments", field->fld_data.fld_comments->cm_value);
-                }
-                break;
-            case MAILIMF_FIELD_KEYWORDS: {
-                std::string raw;
-                if (field->fld_data.fld_keywords != nullptr) join_clist(&raw, field->fld_data.fld_keywords->kw_list);
-                push_row(rows, "Keywords", raw);
-                break;
+            std::string name = trim_copy(std::string(bytes + name_b, name_e - name_b));
+            if (name.empty()) {
+                rows->clear();
+                mailimf_fields_free(fields);
+                return 1;
             }
-            case MAILIMF_FIELD_OPTIONAL_FIELD:
-                if (field->fld_data.fld_optional_field != nullptr && field->fld_data.fld_optional_field->fld_name != nullptr) {
-                    const char * value = field->fld_data.fld_optional_field->fld_value;
-                    push_row(rows, field->fld_data.fld_optional_field->fld_name, value != nullptr ? value : "");
-                }
-                break;
-            default:
-                break;
-            }
+            push_row(rows, name.c_str(), std::string(bytes + val_b, val_e - val_b));
         }
+    }
+    if (cursor > indx || !only_ws(bytes + cursor, indx - cursor)) {
+        rows->clear();
+        mailimf_fields_free(fields);
+        return 1;
     }
     mailimf_fields_free(fields);
     return 0;
