@@ -712,14 +712,19 @@ private fun MessageReaderLoaded(
         noteSeen(markSeen)
         if (token != bodyGeneration) return
         val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
-        if (chunk.isEmpty()) {
-            bodyOffset = if (part.size > 0) part.size else bodyOffset + length
-            publishDecoded(decoder.finish())
-            return
+        try {
+            if (chunk.isEmpty()) {
+                bodyOffset = if (part.size > 0) part.size else bodyOffset + length
+                publishDecoded(decoder.finish())
+                return
+            }
+            bodyOffset += chunk.size
+            publishDecoded(decoder.take(chunk))
+            if (part.size <= 0 || bodyOffset >= part.size) publishDecoded(decoder.finish())
+        } catch (error: MimeDecodeException) {
+            if (token != bodyGeneration) return
+            showMissing(error.text)
         }
-        bodyOffset += chunk.size
-        publishDecoded(decoder.take(chunk))
-        if (part.size <= 0 || bodyOffset >= part.size) publishDecoded(decoder.finish())
     }
 
     suspend fun pullUnbounded(section: String, markSeen: Boolean, token: Int) {
@@ -922,15 +927,21 @@ private fun MessageReaderLoaded(
                     if (token != bodyGeneration) return
                     val text: String
                     val note: String?
-                    if (truncated) {
-                        val decoder = WireTextDecoder(html.charset, html.encoding)
-                        text = decoder.take(bytes)
-                        note = decoder.note
-                        decoder.close()
-                    } else {
-                        val decoded = decodePart(bytes, html.charset, html.encoding)
-                        text = decoded.text
-                        note = decoded.note
+                    try {
+                        if (truncated) {
+                            val decoder = WireTextDecoder(html.charset, html.encoding)
+                            text = decoder.take(bytes)
+                            note = decoder.note
+                            decoder.close()
+                        } else {
+                            val decoded = decodePart(bytes, html.charset, html.encoding)
+                            text = decoded.text
+                            note = decoded.note
+                        }
+                    } catch (error: MimeDecodeException) {
+                        if (token != bodyGeneration) return
+                        showMissing(error.text)
+                        return
                     }
                     bodyOffset = bytes.size
                     charsetNote = note
@@ -961,15 +972,21 @@ private fun MessageReaderLoaded(
                     if (token != bodyGeneration) return
                     val text: String
                     val note: String?
-                    if (truncated) {
-                        val decoder = WireTextDecoder(html.charset, html.encoding)
-                        text = decoder.take(bytes)
-                        note = decoder.note
-                        decoder.close()
-                    } else {
-                        val decoded = decodePart(bytes, html.charset, html.encoding)
-                        text = decoded.text
-                        note = decoded.note
+                    try {
+                        if (truncated) {
+                            val decoder = WireTextDecoder(html.charset, html.encoding)
+                            text = decoder.take(bytes)
+                            note = decoder.note
+                            decoder.close()
+                        } else {
+                            val decoded = decodePart(bytes, html.charset, html.encoding)
+                            text = decoded.text
+                            note = decoded.note
+                        }
+                    } catch (error: MimeDecodeException) {
+                        if (token != bodyGeneration) return
+                        showMissing(error.text)
+                        return
                     }
                     bodyOffset = bytes.size
                     charsetNote = note

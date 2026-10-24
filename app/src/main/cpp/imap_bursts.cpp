@@ -10,7 +10,7 @@
 static PreviewDecoder previewDecoder = nullptr;
 
 extern "C" char * mime_preview_text(const char * bytes, size_t length, const char * charset, const char * encoding,
-    int html);
+    int html, int * failed);
 
 void setPreviewDecoder(PreviewDecoder decoder) {
     previewDecoder = decoder;
@@ -78,8 +78,11 @@ struct mailimap_section * sectionFromSpec(const std::string & spec) {
     return section;
 }
 
-std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html) {
+std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html,
+    bool * failed) {
     std::string text;
+    bool sawFail = false;
+    if (failed != nullptr) *failed = false;
     if (list == nullptr) {
         return text;
     }
@@ -97,14 +100,22 @@ std::string previewSectionText(clist * list, const std::string & charsetName, co
             }
             struct mailimap_msg_att_body_section * body = st->att_data.att_body_section;
             if (body->sec_body_part == nullptr || body->sec_length == 0) continue;
+            int bad = 0;
             char * decoded = mime_preview_text(body->sec_body_part, body->sec_length, charsetName.c_str(),
-                encoding.c_str(), html ? 1 : 0);
+                encoding.c_str(), html ? 1 : 0, &bad);
+            if (bad != 0) {
+                sawFail = true;
+                free(decoded);
+                continue;
+            }
             if (decoded != nullptr) {
                 text.assign(decoded);
                 free(decoded);
+                sawFail = false;
             }
         }
     }
+    if (failed != nullptr) *failed = text.empty() && sawFail;
     return text;
 }
 
@@ -186,13 +197,15 @@ uint32_t uidOfAtt(struct mailimap_msg_att * msg) {
     return 0;
 }
 
-std::string textOfAtt(struct mailimap_msg_att * att, const std::string & charset, const std::string & encoding, bool html) {
+std::string textOfAtt(struct mailimap_msg_att * att, const std::string & charset, const std::string & encoding, bool html,
+    bool * failed) {
     clist * one = clist_new();
     if (one == nullptr || clist_append(one, att) != 0) {
         if (one != nullptr) clist_free(one);
+        if (failed != nullptr) *failed = false;
         return std::string();
     }
-    std::string text = previewSectionText(one, charset, encoding, html);
+    std::string text = previewSectionText(one, charset, encoding, html, failed);
     clist_free(one);
     return text;
 }
@@ -283,7 +296,7 @@ int statusViaLibrary(mailimap * imap, const std::vector<std::string> & mailboxes
 }
 
 int previewViaLibrary(mailimap * imap, const std::vector<PreviewAsk> & asks, int byteLimit,
-    std::vector<std::string> & previews) {
+    std::vector<std::string> & previews, std::vector<int> * failed) {
     clist * requests = clist_new();
     if (requests == nullptr) return MAILIMAP_ERROR_MEMORY;
     for (const PreviewAsk & ask : asks) {
@@ -317,7 +330,9 @@ int previewViaLibrary(mailimap * imap, const std::vector<PreviewAsk> & asks, int
             if (uid == 0 || found == byUid.end() || !attHasBody(att)) continue;
             for (size_t i : found->second) {
                 if (cmd[i] != MAILIMAP_NO_ERROR) continue;
-                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
+                bool bad = false;
+                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html, &bad);
+                if (failed != nullptr) (*failed)[i] = bad ? 1 : 0;
             }
         }
         mailimap_fetch_list_free(result);
@@ -359,11 +374,12 @@ int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mai
 }
 
 int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byteLimit,
-    std::vector<std::string> & previews, bool pipeline) {
+    std::vector<std::string> & previews, bool pipeline, std::vector<int> * failed) {
     previews.assign(asks.size(), std::string());
+    if (failed != nullptr) failed->assign(asks.size(), 0);
     if (asks.empty() || byteLimit <= 0) return MAILIMAP_NO_ERROR;
     if (imap == nullptr || imap->imap_stream == nullptr) return MAILIMAP_ERROR_STREAM;
-    if (pipeline) return previewViaLibrary(imap, asks, byteLimit, previews);
+    if (pipeline) return previewViaLibrary(imap, asks, byteLimit, previews, failed);
     for (size_t i = 0; i < asks.size(); ++i) {
         struct mailimap_uid_fetch_request * req = previewRequest(asks[i], byteLimit);
         if (req == nullptr) return MAILIMAP_ERROR_MEMORY;
@@ -379,7 +395,9 @@ int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byte
             for (clistiter * cur = clist_begin(result); cur != nullptr; cur = clist_next(cur)) {
                 auto * att = static_cast<struct mailimap_msg_att *>(clist_content(cur));
                 if (uidOfAtt(att) != asks[i].uid || !attHasBody(att)) continue;
-                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html);
+                bool bad = false;
+                previews[i] = textOfAtt(att, asks[i].charset, asks[i].encoding, asks[i].html, &bad);
+                if (failed != nullptr) (*failed)[i] = bad ? 1 : 0;
             }
             mailimap_fetch_list_free(result);
         }

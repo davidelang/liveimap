@@ -1438,8 +1438,7 @@ private fun partText(part: ParsedRfc822, type: String, cte: String): String {
 }
 
 private fun outgoingPart(part: ParsedRfc822, media: String, type: String, cte: String): OutgoingPart {
-    val decoded = decodeTransferOrNull(part.body, cte)
-        ?: "could not decode this part".toByteArray(Charsets.UTF_8)
+    val decoded = decodeTransfer(part.body, cte)
     return OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false)
 }
 

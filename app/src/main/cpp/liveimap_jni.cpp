@@ -7318,7 +7318,8 @@ bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
             std::vector<PreviewAsk> asks;
             asks.push_back(PreviewAsk{row.uid, want.section, want.charset, want.encoding, want.html});
             std::vector<std::string> got;
-            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands);
+            std::vector<int> failed;
+            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands, &failed);
             if (br != MAILIMAP_NO_ERROR) {
                 preview.clear();
                 preview.shrink_to_fit();
@@ -7326,7 +7327,11 @@ bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
                 throwImap(env, session, br, "fetch failed");
                 return false;
             }
-            if (!got.empty() && !got[0].empty()) {
+            if (!failed.empty() && failed[0] != 0) {
+                preview.clear();
+                hasPreview = false;
+                row.previewFailed = true;
+            } else if (!got.empty() && !got[0].empty()) {
                 preview = std::move(got[0]);
                 hasPreview = true;
             }

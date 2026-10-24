@@ -10550,10 +10550,14 @@ static std::string html_as_text(const std::string & html) {
 }
 
 extern "C" char * mime_preview_text(const char * bytes, size_t len, const char * charset, const char * encoding,
-    int html) {
+    int html, int * failed) {
     mime_decode_ensure();
     TextDecode got = decode_all(bytes, len, charset, "ISO-8859-1", encoding);
-    if (got.status != 0) return dup_cstr(kDecodeError);
+    if (got.status != 0) {
+        if (failed != nullptr) *failed = 1;
+        return dup_cstr("");
+    }
+    if (failed != nullptr) *failed = 0;
     if (html && !got.text.empty()) got.text = html_as_text(got.text);
     return dup_str(got.text);
 }
@@ -11072,7 +11076,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
         free(text);
         free(note);
     } else if (op % 5u == 1u) {
-        char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u);
+        char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u, nullptr);
         free(text);
     } else if (op % 5u == 2u) {
         char * text = nullptr;

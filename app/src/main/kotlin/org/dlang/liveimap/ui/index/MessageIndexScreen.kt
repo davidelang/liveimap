@@ -114,7 +114,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -4265,7 +4267,11 @@ private fun IndexMessageRow(
                                 )
                             }
                             Text(
-                                text = org.dlang.liveimap.ui.nonAscii(row.subject),
+                                text = indexSubjectText(
+                                    org.dlang.liveimap.ui.nonAscii(row.subject),
+                                    row.headerNote,
+                                    row.previewFailed,
+                                ),
                                 modifier = Modifier.weight(1f),
                                 color = textColor,
                                 textDecoration = decoration,
@@ -4282,7 +4288,7 @@ private fun IndexMessageRow(
                         config.screenWidthDp, config.screenHeightDp, config.fontScale * account.readerTextZoom / 100f,
                     ).preview,
                 )
-                val preview = row.preview
+                val preview = if (row.previewFailed) null else row.preview
                 if (lines > 0 && preview != null) {
                     Text(
                         text = preview,
@@ -4294,6 +4300,22 @@ private fun IndexMessageRow(
                 }
             }
         }
+    }
+}
+
+internal fun indexSubjectText(subject: AnnotatedString, headerNote: String, previewFailed: Boolean): AnnotatedString {
+    val extra = buildString {
+        if (headerNote.isNotEmpty()) append(headerNote)
+        if (previewFailed) {
+            if (isNotEmpty()) append(' ')
+            append("preview failed")
+        }
+    }
+    if (extra.isEmpty()) return subject
+    return buildAnnotatedString {
+        append(subject)
+        append(' ')
+        append(extra)
     }
 }
 

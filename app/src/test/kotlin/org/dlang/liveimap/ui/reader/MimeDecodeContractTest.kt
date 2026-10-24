@@ -1,9 +1,14 @@
 package org.dlang.liveimap.ui.reader
 
+import androidx.compose.ui.text.AnnotatedString
 import org.dlang.liveimap.ui.compose.MimeDecodeException
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
+import org.dlang.liveimap.ui.compose.loadEditor
+import org.dlang.liveimap.ui.index.indexSubjectText
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -48,5 +53,85 @@ class MimeDecodeContractTest {
         assertEquals("Hello World", rows[1])
         assertEquals("From", rows[3])
         assertTrue(rows[4].contains("a@b.c"))
+    }
+
+    @Test
+    fun badBase64ThrowsInTheReader() {
+        val bytes = "!!!!".toByteArray(Charsets.US_ASCII)
+        try {
+            val decoded = decodePart(bytes, "utf-8", "base64")
+            fail("decodePart returned body text: ${decoded.text}")
+        } catch (error: MimeDecodeException) {
+            assertTrue(error.message?.isNotEmpty() == true)
+            assertFalse(error.message == "")
+        }
+        val decoder = WireTextDecoder("utf-8", "base64")
+        try {
+            decoder.take(bytes)
+            val tail = decoder.finish()
+            fail("stream returned body text: $tail")
+        } catch (error: MimeDecodeException) {
+            assertTrue(error.message?.isNotEmpty() == true)
+        }
+    }
+
+    @Test
+    fun badBase64AttachmentBuildsNoOutgoingPart() {
+        val raw = (
+            "From: a@b.c\r\n" +
+                "To: c@d.e\r\n" +
+                "Subject: hi\r\n" +
+                "MIME-Version: 1.0\r\n" +
+                "Content-Type: multipart/mixed; boundary=b\r\n" +
+                "\r\n" +
+                "--b\r\n" +
+                "Content-Type: text/plain\r\n" +
+                "\r\n" +
+                "hello\r\n" +
+                "--b\r\n" +
+                "Content-Type: application/octet-stream\r\n" +
+                "Content-Transfer-Encoding: base64\r\n" +
+                "Content-Disposition: attachment; filename=a.bin\r\n" +
+                "\r\n" +
+                "!!!!\r\n" +
+                "--b--\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        try {
+            val loaded = loadEditor(raw)
+            fail("loadEditor built an attachment part: ${loaded.attachments.size} body=${loaded.body}")
+        } catch (error: MimeDecodeException) {
+            assertTrue(error.message?.isNotEmpty() == true)
+        }
+        val body = (
+            "From: a@b.c\r\n" +
+                "Subject: hi\r\n" +
+                "Content-Transfer-Encoding: base64\r\n" +
+                "\r\n" +
+                "!!!!\r\n"
+            ).toByteArray(Charsets.US_ASCII)
+        try {
+            val loaded = loadEditor(body)
+            assertFalse(loaded.body.contains("could not decode this part"))
+            fail("loadEditor returned body text: ${loaded.body}")
+        } catch (error: MimeDecodeException) {
+            assertTrue(error.message?.isNotEmpty() == true)
+        }
+    }
+
+    @Test
+    fun failedPreviewIsNotTheErrorSentence() {
+        val row = MimeDecode.text("!!!!".toByteArray(Charsets.US_ASCII), "utf-8", "ISO-8859-1", "base64")
+        assertEquals("error", row[0])
+        val sentence = row[1]
+        assertTrue(sentence.isNotEmpty())
+        val shown = indexSubjectText(AnnotatedString("Quiz"), "could not decode this header", true).text
+        assertTrue(shown.contains("could not decode this header"))
+        assertTrue(shown.contains("preview failed"))
+        assertFalse(shown.contains(sentence))
+        val previewFailed = true
+        val preview: String? = if (previewFailed) null else sentence
+        assertNull(preview)
+        assertEquals("Hi", indexSubjectText(AnnotatedString("Hi"), "", false).text)
+        assertEquals("Hi preview failed", indexSubjectText(AnnotatedString("Hi"), "", true).text)
     }
 }

@@ -46,6 +46,9 @@ internal object MimeDecode {
 
 fun decodePart(bytes: ByteArray, charset: String, encoding: String): DecodedPart {
     val row = MimeDecode.text(bytes, charset, "ISO-8859-1", encoding)
+    if (row[0] != "ok") {
+        throw org.dlang.liveimap.ui.compose.MimeDecodeException(row[2].ifEmpty { row[1] })
+    }
     val note = row[2].ifEmpty { null }
     return DecodedPart(row[1], note?.contains("shown as") == true, note)
 }
@@ -74,6 +77,9 @@ class WireTextDecoder(charsetName: String, encoding: String) {
 
     private fun pull(chunk: ByteArray, end: Boolean): String {
         val row = MimeDecode.streamTake(handle, chunk, end)
+        if (row[2] != "ok") {
+            throw org.dlang.liveimap.ui.compose.MimeDecodeException(row[0].ifEmpty { "could not decode this part" })
+        }
         if (row[1].isNotEmpty()) {
             note = row[1]
             unknownCharset = row[1].contains("shown as")
