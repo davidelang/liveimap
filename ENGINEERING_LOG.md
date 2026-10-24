@@ -3607,3 +3607,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Open, TLS, auth rejection, certificate offer, and copy UIDs come back on the call that caused them. An empty error stays empty. handle 0 throws MailFailure. No second JNI call for a copy result.
 - UID lists are long arrays. Index fetch releases each row's native strings before the next row. Dead QRESYNC select is gone. CONDSTORE keeps the selected mailbox modseq from the select result.
 - One owner thread is the only libetpan caller for a session. Publish and unlink use a CAS intrusive list. freeSession waits until the atomic use count is zero. IDLE DONE is a command on that owner. No native mutex or condition variable.
+
+## 2026-10-24 - Native client order.
+
+- Approved plan: sandbox/plans/client-order-20261024-0529-plan.md
+- Client sort and thread run over one captured UID set. The order type is arrays. A server-sorted folder keeps the server reply. The Alpine address book asks for UIDs only.
