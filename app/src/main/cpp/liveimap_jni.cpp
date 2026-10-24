@@ -1432,12 +1432,22 @@ int64_t internalDateEpoch(struct mailimap_date_time * dt) {
     return static_cast<int64_t>(asUtc) - offset;
 }
 
+extern "C" char * mime_decode_phrase(const char * text, size_t len, const char * fromcode);
+
+static std::string phraseUtf8(const char * text) {
+    if (text == nullptr || text[0] == 0) return std::string();
+    char * decoded = mime_decode_phrase(text, strlen(text), "UTF-8");
+    std::string out = decoded != nullptr ? decoded : "";
+    std::free(decoded);
+    return out;
+}
+
 std::string addressText(struct mailimap_address * addr) {
     if (addr == nullptr) {
         return "";
     }
     if (addr->ad_personal_name != nullptr && addr->ad_personal_name[0] != 0) {
-        return addr->ad_personal_name;
+        return phraseUtf8(addr->ad_personal_name);
     }
     std::string box = addr->ad_mailbox_name != nullptr ? addr->ad_mailbox_name : "";
     std::string host = addr->ad_host_name != nullptr ? addr->ad_host_name : "";
@@ -1986,7 +1996,7 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
                 if (st->att_data.att_env != nullptr) {
                     row->hasEnvelope = true;
                     struct mailimap_envelope * env = st->att_data.att_env;
-                    if (env->env_subject != nullptr) row->subject = env->env_subject;
+                    if (env->env_subject != nullptr) row->subject = phraseUtf8(env->env_subject);
                     if (env->env_date != nullptr) row->date = env->env_date;
                     if (env->env_from != nullptr && env->env_from->frm_list != nullptr) {
                         clistiter * a = clist_begin(env->env_from->frm_list);
@@ -6477,6 +6487,14 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_parameter2231(JNIEnv * env, jclass,
     return out;
 }
 
+static jstring bytesAsLatin1(JNIEnv * env, const char * text) {
+    if (text == nullptr) return nullptr;
+    size_t n = strlen(text);
+    std::vector<jchar> chars(n);
+    for (size_t i = 0; i < n; ++i) chars[i] = static_cast<unsigned char>(text[i]);
+    return env->NewString(chars.empty() ? nullptr : chars.data(), static_cast<jsize>(n));
+}
+
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyteArray bytes) {
     std::string in = bytesOf(env, bytes);
@@ -6494,9 +6512,9 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyte
         return nullptr;
     }
     for (int i = 0; i < count; ++i) {
-        jstring name = newString(env, rows[i].name != nullptr ? rows[i].name : "");
+        jstring name = bytesAsLatin1(env, rows[i].name != nullptr ? rows[i].name : "");
         jstring value = newString(env, rows[i].value != nullptr ? rows[i].value : "");
-        jstring raw = newString(env, rows[i].raw != nullptr ? rows[i].raw : "");
+        jstring raw = bytesAsLatin1(env, rows[i].raw != nullptr ? rows[i].raw : "");
         env->SetObjectArrayElement(arr, i * 3, name);
         env->SetObjectArrayElement(arr, i * 3 + 1, value);
         env->SetObjectArrayElement(arr, i * 3 + 2, raw);

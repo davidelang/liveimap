@@ -176,13 +176,13 @@ suspend fun peekWireBytes(
 
 fun parseRfc822(bytes: ByteArray): ParsedRfc822 {
     val (headerBytes, body) = splitHeaderBody(bytes)
-    val headers = ArrayList<HeaderField>()
-    for (line in unfoldHeaderLines(headerBytes)) {
-        val colon = line.indexOf(':')
-        if (colon <= 0) continue
-        val name = line.substring(0, colon).trim()
-        val raw = line.substring(colon + 1).trim()
-        if (name.isNotEmpty()) headers.add(HeaderField(name, decodeHeaderWords(raw), raw))
+    val rows = MimeDecode.headers(headerBytes) ?: emptyArray()
+    val headers = ArrayList<HeaderField>(rows.size / 3)
+    var i = 0
+    while (i + 2 < rows.size) {
+        val name = rows[i]
+        if (name.isNotEmpty()) headers.add(HeaderField(name, rows[i + 1], rows[i + 2]))
+        i += 3
     }
     return ParsedRfc822(headers, body)
 }
@@ -1020,11 +1020,11 @@ private fun indexOfCrlfCrlf(bytes: ByteArray): Int {
 }
 
 private fun unfoldedHeader(header: ByteArray, name: String): String {
-    val prefix = "$name:"
-    for (line in unfoldHeaderLines(header)) {
-        if (line.length >= prefix.length && line.startsWith(prefix, ignoreCase = true)) {
-            return line.substring(prefix.length).trim()
-        }
+    val rows = MimeDecode.headers(header) ?: return ""
+    var i = 0
+    while (i + 2 < rows.size) {
+        if (rows[i].equals(name, ignoreCase = true)) return rows[i + 2]
+        i += 3
     }
     return ""
 }
@@ -1274,21 +1274,6 @@ private fun splitHeaderBody(bytes: ByteArray): Pair<ByteArray, ByteArray> {
         i++
     }
     return bytes to ByteArray(0)
-}
-
-private fun unfoldHeaderLines(headerBytes: ByteArray): List<String> {
-    val text = headerBytes.toString(Charsets.ISO_8859_1)
-    val raw = text.split('\n').map { it.trimEnd('\r') }
-    val out = ArrayList<String>()
-    for (line in raw) {
-        if (line.isEmpty()) continue
-        if ((line[0] == ' ' || line[0] == '\t') && out.isNotEmpty()) {
-            out[out.lastIndex] = out.last() + " " + line.trim()
-        } else {
-            out.add(line)
-        }
-    }
-    return out
 }
 
 internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)
