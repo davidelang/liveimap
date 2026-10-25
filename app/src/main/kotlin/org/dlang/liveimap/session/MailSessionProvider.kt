@@ -1,15 +1,58 @@
 package org.dlang.liveimap.session
 
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.accounts.AccountTarget
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.settings.AccountSettings
+
+internal interface IdleTurn {
+    suspend fun <T> turn(block: suspend () -> T): T
+}
+
+/** One extra-IDLE command at a time. Not closed when an account is dropped. */
+private class IdleActor : IdleTurn {
+    private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private class OnIdle : AbstractCoroutineContextElement(OnIdle) {
+        companion object Key : CoroutineContext.Key<OnIdle>
+    }
+
+    init {
+        scope.launch {
+            for (command in commands) {
+                try {
+                    command()
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    override suspend fun <T> turn(block: suspend () -> T): T {
+        if (coroutineContext[OnIdle] != null) return block()
+        val done = CompletableDeferred<T>()
+        commands.send {
+            try {
+                withContext(OnIdle()) { done.complete(block()) }
+            } catch (error: Throwable) {
+                done.completeExceptionally(error)
+            }
+        }
+        return done.await()
+    }
+}
 
 // JMAP accounts (jmapFolders on) get a JmapMailSession at open; everything else, and all sending, stays libetpan.
 private val accountSessions = SessionTable {
@@ -21,9 +64,9 @@ private val extraIdleSessions = ExtraIdleSessions {
     SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
 }
 
-private val extraIdleLock = Mutex()
+private val extraIdleTurn: IdleTurn = IdleActor()
 
-/** Account ids held under [extraIdleLock] until that drop returns. Not a lock. */
+/** Account ids held under the idle command until that drop returns. Not a lock. */
 private val extraIdleDrops = ExtraIdleDropLog()
 
 fun mailSession(accountId: String): MailSession = accountSessions.session(accountId)
@@ -50,16 +93,16 @@ suspend fun suspendMailSessions() {
 }
 
 suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
-    applyExtraIdleTo(extraIdleSessions, extraIdleLock, account, accountId, extraIdleDrops)
+    applyExtraIdleTo(extraIdleSessions, extraIdleTurn, account, accountId, extraIdleDrops)
 }
 
 /**
- * The stamp and the dropped set are read before [lock]. Under the lock, a held id does not open,
+ * The stamp and the dropped set are read before the command. Under the command, a held id does not open,
  * and neither does one whose stamp changed. A later apply that starts after the drop clears may open.
  */
 internal suspend fun applyExtraIdleTo(
     sessions: ExtraIdleSessions,
-    lock: Mutex,
+    turn: IdleTurn,
     account: AccountSettings,
     accountId: String,
     drops: ExtraIdleDropLog,
@@ -68,10 +111,10 @@ internal suspend fun applyExtraIdleTo(
     val seen = sessions.readGeneration()
     val seenDrop = drops.mark(accountId)
     if (seenDrop.held) return
-    lock.withLock {
-        if (!sessions.generationStill(seen)) return
+    turn.turn {
+        if (!sessions.generationStill(seen)) return@turn
         val now = drops.mark(accountId)
-        if (now.held || now.stamp != seenDrop.stamp) return
+        if (now.held || now.stamp != seenDrop.stamp) return@turn
         withContext(AccountTarget(accountId)) {
             applyStoredIdle(sessions, account, accountId, seen)
         }
@@ -82,7 +125,7 @@ internal suspend fun applyExtraIdleTo(
 internal fun launchExtraIdleStop(
     scope: CoroutineScope,
     sessions: ExtraIdleSessions,
-    lock: Mutex,
+    turn: IdleTurn,
     suspendSessions: suspend () -> Unit,
 ): Job {
     sessions.bumpGeneration()
@@ -91,14 +134,14 @@ internal fun launchExtraIdleStop(
         try {
             suspendSessions()
         } finally {
-            closeExtraIdleIfCurrent(sessions, lock, generation)
+            closeExtraIdleIfCurrent(sessions, turn, generation)
         }
     }
 }
 
 /** onStop calls this. The generation changes before the stop coroutine runs. */
 fun launchExtraIdleStop(scope: CoroutineScope): Job =
-    launchExtraIdleStop(scope, extraIdleSessions, extraIdleLock) { suspendMailSessions() }
+    launchExtraIdleStop(scope, extraIdleSessions, extraIdleTurn) { suspendMailSessions() }
 
 /** onStart calls this before it walks accounts, so the late stop does not close the start's sessions. */
 suspend fun runAfterExtraIdleStop(stop: Job?, block: suspend () -> Unit) {
@@ -107,9 +150,9 @@ suspend fun runAfterExtraIdleStop(stop: Job?, block: suspend () -> Unit) {
 }
 
 /** Does not bump. An older stop does not call [ExtraIdleSessions.stop] after a newer stop has bumped. */
-private suspend fun closeExtraIdleIfCurrent(sessions: ExtraIdleSessions, lock: Mutex, generation: Int) {
-    lock.withLock {
-        if (!sessions.generationStill(generation)) return
+private suspend fun closeExtraIdleIfCurrent(sessions: ExtraIdleSessions, turn: IdleTurn, generation: Int) {
+    turn.turn {
+        if (!sessions.generationStill(generation)) return@turn
         sessions.stop()
     }
 }
@@ -118,19 +161,19 @@ private suspend fun closeExtraIdleIfCurrent(sessions: ExtraIdleSessions, lock: M
 fun extraIdleChanges(): kotlinx.coroutines.flow.Flow<IdleFolderChange> = extraIdleSessions.changes
 
 suspend fun dropMailSession(accountId: String) {
-    extraIdleLock.withLock {
+    extraIdleTurn.turn {
         recordDroppedExtraIdle(extraIdleSessions, accountId, extraIdleDrops)
     }
     try {
         accountSessions.drop(accountId)
     } finally {
-        extraIdleLock.withLock {
+        extraIdleTurn.turn {
             extraIdleDrops.clear(accountId)
         }
     }
 }
 
-/** Under [extraIdleLock]: remember [accountId], then close that account's extra IDLE. */
+/** Under the idle command: remember [accountId], then close that account's extra IDLE. */
 internal suspend fun recordDroppedExtraIdle(
     sessions: ExtraIdleSessions,
     accountId: String,
@@ -140,7 +183,7 @@ internal suspend fun recordDroppedExtraIdle(
     sessions.closeAccount(accountId)
 }
 
-/** Stamps and the in-flight drop set, published under extraIdleLock. A volatile map, not a second lock. */
+/** Stamps and the in-flight drop set, published under the idle command. A volatile map, not a second lock. */
 internal class ExtraIdleDropLog {
     @Volatile
     private var state = State()

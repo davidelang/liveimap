@@ -17,6 +17,10 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 
+private class MutexTurn(private val lock: Mutex) : IdleTurn {
+    override suspend fun <T> turn(block: suspend () -> T): T = lock.withLock { block() }
+}
+
 class WatchedFoldersTest {
     @Test
     fun budgetTwoSplitsIdleAndStatus() {
@@ -553,13 +557,13 @@ class WatchedFoldersTest {
         val gate = Mutex(locked = true)
         val before = made.sessions.readGeneration()
         val account = AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 2)
-        val stop = launchExtraIdleStop(this, made.sessions, lock) {
+        val stop = launchExtraIdleStop(this, made.sessions, MutexTurn(lock)) {
             gate.withLock { }
         }
         assertFalse(made.sessions.generationStill(before))
         val start = launch {
             runAfterExtraIdleStop(stop) {
-                applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+                applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct", ExtraIdleDropLog())
             }
         }
         var held = true
@@ -583,15 +587,15 @@ class WatchedFoldersTest {
         val lock = Mutex()
         val gate = Mutex(locked = true)
         val account = AccountSettings(watchedFolders = listOf("A", "B"), extraIdleBudget = 2)
-        applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+        applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct", ExtraIdleDropLog())
         assertEquals(listOf("A", "B"), made.sessions.openNames())
-        val older = launchExtraIdleStop(this, made.sessions, lock) {
+        val older = launchExtraIdleStop(this, made.sessions, MutexTurn(lock)) {
             gate.withLock { }
         }
-        val newer = launchExtraIdleStop(this, made.sessions, lock) { }
+        val newer = launchExtraIdleStop(this, made.sessions, MutexTurn(lock)) { }
         val start = launch {
             runAfterExtraIdleStop(newer) {
-                applyExtraIdleTo(made.sessions, lock, account, "acct", ExtraIdleDropLog())
+                applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct", ExtraIdleDropLog())
             }
         }
         var held = true
@@ -628,7 +632,7 @@ class WatchedFoldersTest {
             extraIdleBudget = 2,
         )
         val waiting = launch {
-            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+            applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         }
         repeat(3) { yield() }
         recordDroppedExtraIdle(made.sessions, "acct-a", drops)
@@ -637,7 +641,7 @@ class WatchedFoldersTest {
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
         drops.clear("acct-a")
-        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         assertEquals(listOf("INBOX"), made.sessions.openNames())
     }
 
@@ -654,12 +658,12 @@ class WatchedFoldersTest {
             extraIdleBudget = 2,
         )
         val oldStamp = launch {
-            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+            applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         }
         repeat(3) { yield() }
         recordDroppedExtraIdle(made.sessions, "acct-a", drops)
         val duringClose = launch {
-            applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+            applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         }
         repeat(3) { yield() }
         lock.unlock()
@@ -667,10 +671,10 @@ class WatchedFoldersTest {
         duringClose.join()
         assertEquals(0, made.records.size)
         assertEquals(emptyList<String>(), made.sessions.openNames())
-        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         assertEquals(0, made.records.size)
         drops.clear("acct-a")
-        applyExtraIdleTo(made.sessions, lock, account, "acct-a", drops)
+        applyExtraIdleTo(made.sessions, MutexTurn(lock), account, "acct-a", drops)
         assertEquals(listOf("INBOX"), made.sessions.openNames())
     }
 

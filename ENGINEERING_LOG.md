@@ -3779,3 +3779,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - Account writes run on one actor.
 
 ## 2026-10-25 - Session snapshots and one prompt queue.
+
+## 2026-10-25 - Extra IDLE, the JMAP session, and the folder list.
