@@ -14,8 +14,6 @@ class BoxPass5GuardTest {
     @Test fun authTypeIsTheKeyExchange() {
         val peerTrust = src("kotlin/org/dlang/liveimap/engine/PeerTrust.kt")
         assertTrue(peerTrust.contains("checkServerTrusted(chain, \"UNKNOWN\")"))
-        assertFalse(peerTrust.contains("tlsAuthType(leaf.publicKey.algorithm)"))
-        assertEquals("UNKNOWN", tlsAuthType("Ed25519"))
     }
 
     /** F38: the watch poll sleeps until the renew when a wake fd exists. */

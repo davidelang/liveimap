@@ -1,5 +1,7 @@
 package org.dlang.liveimap.jmap
 
+import org.dlang.liveimap.engine.PeerTrust
+import org.dlang.liveimap.engine.TlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -634,3 +636,18 @@ class JmapSubmissionTest {
         }
     }
 }
+
+fun jmapSubmit(
+    session: JmapSession,
+    emailId: String,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    destroyEmail: Boolean = false,
+    identityId: String = "",
+    policy: TlsPolicy = TlsPolicy(),
+): String = jmapSubmitAnswer(session, emailId, mailFrom, rcptTo, username, password, pin, post, trust, destroyEmail, identityId, policy).first

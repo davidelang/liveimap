@@ -48,21 +48,6 @@ fun jmapSubmissionId(text: String): String {
 /** F147a: shown after a send whose staging copy stayed in Drafts. */
 const val JMAP_STAGING_LEFT = "Sent, but its temporary copy could not be removed from the Drafts folder"
 
-fun jmapSubmit(
-    session: JmapSession,
-    emailId: String,
-    mailFrom: String,
-    rcptTo: List<String>,
-    username: String,
-    password: String,
-    pin: String,
-    post: (String, String, String) -> JmapHttpExchange,
-    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
-    destroyEmail: Boolean = false,
-    identityId: String = "",
-    policy: TlsPolicy = TlsPolicy(),
-): String = jmapSubmitAnswer(session, emailId, mailFrom, rcptTo, username, password, pin, post, trust, destroyEmail, identityId, policy).first
-
 /** The EmailSubmission id and the whole answer (which carries the implicit Email/set of onSuccessDestroyEmail). */
 fun jmapSubmitAnswer(
     session: JmapSession,

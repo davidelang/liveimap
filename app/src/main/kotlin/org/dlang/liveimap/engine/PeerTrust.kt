@@ -88,14 +88,6 @@ object PeerTrust {
     }
 }
 
-/**
- * F18: checkServerTrusted wants the key-exchange name a TLS stack reports. The certificate key algorithm
- * is not that name. This does not invent one.
- */
-internal fun tlsAuthType(keyAlgorithm: String): String = when (keyAlgorithm.uppercase()) {
-    else -> "UNKNOWN"
-}
-
 private const val FINGERPRINT_HEX = "0123456789abcdef"
 
 private fun nameMatches(host: String, leaf: X509Certificate): Boolean {
