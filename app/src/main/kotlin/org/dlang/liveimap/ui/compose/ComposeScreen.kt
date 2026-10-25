@@ -1116,11 +1116,11 @@ private fun ComposeLoaded(
         return other
     }
 
-    private fun copyRfc822(id: String): File =
+    fun copyRfc822(id: String): File =
         File(unsentAccountDir(appContext.filesDir, accountId), "$id.rfc822")
 
     /** Header bytes only, through the first blank line. The body stays in the file. */
-    private fun headerThroughBlankLine(file: File): ByteArray {
+    fun headerThroughBlankLine(file: File): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         file.inputStream().use { input ->
             var atLineStart = true
