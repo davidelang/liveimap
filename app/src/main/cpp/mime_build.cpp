@@ -233,6 +233,29 @@ static struct mailmime_disposition * disposition_of(const char * text) {
         ++parm;
         while (*parm == ' ' || *parm == '\t') ++parm;
     }
+    if (parm != nullptr && strncasecmp(parm, "filename*=", 10) == 0) {
+        // A generic parameter is always a quoted-string, so filename*="UTF-8''…"
+        // is not extended. The disposition-type extension is written raw.
+        std::string raw = std::string("attachment; ") + parm;
+        char * ext = dup_text(raw.c_str());
+        struct mailmime_disposition_type * extended = ext == nullptr ? nullptr
+            : mailmime_disposition_type_new(MAILMIME_DISPOSITION_TYPE_EXTENSION, ext);
+        if (extended == nullptr) {
+            free(ext);
+            return nullptr;
+        }
+        clist * empty = clist_new();
+        if (empty == nullptr) {
+            mailmime_disposition_type_free(extended);
+            return nullptr;
+        }
+        struct mailmime_disposition * dsp = mailmime_disposition_new(extended, empty);
+        if (dsp == nullptr) {
+            clist_free(empty);
+            mailmime_disposition_type_free(extended);
+        }
+        return dsp;
+    }
     struct mailmime_disposition_type * type =
         mailmime_disposition_type_new(MAILMIME_DISPOSITION_TYPE_ATTACHMENT, nullptr);
     if (type == nullptr) return nullptr;
@@ -241,23 +264,7 @@ static struct mailmime_disposition * disposition_of(const char * text) {
         mailmime_disposition_type_free(type);
         return nullptr;
     }
-    if (parm != nullptr && strncasecmp(parm, "filename*=", 10) == 0) {
-        char * name = dup_text("filename*");
-        char * value = dup_text(parm + 10);
-        struct mailmime_parameter * param = name != nullptr && value != nullptr
-            ? mailmime_parameter_new(name, value) : nullptr;
-        if (param == nullptr) {
-            free(name);
-            free(value);
-        } else {
-            struct mailmime_disposition_parm * item = mailmime_disposition_parm_new(
-                MAILMIME_DISPOSITION_PARM_PARAMETER, nullptr, nullptr, nullptr, nullptr, 0, param);
-            if (item == nullptr || clist_append(list, item) != 0) {
-                if (item != nullptr) mailmime_disposition_parm_free(item);
-                else mailmime_parameter_free(param);
-            }
-        }
-    } else if (parm != nullptr && strncasecmp(parm, "filename=", 9) == 0) {
+    if (parm != nullptr && strncasecmp(parm, "filename=", 9) == 0) {
         const char * value = parm + 9;
         std::string inside;
         if (*value == '"') {

@@ -3728,3 +3728,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
 - A multipart content type carries the boundary the body delimiters use. A base64 or quoted-printable part that does not decode is damaged and is not sent.
 - No install, and no message sent
+
+## 2026-10-24 - An extended filename is not quoted.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A non-ASCII attachment name is written as filename*=UTF-8''…, an extended parameter. It is not a quoted charset blob. ASCII filename="…" is unchanged.
+- No install, and no message sent
