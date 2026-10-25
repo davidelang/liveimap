@@ -93,11 +93,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
@@ -131,6 +141,49 @@ internal class FolderScreenHeld : ViewModel() {
     var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
     var levelReady: Boolean = false
+    private val turns = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val turnScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    init {
+        turnScope.launch {
+            for (command in turns) {
+                try {
+                    command()
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    private class OnTurn(val owner: FolderScreenHeld) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<OnTurn>
+    }
+
+    /** One folder-list command at a time, on the main thread. */
+    suspend fun <T> turn(block: suspend () -> T): T {
+        if (coroutineContext[OnTurn]?.owner === this) return block()
+        val carried = coroutineContext.minusKey(ContinuationInterceptor)
+        val done = CompletableDeferred<T>()
+        try {
+            turns.send {
+                try {
+                    withContext(carried + OnTurn(this@FolderScreenHeld)) {
+                        done.complete(block())
+                    }
+                } catch (error: Throwable) {
+                    done.completeExceptionally(error)
+                }
+            }
+        } catch (_: ClosedSendChannelException) {
+            done.completeExceptionally(CancellationException("folder screen cleared"))
+        }
+        return done.await()
+    }
+
+    override fun onCleared() {
+        turnScope.cancel()
+        turns.close()
+    }
 
     fun bind(session: MailSession, store: SettingsStore): FolderListModel {
         val current = model
@@ -266,7 +319,6 @@ private fun FolderListLoaded(
         }
     }
     val scope = rememberCoroutineScope()
-    val gate = remember { Mutex() }
     val listState = rememberLazyListState()
     var rows by held.rowsState
     var loading by remember { mutableStateOf(!held.levelReady) }
@@ -324,8 +376,8 @@ private fun FolderListLoaded(
             actionLabel = retryLabel,
         )
         if (result == SnackbarResult.ActionPerformed) {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 val listed = try {
                     model.loadLevel()
                 } catch (error: CancellationException) {
@@ -362,7 +414,7 @@ private fun FolderListLoaded(
             banner = null
             stopped = false
         }
-        gate.withLock {
+        held.turn {
             val settings = try {
                 store.load()
             } catch (error: CancellationException) {
@@ -371,7 +423,7 @@ private fun FolderListLoaded(
                 banner = error.message ?: "not connected"
                 stopped = true
                 loading = false
-                return@withLock
+                return@turn
             }
             imapHost = settings.imapHost
             hostKnown = true
@@ -391,7 +443,7 @@ private fun FolderListLoaded(
                 banner = error.message ?: "not connected"
                 stopped = true
                 loading = false
-                return@withLock
+                return@turn
             }
             val opened = try {
                 session.openBound(store, settings)
@@ -401,20 +453,20 @@ private fun FolderListLoaded(
                 banner = error.text
                 stopped = true
                 loading = false
-                return@withLock
+                return@turn
             }
             when (opened) {
                 is OpenResult.Rejected -> {
                     banner = opened.capabilities
                     stopped = true
                     loading = false
-                    return@withLock
+                    return@turn
                 }
                 is OpenResult.Failed -> {
                     banner = opened.text
                     stopped = true
                     loading = false
-                    return@withLock
+                    return@turn
                 }
                 OpenResult.Connected -> Unit
             }
@@ -441,8 +493,8 @@ private fun FolderListLoaded(
         val target = focusMailbox
         if (!ready || stopped || target == null || focusToken == 0) return@LaunchedEffect
         var scrollIndex = -1
-        gate.withLock {
-            if (stopped) return@withLock
+        held.turn {
+            if (stopped) return@turn
             val listed = try {
                 model.loadLevel()
             } catch (error: CancellationException) {
@@ -465,19 +517,19 @@ private fun FolderListLoaded(
             .distinctUntilChanged()
             .collect { indices ->
                 if (indices.isEmpty()) return@collect
-                gate.withLock {
-                    if (stopped) return@withLock
+                held.turn {
+                    if (stopped) return@turn
                     val current = rows
                     val listed = folderRowsMatchingName(current, folderQuery, emptyPrefixLabel)
                     val visible = indices.mapNotNull { listed.getOrNull(it) }.filter { !it.namespaceRoot }
-                    if (visible.isEmpty()) return@withLock
+                    if (visible.isEmpty()) return@turn
                     val updated = try {
                         model.refreshWatchedCounts(model.refreshVisibleCounts(visible))
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
                         postSnack(error.text)
-                        return@withLock
+                        return@turn
                     }
                     val byMailbox = updated.associateBy { it.mailbox }
                     val merged = current.map { row ->
@@ -491,15 +543,15 @@ private fun FolderListLoaded(
 
     fun toggleFavorite(node: Boolean, row: FolderRow) {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 val settings = try {
                     store.load()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     postSnack(error.message ?: "not connected")
-                    return@withLock
+                    return@turn
                 }
                 val favorite = FolderFavorite(node, row.mailbox, row.delimiter)
                 val nextFavorites = if (settings.favorites.any { it.node == node && it.mailbox == row.mailbox }) {
@@ -515,8 +567,8 @@ private fun FolderListLoaded(
 
     fun collapseAll() {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 model.collapseAll()
                 // Rebuilt from the level cache. Does not send LIST.
                 val listed = try {
@@ -534,8 +586,8 @@ private fun FolderListLoaded(
 
     fun saveDefaultView() {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 try {
                     model.saveDefaultView()
                 } catch (error: CancellationException) {
@@ -549,15 +601,15 @@ private fun FolderListLoaded(
 
     fun resetToDefaultView() {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 try {
                     model.resetToDefault()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     postSnack(error.message ?: "not connected")
-                    return@withLock
+                    return@turn
                 }
                 val listed = try {
                     model.loadLevel()
@@ -574,15 +626,15 @@ private fun FolderListLoaded(
 
     fun alwaysExpand(mailbox: String) {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 try {
                     model.alwaysExpand(mailbox)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     postSnack(error.message ?: "not connected")
-                    return@withLock
+                    return@turn
                 }
                 val listed = try {
                     model.loadLevel()
@@ -599,8 +651,8 @@ private fun FolderListLoaded(
 
     fun dontAlwaysExpand(mailbox: String) {
         scope.launch {
-            gate.withLock {
-                if (stopped) return@withLock
+            held.turn {
+                if (stopped) return@turn
                 try {
                     model.dontAlwaysExpand(mailbox)
                 } catch (error: CancellationException) {
@@ -924,15 +976,15 @@ private fun FolderListLoaded(
                         onStar = { toggleFavorite(starNode, row) },
                         onToggle = {
                             scope.launch {
-                                gate.withLock {
-                                    if (stopped) return@withLock
+                                held.turn {
+                                    if (stopped) return@turn
                                     try {
                                         model.toggleExpanded(row.mailbox)
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: MailFailure) {
                                         postSnack(error.text)
-                                        return@withLock
+                                        return@turn
                                     }
                                     val listed = try {
                                         model.loadLevel()
