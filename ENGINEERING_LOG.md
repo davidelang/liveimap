@@ -3734,3 +3734,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
 - A non-ASCII attachment name is written as filename*=UTF-8''…, an extended parameter. It is not a quoted charset blob. ASCII filename="…" is unchanged.
 - No install, and no message sent
+
+## 2026-10-24 - A long filename and a 998-octet line stay intact.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A filename* that would be cut after 998 octets is written as folded RFC 2231 sections. A shorter filename* stays one unquoted parameter. A 7bit, 8bit, binary, or auto part with a run the writer would cut is base64. Compose text of 998 octets is quoted-printable.
+- No install, and no message sent

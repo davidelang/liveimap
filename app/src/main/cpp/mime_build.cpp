@@ -66,7 +66,8 @@ static bool line_exceeds(const std::string & bytes, int limit) {
 }
 
 static int text_mechanism(const std::string & bytes, int eight_bit) {
-    if (eight_bit && !line_exceeds(bytes, 998)) {
+    // A line of 998 is cut before its break, so it cannot stay 7bit or 8bit.
+    if (eight_bit && !line_exceeds(bytes, 997)) {
         for (unsigned char b : bytes) {
             if (b > 127) return MAILMIME_MECHANISM_8BIT;
         }
@@ -107,6 +108,44 @@ static int read_file(const char * path, std::string * out) {
     int bad = ferror(file) != 0;
     fclose(file);
     return bad ? -1 : 0;
+}
+
+// mailimf_string_write_driver inserts a bare CRLF once 998 octets are followed by another.
+static bool file_would_cut(const char * path, int * readable) {
+    *readable = 0;
+    FILE * file = fopen(path, "rb");
+    if (file == nullptr) return false;
+    unsigned char buf[8192];
+    size_t n = 0;
+    int count = 0;
+    bool cut = false;
+    bool skip_lf = false;
+    while (!cut && (n = fread(buf, 1, sizeof(buf), file)) > 0) {
+        for (size_t i = 0; i < n && !cut; ++i) {
+            unsigned char b = buf[i];
+            if (skip_lf) {
+                skip_lf = false;
+                if (b == '\n') continue;
+            }
+            if (count >= 998) {
+                cut = true;
+                break;
+            }
+            if (b == '\n') {
+                count = 0;
+            } else if (b == '\r') {
+                count = 0;
+                skip_lf = true;
+            } else {
+                count++;
+            }
+        }
+    }
+    int bad = ferror(file) != 0;
+    fclose(file);
+    if (bad) return false;
+    *readable = 1;
+    return cut;
 }
 
 static bool file_has_high(const char * path, int * readable) {
@@ -226,6 +265,48 @@ static char * dup_text(const char * text) {
     return copy;
 }
 
+// A percent-encoded section is decoded on its own, so a cut stays outside %XX.
+static size_t fit_encoded(const char * value, size_t pos, size_t len, size_t budget) {
+    if (pos >= len || budget == 0) return pos;
+    if (budget > len - pos) budget = len - pos;
+    size_t end = pos + budget;
+    if (end < len) {
+        if (value[end - 1] == '%') {
+            if (end > pos) end--;
+        } else if (budget >= 2 && value[end - 2] == '%') {
+            end -= 2;
+        }
+        if (end == pos) end = pos + budget;
+    }
+    return end;
+}
+
+// The disposition-type extension is one mailimf_string_write_driver call.
+// A value that fits stays filename*=. A longer one is folded RFC 2231 sections,
+// each run short of 998 so the cutter does not split a parameter.
+static std::string folded_filename_star(const char * parm) {
+    std::string single = std::string("attachment; ") + parm;
+    if (single.size() <= 998) return single;
+    const char * value = parm + 10;
+    size_t len = strlen(value);
+    std::string out = "attachment;";
+    size_t pos = 0;
+    int section = 0;
+    while (pos < len) {
+        std::string name = std::string("filename*") + std::to_string(section) + "*=";
+        size_t room = 997 - 1 - name.size() - 1;
+        size_t end = fit_encoded(value, pos, len, room);
+        if (end <= pos) end = len;
+        out.append("\r\n ");
+        out.append(name);
+        out.append(value + pos, end - pos);
+        pos = end;
+        if (pos < len) out.push_back(';');
+        section++;
+    }
+    return out;
+}
+
 static struct mailmime_disposition * disposition_of(const char * text) {
     if (text == nullptr || text[0] == 0) return nullptr;
     const char * parm = strchr(text, ';');
@@ -236,7 +317,7 @@ static struct mailmime_disposition * disposition_of(const char * text) {
     if (parm != nullptr && strncasecmp(parm, "filename*=", 10) == 0) {
         // A generic parameter is always a quoted-string, so filename*="UTF-8''…"
         // is not extended. The disposition-type extension is written raw.
-        std::string raw = std::string("attachment; ") + parm;
+        std::string raw = folded_filename_star(parm);
         char * ext = dup_text(raw.c_str());
         struct mailmime_disposition_type * extended = ext == nullptr ? nullptr
             : mailmime_disposition_type_new(MAILMIME_DISPOSITION_TYPE_EXTENSION, ext);
@@ -552,6 +633,21 @@ extern "C" int mime_build_file(const char * path,
             } else {
                 mech = mechanism_of(token, &literal);
                 encoded = 1;
+            }
+            if (encoded == 1) {
+                int readable = 0;
+                bool cut = file_would_cut(part_path, &readable);
+                if (!readable) {
+                    mailmime_free(root);
+                    set_error(error, error_cap, "could not write the message");
+                    return 2;
+                }
+                // A raw 7bit, 8bit, binary, or auto copy is split at 998 octets.
+                if (cut) {
+                    mech = MAILMIME_MECHANISM_BASE64;
+                    literal = nullptr;
+                    encoded = 0;
+                }
             }
             struct mailmime_disposition * dsp = disposition_of(
                 part_dispositions != nullptr ? part_dispositions[i] : nullptr);
