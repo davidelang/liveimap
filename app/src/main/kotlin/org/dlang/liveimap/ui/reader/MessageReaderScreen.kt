@@ -1464,7 +1464,12 @@ private fun MessageReaderLoaded(
         } else {
             followingUid(OpenMessageOrder.uids, uid)
         } ?: return null
-        return next to OpenMessageOrder.sequence(next)
+        val nextSequence = try {
+            OpenMessageOrder.sequence(next)
+        } catch (_: MailFailure) {
+            return null
+        }
+        return next to nextSequence
     }
 
     fun openNextOrIndex(target: Pair<Long, Int>?) {
@@ -1666,12 +1671,22 @@ private fun MessageReaderLoaded(
             SwipeAction.Next -> {
                 if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
                 val next = followingUid(OpenMessageOrder.uids, uid) ?: return
-                onAdvance(next, OpenMessageOrder.sequence(next))
+                val nextSequence = try {
+                    OpenMessageOrder.sequence(next)
+                } catch (_: MailFailure) {
+                    return
+                }
+                onAdvance(next, nextSequence)
             }
             SwipeAction.Previous -> {
                 if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
                 val previous = precedingUid(OpenMessageOrder.uids, uid) ?: return
-                onAdvance(previous, OpenMessageOrder.sequence(previous))
+                val previousSequence = try {
+                    OpenMessageOrder.sequence(previous)
+                } catch (_: MailFailure) {
+                    return
+                }
+                onAdvance(previous, previousSequence)
             }
             SwipeAction.Reply ->
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))

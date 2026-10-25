@@ -792,16 +792,28 @@ internal object OpenMessageOrder {
             snapshot.uidValidity != 0L && snapshot.uidValidity == uidValidity
 
     fun publish(accountId: String, uidValidity: Long, mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
+        val fromRows = HashMap<Long, Int>(rows.size)
         val deleted = HashSet<Long>()
         for (row in rows) {
+            fromRows[row.uid] = row.sequence
             if ("\\Deleted" in row.flags) deleted.add(row.uid)
+        }
+        // Rows are the held page. A neighbor still in the order needs a sequence or the reader throws.
+        val ordered = ArrayList<Long>(uids.size)
+        val sequences = HashMap<Long, Int>(uids.size)
+        for (index in uids.indices) {
+            val uid = uids[index]
+            ordered.add(uid)
+            val known = fromRows[uid]
+            if (known != null) sequences[uid] = known
+            else if (uid !in sequences) sequences[uid] = index + 1
         }
         snapshot = Snapshot(
             accountId,
             uidValidity,
             mailbox,
-            uids.toList(),
-            rows.associate { it.uid to it.sequence },
+            ordered,
+            sequences,
             deleted,
         )
     }
