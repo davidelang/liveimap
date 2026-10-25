@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine.sieve
 
+import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -144,7 +145,7 @@ class PlainSieveTransport internal constructor(
                 closeQuiet(tls)
                 throw sieveHandshakeFailure(trust, host, remotePort)
             }
-            input = tls.inputStream
+            input = BufferedInputStream(tls.inputStream)
             output = tls.outputStream
             layered = tls
         }

@@ -10,10 +10,16 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.encode
 
@@ -27,44 +33,52 @@ class TrafficLog(
     recording: Boolean = true,
     private val maxBytes: Long = MAX_BYTES.toLong(),
 ) {
-    private var recordingEnabled = recording
-    private val lines = ArrayDeque<String>()
+    @Volatile private var recordingEnabled = recording
+    private var stream: FileOutputStream? = null
     private var storedBytes = 0L
+    private var lastDiskLine: String? = null
+    private val repeatCounts = HashMap<String, Int>()
+    private var pendingDrops = 0
+    private val missed = AtomicInteger()
     private val conns = HashMap<String, Conn>()
     private val statusHistory = ArrayDeque<String>()
     private val capabilityLines = ArrayDeque<String>()
 
     fun setRecording(on: Boolean) {
-        synchronized(this) {
+        onWriter {
             recordingEnabled = on
-        }
-        if (!on && active === this) {
-            statusFlow.value = ""
+            if (!on && active === this) statusFlow.value = ""
         }
     }
 
     fun accept(connectionId: String, logType: Int, data: ByteArray) {
-        synchronized(this) {
-            if (!recordingEnabled || data.isEmpty()) return
-            val conn = conns.getOrPut(connectionId) { Conn() }
-            when (logType) {
-                LOG_PRIVATE -> store(connectionId, "C <redacted ${data.size} bytes>")
-                LOG_SENT -> take(connectionId, conn, conn.sent, "C", data)
-                LOG_RECEIVED -> take(connectionId, conn, conn.received, "S", data)
-            }
-        }
+        if (!recordingEnabled || data.isEmpty()) return
+        if (tryWriter {
+            if (!recordingEnabled) return@tryWriter
+            val drops = pendingDrops + missed.getAndSet(0)
+            pendingDrops = 0
+            if (drops > 0) writeGap(connectionId, drops)
+            acceptOnWriter(connectionId, logType, data)
+        }) return
+        if (!tryWriter { pendingDrops++ }) missed.incrementAndGet()
     }
 
     fun note(connectionId: String, text: String) {
-        synchronized(this) {
-            if (!recordingEnabled || text.isEmpty()) return
+        if (!recordingEnabled || text.isEmpty()) return
+        if (tryWriter {
+            if (!recordingEnabled) return@tryWriter
+            val drops = pendingDrops + missed.getAndSet(0)
+            pendingDrops = 0
+            if (drops > 0) writeGap(connectionId, drops)
             store(connectionId, text)
-        }
+        }) return
+        if (!tryWriter { pendingDrops++ }) missed.incrementAndGet()
     }
 
     fun flush() {
-        synchronized(this) {
-            if (!recordingEnabled) return
+        if (!recordingEnabled) return
+        onWriter {
+            if (!recordingEnabled) return@onWriter
             for ((id, conn) in conns) {
                 flushHalf(id, conn, conn.sent, "C")
                 flushHalf(id, conn, conn.received, "S")
@@ -74,25 +88,25 @@ class TrafficLog(
 
     fun noteStatus(text: String) {
         if (text.isEmpty()) return
-        synchronized(this) {
-            if (!recordingEnabled) return
+        onWriter {
+            if (!recordingEnabled) return@onWriter
             statusHistory.addLast(text)
             while (statusHistory.size > 100) statusHistory.removeFirst()
+            if (active === this) statusFlow.value = text
         }
-        if (active === this) statusFlow.value = text
     }
 
     fun noteCapability(line: String) {
         if (line.isEmpty()) return
-        synchronized(this) {
-            if (!recordingEnabled) return
+        onWriter {
+            if (!recordingEnabled) return@onWriter
             capabilityLines.addLast(line)
             while (capabilityLines.size > 8) capabilityLines.removeFirst()
         }
     }
 
     fun shareFile(context: Context) {
-        synchronized(this) {
+        onWriter {
             if (!file.exists()) {
                 file.parentFile?.mkdirs()
                 file.writeText("")
@@ -117,22 +131,40 @@ class TrafficLog(
         device: String,
         settings: AccountSettings,
     ): String {
-        val traffic = synchronized(this) { trafficForReport() }
-        val caps = synchronized(this) { capabilityLines.toList() }
-        val history = synchronized(this) { statusHistory.toList() }
-        val body = buildString {
-            appendLine("LiveIMAP $versionName ($versionCode)")
-            appendLine("Android $androidVersion $device")
-            appendLine("Account")
-            appendLine(accountBlock(settings))
-            appendLine("CAPABILITY")
-            for (line in caps) appendLine(line)
-            appendLine("Status")
-            for (line in history) appendLine(line)
-            appendLine("Traffic")
-            append(trafficTail(traffic))
+        val box = arrayOfNulls<String>(1)
+        onWriter {
+            val traffic = trafficForReport()
+            val caps = capabilityLines.toList()
+            val history = statusHistory.toList()
+            val body = buildString {
+                appendLine("LiveIMAP $versionName ($versionCode)")
+                appendLine("Android $androidVersion $device")
+                appendLine("Account")
+                appendLine(accountBlock(settings))
+                appendLine("CAPABILITY")
+                for (line in caps) appendLine(line)
+                appendLine("Status")
+                for (line in history) appendLine(line)
+                appendLine("Traffic")
+                append(trafficTail(traffic))
+            }
+            box[0] = scrubReport(body)
         }
-        return scrubReport(body)
+        return box[0] ?: ""
+    }
+
+    private fun acceptOnWriter(connectionId: String, logType: Int, data: ByteArray) {
+        val conn = conns.getOrPut(connectionId) { Conn() }
+        when (logType) {
+            LOG_PRIVATE -> store(connectionId, "C <redacted ${data.size} bytes>")
+            LOG_SENT -> take(connectionId, conn, conn.sent, "C", data)
+            LOG_RECEIVED -> take(connectionId, conn, conn.received, "S", data)
+        }
+    }
+
+    /** The next accepted record follows one gap line that counts lines the full queue dropped. */
+    private fun writeGap(connectionId: String, drops: Int) {
+        writeRaw("${clock()} $connectionId dropped $drops lines")
     }
 
     private fun flushHalf(connectionId: String, conn: Conn, half: Half, prefix: String) {
@@ -240,77 +272,114 @@ class TrafficLog(
     }
 
     private fun store(connectionId: String, text: String) {
-        val probe = "0 $connectionId $text"
-        if (lines.isNotEmpty() && bodyOf(lines.last()) == bodyOf(probe)) {
-            val kept = lines.last()
-            val count = repeatsOf(kept) + 1
-            val stamp = kept.substringBefore(' ')
-            val id = kept.substringAfter(' ').substringBefore(' ')
-            val updated = "$stamp $id $text (repeated $count times)"
-            storedBytes -= utf8Line(kept)
-            lines.removeLast()
-            lines.addLast(updated)
-            storedBytes += utf8Line(updated)
-            // Count stays in memory. The file keeps the first copy. A trim may still writeAll.
-            if (storedBytes > maxBytes) trimToCap()
+        val last = lastDiskLine
+        if (last != null && bodyOf(last) == text) {
+            repeatCounts[last] = (repeatCounts[last] ?: 1) + 1
             return
         }
         val line = "${clock()} $connectionId $text"
-        lines.addLast(line)
-        storedBytes += utf8Line(line)
-        persist()
+        lastDiskLine = line
+        writeRaw(line)
     }
 
-    private fun persist() {
-        if (storedBytes > maxBytes) {
-            trimToCap()
-            return
-        }
-        appendLine(lines.last())
+    /** Opens the file on the first write and keeps that stream. A trim replaces the file, then opens it again. */
+    private fun opened(): FileOutputStream {
+        stream?.let { return it }
+        file.parentFile?.mkdirs()
+        val created = FileOutputStream(file, true)
+        stream = created
+        storedBytes = file.length()
+        return created
+    }
+
+    private fun writeRaw(line: String) {
+        val bytes = (line + "\n").toByteArray(Charsets.UTF_8)
+        val out = opened()
+        out.write(bytes)
+        out.flush()
+        storedBytes += bytes.size.toLong()
+        if (storedBytes > maxBytes) trimToCap()
     }
 
     private fun trimToCap() {
         val target = if (maxBytes > 64 * 1024) maxBytes - 64 * 1024 else 0L
-        while (lines.isNotEmpty() && storedBytes > target) {
-            storedBytes -= utf8Line(lines.removeFirst())
+        if (storedBytes <= target) return
+        stream?.flush()
+        stream?.close()
+        stream = null
+        val drop = storedBytes - target
+        val tmp = File(file.parentFile, file.name + ".trim")
+        var skipped = 0L
+        var skipping = true
+        BufferedInputStream(file.inputStream()).use { input ->
+            FileOutputStream(tmp).use { dest ->
+                val line = java.io.ByteArrayOutputStream()
+                while (true) {
+                    val b = input.read()
+                    if (b < 0) {
+                        if (line.size() > 0 && !skipping) dest.write(line.toByteArray())
+                        break
+                    }
+                    line.write(b)
+                    if (b != '\n'.code) continue
+                    val bytes = line.toByteArray()
+                    line.reset()
+                    if (!skipping) {
+                        dest.write(bytes)
+                        continue
+                    }
+                    skipped += bytes.size
+                    val text = String(bytes, Charsets.UTF_8).trimEnd('\n')
+                    repeatCounts.remove(text)
+                    if (lastDiskLine == text) lastDiskLine = null
+                    if (skipped >= drop) skipping = false
+                }
+            }
         }
-        writeAll()
+        java.nio.file.Files.move(
+            tmp.toPath(),
+            file.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        )
+        storedBytes = file.length()
+        stream = FileOutputStream(file, true)
     }
 
-    /** File text, with this session's repeat counts taken from memory. */
+    /** File text, with this session's repeat counts taken from memory. The file keeps the first copy. */
     private fun trafficForReport(): String {
+        stream?.flush()
         val onDisk = if (file.isFile) file.readText() else ""
-        if (lines.isEmpty()) return onDisk
-        val diskLines = onDisk.split('\n').let { parts ->
-            if (parts.isNotEmpty() && parts.last().isEmpty()) parts.dropLast(1) else parts
-        }
-        if (diskLines.size < lines.size) return lines.joinToString("\n", postfix = "\n")
-        val prefix = diskLines.size - lines.size
+        if (repeatCounts.isEmpty() || onDisk.isEmpty()) return onDisk
+        val parts = onDisk.split('\n')
+        val body = if (parts.isNotEmpty() && parts.last().isEmpty()) parts.dropLast(1) else parts
         return buildString {
-            for (i in 0 until prefix) {
-                append(diskLines[i])
-                append('\n')
-            }
-            for (line in lines) {
-                append(line)
+            for (line in body) {
+                val n = repeatCounts[line]
+                if (n != null && n > 1) {
+                    append(line)
+                    append(" (repeated ")
+                    append(n)
+                    append(" times)")
+                } else {
+                    append(line)
+                }
                 append('\n')
             }
         }
     }
 
-    private fun appendLine(line: String) {
-        file.parentFile?.mkdirs()
-        file.appendBytes((line + "\n").toByteArray(Charsets.UTF_8))
+    private fun tryWriter(block: () -> Unit): Boolean {
+        val task = WriterTask(block, CountDownLatch(1))
+        if (!jobs.trySend(task).isSuccess) return false
+        task.latch.await()
+        return true
     }
 
-    private fun writeAll() {
-        file.parentFile?.mkdirs()
-        file.writeText(buildString {
-            for (line in lines) {
-                append(line)
-                append('\n')
-            }
-        })
+    private fun onWriter(block: () -> Unit) {
+        if (tryWriter(block)) return
+        val task = WriterTask(block, CountDownLatch(1))
+        runBlocking { jobs.send(task) }
+        task.latch.await()
     }
 
     private class Half {
@@ -326,6 +395,23 @@ class TrafficLog(
     }
 
     companion object {
+        private class WriterTask(val block: () -> Unit, val latch: CountDownLatch)
+        private val jobs = Channel<WriterTask>(32)
+
+        init {
+            Thread({
+                runBlocking {
+                    for (task in jobs) {
+                        try {
+                            task.block()
+                        } finally {
+                            task.latch.countDown()
+                        }
+                    }
+                }
+            }, "traffic-log").apply { isDaemon = true; start() }
+        }
+
         const val MAX_BYTES = 4 * 1024 * 1024
         const val LOG_RECEIVED = 5
         const val LOG_SENT = 6
@@ -441,18 +527,11 @@ private fun literalSize(line: String): Long? {
     return match.groupValues[1].toLongOrNull()
 }
 
-private fun utf8Line(line: String): Long = line.toByteArray(Charsets.UTF_8).size.toLong() + 1L
-
 private val repeatSuffix = Regex(""" \(repeated (\d+) times\)$""")
 
 private fun bodyOf(stored: String): String {
     val rest = stored.substringAfter(' ').substringAfter(' ')
     return rest.replace(repeatSuffix, "")
-}
-
-private fun repeatsOf(stored: String): Int {
-    val match = repeatSuffix.find(stored) ?: return 1
-    return match.groupValues[1].toIntOrNull() ?: 1
 }
 
 private fun accountBlock(settings: AccountSettings): String {
