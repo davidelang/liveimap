@@ -539,7 +539,7 @@ private fun MessageReaderLoaded(
     var headerListId by held.headerListIdState
     val trustLoaded = remember(accountId) {
         try {
-            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get()) to true
+            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get().toLong()) to true
         } catch (_: java.io.IOException) {
             ImageTrust() to false
         }
