@@ -164,7 +164,11 @@ class TrafficLog(
 
     /** The next accepted record follows one gap line that counts lines the full queue dropped. */
     private fun writeGap(connectionId: String, drops: Int) {
-        writeRaw("${clock()} $connectionId dropped $drops lines")
+        val line = "${clock()} $connectionId dropped $drops lines"
+        // This line is on disk. Leave it as lastDiskLine so store does not treat the next
+        // record as a repeat of the line before the gap and drop it.
+        lastDiskLine = line
+        writeRaw(line)
     }
 
     private fun flushHalf(connectionId: String, conn: Conn, half: Half, prefix: String) {
@@ -404,6 +408,9 @@ class TrafficLog(
                     for (task in jobs) {
                         try {
                             task.block()
+                        } catch (_: Exception) {
+                            // A failed write must not end this thread. countDown still runs, and
+                            // the next accept has to be taken instead of waiting forever.
                         } finally {
                             task.latch.countDown()
                         }

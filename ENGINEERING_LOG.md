@@ -3791,3 +3791,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - jmapSubmit lives in the test source. tlsAuthType is gone.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Traffic log gap keeps the next line.
+
+- Approved plan: sandbox/plans/jmap-sieve-traffic-20261024-0534-plan.md
+- Fixup: a gap line is the last disk line, so the next accepted record or note is written after it. A write error does not end the traffic-log thread.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
