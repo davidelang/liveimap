@@ -518,7 +518,7 @@ val generateSettingsTree = tasks.register<GenerateSettingsTreeTask>("generateSet
 
 androidComponents {
     onVariants { variant ->
-        variant.sources.kotlin.addGeneratedSourceDirectory(generateSettingsTree) { it.ktOut }
-        variant.sources.res.addGeneratedSourceDirectory(generateSettingsTree) { it.resOut }
+        variant.sources.kotlin?.addGeneratedSourceDirectory(generateSettingsTree) { it.ktOut }
+        variant.sources.res?.addGeneratedSourceDirectory(generateSettingsTree) { it.resOut }
     }
 }
