@@ -169,6 +169,8 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                                 password,
                                 script,
                                 account.allowPlaintextAuth,
+                                account.sieveConnectSeconds,
+                                account.sieveReadSeconds,
                             ) { plan ->
                                 val answer = CompletableDeferred<Boolean>()
                                 asking = plan to answer

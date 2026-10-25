@@ -151,6 +151,14 @@
           {
             "setting": "sieveCertPin",
             "default": ""
+          },
+          {
+            "setting": "sieveConnectSeconds",
+            "default": 30
+          },
+          {
+            "setting": "sieveReadSeconds",
+            "default": 60
           }
         ]
       },

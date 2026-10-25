@@ -430,6 +430,8 @@ data class AccountSettings(
     val tlsMode: TlsMode = enumValueOf(SettingsDefaults.tlsMode),
     val certPin: String = "",
     val sieveCertPin: String = "",
+    val sieveConnectSeconds: Int = 30,
+    val sieveReadSeconds: Int = 60,
     /** F63: the JMAP (HTTPS) server's own pin; never the IMAP one. */
     val jmapCertPin: String = "",
     val allowPlaintextAuth: Boolean = false,
@@ -489,6 +491,8 @@ data class AccountSettings(
         if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
         if (maxJmapResponseBytes < 1) throw IllegalArgumentException("maxJmapResponseBytes")
         if (maxResultUids < 1) throw IllegalArgumentException("maxResultUids")
+        if (sieveConnectSeconds < 1) throw IllegalArgumentException("sieveConnectSeconds")
+        if (sieveReadSeconds < 1) throw IllegalArgumentException("sieveReadSeconds")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -642,6 +646,8 @@ private val fieldNames = listOf(
     "tlsMode",
     "certPin",
     "sieveCertPin",
+    "sieveConnectSeconds",
+    "sieveReadSeconds",
     "jmapCertPin",
     "allowPlaintextAuth",
     "acceptInvalidCert",
@@ -812,6 +818,8 @@ fun AccountSettings.encode(): String = buildString {
     put("tlsMode=${tlsMode.name}")
     put("certPin=${percentEncode(certPin)}")
     put("sieveCertPin=${percentEncode(sieveCertPin)}")
+    put("sieveConnectSeconds=$sieveConnectSeconds")
+    put("sieveReadSeconds=$sieveReadSeconds")
     put("jmapCertPin=${percentEncode(jmapCertPin)}")
     put("allowPlaintextAuth=$allowPlaintextAuth")
     put("acceptInvalidCert=$acceptInvalidCert")
@@ -961,6 +969,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "sieveHost" ||
             key == "sievePort" ||
             key == "sieveTlsMode" ||
+            key == "sieveConnectSeconds" ||
+            key == "sieveReadSeconds" ||
             key == "tlsMode" ||
             key == "certPin" ||
             key == "sieveCertPin" ||
@@ -1157,6 +1167,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         smtpNoAuth = field("smtpNoAuth", SmtpNoAuth.Auto) { enumValueOf<SmtpNoAuth>(values.getValue("smtpNoAuth")) },
         certPin = field("certPin", d.certPin) { percentDecode(values.getValue("certPin")) },
         sieveCertPin = field("sieveCertPin", d.sieveCertPin) { percentDecode(values.getValue("sieveCertPin")) },
+        sieveConnectSeconds = field("sieveConnectSeconds", d.sieveConnectSeconds) { parseIntField(values.getValue("sieveConnectSeconds")) },
+        sieveReadSeconds = field("sieveReadSeconds", d.sieveReadSeconds) { parseIntField(values.getValue("sieveReadSeconds")) },
         jmapCertPin = field("jmapCertPin", d.jmapCertPin) { percentDecode(values.getValue("jmapCertPin")) },
         allowPlaintextAuth = field("allowPlaintextAuth", d.allowPlaintextAuth) { parseBoolean(values.getValue("allowPlaintextAuth")) },
         acceptInvalidCert = field("acceptInvalidCert", d.acceptInvalidCert) { parseBoolean(values.getValue("acceptInvalidCert")) },

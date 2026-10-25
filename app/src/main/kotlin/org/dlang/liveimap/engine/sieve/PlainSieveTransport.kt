@@ -211,14 +211,19 @@ class PlainSieveTransport internal constructor(
     }
 }
 
-suspend fun openPlainSieve(host: String, port: Int): PlainSieveTransport {
+suspend fun openPlainSieve(
+    host: String,
+    port: Int,
+    connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    readTimeoutMs: Int = READ_TIMEOUT_MS,
+): PlainSieveTransport {
     return withContext(Dispatchers.IO) {
         val socket = Socket()
         var handedOff = false
         try {
             socket.tcpNoDelay = true
-            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-            socket.soTimeout = READ_TIMEOUT_MS
+            socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
+            socket.soTimeout = readTimeoutMs
             val transport = PlainSieveTransport(socket)
             handedOff = true
             transport
@@ -307,8 +312,13 @@ private suspend fun closeWhenCancelled(transport: PlainSieveTransport): Job? {
     }
 }
 
-suspend fun greetPlain(host: String, port: Int): SieveCapabilities {
-    val transport = openPlainSieve(host, port)
+suspend fun greetPlain(
+    host: String,
+    port: Int,
+    connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    readTimeoutMs: Int = READ_TIMEOUT_MS,
+): SieveCapabilities {
+    val transport = openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
     val closer = closeWhenCancelled(transport)
     try {
         val caps = readGreeting(transport)
@@ -331,12 +341,18 @@ internal fun sieveTlsProtocols(supported: Array<String>, allowOldTls: Boolean = 
 }
 
 /** Implicit TLS from the first byte. Does not call upgradeToTls and does not write AUTHENTICATE. */
-suspend fun openImplicitSieve(host: String, port: Int, pin: String): PlainSieveTransport {
+suspend fun openImplicitSieve(
+    host: String,
+    port: Int,
+    pin: String,
+    connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    readTimeoutMs: Int = READ_TIMEOUT_MS,
+): PlainSieveTransport {
     val policy = coroutineContext[TlsPolicy] ?: TlsPolicy()
     return withContext(Dispatchers.IO) {
         val trust = SieveServerTrust(host, pin, policy)
         val tls = try {
-            connectImplicitSieve(host, port, trust, policy)
+            connectImplicitSieve(host, port, trust, policy, connectTimeoutMs, readTimeoutMs)
         } catch (e: IOException) {
             throw SieveFailure("connect")
         }
@@ -378,14 +394,18 @@ suspend fun openAndDeliverLiveimap(
     password: String,
     script: String,
     allowPlaintextAuth: Boolean,
+    connectSeconds: Int = 30,
+    readSeconds: Int = 60,
     consent: (suspend (LiveimapActivatePlan) -> Boolean)? = null,
 ): String {
     if (host.isBlank() || username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
     val plaintextOk = mode != TlsMode.None || allowPlaintextAuth
+    val connectTimeoutMs = connectSeconds * 1000
+    val readTimeoutMs = readSeconds * 1000
     suspend fun deliver(activePin: String): String {
         val transport = when (mode) {
-            TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port)
-            TlsMode.Implicit -> openImplicitSieve(host, port, activePin)
+            TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
+            TlsMode.Implicit -> openImplicitSieve(host, port, activePin, connectTimeoutMs, readTimeoutMs)
         }
         val closer = closeWhenCancelled(transport)
         try {
@@ -422,14 +442,18 @@ suspend fun greetSieve(
     mode: TlsMode,
     pin: String,
     confirm: suspend (CertPrompt) -> Boolean,
+    connectSeconds: Int = 30,
+    readSeconds: Int = 60,
     save: suspend (String) -> Unit,
 ): SieveCapabilities {
-    if (mode == TlsMode.None) return greetPlain(host, port)
+    val connectTimeoutMs = connectSeconds * 1000
+    val readTimeoutMs = readSeconds * 1000
+    if (mode == TlsMode.None) return greetPlain(host, port, connectTimeoutMs, readTimeoutMs)
     return withSieveCertificate(pin, confirm, save) { activePin ->
         when (mode) {
-            TlsMode.None -> greetPlain(host, port)
+            TlsMode.None -> greetPlain(host, port, connectTimeoutMs, readTimeoutMs)
             TlsMode.StartTls -> {
-                val transport = openPlainSieve(host, port)
+                val transport = openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
                 val closer = closeWhenCancelled(transport)
                 try {
                     requireAdvertisedStartTls(readGreeting(transport))
@@ -442,7 +466,7 @@ suspend fun greetSieve(
                 }
             }
             TlsMode.Implicit -> {
-                val transport = openImplicitSieve(host, port, activePin)
+                val transport = openImplicitSieve(host, port, activePin, connectTimeoutMs, readTimeoutMs)
                 val closer = closeWhenCancelled(transport)
                 try {
                     val caps = readGreeting(transport)
@@ -457,7 +481,14 @@ suspend fun greetSieve(
     }
 }
 
-private fun connectImplicitSieve(host: String, port: Int, trust: SieveServerTrust, policy: TlsPolicy): SSLSocket {
+private fun connectImplicitSieve(
+    host: String,
+    port: Int,
+    trust: SieveServerTrust,
+    policy: TlsPolicy,
+    connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    readTimeoutMs: Int = READ_TIMEOUT_MS,
+): SSLSocket {
     val context = SSLContext.getInstance("TLS")
     context.init(null, arrayOf<TrustManager>(trust), null)
     val tls = context.socketFactory.createSocket() as SSLSocket
@@ -465,8 +496,8 @@ private fun connectImplicitSieve(host: String, port: Int, trust: SieveServerTrus
     if (!policy.acceptInvalidCert) enableSieveHostnameCheck(tls)
     tls.tcpNoDelay = true
     try {
-        tls.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        tls.soTimeout = READ_TIMEOUT_MS
+        tls.connect(InetSocketAddress(host, port), connectTimeoutMs)
+        tls.soTimeout = readTimeoutMs
     } catch (e: IOException) {
         closeQuiet(tls)
         throw e

@@ -2188,6 +2188,22 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
                 scope.launch { saveGlobalDelays(context, seconds) }
             }
         }
+        "sieveConnectSeconds" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.sieveConnectSeconds,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(sieveConnectSeconds = number))
+        }
+        "sieveReadSeconds" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.sieveReadSeconds,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(sieveReadSeconds = number))
+        }
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
 }
@@ -2218,7 +2234,15 @@ private fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
                 try {
                     drafts.sieveReport = sieveCheckText(
                         withContext(editor.settings.tlsPolicy()) {
-                            greetSieve(host, port, sieveTlsMode, pin, ::confirmMailCertificate) { fingerprint ->
+                            greetSieve(
+                                host,
+                                port,
+                                sieveTlsMode,
+                                pin,
+                                ::confirmMailCertificate,
+                                editor.settings.sieveConnectSeconds,
+                                editor.settings.sieveReadSeconds,
+                            ) { fingerprint ->
                                 persistSievePin(sieveStore, sieveAccount, fingerprint)
                             }
                         },

@@ -45,6 +45,8 @@ sieveHost|String|server|text|Sieve host||
 sievePort|Int|server|number|Sieve port||1..65535
 sieveTlsMode|Enum|server|choice|Sieve TLS|None,StartTls,Implicit|
 sieveCertPin|String|server|text|Sieve certificate pin||
+sieveConnectSeconds|Int|server|number|Sieve connect||
+sieveReadSeconds|Int|server|number|Sieve read||
 watchedFolders|StringList|account|subscreen|Watched folders||
 extraIdleBudget|Int|account|number|Extra IDLE budget||0..8
 maxConnections|Int|account|number|Most connections||2..20
