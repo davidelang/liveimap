@@ -2097,6 +2097,30 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
         ) { number ->
             editor.persist(editor.settings.copy(maxResultUids = number))
         }
+        "maxRawViewBytes" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.maxRawViewBytes.get(),
+                editor.ready,
+                { it >= 1 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
+        "maxImageTrustBytes" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.maxImageTrustBytes.get(),
+                editor.ready,
+                { it >= 1 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
 }

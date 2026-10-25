@@ -2,9 +2,11 @@ package org.dlang.liveimap.settings
 
 import android.content.Context
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.first
 
 /**
@@ -166,6 +168,11 @@ private val Context.globalSettingsDataStore by preferencesDataStore(
 )
 
 private val globalSettingsValue = stringPreferencesKey("value")
+
+object InstalledGlobals {
+    val maxRawViewBytes = AtomicInteger(1 shl 20)
+    val maxImageTrustBytes = AtomicInteger(2_000_000)
+}
 
 enum class SettingScope { Global, Account, Server }
 
@@ -840,6 +847,10 @@ fun globalRecordError(text: String): String? {
 }
 
 private fun globalValueOk(spec: SettingSpec, value: String): Boolean {
+    if (spec.key == "maxRawViewBytes" || spec.key == "maxImageTrustBytes") {
+        val number = value.toLongOrNull() ?: return false
+        return number >= 1L && number <= Int.MAX_VALUE.toLong()
+    }
     return when (spec.type) {
         SettingType.Bool -> value == "true" || value == "false"
         SettingType.Int, SettingType.Long -> value.toLongOrNull()?.let { numberRejection(spec.key, syntheticLeaf(spec), it) == null } == true
@@ -891,8 +902,57 @@ suspend fun startupSettingsError(context: Context): String? {
     SettingsTreeGenerated.warm()
     return try {
         val record = context.globalSettingsDataStore.data.first()[globalSettingsValue].orEmpty()
-        globalRecordError(record)
+        val error = globalRecordError(record)
+        if (error == null) installGlobals(record)
+        error
     } catch (e: Exception) {
         e.message ?: "global_settings corrupt"
+    }
+}
+
+private fun installGlobals(record: String) {
+    var raw = 1 shl 20
+    var image = 2_000_000
+    for (line in record.lines()) {
+        if (line.isEmpty()) continue
+        val eq = line.indexOf('=')
+        if (eq <= 0) continue
+        val number = line.substring(eq + 1).toIntOrNull() ?: continue
+        when (line.substring(0, eq)) {
+            "maxRawViewBytes" -> raw = number
+            "maxImageTrustBytes" -> image = number
+        }
+    }
+    InstalledGlobals.maxRawViewBytes.set(raw)
+    InstalledGlobals.maxImageTrustBytes.set(image)
+}
+
+private fun withGlobalLine(record: String, key: String, value: Int): String {
+    val next = "$key=$value"
+    if (record.isEmpty()) return next
+    val parts = record.split('\n').toMutableList()
+    val index = parts.indexOfFirst { line ->
+        val eq = line.indexOf('=')
+        eq > 0 && line.substring(0, eq) == key
+    }
+    if (index >= 0) {
+        parts[index] = next
+    } else if (parts.last().isEmpty()) {
+        parts.add(parts.lastIndex, next)
+    } else {
+        parts.add(next)
+    }
+    return parts.joinToString("\n")
+}
+
+suspend fun saveGlobalNumber(context: Context, key: String, value: Int) {
+    if (value < 1) throw IllegalArgumentException(key)
+    context.globalSettingsDataStore.edit { prefs ->
+        val record = prefs[globalSettingsValue].orEmpty()
+        prefs[globalSettingsValue] = withGlobalLine(record, key, value)
+    }
+    when (key) {
+        "maxRawViewBytes" -> InstalledGlobals.maxRawViewBytes.set(value)
+        "maxImageTrustBytes" -> InstalledGlobals.maxImageTrustBytes.set(value)
     }
 }

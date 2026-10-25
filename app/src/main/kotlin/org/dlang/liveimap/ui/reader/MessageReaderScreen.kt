@@ -168,6 +168,7 @@ import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
@@ -445,6 +446,7 @@ private fun MessageReaderLoaded(
     onCustomize: (String) -> Unit = { _ -> },
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
+    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -537,7 +539,7 @@ private fun MessageReaderLoaded(
     var headerListId by held.headerListIdState
     val trustLoaded = remember(accountId) {
         try {
-            loadImageTrust(context.filesDir, accountId) to true
+            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get()) to true
         } catch (_: java.io.IOException) {
             ImageTrust() to false
         }
@@ -3100,6 +3102,7 @@ private fun ReaderHeaderCard(
     onCollapse: () -> Unit = {},
     extraHeaders: List<Pair<String, String>> = emptyList(),
 ) {
+    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
     Card(
         modifier = Modifier
@@ -3510,6 +3513,7 @@ private fun RawTextView(
     scroll: androidx.compose.foundation.ScrollState,
     modifier: Modifier,
 ) {
+    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     Column(modifier.verticalScroll(scroll).padding(8.dp)) {
         if (headers) {
             Row(verticalAlignment = Alignment.CenterVertically) {

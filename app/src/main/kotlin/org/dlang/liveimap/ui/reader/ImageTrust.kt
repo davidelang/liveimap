@@ -74,10 +74,10 @@ internal fun imageTrustFile(filesDir: File, accountId: String): File? {
     return File(File(filesDir, "image-trust"), "$id.txt")
 }
 
-fun loadImageTrust(filesDir: File, accountId: String): ImageTrust {
+fun loadImageTrust(filesDir: File, accountId: String, limit: Long = MaxImageTrustBytes): ImageTrust {
     val f = imageTrustFile(filesDir, accountId) ?: return ImageTrust()
     if (!f.exists()) return ImageTrust()
-    if (!f.isFile || f.length() >= MaxImageTrustBytes) throw java.io.IOException("image trust")
+    if (!f.isFile || f.length() >= limit) throw java.io.IOException("maxImageTrustBytes")
     return decodeImageTrust(f.readText())
 }
 

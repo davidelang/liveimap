@@ -101,9 +101,9 @@ import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
-import org.dlang.liveimap.ui.reader.RawViewCapBytes
 import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.reader.unknownCharsetNote
@@ -828,9 +828,10 @@ private fun ComposeLoaded(
     }
 
     suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
+        val rawViewCap = InstalledGlobals.maxRawViewBytes.get()
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
-        val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, RawViewCapBytes) })
+        val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) })
         originalParsed = parsed
         val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
         val rules0 = resolveNow(settings)
@@ -874,6 +875,7 @@ private fun ComposeLoaded(
     }
 
     suspend fun loadForward(settings: AccountSettings) {
+        val rawViewCap = InstalledGlobals.maxRawViewBytes.get()
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
@@ -909,7 +911,7 @@ private fun ComposeLoaded(
         val tree = if (draftLoaded) {
             inBox(box) { s -> s.fetchStructure(uid) }
         } else {
-            val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, RawViewCapBytes) })
+            val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) })
             originalParsed = parsed
             val r = resolveNow(settings)
             val fetched = inBox(box) { s -> s.fetchStructure(uid) }
