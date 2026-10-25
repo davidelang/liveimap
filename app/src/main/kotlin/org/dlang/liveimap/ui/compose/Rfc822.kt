@@ -174,9 +174,9 @@ suspend fun peekWireBytes(
     return out.toByteArray()
 }
 
-fun parseRfc822(bytes: ByteArray): ParsedRfc822 {
+fun parseRfc822(bytes: ByteArray, fallback: String = "ISO-8859-1"): ParsedRfc822 {
     val (headerBytes, body) = splitHeaderBody(bytes)
-    val rows = MimeDecode.headers(headerBytes)
+    val rows = MimeDecode.headers(headerBytes, fallback)
     val headers = ArrayList<HeaderField>(rows.size / 3)
     var i = 0
     while (i + 2 < rows.size) {
@@ -194,17 +194,17 @@ fun headerValues(message: ParsedRfc822, name: String): List<String> =
  * Address headers are split on the text as sent; encoded words are then decoded only in the display name,
  * never in the addr-spec, so a decoded CR/LF, ',' or '<' cannot add or change a recipient (F24, RFC 2047 §5).
  */
-fun addresses(message: ParsedRfc822, name: String): List<String> =
+fun addresses(message: ParsedRfc822, name: String, fallback: String = "ISO-8859-1"): List<String> =
     message.headers.filter { it.name.equals(name, ignoreCase = true) }
         .flatMap { splitAddresses(it.raw) }
-        .map(::decodeAddressDisplay)
+        .map { decodeAddressDisplay(it, fallback) }
 
-fun decodeAddressDisplay(address: String): String {
+fun decodeAddressDisplay(address: String, fallback: String = "ISO-8859-1"): String {
     val lt = address.lastIndexOf('<')
     if (lt <= 0 || !address.contains("=?")) return address
     val phrase = address.substring(0, lt).trim()
     if (!phrase.contains("=?")) return address
-    val decoded = decodeHeaderWords(phrase)
+    val decoded = decodeHeaderWords(phrase, fallback)
         .map { if (it < ' ' || it == '\u007f') ' ' else it }
         .joinToString("")
         .trim()
@@ -670,27 +670,27 @@ fun buildBounce(
     return out
 }
 
-fun loadEditor(bytes: ByteArray): EditorLoad {
-    val parsed = parseRfc822(bytes)
+fun loadEditor(bytes: ByteArray, fallback: String = "ISO-8859-1"): EditorLoad {
+    val parsed = parseRfc822(bytes, fallback)
     val contentType = headerValues(parsed, "Content-Type").firstOrNull().orEmpty()
     val encoding = headerValues(parsed, "Content-Transfer-Encoding").firstOrNull().orEmpty()
     val text: String
     val parts: List<OutgoingPart>
     val html: Boolean
     if (contentType.trim().lowercase().startsWith("multipart/")) {
-        val collected = readMultipart(parsed.body, contentType)
+        val collected = readMultipart(parsed.body, contentType, fallback)
         text = collected.text ?: ""
         parts = collected.parts
         html = collected.html
     } else {
-        text = decodePart(parsed.body, headerParam(contentType, "charset"), encoding).text
+        text = decodePart(parsed.body, headerParam(contentType, "charset"), encoding, fallback).text
             .replace("\r\n", "\n").replace('\r', '\n')
         parts = emptyList()
         html = false
     }
     return EditorLoad(
-        to = addresses(parsed, "To").joinToString(", "),
-        cc = addresses(parsed, "Cc").joinToString(", "),
+        to = addresses(parsed, "To", fallback).joinToString(", "),
+        cc = addresses(parsed, "Cc", fallback).joinToString(", "),
         subject = headerValues(parsed, "Subject").firstOrNull().orEmpty(),
         body = text,
         inReplyTo = headerValues(parsed, "In-Reply-To").firstOrNull().orEmpty().trim(),
@@ -824,7 +824,8 @@ private fun splitHeaderBody(bytes: ByteArray): Pair<ByteArray, ByteArray> {
     return bytes to ByteArray(0)
 }
 
-internal fun decodeHeaderWords(value: String): String = MimeDecode.phrase(value)[1]
+internal fun decodeHeaderWords(value: String, fallback: String = "ISO-8859-1"): String =
+    MimeDecode.phrase(value, fallback)[1]
 
 internal class MimeDecodeException(message: String) : MailFailure(message)
 
@@ -892,31 +893,31 @@ private class MultipartBody(
     val heldHtml: OutgoingPart? = null,
 )
 
-private fun readMultipart(body: ByteArray, contentType: String): MultipartBody {
+private fun readMultipart(body: ByteArray, contentType: String, fallback: String): MultipartBody {
     if (headerParam(contentType, "boundary").isEmpty()) {
         return MultipartBody(body.toString(Charsets.UTF_8), false, emptyList())
     }
-    val found = readMultipartFound(body, contentType)
+    val found = readMultipartFound(body, contentType, fallback)
     return MultipartBody(found.text ?: "", found.html, found.parts, found.heldHtml)
 }
 
-private fun readMultipartFound(body: ByteArray, contentType: String): MultipartBody {
+private fun readMultipartFound(body: ByteArray, contentType: String, fallback: String): MultipartBody {
     val boundary = headerParam(contentType, "boundary")
     if (boundary.isEmpty()) return MultipartBody(null, false, emptyList())
     if (contentType.substringBefore(';').trim().equals("multipart/alternative", ignoreCase = true)) {
-        return readAlternative(body, boundary)
+        return readAlternative(body, boundary, fallback)
     }
     var text: String? = null
     var html = false
     var heldHtml: OutgoingPart? = null
     val parts = ArrayList<OutgoingPart>()
     for (chunk in splitMultipartChunks(body, boundary)) {
-        val part = parseRfc822(chunk)
+        val part = parseRfc822(chunk, fallback)
         val type = rawHeader(part, "Content-Type")
         val cte = headerValues(part, "Content-Transfer-Encoding").firstOrNull().orEmpty()
         val media = type.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
         if (media.startsWith("multipart/", ignoreCase = true)) {
-            val nested = readMultipartFound(part.body, type)
+            val nested = readMultipartFound(part.body, type, fallback)
             if (text == null && nested.text != null) {
                 text = nested.text
                 html = nested.html
@@ -926,28 +927,28 @@ private fun readMultipartFound(body: ByteArray, contentType: String): MultipartB
             }
             parts.addAll(nested.parts)
         } else if (text == null && media.equals("text/plain", ignoreCase = true)) {
-            text = partText(part, type, cte)
+            text = partText(part, type, cte, fallback)
         } else {
-            parts.add(outgoingPart(part, media, type, cte))
+            parts.add(outgoingPart(part, media, type, cte, fallback))
         }
     }
     return MultipartBody(text, html, parts, heldHtml)
 }
 
 /** text/html that is not an attachment becomes the body. Its text/plain sibling is not an attachment. */
-private fun readAlternative(body: ByteArray, boundary: String): MultipartBody {
+private fun readAlternative(body: ByteArray, boundary: String, fallback: String): MultipartBody {
     var htmlBody: String? = null
     var plainBody: String? = null
     var heldHtml: OutgoingPart? = null
     var attachedPlain: OutgoingPart? = null
     val rest = ArrayList<OutgoingPart>()
     for (chunk in splitMultipartChunks(body, boundary)) {
-        val part = parseRfc822(chunk)
+        val part = parseRfc822(chunk, fallback)
         val type = rawHeader(part, "Content-Type")
         val cte = headerValues(part, "Content-Transfer-Encoding").firstOrNull().orEmpty()
         val media = type.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
         if (media.startsWith("multipart/", ignoreCase = true)) {
-            val nested = readMultipartFound(part.body, type)
+            val nested = readMultipartFound(part.body, type, fallback)
             if (htmlBody == null && nested.html && nested.text != null) {
                 htmlBody = nested.text
                 heldHtml = nested.heldHtml
@@ -961,16 +962,16 @@ private fun readAlternative(body: ByteArray, boundary: String): MultipartBody {
         }
         val attached = isAttachment(part)
         if (htmlBody == null && !attached && media.equals("text/html", ignoreCase = true)) {
-            htmlBody = partText(part, type, cte)
-            heldHtml = outgoingPart(part, media, type, cte)
+            htmlBody = partText(part, type, cte, fallback)
+            heldHtml = outgoingPart(part, media, type, cte, fallback)
             continue
         }
         if (plainBody == null && media.equals("text/plain", ignoreCase = true)) {
-            plainBody = partText(part, type, cte)
-            if (attached) attachedPlain = outgoingPart(part, media, type, cte)
+            plainBody = partText(part, type, cte, fallback)
+            if (attached) attachedPlain = outgoingPart(part, media, type, cte, fallback)
             continue
         }
-        rest.add(outgoingPart(part, media, type, cte))
+        rest.add(outgoingPart(part, media, type, cte, fallback))
     }
     if (htmlBody != null) {
         attachedPlain?.let { rest.add(it) }
@@ -979,14 +980,14 @@ private fun readAlternative(body: ByteArray, boundary: String): MultipartBody {
     return MultipartBody(plainBody, false, rest, null)
 }
 
-private fun partText(part: ParsedRfc822, type: String, cte: String): String {
-    return decodePart(part.body, headerParam(type, "charset"), cte).text
+private fun partText(part: ParsedRfc822, type: String, cte: String, fallback: String): String {
+    return decodePart(part.body, headerParam(type, "charset"), cte, fallback).text
         .replace("\r\n", "\n").replace('\r', '\n')
 }
 
-private fun outgoingPart(part: ParsedRfc822, media: String, type: String, cte: String): OutgoingPart {
+private fun outgoingPart(part: ParsedRfc822, media: String, type: String, cte: String, fallback: String): OutgoingPart {
     val decoded = decodeTransfer(part.body, cte)
-    return OutgoingPart(filenameOf(part), media, decoded, wireBase64 = false)
+    return OutgoingPart(filenameOf(part, fallback), media, decoded, wireBase64 = false)
 }
 
 private fun isAttachment(part: ParsedRfc822): Boolean {
@@ -997,21 +998,21 @@ private fun isAttachment(part: ParsedRfc822): Boolean {
 private fun rawHeader(part: ParsedRfc822, name: String): String =
     part.headers.firstOrNull { it.name.equals(name, ignoreCase = true) }?.raw.orEmpty()
 
-private fun filenameOf(part: ParsedRfc822): String {
+private fun filenameOf(part: ParsedRfc822, fallback: String = "ISO-8859-1"): String {
     val disposition = rawHeader(part, "Content-Disposition")
     val star = readParam(disposition, "filename", star = true)
     if (star != null) {
-        val decoded = decode2231(star)
+        val decoded = decode2231(star, fallback)
         if (decoded.isNotEmpty()) return decoded
     }
-    val fromDisposition = decodeHeaderWords(headerParam(disposition, "filename"))
+    val fromDisposition = decodeHeaderWords(headerParam(disposition, "filename"), fallback)
     if (fromDisposition.isNotEmpty()) return fromDisposition
-    val fromType = decodeHeaderWords(headerParam(rawHeader(part, "Content-Type"), "name"))
+    val fromType = decodeHeaderWords(headerParam(rawHeader(part, "Content-Type"), "name"), fallback)
     if (fromType.isNotEmpty()) return fromType
     return "attachment"
 }
 
-private fun decode2231(raw: String): String = MimeDecode.parameter2231(raw, "ISO-8859-1")
+private fun decode2231(raw: String, fallback: String = "ISO-8859-1"): String = MimeDecode.parameter2231(raw, fallback)
 
 private fun splitMultipartChunks(body: ByteArray, boundary: String): List<ByteArray> {
     val marker = "--$boundary".toByteArray(Charsets.US_ASCII)
@@ -1065,7 +1066,7 @@ private fun atLineStart(data: ByteArray, offset: Int): Boolean {
 }
 
 /** decodeHeaderWords for the reader's header view (one header line at a time). */
-fun decodeHeaderWordsForView(line: String): String = decodeHeaderWords(line)
+fun decodeHeaderWordsForView(line: String, fallback: String = "ISO-8859-1"): String = decodeHeaderWords(line, fallback)
 
 /** The signature as inserted: "-- " line first when [dashes]. Empty for no signature. */
 fun signatureBlock(signature: String, dashes: Boolean): String {

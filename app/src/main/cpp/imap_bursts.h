@@ -16,11 +16,12 @@ struct PreviewAsk {
 
 struct mailimap_section * sectionFromSpec(const std::string & spec);
 std::string previewSectionText(clist * list, const std::string & charsetName, const std::string & encoding, bool html,
-    bool * failed = nullptr);
+    bool * failed = nullptr, const std::string & unlabeled = "ISO-8859-1");
 bool taggedOk(struct mailimap_response * response);
 void dropStatus(mailimap * imap);
 void dropFetchList(mailimap * imap);
 int statusMessagesPipeline(mailimap * imap, const std::vector<std::string> & mailboxes,
     std::map<std::string, int> * out, bool pipeline);
 int previewBurst(mailimap * imap, const std::vector<PreviewAsk> & asks, int byteLimit,
-    std::vector<std::string> & previews, bool pipeline, std::vector<int> * failed = nullptr);
+    std::vector<std::string> & previews, bool pipeline, std::vector<int> * failed = nullptr,
+    const char * unlabeled = "ISO-8859-1");

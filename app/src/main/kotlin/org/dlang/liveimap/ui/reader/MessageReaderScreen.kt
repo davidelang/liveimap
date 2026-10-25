@@ -743,7 +743,7 @@ private fun MessageReaderLoaded(
             carry.pending = ByteArray(0)
             carry.closeDecoder()
             carry.clearText()
-            val decoder = WireTextDecoder(part.charset, part.encoding)
+            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
             carry.decoder = decoder
             charsetNote = decoder.note
         }
@@ -769,7 +769,7 @@ private fun MessageReaderLoaded(
         if (token != bodyGeneration) return
         noteSeen(markSeen)
         if (token != bodyGeneration) return
-        val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding).also { carry.decoder = it }
+        val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset).also { carry.decoder = it }
         try {
             if (chunk.isEmpty()) {
                 bodyOffset = if (part.size > 0) part.size else bodyOffset + length
@@ -977,12 +977,12 @@ private fun MessageReaderLoaded(
                     val note: String?
                     try {
                         if (truncated) {
-                            val decoder = WireTextDecoder(html.charset, html.encoding)
+                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
                             text = decoder.take(bytes)
                             note = decoder.note
                             decoder.close()
                         } else {
-                            val decoded = decodePart(bytes, html.charset, html.encoding)
+                            val decoded = decodePart(bytes, html.charset, html.encoding, account.unlabeledCharset)
                             text = decoded.text
                             note = decoded.note
                         }
@@ -1024,12 +1024,12 @@ private fun MessageReaderLoaded(
                     val note: String?
                     try {
                         if (truncated) {
-                            val decoder = WireTextDecoder(html.charset, html.encoding)
+                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
                             text = decoder.take(bytes)
                             note = decoder.note
                             decoder.close()
                         } else {
-                            val decoded = decodePart(bytes, html.charset, html.encoding)
+                            val decoded = decodePart(bytes, html.charset, html.encoding, account.unlabeledCharset)
                             text = decoded.text
                             note = decoded.note
                         }
@@ -1372,8 +1372,8 @@ private fun MessageReaderLoaded(
                 }
                 try {
                     val headerText = readSectionText(section = "HEADER")
-                    val fields = headerFields(headerText)
-                    viewerExtra = viewerHeaderLines(headerText, settings.viewerHeaders)
+                    val fields = headerFields(headerText, account.unlabeledCharset)
+                    viewerExtra = viewerHeaderLines(headerText, settings.viewerHeaders, account.unlabeledCharset)
                     if (fields.from.contains('@')) headerFrom = fields.from
                     headerTo = fields.to
                     headerCc = fields.cc
@@ -2400,6 +2400,7 @@ private fun MessageReaderLoaded(
                     onToggleAllHeaders = { toggleAllHeaders() },
                     onCollapse = { headerExpanded = false },
                     extraHeaders = viewerExtra,
+                    unlabeledCharset = account.unlabeledCharset,
                 )
             }
             if (headerReady && !headerExpanded) {
@@ -2590,6 +2591,7 @@ private fun MessageReaderLoaded(
                             decode = decodeHeaderView,
                             onDecode = { decodeHeaderView = it },
                             scroll = scroll,
+                            unlabeledCharset = account.unlabeledCharset,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }
@@ -3101,6 +3103,7 @@ private fun ReaderHeaderCard(
     onToggleAllHeaders: () -> Unit = {},
     onCollapse: () -> Unit = {},
     extraHeaders: List<Pair<String, String>> = emptyList(),
+    unlabeledCharset: String = "ISO-8859-1",
 ) {
     val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
@@ -3135,7 +3138,7 @@ private fun ReaderHeaderCard(
                 Box(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     androidx.compose.foundation.text.selection.SelectionContainer {
                         Text(
-                            text = allHeaderText?.let { headerViewText(it, decode) } ?: "…",
+                            text = allHeaderText?.let { headerViewText(it, decode, unlabeledCharset) } ?: "…",
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.fillMaxWidth().testTag("reader-all-headers-text"),
@@ -3499,8 +3502,10 @@ suspend fun readCappedText(cap: Int, peek: suspend (offset: Int, length: Int) ->
 }
 
 /** The header block as shown: raw bytes as text, or with RFC 2047 encoded-words decoded line by line on request. */
-fun headerViewText(raw: String, decode: Boolean): String =
-    if (!decode) raw else raw.lineSequence().joinToString("\n") { org.dlang.liveimap.ui.compose.decodeHeaderWordsForView(it) }
+fun headerViewText(raw: String, decode: Boolean, fallback: String = "ISO-8859-1"): String =
+    if (!decode) raw else raw.lineSequence().joinToString("\n") {
+        org.dlang.liveimap.ui.compose.decodeHeaderWordsForView(it, fallback)
+    }
 
 /** Unparsed, selectable text in a monospace font: no links, no HTML, nothing rendered. */
 @Composable
@@ -3512,6 +3517,7 @@ private fun RawTextView(
     onDecode: (Boolean) -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
     modifier: Modifier,
+    unlabeledCharset: String = "ISO-8859-1",
 ) {
     val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     Column(modifier.verticalScroll(scroll).padding(8.dp)) {
@@ -3528,7 +3534,7 @@ private fun RawTextView(
         if (truncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
         androidx.compose.foundation.text.selection.SelectionContainer {
             Text(
-                text = if (headers) headerViewText(text, decode) else text,
+                text = if (headers) headerViewText(text, decode, unlabeledCharset) else text,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.fillMaxWidth().testTag("reader-raw-text"),
             )

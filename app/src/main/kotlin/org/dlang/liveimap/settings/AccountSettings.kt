@@ -2,9 +2,11 @@ package org.dlang.liveimap.settings
 
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
 import java.nio.charset.CharsetDecoder
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import org.dlang.liveimap.session.ClientSortCollation
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
@@ -305,6 +307,110 @@ fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
 
 const val DefaultAskLimit = -1
 
+private val unlabeledCharsetNames = setOf(
+    "utf-8",
+    "utf8",
+    "csutf8",
+    "us-ascii",
+    "ascii",
+    "ansi-x3.4-1968",
+    "csascii",
+    "iso-8859-1",
+    "iso8859-1",
+    "latin1",
+    "cp819",
+    "csisolatin1",
+    "iso-8859-8-i",
+    "iso-8859-8-e",
+    "cp1250",
+    "cp1251",
+    "cp1252",
+    "cp1253",
+    "cp1254",
+    "cp1255",
+    "cp1256",
+    "cp1257",
+    "cp1258",
+    "iso-8859-2",
+    "iso-8859-3",
+    "iso-8859-4",
+    "iso-8859-5",
+    "iso-8859-6",
+    "iso-8859-7",
+    "iso-8859-8",
+    "iso-8859-9",
+    "iso-8859-10",
+    "iso-8859-13",
+    "iso-8859-14",
+    "iso-8859-15",
+    "iso-8859-16",
+    "windows-1250",
+    "windows-1251",
+    "windows-1252",
+    "windows-1253",
+    "windows-1254",
+    "windows-1255",
+    "windows-1256",
+    "windows-1257",
+    "windows-1258",
+    "koi8-r",
+    "koi8-u",
+    "shift-jis",
+    "sjis",
+    "x-sjis",
+    "csshiftjis",
+    "gb2312",
+    "gb-2312-80",
+    "csgb2312",
+    "gbk",
+    "cp936",
+    "big5",
+    "csbig5",
+    "euc-kr",
+    "euckr",
+    "ks-c-5601-1987",
+    "cseuckr",
+    "ksc5601",
+    "iso-2022-jp",
+    "csiso2022jp",
+)
+
+/** Drop space, tab, CR, and LF, map A–Z to a–z, and map `_` to `-`. No JNI. */
+internal fun unlabeledCharsetCanon(name: String): String = buildString(name.length) {
+    for (ch in name) {
+        when {
+            ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' -> Unit
+            ch in 'A'..'Z' -> append(ch.lowercaseChar())
+            ch == '_' -> append('-')
+            else -> append(ch)
+        }
+    }
+}
+
+/** Known when the canon is in the decoder table, or [Charset.isSupported] accepts the trimmed text. */
+internal fun knownUnlabeledCharset(name: String): Boolean {
+    if (name.isBlank()) return false
+    if (unlabeledCharsetCanon(name) in unlabeledCharsetNames) return true
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return false
+    return try {
+        Charset.isSupported(trimmed)
+    } catch (_: IllegalArgumentException) {
+        false
+    }
+}
+
+internal fun clientSortCollationWord(value: ClientSortCollation): String = when (value) {
+    ClientSortCollation.Locale -> "locale"
+    ClientSortCollation.Plain -> "plain"
+}
+
+internal fun clientSortCollationOf(word: String): ClientSortCollation = when (word) {
+    "locale" -> ClientSortCollation.Locale
+    "plain" -> ClientSortCollation.Plain
+    else -> throw IllegalArgumentException("clientSortCollation")
+}
+
 fun overAskThreshold(exists: Int, threshold: Int): Boolean =
     threshold >= 0 && exists > threshold
 
@@ -373,6 +479,8 @@ data class AccountSettings(
     /** Alpine global address books on this server (`global-address-book`); read only. */
     val globalAddressBooks: List<String> = emptyList(),
     val clientSort: Boolean = false,
+    val clientSortCollation: ClientSortCollation = ClientSortCollation.Locale,
+    val unlabeledCharset: String = "ISO-8859-1",
     val clientThread: Boolean = false,
     val pollForNewMail: Boolean = false,
     val pollSeconds: Int = 60,
@@ -493,6 +601,7 @@ data class AccountSettings(
         if (maxResultUids < 1) throw IllegalArgumentException("maxResultUids")
         if (sieveConnectSeconds < 1) throw IllegalArgumentException("sieveConnectSeconds")
         if (sieveReadSeconds < 1) throw IllegalArgumentException("sieveReadSeconds")
+        if (!knownUnlabeledCharset(unlabeledCharset)) throw IllegalArgumentException("unlabeledCharset")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -593,6 +702,8 @@ private val fieldNames = listOf(
     "addressBookHistory",
     "addressBookNeverTrim",
     "clientSort",
+    "clientSortCollation",
+    "unlabeledCharset",
     "clientThread",
     "pollForNewMail",
     "pollSeconds",
@@ -766,6 +877,8 @@ fun AccountSettings.encode(): String = buildString {
     put("addressBookHistory=$addressBookHistory")
     put("addressBookNeverTrim=$addressBookNeverTrim")
     put("clientSort=$clientSort")
+    put("clientSortCollation=${clientSortCollationWord(clientSortCollation)}")
+    put("unlabeledCharset=${percentEncode(unlabeledCharset)}")
     put("clientThread=$clientThread")
     put("pollForNewMail=$pollForNewMail")
     put("pollSeconds=$pollSeconds")
@@ -919,6 +1032,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "addressBookHistory" ||
             key == "addressBookNeverTrim" ||
             key == "clientSort" ||
+            key == "clientSortCollation" ||
+            key == "unlabeledCharset" ||
             key == "clientThread" ||
             key == "pollForNewMail" ||
             key == "pollSeconds" ||
@@ -1091,6 +1206,24 @@ fun decodeAccountSettings(text: String): AccountSettings {
         addressBookHistory = field("addressBookHistory", d.addressBookHistory) { parseIntField(values.getValue("addressBookHistory")) },
         addressBookNeverTrim = field("addressBookNeverTrim", d.addressBookNeverTrim) { parseBoolean(values.getValue("addressBookNeverTrim")) },
         clientSort = field("clientSort", d.clientSort) { parseBoolean(values.getValue("clientSort")) },
+        clientSortCollation = if ("clientSortCollation" !in values) {
+            d.clientSortCollation
+        } else {
+            val word = values.getValue("clientSortCollation")
+            if (word != "locale" && word != "plain") throw IllegalArgumentException("clientSortCollation")
+            field("clientSortCollation", d.clientSortCollation) { clientSortCollationOf(word) }
+        },
+        unlabeledCharset = if ("unlabeledCharset" !in values) {
+            d.unlabeledCharset
+        } else {
+            val decoded = try {
+                percentDecode(values.getValue("unlabeledCharset"))
+            } catch (_: IllegalArgumentException) {
+                throw IllegalArgumentException("unlabeledCharset")
+            }
+            if (!knownUnlabeledCharset(decoded)) throw IllegalArgumentException("unlabeledCharset")
+            field("unlabeledCharset", d.unlabeledCharset) { decoded }
+        },
         clientThread = field("clientThread", d.clientThread) { parseBoolean(values.getValue("clientThread")) },
         pollForNewMail = field("pollForNewMail", d.pollForNewMail) { parseBoolean(values.getValue("pollForNewMail")) },
         pollSeconds = field("pollSeconds", d.pollSeconds) { parseIntField(values.getValue("pollSeconds")) },

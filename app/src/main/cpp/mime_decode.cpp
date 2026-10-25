@@ -10879,9 +10879,10 @@ static std::string html_as_text(const std::string & html) {
 }
 
 extern "C" char * mime_preview_text(const char * bytes, size_t len, const char * charset, const char * encoding,
-    int html, int * failed) {
+    int html, int * failed, const char * fallback) {
     mime_decode_ensure();
-    TextDecode got = decode_all(bytes, len, charset, "ISO-8859-1", encoding);
+    const char * used = fallback != nullptr && fallback[0] != 0 ? fallback : "ISO-8859-1";
+    TextDecode got = decode_all(bytes, len, charset, used, encoding);
     if (got.status != 0) {
         if (failed != nullptr) *failed = 1;
         return dup_cstr("");
@@ -11085,7 +11086,7 @@ static size_t header_block_len(const char * bytes, size_t len) {
     return len;
 }
 
-static void decode_row(HeaderRow * row, const std::string & raw) {
+static void decode_row(HeaderRow * row, const std::string & raw, const char * fallback) {
     std::string unfolded;
     unfolded.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); ++i) {
@@ -11104,17 +11105,18 @@ static void decode_row(HeaderRow * row, const std::string & raw) {
     char * phrase = nullptr;
     char * note = nullptr;
     int status = 0;
-    mime_decode_phrase(row->raw.data(), row->raw.size(), "ISO-8859-1", &phrase, &note, &status);
+    const char * from = fallback != nullptr && fallback[0] != 0 ? fallback : "ISO-8859-1";
+    mime_decode_phrase(row->raw.data(), row->raw.size(), from, &phrase, &note, &status);
     row->value = phrase != nullptr ? phrase : row->raw;
     free(phrase);
     free(note);
 }
 
-static void push_row(std::vector<HeaderRow> * rows, const char * name, const std::string & raw) {
+static void push_row(std::vector<HeaderRow> * rows, const char * name, const std::string & raw, const char * fallback) {
     if (name == nullptr || name[0] == 0) return;
     HeaderRow row;
     row.name = name;
-    decode_row(&row, raw);
+    decode_row(&row, raw, fallback);
     rows->push_back(std::move(row));
 }
 
@@ -11150,7 +11152,7 @@ static bool slice_field(const char * bytes, size_t end, size_t * cursor,
     return true;
 }
 
-static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow> * rows) {
+static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow> * rows, const char * fallback) {
     if (rows == nullptr) return 1;
     rows->clear();
     if (bytes == nullptr) {
@@ -11189,7 +11191,7 @@ static int unfold_headers(const char * bytes, size_t len, std::vector<HeaderRow>
                 mailimf_fields_free(fields);
                 return 1;
             }
-            push_row(rows, name.c_str(), std::string(bytes + val_b, val_e - val_b));
+            push_row(rows, name.c_str(), std::string(bytes + val_b, val_e - val_b), fallback);
         }
     }
     if (cursor > indx || !only_ws(bytes + cursor, indx - cursor)) {
@@ -11207,13 +11209,14 @@ struct MimeHeaders {
     char * raw;
 };
 
-extern "C" int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count) {
+extern "C" int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count,
+    const char * fallback) {
     mime_decode_ensure();
     if (out == nullptr || count == nullptr) return 1;
     *out = nullptr;
     *count = 0;
     std::vector<HeaderRow> rows;
-    if (unfold_headers(bytes, len, &rows) != 0) return 1;
+    if (unfold_headers(bytes, len, &rows, fallback) != 0) return 1;
     if (rows.empty()) return 0;
     MimeHeaders * list = static_cast<MimeHeaders *>(calloc(rows.size(), sizeof(MimeHeaders)));
     if (list == nullptr) return 1;
@@ -11254,7 +11257,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
         free(text);
         free(note);
     } else if (op % 5u == 1u) {
-        char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u, nullptr);
+        char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u, nullptr, "ISO-8859-1");
         free(text);
     } else if (op % 5u == 2u) {
         char * text = nullptr;
@@ -11269,7 +11272,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
     } else {
         struct MimeHeaders * rows = nullptr;
         int count = 0;
-        mime_parse_headers(bytes, n, &rows, &count);
+        mime_parse_headers(bytes, n, &rows, &count, "ISO-8859-1");
         mime_headers_free(rows, count);
     }
     return 0;

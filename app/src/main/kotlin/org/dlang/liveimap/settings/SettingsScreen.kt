@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import org.dlang.liveimap.session.ClientSortCollation
 import org.dlang.liveimap.ui.compose.formatMailbox
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.AssistChip
@@ -1952,6 +1953,24 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
             note = stringResource(R.string.settings_client_sort_note),
         ) {
             editor.persist(editor.settings.copy(clientSort = it))
+        }
+        "clientSortCollation" -> ChoiceField(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            listOf(ClientSortCollation.Locale, ClientSortCollation.Plain),
+            settings.clientSortCollation,
+            { clientSortCollationWord(it) },
+        ) {
+            editor.persist(editor.settings.copy(clientSortCollation = it))
+        }
+        "unlabeledCharset" -> LineField(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.unlabeledCharset,
+            ready = editor.ready,
+            interpret = { draft, stored ->
+                if (!knownUnlabeledCharset(draft) || draft == stored) null else draft
+            },
+        ) { text ->
+            if (knownUnlabeledCharset(text)) editor.persist(editor.settings.copy(unlabeledCharset = text))
         }
         "clientThread" -> BoolField(
             stringResource(R.string.settings_client_thread),

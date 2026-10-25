@@ -765,6 +765,7 @@ class LibetpanMailSession : MailSession {
                 useServerPreview,
                 settings?.email.orEmpty(),
                 settings?.altAddresses.orEmpty().joinToString("\n"),
+                settings?.unlabeledCharset ?: "ISO-8859-1",
             ) ?: throw MailFailure("fetch failed")
             fetched.toList()
         }
@@ -1224,7 +1225,13 @@ class LibetpanMailSession : MailSession {
         newestFirst: Boolean,
         onProgress: (Int, Int) -> Unit,
         cancelled: () -> Boolean,
-    ): List<Long> = clientOrderCollated(key, newestFirst, onProgress, cancelled)
+    ): List<Long> = clientOrderCollated(
+        key,
+        newestFirst,
+        onProgress,
+        cancelled,
+        account?.clientSortCollation ?: ClientSortCollation.Locale,
+    )
 
     /** [collation] defaults to [ClientSortCollation.Locale]. A different value is a different command, so a full rebuild. */
     internal suspend fun clientOrderCollated(
@@ -1377,18 +1384,19 @@ class LibetpanMailSession : MailSession {
 
     private fun sortPiece(key: SortKey, row: ClientFetch, i: Int): SortPiece {
         val uid = row.uids[i]
+        val charset = account?.unlabeledCharset ?: "ISO-8859-1"
         return when (key) {
             SortKey.Date -> {
                 val epoch = dateHeaderEpoch(row.texts[i])
                 SortPiece(uid, epoch ?: 0L, epoch == null, "")
             }
             SortKey.Size -> SortPiece(uid, row.numbers[i], row.blanks[i], "")
-            SortKey.Subject -> SortPiece(uid, 0L, false, baseSubject(decodeHeaderWords(row.texts[i])))
+            SortKey.Subject -> SortPiece(uid, 0L, false, baseSubject(decodeHeaderWords(row.texts[i], charset)))
             SortKey.From, SortKey.To, SortKey.Cc -> SortPiece(
                 uid,
                 0L,
                 false,
-                firstAddrMailbox(row.texts[i]) { decodeHeaderWords(it) },
+                firstAddrMailbox(row.texts[i]) { decodeHeaderWords(it, charset) },
             )
             else -> throw MailFailure("use an arrival IndexMode")
         }
@@ -1731,7 +1739,8 @@ class LibetpanMailSession : MailSession {
 
     private fun threadOrder(key: SortKey, headers: ClientHeaders): MessageOrder {
         val flat = if (key == SortKey.ThreadOrderedSubject) {
-            val subjects = Array(headers.uids.size) { baseSubject(decodeHeaderWords(headers.subject[it])) }
+            val charset = account?.unlabeledCharset ?: "ISO-8859-1"
+            val subjects = Array(headers.uids.size) { baseSubject(decodeHeaderWords(headers.subject[it], charset)) }
             val epochs = LongArray(headers.uids.size) { dateHeaderEpoch(headers.date[it]) ?: Long.MIN_VALUE }
             nativeThreadSubject(headers.uids, subjects, epochs) ?: throw MailFailure("thread failed")
         } else {
@@ -2386,6 +2395,7 @@ class LibetpanMailSession : MailSession {
         useServerPreview: Boolean,
         accountEmail: String,
         altAddresses: String,
+        unlabeledCharset: String,
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?

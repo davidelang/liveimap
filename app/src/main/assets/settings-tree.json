@@ -661,6 +661,18 @@
         "default": false
       },
       {
+        "setting": "clientSortCollation",
+        "default": "locale",
+        "choices": [
+          "locale",
+          "plain"
+        ]
+      },
+      {
+        "setting": "unlabeledCharset",
+        "default": "ISO-8859-1"
+      },
+      {
         "setting": "clientThread",
         "default": false
       },

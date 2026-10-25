@@ -1467,13 +1467,14 @@ struct PhraseUtf8 {
     std::string note;
 };
 
-static PhraseUtf8 phraseUtf8(const char * text) {
+static PhraseUtf8 phraseUtf8(const char * text, const char * fallback) {
     PhraseUtf8 out;
     if (text == nullptr || text[0] == 0) return out;
+    const char * from = fallback != nullptr && fallback[0] != 0 ? fallback : "ISO-8859-1";
     char * decoded = nullptr;
     char * note = nullptr;
     int status = 0;
-    mime_decode_phrase(text, strlen(text), "ISO-8859-1", &decoded, &note, &status);
+    mime_decode_phrase(text, strlen(text), from, &decoded, &note, &status);
     if (decoded != nullptr) out.text = decoded;
     if (note != nullptr) out.note = note;
     std::free(decoded);
@@ -1481,12 +1482,12 @@ static PhraseUtf8 phraseUtf8(const char * text) {
     return out;
 }
 
-std::string addressText(struct mailimap_address * addr) {
+std::string addressText(struct mailimap_address * addr, const char * fallback) {
     if (addr == nullptr) {
         return "";
     }
     if (addr->ad_personal_name != nullptr && addr->ad_personal_name[0] != 0) {
-        return phraseUtf8(addr->ad_personal_name).text;
+        return phraseUtf8(addr->ad_personal_name, fallback).text;
     }
     std::string box = addr->ad_mailbox_name != nullptr ? addr->ad_mailbox_name : "";
     std::string host = addr->ad_host_name != nullptr ? addr->ad_host_name : "";
@@ -1907,13 +1908,13 @@ bool envelopeToMatches(struct mailimap_envelope * env, const char * email, const
     }
 }
 
-std::string toRecipientText(struct mailimap_envelope * env) {
+std::string toRecipientText(struct mailimap_envelope * env, const char * fallback) {
     std::string out;
     if (env == nullptr || env->env_to == nullptr || env->env_to->to_list == nullptr) {
         return out;
     }
     for (clistiter * cur = clist_begin(env->env_to->to_list); cur != nullptr; cur = clist_next(cur)) {
-        std::string text = addressText(static_cast<struct mailimap_address *>(clist_content(cur)));
+        std::string text = addressText(static_cast<struct mailimap_address *>(clist_content(cur)), fallback);
         if (text.empty()) {
             continue;
         }
@@ -1994,7 +1995,8 @@ bool structureHasAttachment(struct mailimap_body * body) {
     return false;
 }
 
-void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail, const char * altSpecs) {
+void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail, const char * altSpecs,
+    const char * unlabeled) {
     if (att == nullptr) {
         return;
     }
@@ -2038,7 +2040,7 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
                     row->hasEnvelope = true;
                     struct mailimap_envelope * env = st->att_data.att_env;
                     if (env->env_subject != nullptr) {
-                        PhraseUtf8 phrase = phraseUtf8(env->env_subject);
+                        PhraseUtf8 phrase = phraseUtf8(env->env_subject, unlabeled);
                         row->subject = std::move(phrase.text);
                         row->headerNote = std::move(phrase.note);
                     }
@@ -2046,10 +2048,10 @@ void readAtt(struct mailimap_msg_att * att, Row * row, const char * accountEmail
                     if (env->env_from != nullptr && env->env_from->frm_list != nullptr) {
                         clistiter * a = clist_begin(env->env_from->frm_list);
                         if (a != nullptr) {
-                            row->from = addressText(static_cast<struct mailimap_address *>(clist_content(a)));
+                            row->from = addressText(static_cast<struct mailimap_address *>(clist_content(a)), unlabeled);
                         }
                     }
-                    row->recipients = toRecipientText(env);
+                    row->recipients = toRecipientText(env, unlabeled);
                     row->toMe = envelopeToMatches(env, accountEmail, altSpecs);
                 }
                 break;
@@ -2740,7 +2742,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
             queueWatch(session, 1, session->watchExists, 0, {}, generation);
         } else if (msg->mdt_type == MAILIMAP_MESSAGE_DATA_FETCH) {
             Row row;
-            readAtt(msg->mdt_msg_att, &row, nullptr, nullptr);
+            readAtt(msg->mdt_msg_att, &row, nullptr, nullptr, "ISO-8859-1");
             if (row.uid != 0) {
                 queueWatch(session, 2, session->watchExists, static_cast<jlong>(row.uid), std::move(row.flags), generation);
             } else if (row.sawFlags && !session->watchShownFlagsSent) {
@@ -6403,7 +6405,7 @@ void mime_xfer_close(struct MimeXfer * xfer);
 int mime_decode_phrase(const char * text, size_t len, const char * fromcode,
     char ** out_text, char ** out_note, int * status);
 char * mime_decode_2231(const char * raw, size_t len, const char * fallback);
-int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count);
+int mime_parse_headers(const char * bytes, size_t len, struct MimeHeaders ** out, int * count, const char * fallback);
 void mime_headers_free(struct MimeHeaders * rows, int count);
 }
 
@@ -6522,15 +6524,17 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_xferClose(JNIEnv *, jclass, jlong h
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstring value) {
+Java_org_dlang_liveimap_ui_reader_MimeDecode_phrase(JNIEnv * env, jclass, jstring value, jstring fallback) {
     MimeEnvScope scope(env);
     auto utf = utf8FromJava(env, value);
+    auto fallbackUtf = utf8FromJava(env, fallback);
     const std::string empty;
     const std::string & text = utf ? *utf : empty;
+    const char * from = fallbackUtf && !fallbackUtf->empty() ? fallbackUtf->c_str() : "ISO-8859-1";
     char * decoded = nullptr;
     char * note = nullptr;
     int status = 1;
-    mime_decode_phrase(text.data(), text.size(), "ISO-8859-1", &decoded, &note, &status);
+    mime_decode_phrase(text.data(), text.size(), from, &decoded, &note, &status);
     jobjectArray arr = stringTriple(env, status == 0 ? "ok" : "error", decoded != nullptr ? decoded : "",
         note != nullptr ? note : "");
     std::free(decoded);
@@ -6567,12 +6571,14 @@ static jstring bytesAsLatin1(JNIEnv * env, const char * text) {
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyteArray bytes) {
+Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyteArray bytes, jstring fallback) {
     MimeEnvScope scope(env);
     std::string in = bytesOf(env, bytes);
+    auto fallbackUtf = utf8FromJava(env, fallback);
+    const char * from = fallbackUtf && !fallbackUtf->empty() ? fallbackUtf->c_str() : "ISO-8859-1";
     MimeHeaders * rows = nullptr;
     int count = 0;
-    if (mime_parse_headers(in.data(), in.size(), &rows, &count) != 0 || count < 0) {
+    if (mime_parse_headers(in.data(), in.size(), &rows, &count, from) != 0 || count < 0) {
         mime_headers_free(rows, count);
         jclass ex = env->FindClass("org/dlang/liveimap/ui/compose/MimeDecodeException");
         if (ex != nullptr) {
@@ -7347,7 +7353,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * e
 // before the next FETCH item is read. The C++ rows and the Java array are not both full.
 bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
     bool serverPreview, bool bodyPreview, int peekLimit, jboolean preferHtml, jboolean showDeleted,
-    int * envelopeRows) {
+    int * envelopeRows, const char * unlabeled) {
     // F113: only answers to our FETCH (they carry ENVELOPE).
     if (row.uid != 0 && row.hasEnvelope) {
         *envelopeRows += 1;
@@ -7368,7 +7374,7 @@ bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
             asks.push_back(PreviewAsk{row.uid, want.section, want.charset, want.encoding, want.html});
             std::vector<std::string> got;
             std::vector<int> failed;
-            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands, &failed);
+            int br = previewBurst(session->imap, asks, peekLimit, got, session->pipelineCommands, &failed, unlabeled);
             if (br != MAILIMAP_NO_ERROR) {
                 preview.clear();
                 preview.shrink_to_fit();
@@ -7403,13 +7409,13 @@ bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
 
 bool consumeIndexList(JNIEnv * env, LiveSession * session, jobject out, clist * list,
     const char * accountEmail, const char * altSpecs, bool serverPreview, bool bodyPreview,
-    int peekLimit, jboolean preferHtml, jboolean showDeleted, int * envelopeRows) {
+    int peekLimit, jboolean preferHtml, jboolean showDeleted, int * envelopeRows, const char * unlabeled) {
     if (list == nullptr) return true;
     for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
         Row row;
-        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs);
+        readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs, unlabeled);
         if (!emitIndexRow(env, session, out, row, serverPreview, bodyPreview, peekLimit, preferHtml,
-                showDeleted, envelopeRows)) {
+                showDeleted, envelopeRows, unlabeled)) {
             return false;
         }
     }
@@ -7420,22 +7426,27 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env, jobject, jlong handle,
     jstring mailbox, jint mode, jint firstSequence, jint lastSequence, jlongArray uids, jint limit,
     jint prefetch, jboolean includePreview, jint previewByteLimit, jboolean preferHtml, jboolean showDeleted,
-    jboolean useServerPreview, jstring accountEmail, jstring altAddresses) {
+    jboolean useServerPreview, jstring accountEmail, jstring altAddresses, jstring unlabeledCharset) {
     jstring g_mailbox = mailbox != nullptr ? static_cast<jstring>(env->NewGlobalRef(mailbox)) : nullptr;
     jlongArray g_uids = uids != nullptr ? static_cast<jlongArray>(env->NewGlobalRef(uids)) : nullptr;
     jstring g_accountEmail = accountEmail != nullptr ? static_cast<jstring>(env->NewGlobalRef(accountEmail)) : nullptr;
     jstring g_altAddresses = altAddresses != nullptr ? static_cast<jstring>(env->NewGlobalRef(altAddresses)) : nullptr;
-    struct OwnerRefs { JNIEnv * e; jstring p0; jlongArray p1; jstring p2; jstring p3; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); if (p3) e->DeleteGlobalRef(p3); } } ownerRefs{env, g_mailbox, g_uids, g_accountEmail, g_altAddresses};
+    jstring g_unlabeled = unlabeledCharset != nullptr ? static_cast<jstring>(env->NewGlobalRef(unlabeledCharset)) : nullptr;
+    struct OwnerRefs { JNIEnv * e; jstring p0; jlongArray p1; jstring p2; jstring p3; jstring p4; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); if (p3) e->DeleteGlobalRef(p3); if (p4) e->DeleteGlobalRef(p4); } } ownerRefs{env, g_mailbox, g_uids, g_accountEmail, g_altAddresses, g_unlabeled};
     return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobjectArray {
         jstring mailbox = g_mailbox;
         jlongArray uids = g_uids;
         jstring accountEmail = g_accountEmail;
         jstring altAddresses = g_altAddresses;
+        jstring unlabeledCharset = g_unlabeled;
 
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     JChars accountEmailChars(env, accountEmail);
     JChars altChars(env, altAddresses);
+    JChars unlabeledChars(env, unlabeledCharset);
+    const char * unlabeled = unlabeledChars.c();
+    if (unlabeled == nullptr || unlabeled[0] == 0 || unlabeled[0] == '\n') unlabeled = "ISO-8859-1";
     JChars mb(env, mailbox);
     if (session->selectedMailbox != mb.c()) {
         if (!selectMailbox(env, session, mb.c(), false)) {
@@ -7495,7 +7506,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         }
         int envelopeRows = 0;
         if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
-                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows)) {
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled)) {
             if (list != nullptr) mailimap_fetch_list_free(list);
             env->DeleteLocalRef(rowsOut);
             unlockSession(session);
@@ -7549,7 +7560,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         }
         int envelopeRows = 0;
         if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
-                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows)) {
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled)) {
             if (list != nullptr) mailimap_fetch_list_free(list);
             env->DeleteLocalRef(rowsOut);
             unlockSession(session);
@@ -7661,7 +7672,7 @@ jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::str
     if (list != nullptr) {
         for (clistiter * cur = clist_begin(list); cur != nullptr && body == nullptr; cur = clist_next(cur)) {
             Row row;
-            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, nullptr, nullptr);
+            readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, nullptr, nullptr, "ISO-8859-1");
             body = row.structure;
         }
     }

@@ -14,7 +14,7 @@ data class HeaderFields(
     val listId: String = "",
 )
 
-fun headerFields(header: String): HeaderFields {
+fun headerFields(header: String, fallback: String = "ISO-8859-1"): HeaderFields {
     var from = ""
     var to = ""
     var cc = ""
@@ -25,7 +25,7 @@ fun headerFields(header: String): HeaderFields {
         val colon = line.indexOf(':')
         if (colon <= 0) continue
         val name = line.substring(0, colon).trim()
-        val value = decodeHeaderWords(line.substring(colon + 1).trim())
+        val value = decodeHeaderWords(line.substring(colon + 1).trim(), fallback)
         when {
             name.equals("From", ignoreCase = true) -> if (from.isEmpty()) from = value
             name.equals("To", ignoreCase = true) -> to = joinHeader(to, value)
@@ -39,7 +39,7 @@ fun headerFields(header: String): HeaderFields {
 }
 
 /** The account's viewer header list ("viewerHeaders"): those headers, in list order, decoded. */
-fun viewerHeaderLines(header: String, list: String): List<Pair<String, String>> {
+fun viewerHeaderLines(header: String, list: String, fallback: String = "ISO-8859-1"): List<Pair<String, String>> {
     val names = org.dlang.liveimap.ui.compose.headerNames(list)
     if (names.isEmpty()) return emptyList()
     val lines = unfoldedHeaderLines(header)
@@ -49,7 +49,9 @@ fun viewerHeaderLines(header: String, list: String): List<Pair<String, String>> 
             val colon = line.indexOf(':')
             if (colon <= 0) continue
             val name = line.substring(0, colon).trim()
-            if (name.equals(want, ignoreCase = true)) out.add(name to decodeHeaderWords(line.substring(colon + 1).trim()))
+            if (name.equals(want, ignoreCase = true)) {
+                out.add(name to decodeHeaderWords(line.substring(colon + 1).trim(), fallback))
+            }
         }
     }
     return out

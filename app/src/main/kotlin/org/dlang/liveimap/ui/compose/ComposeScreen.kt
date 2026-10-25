@@ -784,7 +784,7 @@ private fun ComposeLoaded(
                 if (box == null) throw MailFailure("message reference is incomplete; reload the list")
                 else inBox(box) { s -> s.peekPart(uid, part.section, offset, length) } // F116
             }
-            val decoded = decodePart(bytes, part.charset, part.encoding)
+            val decoded = decodePart(bytes, part.charset, part.encoding, account.unlabeledCharset)
             if (decoded.unknownCharset && notice.isNullOrEmpty()) notice = unknownCharsetNote
             return if (html) htmlAsText(decoded.text) else decoded.text
         }
@@ -831,19 +831,19 @@ private fun ComposeLoaded(
         val rawViewCap = InstalledGlobals.maxRawViewBytes.get()
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
-        val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) })
+        val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) }, account.unlabeledCharset)
         originalParsed = parsed
         val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
         val rules0 = resolveNow(settings)
         val draft = replyDraft(replyAll, parsed, settings.email, quote, rules0.quotePrefix, rules0.leadIn)
-        val replyToAddrs = addresses(parsed, "Reply-To")
-        val fromAddrs = addresses(parsed, "From")
+        val replyToAddrs = addresses(parsed, "Reply-To", account.unlabeledCharset)
+        val fromAddrs = addresses(parsed, "From", account.unlabeledCharset)
         fun route(use: Boolean) = replyRecipients(
             replyAll = replyAll,
             replyTo = replyToAddrs,
             from = fromAddrs,
-            to = addresses(parsed, "To"),
-            cc = addresses(parsed, "Cc"),
+            to = addresses(parsed, "To", account.unlabeledCharset),
+            cc = addresses(parsed, "Cc", account.unlabeledCharset),
             accountEmail = settings.email,
             altAddresses = settings.altAddresses,
             useReplyTo = use,
@@ -884,7 +884,7 @@ private fun ComposeLoaded(
         if (asAttachment) {
             val original = inBox(box) { s -> s.fetchRfc822(uid) }
             if (!draftLoaded) {
-                val parsed = parseRfc822(original)
+                val parsed = parseRfc822(original, account.unlabeledCharset)
                 originalParsed = parsed
                 resolveNow(settings)
                 val draft = forwardDraft(parsed, "")
@@ -911,7 +911,7 @@ private fun ComposeLoaded(
         val tree = if (draftLoaded) {
             inBox(box) { s -> s.fetchStructure(uid) }
         } else {
-            val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) })
+            val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) }, account.unlabeledCharset)
             originalParsed = parsed
             val r = resolveNow(settings)
             val fetched = inBox(box) { s -> s.fetchStructure(uid) }
@@ -984,7 +984,7 @@ private fun ComposeLoaded(
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
-        applyEditor(loadEditor(inBox(box) { s -> s.fetchRfc822(uid) }))
+        applyEditor(loadEditor(inBox(box) { s -> s.fetchRfc822(uid) }, account.unlabeledCharset))
     }
 
     fun composedHeaders(settings: AccountSettings): List<Pair<String, String>> {
@@ -1503,7 +1503,7 @@ private fun ComposeLoaded(
                 notice = error.message ?: unsentGone
                 return null
             }
-            applyEditor(loadEditor(bytes))
+            applyEditor(loadEditor(bytes, account.unlabeledCharset))
         }
         held = copy
         if (!baselineReady) captureBaseline()

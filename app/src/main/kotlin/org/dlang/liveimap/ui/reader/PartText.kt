@@ -35,17 +35,17 @@ internal object MimeDecode {
     external fun xferClose(handle: Long)
 
     @JvmStatic
-    external fun phrase(value: String): Array<String>
+    external fun phrase(value: String, fallback: String = "ISO-8859-1"): Array<String>
 
     @JvmStatic
     external fun parameter2231(raw: String, fallback: String): String
 
     @JvmStatic
-    external fun headers(bytes: ByteArray): Array<String>
+    external fun headers(bytes: ByteArray, fallback: String = "ISO-8859-1"): Array<String>
 }
 
-fun decodePart(bytes: ByteArray, charset: String, encoding: String): DecodedPart {
-    val row = MimeDecode.text(bytes, charset, "ISO-8859-1", encoding)
+fun decodePart(bytes: ByteArray, charset: String, encoding: String, fallback: String = "ISO-8859-1"): DecodedPart {
+    val row = MimeDecode.text(bytes, charset, fallback, encoding)
     if (row[0] != "ok") {
         throw org.dlang.liveimap.ui.compose.MimeDecodeException(row[2].ifEmpty { row[1] })
     }
@@ -53,8 +53,8 @@ fun decodePart(bytes: ByteArray, charset: String, encoding: String): DecodedPart
     return DecodedPart(row[1], note?.contains("shown as") == true, note)
 }
 
-class WireTextDecoder(charsetName: String, encoding: String) {
-    private val handle = MimeDecode.streamOpen(charsetName, "ISO-8859-1", encoding)
+class WireTextDecoder(charsetName: String, encoding: String, fallback: String = "ISO-8859-1") {
+    private val handle = MimeDecode.streamOpen(charsetName, fallback, encoding)
     var unknownCharset: Boolean = false
         private set
     var note: String? = null

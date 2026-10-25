@@ -133,6 +133,8 @@ previewSize|Enum|account|choice|Preview size|Auto,Density,None,Small,Large|
 folderPosition|Enum|account|choice|Folder position|Auto,Beside,AboveList|
 customLayout|Encoded|account|subscreen|Custom layout||
 clientSort|Bool|account|bool|Client sort||
+clientSortCollation|Enum|account|choice|Client sort order|locale,plain|
+unlabeledCharset|String|account|text|Unlabeled charset||
 clientThread|Bool|account|bool|Client thread||
 pollForNewMail|Bool|account|bool|Poll for new mail||
 pollSeconds|Int|account|number|Poll interval||15..600
