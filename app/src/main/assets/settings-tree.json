@@ -661,6 +661,26 @@
         }
       },
       {
+        "setting": "idleFallbackSeconds",
+        "default": 60
+      },
+      {
+        "setting": "keepAliveMinutes",
+        "default": 9
+      },
+      {
+        "setting": "idleRenewMinutes",
+        "default": 9
+      },
+      {
+        "setting": "longSearchProgressSec",
+        "default": 60
+      },
+      {
+        "setting": "longSearchQuietSec",
+        "default": 600
+      },
+      {
         "setting": "statusVisibleCounts",
         "default": false
       },

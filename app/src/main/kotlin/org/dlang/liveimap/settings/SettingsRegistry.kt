@@ -129,6 +129,11 @@ clientSort|Bool|account|bool|Client sort||
 clientThread|Bool|account|bool|Client thread||
 pollForNewMail|Bool|account|bool|Poll for new mail||
 pollSeconds|Int|account|number|Poll interval||15..600
+idleFallbackSeconds|Int|account|number|IDLE fallback||
+keepAliveMinutes|Int|account|number|Keep-alive||
+idleRenewMinutes|Int|account|number|IDLE renew||
+longSearchProgressSec|Int|account|number|Long search progress||
+longSearchQuietSec|Int|account|number|Long search quiet||
 statusVisibleCounts|Bool|account|bool|Status visible counts||
 forceSlowerFallbacks|Bool|account|bool|Force slower fallbacks||
 logImapTraffic|Bool|account|bool|Log IMAP traffic||

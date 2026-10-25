@@ -375,6 +375,11 @@ data class AccountSettings(
     val clientThread: Boolean = false,
     val pollForNewMail: Boolean = false,
     val pollSeconds: Int = 60,
+    val idleFallbackSeconds: Int = 60,
+    val keepAliveMinutes: Int = 9,
+    val idleRenewMinutes: Int = 9,
+    val longSearchProgressSec: Int = 60,
+    val longSearchQuietSec: Int = 600,
     val statusVisibleCounts: Boolean = false,
     val forceSlowerFallbacks: Boolean = false,
     val hiddenCapabilities: Set<String> = emptySet(),
@@ -472,6 +477,11 @@ data class AccountSettings(
         if (toolbarRows !in 1..4) throw IllegalArgumentException("bad toolbarRows")
         if (composerWrapColumn !in 0..998) throw IllegalArgumentException("bad composerWrapColumn")
         if (pollSeconds !in 15..600) throw IllegalArgumentException("pollSeconds")
+        if (idleFallbackSeconds < 1) throw IllegalArgumentException("idleFallbackSeconds")
+        if (keepAliveMinutes < 1) throw IllegalArgumentException("keepAliveMinutes")
+        if (idleRenewMinutes < 1) throw IllegalArgumentException("idleRenewMinutes")
+        if (longSearchProgressSec < 1) throw IllegalArgumentException("longSearchProgressSec")
+        if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -575,6 +585,11 @@ private val fieldNames = listOf(
     "clientThread",
     "pollForNewMail",
     "pollSeconds",
+    "idleFallbackSeconds",
+    "keepAliveMinutes",
+    "idleRenewMinutes",
+    "longSearchProgressSec",
+    "longSearchQuietSec",
     "statusVisibleCounts",
     "forceSlowerFallbacks",
     "hiddenCapabilities",
@@ -739,6 +754,11 @@ fun AccountSettings.encode(): String = buildString {
     put("clientThread=$clientThread")
     put("pollForNewMail=$pollForNewMail")
     put("pollSeconds=$pollSeconds")
+    put("idleFallbackSeconds=$idleFallbackSeconds")
+    put("keepAliveMinutes=$keepAliveMinutes")
+    put("idleRenewMinutes=$idleRenewMinutes")
+    put("longSearchProgressSec=$longSearchProgressSec")
+    put("longSearchQuietSec=$longSearchQuietSec")
     put("statusVisibleCounts=$statusVisibleCounts")
     put("forceSlowerFallbacks=$forceSlowerFallbacks")
     put("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
@@ -883,6 +903,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "clientThread" ||
             key == "pollForNewMail" ||
             key == "pollSeconds" ||
+            key == "idleFallbackSeconds" ||
+            key == "keepAliveMinutes" ||
+            key == "idleRenewMinutes" ||
+            key == "longSearchProgressSec" ||
+            key == "longSearchQuietSec" ||
             key == "statusVisibleCounts" ||
             key == "forceSlowerFallbacks" ||
             key == "hiddenCapabilities" ||
@@ -1046,6 +1071,11 @@ fun decodeAccountSettings(text: String): AccountSettings {
         clientThread = field("clientThread", d.clientThread) { parseBoolean(values.getValue("clientThread")) },
         pollForNewMail = field("pollForNewMail", d.pollForNewMail) { parseBoolean(values.getValue("pollForNewMail")) },
         pollSeconds = field("pollSeconds", d.pollSeconds) { parseIntField(values.getValue("pollSeconds")) },
+        idleFallbackSeconds = field("idleFallbackSeconds", d.idleFallbackSeconds) { parseIntField(values.getValue("idleFallbackSeconds")) },
+        keepAliveMinutes = field("keepAliveMinutes", d.keepAliveMinutes) { parseIntField(values.getValue("keepAliveMinutes")) },
+        idleRenewMinutes = field("idleRenewMinutes", d.idleRenewMinutes) { parseIntField(values.getValue("idleRenewMinutes")) },
+        longSearchProgressSec = field("longSearchProgressSec", d.longSearchProgressSec) { parseIntField(values.getValue("longSearchProgressSec")) },
+        longSearchQuietSec = field("longSearchQuietSec", d.longSearchQuietSec) { parseIntField(values.getValue("longSearchQuietSec")) },
         statusVisibleCounts = field("statusVisibleCounts", d.statusVisibleCounts) { parseBoolean(values.getValue("statusVisibleCounts")) },
         forceSlowerFallbacks = field("forceSlowerFallbacks", d.forceSlowerFallbacks) { parseBoolean(values.getValue("forceSlowerFallbacks")) },
         hiddenCapabilities = field("hiddenCapabilities", d.hiddenCapabilities) { decodeHiddenCapabilities(values.getValue("hiddenCapabilities")) },
