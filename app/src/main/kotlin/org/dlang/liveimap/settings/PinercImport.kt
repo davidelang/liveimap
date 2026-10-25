@@ -84,7 +84,6 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     var omitted = 0
     var inboxUserApplied = false
     var inboxVote: TlsMode? = null
-    var smtpVote: TlsMode? = null
 
     val inbox = entries["inbox-path"]?.decoded
     if (inbox != null) {
@@ -117,8 +116,12 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
                     spec.submit -> 587
                     else -> 25
                 }
-                next = next.copy(smtpHost = spec.host, smtpPort = port)
-                smtpVote = spec.mode ?: if (spec.submit) TlsMode.StartTls else null
+                val smtpMode = spec.mode ?: if (spec.submit) TlsMode.StartTls else null
+                next = next.copy(
+                    smtpHost = spec.host,
+                    smtpPort = port,
+                    smtpTlsMode = smtpMode ?: next.smtpTlsMode,
+                )
                 val imapUser = if (inboxUserApplied) next.username else current.username
                 if (spec.user != null && spec.user != imapUser) {
                     next = next.copy(smtpUsername = spec.user)
@@ -126,12 +129,7 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
             }
         }
     }
-    val votes = listOfNotNull(inboxVote, smtpVote)
-    if (votes.size == 2 && votes[0] != votes[1]) {
-        skipped.add(phrases.tls)
-    } else if (votes.isNotEmpty()) {
-        next = next.copy(tlsMode = votes[0])
-    }
+    if (inboxVote != null) next = next.copy(tlsMode = inboxVote)
 
     val userId = entries["user-id"]?.decoded
     val domain = entries["user-domain"]?.decoded
@@ -1193,13 +1191,13 @@ private fun pinercInbox(settings: AccountSettings): String {
 
 private fun pinercSmtp(settings: AccountSettings): String {
     if (settings.smtpHost.isEmpty()) return ""
-    val submit = if (settings.smtpPort == 587 && settings.tlsMode == TlsMode.StartTls) "/submit" else ""
+    val submit = if (settings.smtpPort == 587 && settings.smtpTlsMode == TlsMode.StartTls) "/submit" else ""
     val user = if (settings.smtpUsername.isNotEmpty() && settings.smtpUsername != settings.username) {
         "/user=${quoteSpecValue(settings.smtpUsername)}"
     } else {
         ""
     }
-    return "{${settings.smtpHost}:${settings.smtpPort}/${pinercTls(settings.tlsMode)}$submit$user}"
+    return "{${settings.smtpHost}:${settings.smtpPort}/${pinercTls(settings.smtpTlsMode)}$submit$user}"
 }
 
 private fun pinercIncoming(settings: AccountSettings): String {

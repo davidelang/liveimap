@@ -52,6 +52,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.compressionWanted
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.MoveMethod
+import org.dlang.liveimap.settings.SmtpNoAuth
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.moveCommandKind
@@ -476,6 +477,7 @@ class LibetpanMailSession : MailSession {
                 account.logImapTraffic,
                 trafficPath,
                 account.tlsMode.name,
+                account.smtpTlsMode.name,
                 account.certPin,
                 account.allowPlaintextAuth,
                 account.acceptInvalidCert,
@@ -499,6 +501,7 @@ class LibetpanMailSession : MailSession {
                 account.logImapTraffic,
                 trafficPath,
                 account.tlsMode.name,
+                account.smtpTlsMode.name,
                 account.certPin,
                 account.allowPlaintextAuth,
                 account.acceptInvalidCert,
@@ -1979,10 +1982,15 @@ class LibetpanMailSession : MailSession {
         val context = currentApplication()
         val ownSmtpPassword = credentials?.smtpPassword
             ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
-        // F52 (David): the IMAP password is used for SMTP only when "Same as IMAP password" is ticked; it is never
-        // assumed. No SMTP password = send without AUTH (native adds a prompt if the server then demands AUTH).
+        // Same-as-IMAP uses the IMAP password. Auto sends that, or no AUTH when it is empty.
+        // On sends no password. Off sends the resolved password. A missing IMAP password is needs-password.
         val acct = account
-        val smtpPassword = smtpPasswordFor(acct?.smtpSameAsImap == true, ownSmtpPassword, loggedInPassword.orEmpty())
+        val imapPassword = loggedInPassword.orEmpty()
+        val same = acct?.smtpSameAsImap == true
+        val mode = acct?.smtpNoAuth ?: SmtpNoAuth.Auto
+        if (same && imapPassword.isEmpty() && mode != SmtpNoAuth.On) throw MailFailure("needs-password")
+        val smtpPassword = smtpPasswordFor(same, ownSmtpPassword, imapPassword, mode)
+        if (mode == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
         val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
         return keeper.write("send") {
             forgetSelected()
@@ -2012,7 +2020,11 @@ class LibetpanMailSession : MailSession {
         if (preserved != null) throw MailFailure("FAIL account settings need attention: $preserved")
         val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password.orEmpty()
         val ownSmtpPassword = probe?.smtpPassword ?: credentials?.smtpPassword ?: ""
-        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword)
+        if (acct.smtpSameAsImap && imapPassword.isEmpty() && acct.smtpNoAuth != SmtpNoAuth.On) {
+            throw MailFailure("needs-password")
+        }
+        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword, acct.smtpNoAuth)
+        if (acct.smtpNoAuth == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         // A staged session has no IMAP handle and does not dial imapHost.
         val staged = stageSmtp(acct, imapPassword)
@@ -2046,6 +2058,7 @@ class LibetpanMailSession : MailSession {
             account.logImapTraffic,
             trafficPath,
             account.tlsMode.name,
+            account.smtpTlsMode.name,
             account.certPin,
             account.allowPlaintextAuth,
             account.acceptInvalidCert,
@@ -2286,6 +2299,7 @@ class LibetpanMailSession : MailSession {
         log: Boolean,
         logPath: String,
         tlsMode: String,
+        smtpTlsMode: String,
         certPin: String,
         allowPlaintextAuth: Boolean,
         acceptInvalidCert: Boolean,
@@ -2309,6 +2323,7 @@ class LibetpanMailSession : MailSession {
         log: Boolean,
         logPath: String,
         tlsMode: String,
+        smtpTlsMode: String,
         certPin: String,
         allowPlaintextAuth: Boolean,
         acceptInvalidCert: Boolean,
@@ -2670,9 +2685,18 @@ internal fun enableForResync(kind: String): String = when (kind) {
     else -> ""
 }
 
-/** F52: SMTP password choice; "" = none configured (sent without AUTH, never the IMAP password). */
-internal fun smtpPasswordFor(sameAsImap: Boolean, smtpPassword: String, imapPassword: String): String =
-    if (sameAsImap) imapPassword else smtpPassword
+/** Resolved SMTP password. On is always "". Auto is "" when the resolved password is empty. */
+internal fun smtpPasswordFor(
+    sameAsImap: Boolean,
+    smtpPassword: String,
+    imapPassword: String,
+    smtpNoAuth: SmtpNoAuth = SmtpNoAuth.Auto,
+): String {
+    if (smtpNoAuth == SmtpNoAuth.On) return ""
+    val resolved = if (sameAsImap) imapPassword else smtpPassword
+    if (smtpNoAuth == SmtpNoAuth.Auto && resolved.isEmpty()) return ""
+    return resolved
+}
 
 /** F144: a reconnect's re-SELECT changes go to the watcher only for the very folder it watches. */
 internal fun reconnectChangeReachesWatcher(selected: String?, watched: String?): Boolean =

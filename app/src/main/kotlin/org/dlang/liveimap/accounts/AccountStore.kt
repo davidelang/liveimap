@@ -246,10 +246,13 @@ class AccountStore private constructor(private val context: Context) {
                 accounts.mapNotNull { account ->
                     val id = account.userData[userAccountId]
                     if (id.isNullOrEmpty()) return@mapNotNull null
-                    val folders = accountDrawerFolders(storedPreference(id))
+                    val stored = storedPreference(id)
+                    val decoded = stored?.let { runCatching { decodeAccountSettings(it) }.getOrNull() }
+                    val folders = if (decoded == null) accountDrawerFolders(null) else accountDrawerFolders(stored)
+                    val friendly = decoded?.friendlyName?.takeIf { it.isNotBlank() }
                     DrawerAccount(
                         id = id,
-                        name = listedName(account),
+                        name = friendly ?: listedName(account),
                         chosen = account === chosen,
                         postponedMailbox = folders.postponedMailbox,
                         favorites = folders.favorites,

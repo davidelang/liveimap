@@ -1110,14 +1110,15 @@ private fun PasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
 }
 
 @Composable
-private fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
+private fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts, ready: Boolean, enabled: Boolean) {
     Text(stringResource(R.string.settings_smtp_password_hint))
     LineField(
         stringResource(R.string.settings_smtp_password),
         drafts.smtpPasswordDraft ?: editor.smtpPassword,
         KeyboardType.Password,
         password = true,
-        ready = editor.ready,
+        ready = ready,
+        enabled = enabled,
         onDraft = { typed -> drafts.smtpPasswordDraft = typed.takeIf { it != editor.smtpPassword } },
     ) { drafts.smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }
 }
@@ -1382,17 +1383,48 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
                 editor.persist(editor.settings.copy(smtpPort = it))
             }
         }
+        "smtpTlsMode" -> if (!settings.emailSubmission) {
+            ChoiceField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                TlsMode.entries,
+                settings.smtpTlsMode,
+                { tlsName(it) },
+            ) { mode ->
+                editor.persist(editor.settings.copy(smtpTlsMode = mode))
+            }
+        }
         "smtpUsername" -> if (!settings.emailSubmission) {
+            val authOn = settings.smtpNoAuth == SmtpNoAuth.On
             Text(stringResource(R.string.settings_smtp_username_hint))
-            LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
+            LineField(
+                stringResource(R.string.settings_smtp_username),
+                settings.smtpUsername,
+                ready = editor.ready && !authOn,
+                enabled = !authOn,
+            ) {
                 editor.persist(editor.settings.copy(smtpUsername = it))
             }
         }
         "smtpSameAsImap" -> if (!settings.emailSubmission) {
-            BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
+            val authOn = settings.smtpNoAuth == SmtpNoAuth.On
+            BoolField(
+                stringResource(R.string.settings_smtp_same_as_imap),
+                settings.smtpSameAsImap,
+                enabled = !authOn,
+            ) {
                 editor.persist(editor.settings.copy(smtpSameAsImap = it))
             }
-            if (drafts != null) SmtpPasswordDraftField(editor, drafts)
+            if (drafts != null) SmtpPasswordDraftField(editor, drafts, editor.ready && !authOn, !authOn)
+        }
+        "smtpNoAuth" -> if (!settings.emailSubmission) {
+            ChoiceField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                SmtpNoAuth.entries,
+                settings.smtpNoAuth,
+                { it.name },
+            ) { choice ->
+                editor.persist(editor.settings.copy(smtpNoAuth = choice))
+            }
         }
         "sieveHost" -> if (!settings.jmapFolders) {
             LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
@@ -1939,7 +1971,7 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
             stringResource(SettingsTreeGenerated.regTitle(key)),
             settings.pollSeconds,
             editor.ready,
-            { it >= 0 },
+            { it in 15..600 },
         ) { number ->
             editor.persist(editor.settings.copy(pollSeconds = number))
         }
@@ -2988,6 +3020,7 @@ private fun LineField(
     password: Boolean = false,
     singleLine: Boolean = true,
     ready: Boolean = true,
+    enabled: Boolean = true,
     commitOnLeave: Boolean = true,
     accept: (String) -> Boolean = { true },
     onDraft: ((String) -> Unit)? = null,
@@ -3032,6 +3065,7 @@ private fun LineField(
             draftState.value = next
             onDraft?.invoke(next)
         },
+        enabled = enabled,
         label = { Text(label) },
         singleLine = singleLine,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,

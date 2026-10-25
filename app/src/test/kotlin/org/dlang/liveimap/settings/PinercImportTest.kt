@@ -137,16 +137,17 @@ class PinercImportTest {
         val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
-        assertEquals(TlsMode.StartTls, submit.next.tlsMode)
-        assertTrue(submit.rows.contains("TLS: None → STARTTLS"))
+        assertEquals(TlsMode.StartTls, submit.next.smtpTlsMode)
+        assertEquals(AccountSettings().tlsMode, submit.next.tlsMode)
 
         val explicit = previewPinerc("smtp-server=smtp.example.com:2525/submit\n", AccountSettings())
         assertEquals(2525, explicit.next.smtpPort)
-        assertEquals(TlsMode.StartTls, explicit.next.tlsMode)
+        assertEquals(TlsMode.StartTls, explicit.next.smtpTlsMode)
 
         val plain = previewPinerc("smtp-server=smtp.example.com\n", AccountSettings())
         assertEquals(25, plain.next.smtpPort)
-        assertEquals(TlsMode.None, plain.next.tlsMode)
+        assertEquals(AccountSettings().smtpTlsMode, plain.next.smtpTlsMode)
+        assertEquals(AccountSettings().tlsMode, plain.next.tlsMode)
 
         val tls = previewPinerc(
             "smtp-server={smtp.example.com/tls}\n",
@@ -154,12 +155,12 @@ class PinercImportTest {
         )
         assertEquals("smtp.example.com", tls.next.smtpHost)
         assertEquals(25, tls.next.smtpPort)
-        assertEquals(TlsMode.StartTls, tls.next.tlsMode)
+        assertEquals(TlsMode.StartTls, tls.next.smtpTlsMode)
         assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
         val implicit = previewPinerc("smtp-server={smtp.example.com/ssl}\n", AccountSettings())
         assertEquals(465, implicit.next.smtpPort)
-        assertEquals(TlsMode.Implicit, implicit.next.tlsMode)
+        assertEquals(TlsMode.Implicit, implicit.next.smtpTlsMode)
 
         val secure = previewPinerc(
             "inbox-path={imap.example.com/Secure/user=ada}INBOX\n",
@@ -206,14 +207,16 @@ class PinercImportTest {
         )
         assertEquals(993, conflict.next.imapPort)
         assertEquals(587, conflict.next.smtpPort)
-        assertEquals(TlsMode.None, conflict.next.tlsMode)
-        assertTrue(conflict.skipped.contains("IMAP and SMTP ask for different TLS"))
+        assertEquals(TlsMode.Implicit, conflict.next.tlsMode)
+        assertEquals(TlsMode.StartTls, conflict.next.smtpTlsMode)
+        assertTrue(conflict.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
         val agree = previewPinerc(
             "inbox-path={imap.example.com/tls/user=ada}INBOX\nsmtp-server=smtp.example.com/submit\n",
             AccountSettings(),
         )
         assertEquals(TlsMode.StartTls, agree.next.tlsMode)
+        assertEquals(TlsMode.StartTls, agree.next.smtpTlsMode)
         assertEquals(143, agree.next.imapPort)
         assertEquals(587, agree.next.smtpPort)
         assertTrue(agree.skipped.none { it == "IMAP and SMTP ask for different TLS" })
@@ -989,6 +992,7 @@ class PinercImportTest {
                 username = "ada",
                 smtpUsername = "ada",
                 tlsMode = TlsMode.StartTls,
+                smtpTlsMode = TlsMode.StartTls,
             ),
         )
         val smtp = submitText.lines().first { it.startsWith("smtp-server=") }

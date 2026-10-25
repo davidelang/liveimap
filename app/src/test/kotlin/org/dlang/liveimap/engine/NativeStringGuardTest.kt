@@ -55,7 +55,7 @@ class NativeStringGuardTest {
         val send = src.substringAfter("SecretWipe authPassWipe{authPass};").substringBefore("// MAIL FROM")
         assertTrue(!send.contains("session->password"))
         assertTrue(!src.contains("if (authPass.empty()) authPass = session->password;"))
-        assertTrue(src.contains("const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);"))
+        assertTrue(src.contains("const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort, session->smtpTlsMode);"))
     }
 
     /** F97 reserve, F100 empty user, F94 deferred delete waits, F42 native backstops. */

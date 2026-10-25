@@ -271,6 +271,7 @@ struct LiveSession {
     std::string password;
     std::string passwordMask;
     std::string tlsMode = "None";
+    std::string smtpTlsMode;
     std::string certPin;
     bool allowPlaintextAuth = false;
     // Advanced, per account, both off by default: accept a certificate that fails validation (like
@@ -6611,7 +6612,7 @@ jobject newSessionOpen(JNIEnv * env, jlong handle, const std::string & tls, cons
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
@@ -6622,8 +6623,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     JChars fr(env, from);
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
+    JChars smtpMode(env, smtpTlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) {
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !smtpMode.s || !pin.s) {
         return newSessionOpen(env, 0, "", "", false, {});
     }
     auto held = std::shared_ptr<LiveSession>(new LiveSession());
@@ -6643,6 +6645,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     session->logImapTraffic = logFlag == JNI_TRUE;
     session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
+    session->smtpTlsMode = smtpMode.c();
     session->certPin = pin.c();
     session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
     session->acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
@@ -6692,7 +6695,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring certPin,
+    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
@@ -6703,8 +6706,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars fr(env, from);
     JChars path(env, logPath);
     JChars mode(env, tlsMode);
+    JChars smtpMode(env, smtpTlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !pin.s) {
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !smtpMode.s || !pin.s) {
         return newSessionOpen(env, 0, "", "", false, {});
     }
     auto held = std::shared_ptr<LiveSession>(new LiveSession());
@@ -6723,6 +6727,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->logImapTraffic = logFlag == JNI_TRUE;
     session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
+    session->smtpTlsMode = smtpMode.c();
     session->certPin = pin.c();
     session->allowPlaintextAuth = allowPlaintext == JNI_TRUE;
     session->acceptInvalidCert = acceptInvalidCert == JNI_TRUE;
@@ -10190,7 +10195,8 @@ static bool envelopeAddressOk(const char * a) {
     return !quoted;
 }
 
-std::string smtpTlsModeFor(const std::string & imapMode, int smtpPort) {
+std::string smtpTlsModeFor(const std::string & imapMode, int smtpPort, const std::string & smtpMode) {
+    if (smtpMode == "None" || smtpMode == "StartTls" || smtpMode == "Implicit") return smtpMode;
     if (imapMode == "None") return imapMode;
     if (imapMode != "StartTls" && imapMode != "Implicit") return imapMode;
     return smtpPort == 465 ? "Implicit" : "StartTls";
@@ -10291,9 +10297,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return 0;
         }
     }
-    // F52: the IMAP TLS mode, adjusted to the SMTP port: 465 is implicit TLS, any other port with a TLS account
-    // uses STARTTLS (never a downgrade to plaintext). "None" stays None; the plaintext gate still applies.
-    const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort);
+    // A stored SMTP mode wins. Otherwise the IMAP mode, adjusted to the SMTP port.
+    const std::string mode = smtpTlsModeFor(session->tlsMode, session->smtpPort, session->smtpTlsMode);
     if (mode != "None" && mode != "StartTls" && mode != "Implicit") {
         throwFailure(env, "unknown tls mode");
         return 0;
