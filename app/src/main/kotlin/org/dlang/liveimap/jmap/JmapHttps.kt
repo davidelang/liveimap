@@ -90,12 +90,47 @@ class JmapHttpsFetch(
     }
 }
 
+private data class JmapFactoryKey(val host: String, val port: Int, val pin: String, val policy: TlsPolicy)
+
+private val jmapExchangeFactories = java.util.concurrent.ConcurrentHashMap<JmapFactoryKey, javax.net.ssl.SSLSocketFactory>()
+
+/** One factory per host, port, pin, and policy. A different pin is a different key. The manager checks the pin on every handshake. */
+private fun jmapExchangeFactory(host: String, port: Int, pin: String, policy: TlsPolicy): javax.net.ssl.SSLSocketFactory {
+    val key = JmapFactoryKey(host, port, pin, policy)
+    return jmapExchangeFactories.computeIfAbsent(key) {
+        val manager = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
+                throw java.security.cert.CertificateException("client trust is not used")
+
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
+                val ders = chain?.map { it.encoded } ?: emptyList()
+                val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
+                if (verdict.isEmpty()) return
+                // Discovery is unauthenticated: a pinnable failure is offered after the exchange.
+                if (jmapPinnable(verdict)) return
+                throw java.security.cert.CertificateException(verdict)
+            }
+
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
+        val context = javax.net.ssl.SSLContext.getInstance("TLS")
+        context.init(null, arrayOf(manager), null)
+        context.socketFactory
+    }
+}
+
 /** Discovery exchange. [deferPinnable] is on: a certificate the system CAs reject can still be offered for pinning. */
 fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String) -> JmapHttpExchange = { url ->
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
         // No Authorization on this call: a certificate the system CAs reject is left for the post-exchange check,
         // which can offer the pin.
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy, deferPinnable = true)
+        if (this is HttpsURLConnection) {
+            val https = this
+            val host = jmapTrustHost(url)
+            val port = if (https.url.port == -1) https.url.defaultPort else https.url.port
+            sslSocketFactory = jmapExchangeFactory(host, port, pin, policy)
+            hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(https.url.host, ignoreCase = true) }
+        }
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
@@ -103,6 +138,8 @@ fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String)
         setRequestProperty("Accept", "application/json")
     }
     object : JmapHttpExchange {
+        private var finished = false
+
         override val status: Int
             get() = connection.responseCode
 
@@ -117,11 +154,25 @@ fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String)
             } else {
                 connection.errorStream
             }
-            if (stream == null) return ""
-            return stream.use { readJmapBody(it) }
+            if (stream == null) {
+                finished = true
+                return ""
+            }
+            val text = stream.use { readJmapBody(it) }
+            finished = true
+            return text
         }
 
         override fun close() {
+            if (finished) return
+            try {
+                connection.inputStream?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                connection.errorStream?.close()
+            } catch (_: Exception) {
+            }
             connection.disconnect()
         }
     }

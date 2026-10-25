@@ -1,5 +1,6 @@
 package org.dlang.liveimap.jmap
 
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -248,6 +249,8 @@ class JmapMailSession(
         var prefixFinal: Boolean = false
     }
     private val parts = HashMap<String, Map<String, Part>>()
+    /** Email id whose structure the open reader last fetched. Select does not clear it. */
+    private var openEmailId: String? = null
 
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
 
@@ -287,6 +290,7 @@ class JmapMailSession(
             authorization = loginAuthorization
             epoch = epochClock().coerceAtLeast(1L) and 0x7fffffffL
             ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
+            openEmailId = null
             connected = true
             OpenResult.Connected
         } catch (failure: JmapFailure) {
@@ -349,6 +353,7 @@ class JmapMailSession(
         totals[id] = total
         numberExistingLocked(id)
         selectedPath = mailbox
+        dropClosedPartBytes()
         SelectResult(epoch, (uids[id]?.next ?: 1L), total)
     }
 
@@ -473,15 +478,9 @@ class JmapMailSession(
         val structure = call(body) { root -> firstEmail(root)["bodyStructure"] as? Json.Obj ?: throw MailFailure("jmap message has no structure") }
         val map = HashMap<String, Part>()
         val tree = mimeOf(structure, "", 0, map)
-        for ((other, cached) in parts) {
-            if (other == id) continue
-            for (part in cached.values) {
-                part.bytes = null
-                part.whole = false
-                part.prefixFinal = false
-            }
-        }
+        openEmailId = id
         parts[id] = map
+        dropClosedPartBytes()
         tree
     }
 
@@ -543,16 +542,49 @@ class JmapMailSession(
         uids.getOrPut(mailboxId) { Uids() }.uid(created)
     }
 
-    /** "Send over JMAP" (account.emailSubmission): Email/import into Sent, then EmailSubmission/set (jmapSend), as
-     *  compose does. Without it a JMAP account sends through its SMTP server, which is not this session. Returns -1:
+    /** "Send over JMAP" (account.emailSubmission): the message file already written, then blob upload, Email/import,
+     *  and EmailSubmission/set. Not Email/set create. Uses the session from [open]; discovery is not called again.
+     *  Without the option a JMAP account sends through its SMTP server, which is not this session. Returns -1:
      *  EmailSubmission reports no DSN choice here. */
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = onSession {
-        val a = account ?: throw MailFailure("not connected")
-        if (!a.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
-        if (rfc822.isEmpty()) throw MailFailure("message is empty")
-        val s = need()
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int {
+        val spilled = File.createTempFile("liveimap-jmap-", ".rfc822")
+        try {
+            spilled.writeBytes(rfc822)
+            return smtpSendFile(spilled, recipients, dsnNotify)
+        } finally {
+            spilled.delete()
+        }
+    }
+
+    override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int = onSession {
+        sendOpenSession(file, recipients)
+    }
+
+    private suspend fun sendOpenSession(file: File, recipients: List<String>): Int {
+        val saved = account ?: throw MailFailure("not connected")
+        if (!saved.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
+        if (!file.isFile || file.length() == 0L) throw MailFailure("message is empty")
+        val discovered = need()
         val policy = accountPolicy()
-        jmap { jmapSend(JmapOffer.Mail(s), rfc822, a.email, recipients, accountName(), password, pin, uploadFor(pin, policy), postFor(pin, policy), trust, a.sentMailbox, draftsName = a.postponedMailbox, policy = policy, accountKey = accountKey) }
+        jmap {
+            val bytes = file.readBytes()
+            jmapSend(
+                JmapOffer.Mail(discovered),
+                bytes,
+                saved.email,
+                recipients,
+                accountName(),
+                password,
+                pin,
+                uploadFor(pin, policy),
+                postFor(pin, policy),
+                trust,
+                saved.sentMailbox,
+                draftsName = saved.postponedMailbox,
+                policy = policy,
+                accountKey = accountKey,
+            )
+        }
         -1
     }
 
@@ -810,6 +842,7 @@ class JmapMailSession(
         authorization = ""
         password = ""
         ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
+        openEmailId = null
     }
 
     // ---- internals (call on the session command) ----
@@ -835,6 +868,19 @@ class JmapMailSession(
     private suspend fun download(blobId: String, type: String): ByteArray {
         val policy = accountPolicy()
         return jmap { jmapDownload(need(), blobId, type, authorization, pin, getFor(pin, policy), trust, policy, accountKey) }
+    }
+
+    /** Part bodies for every email except the open reader. The maps themselves stay. */
+    private fun dropClosedPartBytes() {
+        val open = openEmailId
+        for ((id, cached) in parts) {
+            if (id == open) continue
+            for (part in cached.values) {
+                part.bytes = null
+                part.whole = false
+                part.prefixFinal = false
+            }
+        }
     }
 
     private fun selectedTable(): Pair<String, Uids> {

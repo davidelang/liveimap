@@ -3781,3 +3781,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - Session snapshots and one prompt queue.
 
 ## 2026-10-25 - Extra IDLE, the JMAP session, and the folder list.
+
+## 2026-10-25 - JMAP session, Sieve lines, and traffic log.
+
+- Approved plan: sandbox/plans/jmap-sieve-traffic-20261024-0534-plan.md
+- JMAP send uses the session discovered at open and does not discover again. Discovery keeps one TLS socket factory per host, port, pin, and policy, and a connection that can be reused is not disconnected.
+- Select keeps the epoch and each mailbox's email-id UIDs. Part bytes of a message that is not the open reader are dropped; that reader's mappings stay.
+- Sieve buffers only the TLS stream after STARTTLS. The traffic log has one writer, opens the file once, and writes a gap line when the queue drops lines.
+- jmapSubmit lives in the test source. tlsAuthType is gone.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
