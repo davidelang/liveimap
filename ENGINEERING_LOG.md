@@ -3820,3 +3820,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Unknown enum text throws into unknownSettings, the same path as tlsMode=NotAMode, so the next save does not rewrite it to the old omitted default. A missing key still uses the tree default.
 - newAccountSettings() and constructor defaults stay: call sites outside this plan's Critical Files still need them.
+
+## 2026-10-25 - Settings registry.
+
+- Fixup: unknown enum text for paneArrangement, previewSize, folderPosition, readerTextLayout, compression, dsnMode, and nonAsciiDisplay throws out of decodeAccountSettings. stageSave writes nothing. A missing key still uses the tree default.
