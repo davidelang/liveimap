@@ -3815,3 +3815,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: the toolbarRows leaf writes the count with update, like the toolbar editor. saveKeepingToolbars still copies the stored count, so persist was dropping the new value.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Settings registry.
+
+- Unknown enum text throws into unknownSettings, the same path as tlsMode=NotAMode, so the next save does not rewrite it to the old omitted default. A missing key still uses the tree default.
+- newAccountSettings() and constructor defaults stay: call sites outside this plan's Critical Files still need them.
