@@ -1,10 +1,14 @@
 package org.dlang.liveimap.ui.reader
 
+import org.jsoup.nodes.Element
+
 /**
  * Sender HTML runs with JS, file and content access off, but markup alone can still navigate: a
  * <meta http-equiv="refresh"> redirects without any click, and that navigation used to raise the link prompt.
  * Refresh tags are removed before loading, and only a real tap on a main-frame link may prompt.
  */
+private val schemePattern = Regex("[a-z][a-z0-9+.-]*")
+
 private val metaRefresh = Regex(
     """<meta\b[^>]*\bhttp-equiv\s*=\s*(?:"\s*refresh\s*"|'\s*refresh\s*'|refresh\b)[^>]*>""",
     setOf(RegexOption.IGNORE_CASE),
@@ -48,7 +52,7 @@ fun linkSafety(url: String): LinkSafety {
     val colon = trimmed.indexOf(':')
     if (colon <= 0) return LinkSafety.Blocked
     val scheme = trimmed.substring(0, colon).lowercase()
-    if (!Regex("[a-z][a-z0-9+.-]*").matches(scheme)) return LinkSafety.Blocked
+    if (!schemePattern.matches(scheme)) return LinkSafety.Blocked
     return when (scheme) {
         "http", "https", "mailto" -> LinkSafety.Safe
         in blockedSchemes -> LinkSafety.Blocked
@@ -67,4 +71,25 @@ fun remoteRequestAllowed(scheme: String?, accept: String?, isForMainFrame: Boole
     val s = scheme?.lowercase() ?: return false
     if (s != "http" && s != "https") return false
     return accept?.trim()?.lowercase()?.startsWith("image/") == true
+}
+
+/** One pass over an ordered list: each `li` maps to its 1-based number. */
+fun htmlListNumbers(parent: Element): HashMap<Element, Int> {
+    val numbers = HashMap<Element, Int>()
+    var number = 0
+    for (child in parent.children()) {
+        if (child.normalName() == "li") {
+            number++
+            numbers[child] = number
+        }
+    }
+    return numbers
+}
+
+fun htmlListNumber(element: Element, numbers: HashMap<Element, Int>): Int {
+    val known = numbers[element]
+    if (known != null) return known
+    val parent = element.parent() ?: return 1
+    numbers.putAll(htmlListNumbers(parent))
+    return numbers[element] ?: 1
 }

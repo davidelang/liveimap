@@ -153,6 +153,7 @@ import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpScreen
 import org.dlang.liveimap.ui.index.MessageIndexScreen
+import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
@@ -435,6 +436,7 @@ fun LiveImapNavHost() {
 
     LaunchedEffect(Unit) {
         store.chosenAccountIdFlow().collect {
+            OpenMessageOrder.clear()
             applyOpenAccount()
             applyRunningLayout()
         }
@@ -997,15 +999,6 @@ fun LiveImapNavHost() {
         scope.launch {
             drawerState.close()
             go()
-        }
-    }
-
-    fun persistFavorites(next: List<FolderFavorite>) {
-        favorites = next
-        scope.launch {
-            favoriteMutex.withLock {
-                store.update { it.copy(favorites = next) }
-            }
         }
     }
 

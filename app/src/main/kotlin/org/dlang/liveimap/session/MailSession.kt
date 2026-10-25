@@ -1,11 +1,14 @@
 package org.dlang.liveimap.session
 
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
+
+private val featureCapsByNames = ConcurrentHashMap<Set<String>, Capabilities>()
 
 val connectedConnection: StateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Connected)
 
@@ -35,7 +38,12 @@ interface MailSession {
 
     val capabilities: Set<String>
     val featureCaps: Capabilities
-        get() = Capabilities.parse(capabilities.joinToString(" "))
+        get() {
+            val names = capabilities
+            return featureCapsByNames.computeIfAbsent(names) { caps ->
+                Capabilities.parse(caps.joinToString(" "))
+            }
+        }
     val connectionState: StateFlow<ConnectionState>
         get() = connectedConnection
     suspend fun resume() {}

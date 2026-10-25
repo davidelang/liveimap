@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.reader
 
+import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.usableTrashName
 import androidx.compose.foundation.horizontalScroll
 import org.dlang.liveimap.settings.openBound
@@ -287,6 +288,8 @@ internal data class AttachmentRow(
 internal class ReaderHeld : ViewModel() {
     var openUid: Long = -1L
     var openMailbox: String = ""
+    var openAccount: String = ""
+    var openEpoch: Long = -1L
     var ready: Boolean = false
     var recordScroll: Boolean = true
     val carry = Utf8Carry()
@@ -326,9 +329,15 @@ internal class ReaderHeld : ViewModel() {
     val selectedMailboxState = mutableStateOf<String?>(null)
     val headingState = mutableStateOf(MailboxTitle("", ""))
 
+    fun holds(ref: MessageRef): Boolean =
+        ready && openAccount == ref.accountId && openMailbox == ref.mailbox &&
+            openEpoch == ref.uidValidity && openUid == ref.uid
+
     fun dropLoaded() {
         openUid = -1L
         openMailbox = ""
+        openAccount = ""
+        openEpoch = -1L
         ready = false
         recordScroll = true
         carry.pending = ByteArray(0)
@@ -465,8 +474,10 @@ private fun MessageReaderLoaded(
     val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
-    val held = viewModel<ReaderHeld>(key = "reader:$mailbox:$uid")
-    val reuseBody = held.ready && held.openMailbox == mailbox && held.openUid == uid
+    val messageRef = MessageRef(accountId, mailbox, uidValidity, uid)
+    val held = viewModel<ReaderHeld>(key = "pane")
+    if (held.ready && !held.holds(messageRef)) held.dropLoaded()
+    val reuseBody = held.holds(messageRef)
     val host = context.hostActivity()
     DisposableEffect(held) {
         onDispose {
@@ -526,7 +537,15 @@ private fun MessageReaderLoaded(
     var headerSender by held.headerSenderState
     var headerResentTo by held.headerResentToState
     var headerListId by held.headerListIdState
-    var imageTrust by remember(accountId) { mutableStateOf(loadImageTrust(context.filesDir, accountId)) }
+    val trustLoaded = remember(accountId) {
+        try {
+            loadImageTrust(context.filesDir, accountId) to true
+        } catch (_: java.io.IOException) {
+            ImageTrust() to false
+        }
+    }
+    var imageTrust by remember(accountId) { mutableStateOf(trustLoaded.first) }
+    val trustCanSave = trustLoaded.second
     var headerDate by held.headerDateState
     var headerSubject by held.headerSubjectState
     var headerReady by held.headerReadyState
@@ -1238,8 +1257,8 @@ private fun MessageReaderLoaded(
 
     laterRetry.block = { requestView(selectedView) }
 
-    LaunchedEffect(session, mailbox, uid, loadToken) {
-        val reuse = held.ready && held.openMailbox == mailbox && held.openUid == uid && loadToken == 0
+    LaunchedEffect(session, mailbox, uid, uidValidity, loadToken) {
+        val reuse = held.holds(MessageRef(accountId, mailbox, uidValidity, uid)) && loadToken == 0
         if (reuse) {
             loading = false
             connected = true
@@ -1395,9 +1414,11 @@ private fun MessageReaderLoaded(
                         }
                     }
                 }
-            held.ready = true
+            held.openAccount = accountId
             held.openMailbox = mailbox
             held.openUid = uid
+            held.openEpoch = uidValidity
+            held.ready = true
         }
     }
 
@@ -2143,7 +2164,7 @@ private fun MessageReaderLoaded(
                         onClick = {
                             moreMenu = false
                             imageTrust = withSender(imageTrust, headerFrom, !on)
-                            saveImageTrust(context.filesDir, accountId, imageTrust)
+                            if (trustCanSave) saveImageTrust(context.filesDir, accountId, imageTrust)
                             if (!on) allowImages = true
                         },
                         modifier = Modifier.testTag("reader-images-sender"),
@@ -2166,7 +2187,7 @@ private fun MessageReaderLoaded(
                         onClick = {
                             moreMenu = false
                             imageTrust = withList(imageTrust, headerListId, !on)
-                            saveImageTrust(context.filesDir, accountId, imageTrust)
+                            if (trustCanSave) saveImageTrust(context.filesDir, accountId, imageTrust)
                             if (!on) allowImages = true
                         },
                         modifier = Modifier.testTag("reader-images-list"),
@@ -2535,6 +2556,11 @@ private fun MessageReaderLoaded(
                                     val y = held.webScroll
                                     if (y > 0) view.post { view.scrollTo(0, y) }
                                 }
+                            },
+                            onRelease = { view ->
+                                val parent = view.parent
+                                if (parent is android.view.ViewGroup) parent.removeView(view)
+                                view.destroy()
                             },
                             modifier = Modifier
                                 .weight(1f)

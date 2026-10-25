@@ -3445,13 +3445,17 @@ private fun MessageIndexLoaded(
                 }
                 TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
             }
+            val density = LocalDensity.current
             val sequenceChars = existsColumnChars(folderExists)
             val sequenceStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
-            val sequenceWidth = with(LocalDensity.current) {
-                sequenceMeasurer.measure(
-                    text = "0".repeat(sequenceChars),
-                    style = sequenceStyle,
-                ).size.width.toDp()
+            val sequenceText = "0".repeat(sequenceChars)
+            val sequenceWidth = remember(sequenceText, sequenceStyle, density) {
+                with(density) {
+                    sequenceMeasurer.measure(
+                        text = sequenceText,
+                        style = sequenceStyle,
+                    ).size.width.toDp()
+                }
             }
             val nowEpoch = Instant.now().epochSecond
             val dateZone = ZoneId.systemDefault()
@@ -3468,12 +3472,14 @@ private fun MessageIndexLoaded(
                     badPattern = indexBadPattern,
                 ),
             )
-            var dateWidthPx = 0
-            for (sample in dateSamples) {
-                val measured = sequenceMeasurer.measure(text = sample, style = dateStyle).size.width
-                if (measured > dateWidthPx) dateWidthPx = measured
+            val dateWidth = remember(dateSamples, dateStyle, density) {
+                var dateWidthPx = 0
+                for (sample in dateSamples) {
+                    val measured = sequenceMeasurer.measure(text = sample, style = dateStyle).size.width
+                    if (measured > dateWidthPx) dateWidthPx = measured
+                }
+                with(density) { dateWidthPx.toDp() }
             }
-            val dateWidth = with(LocalDensity.current) { dateWidthPx.toDp() }
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -3660,7 +3666,7 @@ private fun MessageIndexLoaded(
             val offer = undoOffer
             val uidPlus = session.featureCaps.uidPlus
             val showExpunge = snackMode == "undo" && offer != null && offer.delete &&
-                !offer.allMailbox && offer.uids.isNotEmpty() && uidPlus
+                offer.uids.isNotEmpty() && uidPlus
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {

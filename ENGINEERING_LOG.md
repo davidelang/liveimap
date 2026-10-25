@@ -3740,3 +3740,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
 - A filename* that would be cut after 998 octets is written as folded RFC 2231 sections. A shorter filename* stays one unquoted parameter. A 7bit, 8bit, binary, or auto part with a run the writer would cut is base64. Compose text of 998 octets is quoted-printable.
 - No install, and no message sent
+
+## 2026-10-24 - One index snapshot and one reader model per pane.
+
+- Approved plan: sandbox/plans/index-reader-held-20261024-1813-plan.md
+- OpenMessageOrder publishes one snapshot, and an unknown uid throws. Thread members are the held page plus expanded threads. Each reader pane keeps one model and destroys its WebView after detach.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

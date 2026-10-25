@@ -32,8 +32,9 @@ fun htmlAsText(html: String): String {
     val document = Jsoup.parse(html)
     document.select("script, style").remove()
     val state = HtmlRender()
+    val numbers = HashMap<Element, Int>()
     val body = document.body()
-    if (body != null) renderNode(body, state)
+    if (body != null) renderNode(body, state, numbers)
     return finishHtmlText(state)
 }
 
@@ -41,7 +42,7 @@ fun htmlAsText(html: String): String {
 // (opening work, children pushed) and left again (closing work) without recursion.
 private class Frame(val node: Node, val leaving: Boolean, val savedQuote: Boolean = false)
 
-private fun renderNode(root: Node, state: HtmlRender) {
+private fun renderNode(root: Node, state: HtmlRender, numbers: HashMap<Element, Int>) {
     val stack = ArrayDeque<Frame>()
     stack.addLast(Frame(root, leaving = false))
     while (stack.isNotEmpty()) {
@@ -66,7 +67,7 @@ private fun renderNode(root: Node, state: HtmlRender) {
         when (name) {
             "li" -> {
                 val parent = node.parent()?.normalName().orEmpty()
-                if (parent == "ol") appendRaw(state, liNumber(node).toString() + ". ")
+                if (parent == "ol") appendRaw(state, htmlListNumber(node, numbers).toString() + ". ")
                 else appendRaw(state, "* ")
             }
             "img" -> {
@@ -106,16 +107,6 @@ private fun appendLinkMark(node: Element, state: HtmlRender) {
         state.links.size
     }
     appendRaw(state, " [$n]")
-}
-
-private fun liNumber(element: Element): Int {
-    val parent = element.parent() ?: return 1
-    var number = 0
-    for (child in parent.children()) {
-        if (child.normalName() == "li") number++
-        if (child === element) return number
-    }
-    return number
 }
 
 private fun breakLine(state: HtmlRender) {

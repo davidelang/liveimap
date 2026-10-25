@@ -31,6 +31,7 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.SearchEdge
+import org.dlang.liveimap.session.MessageOrder
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DeletePolicy
@@ -561,7 +562,6 @@ data class MailUndo(
 ) {
     val uids: List<Long> get() = source.map { it.uid }
     val destUids: List<Long> get() = dest.map { it.uid }
-    val allMailbox: Boolean get() = false
 }
 
 /** The account scope of a [MessageRef] made for [settings]. */
@@ -768,42 +768,50 @@ fun followingUndeleted(uids: List<Long>, deleted: Set<Long>, current: Long): Lon
 fun newestAtEnd(view: FolderView): Boolean = !view.newestFirst
 
 internal object OpenMessageOrder {
-    var mailbox: String = ""
-        private set
+    private class Snapshot(
+        val accountId: String,
+        val uidValidity: Long,
+        val mailbox: String,
+        val uids: List<Long>,
+        val sequences: Map<Long, Int>,
+        val deleted: Set<Long>,
+    )
+
+    private val emptySnapshot = Snapshot("", 0L, "", emptyList(), emptyMap(), emptySet())
+    private var snapshot = emptySnapshot
+
+    val mailbox: String get() = snapshot.mailbox
+
     /** F93: the order belongs to one account and one UIDVALIDITY epoch, not just a mailbox name. */
-    var accountId: String = ""
-        private set
-    var uidValidity: Long = 0L
-        private set
+    val accountId: String get() = snapshot.accountId
+    val uidValidity: Long get() = snapshot.uidValidity
+    val uids: List<Long> get() = snapshot.uids
 
     fun matches(accountId: String, mailbox: String, uidValidity: Long): Boolean =
-        this.mailbox == mailbox && this.accountId == accountId && accountId.isNotEmpty() &&
-            this.uidValidity != 0L && this.uidValidity == uidValidity
-    var uids: List<Long> = emptyList()
-        private set
-    private var sequences = emptyMap<Long, Int>()
-    private var deleted = emptySet<Long>()
+        snapshot.mailbox == mailbox && snapshot.accountId == accountId && accountId.isNotEmpty() &&
+            snapshot.uidValidity != 0L && snapshot.uidValidity == uidValidity
 
     fun publish(accountId: String, uidValidity: Long, mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
-        this.accountId = accountId
-        this.uidValidity = uidValidity
-        this.mailbox = mailbox
-        this.uids = uids.toList()
-        sequences = rows.associate { it.uid to it.sequence }
-        deleted = rows.filter { "\\Deleted" in it.flags }.map { it.uid }.toSet()
+        val deleted = HashSet<Long>()
+        for (row in rows) {
+            if ("\\Deleted" in row.flags) deleted.add(row.uid)
+        }
+        snapshot = Snapshot(
+            accountId,
+            uidValidity,
+            mailbox,
+            uids.toList(),
+            rows.associate { it.uid to it.sequence },
+            deleted,
+        )
     }
 
-    fun sequence(uid: Long): Int = sequences[uid] ?: 0
+    fun sequence(uid: Long): Int = snapshot.sequences[uid] ?: throw MailFailure("anchor $uid")
 
-    fun followingAfterDelete(current: Long): Long? = followingUndeleted(uids, deleted, current)
+    fun followingAfterDelete(current: Long): Long? = followingUndeleted(snapshot.uids, snapshot.deleted, current)
 
     fun clear() {
-        mailbox = ""
-        accountId = ""
-        uidValidity = 0L
-        uids = emptyList()
-        sequences = emptyMap()
-        deleted = emptySet()
+        snapshot = emptySnapshot
     }
 }
 
@@ -813,8 +821,15 @@ class IndexModel(
     private val mailbox: String,
 ) {
     private var heldRows: List<IndexRow> = emptyList()
-    var order: List<Long> = emptyList()
-        private set
+    private var orderBacking: List<Long> = emptyList()
+    private var orderUids: LongArray = LongArray(0)
+
+    var order: List<Long>
+        get() = orderBacking
+        private set(value) {
+            orderBacking = value
+            orderUids = if (value is WindowedOrder) LongArray(0) else LongArray(value.size) { value[it] }
+        }
     var orderMailboxes: List<String> = emptyList()
         private set
     private var loadedWindow = false
@@ -893,20 +908,23 @@ class IndexModel(
     var threadMembers: Map<Long, IndexRow> = emptyMap()
         private set
 
+    private var memberRows: Map<Long, IndexRow> = emptyMap()
+    private var threadShape: MessageOrder? = null
     private var openExpanded: Set<Long> = emptySet()
 
-    val threadHidden: Map<Long, List<Long>>
-        get() = threadPlan.associate { it.rootUid to it.hiddenUids }
+    var threadHidden: Map<Long, List<Long>> = emptyMap()
+        private set
 
-    val threadDepth: Map<Long, Int>
-        get() {
-            val out = LinkedHashMap<Long, Int>()
-            for (part in threadPlan) out.putAll(part.depthByUid)
-            return out
-        }
+    var threadDepth: Map<Long, Int> = emptyMap()
+        private set
 
     fun noteExpanded(expanded: Set<Long>) {
+        if (openExpanded == expanded) return
         openExpanded = expanded
+        if (!threading) return
+        val next = keptMembers(emptyList(), heldRows.map { it.uid })
+        memberRows = next
+        threadMembers = next
     }
 
     fun messageOrder(expanded: Set<Long>): List<Long> {
@@ -923,11 +941,99 @@ class IndexModel(
             notice = failure.text
             return false
         }
-        val merged = LinkedHashMap(threadMembers)
-        for (row in fetched) merged[row.uid] = row
-        threadMembers = merged
+        val next = keptMembers(fetched, heldRows.map { it.uid })
+        memberRows = next
+        threadMembers = next
         notice = null
         return true
+    }
+
+    private fun threadShapeOf(uids: LongArray, depths: ShortArray): MessageOrder = MessageOrder(
+        uids,
+        depths,
+        mailbox,
+        orderAccountId,
+        epochs[mailbox] ?: 0L,
+        LongArray(0),
+        LongArray(0),
+        ByteArray(0),
+        IntArray(0),
+        IntArray(0),
+    )
+
+    private fun adoptThread(plan: List<CollapsedThread>) {
+        threadPlan = plan
+        var count = 0
+        for (part in plan) count += 1 + part.hiddenUids.size
+        val uids = LongArray(count)
+        val depths = ShortArray(count)
+        var at = 0
+        for (part in plan) {
+            uids[at] = part.rootUid
+            depths[at] = 0
+            at++
+            for (uid in part.hiddenUids) {
+                uids[at] = uid
+                depths[at] = (part.depthByUid[uid] ?: 1).toShort()
+                at++
+            }
+        }
+        val shape = threadShapeOf(uids, depths)
+        threadShape = shape
+        publishShape(shape)
+    }
+
+    private fun publishShape(shape: MessageOrder) {
+        val hidden = LinkedHashMap<Long, List<Long>>()
+        val depth = LinkedHashMap<Long, Int>()
+        val ids = shape.uids
+        val levels = shape.depths
+        val n = minOf(ids.size, levels.size)
+        var i = 0
+        while (i < n) {
+            val base = levels[i].toInt()
+            val root = ids[i]
+            val kids = ArrayList<Long>()
+            var j = i + 1
+            while (j < n && levels[j].toInt() > base) {
+                val uid = ids[j]
+                if (uid >= 0L) {
+                    kids.add(uid)
+                    depth[uid] = levels[j].toInt()
+                }
+                j++
+            }
+            if (root >= 0L) hidden[root] = kids
+            i = j
+        }
+        threadHidden = hidden
+        threadDepth = depth
+    }
+
+    private fun keptMembers(extra: List<IndexRow>, pageRoots: Collection<Long>): Map<Long, IndexRow> {
+        val hidden = threadHidden
+        val want = LinkedHashSet<Long>()
+        for (root in pageRoots) {
+            val kids = hidden[root]
+            if (kids != null) for (uid in kids) want.add(uid)
+        }
+        for (root in openExpanded) {
+            val kids = hidden[root]
+            if (kids != null) for (uid in kids) want.add(uid)
+        }
+        if (want.isEmpty()) return emptyMap()
+        val out = LinkedHashMap<Long, IndexRow>(want.size)
+        for (row in extra) {
+            if (row.uid in want) out[row.uid] = row
+        }
+        if (out.size < want.size) {
+            for (uid in want) {
+                if (uid in out) continue
+                val row = memberRows[uid]
+                if (row != null) out[uid] = row
+            }
+        }
+        return out
     }
 
     fun publishMessageOrder() {
@@ -1312,6 +1418,7 @@ class IndexModel(
         val previousAnchor = pageAnchor
         val previousSummaries = summaries
         val previousMembers = threadMembers
+        val previousPool = memberRows
         pageAnchor += 1
         try {
             pageFailures = null
@@ -1330,6 +1437,7 @@ class IndexModel(
             heldRows = previous
             summaries = previousSummaries
             threadMembers = previousMembers
+            memberRows = previousPool
             notice = failure.text
         }
         return heldRows
@@ -1343,6 +1451,7 @@ class IndexModel(
         val previousIndex = lastVisibleIndex
         val previousSummaries = summaries
         val previousMembers = threadMembers
+        val previousPool = memberRows
         pageAnchor -= 1
         lastVisibleIndex = 0
         try {
@@ -1362,6 +1471,7 @@ class IndexModel(
             heldRows = previous
             summaries = previousSummaries
             threadMembers = previousMembers
+            memberRows = previousPool
             notice = failure.text
         }
         return heldRows
@@ -1372,6 +1482,7 @@ class IndexModel(
         val previousRows = heldRows
         val previousOrder = order
         val previousMembers = threadMembers
+        val previousPool = memberRows
         val previousSummaries = summaries
         val previousExists = knownExists
         val previousArrival = arrivalTotal
@@ -1384,13 +1495,14 @@ class IndexModel(
                     val flags = flagsByUid[row.uid]
                     if (flags == null) row else row.copy(flags = flags)
                 }
-                if (threadMembers.isNotEmpty()) {
-                    val merged = LinkedHashMap(threadMembers)
-                    for ((uid, row) in threadMembers) {
-                        val flags = flagsByUid[uid] ?: continue
-                        merged[uid] = row.copy(flags = flags)
+                if (memberRows.isNotEmpty()) {
+                    val next = LinkedHashMap<Long, IndexRow>(memberRows.size)
+                    for ((uid, row) in memberRows) {
+                        val flags = flagsByUid[uid]
+                        next[uid] = if (flags == null) row else row.copy(flags = flags)
                     }
-                    threadMembers = merged
+                    memberRows = next
+                    threadMembers = next
                 }
                 refreshSummaryUnread()
             }
@@ -1401,6 +1513,7 @@ class IndexModel(
             heldRows = previousRows
             order = previousOrder
             threadMembers = previousMembers
+            memberRows = previousPool
             summaries = previousSummaries
             knownExists = previousExists
             arrivalTotal = previousArrival
@@ -1992,8 +2105,12 @@ class IndexModel(
         val previousIndex = lastVisibleIndex
         val previousSummaries = summaries
         val previousMembers = threadMembers
+        val previousPool = memberRows
         val previousThreading = threading
         val previousPlan = threadPlan
+        val previousShape = threadShape
+        val previousHidden = threadHidden
+        val previousDepth = threadDepth
         pageAnchor = 0
         lastVisibleIndex = 0
         placedStart = false
@@ -2024,8 +2141,12 @@ class IndexModel(
             lastVisibleIndex = previousIndex
             summaries = previousSummaries
             threadMembers = previousMembers
+            memberRows = previousPool
             threading = previousThreading
             threadPlan = previousPlan
+            threadShape = previousShape
+            threadHidden = previousHidden
+            threadDepth = previousDepth
             windowFailed = true
             pendingNotice = null
             pageFailures = null
@@ -2471,7 +2592,8 @@ class IndexModel(
         // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
         val kept = if (matched != null) collapsed else restrictThreads(collapsed)
         threading = true
-        threadPlan = kept
+        adoptThread(kept)
+        memberRows = emptyMap()
         threadMembers = emptyMap()
         order = compactUids(kept.map { it.rootUid })
         arrivalTotal = 0
@@ -2667,15 +2789,29 @@ class IndexModel(
         return order
     }
 
+    private fun indexedRange(uids: List<Long>, start: Int, count: Int): List<Long> {
+        if (count <= 0 || start >= uids.size) return emptyList()
+        val from = if (start < 0) 0 else start
+        val end = minOf(uids.size, from + count)
+        val out = ArrayList<Long>(end - from)
+        if (uids is WindowedOrder) {
+            for (i in from until end) {
+                val id = uids[i]
+                if (id != WindowedOrder.Unknown) out.add(id)
+            }
+            return out
+        }
+        val array = if (uids === orderBacking) orderUids else LongArray(end - from) { uids[from + it] }
+        val base = if (uids === orderBacking) from else 0
+        for (i in 0 until (end - from)) out.add(array[base + i])
+        return out
+    }
+
     private suspend fun pagesOf(uids: List<Long>): List<IndexRow> {
         if (uids is WindowedOrder) uids.ensure(pageAnchor * IndexPageSize, IndexPageSize * 2)
-        val visible = uids.drop(pageAnchor * IndexPageSize).take(IndexPageSize).toMutableList()
-        val prefetch = uids.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize).toMutableList()
+        val visible = indexedRange(uids, pageAnchor * IndexPageSize, IndexPageSize)
+        val prefetch = indexedRange(uids, (pageAnchor + 1) * IndexPageSize, IndexPageSize)
         val loaded = ArrayList<IndexRow>(visible.size + prefetch.size)
-        if (uids is WindowedOrder) {
-            visible.removeAll { it == WindowedOrder.Unknown }
-            prefetch.removeAll { it == WindowedOrder.Unknown }
-        }
         if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible))
         if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch))
         return loaded
@@ -2844,16 +2980,21 @@ class IndexModel(
         heldRows = heldRows.map { row ->
             if (row.uid in uids && inActedFolder(row, folder)) row.copy(flags = edit(row.flags)) else row
         }
-        if (threadMembers.isNotEmpty()) {
-            val merged = LinkedHashMap(threadMembers)
+        if (memberRows.isNotEmpty()) {
             var changed = false
-            for ((uid, row) in threadMembers) {
+            val next = LinkedHashMap<Long, IndexRow>(memberRows.size)
+            for ((uid, row) in memberRows) {
                 if (uid in uids && inListedFolder(row, folder)) {
-                    merged[uid] = row.copy(flags = edit(row.flags))
+                    next[uid] = row.copy(flags = edit(row.flags))
                     changed = true
+                } else {
+                    next[uid] = row
                 }
             }
-            if (changed) threadMembers = merged
+            if (changed) {
+                memberRows = next
+                threadMembers = next
+            }
         }
         refreshSummaryUnread()
     }
@@ -2876,8 +3017,12 @@ class IndexModel(
     private fun clearThreads() {
         threading = false
         threadPlan = emptyList()
+        threadShape = null
+        threadHidden = emptyMap()
+        threadDepth = emptyMap()
         summaries = emptyMap()
         threadMembers = emptyMap()
+        memberRows = emptyMap()
     }
 
     private fun restrictThreads(threads: List<CollapsedThread>): List<CollapsedThread> {
@@ -2886,8 +3031,8 @@ class IndexModel(
     }
 
     private suspend fun loadThreadPage(): List<IndexRow> {
-        val visible = order.drop(pageAnchor * IndexPageSize).take(IndexPageSize)
-        val prefetch = order.drop((pageAnchor + 1) * IndexPageSize).take(IndexPageSize)
+        val visible = indexedRange(order, pageAnchor * IndexPageSize, IndexPageSize)
+        val prefetch = indexedRange(order, (pageAnchor + 1) * IndexPageSize, IndexPageSize)
         val pageRoots = ArrayList<Long>(visible.size + prefetch.size)
         pageRoots.addAll(visible)
         pageRoots.addAll(prefetch)
@@ -2901,11 +3046,9 @@ class IndexModel(
         } else {
             fetchByUid(hiddenUids, preview = false)
         }
-        if (hiddenRows.isNotEmpty()) {
-            val merged = LinkedHashMap(threadMembers)
-            for (row in hiddenRows) merged[row.uid] = row
-            threadMembers = merged
-        }
+        val next = keptMembers(hiddenRows, pageRoots)
+        memberRows = next
+        threadMembers = next
         summaries = summariesFor(pageRoots, byRoot, hiddenRows)
         return loaded
     }

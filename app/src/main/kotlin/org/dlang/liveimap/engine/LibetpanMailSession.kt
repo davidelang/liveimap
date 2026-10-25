@@ -162,7 +162,25 @@ class LibetpanMailSession : MailSession {
 
     @Volatile
     private var capabilityLine: String = ""
+        set(value) {
+            if (field == value) return
+            field = value
+            val parsed = Capabilities.parse(value)
+            parsedCaps = parsed
+            storedFeatureCaps = parsed.without(account?.hiddenCapabilities ?: emptySet())
+        }
+
+    @Volatile
+    private var parsedCaps: Capabilities = Capabilities.parse("")
+
+    @Volatile
+    private var storedFeatureCaps: Capabilities = parsedCaps
+
     private var account: AccountSettings? = null
+        set(value) {
+            field = value
+            storedFeatureCaps = parsedCaps.without(value?.hiddenCapabilities ?: emptySet())
+        }
 
     /** Preserved key from a refused open. That path does not store the account; handle stays 0. */
     private var refusedSecurityKey: String? = null
@@ -222,10 +240,10 @@ class LibetpanMailSession : MailSession {
     )
 
     override val capabilities: Set<String>
-        get() = Capabilities.parse(capabilityLine).names
+        get() = parsedCaps.names
 
     override val featureCaps: Capabilities
-        get() = Capabilities.parse(capabilityLine).without(account?.hiddenCapabilities ?: emptySet())
+        get() = storedFeatureCaps
 
     override val connectionState: StateFlow<ConnectionState>
         get() = keeper.connectionState

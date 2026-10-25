@@ -36,8 +36,20 @@ fun capabilityHidden(token: String, hide: Set<String>): Boolean =
 class HidingSession(private val inner: MailSession, private val hide: Set<String>) : MailSession by inner {
     override val capabilities: Set<String>
         get() = inner.capabilities.filterNot { capabilityHidden(it, hide) }.toSet()
+
+    private var featureSource: Set<String>? = null
+    private var featureStored: Capabilities = Capabilities.parse("")
+
     override val featureCaps: Capabilities
-        get() = Capabilities.parse(capabilities.joinToString(" "))
+        get() {
+            val list = capabilities
+            val known = featureSource
+            if (known != null && known == list) return featureStored
+            val parsed = Capabilities.parse(list.joinToString(" "))
+            featureSource = list
+            featureStored = parsed
+            return parsed
+        }
 }
 
 fun variantSession(session: MailSession, variant: AcceptanceVariant): MailSession =

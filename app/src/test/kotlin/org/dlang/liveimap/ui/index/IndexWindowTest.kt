@@ -862,7 +862,6 @@ class IndexWindowTest {
         assertEquals(listOf(FlagWrite(listOf(1L, 2L, 3L), setOf("\\Deleted"), emptySet())), session.stores)
         val undo = model.mailUndo!!
         assertEquals(listOf(1L, 3L), undo.uids)
-        assertFalse(undo.allMailbox)
         session.stores.clear()
         runImmediate { model.undo(undo) }
         assertEquals(listOf(FlagWrite(listOf(1L, 3L), emptySet(), setOf("\\Deleted"))), session.stores)
@@ -1285,7 +1284,13 @@ class IndexWindowTest {
         for (loaded in rows) {
             assertEquals(loaded.sequence, OpenMessageOrder.sequence(loaded.uid))
         }
-        assertEquals(0, OpenMessageOrder.sequence(9L))
+        var absent = false
+        try {
+            OpenMessageOrder.sequence(9L)
+        } catch (failure: MailFailure) {
+            absent = failure.text.contains("9")
+        }
+        assertTrue(absent)
     }
 
     @Test

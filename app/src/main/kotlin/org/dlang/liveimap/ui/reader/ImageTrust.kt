@@ -11,6 +11,7 @@ import org.dlang.liveimap.ui.compose.addrSpec
 data class ImageTrust(val senders: Set<String> = emptySet(), val lists: Set<String> = emptySet())
 
 const val MaxTrustEntries = 5000
+const val MaxImageTrustBytes = 2_000_000
 private const val MaxKeyLength = 255
 
 /** Lower-cased addr-spec of a From value, or "" when it has none. */
@@ -75,11 +76,9 @@ internal fun imageTrustFile(filesDir: File, accountId: String): File? {
 
 fun loadImageTrust(filesDir: File, accountId: String): ImageTrust {
     val f = imageTrustFile(filesDir, accountId) ?: return ImageTrust()
-    return try {
-        if (f.isFile && f.length() < 2_000_000) decodeImageTrust(f.readText()) else ImageTrust()
-    } catch (_: java.io.IOException) {
-        ImageTrust()
-    }
+    if (!f.exists()) return ImageTrust()
+    if (!f.isFile || f.length() >= MaxImageTrustBytes) throw java.io.IOException("image trust")
+    return decodeImageTrust(f.readText())
 }
 
 fun saveImageTrust(filesDir: File, accountId: String, trust: ImageTrust): Boolean {
