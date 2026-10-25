@@ -2,7 +2,6 @@ package org.dlang.liveimap.session
 
 import java.io.File
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -13,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,14 +54,17 @@ class SerialMailSession(
     private val lifecycleClock = LifecycleClock()
     // F84: one lane thread per session, created on demand and shut down by close(); a session that is
     // opened again after close() gets a fresh lane.
-    private val laneDispatcher = AtomicReference<kotlinx.coroutines.ExecutorCoroutineDispatcher?>(null)
-    private val commands = Channel<LaneCall>(Channel.UNLIMITED)
-    private val commandScope = AtomicReference<CoroutineScope?>(null)
-    private val consumerId = AtomicInteger(0)
+    private val laneDispatcher = AtomicReference<LaneSlot?>(null)
 
     private class LaneCall(
         val block: suspend () -> Any?,
         val result: CompletableDeferred<Any?>,
+    )
+
+    private class LaneSlot(
+        val dispatcher: kotlinx.coroutines.ExecutorCoroutineDispatcher,
+        val commands: Channel<LaneCall>,
+        val scope: CoroutineScope,
     )
 
     private fun newLaneDispatcher(): kotlinx.coroutines.ExecutorCoroutineDispatcher =
@@ -69,38 +72,53 @@ class SerialMailSession(
             Thread(runnable, "liveimap-imap").apply { isDaemon = true }
         }.asCoroutineDispatcher()
 
-    private fun ensureLane(): kotlinx.coroutines.ExecutorCoroutineDispatcher {
+    private fun retire(slot: LaneSlot) {
+        slot.scope.cancel()
+        slot.dispatcher.close()
+        slot.commands.close()
+    }
+
+    private fun failClosed(call: LaneCall) {
+        call.result.completeExceptionally(CancellationException("session closed"))
+    }
+
+    // The consumer starts only after this slot is still the installed one. A slot close() already
+    // dropped is not replaced here: this caller's send fails, and a later onLane opens the next lane.
+    private fun ensureLane(): LaneSlot {
         while (true) {
             laneDispatcher.get()?.let { return it }
-            val created = newLaneDispatcher()
-            if (!laneDispatcher.compareAndSet(null, created)) {
-                created.close()
+            val slot = LaneSlot(
+                newLaneDispatcher(),
+                Channel(Channel.UNLIMITED),
+                CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+            if (!laneDispatcher.compareAndSet(null, slot)) {
+                retire(slot)
                 continue
             }
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            commandScope.getAndSet(scope)?.cancel()
-            val id = consumerId.incrementAndGet()
-            scope.launch {
-                for (call in commands) {
-                    if (consumerId.get() != id) {
-                        call.result.completeExceptionally(CancellationException("session closed"))
-                        break
-                    }
-                    val lane = laneDispatcher.get()
-                    if (lane == null) {
-                        call.result.completeExceptionally(CancellationException("session closed"))
-                        continue
-                    }
-                    try {
-                        val value = withContext(lane + LaneHolder(this@SerialMailSession)) { call.block() }
-                        call.result.complete(value)
-                    } catch (error: Throwable) {
-                        call.result.completeExceptionally(error)
-                        if (error is CancellationException && consumerId.get() != id) throw error
-                    }
+            if (laneDispatcher.get() !== slot) return slot
+            slot.scope.launch { consume(slot) }
+            return slot
+        }
+    }
+
+    private suspend fun consume(slot: LaneSlot) {
+        for (call in slot.commands) {
+            if (laneDispatcher.get() !== slot) {
+                failClosed(call)
+                while (true) {
+                    val extra = slot.commands.tryReceive().getOrNull() ?: break
+                    failClosed(extra)
                 }
+                break
             }
-            if (laneDispatcher.get() === created) return created
+            try {
+                val value = withContext(slot.dispatcher + LaneHolder(this@SerialMailSession)) { call.block() }
+                call.result.complete(value)
+            } catch (error: Throwable) {
+                call.result.completeExceptionally(error)
+                if (laneDispatcher.get() !== slot) break
+            }
         }
     }
 
@@ -331,13 +349,13 @@ class SerialMailSession(
 
     override fun close() {
         inner.close()
-        consumerId.incrementAndGet()
-        commandScope.get()?.cancel()
-        val dispatcher = laneDispatcher.getAndSet(null)
-        dispatcher?.close()
+        val slot = laneDispatcher.getAndSet(null) ?: return
+        slot.scope.cancel()
+        slot.dispatcher.close()
+        slot.commands.close()
         while (true) {
-            val queued = commands.tryReceive().getOrNull() ?: break
-            queued.result.completeExceptionally(CancellationException("session closed"))
+            val queued = slot.commands.tryReceive().getOrNull() ?: break
+            failClosed(queued)
         }
     }
 
@@ -362,9 +380,14 @@ class SerialMailSession(
     private suspend fun <T> onLane(block: suspend () -> T): T {
         // An op given to inFolder must use the session it is handed, never this one again (it would deadlock).
         check(coroutineContext[LaneHolder]?.owner !== this) { "re-entrant session call inside inFolder" }
-        ensureLane()
         val result = CompletableDeferred<Any?>()
-        commands.send(LaneCall({ block() }, result))
+        val call = LaneCall({ block() }, result)
+        val slot = ensureLane()
+        try {
+            slot.commands.send(call)
+        } catch (closed: ClosedSendChannelException) {
+            failClosed(call)
+        }
         @Suppress("UNCHECKED_CAST")
         return result.await() as T
     }

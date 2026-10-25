@@ -1,6 +1,7 @@
 package org.dlang.liveimap.session
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
 class SessionTable(
@@ -8,17 +9,56 @@ class SessionTable(
 ) {
     private val sessions = ConcurrentHashMap<String, MailSession>()
     private val confirmers = AtomicReference(ConfirmerPair(null, null))
+    private val opening = ConcurrentHashMap<String, CountDownLatch>()
 
     fun session(accountId: String): MailSession {
         if (accountId.isEmpty()) throw IllegalArgumentException("account id")
-        return sessions.compute(accountId) { _, existing ->
-            if (existing != null) return@compute existing
-            val created = factory()
+        while (true) {
+            val pending = opening[accountId]
+            if (pending != null) {
+                pending.await()
+                continue
+            }
+            val existing = sessions[accountId]
+            if (existing != null) {
+                val again = opening[accountId]
+                if (again != null) {
+                    again.await()
+                    continue
+                }
+                return existing
+            }
+            val gate = CountDownLatch(1)
+            if (opening.putIfAbsent(accountId, gate) != null) continue
+            try {
+                var created: MailSession? = null
+                val stored = sessions.compute(accountId) { _, present ->
+                    if (present != null) return@compute present
+                    val made = factory()
+                    val pair = confirmers.get()
+                    made.setCertConfirmer(pair.cert)
+                    made.setPlaintextConfirmer(pair.plain)
+                    created = made
+                    made
+                }!!
+                if (created != null) settleConfirmers(stored)
+                return stored
+            } finally {
+                gate.countDown()
+                opening.remove(accountId, gate)
+            }
+        }
+    }
+
+    // The pair read inside compute can be older than a confirmer publish that already walked the
+    // map. Re-apply after the session is visible, until that pair is still current.
+    private fun settleConfirmers(session: MailSession) {
+        while (true) {
             val pair = confirmers.get()
-            created.setCertConfirmer(pair.cert)
-            created.setPlaintextConfirmer(pair.plain)
-            created
-        }!!
+            session.setCertConfirmer(pair.cert)
+            session.setPlaintextConfirmer(pair.plain)
+            if (confirmers.get() === pair) return
+        }
     }
 
     /** The session already open for [accountId], or null. Does not call the factory. */
