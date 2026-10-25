@@ -245,7 +245,7 @@ class JmapMailSession(
     private data class Part(val partId: String?, val blobId: String?, val type: String) {
         var bytes: ByteArray? = null
         var whole: Boolean = false
-        /** A truncated body value shorter than [JmapMaxBody] will not grow on another Email/get. */
+        /** A truncated body value shorter than the account response cap will not grow on another Email/get. */
         var prefixFinal: Boolean = false
     }
     private val parts = HashMap<String, Map<String, Part>>()
@@ -265,7 +265,7 @@ class JmapMailSession(
             val loginPassword = passwordOf(account)
             val loginAuthorization = jmapBasicAuthorization(account.username, loginPassword)
             val offer = try {
-                io { discover(account, loginAuthorization) }
+                io { JmapResponseCap.use(account.maxJmapResponseBytes) { discover(account, loginAuthorization) } }
             } catch (pinOffer: JmapPinOffer) {
                 // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
                 val shown = describe(pinOffer.ders)
@@ -276,7 +276,7 @@ class JmapMailSession(
                 savePin(prompt.fingerprint)
                 trusted = account.copy(jmapCertPin = prompt.fingerprint)
                 try {
-                    io { discover(trusted, loginAuthorization) }
+                    io { JmapResponseCap.use(trusted.maxJmapResponseBytes) { discover(trusted, loginAuthorization) } }
                 } catch (again: JmapPinOffer) {
                     throw JmapFailure(again.text)
                 }
@@ -499,8 +499,8 @@ class JmapMailSession(
         if (cached != null && (part.whole || part.prefixFinal || needEnd <= cached.size)) return@onSession slice(cached, offset, length)
         val have = cached?.size ?: 0
         if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
-            // The first text fetch asks for JmapMaxBody. isTruncated means this prefix is not the whole part.
-            val cap = JmapMaxBody.toLong()
+            // The first text fetch asks for the account cap. isTruncated means this prefix is not the whole part.
+            val cap = (account?.maxJmapResponseBytes ?: JmapMaxBody).toLong()
             if (have.toLong() >= cap) return@onSession slice(cached ?: ByteArray(0), offset, length)
             val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["bodyValues"],"bodyProperties":["partId"],"fetchAllBodyValues":true,"maxBodyValueBytes":$cap},"0"]]}"""
             val (text, truncated) = call(body) { root -> bodyValue(firstEmail(root), part.partId) }
@@ -509,7 +509,7 @@ class JmapMailSession(
             part.bytes = if (cached == null) fetched else cached + tail
             // A truncated value can be shorter than the cap. It is not the whole part, and another Email/get will not grow it.
             part.whole = !truncated
-            part.prefixFinal = truncated && fetched.size < JmapMaxBody
+            part.prefixFinal = truncated && fetched.size < cap
         } else if (cached == null) {
             val blob = part.blobId ?: throw MailFailure("part $section has no content")
             part.bytes = download(blob, part.type)
@@ -783,7 +783,7 @@ class JmapMailSession(
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
-            val body = jmapNet { exchange.body() }
+            val body = jmapNet { JmapResponseCap.use(account?.maxJmapResponseBytes ?: JmapMaxBody) { exchange.body() } }
             return if (body.isBlank()) emptyList() else parseJmapPushEvents(body)
         } finally {
             if (run.stream === exchange) run.stream = null
@@ -1002,7 +1002,7 @@ class JmapMailSession(
 
     private suspend fun <T> jmap(block: () -> T): T = io {
         try {
-            block()
+            JmapResponseCap.use(account?.maxJmapResponseBytes ?: JmapMaxBody, block)
         } catch (failure: JmapFailure) {
             throw MailFailure(failure.text)
         }

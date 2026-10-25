@@ -65,8 +65,8 @@ private fun httpsHost(url: String, accountKey: String): String? = try {
     null
 }
 
-/** Reads at most [JmapMaxBody] bytes. */
-fun readJmapBytes(stream: java.io.InputStream): ByteArray {
+/** Reads at most [limit] bytes. */
+fun readJmapBytes(stream: java.io.InputStream, limit: Int = JmapResponseCap.limitOr(JmapMaxBody)): ByteArray {
     val out = java.io.ByteArrayOutputStream()
     val buf = ByteArray(8192)
     var total = 0
@@ -74,7 +74,7 @@ fun readJmapBytes(stream: java.io.InputStream): ByteArray {
         val n = stream.read(buf)
         if (n < 0) break
         total += n
-        if (total > JmapMaxBody) throw JmapFailure("jmap download is too large")
+        if (total > limit) throw JmapFailure("jmap download is too large: maxJmapResponseBytes")
         out.write(buf, 0, n)
     }
     return out.toByteArray()

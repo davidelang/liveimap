@@ -21,8 +21,25 @@ interface JmapHttpExchange {
 /** F58: the largest JMAP response body read into memory. */
 const val JmapMaxBody = 16 * 1024 * 1024
 
-/** Reads at most [JmapMaxBody] bytes; a longer body is a JmapFailure, not an OutOfMemoryError. */
-fun readJmapBody(stream: java.io.InputStream): String {
+/** The account cap for the read in progress. Unset means [JmapMaxBody]. Platform exchanges call the readers with the default. */
+internal object JmapResponseCap {
+    private val current = ThreadLocal<Int>()
+
+    fun limitOr(fallback: Int): Int = current.get() ?: fallback
+
+    fun <T> use(limit: Int, block: () -> T): T {
+        val previous = current.get()
+        current.set(limit)
+        try {
+            return block()
+        } finally {
+            if (previous == null) current.remove() else current.set(previous)
+        }
+    }
+}
+
+/** Reads at most [limit] bytes; a longer body is a JmapFailure, not an OutOfMemoryError. */
+fun readJmapBody(stream: java.io.InputStream, limit: Int = JmapResponseCap.limitOr(JmapMaxBody)): String {
     val out = java.io.ByteArrayOutputStream()
     val buf = ByteArray(8192)
     var total = 0
@@ -30,7 +47,7 @@ fun readJmapBody(stream: java.io.InputStream): String {
         val n = stream.read(buf)
         if (n < 0) break
         total += n
-        if (total > JmapMaxBody) throw JmapFailure("jmap response is too large")
+        if (total > limit) throw JmapFailure("jmap response is too large: maxJmapResponseBytes")
         out.write(buf, 0, n)
     }
     return out.toString(Charsets.UTF_8.name())

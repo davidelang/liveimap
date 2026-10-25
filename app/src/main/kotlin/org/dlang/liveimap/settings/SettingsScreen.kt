@@ -1975,6 +1975,54 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
         ) { number ->
             editor.persist(editor.settings.copy(pollSeconds = number))
         }
+        "idleFallbackSeconds" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.idleFallbackSeconds,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(idleFallbackSeconds = number))
+        }
+        "keepAliveMinutes" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.keepAliveMinutes,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(keepAliveMinutes = number))
+        }
+        "idleRenewMinutes" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.idleRenewMinutes,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(idleRenewMinutes = number))
+        }
+        "longSearchProgressSec" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.longSearchProgressSec,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(longSearchProgressSec = number))
+        }
+        "longSearchQuietSec" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.longSearchQuietSec,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(longSearchQuietSec = number))
+        }
+        "maxJmapResponseBytes" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.maxJmapResponseBytes,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(maxJmapResponseBytes = number))
+        }
         "statusVisibleCounts" -> BoolField(
             stringResource(R.string.settings_status_counts),
             settings.statusVisibleCounts,

@@ -29,6 +29,10 @@
           {
             "setting": "jmapFolders",
             "default": false
+          },
+          {
+            "setting": "maxJmapResponseBytes",
+            "default": 16777216
           }
         ]
       },

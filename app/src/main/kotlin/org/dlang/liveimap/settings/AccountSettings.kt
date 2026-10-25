@@ -9,6 +9,7 @@ import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.RuleCriterion
 import org.dlang.liveimap.engine.sieve.RuleField
 import org.dlang.liveimap.engine.sieve.SystemFlag
+import org.dlang.liveimap.jmap.JmapMaxBody
 import org.dlang.liveimap.ui.index.SavedAdvanced
 import org.dlang.liveimap.ui.index.SavedSearch
 import org.dlang.liveimap.ui.index.SearchScope
@@ -459,6 +460,8 @@ data class AccountSettings(
     val emailSubmission: Boolean = false,
     /** F68: browse folders over JMAP only when the user turned it on (discovery alone never switches routes). */
     val jmapFolders: Boolean = false,
+    /** Largest JMAP response or download. A missing line is [JmapMaxBody]. */
+    val maxJmapResponseBytes: Int = JmapMaxBody,
     val askSort: Int = DefaultAskLimit,
     val askThread: Int = DefaultAskLimit,
     val askSearch: Int = DefaultAskLimit,
@@ -482,6 +485,7 @@ data class AccountSettings(
         if (idleRenewMinutes < 1) throw IllegalArgumentException("idleRenewMinutes")
         if (longSearchProgressSec < 1) throw IllegalArgumentException("longSearchProgressSec")
         if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
+        if (maxJmapResponseBytes < 1) throw IllegalArgumentException("maxJmapResponseBytes")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -650,6 +654,7 @@ private val fieldNames = listOf(
     "savedAdvanced",
     "emailSubmission",
     "jmapFolders",
+    "maxJmapResponseBytes",
     "askSort",
     "askThread",
     "askSearch",
@@ -818,6 +823,7 @@ fun AccountSettings.encode(): String = buildString {
     put("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
     put("emailSubmission=$emailSubmission")
     put("jmapFolders=$jmapFolders")
+    put("maxJmapResponseBytes=$maxJmapResponseBytes")
     put("askSort=$askSort")
     put("askThread=$askThread")
     put("askSearch=$askSearch")
@@ -968,6 +974,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "savedAdvanced" ||
             key == "emailSubmission" ||
             key == "jmapFolders" ||
+            key == "maxJmapResponseBytes" ||
             key == "askSort" ||
             key == "askThread" ||
             key == "askSearch" ||
@@ -1162,6 +1169,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         savedAdvanced = field("savedAdvanced", d.savedAdvanced) { decodeSavedAdvanced(values.getValue("savedAdvanced")) },
         emailSubmission = field("emailSubmission", d.emailSubmission) { parseBoolean(values.getValue("emailSubmission")) },
         jmapFolders = field("jmapFolders", d.jmapFolders) { parseBoolean(values.getValue("jmapFolders")) },
+        maxJmapResponseBytes = field("maxJmapResponseBytes", d.maxJmapResponseBytes) { parseIntField(values.getValue("maxJmapResponseBytes")) },
         askSort = field("askSort", d.askSort) { parseAskLimit(values.getValue("askSort")) },
         askThread = field("askThread", d.askThread) { parseAskLimit(values.getValue("askThread")) },
         askSearch = field("askSearch", d.askSearch) { parseAskLimit(values.getValue("askSearch")) },

@@ -17,6 +17,7 @@ email|String|account|text|Email||
 displayName|String|account|text|Display name||
 altAddresses|StringList|account|text|Alternate addresses||
 jmapFolders|Bool|account|bool|Mail access||
+maxJmapResponseBytes|Int|account|number|JMAP response bytes||
 imapHost|String|server|text|IMAP host||
 imapPort|Int|server|number|IMAP port||1..65535
 username|String|account|text|Username||
