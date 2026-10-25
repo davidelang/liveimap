@@ -2556,6 +2556,8 @@ private fun OpenRow(title: String, onOpen: () -> Unit) {
     )
 }
 
+private data class CompletionRow(val id: String, val label: String, val enabled: Boolean)
+
 @Composable
 private fun completionSummary(settings: AccountSettings): String {
     val ids = settings.completionSources
