@@ -498,6 +498,25 @@ fun SettingsTree(
     val scroll = rememberScrollState()
     var editingFavorite by remember { mutableStateOf<FolderFavorite?>(null) }
     var favoriteDraft by remember { mutableStateOf("") }
+    val picking = remember { mutableStateOf<MailboxPick?>(null) }
+    val walk = SettingsWalk(
+        editor = editor,
+        sections = sections,
+        scroll = scroll,
+        onCopyContacts = onCopyContacts,
+        onEditBook = onEditBook,
+        onOpenPanel = onOpenPanel,
+        onEditFavorite = { favorite ->
+            editingFavorite = favorite
+            favoriteDraft = if (favorite.label.isNotBlank()) {
+                favorite.label
+            } else {
+                favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+            }
+        },
+        picking = picking,
+    )
+    BackHandler(enabled = picking.value != null) { picking.value = null }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -514,45 +533,10 @@ fun SettingsTree(
                 Text(saveFailure)
             }
             for (node in installedSettingsRoots()) {
-                if (node !is TreeNode.Group) continue
-                val title = node.title
-                if (title == "Toolbars") {
-                    ToolbarsSection(editor, depth, scroll)
-                    continue
-                }
-                if (title == "Favorites") {
-                    FavoritesSection(editor, depth) { favorite ->
-                        editingFavorite = favorite
-                        favoriteDraft = if (favorite.label.isNotBlank()) {
-                            favorite.label
-                        } else {
-                            favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
-                        }
-                    }
-                    continue
-                }
-                val id = SettingsTreeIndex.id(title)
-                SettingsNode(
-                    title = stringResource(SettingsTreeGenerated.titleOf(id)),
-                    depth = depth,
-                    summary = groupSummary(title, settings),
-                    expanded = id in sections.open,
-                    onToggle = { sections.toggle(id) },
-                ) {
-                    when (title) {
-                        "Account" -> AccountGroup(editor, depth + 1)
-                        "Mailboxes" -> MailboxesGroup(editor, depth + 1)
-                        "Folders" -> FoldersGroup(editor, depth + 1)
-                        "Reading" -> ReadingGroup(editor, depth + 1)
-                        "Compose" -> ComposeGroup(editor, onCopyContacts, onEditBook, depth + 1)
-                        "Appearance" -> AppearanceGroup(editor, depth + 1)
-                        "Layout" -> LayoutGroup(editor, onOpenPanel, depth + 1)
-                        "Slower" -> SlowerGroup(editor)
-                        "Debug" -> DebugGroup(editor, depth + 1)
-                    }
-                }
+                renderSettingsNode(node, depth, walk)
             }
         }
+    MailboxPickDialog(editor, picking.value) { picking.value = it }
     val editing = editingFavorite
     if (editing != null) {
         FavoriteEditDialog(
@@ -606,96 +590,6 @@ private fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, de
     next[target] = next[index]
     next[index] = swap
     editor.persist(editor.settings.copy(favorites = next))
-}
-
-@Composable
-private fun ToolbarsSection(editor: SettingsEditor, depth: Int, scroll: ScrollState) {
-    val bars = rememberSectionOpen()
-    val accountId = editor.editingId.orEmpty()
-    LaunchedEffect(editor.editingId) {
-        val target = editor.bound
-        var previous = target.load()
-        target.theme().collect {
-            val loaded = target.load()
-            val rowsChanged = previous.toolbarRows != loaded.toolbarRows
-            if (toolbarsDiffer(previous, loaded)) {
-                target.onAccount(publish = {
-                    editor.settings = editor.settings.keepingStoredToolbars(loaded)
-                }) {
-                }
-            }
-            // Recreate open copies only for the shared row count. A bar edit is already on screen
-            // in the editor that saved it, and disposing that editor would cancel its store write.
-            if (rowsChanged) ToolbarRevision.bump()
-            previous = loaded
-        }
-    }
-    val toolbarId = SettingsTreeIndex.id("Toolbars")
-    SettingsNode(
-        title = stringResource(SettingsTreeGenerated.titleOf(toolbarId)),
-        depth = depth,
-        summary = stringResource(SettingsTreeGenerated.titleOf(toolbarId)),
-        expanded = toolbarId in bars.open,
-        onToggle = { bars.toggle(toolbarId) },
-    ) {
-        ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId, depth + 1, scroll)
-        ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId, depth + 1, scroll)
-        ToolbarBlock(R.string.settings_panel_folders, "folders", bars, ToolbarScreen.Folders, accountId, depth + 1, scroll)
-        ToolbarBlock(R.string.settings_panel_reader, "reader", bars, ToolbarScreen.Reader, accountId, depth + 1, scroll)
-        ToolbarBlock(R.string.settings_panel_compose, "compose", bars, ToolbarScreen.Compose, accountId, depth + 1, scroll)
-    }
-}
-
-@Composable
-private fun ToolbarBlock(
-    titleRes: Int,
-    id: String,
-    bars: SectionOpen,
-    screen: ToolbarScreen,
-    accountId: String,
-    depth: Int,
-    scroll: ScrollState,
-) {
-    val title = stringResource(titleRes)
-    SettingsNode(
-        title = title,
-        depth = depth,
-        summary = title,
-        expanded = id in bars.open,
-        onToggle = { bars.toggle(id) },
-    ) {
-        key(ToolbarRevision.value) {
-            ToolbarEditorScreen(screen, accountId, scroll)
-        }
-    }
-}
-
-@Composable
-private fun FavoritesSection(editor: SettingsEditor, depth: Int, onEdit: (FolderFavorite) -> Unit) {
-    val sections = rememberSectionOpen()
-    val favorites = editor.settings.favorites
-    val favoritesId = SettingsTreeIndex.id("Favorites")
-    SettingsNode(
-        title = stringResource(SettingsTreeGenerated.titleOf(favoritesId)),
-        depth = depth,
-        summary = favorites.size.toString(),
-        expanded = favoritesId in sections.open,
-        onToggle = { sections.toggle(favoritesId) },
-    ) {
-        for (favorite in favorites) {
-            val shown = if (favorite.label.isNotBlank()) {
-                favorite.label
-            } else {
-                favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
-            }
-            ListItem(
-                headlineContent = { Text(shown) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onEdit(favorite) },
-            )
-        }
-    }
 }
 
 @Composable
@@ -874,41 +768,58 @@ private fun sharePinerc(context: Context, text: String) {
     }
 }
 
-@Composable
-private fun AccountGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    var probing by remember { mutableStateOf(false) }
-    var serverReport by remember { mutableStateOf<List<String>>(emptyList()) }
-    var checkingSieve by remember { mutableStateOf(false) }
-    var sieveReport by remember { mutableStateOf("") }
-    // Capability sanity check when the server is saved: baseline is the last accepted server settings.
-    var serverChecking by remember { mutableStateOf(false) }
-    val chosenAccount = editor.accounts.firstOrNull { it.chosen }?.id
-    // David, 2026-10-12: server fields edit a draft; nothing is stored or checked until Save. The check (and the
-    // TLS-off warning) is shown once, at Save, and never changes or reverts what he typed.
-    var serverDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<AccountSettings?>(null) }
-    // Password edits are part of the draft too (David): nothing is stored per keystroke; Save commits them.
-    var passwordDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<String?>(null) }
-    var smtpPasswordDraft by remember(editor.editingId, chosenAccount) { mutableStateOf<String?>(null) }
-    val hasDraft = serverDraft != null || passwordDraft != null || smtpPasswordDraft != null
-    fun discardDrafts() { serverDraft = null; passwordDraft = null; smtpPasswordDraft = null }
-    fun commitPasswords() {
+private val hideCapabilityTokens = listOf(
+    "SORT",
+    "THREAD=REFERENCES",
+    "THREAD=ORDEREDSUBJECT",
+    "ESEARCH",
+    "LIST-STATUS",
+    "LIST-EXTENDED",
+    "UIDPLUS",
+    "IDLE",
+    "UNSELECT",
+    "NAMESPACE",
+    "CONDSTORE",
+    "QRESYNC",
+    "SPECIAL-USE",
+)
+
+private class ServerDrafts {
+    var probing by mutableStateOf(false)
+    var serverReport by mutableStateOf<List<String>>(emptyList())
+    var checkingSieve by mutableStateOf(false)
+    var sieveReport by mutableStateOf("")
+    var serverChecking by mutableStateOf(false)
+    var serverDraft by mutableStateOf<AccountSettings?>(null)
+    var passwordDraft by mutableStateOf<String?>(null)
+    var smtpPasswordDraft by mutableStateOf<String?>(null)
+    var serverReview by mutableStateOf<ServerSaveReview?>(null)
+    var discardAsk by mutableStateOf(false)
+    var leaveAfter by mutableStateOf<(() -> Unit)?>(null)
+
+    val hasDraft: Boolean
+        get() = serverDraft != null || passwordDraft != null || smtpPasswordDraft != null
+
+    fun discard() {
+        serverDraft = null
+        passwordDraft = null
+        smtpPasswordDraft = null
+    }
+
+    fun commitPasswords(editor: SettingsEditor) {
         passwordDraft?.let { editor.persistPassword(it) }
         smtpPasswordDraft?.let { editor.persistSmtpPassword(it) }
         passwordDraft = null
         smtpPasswordDraft = null
     }
-    var serverReview by remember { mutableStateOf<ServerSaveReview?>(null) }
-    var discardAsk by remember { mutableStateOf(false) }
-    val server = serverDraft ?: settings
-    fun userServerSave(next: AccountSettings) {
+
+    // Server fields edit a draft; nothing is stored or checked until Save.
+    fun userServerSave(editor: SettingsEditor, next: AccountSettings) {
+        val settings = editor.settings
         if (!sameServer(next, settings)) {
             serverDraft = next
             return
         }
-        // sameServer ignores unknownSettings. A TLS choice, including TlsMode.None, has to drop the
-        // preserved line when this nulls the draft, or Save and Test stay on the blocked settings.
         val kept = editor.settings
         if (next.withoutPreserved("tlsMode") == next) {
             val cleared = kept.withoutPreserved("tlsMode")
@@ -916,27 +827,14 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
         }
         serverDraft = null
     }
-    // withServerOf copies tlsMode and not unknownSettings. A draft that dropped the line, or a default
-    // choice sameServer discards, has to clear that line on the settings Save and Test account use.
-    fun savedServer(chosen: AccountSettings): AccountSettings {
+
+    fun savedServer(editor: SettingsEditor, chosen: AccountSettings): AccountSettings {
         val merged = editor.settings.withServerOf(chosen)
         return if (chosen.withoutPreserved("tlsMode") == chosen) merged.withoutPreserved("tlsMode") else merged
     }
-    // Navigation waiting on the unsaved-edits answer (drawer); runs after Save or Discard, dropped on Keep editing.
-    var leaveAfter by remember { mutableStateOf<(() -> Unit)?>(null) }
-    DisposableEffect(hasDraft) {
-        UnsavedEdits.pending = hasDraft
-        UnsavedEdits.ask = { go -> leaveAfter = go; discardAsk = true }
-        onDispose { UnsavedEdits.pending = false; UnsavedEdits.ask = null }
-    }
-    LaunchedEffect(hasDraft, serverReview == null, serverChecking) {
-        if (!hasDraft && serverReview == null && !serverChecking) {
-            leaveAfter?.let { leaveAfter = null; it() }
-        }
-    }
-    BackHandler(enabled = hasDraft) { discardAsk = true }
-    fun saveServer() {
-        val draft = serverDraft ?: return commitPasswords()
+
+    fun saveServer(editor: SettingsEditor) {
+        val draft = serverDraft ?: return commitPasswords(editor)
         editor.ui.launch {
             serverChecking = true
             val result = try {
@@ -952,15 +850,1217 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
             }
             val review = serverSaveReview(draft, result)
             if (review.quiet) {
-                editor.persist(savedServer(draft))
-                commitPasswords() // after the server: a moved host clears the old password, then the typed one is stored
+                editor.persist(savedServer(editor, draft))
+                commitPasswords(editor)
                 serverDraft = null
             } else {
                 serverReview = review
             }
         }
     }
-    serverReview?.let { review ->
+}
+
+private class SettingsWalk(
+    val editor: SettingsEditor,
+    val sections: SectionOpen,
+    val scroll: ScrollState,
+    val onCopyContacts: () -> Unit,
+    val onEditBook: () -> Unit,
+    val onOpenPanel: (String, String) -> Unit,
+    val onEditFavorite: (FolderFavorite) -> Unit,
+    val picking: MutableState<MailboxPick?>,
+    var drafts: ServerDrafts? = null,
+)
+
+@Composable
+private fun renderSettingsNode(node: TreeNode, depth: Int, walk: SettingsWalk) {
+    when (node) {
+        is TreeNode.Leaf -> settingLeaf(node.leaf.setting, walk)
+        is TreeNode.Group -> renderGroup(node, depth, walk)
+    }
+}
+
+@Composable
+private fun renderGroup(node: TreeNode.Group, depth: Int, walk: SettingsWalk) {
+    val editor = walk.editor
+    if (node.title == "Watched folders" && editor.settings.jmapFolders) return
+    val id = SettingsTreeIndex.id(node.title)
+    SettingsNode(
+        title = stringResource(SettingsTreeGenerated.titleOf(id)),
+        depth = depth,
+        summary = groupSummary(node.title, editor.settings),
+        expanded = id in walk.sections.open,
+        onToggle = { walk.sections.toggle(id) },
+    ) {
+        if (node.title == "Account") {
+            accountFrame(node, depth + 1, walk)
+        } else {
+            if (node.title == "Mailboxes") SpecialFolderLeaveWarning(editor)
+            if (node.title == "Toolbars") ToolbarStoreSync(editor)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                groupIntro(node.title, editor)
+                for (child in node.children) renderSettingsNode(child, depth + 1, walk)
+                groupFooter(node.title, depth + 1, walk)
+            }
+        }
+    }
+}
+
+@Composable
+private fun groupIntro(title: String, editor: SettingsEditor) {
+    if (title != "Server") return
+    if (editor.settings.jmapFolders) {
+        Text(stringResource(R.string.settings_jmap_server_note))
+    } else {
+        Text(stringResource(R.string.settings_plaintext_ports))
+    }
+}
+
+@Composable
+private fun groupFooter(title: String, depth: Int, walk: SettingsWalk) {
+    val editor = walk.editor
+    val settings = editor.settings
+    val drafts = walk.drafts
+    when (title) {
+        "Server" -> {
+            if (drafts != null && drafts.serverChecking) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
+                }
+            }
+            if (drafts != null && drafts.hasDraft) {
+                androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    TextButton(onClick = { drafts.discard() }) {
+                        Text(stringResource(R.string.settings_discard))
+                    }
+                }
+            }
+        }
+        "Sending" -> {
+            sendingProblem(settings)?.let { res ->
+                Text(
+                    stringResource(res),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-way-to-send"),
+                )
+            }
+        }
+        "Logging" -> LoggingExtras(editor)
+        "Layout" -> {
+            SettingsNode(
+                title = stringResource(R.string.settings_panels),
+                depth = depth,
+                summary = stringResource(R.string.settings_panels),
+                expanded = "panels" in walk.sections.open,
+                onToggle = { walk.sections.toggle("panels") },
+            ) {
+                val accountId = editor.editingId.orEmpty()
+                OpenRow(stringResource(R.string.settings_panel_index)) { walk.onOpenPanel("index", accountId) }
+                OpenRow(stringResource(R.string.settings_panel_selection)) { walk.onOpenPanel("selection", accountId) }
+                OpenRow(stringResource(R.string.settings_panel_folders)) { walk.onOpenPanel("folders", accountId) }
+                OpenRow(stringResource(R.string.settings_panel_reader)) { walk.onOpenPanel("reader", accountId) }
+                OpenRow(stringResource(R.string.settings_panel_compose)) { walk.onOpenPanel("compose", accountId) }
+            }
+            Button(
+                onClick = {
+                    val target = editor.bound
+                    settingsIo.launch {
+                        editor.saveKeepingToolbars(target)
+                        LayoutApply.request()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.settings_change_layout))
+            }
+        }
+        "Address book" -> {
+            OpenRow(stringResource(R.string.settings_copy_contacts), walk.onCopyContacts)
+            OpenRow(stringResource(R.string.settings_edit_book), walk.onEditBook)
+        }
+    }
+}
+
+@Composable
+private fun LoggingExtras(editor: SettingsEditor) {
+    var reportLines by remember { mutableStateOf<List<String>?>(null) }
+    var confirmShareLog by remember { mutableStateOf(false) }
+    val contextState = rememberUpdatedState(LocalContext.current)
+    Text(stringResource(R.string.settings_log_note))
+    TextButton(onClick = { confirmShareLog = true }) { Text(stringResource(R.string.settings_share_log)) }
+    TextButton(onClick = {
+        val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
+        val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
+        reportLines = log.debugReport(
+            versionName = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE,
+            androidVersion = Build.VERSION.RELEASE,
+            device = device,
+            settings = editor.settings,
+        ).lines()
+    }) { Text(stringResource(R.string.settings_debug_report)) }
+    if (confirmShareLog) {
+        AlertDialog(
+            onDismissRequest = { confirmShareLog = false },
+            title = { Text(stringResource(R.string.settings_share_log)) },
+            text = { Text(stringResource(R.string.traffic_share_warning)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmShareLog = false
+                    val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
+                    log.shareFile(contextState.value)
+                }) { Text(stringResource(R.string.traffic_share_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmShareLog = false }) { Text(stringResource(R.string.debug_dismiss)) }
+            },
+        )
+    }
+    val shownReport = reportLines
+    if (shownReport != null) {
+        DebugReportReview(
+            lines = shownReport,
+            onLines = { reportLines = it },
+            onDismiss = { reportLines = null },
+        )
+    }
+}
+
+@Composable
+private fun ToolbarStoreSync(editor: SettingsEditor) {
+    LaunchedEffect(editor.editingId) {
+        val target = editor.bound
+        var previous = target.load()
+        target.theme().collect {
+            val loaded = target.load()
+            val rowsChanged = previous.toolbarRows != loaded.toolbarRows
+            if (toolbarsDiffer(previous, loaded)) {
+                target.onAccount(publish = {
+                    editor.settings = editor.settings.keepingStoredToolbars(loaded)
+                }) {
+                }
+            }
+            if (rowsChanged) ToolbarRevision.bump()
+            previous = loaded
+        }
+    }
+}
+
+@Composable
+private fun ToolbarLeaf(screen: ToolbarScreen, walk: SettingsWalk) {
+    key(ToolbarRevision.value) {
+        ToolbarEditorScreen(screen, walk.editor.editingId.orEmpty(), walk.scroll)
+    }
+}
+
+@Composable
+private fun SpecialFolderLeaveWarning(editor: SettingsEditor) {
+    val leaveContext = LocalContext.current
+    val sentLabel = stringResource(R.string.settings_sent_mailbox)
+    val postponedLabel = stringResource(R.string.settings_postponed_mailbox)
+    val latest = rememberUpdatedState(editor.settings)
+    DisposableEffect(Unit) {
+        onDispose {
+            val unset = unsetSpecialFolders(latest.value).map {
+                if (it == SpecialFolder.Sent) sentLabel else postponedLabel
+            }
+            if (unset.isNotEmpty()) {
+                android.widget.Toast.makeText(
+                    leaveContext,
+                    leaveContext.getString(R.string.settings_special_unset_warning, unset.joinToString(", ")),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
+    LineField(
+        stringResource(R.string.settings_password),
+        drafts.passwordDraft ?: editor.password,
+        KeyboardType.Password,
+        password = true,
+        ready = editor.ready,
+        onDraft = { typed -> drafts.passwordDraft = typed.takeIf { it != editor.password } },
+    ) { drafts.passwordDraft = it.takeIf { typed -> typed != editor.password } }
+}
+
+@Composable
+private fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
+    Text(stringResource(R.string.settings_smtp_password_hint))
+    LineField(
+        stringResource(R.string.settings_smtp_password),
+        drafts.smtpPasswordDraft ?: editor.smtpPassword,
+        KeyboardType.Password,
+        password = true,
+        ready = editor.ready,
+        onDraft = { typed -> drafts.smtpPasswordDraft = typed.takeIf { it != editor.smtpPassword } },
+    ) { drafts.smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }
+}
+
+@Composable
+private fun ShowUnreadLeaf(editor: SettingsEditor) {
+    var warnUnread by remember { mutableStateOf(false) }
+    BackHandler(enabled = warnUnread) { warnUnread = false }
+    val settings = editor.settings
+    BoolField(stringResource(R.string.settings_show_unread), settings.showUnreadCounts || warnUnread) { enabled ->
+        if (enabled) {
+            warnUnread = true
+        } else {
+            warnUnread = false
+            editor.persist(editor.settings.copy(showUnreadCounts = false))
+        }
+    }
+    if (warnUnread) {
+        AlertDialog(
+            onDismissRequest = { warnUnread = false },
+            text = { Text(stringResource(R.string.settings_unread_warn)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    warnUnread = false
+                    editor.persist(editor.settings.copy(showUnreadCounts = true))
+                }) { Text(stringResource(R.string.settings_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { warnUnread = false }) { Text(stringResource(R.string.settings_dismiss)) }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun DsnChoices(editor: SettingsEditor) {
+    val settings = editor.settings
+    Text(stringResource(R.string.settings_dsn))
+    FlowRow {
+        for (mode in org.dlang.liveimap.ui.compose.DsnMode.entries) {
+            FilterChip(
+                selected = settings.dsnMode == mode,
+                onClick = { editor.persist(editor.settings.copy(dsnMode = mode)) },
+                label = { Text(dsnLabel(mode)) },
+            )
+        }
+    }
+}
+
+private data class CapFlags(
+    val listExtended: Boolean,
+    val uidPlus: Boolean,
+    val canMove: Boolean,
+    val compress: Boolean,
+)
+
+@Composable
+private fun rememberCapFlags(editor: SettingsEditor): CapFlags {
+    val settings = editor.settings
+    val sessionId = editor.accounts.firstOrNull { it.chosen }?.id
+    val session = if (sessionId.isNullOrEmpty()) null else existingMailSession(sessionId)
+    val caps = session?.featureCaps
+    fun allows(advertised: Boolean) = serverCapAllows(settings.jmapFolders, session != null, advertised)
+    return CapFlags(
+        listExtended = allows(caps?.listExtended == true),
+        uidPlus = allows(caps?.uidPlus == true),
+        canMove = allows(caps?.move == true),
+        compress = allows(caps?.compressDeflate == true),
+    )
+}
+
+@Composable
+private fun CountLeaf(key: String, count: Int) {
+    Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+    Text(count.toString())
+}
+
+@Composable
+private fun SkipSetField(key: String, value: Set<String>, ready: Boolean, onValue: (Set<String>) -> Unit) {
+    LineField(
+        stringResource(SettingsTreeGenerated.regTitle(key)),
+        value.joinToString(", "),
+        ready = ready,
+    ) { text ->
+        onValue(text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet())
+    }
+}
+
+@Composable
+private fun NumberLeaf(
+    label: String,
+    value: Int,
+    ready: Boolean,
+    ok: (Int) -> Boolean,
+    onValue: (Int) -> Unit,
+) {
+    LineField(
+        label,
+        value.toString(),
+        keyboardType = KeyboardType.Number,
+        ready = ready,
+        interpret = { draft, _ ->
+            val text = draft.trim()
+            val number = text.toIntOrNull()
+            if (number != null && ok(number)) number.toString() else null
+        },
+        onCommit = { text ->
+            val number = text.toIntOrNull()
+            if (number != null && ok(number)) onValue(number)
+        },
+    )
+}
+
+@Composable
+private fun settingLeaf(key: String, walk: SettingsWalk) {
+    val editor = walk.editor
+    val settings = editor.settings
+    val drafts = walk.drafts
+    val server = drafts?.serverDraft ?: settings
+    val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val panesOn = paneControlsEnabled(settings.multiPane)
+    when (key) {
+        "friendlyName" -> LineField(stringResource(R.string.settings_friendly_name), settings.friendlyName, ready = editor.ready) {
+            editor.persist(editor.settings.copy(friendlyName = it))
+        }
+        "email" -> LineField(stringResource(R.string.settings_email), settings.email, KeyboardType.Email, ready = editor.ready) {
+            editor.persist(editor.settings.copy(email = it))
+        }
+        "displayName" -> LineField(stringResource(R.string.settings_display_name), settings.displayName, ready = editor.ready) {
+            editor.persist(editor.settings.copy(displayName = it))
+        }
+        "altAddresses" -> LineField(
+            stringResource(R.string.settings_alt_addresses),
+            settings.altAddresses.joinToString(", "),
+            ready = editor.ready,
+        ) { text ->
+            editor.persist(
+                editor.settings.copy(altAddresses = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }),
+            )
+        }
+        "jmapFolders" -> ChoiceField(
+            stringResource(R.string.settings_mail_access),
+            listOf(false, true),
+            settings.jmapFolders,
+            { stringResource(if (it) R.string.settings_access_jmap else R.string.settings_access_imap) },
+        ) { jmap -> editor.persist(withMailAccess(editor.settings, jmap)) }
+        "imapHost" -> {
+            if (settings.jmapFolders) {
+                LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
+                    if (drafts != null) drafts.userServerSave(editor, server.copy(imapHost = it))
+                }
+                if (server.imapHost.trim().startsWith("http://", ignoreCase = true)) {
+                    Text(stringResource(R.string.settings_jmap_plain_http_warning), color = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
+                    if (drafts != null) drafts.userServerSave(editor, server.copy(imapHost = it))
+                }
+            }
+        }
+        "imapPort" -> if (!settings.jmapFolders) {
+            PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
+                if (drafts != null) drafts.userServerSave(editor, server.copy(imapPort = it))
+            }
+        }
+        "username" -> {
+            LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
+                editor.persist(
+                    editor.settings.copy(
+                        username = draft,
+                        email = emailDefaultedFromUsername(draft, editor.settings.email),
+                    ),
+                )
+            }
+            if (drafts != null) PasswordDraftField(editor, drafts)
+        }
+        "tlsMode" -> if (!settings.jmapFolders) {
+            ChoiceField(
+                stringResource(R.string.settings_tls),
+                TlsMode.entries,
+                server.tlsMode,
+                { tlsName(it) },
+            ) { mode ->
+                if (drafts != null) drafts.userServerSave(editor, server.withTlsMode(mode).withoutPreserved("tlsMode"))
+            }
+        }
+        "allowPlaintextAuth" -> if (!settings.jmapFolders) {
+            BoolField(
+                stringResource(R.string.settings_allow_plaintext),
+                server.allowPlaintextAuth,
+                note = stringResource(R.string.settings_allow_plaintext_note),
+            ) { enabled ->
+                if (drafts != null) drafts.userServerSave(editor, server.copy(allowPlaintextAuth = enabled))
+            }
+        }
+        "acceptInvalidCert" -> if (!settings.jmapFolders) {
+            BoolField(
+                stringResource(R.string.settings_accept_invalid_cert),
+                server.acceptInvalidCert,
+                note = stringResource(R.string.settings_accept_invalid_cert_note),
+            ) { enabled ->
+                if (drafts != null) drafts.userServerSave(editor, server.copy(acceptInvalidCert = enabled))
+            }
+        }
+        "allowOldTls" -> if (!settings.jmapFolders) {
+            BoolField(
+                stringResource(R.string.settings_allow_old_tls),
+                server.allowOldTls,
+                note = stringResource(R.string.settings_allow_old_tls_note),
+            ) { enabled ->
+                if (drafts != null) drafts.userServerSave(editor, server.copy(allowOldTls = enabled))
+            }
+        }
+        "authMechanism" -> if (!settings.jmapFolders) {
+            LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
+                editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
+            }
+        }
+        "clientCert" -> if (!settings.jmapFolders) ClientCertField(editor)
+        "clientCertAlias" -> if (!settings.jmapFolders) {
+            Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+            Text(settings.clientCertAlias.ifBlank { stringResource(R.string.settings_client_cert_none) })
+        }
+        "certPin" -> if (!settings.jmapFolders) {
+            if (settings.certPin.isBlank()) {
+                Text(stringResource(R.string.settings_cert_pin_none))
+            } else {
+                Text(settings.certPin)
+                TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
+                    Text(stringResource(R.string.settings_cert_pin_clear))
+                }
+            }
+        }
+        "jmapCertPin" -> {
+            if (settings.jmapCertPin.isBlank()) {
+                Text(stringResource(R.string.settings_jmap_cert_pin_none))
+            } else {
+                Text(settings.jmapCertPin)
+                TextButton(onClick = { editor.persist(editor.settings.copy(jmapCertPin = "")) }) {
+                    Text(stringResource(R.string.settings_jmap_cert_pin_clear))
+                }
+            }
+        }
+        "pipelineCommands" -> BoolField(stringResource(R.string.settings_pipeline), settings.pipelineCommands) {
+            editor.persist(editor.settings.copy(pipelineCommands = it))
+        }
+        "emailSubmission" -> BoolField(
+            stringResource(R.string.settings_send_over_jmap),
+            settings.emailSubmission,
+            note = stringResource(R.string.settings_email_submission_note),
+        ) { enabled ->
+            editor.persist(editor.settings.copy(emailSubmission = enabled))
+        }
+        "smtpHost" -> if (!settings.emailSubmission) {
+            LineField(stringResource(R.string.settings_smtp_host), settings.smtpHost, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpHost = it))
+            }
+        }
+        "smtpPort" -> if (!settings.emailSubmission) {
+            PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpPort = it))
+            }
+        }
+        "smtpUsername" -> if (!settings.emailSubmission) {
+            Text(stringResource(R.string.settings_smtp_username_hint))
+            LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
+                editor.persist(editor.settings.copy(smtpUsername = it))
+            }
+        }
+        "smtpSameAsImap" -> if (!settings.emailSubmission) {
+            BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
+                editor.persist(editor.settings.copy(smtpSameAsImap = it))
+            }
+            if (drafts != null) SmtpPasswordDraftField(editor, drafts)
+        }
+        "sieveHost" -> if (!settings.jmapFolders) {
+            LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
+                editor.persist(editor.settings.copy(sieveHost = it))
+            }
+        }
+        "sievePort" -> if (!settings.jmapFolders) {
+            PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
+                editor.persist(editor.settings.copy(sievePort = it))
+            }
+        }
+        "sieveTlsMode" -> if (!settings.jmapFolders) {
+            ChoiceField(
+                stringResource(R.string.settings_sieve_tls),
+                TlsMode.entries,
+                settings.sieveTlsMode,
+                { tlsName(it) },
+            ) { mode ->
+                editor.persist(editor.settings.copy(sieveTlsMode = mode).withoutPreserved("sieveTlsMode"))
+            }
+        }
+        "sieveCertPin" -> if (!settings.jmapFolders) {
+            if (settings.sieveCertPin.isBlank()) {
+                Text(stringResource(R.string.settings_sieve_cert_pin_none))
+            } else {
+                Text(settings.sieveCertPin)
+                TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
+                    Text(stringResource(R.string.settings_sieve_cert_pin_clear))
+                }
+            }
+            if (drafts != null) SieveCheckButton(editor, drafts)
+        }
+        "watchedFolders" -> {
+            Text(stringResource(R.string.settings_watched_folder_note))
+            LineField(
+                label = stringResource(R.string.settings_extra_folders),
+                value = watchedFolderText(settings.watchedFolders),
+                singleLine = false,
+                ready = editor.ready,
+                interpret = { draft, stored ->
+                    val next = watchedFolderText(watchedFoldersFromText(draft))
+                    if (next == stored) null else next
+                },
+                onCommit = { text ->
+                    editor.persist(editor.settings.copy(watchedFolders = watchedFoldersFromText(text)))
+                },
+            )
+        }
+        "extraIdleBudget" -> LineField(
+            label = stringResource(R.string.settings_extra_idle_budget),
+            value = settings.extraIdleBudget.toString(),
+            ready = editor.ready,
+            interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
+            onCommit = { text ->
+                val budget = extraIdleBudgetFromText(text) ?: return@LineField
+                editor.persist(editor.settings.copy(extraIdleBudget = budget))
+            },
+        )
+        "maxConnections" -> LineField(
+            label = stringResource(
+                R.string.settings_max_connections,
+                org.dlang.liveimap.session.MinConnections,
+                org.dlang.liveimap.session.MaxConnectionsCeiling,
+            ),
+            value = settings.maxConnections.toString(),
+            ready = editor.ready,
+            interpret = { draft, _ -> org.dlang.liveimap.session.maxConnectionsFromText(draft)?.toString() },
+            onCommit = { text ->
+                val limit = org.dlang.liveimap.session.maxConnectionsFromText(text) ?: return@LineField
+                editor.persist(editor.settings.copy(maxConnections = limit))
+            },
+        )
+        "sendingRules" -> SendingRulesRows(editor)
+        "signature" -> LineField(stringResource(R.string.settings_signature), settings.signature, singleLine = false, ready = editor.ready) {
+            editor.persist(editor.settings.copy(signature = it))
+        }
+        "sigDashes" -> BoolField(stringResource(R.string.settings_sig_dashes), settings.sigDashes) {
+            editor.persist(editor.settings.copy(sigDashes = it))
+        }
+        "sigAtBottom" -> BoolField(stringResource(R.string.settings_sig_bottom), settings.sigAtBottom) {
+            editor.persist(editor.settings.copy(sigAtBottom = it))
+        }
+        "quotePrefix" -> LineField(
+            stringResource(R.string.settings_quote_prefix),
+            settings.quotePrefix,
+            ready = editor.ready,
+            interpret = { draft, _ -> draft },
+        ) {
+            editor.persist(editor.settings.copy(quotePrefix = it))
+        }
+        "replyLeadIn" -> LineField(stringResource(R.string.settings_lead_in), settings.replyLeadIn, ready = editor.ready) {
+            editor.persist(editor.settings.copy(replyLeadIn = it.ifBlank { org.dlang.liveimap.ui.compose.DefaultLeadIn }))
+        }
+        "dsnMode" -> DsnChoices(editor)
+        "composerHeaders" -> LineField(stringResource(R.string.settings_composer_headers), settings.composerHeaders, ready = editor.ready) {
+            editor.persist(editor.settings.copy(composerHeaders = it))
+        }
+        "inboundRules" -> CountLeaf(key, settings.inboundRules.size)
+        "sentMailbox" -> MailboxLine(stringResource(R.string.settings_sent_mailbox), settings.sentMailbox, { walk.picking.value = MailboxPick.Sent }) {
+            editor.persist(editor.settings.copy(sentMailbox = it))
+        }
+        "postponedMailbox" -> MailboxLine(stringResource(R.string.settings_postponed_mailbox), settings.postponedMailbox, { walk.picking.value = MailboxPick.Postponed }) {
+            editor.persist(editor.settings.copy(postponedMailbox = it))
+        }
+        "addressBookMailbox" -> MailboxLine(stringResource(R.string.settings_address_book_mailbox), settings.addressBookMailbox, { walk.picking.value = MailboxPick.AddressBook }) {
+            editor.persist(editor.settings.copy(addressBookMailbox = it))
+        }
+        "spamMailbox" -> MailboxLine(stringResource(R.string.settings_spam_mailbox), settings.spamMailbox, { walk.picking.value = MailboxPick.Spam }) {
+            editor.persist(editor.settings.copy(spamMailbox = it))
+        }
+        "trashMailbox" -> MailboxLine(stringResource(R.string.settings_trash_mailbox), settings.trashMailbox, { walk.picking.value = MailboxPick.Trash }) {
+            editor.persist(editor.settings.copy(trashMailbox = it))
+        }
+        "showUnreadCounts" -> ShowUnreadLeaf(editor)
+        "expandedFolders" -> {
+            Text(stringResource(R.string.settings_expanded_folders))
+            ExpandedFoldersBody(editor)
+        }
+        "defaultView" -> {
+            ChoiceField(
+                stringResource(R.string.settings_default_view),
+                SortKey.entries,
+                settings.defaultView.key,
+                { sortKeyName(it) },
+            ) { sort ->
+                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = sort)))
+            }
+            BoolField(stringResource(R.string.reader_newest), settings.defaultView.newestFirst) { newest ->
+                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
+            }
+        }
+        "folderViews" -> {
+            Text(stringResource(R.string.settings_folder_views))
+            FolderViewsBody(editor)
+        }
+        "threadIndexStyle" -> ChoiceField(
+            stringResource(R.string.settings_thread_index),
+            ThreadIndexStyle.entries,
+            settings.threadIndexStyle,
+            { threadIndexStyleName(it) },
+        ) { style ->
+            editor.persist(editor.settings.copy(threadIndexStyle = style))
+        }
+        "inboxStart" -> StartRuleField(stringResource(R.string.settings_inbox_opens), settings.inboxStart, settings.showRecentRules) { rule ->
+            editor.persist(editor.settings.copy(inboxStart = rule))
+        }
+        "folderStart" -> StartRuleField(stringResource(R.string.settings_other_opens), settings.folderStart, settings.showRecentRules) { rule ->
+            editor.persist(editor.settings.copy(folderStart = rule))
+        }
+        "folderStarts" -> {
+            Text(stringResource(R.string.settings_start_per_folder))
+            FolderStartsBody(editor)
+        }
+        "startAfterChange" -> ChoiceField(
+            stringResource(R.string.settings_after_change),
+            StartAfterChange.entries,
+            settings.startAfterChange,
+            { startAfterChangeName(it) },
+        ) { value ->
+            editor.persist(editor.settings.copy(startAfterChange = value))
+        }
+        "showRecentRules" -> BoolField(stringResource(R.string.settings_show_recent), settings.showRecentRules) { enabled ->
+            editor.persist(editor.settings.copy(showRecentRules = enabled))
+        }
+        "openAtInIndexMenu" -> BoolField(stringResource(R.string.settings_open_at_menu), settings.openAtInIndexMenu) { enabled ->
+            editor.persist(editor.settings.copy(openAtInIndexMenu = enabled))
+        }
+        "pinercStartDefault" -> ChoiceField(
+            stringResource(R.string.settings_pinerc_missing),
+            PinercStartDefault.entries,
+            settings.pinercStartDefault,
+            { pinercStartDefaultName(it) },
+        ) { value ->
+            editor.persist(editor.settings.copy(pinercStartDefault = value))
+        }
+        "askSort" -> {
+            Text(stringResource(R.string.settings_ask_note))
+            AskLimitField(stringResource(R.string.settings_ask_sort), settings.askSort, editor.ready) { limit ->
+                editor.persist(editor.settings.copy(askSort = limit))
+            }
+        }
+        "askThread" -> AskLimitField(stringResource(R.string.settings_ask_thread), settings.askThread, editor.ready) { limit ->
+            editor.persist(editor.settings.copy(askThread = limit))
+        }
+        "askSearch" -> AskLimitField(stringResource(R.string.settings_ask_search), settings.askSearch, editor.ready) { limit ->
+            editor.persist(editor.settings.copy(askSearch = limit))
+        }
+        "askFallback" -> AskLimitField(stringResource(R.string.settings_ask_fallback), settings.askFallback, editor.ready) { limit ->
+            editor.persist(editor.settings.copy(askFallback = limit))
+        }
+        "sortAskSkip" -> SkipSetField(key, settings.sortAskSkip, editor.ready) {
+            editor.persist(editor.settings.copy(sortAskSkip = it))
+        }
+        "threadAskSkip" -> SkipSetField(key, settings.threadAskSkip, editor.ready) {
+            editor.persist(editor.settings.copy(threadAskSkip = it))
+        }
+        "searchAskSkip" -> SkipSetField(key, settings.searchAskSkip, editor.ready) {
+            editor.persist(editor.settings.copy(searchAskSkip = it))
+        }
+        "fallbackAskSkip" -> SkipSetField(key, settings.fallbackAskSkip, editor.ready) {
+            editor.persist(editor.settings.copy(fallbackAskSkip = it))
+        }
+        "savedSearches" -> CountLeaf(key, settings.savedSearches.size)
+        "savedAdvanced" -> CountLeaf(key, settings.savedAdvanced.size)
+        "markSeenOnOpen" -> BoolField(stringResource(R.string.settings_mark_seen), settings.markSeenOnOpen) {
+            editor.persist(editor.settings.copy(markSeenOnOpen = it))
+        }
+        "bodyView" -> ChoiceField(
+            stringResource(R.string.settings_message_view),
+            BodyView.entries,
+            settings.bodyView,
+            { bodyViewName(it) },
+        ) { view ->
+            editor.persist(editor.settings.copy(bodyView = view))
+        }
+        "preferHtml" -> BoolField(stringResource(SettingsTreeGenerated.regTitle(key)), settings.preferHtml) { enabled ->
+            val next = if (enabled) {
+                BodyView.PlainOrHtml
+            } else if (settings.bodyView == BodyView.PlainOrHtml) {
+                BodyView.PlainOrError
+            } else {
+                settings.bodyView
+            }
+            editor.persist(editor.settings.copy(bodyView = next))
+        }
+        "readerTextLayout" -> ChoiceField(
+            stringResource(R.string.settings_reader_display),
+            org.dlang.liveimap.ui.reader.ReaderDisplay.entries,
+            org.dlang.liveimap.ui.reader.readerDisplayOf(settings.bodyView, settings.readerTextLayout),
+            { org.dlang.liveimap.ui.reader.readerDisplayName(it) },
+        ) { display ->
+            editor.persist(
+                editor.settings.copy(
+                    bodyView = org.dlang.liveimap.ui.reader.bodyViewOf(display, editor.settings.bodyView),
+                    readerTextLayout = org.dlang.liveimap.ui.reader.textLayoutOf(display, editor.settings.readerTextLayout),
+                ),
+            )
+        }
+        "readerTextZoom" -> ChoiceField(
+            stringResource(R.string.settings_text_size),
+            ReaderTextZooms,
+            settings.readerTextZoom.takeIf { it in ReaderTextZooms } ?: 100,
+            { "$it%" },
+        ) { editor.persist(editor.settings.copy(readerTextZoom = it)) }
+        "viewerHeaders" -> LineField(stringResource(R.string.settings_viewer_headers), settings.viewerHeaders, ready = editor.ready) {
+            editor.persist(editor.settings.copy(viewerHeaders = it))
+        }
+        "nonAsciiDisplay" -> ChoiceField(
+            stringResource(R.string.settings_non_ascii),
+            NonAsciiDisplay.entries,
+            settings.nonAsciiDisplay,
+            { stringResource(when (it) {
+                NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
+                NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
+                NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
+                NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
+                NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
+            }) },
+        ) {
+            editor.persist(editor.settings.copy(nonAsciiDisplay = it))
+        }
+        "showDeleted" -> BoolField(stringResource(R.string.settings_show_deleted), settings.showDeleted) {
+            editor.persist(editor.settings.copy(showDeleted = it))
+        }
+        "autoExpunge" -> BoolField(
+            stringResource(R.string.settings_auto_expunge),
+            settings.autoExpunge,
+            note = stringResource(R.string.settings_auto_expunge_note),
+        ) {
+            editor.persist(editor.settings.copy(autoExpunge = it))
+        }
+        "askBeforeExpunge" -> BoolField(stringResource(R.string.settings_ask_expunge), settings.askBeforeExpunge) {
+            editor.persist(editor.settings.copy(askBeforeExpunge = it))
+        }
+        "deletePolicy" -> {
+            val gate = rememberCapFlags(editor)
+            val trashSet = settings.trashMailbox.isNotEmpty()
+            ReasonChoice(
+                stringResource(R.string.settings_delete_button),
+                listOf(
+                    ReasonOption(DeletePolicy.MarkDeleted, true, null),
+                    ReasonOption(
+                        DeletePolicy.MoveToTrash,
+                        trashSet || gate.listExtended,
+                        when {
+                            trashSet -> null
+                            gate.listExtended -> stringResource(R.string.settings_trash_needed)
+                            else -> stringResource(R.string.settings_reason_no_trash)
+                        },
+                    ),
+                    ReasonOption(
+                        DeletePolicy.DeletePermanently,
+                        gate.uidPlus,
+                        if (gate.uidPlus) null else stringResource(R.string.settings_reason_uidplus),
+                    ),
+                ),
+                settings.deletePolicy,
+                { deletePolicyName(it) },
+            ) { policy ->
+                editor.persist(editor.settings.copy(deletePolicy = policy).withoutPreserved("deletePolicy"))
+            }
+        }
+        "moveMethod" -> {
+            val gate = rememberCapFlags(editor)
+            ReasonChoice(
+                stringResource(R.string.settings_move_method),
+                listOf(
+                    ReasonOption(MoveMethod.CopyThenMarkDeleted, true, null),
+                    ReasonOption(
+                        MoveMethod.ImapMove,
+                        gate.canMove,
+                        if (gate.canMove) null else stringResource(R.string.settings_reason_move),
+                    ),
+                ),
+                settings.moveMethod,
+                { moveMethodName(it) },
+            ) { method ->
+                editor.persist(editor.settings.copy(moveMethod = method).withoutPreserved("moveMethod"))
+            }
+        }
+        "moveAllIncludesDeleted" -> BoolField(
+            stringResource(R.string.settings_move_all_deleted),
+            settings.moveAllIncludesDeleted,
+            note = stringResource(R.string.settings_move_all_deleted_note),
+        ) {
+            editor.persist(editor.settings.copy(moveAllIncludesDeleted = it))
+        }
+        "compression" -> {
+            val gate = rememberCapFlags(editor)
+            ReasonChoice(
+                stringResource(R.string.settings_compression),
+                listOf(
+                    ReasonOption(Compression.On, gate.compress, if (gate.compress) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.Auto, gate.compress, if (gate.compress) null else stringResource(R.string.settings_reason_compress)),
+                    ReasonOption(Compression.Off, true, null),
+                ),
+                settings.compression,
+                { compressionName(it) },
+            ) { mode ->
+                editor.persist(editor.settings.copy(compression = mode))
+            }
+        }
+        "swipeTrailing" -> SwipeEditor(
+            stringResource(if (leftToRight) R.string.settings_swipe_left else R.string.settings_swipe_right),
+            settings.swipeTrailing,
+            { walk.picking.value = MailboxPick.TrailingMove },
+            SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous },
+        ) { editor.persist(editor.settings.copy(swipeTrailing = it)) }
+        "swipeLeading" -> SwipeEditor(
+            stringResource(if (leftToRight) R.string.settings_swipe_right else R.string.settings_swipe_left),
+            settings.swipeLeading,
+            { walk.picking.value = MailboxPick.LeadingMove },
+            SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous },
+        ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
+        "readerSwipeTrailing" -> SwipeEditor(
+            stringResource(if (leftToRight) R.string.settings_message_swipe_left else R.string.settings_message_swipe_right),
+            settings.readerSwipeTrailing,
+            { walk.picking.value = MailboxPick.ReaderTrailingMove },
+            SwipeAction.entries,
+        ) { editor.persist(editor.settings.copy(readerSwipeTrailing = it)) }
+        "readerSwipeLeading" -> SwipeEditor(
+            stringResource(if (leftToRight) R.string.settings_message_swipe_right else R.string.settings_message_swipe_left),
+            settings.readerSwipeLeading,
+            { walk.picking.value = MailboxPick.ReaderLeadingMove },
+            SwipeAction.entries,
+        ) { editor.persist(editor.settings.copy(readerSwipeLeading = it)) }
+        "bounceFcc" -> BoolField(stringResource(R.string.settings_bounce_fcc), settings.bounceFcc) {
+            editor.persist(editor.settings.copy(bounceFcc = it))
+        }
+        "composerWrapColumn" -> NumberLeaf(
+            stringResource(R.string.settings_wrap_column),
+            settings.composerWrapColumn,
+            editor.ready,
+            { it in 0..998 },
+        ) { number ->
+            editor.persist(editor.settings.copy(composerWrapColumn = number))
+        }
+        "quellFlowed" -> BoolField(
+            stringResource(R.string.settings_flowed_text),
+            !settings.quellFlowed,
+            note = stringResource(R.string.settings_flowed_text_note),
+        ) { enabled ->
+            editor.persist(editor.settings.copy(quellFlowed = !enabled))
+        }
+        "replyAboveQuote" -> BoolField(stringResource(R.string.settings_reply_above), settings.replyAboveQuote) {
+            editor.persist(editor.settings.copy(replyAboveQuote = it))
+        }
+        "includeForwardAttachments" -> BoolField(stringResource(R.string.settings_include_attachments), settings.includeForwardAttachments) {
+            editor.persist(editor.settings.copy(includeForwardAttachments = it))
+        }
+        "forwardAsAttachment" -> BoolField(stringResource(R.string.settings_forward_attachment), settings.forwardAsAttachment) {
+            editor.persist(editor.settings.copy(forwardAsAttachment = it))
+        }
+        "savedMailbox" -> MailboxLine(stringResource(R.string.settings_saved_mailbox), settings.savedMailbox, { walk.picking.value = MailboxPick.Saved }) {
+            editor.persist(editor.settings.copy(savedMailbox = it))
+        }
+        "saveNameRule" -> ChoiceField(
+            stringResource(R.string.settings_save_rule),
+            SaveNameRule.entries,
+            settings.saveNameRule,
+            { saveNameRuleName(it) },
+        ) { rule ->
+            editor.persist(editor.settings.copy(saveNameRule = rule))
+        }
+        "lastSaveMailbox" -> MailboxLine(stringResource(SettingsTreeGenerated.regTitle(key)), settings.lastSaveMailbox, { walk.picking.value = MailboxPick.LastSave }) {
+            editor.persist(editor.settings.copy(lastSaveMailbox = it))
+        }
+        "completionSources" -> AddressCompletionRows(editor)
+        "addressBookHistory" -> NumberLeaf(
+            stringResource(R.string.settings_history_label),
+            settings.addressBookHistory,
+            editor.ready,
+            { true },
+        ) { number ->
+            editor.persist(editor.settings.copy(addressBookHistory = number))
+        }
+        "addressBookNeverTrim" -> BoolField(stringResource(R.string.settings_never_trim), settings.addressBookNeverTrim) {
+            editor.persist(editor.settings.copy(addressBookNeverTrim = it))
+        }
+        "extraAddressBooks" -> BookList(stringResource(R.string.settings_extra_books), settings.extraAddressBooks, { walk.picking.value = MailboxPick.ExtraBook }) { gone ->
+            editor.persist(editor.settings.copy(extraAddressBooks = editor.settings.extraAddressBooks - gone))
+        }
+        "globalAddressBooks" -> BookList(stringResource(R.string.settings_global_books), settings.globalAddressBooks, { walk.picking.value = MailboxPick.GlobalBook }) { gone ->
+            editor.persist(editor.settings.copy(globalAddressBooks = editor.settings.globalAddressBooks - gone))
+        }
+        "theme" -> ChoiceField(stringResource(R.string.settings_theme), ThemeMode.entries, settings.theme, { themeName(it) }) {
+            editor.persist(editor.settings.copy(theme = it))
+        }
+        "dynamicColor" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            BoolField(stringResource(R.string.settings_dynamic_color), settings.dynamicColor) {
+                editor.persist(editor.settings.copy(dynamicColor = it))
+            }
+        }
+        "density" -> ChoiceField(stringResource(R.string.settings_density), Density.entries, settings.density, { densityName(it) }) {
+            editor.persist(editor.settings.copy(density = it))
+        }
+        "dateFormat" -> ChoiceField(
+            stringResource(R.string.settings_date_format),
+            DateFormat.entries,
+            settings.dateFormat,
+            { dateFormatName(it) },
+        ) {
+            editor.persist(editor.settings.copy(dateFormat = it))
+        }
+        "datePattern" -> if (settings.dateFormat == DateFormat.Custom) {
+            LineField(stringResource(R.string.settings_date_pattern), settings.datePattern, ready = editor.ready) {
+                editor.persist(editor.settings.copy(datePattern = it))
+            }
+        }
+        "customLayout" -> PaneLayoutEditor(settings.customLayout, settings.readerTextZoom, persist = panesOn) { text ->
+            if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
+        }
+        "multiPane" -> ChoiceField(
+            stringResource(R.string.settings_multi_pane),
+            MultiPane.entries,
+            settings.multiPane,
+            { multiPaneName(it) },
+        ) {
+            editor.persist(editor.settings.copy(multiPane = it))
+        }
+        "folderPane" -> ChoiceField(
+            stringResource(R.string.settings_folder_pane),
+            LayoutChoice.entries,
+            settings.folderPane,
+            { layoutChoiceName(it) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
+        }
+        "foldPosture" -> ChoiceField(
+            stringResource(R.string.settings_fold_posture),
+            listOf(LayoutChoice.Off, LayoutChoice.On),
+            settings.foldPosture,
+            { layoutChoiceName(it) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
+        }
+        "fullScreen" -> BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
+            editor.persist(editor.settings.copy(fullScreen = it))
+        }
+        "paneArrangement" -> ChoiceField(
+            stringResource(R.string.settings_pane_arrangement),
+            ArrangementChoice.entries,
+            settings.paneArrangement,
+            { stringResource(when (it) {
+                ArrangementChoice.Auto -> R.string.settings_pane_auto
+                ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
+                ArrangementChoice.Stacked -> R.string.settings_pane_stacked
+            }) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
+        }
+        "previewSize" -> ChoiceField(
+            stringResource(R.string.settings_preview_size),
+            PreviewChoice.entries,
+            settings.previewSize,
+            { stringResource(when (it) {
+                PreviewChoice.Auto -> R.string.settings_pane_auto
+                PreviewChoice.Density -> R.string.settings_preview_density
+                PreviewChoice.None -> R.string.settings_preview_none
+                PreviewChoice.Small -> R.string.settings_preview_small
+                PreviewChoice.Large -> R.string.settings_preview_large
+            }) },
+        ) {
+            editor.persist(editor.settings.copy(previewSize = it))
+        }
+        "folderPosition" -> ChoiceField(
+            stringResource(R.string.settings_folder_position),
+            FolderPositionChoice.entries,
+            settings.folderPosition,
+            { stringResource(when (it) {
+                FolderPositionChoice.Auto -> R.string.settings_pane_auto
+                FolderPositionChoice.Beside -> R.string.settings_folder_beside
+                FolderPositionChoice.AboveList -> R.string.settings_folder_above
+            }) },
+            enabled = panesOn,
+        ) {
+            if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
+        }
+        "clientSort" -> BoolField(
+            stringResource(R.string.settings_client_sort),
+            settings.clientSort,
+            note = stringResource(R.string.settings_client_sort_note),
+        ) {
+            editor.persist(editor.settings.copy(clientSort = it))
+        }
+        "clientThread" -> BoolField(
+            stringResource(R.string.settings_client_thread),
+            settings.clientThread,
+            note = stringResource(R.string.settings_client_thread_note),
+        ) {
+            editor.persist(editor.settings.copy(clientThread = it))
+        }
+        "pollForNewMail" -> BoolField(
+            stringResource(R.string.settings_poll_mail),
+            settings.pollForNewMail,
+            note = stringResource(R.string.settings_poll_note),
+        ) {
+            editor.persist(editor.settings.copy(pollForNewMail = it))
+        }
+        "pollSeconds" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.pollSeconds,
+            editor.ready,
+            { it >= 0 },
+        ) { number ->
+            editor.persist(editor.settings.copy(pollSeconds = number))
+        }
+        "statusVisibleCounts" -> BoolField(
+            stringResource(R.string.settings_status_counts),
+            settings.statusVisibleCounts,
+            note = stringResource(R.string.settings_status_note),
+        ) {
+            editor.persist(editor.settings.copy(statusVisibleCounts = it))
+        }
+        "forceSlowerFallbacks" -> BoolField(
+            stringResource(R.string.settings_force_slower),
+            settings.forceSlowerFallbacks,
+            note = stringResource(R.string.settings_force_slower_note),
+        ) {
+            editor.persist(editor.settings.copy(forceSlowerFallbacks = it))
+        }
+        "logImapTraffic" -> BoolField(stringResource(R.string.settings_log_traffic), settings.logImapTraffic) {
+            editor.persist(editor.settings.copy(logImapTraffic = it))
+        }
+        "showUserInDebugReport" -> BoolField(stringResource(R.string.settings_show_user), settings.showUserInDebugReport) {
+            editor.persist(editor.settings.copy(showUserInDebugReport = it))
+        }
+        "idleWakeSeconds" -> ChoiceField(
+            stringResource(R.string.settings_idle_wake),
+            IdleWakeSeconds,
+            settings.idleWakeSeconds.takeIf { it in IdleWakeSeconds } ?: 5,
+            { "$it s" },
+        ) { editor.persist(editor.settings.copy(idleWakeSeconds = it)) }
+        "hiddenCapabilities" -> {
+            for (token in hideCapabilityTokens) {
+                val hidden = settings.hiddenCapabilities.any { it.equals(token, ignoreCase = true) }
+                BoolField(token, hidden) { on ->
+                    val next = settings.hiddenCapabilities
+                        .filterNot { it.equals(token, ignoreCase = true) }
+                        .toMutableSet()
+                    if (on) next.add(token)
+                    editor.persist(editor.settings.copy(hiddenCapabilities = next))
+                }
+            }
+        }
+        "indexBar" -> ToolbarLeaf(ToolbarScreen.Index, walk)
+        "selectionBar" -> ToolbarLeaf(ToolbarScreen.Selection, walk)
+        "folderBar" -> ToolbarLeaf(ToolbarScreen.Folders, walk)
+        "readerToolbar" -> ToolbarLeaf(ToolbarScreen.Reader, walk)
+        "composeBar" -> ToolbarLeaf(ToolbarScreen.Compose, walk)
+        "toolbarRows" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.toolbarRows,
+            editor.ready,
+            { it in 1..4 },
+        ) { number ->
+            editor.persist(editor.settings.copy(toolbarRows = number))
+        }
+        "favorites" -> {
+            for (favorite in settings.favorites) {
+                val shown = if (favorite.label.isNotBlank()) {
+                    favorite.label
+                } else {
+                    favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+                }
+                ListItem(
+                    headlineContent = { Text(shown) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { walk.onEditFavorite(favorite) },
+                )
+            }
+        }
+        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+    }
+}
+
+@Composable
+private fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
+    val noSieveHost = stringResource(R.string.settings_sieve_no_host)
+    TextButton(
+        onClick = {
+            if (drafts.checkingSieve) return@TextButton
+            val sieveStore = editor.bound
+            val sieveAccount = editor.editingId
+            val (host, port) = sieveEndpoint(editor.settings)
+            if (host.isBlank()) {
+                drafts.sieveReport = noSieveHost
+                return@TextButton
+            }
+            val blocked = editor.settings.preservedSieveTlsKey()
+            if (blocked != null) {
+                drafts.sieveReport = "account settings need attention: $blocked"
+                return@TextButton
+            }
+            val sieveTlsMode = editor.settings.sieveTlsMode
+            val pin = editor.settings.sieveCertPin
+            drafts.checkingSieve = true
+            drafts.sieveReport = ""
+            editor.ui.launch {
+                try {
+                    drafts.sieveReport = sieveCheckText(
+                        withContext(editor.settings.tlsPolicy()) {
+                            greetSieve(host, port, sieveTlsMode, pin, ::confirmMailCertificate) { fingerprint ->
+                                persistSievePin(sieveStore, sieveAccount, fingerprint)
+                            }
+                        },
+                    )
+                } catch (failure: SieveFailure) {
+                    drafts.sieveReport = failure.text
+                } finally {
+                    drafts.checkingSieve = false
+                }
+            }
+        },
+        enabled = !drafts.checkingSieve,
+    ) {
+        Text(stringResource(R.string.settings_sieve_check))
+    }
+    if (drafts.sieveReport.isNotEmpty()) Text(drafts.sieveReport)
+}
+
+@Composable
+private fun accountFrame(node: TreeNode.Group, depth: Int, walk: SettingsWalk) {
+    val editor = walk.editor
+    val sections = walk.sections
+    val settings = editor.settings
+    val chosenAccount = editor.accounts.firstOrNull { it.chosen }?.id
+    val drafts = remember(editor.editingId, chosenAccount) { ServerDrafts() }
+    walk.drafts = drafts
+    val server = drafts.serverDraft ?: settings
+    DisposableEffect(drafts.hasDraft) {
+        UnsavedEdits.pending = drafts.hasDraft
+        UnsavedEdits.ask = { go -> drafts.leaveAfter = go; drafts.discardAsk = true }
+        onDispose { UnsavedEdits.pending = false; UnsavedEdits.ask = null }
+    }
+    LaunchedEffect(drafts.hasDraft, drafts.serverReview == null, drafts.serverChecking) {
+        if (!drafts.hasDraft && drafts.serverReview == null && !drafts.serverChecking) {
+            drafts.leaveAfter?.let { drafts.leaveAfter = null; it() }
+        }
+    }
+    BackHandler(enabled = drafts.hasDraft) { drafts.discardAsk = true }
+    drafts.serverReview?.let { review ->
         AlertDialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
@@ -974,31 +2074,31 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
             },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
-                    serverReview = null
-                    serverDraft?.let { editor.persist(savedServer(it)) }
-                    commitPasswords()
-                    serverDraft = null
+                    drafts.serverReview = null
+                    drafts.serverDraft?.let { editor.persist(drafts.savedServer(editor, it)) }
+                    drafts.commitPasswords(editor)
+                    drafts.serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
             dismissButton = {
-                TextButton(onClick = { serverReview = null; leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                TextButton(onClick = { drafts.serverReview = null; drafts.leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
             },
         )
     }
-    if (discardAsk) {
+    if (drafts.discardAsk) {
         AlertDialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(stringResource(R.string.settings_unsaved_title)) },
             confirmButton = {
-                androidx.compose.material3.Button(onClick = { discardAsk = false; saveServer() }) {
+                androidx.compose.material3.Button(onClick = { drafts.discardAsk = false; drafts.saveServer(editor) }) {
                     Text(stringResource(R.string.settings_save))
                 }
             },
             dismissButton = {
                 androidx.compose.foundation.layout.Row {
-                    TextButton(onClick = { discardAsk = false; leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
-                    TextButton(onClick = { discardAsk = false; discardDrafts() }) {
+                    TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                    TextButton(onClick = { drafts.discardAsk = false; drafts.discard() }) {
                         Text(stringResource(R.string.settings_discard))
                     }
                 }
@@ -1187,349 +2287,8 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
         TextButton(onClick = { editor.addAccount() }) {
             Text(stringResource(R.string.settings_add_account))
         }
-        val noUser = stringResource(R.string.settings_no_user)
-        SettingsNode(
-            title = stringResource(R.string.settings_identity),
-            depth = depth,
-            summary = settings.email.ifBlank { settings.displayName.ifBlank { noUser } },
-            expanded = "identity" in sections.open,
-            onToggle = { sections.toggle("identity") },
-        ) {
-            LineField(stringResource(R.string.settings_friendly_name), settings.friendlyName, ready = editor.ready) {
-                editor.persist(editor.settings.copy(friendlyName = it))
-            }
-            LineField(stringResource(R.string.settings_email), settings.email, KeyboardType.Email, ready = editor.ready) {
-                editor.persist(editor.settings.copy(email = it))
-            }
-            LineField(stringResource(R.string.settings_display_name), settings.displayName, ready = editor.ready) {
-                editor.persist(editor.settings.copy(displayName = it))
-            }
-        }
-        // David, 2026-10-12: identity first, then IMAP or JMAP, then that protocol's server questions.
-        SettingsNode(
-            title = stringResource(R.string.settings_mail_access),
-            depth = depth,
-            summary = stringResource(if (settings.jmapFolders) R.string.settings_access_jmap else R.string.settings_access_imap),
-            expanded = "access" in sections.open,
-            onToggle = { sections.toggle("access") },
-        ) {
-            ChoiceField(
-                stringResource(R.string.settings_mail_access),
-                listOf(false, true),
-                settings.jmapFolders,
-                { stringResource(if (it) R.string.settings_access_jmap else R.string.settings_access_imap) },
-            ) { jmap -> editor.persist(withMailAccess(editor.settings, jmap)) }
-        }
-        if (settings.jmapFolders) {
-            SettingsNode(
-                title = stringResource(R.string.settings_jmap_server),
-                depth = depth,
-                summary = server.imapHost.ifBlank { stringResource(R.string.settings_no_server) },
-                expanded = "server" in sections.open,
-                onToggle = { sections.toggle("server") },
-            ) {
-                Text(stringResource(R.string.settings_jmap_server_note))
-                LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
-                    userServerSave(server.copy(imapHost = it))
-                }
-                if (server.imapHost.trim().startsWith("http://", ignoreCase = true)) {
-                    // David: never refuse what the user configured; say what it means instead.
-                    Text(stringResource(R.string.settings_jmap_plain_http_warning), color = MaterialTheme.colorScheme.error)
-                }
-                LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
-                    editor.persist(
-                        editor.settings.copy(
-                            username = draft,
-                            email = emailDefaultedFromUsername(draft, editor.settings.email),
-                        ),
-                    )
-                }
-                LineField(
-                    stringResource(R.string.settings_password),
-                    passwordDraft ?: editor.password,
-                    KeyboardType.Password,
-                    password = true,
-                    ready = editor.ready,
-                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
-                    onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },
-                ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
-            }
-        } else {
-            SettingsNode(
-                title = stringResource(R.string.settings_server),
-                depth = depth,
-                summary = hostAndPort(
-                    settings.imapHost,
-                    settings.imapPort,
-                    stringResource(R.string.settings_no_server),
-                ),
-                expanded = "server" in sections.open,
-                onToggle = { sections.toggle("server") },
-            ) {
-                Text(stringResource(R.string.settings_plaintext_ports))
-                LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
-                    editor.persist(
-                        editor.settings.copy(
-                            username = draft,
-                            email = emailDefaultedFromUsername(draft, editor.settings.email),
-                        ),
-                    )
-                }
-                LineField(
-                    stringResource(R.string.settings_password),
-                    passwordDraft ?: editor.password,
-                    KeyboardType.Password,
-                    password = true,
-                    ready = editor.ready,
-                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
-                    onDraft = { typed -> passwordDraft = typed.takeIf { it != editor.password } },
-                ) { passwordDraft = it.takeIf { typed -> typed != editor.password } }
-                if (serverChecking) {
-                    androidx.compose.foundation.layout.Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("server-checking"),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
-                    }
-                }
-                LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
-                    userServerSave(server.copy(imapHost = it))
-                }
-                PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
-                    userServerSave(server.copy(imapPort = it))
-                }
-                ChoiceField(
-                    stringResource(R.string.settings_tls),
-                    TlsMode.entries,
-                    server.tlsMode,
-                    { tlsName(it) },
-                ) { mode ->
-                    userServerSave(server.withTlsMode(mode).withoutPreserved("tlsMode"))
-                }
-                BoolField(
-                    stringResource(R.string.settings_allow_plaintext),
-                    server.allowPlaintextAuth,
-                    note = stringResource(R.string.settings_allow_plaintext_note),
-                ) { enabled ->
-                    userServerSave(server.copy(allowPlaintextAuth = enabled))
-                }
-                BoolField(
-                    stringResource(R.string.settings_accept_invalid_cert),
-                    server.acceptInvalidCert,
-                    note = stringResource(R.string.settings_accept_invalid_cert_note),
-                ) { enabled ->
-                    userServerSave(server.copy(acceptInvalidCert = enabled))
-                }
-                BoolField(
-                    stringResource(R.string.settings_allow_old_tls),
-                    server.allowOldTls,
-                    note = stringResource(R.string.settings_allow_old_tls_note),
-                ) { enabled ->
-                    userServerSave(server.copy(allowOldTls = enabled))
-                }
-                if (hasDraft) {
-                    androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        TextButton(onClick = { discardDrafts() }) {
-                            Text(stringResource(R.string.settings_discard))
-                        }
-                    }
-                }
-                LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
-                }
-                ClientCertField(editor)
-                if (settings.certPin.isBlank()) {
-                    Text(stringResource(R.string.settings_cert_pin_none))
-                } else {
-                    Text(settings.certPin)
-                    TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
-                        Text(stringResource(R.string.settings_cert_pin_clear))
-                    }
-                }
-                // F63: JMAP (HTTPS) has its own pin, separate from the IMAP one.
-                if (settings.jmapCertPin.isBlank()) {
-                    Text(stringResource(R.string.settings_jmap_cert_pin_none))
-                } else {
-                    Text(settings.jmapCertPin)
-                    TextButton(onClick = { editor.persist(editor.settings.copy(jmapCertPin = "")) }) {
-                        Text(stringResource(R.string.settings_jmap_cert_pin_clear))
-                    }
-                }
-                LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(sieveHost = it))
-                }
-                PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(sievePort = it))
-                }
-                ChoiceField(
-                    stringResource(R.string.settings_sieve_tls),
-                    TlsMode.entries,
-                    settings.sieveTlsMode,
-                    { tlsName(it) },
-                ) { mode ->
-                    editor.persist(editor.settings.copy(sieveTlsMode = mode).withoutPreserved("sieveTlsMode"))
-                }
-                if (settings.sieveCertPin.isBlank()) {
-                    Text(stringResource(R.string.settings_sieve_cert_pin_none))
-                } else {
-                    Text(settings.sieveCertPin)
-                    TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
-                        Text(stringResource(R.string.settings_sieve_cert_pin_clear))
-                    }
-                }
-                val noSieveHost = stringResource(R.string.settings_sieve_no_host)
-                TextButton(
-                    onClick = {
-                        if (checkingSieve) return@TextButton
-                        val sieveStore = editor.bound
-                        val sieveAccount = editor.editingId
-                        val (host, port) = sieveEndpoint(editor.settings)
-                        if (host.isBlank()) {
-                            sieveReport = noSieveHost
-                            return@TextButton
-                        }
-                        val blocked = editor.settings.preservedSieveTlsKey()
-                        if (blocked != null) {
-                            sieveReport = "account settings need attention: $blocked"
-                            return@TextButton
-                        }
-                        val sieveTlsMode = editor.settings.sieveTlsMode
-                        val pin = editor.settings.sieveCertPin
-                        checkingSieve = true
-                        sieveReport = ""
-                        editor.ui.launch {
-                            try {
-                                sieveReport = sieveCheckText(
-                                    withContext(editor.settings.tlsPolicy()) {
-                                        greetSieve(host, port, sieveTlsMode, pin, ::confirmMailCertificate) { fingerprint ->
-                                            persistSievePin(sieveStore, sieveAccount, fingerprint)
-                                        }
-                                    },
-                                )
-                            } catch (failure: SieveFailure) {
-                                sieveReport = failure.text
-                            } finally {
-                                checkingSieve = false
-                            }
-                        }
-                    },
-                    enabled = !checkingSieve,
-                ) {
-                    Text(stringResource(R.string.settings_sieve_check))
-                }
-                if (sieveReport.isNotEmpty()) Text(sieveReport)
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_sending),
-            depth = depth,
-            summary = if (settings.emailSubmission) {
-                stringResource(R.string.settings_send_over_jmap)
-            } else {
-                hostAndPort(settings.smtpHost, settings.smtpPort, stringResource(R.string.settings_no_smtp))
-            },
-            expanded = "sending" in sections.open,
-            onToggle = { sections.toggle("sending") },
-        ) {
-            BoolField(
-                stringResource(R.string.settings_send_over_jmap),
-                settings.emailSubmission,
-                note = stringResource(R.string.settings_email_submission_note),
-            ) { enabled ->
-                editor.persist(editor.settings.copy(emailSubmission = enabled))
-            }
-            // David, 2026-10-12: no SMTP questions when sending goes over JMAP.
-            if (!settings.emailSubmission) {
-                LineField(stringResource(R.string.settings_smtp_host), settings.smtpHost, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(smtpHost = it))
-                }
-                PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(smtpPort = it))
-                }
-                Text(stringResource(R.string.settings_smtp_username_hint))
-                LineField(stringResource(R.string.settings_smtp_username), settings.smtpUsername, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(smtpUsername = it))
-                }
-                Text(stringResource(R.string.settings_smtp_password_hint))
-                BoolField(stringResource(R.string.settings_smtp_same_as_imap), settings.smtpSameAsImap) {
-                    editor.persist(editor.settings.copy(smtpSameAsImap = it))
-                }
-                LineField(
-                    stringResource(R.string.settings_smtp_password),
-                    smtpPasswordDraft ?: editor.smtpPassword,
-                    KeyboardType.Password,
-                    password = true,
-                    ready = editor.ready,
-                    // Each keystroke is a draft, so Save and the leave guard see a typed password before focus leaves.
-                    onDraft = { typed -> smtpPasswordDraft = typed.takeIf { it != editor.smtpPassword } },
-                ) { smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }
-            }
-            sendingProblem(settings)?.let { res ->
-                Text(
-                    stringResource(res),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-way-to-send"),
-                )
-            }
-        }
-        if (!settings.jmapFolders) {
-            val watchedNames = settings.watchedFolders
-            SettingsNode(
-                title = stringResource(R.string.settings_watched_folders),
-                depth = depth,
-                summary = if (watchedNames.isEmpty()) {
-                    stringResource(R.string.settings_watched_none)
-                } else {
-                    watchedNames.size.toString()
-                },
-                expanded = "watched" in sections.open,
-                onToggle = { sections.toggle("watched") },
-            ) {
-                Text(stringResource(R.string.settings_watched_folder_note))
-                LineField(
-                    label = stringResource(R.string.settings_extra_folders),
-                    value = watchedFolderText(watchedNames),
-                    singleLine = false,
-                    ready = editor.ready,
-                    interpret = { draft, stored ->
-                        val next = watchedFolderText(watchedFoldersFromText(draft))
-                        if (next == stored) null else next
-                    },
-                    onCommit = { text ->
-                        editor.persist(editor.settings.copy(watchedFolders = watchedFoldersFromText(text)))
-                    },
-                )
-                LineField(
-                    label = stringResource(R.string.settings_extra_idle_budget),
-                    value = settings.extraIdleBudget.toString(),
-                    ready = editor.ready,
-                    interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
-                    onCommit = { text ->
-                        val budget = extraIdleBudgetFromText(text) ?: return@LineField
-                        editor.persist(editor.settings.copy(extraIdleBudget = budget))
-                    },
-                )
-                LineField(
-                    label = stringResource(R.string.settings_max_connections, org.dlang.liveimap.session.MinConnections, org.dlang.liveimap.session.MaxConnectionsCeiling),
-                    value = settings.maxConnections.toString(),
-                    ready = editor.ready,
-                    interpret = { draft, _ -> org.dlang.liveimap.session.maxConnectionsFromText(draft)?.toString() },
-                    onCommit = { text ->
-                        val limit = org.dlang.liveimap.session.maxConnectionsFromText(text) ?: return@LineField
-                        editor.persist(editor.settings.copy(maxConnections = limit))
-                    },
-                )
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_sending_rules),
-            depth = depth,
-            summary = sendingRulesSummary(settings),
-            expanded = "rules" in sections.open,
-            onToggle = { sections.toggle("rules") },
-        ) {
-            SendingRulesRows(editor)
+        for (child in node.children) {
+            renderSettingsNode(child, depth, walk)
         }
         SettingsNode(
             title = stringResource(R.string.settings_import),
@@ -1553,33 +2312,33 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             androidx.compose.material3.Button(
-                onClick = { saveServer() },
-                enabled = hasDraft && !serverChecking,
+                onClick = { drafts.saveServer(editor) },
+                enabled = drafts.hasDraft && !drafts.serverChecking,
                 modifier = Modifier.testTag("account-save"),
             ) { Text(stringResource(R.string.settings_save)) }
             TextButton(
                 onClick = {
-                    if (!probing) {
-                        val candidate = savedServer(server)
-                        probing = true
-                        serverReport = emptyList()
+                    if (!drafts.probing) {
+                        val candidate = drafts.savedServer(editor, server)
+                        drafts.probing = true
+                        drafts.serverReport = emptyList()
                         editor.ui.launch {
                             val id = editor.bound.chosenAccountId()
                             try {
-                                serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, passwordDraft ?: editor.password, smtpPasswordDraft ?: editor.smtpPassword))
+                                drafts.serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, drafts.passwordDraft ?: editor.password, drafts.smtpPasswordDraft ?: editor.smtpPassword))
                             } finally {
-                                probing = false
+                                drafts.probing = false
                             }
                         }
                     }
                 },
-                enabled = !probing,
+                enabled = !drafts.probing,
                 modifier = Modifier.testTag("account-test"),
             ) {
-                Text(stringResource(if (probing) R.string.settings_testing else R.string.settings_test_account))
+                Text(stringResource(if (drafts.probing) R.string.settings_testing else R.string.settings_test_account))
             }
         }
-        for (line in serverReport) {
+        for (line in drafts.serverReport) {
             Text(text = line, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
         }
         // F46: the acceptance runner is a developer tool; release builds do not show it.
@@ -1684,990 +2443,6 @@ private fun AccountGroup(editor: SettingsEditor, depth: Int) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MailboxesGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    var picking by remember { mutableStateOf<MailboxPick?>(null) }
-    BackHandler(enabled = picking != null) { picking = null }
-    // David's Sent rule (d): leaving with special folders unset only warns; it never blocks.
-    val leaveContext = androidx.compose.ui.platform.LocalContext.current
-    val sentLabel = stringResource(R.string.settings_sent_mailbox)
-    val postponedLabel = stringResource(R.string.settings_postponed_mailbox)
-    val latest = androidx.compose.runtime.rememberUpdatedState(settings)
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose {
-            val unset = unsetSpecialFolders(latest.value).map { if (it == SpecialFolder.Sent) sentLabel else postponedLabel }
-            if (unset.isNotEmpty()) {
-                android.widget.Toast.makeText(
-                    leaveContext,
-                    leaveContext.getString(R.string.settings_special_unset_warning, unset.joinToString(", ")),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNode(
-            title = stringResource(R.string.settings_special_use),
-            depth = depth,
-            summary = mailboxSetCount(settings),
-            expanded = "special" in sections.open,
-            onToggle = { sections.toggle("special") },
-        ) {
-            MailboxLine(stringResource(R.string.settings_sent_mailbox), settings.sentMailbox, { picking = MailboxPick.Sent }) {
-                editor.persist(editor.settings.copy(sentMailbox = it))
-            }
-            MailboxLine(stringResource(R.string.settings_postponed_mailbox), settings.postponedMailbox, { picking = MailboxPick.Postponed }) {
-                editor.persist(editor.settings.copy(postponedMailbox = it))
-            }
-            MailboxLine(stringResource(R.string.settings_address_book_mailbox), settings.addressBookMailbox, { picking = MailboxPick.AddressBook }) {
-                editor.persist(editor.settings.copy(addressBookMailbox = it))
-            }
-            BookList(stringResource(R.string.settings_extra_books), settings.extraAddressBooks, { picking = MailboxPick.ExtraBook }) { gone ->
-                editor.persist(editor.settings.copy(extraAddressBooks = editor.settings.extraAddressBooks - gone))
-            }
-            BookList(stringResource(R.string.settings_global_books), settings.globalAddressBooks, { picking = MailboxPick.GlobalBook }) { gone ->
-                editor.persist(editor.settings.copy(globalAddressBooks = editor.settings.globalAddressBooks - gone))
-            }
-            MailboxLine(stringResource(R.string.settings_spam_mailbox), settings.spamMailbox, { picking = MailboxPick.Spam }) {
-                editor.persist(editor.settings.copy(spamMailbox = it))
-            }
-            MailboxLine(stringResource(R.string.settings_trash_mailbox), settings.trashMailbox, { picking = MailboxPick.Trash }) {
-                editor.persist(editor.settings.copy(trashMailbox = it))
-            }
-            MailboxLine(stringResource(R.string.settings_saved_mailbox), settings.savedMailbox, { picking = MailboxPick.Saved }) {
-                editor.persist(editor.settings.copy(savedMailbox = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_save_rule),
-                SaveNameRule.entries,
-                settings.saveNameRule,
-                { saveNameRuleName(it) },
-            ) { rule ->
-                editor.persist(editor.settings.copy(saveNameRule = rule))
-            }
-        }
-    }
-    MailboxPickDialog(editor, picking) { picking = it }
-}
-
-@Composable
-private fun FoldersGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNode(
-            title = stringResource(R.string.settings_folder_list),
-            depth = depth,
-            summary = pluralStringResource(
-                R.plurals.settings_expanded,
-                settings.expandedFolders.size,
-                settings.expandedFolders.size,
-            ),
-            expanded = "list" in sections.open,
-            onToggle = { sections.toggle("list") },
-        ) {
-            Text(stringResource(R.string.settings_expanded_folders))
-            ExpandedFoldersBody(editor)
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_folder_views),
-            depth = depth,
-            summary = sortDirection(settings),
-            expanded = "views" in sections.open,
-            onToggle = { sections.toggle("views") },
-        ) {
-            ChoiceField(
-                stringResource(R.string.settings_default_view),
-                SortKey.entries,
-                settings.defaultView.key,
-                { sortKeyName(it) },
-            ) { key ->
-                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = key)))
-            }
-            BoolField(stringResource(R.string.reader_newest), settings.defaultView.newestFirst) { newest ->
-                editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_thread_index),
-                ThreadIndexStyle.entries,
-                settings.threadIndexStyle,
-                { threadIndexStyleName(it) },
-            ) { style ->
-                editor.persist(editor.settings.copy(threadIndexStyle = style))
-            }
-            Text(stringResource(R.string.settings_folder_views))
-            FolderViewsBody(editor)
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_start_position),
-            depth = depth,
-            summary = stringResource(R.string.settings_inbox_line, startRuleName(settings.inboxStart)),
-            expanded = "start" in sections.open,
-            onToggle = { sections.toggle("start") },
-        ) {
-            StartRuleField(stringResource(R.string.settings_inbox_opens), settings.inboxStart, settings.showRecentRules) { rule ->
-                editor.persist(editor.settings.copy(inboxStart = rule))
-            }
-            StartRuleField(stringResource(R.string.settings_other_opens), settings.folderStart, settings.showRecentRules) { rule ->
-                editor.persist(editor.settings.copy(folderStart = rule))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_after_change),
-                StartAfterChange.entries,
-                settings.startAfterChange,
-                { startAfterChangeName(it) },
-            ) { value ->
-                editor.persist(editor.settings.copy(startAfterChange = value))
-            }
-            BoolField(stringResource(R.string.settings_show_recent), settings.showRecentRules) { enabled ->
-                editor.persist(editor.settings.copy(showRecentRules = enabled))
-            }
-            BoolField(stringResource(R.string.settings_open_at_menu), settings.openAtInIndexMenu) { enabled ->
-                editor.persist(editor.settings.copy(openAtInIndexMenu = enabled))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_pinerc_missing),
-                PinercStartDefault.entries,
-                settings.pinercStartDefault,
-                { pinercStartDefaultName(it) },
-            ) { value ->
-                editor.persist(editor.settings.copy(pinercStartDefault = value))
-            }
-            Text(stringResource(R.string.settings_start_per_folder))
-            FolderStartsBody(editor)
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_large_folders),
-            depth = depth,
-            summary = stringResource(R.string.settings_ask_note),
-            expanded = "large" in sections.open,
-            onToggle = { sections.toggle("large") },
-        ) {
-            Text(stringResource(R.string.settings_ask_note))
-            AskLimitField(stringResource(R.string.settings_ask_sort), settings.askSort, editor.ready) { limit ->
-                editor.persist(editor.settings.copy(askSort = limit))
-            }
-            AskLimitField(stringResource(R.string.settings_ask_thread), settings.askThread, editor.ready) { limit ->
-                editor.persist(editor.settings.copy(askThread = limit))
-            }
-            AskLimitField(stringResource(R.string.settings_ask_search), settings.askSearch, editor.ready) { limit ->
-                editor.persist(editor.settings.copy(askSearch = limit))
-            }
-            AskLimitField(stringResource(R.string.settings_ask_fallback), settings.askFallback, editor.ready) { limit ->
-                editor.persist(editor.settings.copy(askFallback = limit))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReadingGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    var picking by remember { mutableStateOf<MailboxPick?>(null) }
-    var warnUnread by remember { mutableStateOf(false) }
-    BackHandler(enabled = picking != null || warnUnread) {
-        if (picking != null) picking = null else warnUnread = false
-    }
-    val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNode(
-            title = stringResource(R.string.settings_opening),
-            depth = depth,
-            summary = bodyViewName(settings.bodyView),
-            expanded = "opening" in sections.open,
-            onToggle = { sections.toggle("opening") },
-        ) {
-            BoolField(stringResource(R.string.settings_mark_seen), settings.markSeenOnOpen) {
-                editor.persist(editor.settings.copy(markSeenOnOpen = it))
-            }
-            BoolField(stringResource(R.string.settings_show_deleted), settings.showDeleted) {
-                editor.persist(editor.settings.copy(showDeleted = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_message_view),
-                BodyView.entries,
-                settings.bodyView,
-                { bodyViewName(it) },
-            ) { view ->
-                editor.persist(editor.settings.copy(bodyView = view))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_reader_display),
-                org.dlang.liveimap.ui.reader.ReaderDisplay.entries,
-                org.dlang.liveimap.ui.reader.readerDisplayOf(settings.bodyView, settings.readerTextLayout),
-                { org.dlang.liveimap.ui.reader.readerDisplayName(it) },
-            ) { display ->
-                editor.persist(
-                    editor.settings.copy(
-                        bodyView = org.dlang.liveimap.ui.reader.bodyViewOf(display, editor.settings.bodyView),
-                        readerTextLayout = org.dlang.liveimap.ui.reader.textLayoutOf(display, editor.settings.readerTextLayout),
-                    ),
-                )
-            }
-            ChoiceField(
-                stringResource(R.string.settings_text_size),
-                ReaderTextZooms,
-                settings.readerTextZoom.takeIf { it in ReaderTextZooms } ?: 100,
-                { "$it%" },
-            ) { editor.persist(editor.settings.copy(readerTextZoom = it)) }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_deleting),
-            depth = depth,
-            summary = stringResource(
-                if (settings.askBeforeExpunge) R.string.settings_ask_expunge else R.string.settings_expunge_without,
-            ),
-            expanded = "deleting" in sections.open,
-            onToggle = { sections.toggle("deleting") },
-        ) {
-            BoolField(stringResource(R.string.settings_ask_expunge), settings.askBeforeExpunge) {
-                editor.persist(editor.settings.copy(askBeforeExpunge = it))
-            }
-            BoolField(
-                stringResource(R.string.settings_auto_expunge),
-                settings.autoExpunge,
-                note = stringResource(R.string.settings_auto_expunge_note),
-            ) {
-                editor.persist(editor.settings.copy(autoExpunge = it))
-            }
-            val id = editor.accounts.firstOrNull { it.chosen }?.id
-            val session = if (id.isNullOrEmpty()) null else existingMailSession(id)
-            val caps = session?.featureCaps
-            fun allows(advertised: Boolean) = serverCapAllows(settings.jmapFolders, session != null, advertised)
-            val listExtended = allows(caps?.listExtended == true)
-            val uidPlus = allows(caps?.uidPlus == true)
-            val canMove = allows(caps?.move == true)
-            val compress = allows(caps?.compressDeflate == true)
-            val trashSet = settings.trashMailbox.isNotEmpty()
-            ReasonChoice(
-                stringResource(R.string.settings_delete_button),
-                listOf(
-                    ReasonOption(DeletePolicy.MarkDeleted, true, null),
-                    ReasonOption(
-                        DeletePolicy.MoveToTrash,
-                        trashSet || listExtended,
-                        when {
-                            trashSet -> null
-                            listExtended -> stringResource(R.string.settings_trash_needed)
-                            else -> stringResource(R.string.settings_reason_no_trash)
-                        },
-                    ),
-                    ReasonOption(
-                        DeletePolicy.DeletePermanently,
-                        uidPlus,
-                        if (uidPlus) null else stringResource(R.string.settings_reason_uidplus),
-                    ),
-                ),
-                settings.deletePolicy,
-                { deletePolicyName(it) },
-            ) { policy ->
-                editor.persist(editor.settings.copy(deletePolicy = policy).withoutPreserved("deletePolicy"))
-            }
-            ReasonChoice(
-                stringResource(R.string.settings_move_method),
-                listOf(
-                    ReasonOption(MoveMethod.CopyThenMarkDeleted, true, null),
-                    ReasonOption(
-                        MoveMethod.ImapMove,
-                        canMove,
-                        if (canMove) null else stringResource(R.string.settings_reason_move),
-                    ),
-                ),
-                settings.moveMethod,
-                { moveMethodName(it) },
-            ) { method ->
-                editor.persist(editor.settings.copy(moveMethod = method).withoutPreserved("moveMethod"))
-            }
-            BoolField(
-                stringResource(R.string.settings_move_all_deleted),
-                settings.moveAllIncludesDeleted,
-                note = stringResource(R.string.settings_move_all_deleted_note),
-            ) {
-                editor.persist(editor.settings.copy(moveAllIncludesDeleted = it))
-            }
-            ReasonChoice(
-                stringResource(R.string.settings_compression),
-                listOf(
-                    ReasonOption(Compression.On, compress, if (compress) null else stringResource(R.string.settings_reason_compress)),
-                    ReasonOption(Compression.Auto, compress, if (compress) null else stringResource(R.string.settings_reason_compress)),
-                    ReasonOption(Compression.Off, true, null),
-                ),
-                settings.compression,
-                { compressionName(it) },
-            ) { mode ->
-                editor.persist(editor.settings.copy(compression = mode))
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_counts),
-            depth = depth,
-            summary = stringResource(
-                if (settings.showUnreadCounts) R.string.settings_unread_on else R.string.settings_unread_off,
-            ),
-            expanded = "counts" in sections.open,
-            onToggle = { sections.toggle("counts") },
-        ) {
-            BoolField(stringResource(R.string.settings_show_unread), settings.showUnreadCounts || warnUnread) { enabled ->
-                if (enabled) {
-                    warnUnread = true
-                } else {
-                    warnUnread = false
-                    editor.persist(editor.settings.copy(showUnreadCounts = false))
-                }
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_actions),
-            depth = depth,
-            summary = stringResource(
-                R.string.settings_swipe_line,
-                swipeActionName(settings.swipeTrailing.action),
-                swipeActionName(settings.swipeLeading.action),
-            ),
-            expanded = "actions" in sections.open,
-            onToggle = { sections.toggle("actions") },
-        ) {
-            val indexSwipeActions = SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous }
-            SwipeEditor(
-                stringResource(if (leftToRight) R.string.settings_swipe_left else R.string.settings_swipe_right),
-                settings.swipeTrailing,
-                { picking = MailboxPick.TrailingMove },
-                indexSwipeActions,
-            ) { editor.persist(editor.settings.copy(swipeTrailing = it)) }
-            SwipeEditor(
-                stringResource(if (leftToRight) R.string.settings_swipe_right else R.string.settings_swipe_left),
-                settings.swipeLeading,
-                { picking = MailboxPick.LeadingMove },
-                indexSwipeActions,
-            ) { editor.persist(editor.settings.copy(swipeLeading = it)) }
-            SwipeEditor(
-                stringResource(if (leftToRight) R.string.settings_message_swipe_left else R.string.settings_message_swipe_right),
-                settings.readerSwipeTrailing,
-                { picking = MailboxPick.ReaderTrailingMove },
-                SwipeAction.entries,
-            ) { editor.persist(editor.settings.copy(readerSwipeTrailing = it)) }
-            SwipeEditor(
-                stringResource(if (leftToRight) R.string.settings_message_swipe_right else R.string.settings_message_swipe_left),
-                settings.readerSwipeLeading,
-                { picking = MailboxPick.ReaderLeadingMove },
-                SwipeAction.entries,
-            ) { editor.persist(editor.settings.copy(readerSwipeLeading = it)) }
-        }
-    }
-    if (warnUnread) {
-        AlertDialog(
-            onDismissRequest = { warnUnread = false },
-            text = {
-                Text(stringResource(R.string.settings_unread_warn))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    warnUnread = false
-                    editor.persist(editor.settings.copy(showUnreadCounts = true))
-                }) { Text(stringResource(R.string.settings_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { warnUnread = false }) { Text(stringResource(R.string.settings_dismiss)) }
-            },
-        )
-    }
-    MailboxPickDialog(editor, picking) { picking = it }
-}
-
-@Composable
-private fun ComposeGroup(editor: SettingsEditor, onCopyContacts: () -> Unit, onEditBook: () -> Unit, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // David, 2026-10-12: the wrap column is a Compose setting (it was under Sending/SMTP). Same stored value.
-        SettingsNode(
-            title = stringResource(R.string.settings_composing),
-            depth = depth,
-            summary = settings.composerWrapColumn.toString(),
-            expanded = "composing" in sections.open,
-            onToggle = { sections.toggle("composing") },
-        ) {
-            LineField(
-                stringResource(R.string.settings_wrap_column),
-                settings.composerWrapColumn.toString(),
-                keyboardType = KeyboardType.Number,
-                ready = editor.ready,
-                interpret = { draft, _ ->
-                    val text = draft.trim()
-                    if (text.isEmpty() || text.any { !it.isDigit() }) {
-                        null
-                    } else {
-                        val number = text.toIntOrNull()
-                        if (number == null || number !in 0..998) null else number.toString()
-                    }
-                },
-                onCommit = { text ->
-                    val number = text.toIntOrNull()
-                    if (number != null && number in 0..998) {
-                        editor.persist(editor.settings.copy(composerWrapColumn = number))
-                    }
-                },
-            )
-            BoolField(
-                stringResource(R.string.settings_flowed_text),
-                !settings.quellFlowed,
-                note = stringResource(R.string.settings_flowed_text_note),
-            ) { enabled ->
-                editor.persist(editor.settings.copy(quellFlowed = !enabled))
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_replying),
-            depth = depth,
-            summary = stringResource(
-                if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
-            ),
-            expanded = "replying" in sections.open,
-            onToggle = { sections.toggle("replying") },
-        ) {
-            BoolField(stringResource(R.string.settings_reply_above), settings.replyAboveQuote) {
-                editor.persist(editor.settings.copy(replyAboveQuote = it))
-            }
-            LineField(
-                stringResource(R.string.settings_alt_addresses),
-                settings.altAddresses.joinToString(", "),
-                ready = editor.ready,
-            ) { text ->
-                editor.persist(
-                    editor.settings.copy(
-                        altAddresses = text.split(',').map { it.trim() }.filter { it.isNotEmpty() },
-                    ),
-                )
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_forwarding),
-            depth = depth,
-            summary = forwardSummary(settings),
-            expanded = "forwarding" in sections.open,
-            onToggle = { sections.toggle("forwarding") },
-        ) {
-            BoolField(stringResource(R.string.settings_include_attachments), settings.includeForwardAttachments) {
-                editor.persist(editor.settings.copy(includeForwardAttachments = it))
-            }
-            BoolField(stringResource(R.string.settings_forward_attachment), settings.forwardAsAttachment) {
-                editor.persist(editor.settings.copy(forwardAsAttachment = it))
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_fcc),
-            depth = depth,
-            summary = stringResource(
-                if (settings.bounceFcc) R.string.settings_bounce_fcc_on else R.string.settings_bounce_fcc_off,
-            ),
-            expanded = "fcc" in sections.open,
-            onToggle = { sections.toggle("fcc") },
-        ) {
-            BoolField(stringResource(R.string.settings_bounce_fcc), settings.bounceFcc) {
-                editor.persist(editor.settings.copy(bounceFcc = it))
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_completion),
-            depth = depth,
-            summary = completionSummary(settings),
-            expanded = "address-completion" in sections.open,
-            onToggle = { sections.toggle("address-completion") },
-        ) {
-            AddressCompletionRows(editor)
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_address_book),
-            depth = depth,
-            summary = if (settings.addressBookNeverTrim) {
-                stringResource(R.string.settings_never_trim)
-            } else {
-                stringResource(R.string.settings_history, settings.addressBookHistory)
-            },
-            expanded = "address-book" in sections.open,
-            onToggle = { sections.toggle("address-book") },
-        ) {
-            LineField(
-                stringResource(R.string.settings_history_label),
-                settings.addressBookHistory.toString(),
-                keyboardType = KeyboardType.Number,
-                ready = editor.ready,
-                interpret = { draft, _ ->
-                    val text = draft.trim()
-                    if (text.isEmpty() || text.any { !it.isDigit() }) {
-                        null
-                    } else {
-                        text.toIntOrNull()?.toString()
-                    }
-                },
-                onCommit = { text ->
-                    val number = text.toIntOrNull()
-                    if (number != null) editor.persist(editor.settings.copy(addressBookHistory = number))
-                },
-            )
-            BoolField(stringResource(R.string.settings_never_trim), settings.addressBookNeverTrim) {
-                editor.persist(editor.settings.copy(addressBookNeverTrim = it))
-            }
-            OpenRow(stringResource(R.string.settings_copy_contacts), onCopyContacts)
-            OpenRow(stringResource(R.string.settings_edit_book), onEditBook)
-        }
-    }
-}
-
-private data class CompletionRow(val id: String, val label: String, val enabled: Boolean)
-
-@Composable
-private fun completionSummary(settings: AccountSettings): String {
-    val ids = settings.completionSources
-    if (ids.isEmpty()) return stringResource(R.string.settings_no_sources)
-    if (ids == listOf(pineSourceId)) return stringResource(R.string.settings_pine)
-    return pluralStringResource(R.plurals.settings_sources, ids.size, ids.size)
-}
-
-private fun completionRows(
-    settings: AccountSettings,
-    sets: List<AndroidContactSet>,
-    pineLabel: String,
-): List<CompletionRow> {
-    val enabled = settings.completionSources
-    val setById = sets.associateBy { it.id }
-    val rows = ArrayList<CompletionRow>()
-    val shown = HashSet<String>()
-    for (id in enabled) {
-        if (id == pineSourceId) {
-            if (settings.addressBookMailbox.isEmpty()) continue
-            rows.add(CompletionRow(id, pineLabel, true))
-            shown.add(id)
-            continue
-        }
-        val set = setById[id] ?: continue
-        rows.add(CompletionRow(id, set.label, true))
-        shown.add(id)
-    }
-    if (settings.addressBookMailbox.isNotEmpty() && pineSourceId !in shown) {
-        rows.add(CompletionRow(pineSourceId, pineLabel, false))
-    }
-    for (set in sets) {
-        if (set.id in shown) continue
-        rows.add(CompletionRow(set.id, set.label, false))
-    }
-    return rows
-}
-
-@Composable
-private fun AddressCompletionRows(editor: SettingsEditor) {
-    val context = LocalContext.current
-    val appContext = context.applicationContext
-    var granted by remember { mutableStateOf(hasReadContacts(context)) }
-    var denied by rememberSaveable { mutableStateOf(false) }
-    var sets by remember { mutableStateOf<List<AndroidContactSet>>(emptyList()) }
-    val requestContacts = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { ok ->
-        granted = ok
-        denied = !ok
-    }
-    LaunchedEffect(granted) {
-        if (!granted) {
-            sets = emptyList()
-            return@LaunchedEffect
-        }
-        sets = try {
-            androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-    val pineLabel = stringResource(R.string.settings_pine)
-    for (row in completionRows(editor.settings, sets, pineLabel)) {
-        BoolField(row.label, row.enabled) { on ->
-            editor.persist(
-                editor.settings.copy(
-                    completionSources = withSourceEnabled(editor.settings.completionSources, row.id, on),
-                ),
-            )
-        }
-        if (!row.enabled) continue
-        Row {
-            TextButton(onClick = {
-                editor.persist(
-                    editor.settings.copy(
-                        completionSources = moveCompletionSource(
-                            editor.settings.completionSources,
-                            row.id,
-                            up = true,
-                        ),
-                    ),
-                )
-            }) { Text(stringResource(R.string.drawer_move_up)) }
-            TextButton(onClick = {
-                editor.persist(
-                    editor.settings.copy(
-                        completionSources = moveCompletionSource(
-                            editor.settings.completionSources,
-                            row.id,
-                            up = false,
-                        ),
-                    ),
-                )
-            }) { Text(stringResource(R.string.drawer_move_down)) }
-        }
-    }
-    if (granted) return
-    BoolField(stringResource(R.string.settings_show_android), false) { on ->
-        if (on) requestContacts.launch(android.Manifest.permission.READ_CONTACTS)
-    }
-    if (denied) Text(stringResource(R.string.settings_contacts_denied))
-}
-
-@Composable
-private fun AppearanceGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNode(
-            title = stringResource(R.string.settings_theme),
-            depth = depth,
-            summary = themeSummary(settings),
-            expanded = "theme" in sections.open,
-            onToggle = { sections.toggle("theme") },
-        ) {
-            ChoiceField(stringResource(R.string.settings_theme), ThemeMode.entries, settings.theme, { themeName(it) }) {
-                editor.persist(editor.settings.copy(theme = it))
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                BoolField(stringResource(R.string.settings_dynamic_color), settings.dynamicColor) {
-                    editor.persist(editor.settings.copy(dynamicColor = it))
-                }
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_display),
-            depth = depth,
-            summary = stringResource(
-                R.string.settings_display_line,
-                densityName(settings.density),
-                dateFormatName(settings.dateFormat),
-            ),
-            expanded = "display" in sections.open,
-            onToggle = { sections.toggle("display") },
-        ) {
-            ChoiceField(stringResource(R.string.settings_density), Density.entries, settings.density, { densityName(it) }) {
-                editor.persist(editor.settings.copy(density = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_date_format),
-                DateFormat.entries,
-                settings.dateFormat,
-                { dateFormatName(it) },
-            ) {
-                editor.persist(editor.settings.copy(dateFormat = it))
-            }
-            if (settings.dateFormat == DateFormat.Custom) {
-                LineField(stringResource(R.string.settings_date_pattern), settings.datePattern, ready = editor.ready) {
-                    editor.persist(editor.settings.copy(datePattern = it))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) -> Unit, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ChoiceField(
-            stringResource(R.string.settings_multi_pane),
-            MultiPane.entries,
-            settings.multiPane,
-            { multiPaneName(it) },
-        ) {
-            editor.persist(editor.settings.copy(multiPane = it))
-        }
-        ChoiceField(
-            stringResource(R.string.settings_folder_pane),
-            LayoutChoice.entries,
-            settings.folderPane,
-            { layoutChoiceName(it) },
-            enabled = panesOn,
-        ) {
-            if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
-        }
-        ChoiceField(
-            stringResource(R.string.settings_fold_posture),
-            listOf(LayoutChoice.Off, LayoutChoice.On),
-            settings.foldPosture,
-            { layoutChoiceName(it) },
-            enabled = panesOn,
-        ) {
-            if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
-        }
-        ChoiceField(
-            stringResource(R.string.settings_pane_arrangement),
-            ArrangementChoice.entries,
-            settings.paneArrangement,
-            { stringResource(when (it) {
-                ArrangementChoice.Auto -> R.string.settings_pane_auto
-                ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
-                ArrangementChoice.Stacked -> R.string.settings_pane_stacked
-            }) },
-            enabled = panesOn,
-        ) {
-            if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
-        }
-        ChoiceField(
-            stringResource(R.string.settings_folder_position),
-            FolderPositionChoice.entries,
-            settings.folderPosition,
-            { stringResource(when (it) {
-                FolderPositionChoice.Auto -> R.string.settings_pane_auto
-                FolderPositionChoice.Beside -> R.string.settings_folder_beside
-                FolderPositionChoice.AboveList -> R.string.settings_folder_above
-            }) },
-            enabled = panesOn,
-        ) {
-            if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
-        }
-        SettingsNode(
-            title = stringResource(R.string.layout_custom),
-            depth = depth,
-            summary = if (settings.customLayout.isEmpty()) {
-                stringResource(R.string.settings_pane_auto)
-            } else {
-                stringResource(R.string.layout_custom)
-            },
-            expanded = "custom" in sections.open,
-            onToggle = { sections.toggle("custom") },
-        ) {
-            PaneLayoutEditor(settings.customLayout, settings.readerTextZoom, persist = panesOn) { text ->
-                if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
-            }
-        }
-        ChoiceField(
-            stringResource(R.string.settings_preview_size),
-            PreviewChoice.entries,
-            settings.previewSize,
-            { stringResource(when (it) {
-                PreviewChoice.Auto -> R.string.settings_pane_auto
-                PreviewChoice.Density -> R.string.settings_preview_density
-                PreviewChoice.None -> R.string.settings_preview_none
-                PreviewChoice.Small -> R.string.settings_preview_small
-                PreviewChoice.Large -> R.string.settings_preview_large
-            }) },
-        ) {
-            editor.persist(editor.settings.copy(previewSize = it))
-        }
-        ChoiceField(
-            stringResource(R.string.settings_non_ascii),
-            NonAsciiDisplay.entries,
-            settings.nonAsciiDisplay,
-            { stringResource(when (it) {
-                NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
-                NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
-                NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
-                NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
-                NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
-            }) },
-        ) {
-            editor.persist(editor.settings.copy(nonAsciiDisplay = it))
-        }
-        BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
-            editor.persist(editor.settings.copy(fullScreen = it))
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_panels),
-            depth = depth,
-            summary = stringResource(R.string.settings_panels),
-            expanded = "panels" in sections.open,
-            onToggle = { sections.toggle("panels") },
-        ) {
-            OpenRow(stringResource(R.string.settings_panel_index)) { onOpenPanel("index", editor.editingId.orEmpty()) }
-            OpenRow(stringResource(R.string.settings_panel_selection)) { onOpenPanel("selection", editor.editingId.orEmpty()) }
-            OpenRow(stringResource(R.string.settings_panel_folders)) { onOpenPanel("folders", editor.editingId.orEmpty()) }
-            OpenRow(stringResource(R.string.settings_panel_reader)) { onOpenPanel("reader", editor.editingId.orEmpty()) }
-            OpenRow(stringResource(R.string.settings_panel_compose)) { onOpenPanel("compose", editor.editingId.orEmpty()) }
-        }
-        Button(
-            onClick = {
-                val target = editor.bound
-                settingsIo.launch {
-                    editor.saveKeepingToolbars(target)
-                    LayoutApply.request()
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.settings_change_layout))
-        }
-    }
-}
-
-private val hideCapabilityTokens = listOf(
-    "SORT",
-    "THREAD=REFERENCES",
-    "THREAD=ORDEREDSUBJECT",
-    "ESEARCH",
-    "LIST-STATUS",
-    "LIST-EXTENDED",
-    "UIDPLUS",
-    "IDLE",
-    "UNSELECT",
-    "NAMESPACE",
-    "CONDSTORE",
-    "QRESYNC",
-    "SPECIAL-USE",
-)
-
-@Composable
-private fun SlowerGroup(editor: SettingsEditor) {
-    val settings = editor.settings
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        BoolField(
-            stringResource(R.string.settings_client_sort),
-            settings.clientSort,
-            note = stringResource(R.string.settings_client_sort_note),
-        ) {
-            editor.persist(editor.settings.copy(clientSort = it))
-        }
-        BoolField(
-            stringResource(R.string.settings_client_thread),
-            settings.clientThread,
-            note = stringResource(R.string.settings_client_thread_note),
-        ) {
-            editor.persist(editor.settings.copy(clientThread = it))
-        }
-        BoolField(
-            stringResource(R.string.settings_poll_mail),
-            settings.pollForNewMail,
-            note = stringResource(R.string.settings_poll_note),
-        ) {
-            editor.persist(editor.settings.copy(pollForNewMail = it))
-        }
-        BoolField(
-            stringResource(R.string.settings_status_counts),
-            settings.statusVisibleCounts,
-            note = stringResource(R.string.settings_status_note),
-        ) {
-            editor.persist(editor.settings.copy(statusVisibleCounts = it))
-        }
-    }
-}
-
-@Composable
-private fun hiddenSummary(settings: AccountSettings): String {
-    val count = settings.hiddenCapabilities.size
-    return if (count == 0) {
-        stringResource(R.string.settings_hide_none)
-    } else {
-        stringResource(R.string.settings_hide_count, count)
-    }
-}
-
-@Composable
-private fun DebugGroup(editor: SettingsEditor, depth: Int) {
-    val sections = rememberSectionOpen()
-    val settings = editor.settings
-    var reportLines by remember { mutableStateOf<List<String>?>(null) }
-    var confirmShareLog by remember { mutableStateOf(false) }
-    val contextState = rememberUpdatedState(LocalContext.current)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNode(
-            title = stringResource(R.string.settings_logging),
-            depth = depth,
-            summary = loggingSummary(settings),
-            expanded = "logging" in sections.open,
-            onToggle = { sections.toggle("logging") },
-        ) {
-            BoolField(stringResource(R.string.settings_pipeline), settings.pipelineCommands) {
-                editor.persist(editor.settings.copy(pipelineCommands = it))
-            }
-            ChoiceField(
-                stringResource(R.string.settings_idle_wake),
-                IdleWakeSeconds,
-                settings.idleWakeSeconds.takeIf { it in IdleWakeSeconds } ?: 5,
-                { "$it s" },
-            ) { editor.persist(editor.settings.copy(idleWakeSeconds = it)) }
-            BoolField(stringResource(R.string.settings_log_traffic), settings.logImapTraffic) {
-                editor.persist(editor.settings.copy(logImapTraffic = it))
-            }
-            Text(stringResource(R.string.settings_log_note))
-            TextButton(onClick = { confirmShareLog = true }) { Text(stringResource(R.string.settings_share_log)) }
-            TextButton(onClick = {
-                val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
-                val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
-                reportLines = log.debugReport(
-                    versionName = BuildConfig.VERSION_NAME,
-                    versionCode = BuildConfig.VERSION_CODE,
-                    androidVersion = Build.VERSION.RELEASE,
-                    device = device,
-                    settings = editor.settings,
-                ).lines()
-            }) { Text(stringResource(R.string.settings_debug_report)) }
-            BoolField(stringResource(R.string.settings_show_user), settings.showUserInDebugReport) {
-                editor.persist(editor.settings.copy(showUserInDebugReport = it))
-            }
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_hide_capabilities),
-            depth = depth,
-            summary = hiddenSummary(settings),
-            expanded = "caps" in sections.open,
-            onToggle = { sections.toggle("caps") },
-        ) {
-            BoolField(
-                stringResource(R.string.settings_force_slower),
-                settings.forceSlowerFallbacks,
-                note = stringResource(R.string.settings_force_slower_note),
-            ) {
-                editor.persist(editor.settings.copy(forceSlowerFallbacks = it))
-            }
-            for (token in hideCapabilityTokens) {
-                val hidden = settings.hiddenCapabilities.any { it.equals(token, ignoreCase = true) }
-                BoolField(token, hidden) { on ->
-                    val next = settings.hiddenCapabilities
-                        .filterNot { it.equals(token, ignoreCase = true) }
-                        .toMutableSet()
-                    if (on) next.add(token)
-                    editor.persist(editor.settings.copy(hiddenCapabilities = next))
-                }
-            }
-        }
-    }
-    if (confirmShareLog) {
-        // F10: the log keeps full message bodies (replay needs them); say so before it leaves the device.
-        AlertDialog(
-            onDismissRequest = { confirmShareLog = false },
-            title = { Text(stringResource(R.string.settings_share_log)) },
-            text = { Text(stringResource(R.string.traffic_share_warning)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmShareLog = false
-                    val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
-                    log.shareFile(contextState.value)
-                }) { Text(stringResource(R.string.traffic_share_anyway)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmShareLog = false }) { Text(stringResource(R.string.debug_dismiss)) }
-            },
-        )
-    }
-    val shownReport = reportLines
-    if (shownReport != null) {
-        DebugReportReview(
-            lines = shownReport,
-            onLines = { reportLines = it },
-            onDismiss = { reportLines = null },
-        )
     }
 }
 
@@ -2782,19 +2557,195 @@ private fun OpenRow(title: String, onOpen: () -> Unit) {
 }
 
 @Composable
+private fun completionSummary(settings: AccountSettings): String {
+    val ids = settings.completionSources
+    if (ids.isEmpty()) return stringResource(R.string.settings_no_sources)
+    if (ids == listOf(pineSourceId)) return stringResource(R.string.settings_pine)
+    return pluralStringResource(R.plurals.settings_sources, ids.size, ids.size)
+}
+
+private fun completionRows(
+    settings: AccountSettings,
+    sets: List<AndroidContactSet>,
+    pineLabel: String,
+): List<CompletionRow> {
+    val enabled = settings.completionSources
+    val setById = sets.associateBy { it.id }
+    val rows = ArrayList<CompletionRow>()
+    val shown = HashSet<String>()
+    for (id in enabled) {
+        if (id == pineSourceId) {
+            if (settings.addressBookMailbox.isEmpty()) continue
+            rows.add(CompletionRow(id, pineLabel, true))
+            shown.add(id)
+            continue
+        }
+        val set = setById[id] ?: continue
+        rows.add(CompletionRow(id, set.label, true))
+        shown.add(id)
+    }
+    if (settings.addressBookMailbox.isNotEmpty() && pineSourceId !in shown) {
+        rows.add(CompletionRow(pineSourceId, pineLabel, false))
+    }
+    for (set in sets) {
+        if (set.id in shown) continue
+        rows.add(CompletionRow(set.id, set.label, false))
+    }
+    return rows
+}
+
+@Composable
+private fun AddressCompletionRows(editor: SettingsEditor) {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    var granted by remember { mutableStateOf(hasReadContacts(context)) }
+    var denied by rememberSaveable { mutableStateOf(false) }
+    var sets by remember { mutableStateOf<List<AndroidContactSet>>(emptyList()) }
+    val requestContacts = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { ok ->
+        granted = ok
+        denied = !ok
+    }
+    LaunchedEffect(granted) {
+        if (!granted) {
+            sets = emptyList()
+            return@LaunchedEffect
+        }
+        sets = try {
+            androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    val pineLabel = stringResource(R.string.settings_pine)
+    for (row in completionRows(editor.settings, sets, pineLabel)) {
+        BoolField(row.label, row.enabled) { on ->
+            editor.persist(
+                editor.settings.copy(
+                    completionSources = withSourceEnabled(editor.settings.completionSources, row.id, on),
+                ),
+            )
+        }
+        if (!row.enabled) continue
+        Row {
+            TextButton(onClick = {
+                editor.persist(
+                    editor.settings.copy(
+                        completionSources = moveCompletionSource(
+                            editor.settings.completionSources,
+                            row.id,
+                            up = true,
+                        ),
+                    ),
+                )
+            }) { Text(stringResource(R.string.drawer_move_up)) }
+            TextButton(onClick = {
+                editor.persist(
+                    editor.settings.copy(
+                        completionSources = moveCompletionSource(
+                            editor.settings.completionSources,
+                            row.id,
+                            up = false,
+                        ),
+                    ),
+                )
+            }) { Text(stringResource(R.string.drawer_move_down)) }
+        }
+    }
+    if (granted) return
+    BoolField(stringResource(R.string.settings_show_android), false) { on ->
+        if (on) requestContacts.launch(android.Manifest.permission.READ_CONTACTS)
+    }
+    if (denied) Text(stringResource(R.string.settings_contacts_denied))
+}
+
+@Composable
+private fun hiddenSummary(settings: AccountSettings): String {
+    val count = settings.hiddenCapabilities.size
+    return if (count == 0) {
+        stringResource(R.string.settings_hide_none)
+    } else {
+        stringResource(R.string.settings_hide_count, count)
+    }
+}
+
+
+@Composable
 private fun groupSummary(title: String, settings: AccountSettings): String = when (title) {
     "Account" -> {
         val noServer = stringResource(R.string.settings_no_server)
         settings.imapHost.ifBlank { noServer }
     }
-    "Mailboxes" -> mailboxSetCount(settings)
+    "Identity" -> settings.email.ifBlank { settings.displayName }
+    "Mail access" -> stringResource(
+        if (settings.jmapFolders) R.string.settings_access_jmap else R.string.settings_access_imap,
+    )
+    "Server" -> if (settings.jmapFolders) {
+        settings.imapHost.ifBlank { stringResource(R.string.settings_no_server) }
+    } else {
+        hostAndPort(settings.imapHost, settings.imapPort, stringResource(R.string.settings_no_server))
+    }
+    "Sending" -> if (settings.emailSubmission) {
+        stringResource(R.string.settings_send_over_jmap)
+    } else {
+        hostAndPort(settings.smtpHost, settings.smtpPort, stringResource(R.string.settings_no_smtp))
+    }
+    "Watched folders" -> if (settings.watchedFolders.isEmpty()) {
+        stringResource(R.string.settings_watched_none)
+    } else {
+        settings.watchedFolders.size.toString()
+    }
+    "Sending rules" -> sendingRulesSummary(settings)
+    "Mailboxes", "Special-use" -> mailboxSetCount(settings)
     "Folders" -> sortDirection(settings)
-    "Reading" -> bodyViewName(settings.bodyView)
+    "Folder list" -> pluralStringResource(
+        R.plurals.settings_expanded,
+        settings.expandedFolders.size,
+        settings.expandedFolders.size,
+    )
+    "Folder views" -> sortDirection(settings)
+    "Start position" -> stringResource(R.string.settings_inbox_line, startRuleName(settings.inboxStart))
+    "Large folders" -> stringResource(R.string.settings_ask_note)
+    "Reading", "Opening" -> bodyViewName(settings.bodyView)
+    "Deleting" -> stringResource(
+        if (settings.askBeforeExpunge) R.string.settings_ask_expunge else R.string.settings_expunge_without,
+    )
+    "Actions" -> stringResource(
+        R.string.settings_swipe_line,
+        swipeActionName(settings.swipeTrailing.action),
+        swipeActionName(settings.swipeLeading.action),
+    )
     "Compose" -> stringResource(
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
+    "Composing" -> settings.composerWrapColumn.toString()
+    "Replying" -> stringResource(
+        if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
+    )
+    "Forwarding" -> forwardSummary(settings)
+    "Fcc" -> saveNameRuleName(settings.saveNameRule)
+    "Address completion" -> completionSummary(settings)
+    "Address book" -> if (settings.addressBookNeverTrim) {
+        stringResource(R.string.settings_never_trim)
+    } else {
+        stringResource(R.string.settings_history, settings.addressBookHistory)
+    }
     "Appearance" -> themeName(settings.theme)
+    "Theme" -> themeSummary(settings)
+    "Display" -> stringResource(
+        R.string.settings_display_line,
+        densityName(settings.density),
+        dateFormatName(settings.dateFormat),
+    )
     "Layout" -> multiPaneName(settings.multiPane)
+    "Custom panel layout" -> if (settings.customLayout.isEmpty()) {
+        stringResource(R.string.settings_pane_auto)
+    } else {
+        stringResource(R.string.layout_custom)
+    }
     "Slower" -> stringResource(
         if (
             settings.clientSort ||
@@ -2810,6 +2761,9 @@ private fun groupSummary(title: String, settings: AccountSettings): String = whe
     "Debug" -> stringResource(
         if (settings.logImapTraffic) R.string.settings_traffic_on else R.string.settings_traffic_off,
     )
+    "Logging" -> loggingSummary(settings)
+    "Hide capabilities" -> hiddenSummary(settings)
+    "Favorites" -> settings.favorites.size.toString()
     else -> ""
 }
 
@@ -3600,6 +3554,7 @@ private enum class MailboxPick {
     Spam,
     Trash,
     Saved,
+    LastSave,
     TrailingMove,
     LeadingMove,
     ReaderTrailingMove,
@@ -3618,6 +3573,7 @@ private fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: St
         MailboxPick.Spam -> base.copy(spamMailbox = mailbox)
         MailboxPick.Trash -> base.copy(trashMailbox = mailbox)
         MailboxPick.Saved -> base.copy(savedMailbox = mailbox)
+        MailboxPick.LastSave -> base.copy(lastSaveMailbox = mailbox)
         MailboxPick.TrailingMove -> base.copy(
             swipeTrailing = base.swipeTrailing.copy(moveMailbox = mailbox),
         )
@@ -3676,7 +3632,7 @@ private fun sendingRulesSummary(settings: AccountSettings): String {
     return stringResource(R.string.settings_rules_summary, rulesSummaryWho(settings), count)
 }
 
-/** The account's sending rules: simple defaults first, then the ordered rule list and presets. */
+/** The account's ordered sending rules and presets. */
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun SendingRulesRows(editor: SettingsEditor) {
@@ -3694,40 +3650,6 @@ private fun SendingRulesRows(editor: SettingsEditor) {
     var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         accounts = DataStoreSettingsStore(context.applicationContext).listAccounts()
-    }
-
-    Text(stringResource(R.string.settings_rules_default))
-    LineField(stringResource(R.string.settings_signature), settings.signature, singleLine = false, ready = editor.ready) {
-        editor.persist(editor.settings.copy(signature = it))
-    }
-    BoolField(stringResource(R.string.settings_sig_dashes), settings.sigDashes) {
-        editor.persist(editor.settings.copy(sigDashes = it))
-    }
-    BoolField(stringResource(R.string.settings_sig_bottom), settings.sigAtBottom) {
-        editor.persist(editor.settings.copy(sigAtBottom = it))
-    }
-    LineField(stringResource(R.string.settings_quote_prefix), settings.quotePrefix, ready = editor.ready,
-        interpret = { draft, _ -> draft }) {
-        editor.persist(editor.settings.copy(quotePrefix = it))
-    }
-    LineField(stringResource(R.string.settings_lead_in), settings.replyLeadIn, ready = editor.ready) {
-        editor.persist(editor.settings.copy(replyLeadIn = it.ifBlank { org.dlang.liveimap.ui.compose.DefaultLeadIn }))
-    }
-    Text(stringResource(R.string.settings_dsn))
-    FlowRow {
-        for (mode in org.dlang.liveimap.ui.compose.DsnMode.entries) {
-            FilterChip(
-                selected = settings.dsnMode == mode,
-                onClick = { editor.persist(editor.settings.copy(dsnMode = mode)) },
-                label = { Text(dsnLabel(mode)) },
-            )
-        }
-    }
-    LineField(stringResource(R.string.settings_composer_headers), settings.composerHeaders, ready = editor.ready) {
-        editor.persist(editor.settings.copy(composerHeaders = it))
-    }
-    LineField(stringResource(R.string.settings_viewer_headers), settings.viewerHeaders, ready = editor.ready) {
-        editor.persist(editor.settings.copy(viewerHeaders = it))
     }
 
     Text(stringResource(R.string.settings_rules_list))
