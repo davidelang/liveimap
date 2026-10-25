@@ -44,7 +44,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -87,7 +86,7 @@ internal class MailboxChooserHeld : ViewModel() {
 
     suspend fun <T> turn(block: suspend () -> T): T {
         if (coroutineContext[OnTurn]?.owner === this) return block()
-        val carried = coroutineContext.minusKey(Job).minusKey(ContinuationInterceptor)
+        val carried = coroutineContext.minusKey(ContinuationInterceptor)
         val done = CompletableDeferred<T>()
         turns.send {
             try {
