@@ -993,52 +993,91 @@ private fun ComposeLoaded(
         return (if (replyTo.isNotBlank() && !typedReplyTo) listOf("Reply-To" to replyTo) else emptyList()) + typed
     }
 
-    suspend fun assemble(settings: AccountSettings): BuiltMail {
-        val parts = ArrayList<OutgoingPart>()
+    suspend fun assemble(settings: AccountSettings, dest: File, eightBit: Boolean): BuiltMail {
+        val paths = ArrayList<String>()
+        val types = ArrayList<String>()
+        val dispositions = ArrayList<String>()
+        val names = ArrayList<String>()
+        val encodings = ArrayList<String>()
         val uid = sourceUid
+        val contents = contentsDir(appContext.filesDir, accountId, draftId)
         for (row in forwardRows) {
             if (!row.included) continue
             val path = row.path
-            val payload = if (row.bytes != null) {
-                row.bytes
-            } else if (path != null) {
+            val partPath = if (path != null) {
+                path
+            } else {
+                val payload = if (row.bytes != null) {
+                    row.bytes
+                } else {
+                    if (uid == null) throw MailFailure(fetchFailed)
+                    val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
+                    val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
+                    peekWireBytes(row.size, 65536, base64) { offset, length ->
+                        inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
+                    }
+                }
+                val stored = File(contents, row.key)
                 try {
-                    withContext(Dispatchers.IO) { File(path).readBytes() }
+                    withContext(Dispatchers.IO) {
+                        Files.createDirectories(contents.toPath())
+                        stored.writeBytes(payload)
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     throw MailFailure(error.message ?: fetchFailed)
                 }
-            } else {
-                if (uid == null) throw MailFailure(fetchFailed)
-                val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
-                val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
-                peekWireBytes(row.size, 65536, base64) { offset, length ->
-                    inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
-                }
+                stored.path
             }
-            parts.add(OutgoingPart(row.filename, row.mediaType, payload, row.wireBase64, row.encoding))
+            val type = cleanHeader(row.mediaType).ifEmpty { "application/octet-stream" }
+            val file = cleanHeader(row.filename).ifEmpty { "attachment" }
+            val (nameParam, dispositionParam) = filenameParams(file)
+            paths.add(partPath)
+            types.add("$type; $nameParam")
+            dispositions.add("attachment; $dispositionParam")
+            names.add(file)
+            encodings.add(outgoingPartEncoding(row.encoding, row.wireBase64))
         }
-        return buildPlain(
-            PlainMessage(
-                fromName = settings.displayName,
-                fromEmail = settings.email,
-                extraHeaders = composedHeaders(settings),
-                to = splitAddresses(toText),
-                cc = splitAddresses(ccText),
-                bcc = splitAddresses(bccText),
-                subject = subject,
-                body = bodyField.text,
-                messageId = newMessageId(settings.email),
-                date = rfc822Date(),
-                inReplyTo = inReplyTo,
-                references = referencesHeader,
-                attachments = parts,
-                wrapColumn = settings.composerWrapColumn,
-                flowed = !settings.quellFlowed,
-                html = html,
-            ),
+        val message = PlainMessage(
+            fromName = settings.displayName,
+            fromEmail = settings.email,
+            extraHeaders = composedHeaders(settings),
+            to = splitAddresses(toText),
+            cc = splitAddresses(ccText),
+            bcc = splitAddresses(bccText),
+            subject = subject,
+            body = bodyField.text,
+            messageId = newMessageId(settings.email),
+            date = rfc822Date(),
+            inReplyTo = inReplyTo,
+            references = referencesHeader,
+            wrapColumn = settings.composerWrapColumn,
+            flowed = !settings.quellFlowed,
+            html = html,
         )
+        val headers = outgoingHeaders(message)
+        val (plain, htmlBody) = outgoingBodies(message)
+        val flowed = message.flowed && message.wrapColumn > 0 && !message.html
+        val damaged = writeOutgoingMessage(
+            dest.absolutePath,
+            headers.map { it.first }.toTypedArray(),
+            headers.map { it.second }.toTypedArray(),
+            plain,
+            htmlBody,
+            flowed,
+            eightBit,
+            paths.toTypedArray(),
+            types.toTypedArray(),
+            dispositions.toTypedArray(),
+            names.toTypedArray(),
+            encodings.toTypedArray(),
+        )
+        if (damaged.isNotEmpty()) {
+            notice = "attachment $damaged is damaged and can't be forwarded"
+            throw MailFailure(notice ?: "")
+        }
+        return BuiltMail(envelopeRecipients(message.to, message.cc, message.bcc))
     }
 
     suspend fun storeAcceptedFlags(uids: List<Long>) {
@@ -1152,21 +1191,13 @@ private fun ComposeLoaded(
         fun utf8Refused(error: MailFailure): Nothing =
             throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
         try {
+            // The writer already applied the 8BITMIME choice. This send does not rewrite the file.
             noteDsn(out.smtpSendFromFile(file, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
             return file
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
-            if (error.text != "8bitmime") throw error
-        }
-        val rewritten = withoutEightBit(file.readBytes())
-        file.writeBytes(rewritten)
-        try {
-            noteDsn(out.smtpSendFromFile(file, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
-        } catch (error: MailFailure) {
-            if (error.text == "smtputf8") utf8Refused(error)
             throw error
         }
-        return file
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
@@ -1407,19 +1438,16 @@ private fun ComposeLoaded(
                 notice = postponedMailboxMissing
                 return@launchLocked false
             }
-            val built = try {
-                assemble(account)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: MailFailure) {
-                notice = error.text
-                return@launchLocked false
-            }
             val drafted = File.createTempFile("liveimap-", ".rfc822", appContext.cacheDir)
             try {
                 try {
-                    drafted.writeBytes(built.rfc822)
+                    assemble(account, drafted, eightBit = true)
                     session.appendFile(account.postponedMailbox, drafted, setOf("\\Draft"))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: MailFailure) {
+                    notice = error.text
+                    return@launchLocked false
                 } finally {
                     drafted.delete()
                 }
@@ -1657,15 +1685,25 @@ private fun ComposeLoaded(
                         return@launchLocked false
                     }
                     // David's Sent rule (b): no Sent folder configured means send without saving a copy.
+                    val id = saved?.id ?: UUID.randomUUID().toString()
+                    val messageFile = copyRfc822(id)
+                    messageFile.parentFile?.mkdirs()
                     val built = try {
-                        assemble(account)
+                        assemble(account, messageFile, eightBit = true)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
                         notice = error.text
                         return@launchLocked false
                     }
-                    val id = saved?.id ?: UUID.randomUUID().toString()
+                    val messageBytes = try {
+                        withContext(Dispatchers.IO) { messageFile.readBytes() }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        notice = error.message ?: fetchFailed
+                        return@launchLocked false
+                    }
                     // F92: JMAP submission uses this account's credentials, so a rule that routes through another
                     // account (via) always takes that account's SMTP path instead.
                     if (account.emailSubmission && via.isEmpty()) {
@@ -1674,7 +1712,7 @@ private fun ComposeLoaded(
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Exception) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via)
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageBytes, via = via)
                             failAttachment(writeCopy(appContext, copy, accountId), copy.id, false)
                             held = copy
                             notice = error.message ?: notConnected
@@ -1683,13 +1721,13 @@ private fun ComposeLoaded(
                         }
                         // F50/David's JMAP rule: the device copy exists before the upload/submission starts, marked
                         // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
-                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, built.rfc822, via = via)
+                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageBytes, via = via)
                         var leftOver: String? = null
                         try {
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
-                                built.rfc822,
+                                messageBytes,
                                 account.email,
                                 built.recipients,
                                 account.username,
@@ -1732,7 +1770,7 @@ private fun ComposeLoaded(
                     }
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
-                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, built.rfc822, via = via, uncertain = true)
+                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageBytes, via = via, uncertain = true)
                     val copySaved = writeCopy(appContext, sending, accountId)
                     if (!copySaved) {
                         failAttachment(false, sending.id, false)

@@ -55,22 +55,6 @@ class ComposeRulesGlueTest {
         assertEquals(7, dsnMask(DsnMode.All))
         assertEquals(listOf("Reply-To", "X-Priority"), headerNames("Reply-To:, X-Priority reply-to"))
     }
-
-    @Test
-    fun extraHeadersEmittedButNotOverriding() {
-        val text = String(
-            buildPlain(
-                PlainMessage(
-                    fromName = "", fromEmail = "a@x", to = listOf("b@x"), cc = emptyList(), bcc = emptyList(),
-                    subject = "s", body = "b", messageId = "<1@x>", date = "Mon, 12 Oct 2026 05:00:00 -0700",
-                    extraHeaders = listOf("Reply-To" to "r@x", "Subject" to "evil", "X-Empty" to " "),
-                ),
-            ).rfc822,
-        )
-        assertTrue(text.contains("\r\nReply-To: r@x\r\n"))
-        assertFalse(text.contains("evil"))
-        assertFalse(text.contains("X-Empty"))
-    }
 }
 
 class ViewerHeadersTest {

@@ -20,6 +20,9 @@ $CX -DLIVEIMAP_IMAP -DLIVEIMAP_FUZZ_CLIENT_THREAD -c "$R/app/src/main/cpp/client
 $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_client_thread" "$O/client_order.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
 $CX -DLIVEIMAP_FUZZ_MIME -c "$R/app/src/main/cpp/mime_decode.cpp" -o "$O/mime_decode.o"
 $LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_mime_decode" "$O/mime_decode.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
+$CX -DLIVEIMAP_FUZZ_MIME_ROUNDTRIP -c "$R/app/src/main/cpp/mime_build.cpp" -o "$O/mime_build.o"
+$LL/clang++ -fsanitize=fuzzer,address,undefined -fno-sanitize=function,shift-base -o "$O/fuzz_mime_roundtrip" "$O/mime_build.o" "$ETP/src/.libs/libetpan.a" -lssl -lcrypto -lz -lpthread
 echo "$O/fuzz_imap"
 echo "$O/fuzz_client_thread"
 echo "$O/fuzz_mime_decode"
+echo "$O/fuzz_mime_roundtrip"

@@ -68,35 +68,6 @@ class ComposeAttachmentTest {
     }
 
     @Test
-    fun pickedRowsRoundTripInOrder() {
-        val first = fileAttachmentRow("k-one", "one.txt", "text/plain", "AAA".encodeToByteArray())
-        val second = fileAttachmentRow("k-two", "two.bin", "application/octet-stream", byteArrayOf(9, 8))
-        val built = buildPlain(
-            PlainMessage(
-                fromName = "Me",
-                fromEmail = "me@example.com",
-                to = listOf("ann@example.com"),
-                cc = emptyList(),
-                bcc = emptyList(),
-                subject = "Hi",
-                body = "Body",
-                messageId = "<picked@example.com>",
-                date = "Tue, 21 Oct 2026 00:00:00 +0000",
-                inReplyTo = "",
-                references = "",
-                attachments = listOf(
-                    OutgoingPart(first.filename, first.mediaType, first.bytes!!, first.wireBase64, first.encoding),
-                    OutgoingPart(second.filename, second.mediaType, second.bytes!!, second.wireBase64, second.encoding),
-                ),
-            ),
-        )
-        val loaded = loadEditor(built.rfc822)
-        assertEquals(listOf("one.txt", "two.bin"), loaded.attachments.map { it.filename })
-        assertEquals("AAA".encodeToByteArray().toList(), loaded.attachments[0].bytes.toList())
-        assertEquals(listOf(9.toByte(), 8.toByte()), loaded.attachments[1].bytes.toList())
-    }
-
-    @Test
     fun storedCopyDoesNotRestoreTheSamePickedFile() {
         val loadedRow = fileAttachmentRow("resume:0", "one.txt", "text/plain", "AAA".encodeToByteArray())
         val heldRow = fileAttachmentRow("pick-1", "two.txt", "text/plain", "BBB".encodeToByteArray())

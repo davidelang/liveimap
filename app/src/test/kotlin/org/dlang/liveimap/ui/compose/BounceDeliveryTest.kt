@@ -60,7 +60,7 @@ class BounceDeliveryTest {
         val deleteNoFcc = smtp.indexOf("deleteCopy(", noFcc)
         val addNoFcc = smtp.indexOf("addBounceAccepted(", noFcc)
         val continueNoFcc = smtp.indexOf("continue", noFcc)
-        val append = smtp.indexOf("session.append(")
+        val append = smtp.indexOf("session.appendFile(")
         assertTrue(send < noFcc && deleteNoFcc in noFcc until append)
         assertTrue(deleteNoFcc in noFcc until continueNoFcc && addNoFcc in noFcc until continueNoFcc)
         val appendFail = smtp.indexOf("catch (error: MailFailure)", append)

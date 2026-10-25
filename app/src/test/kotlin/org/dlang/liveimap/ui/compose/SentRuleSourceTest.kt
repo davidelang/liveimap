@@ -15,7 +15,7 @@ class SentRuleSourceTest {
     @Test
     fun blankSentSendsWithoutACopyInsteadOfBlocking() {
         assertFalse(compose.contains("if (account.sentMailbox.isEmpty()) {\n                        notice = sentMailboxMissing\n                        return@launchLocked false"))
-        assertTrue(compose.contains("if (account.sentMailbox.isNotEmpty()) try {\n                        outbound(via).append(account.sentMailbox, accepted)"))
+        assertTrue(compose.contains("if (account.sentMailbox.isNotEmpty()) try {\n                        outbound(via).appendFile(account.sentMailbox, accepted)"))
     }
 
     @Test

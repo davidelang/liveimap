@@ -3714,3 +3714,11 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - IMAP append and SMTP send read the message from the file writeCopy wrote. The success path does not pass that message as a Java byte array.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Libetpan writes the outgoing message.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- Libetpan writes the outgoing message into the draft .rfc822 file. Compose passes the headers, the body text, flowed, the 8BITMIME choice, and one path per part. A forwarded part that does not decode sets the notice and does not send.
+- The choice passed in is eight-bit-allowed. Send no longer rewrites that file to quoted-printable. A server that does not offer 8BITMIME fails the send.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -61,7 +61,6 @@ class PlainMessage(
 )
 
 class BuiltMail(
-    val rfc822: ByteArray,
     val recipients: List<String>,
 )
 
@@ -583,142 +582,60 @@ private fun joinFlowTokens(prefix: String, tokens: List<FlowTok>, start: Int, co
     return out.toString()
 }
 
-/** A forwarded part keeps the server's transfer encoding. [looksLikeBase64] is not the decision. */
-internal fun forwardWire(encoding: String, bytes: ByteArray): Pair<String, ByteArray> {
-    val token = encoding.substringBefore(';').trim().lowercase()
-    return when (token) {
-        "quoted-printable" -> "quoted-printable" to bytes
-        "7bit" -> "7bit" to bytes
-        "base64" -> "base64" to rewrapBase64(bytes)
-        "binary" -> "binary" to bytes
-        "x-uuencode" -> "x-uuencode" to bytes
-        "" -> {
-            val eight = bytes.any { (it.toInt() and 0xFF) > 127 }
-            (if (eight) "8bit" else "7bit") to bytes
-        }
-        else -> token to bytes
+internal external fun writeOutgoingMessage(
+    path: String,
+    headerNames: Array<String>,
+    headerValues: Array<String>,
+    body: String,
+    htmlBody: String,
+    flowed: Boolean,
+    eightBit: Boolean,
+    partPaths: Array<String>,
+    partTypes: Array<String>,
+    partDispositions: Array<String>,
+    partNames: Array<String>,
+    partEncodings: Array<String>,
+): String
+
+/** Headers the writer emits, from the same fields assemble already collected. Bcc is not one of them. */
+internal fun outgoingHeaders(message: PlainMessage): List<Pair<String, String>> {
+    val out = ArrayList<Pair<String, String>>()
+    out.add("Date" to cleanHeader(message.date))
+    out.add("From" to cleanHeader(formatMailbox(message.fromName, message.fromEmail)))
+    fun boxes(name: String, values: List<String>) {
+        val rendered = values.map { cleanHeader(it.trim()) }.filter { it.isNotEmpty() }
+        if (rendered.isNotEmpty()) out.add(name to rendered.joinToString(", "))
     }
+    boxes("To", message.to)
+    boxes("Cc", message.cc)
+    out.add("Subject" to headerText(message.subject))
+    out.add("Message-ID" to cleanHeader(message.messageId))
+    if (message.inReplyTo.isNotBlank()) out.add("In-Reply-To" to cleanHeader(message.inReplyTo.trim()))
+    if (message.references.isNotBlank()) out.add("References" to cleanHeader(message.references.trim()))
+    for ((name, value) in message.extraHeaders) {
+        val clean = name.filter { it.isLetterOrDigit() || it == '-' }
+        if (clean.isEmpty() || value.isBlank() || clean.lowercase() in reservedHeaders) continue
+        out.add(clean to headerText(value.trim()))
+    }
+    return out
 }
 
-/** Bcc is not a header. Those addresses are only SMTP envelope recipients. */
-fun buildPlain(message: PlainMessage): BuiltMail {
-    val recipients = envelopeRecipients(message.to, message.cc, message.bcc)
-    if (message.html) return BuiltMail(htmlMessage(message), recipients)
+/** Plain text the writer encodes, and the HTML source when [PlainMessage.html] is set. */
+internal fun outgoingBodies(message: PlainMessage): Pair<String, String> {
+    if (message.html) return htmlAsText(message.body) to message.body
     val flowed = message.flowed && message.wrapColumn > 0
-    val plain = if (flowed) {
-        flowPlain(message.body, message.wrapColumn)
-    } else {
-        wrapPlain(message.body, message.wrapColumn)
-    }
-    val (encoding, payload) = textPart(plain, allowEightBit = true)
-    val plainType = if (flowed) {
-        "text/plain; charset=utf-8; format=flowed; delsp=yes"
-    } else {
-        "text/plain; charset=utf-8"
-    }
-    val bytes = if (message.attachments.isEmpty()) {
-        val headers = baseHeaders(message, plainType, encoding)
-        val out = ByteArrayOutputStream()
-        out.write(headers.toByteArray(Charsets.UTF_8))
-        out.write("\r\n".toByteArray(Charsets.US_ASCII))
-        out.write(payload)
-        out.toByteArray()
-    } else {
-        val token = message.messageId.filter { it.isLetterOrDigit() }.ifEmpty { "part" }
-        val boundary = "liveimap_$token"
-        val headers = baseHeaders(message, "multipart/mixed; boundary=$boundary", null)
-        val out = ByteArrayOutputStream()
-        out.write(headers.toByteArray(Charsets.UTF_8))
-        out.write("\r\n".toByteArray(Charsets.US_ASCII))
-        writePart(
-            out,
-            boundary,
-            plainType,
-            encoding,
-            null,
-            payload,
-        )
-        for (part in message.attachments) {
-            // F80(d): base64 already on the wire is re-wrapped at 76, never copied as it came.
-            val (cte, encoded) = if (part.transferEncoding != null) {
-                forwardWire(part.transferEncoding, part.bytes)
-            } else if (part.wireBase64) {
-                "base64" to rewrapBase64(part.bytes)
-            } else {
-                "base64" to mimeBase64(part.bytes)
-            }
-            val type = cleanHeader(part.mediaType).ifEmpty { "application/octet-stream" }
-            val file = cleanHeader(part.filename).ifEmpty { "attachment" }
-            val (nameParam, dispositionParam) = filenameParams(file)
-            writePart(
-                out,
-                boundary,
-                "$type; $nameParam",
-                cte,
-                "attachment; $dispositionParam",
-                encoded,
-            )
-        }
-        out.write("--$boundary--\r\n".toByteArray(Charsets.US_ASCII))
-        out.toByteArray()
-    }
-    return BuiltMail(bytes, recipients)
+    val plain = if (flowed) flowPlain(message.body, message.wrapColumn) else wrapPlain(message.body, message.wrapColumn)
+    return plain to ""
 }
 
-/**
- * HTML body as sent: multipart/alternative of text/plain (htmlAsText, not flowed) then text/html.
- * Attachments sit outside that alternative, in multipart/mixed.
- */
-private fun htmlMessage(message: PlainMessage): ByteArray {
-    val token = message.messageId.filter { it.isLetterOrDigit() }.ifEmpty { "part" }
-    val altBoundary = "liveimap_alt_$token"
-    val (plainEncoding, plainPayload) = textPart(htmlAsText(message.body), allowEightBit = true)
-    val (htmlEncoding, htmlPayload) = textPart(message.body, allowEightBit = true)
-    val alternative = ByteArrayOutputStream()
-    writePart(alternative, altBoundary, "text/plain; charset=utf-8", plainEncoding, null, plainPayload)
-    writePart(alternative, altBoundary, "text/html; charset=utf-8", htmlEncoding, null, htmlPayload)
-    alternative.write("--$altBoundary--\r\n".toByteArray(Charsets.US_ASCII))
-    val altBytes = alternative.toByteArray()
-    if (message.attachments.isEmpty()) {
-        val headers = baseHeaders(message, "multipart/alternative; boundary=$altBoundary", null)
-        val out = ByteArrayOutputStream()
-        out.write(headers.toByteArray(Charsets.UTF_8))
-        out.write("\r\n".toByteArray(Charsets.US_ASCII))
-        out.write(altBytes)
-        return out.toByteArray()
+/** Empty means the file is raw and the writer base64-encodes it. "auto" is an unencoded forward. */
+internal fun outgoingPartEncoding(encoding: String?, wireBase64: Boolean): String {
+    if (encoding != null) {
+        val token = encoding.substringBefore(';').trim().lowercase()
+        return token.ifEmpty { "auto" }
     }
-    val mixedBoundary = "liveimap_$token"
-    val headers = baseHeaders(message, "multipart/mixed; boundary=$mixedBoundary", null)
-    val out = ByteArrayOutputStream()
-    out.write(headers.toByteArray(Charsets.UTF_8))
-    out.write("\r\n".toByteArray(Charsets.US_ASCII))
-    out.write("--$mixedBoundary\r\n".toByteArray(Charsets.US_ASCII))
-    out.write(
-        "Content-Type: multipart/alternative; boundary=$altBoundary\r\n\r\n".toByteArray(Charsets.US_ASCII),
-    )
-    out.write(altBytes)
-    for (part in message.attachments) {
-        val (cte, encoded) = if (part.transferEncoding != null) {
-            forwardWire(part.transferEncoding, part.bytes)
-        } else if (part.wireBase64) {
-            "base64" to rewrapBase64(part.bytes)
-        } else {
-            "base64" to mimeBase64(part.bytes)
-        }
-        val type = cleanHeader(part.mediaType).ifEmpty { "application/octet-stream" }
-        val file = cleanHeader(part.filename).ifEmpty { "attachment" }
-        val (nameParam, dispositionParam) = filenameParams(file)
-        writePart(
-            out,
-            mixedBoundary,
-            "$type; $nameParam",
-            cte,
-            "attachment; $dispositionParam",
-            encoded,
-        )
-    }
-    out.write("--$mixedBoundary--\r\n".toByteArray(Charsets.US_ASCII))
-    return out.toByteArray()
+    if (wireBase64) return "base64"
+    return "raw"
 }
 
 /** Prepend Resent-* and leave the original headers, including Message-ID, unchanged. */
@@ -811,364 +728,6 @@ fun envelopeRecipients(to: List<String>, cc: List<String>, bcc: List<String>): L
     return out
 }
 
-private fun baseHeaders(message: PlainMessage, contentType: String, encoding: String?): String =
-    buildString {
-        append("Date: ")
-        append(cleanHeader(message.date))
-        append("\r\n")
-        append("From: ")
-        append(cleanHeader(formatMailbox(message.fromName, message.fromEmail)))
-        append("\r\n")
-        appendMailboxHeader("To", message.to)
-        appendMailboxHeader("Cc", message.cc)
-        append("Subject: ")
-        append(headerText(message.subject))
-        append("\r\n")
-        append("Message-ID: ")
-        append(cleanHeader(message.messageId))
-        append("\r\n")
-        if (message.inReplyTo.isNotBlank()) {
-            append("In-Reply-To: ")
-            append(cleanHeader(message.inReplyTo.trim()))
-            append("\r\n")
-        }
-        if (message.references.isNotBlank()) {
-            append("References: ")
-            append(cleanHeader(message.references.trim()))
-            append("\r\n")
-        }
-        for ((name, value) in message.extraHeaders) {
-            val clean = name.filter { it.isLetterOrDigit() || it == '-' }
-            if (clean.isEmpty() || value.isBlank() || clean.lowercase() in reservedHeaders) continue
-            append(clean)
-            append(": ")
-            append(headerText(value.trim()))
-            append("\r\n")
-        }
-        append("MIME-Version: 1.0\r\n")
-        append("Content-Type: ")
-        append(cleanHeader(contentType))
-        append("\r\n")
-        if (encoding != null) {
-            append("Content-Transfer-Encoding: ")
-            append(encoding)
-            append("\r\n")
-        }
-    }
-
-private fun StringBuilder.appendMailboxHeader(name: String, values: List<String>) {
-    val rendered = values.map { cleanHeader(it.trim()) }.filter { it.isNotEmpty() }
-    if (rendered.isEmpty()) return
-    append(name)
-    append(": ")
-    append(rendered.joinToString(", "))
-    append("\r\n")
-}
-
-private fun writePart(
-    out: ByteArrayOutputStream,
-    boundary: String,
-    contentType: String,
-    encoding: String,
-    disposition: String?,
-    body: ByteArray,
-) {
-    out.write("--$boundary\r\n".toByteArray(Charsets.US_ASCII))
-    out.write("Content-Type: ${cleanHeader(contentType)}\r\n".toByteArray(Charsets.UTF_8))
-    out.write("Content-Transfer-Encoding: $encoding\r\n".toByteArray(Charsets.US_ASCII))
-    if (disposition != null) {
-        out.write("Content-Disposition: ${cleanHeader(disposition)}\r\n".toByteArray(Charsets.UTF_8))
-    }
-    out.write("\r\n".toByteArray(Charsets.US_ASCII))
-    out.write(body)
-    if (body.isEmpty() || body[body.size - 1] != '\n'.code.toByte()) {
-        out.write("\r\n".toByteArray(Charsets.US_ASCII))
-    }
-}
-
-private fun normalizeNewlines(body: String): String {
-    val unified = body.replace("\r\n", "\n").replace('\r', '\n').replace("\n", "\r\n")
-    return if (unified.endsWith("\r\n")) unified else "$unified\r\n"
-}
-
-/** Optimistic 8-bit only when allowed and every line is at most 998 octets. */
-internal fun textPart(body: String, allowEightBit: Boolean): Pair<String, ByteArray> {
-    val text = normalizeNewlines(body)
-    val raw = text.toByteArray(Charsets.UTF_8)
-    if (allowEightBit && !lineExceeds(raw, 998)) {
-        val encoding = if (raw.any { (it.toInt() and 0xFF) > 127 }) "8bit" else "7bit"
-        return encoding to raw
-    }
-    return "quoted-printable" to quotedPrintable(raw)
-}
-
-internal fun quotedPrintable(bytes: ByteArray): ByteArray {
-    val hex = "0123456789ABCDEF".toByteArray(Charsets.US_ASCII)
-    val out = ByteArrayOutputStream()
-    var column = 0
-    var i = 0
-    while (i < bytes.size) {
-        val b = bytes[i].toInt() and 0xFF
-        if (b == '\r'.code && i + 1 < bytes.size && (bytes[i + 1].toInt() and 0xFF) == '\n'.code) {
-            out.write('\r'.code)
-            out.write('\n'.code)
-            column = 0
-            i += 2
-            continue
-        }
-        val literal = b in 33..60 || b in 62..126
-        val need = if (literal) 1 else 3
-        if (column + need > 73) {
-            out.write('='.code)
-            out.write('\r'.code)
-            out.write('\n'.code)
-            column = 0
-        }
-        if (literal) {
-            out.write(b)
-            column += 1
-        } else {
-            out.write('='.code)
-            out.write(hex[b ushr 4].toInt())
-            out.write(hex[b and 0x0F].toInt())
-            column += 3
-        }
-        i++
-    }
-    return out.toByteArray()
-}
-
-fun withoutEightBit(rfc822: ByteArray): ByteArray {
-    if (!subtreeHas8bitHeader(rfc822)) return rfc822
-    val sep = indexOfCrlfCrlf(rfc822)
-    if (sep < 0) return rfc822
-    val header = rfc822.copyOfRange(0, sep)
-    val body = rfc822.copyOfRange(sep + 4, rfc822.size)
-    val contentType = unfoldedHeader(header, "Content-Type")
-    if (!contentType.trim().lowercase().startsWith("multipart/")) {
-        if (!headerHas8bitCte(header)) return rfc822
-        return joinHeaderBody(replace8bitCte(header), quotedPrintable(body))
-    }
-    val boundary = headerParam(contentType, "boundary")
-    if (boundary.isEmpty()) return rfc822
-    val head = if (headerHas8bitCte(header)) replace8bitCte(header) else header
-    return joinHeaderBody(head, rewriteMultipartBody(body, boundary))
-}
-
-private fun lineExceeds(bytes: ByteArray, limit: Int): Boolean {
-    var count = 0
-    var i = 0
-    while (i < bytes.size) {
-        val b = bytes[i].toInt() and 0xFF
-        if (b == '\n'.code) {
-            if (count > limit) return true
-            count = 0
-        } else if (b != '\r'.code) {
-            count++
-            if (count > limit) return true
-        }
-        i++
-    }
-    return count > limit
-}
-
-private fun messageHas8bitCte(bytes: ByteArray): Boolean {
-    var found = false
-    eachLine(bytes) { line ->
-        if (is8bitCteLine(line)) found = true
-    }
-    return found
-}
-
-private fun headerHas8bitCte(header: ByteArray): Boolean = messageHas8bitCte(header)
-
-private fun is8bitCteLine(line: String): Boolean {
-    val prefix = "content-transfer-encoding:"
-    if (line.length < prefix.length) return false
-    if (!line.regionMatches(0, prefix, 0, prefix.length, ignoreCase = true)) return false
-    return line.substring(prefix.length).trim().equals("8bit", ignoreCase = true)
-}
-
-private fun eachLine(bytes: ByteArray, block: (String) -> Unit) {
-    var start = 0
-    var i = 0
-    while (i <= bytes.size) {
-        if (i == bytes.size || bytes[i] == '\n'.code.toByte()) {
-            var end = i
-            if (end > start && bytes[end - 1] == '\r'.code.toByte()) end--
-            if (end > start || i < bytes.size) {
-                block(bytes.copyOfRange(start, end).toString(Charsets.ISO_8859_1))
-            }
-            start = i + 1
-        }
-        i++
-    }
-}
-
-private fun indexOfCrlfCrlf(bytes: ByteArray): Int {
-    var i = 0
-    while (i + 3 < bytes.size) {
-        if (bytes[i] == '\r'.code.toByte() &&
-            bytes[i + 1] == '\n'.code.toByte() &&
-            bytes[i + 2] == '\r'.code.toByte() &&
-            bytes[i + 3] == '\n'.code.toByte()
-        ) {
-            return i
-        }
-        i++
-    }
-    return -1
-}
-
-private fun unfoldedHeader(header: ByteArray, name: String): String {
-    val rows = MimeDecode.headers(header)
-    var i = 0
-    while (i + 2 < rows.size) {
-        if (rows[i].equals(name, ignoreCase = true)) return rows[i + 2]
-        i += 3
-    }
-    return ""
-}
-
-private fun replace8bitCte(header: ByteArray): ByteArray {
-    val out = ByteArrayOutputStream()
-    var start = 0
-    var i = 0
-    while (i <= header.size) {
-        if (i == header.size || header[i] == '\n'.code.toByte()) {
-            var end = i
-            if (end > start && header[end - 1] == '\r'.code.toByte()) end--
-            val line = header.copyOfRange(start, end).toString(Charsets.ISO_8859_1)
-            if (is8bitCteLine(line)) {
-                val colon = line.indexOf(':')
-                out.write(line.substring(0, colon + 1).toByteArray(Charsets.ISO_8859_1))
-                out.write(" quoted-printable".toByteArray(Charsets.US_ASCII))
-            } else if (end > start) {
-                out.write(header, start, end - start)
-            }
-            if (i < header.size) out.write(header, end, i - end + 1)
-            start = i + 1
-        }
-        i++
-    }
-    return out.toByteArray()
-}
-
-private fun joinHeaderBody(header: ByteArray, body: ByteArray): ByteArray {
-    val out = ByteArrayOutputStream()
-    out.write(header)
-    out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
-    out.write(body)
-    return out.toByteArray()
-}
-
-private fun rewriteMultipartBody(body: ByteArray, boundary: String): ByteArray {
-    val marker = "--$boundary".toByteArray(Charsets.US_ASCII)
-    val starts = ArrayList<Int>()
-    var i = 0
-    while (i + marker.size <= body.size) {
-        if (matchesAt(body, i, marker) && atLineStart(body, i) && boundaryEnds(body, i + marker.size)) {
-            starts.add(i)
-            i += marker.size
-        } else {
-            i++
-        }
-    }
-    if (starts.isEmpty()) return body
-    val out = ByteArrayOutputStream()
-    if (starts[0] > 0) out.write(body, 0, starts[0])
-    for (index in starts.indices) {
-        val at = starts[index]
-        var cursor = at + marker.size
-        val closing = cursor + 1 < body.size &&
-            body[cursor] == '-'.code.toByte() &&
-            body[cursor + 1] == '-'.code.toByte()
-        if (closing) {
-            out.write(body, at, body.size - at)
-            break
-        }
-        val lineEnd = lineEndAfter(body, cursor)
-        val next = if (index + 1 < starts.size) starts[index + 1] else body.size
-        out.write(body, at, lineEnd - at)
-        out.write(rewriteOnePart(body.copyOfRange(lineEnd, next)))
-    }
-    return out.toByteArray()
-}
-
-private fun boundaryEnds(body: ByteArray, after: Int): Boolean {
-    if (after >= body.size) return true
-    val c = body[after]
-    return c == '\r'.code.toByte() ||
-        c == '\n'.code.toByte() ||
-        c == ' '.code.toByte() ||
-        c == '\t'.code.toByte() ||
-        c == '-'.code.toByte()
-}
-
-private fun lineEndAfter(body: ByteArray, from: Int): Int {
-    var i = from
-    while (i < body.size && body[i] != '\n'.code.toByte()) i++
-    if (i < body.size) i++
-    return i
-}
-
-private fun subtreeHas8bitHeader(bytes: ByteArray): Boolean {
-    val sep = indexOfCrlfCrlf(bytes)
-    if (sep < 0) return false
-    val header = bytes.copyOfRange(0, sep)
-    if (headerHas8bitCte(header)) return true
-    val contentType = unfoldedHeader(header, "Content-Type")
-    if (!contentType.trim().lowercase().startsWith("multipart/")) return false
-    val boundary = headerParam(contentType, "boundary")
-    if (boundary.isEmpty()) return false
-    val body = bytes.copyOfRange(sep + 4, bytes.size)
-    for (chunk in splitMultipartChunks(body, boundary)) {
-        if (subtreeHas8bitHeader(chunk)) return true
-    }
-    return false
-}
-
-private fun rewriteOnePart(part: ByteArray): ByteArray {
-    val sep = indexOfCrlfCrlf(part)
-    if (sep < 0) return part
-    val header = part.copyOfRange(0, sep)
-    val contentType = unfoldedHeader(header, "Content-Type")
-    if (contentType.trim().lowercase().startsWith("multipart/")) {
-        if (!subtreeHas8bitHeader(part)) return part
-        val boundary = headerParam(contentType, "boundary")
-        if (boundary.isEmpty()) return part
-        val rawBody = part.copyOfRange(sep + 4, part.size)
-        val keepBreak = rawBody.size >= 2 &&
-            rawBody[rawBody.size - 2] == '\r'.code.toByte() &&
-            rawBody[rawBody.size - 1] == '\n'.code.toByte()
-        val content = if (keepBreak) rawBody.copyOfRange(0, rawBody.size - 2) else rawBody
-        val head = if (headerHas8bitCte(header)) replace8bitCte(header) else header
-        val out = ByteArrayOutputStream()
-        out.write(head)
-        out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
-        out.write(rewriteMultipartBody(content, boundary))
-        if (keepBreak) out.write("\r\n".toByteArray(Charsets.US_ASCII))
-        return out.toByteArray()
-    }
-    if (!headerHas8bitCte(header)) return part
-    val rawBody = part.copyOfRange(sep + 4, part.size)
-    val keepBreak = rawBody.size >= 2 &&
-        rawBody[rawBody.size - 2] == '\r'.code.toByte() &&
-        rawBody[rawBody.size - 1] == '\n'.code.toByte()
-    val content = if (keepBreak) rawBody.copyOfRange(0, rawBody.size - 2) else rawBody
-    val out = ByteArrayOutputStream()
-    out.write(replace8bitCte(header))
-    out.write("\r\n\r\n".toByteArray(Charsets.US_ASCII))
-    out.write(quotedPrintable(content))
-    if (keepBreak) out.write("\r\n".toByteArray(Charsets.US_ASCII))
-    return out.toByteArray()
-}
-
-private fun mimeBase64(bytes: ByteArray): ByteArray {
-    val encoder = Base64.getMimeEncoder(76, byteArrayOf('\r'.code.toByte(), '\n'.code.toByte()))
-    return encoder.encode(bytes)
-}
-
 private fun escapeQuotes(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
 
@@ -1186,22 +745,6 @@ internal fun cleanHeader(value: String): String {
         }
     }
     return out.toString()
-}
-
-/** F80(d): decode leniently and re-encode in 76-column lines; when it does not decode, keep only the base64 alphabet. */
-internal fun rewrapBase64(wire: ByteArray): ByteArray {
-    val decoded = try {
-        Base64.getMimeDecoder().decode(wire)
-    } catch (_: IllegalArgumentException) {
-        null
-    }
-    if (decoded != null) return mimeBase64(decoded)
-    val alphabet = wire.filter { b ->
-        val c = b.toInt().toChar()
-        c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '+' || c == '/' || c == '='
-    }.toByteArray()
-    return alphabet.toList().chunked(76).joinToString("") { line -> String(line.toByteArray(), Charsets.US_ASCII) + "\r\n" }
-        .toByteArray(Charsets.US_ASCII)
 }
 
 /**

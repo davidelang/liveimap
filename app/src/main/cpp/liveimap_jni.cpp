@@ -10926,3 +10926,84 @@ extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeIdleRenews(JNIEnv *, jclass) {
     return gIdleRenews.load();
 }
+
+extern "C" int mime_build_file(const char * path,
+    const char ** header_names, const char ** header_values, int header_count,
+    const char * body, const char * html_body, int flowed, int eight_bit,
+    const char ** part_paths, const char ** part_types, const char ** part_dispositions,
+    const char ** part_names, const char ** part_encodings, int part_count,
+    char * damaged, size_t damaged_cap, char * error, size_t error_cap);
+
+static bool jniStringArray(JNIEnv * env, jobjectArray arr, std::vector<std::string> * out) {
+    if (arr == nullptr) return true;
+    jsize n = env->GetArrayLength(arr);
+    if (env->ExceptionCheck()) return false;
+    out->reserve(out->size() + static_cast<size_t>(n));
+    for (jsize i = 0; i < n; ++i) {
+        auto js = static_cast<jstring>(env->GetObjectArrayElement(arr, i));
+        if (env->ExceptionCheck()) return false;
+        auto text = utf8FromJava(env, js);
+        if (js != nullptr) env->DeleteLocalRef(js);
+        if (!text) return false;
+        out->push_back(std::move(*text));
+    }
+    return true;
+}
+
+static const char ** cStrings(const std::vector<std::string> & values, std::vector<const char *> * ptrs) {
+    ptrs->clear();
+    ptrs->reserve(values.size());
+    for (const std::string & value : values) ptrs->push_back(value.c_str());
+    return ptrs->empty() ? nullptr : ptrs->data();
+}
+
+// Compose passes headers, body text, the 8BITMIME choice, and one path per part. No message jbyteArray.
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_dlang_liveimap_ui_compose_Rfc822Kt_writeOutgoingMessage(JNIEnv * env, jclass,
+    jstring path, jobjectArray headerNames, jobjectArray headerValues, jstring body, jstring htmlBody,
+    jboolean flowed, jboolean eightBit, jobjectArray partPaths, jobjectArray partTypes,
+    jobjectArray partDispositions, jobjectArray partNames, jobjectArray partEncodings) {
+    auto pathText = utf8FromJava(env, path);
+    auto bodyText = utf8FromJava(env, body);
+    auto htmlText = utf8FromJava(env, htmlBody);
+    if (!pathText || !bodyText || !htmlText) return nullptr;
+    std::vector<std::string> names;
+    std::vector<std::string> values;
+    std::vector<std::string> paths;
+    std::vector<std::string> types;
+    std::vector<std::string> dispositions;
+    std::vector<std::string> partNameText;
+    std::vector<std::string> encodings;
+    if (!jniStringArray(env, headerNames, &names) || !jniStringArray(env, headerValues, &values) ||
+        !jniStringArray(env, partPaths, &paths) || !jniStringArray(env, partTypes, &types) ||
+        !jniStringArray(env, partDispositions, &dispositions) || !jniStringArray(env, partNames, &partNameText) ||
+        !jniStringArray(env, partEncodings, &encodings)) {
+        return nullptr;
+    }
+    if (names.size() != values.size() || paths.size() != types.size() || paths.size() != dispositions.size() ||
+        paths.size() != partNameText.size() || paths.size() != encodings.size()) {
+        throwFailure(env, "could not write the message");
+        return nullptr;
+    }
+    std::vector<const char *> namePtr;
+    std::vector<const char *> valuePtr;
+    std::vector<const char *> pathPtr;
+    std::vector<const char *> typePtr;
+    std::vector<const char *> dispositionPtr;
+    std::vector<const char *> partNamePtr;
+    std::vector<const char *> encodingPtr;
+    char damaged[256];
+    char error[256];
+    int result = mime_build_file(pathText->c_str(),
+        cStrings(names, &namePtr), cStrings(values, &valuePtr), static_cast<int>(names.size()),
+        bodyText->c_str(), htmlText->c_str(), flowed == JNI_TRUE, eightBit == JNI_TRUE,
+        cStrings(paths, &pathPtr), cStrings(types, &typePtr), cStrings(dispositions, &dispositionPtr),
+        cStrings(partNameText, &partNamePtr), cStrings(encodings, &encodingPtr), static_cast<int>(paths.size()),
+        damaged, sizeof(damaged), error, sizeof(error));
+    if (result == 1) return env->NewStringUTF(damaged);
+    if (result != 0) {
+        throwFailure(env, error[0] != 0 ? error : "could not write the message");
+        return nullptr;
+    }
+    return env->NewStringUTF("");
+}
