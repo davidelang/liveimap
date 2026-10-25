@@ -128,7 +128,81 @@ static bool file_has_high(const char * path, int * readable) {
     return high;
 }
 
+static bool ws_byte(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+static bool b64_char(unsigned char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/';
+}
+
+static bool hex_char(unsigned char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+// mailmime_part_parse skips illegal base64 and ignores a broken quoted-printable tail.
+// A finished body that the reader would reject is damaged.
+static int finished_base64(const std::string & in) {
+    int alpha = 0;
+    int pad = 0;
+    bool padding = false;
+    int in_group = 0;
+    for (unsigned char c : in) {
+        if (ws_byte(c)) continue;
+        if (c == '=') {
+            if (pad >= 2) return 1;
+            padding = true;
+            ++pad;
+            continue;
+        }
+        if (padding || !b64_char(c)) return 1;
+        ++in_group;
+        ++alpha;
+        if (in_group == 4) in_group = 0;
+    }
+    if (padding) {
+        int mod = alpha % 4;
+        if (pad == 1 && mod != 3) return 1;
+        if (pad == 2 && mod != 2) return 1;
+        if (pad == 0) return 1;
+        return 0;
+    }
+    return in_group == 0 ? 0 : 1;
+}
+
+static int finished_qp(const std::string & in) {
+    size_t i = 0;
+    while (i < in.size()) {
+        if (in[i] != '=') {
+            ++i;
+            continue;
+        }
+        if (i + 1 >= in.size()) return 1;
+        unsigned char n = static_cast<unsigned char>(in[i + 1]);
+        if (n == '\n') {
+            i += 2;
+            continue;
+        }
+        if (n == '\r') {
+            if (i + 2 < in.size() && in[i + 2] == '\n') i += 3;
+            else i += 2;
+            continue;
+        }
+        if (i + 2 >= in.size()) return 1;
+        if (!hex_char(static_cast<unsigned char>(in[i + 1])) || !hex_char(static_cast<unsigned char>(in[i + 2]))) {
+            return 1;
+        }
+        i += 3;
+    }
+    return 0;
+}
+
 static int decode_part(const std::string & in, int mech, std::string * out) {
+    if (mech == MAILMIME_MECHANISM_BASE64) {
+        if (finished_base64(in) != 0) return 1;
+    } else if (mech == MAILMIME_MECHANISM_QUOTED_PRINTABLE) {
+        if (finished_qp(in) != 0) return 1;
+    }
     if (in.empty()) return 0;
     size_t indx = 0;
     char * result = nullptr;
@@ -295,6 +369,43 @@ static struct mailmime * text_part(const char * content_type, const std::string 
     return part;
 }
 
+// Content-Type is written before a missing boundary would be invented for the delimiters.
+// The parameter has to already be on the multipart, or the body is not a parseable part.
+static struct mailmime * multiple_part(const char * type) {
+    char * boundary = mailmime_generate_boundary();
+    if (boundary == nullptr) return nullptr;
+    std::string spec;
+    spec.append(type != nullptr ? type : "multipart/mixed");
+    spec.append("; boundary=");
+    spec.append(boundary);
+    free(boundary);
+    struct mailmime_fields * fields = mailmime_fields_new_empty();
+    if (fields == nullptr) return nullptr;
+    struct mailmime_content * content = mailmime_content_new_with_str(spec.c_str());
+    char boundary_key[] = "boundary";
+    char * stored = content != nullptr && content->ct_parameters != nullptr
+        ? mailmime_content_param_get(content, boundary_key) : nullptr;
+    if (stored == nullptr || stored[0] == 0) {
+        if (content != nullptr) mailmime_content_free(content);
+        mailmime_fields_free(fields);
+        return nullptr;
+    }
+    clist * list = clist_new();
+    if (list == nullptr) {
+        mailmime_content_free(content);
+        mailmime_fields_free(fields);
+        return nullptr;
+    }
+    struct mailmime * part = mailmime_new(MAILMIME_MULTIPLE, nullptr, 0, fields, content,
+        nullptr, nullptr, nullptr, list, nullptr, nullptr);
+    if (part == nullptr) {
+        clist_free(list);
+        mailmime_content_free(content);
+        mailmime_fields_free(fields);
+    }
+    return part;
+}
+
 static const char * part_name_at(const char ** part_names, int index) {
     if (part_names == nullptr || part_names[index] == nullptr || part_names[index][0] == 0) return "attachment";
     return part_names[index];
@@ -361,7 +472,7 @@ extern "C" int mime_build_file(const char * path,
     struct mailmime * root = plain;
     if (html) {
         struct mailmime * html_part = text_part("text/html; charset=utf-8", crlf_text(html_body), eight_bit, &held);
-        struct mailmime * alternative = html_part != nullptr ? mailmime_multiple_new("multipart/alternative") : nullptr;
+        struct mailmime * alternative = html_part != nullptr ? multiple_part("multipart/alternative") : nullptr;
         int plain_added = 0;
         int html_added = 0;
         if (alternative != nullptr && html_part != nullptr &&
@@ -379,7 +490,7 @@ extern "C" int mime_build_file(const char * path,
         root = alternative;
     }
     if (part_count > 0) {
-        struct mailmime * mixed = mailmime_multiple_new("multipart/mixed");
+        struct mailmime * mixed = multiple_part("multipart/mixed");
         int root_added = mixed != nullptr && mailmime_add_part(mixed, root) == MAILIMF_NO_ERROR;
         if (!root_added) {
             mailmime_free(root);

@@ -3722,3 +3722,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The choice passed in is eight-bit-allowed. Send no longer rewrites that file to quoted-printable. A server that does not offer 8BITMIME fails the send.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Multipart boundary and a part that does not decode.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A multipart content type carries the boundary the body delimiters use. A base64 or quoted-printable part that does not decode is damaged and is not sent.
+- No install, and no message sent
