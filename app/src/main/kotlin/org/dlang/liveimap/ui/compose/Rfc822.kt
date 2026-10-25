@@ -379,12 +379,14 @@ fun quotePart(attribution: String, partText: String, prefix: String = DefaultQuo
     return attribution + "\n" + quoted
 }
 
+private val referenceSplit = Regex("\\s+")
+
 fun appendMessageId(references: String, messageId: String): String {
     val id = messageId.trim()
     val parent = references.trim()
     if (id.isEmpty()) return parent
     if (parent.isEmpty()) return id
-    val tokens = parent.split(Regex("\\s+"))
+    val tokens = parent.split(referenceSplit)
     if (tokens.any { it.equals(id, ignoreCase = true) }) return parent
     return "$parent $id"
 }
@@ -439,12 +441,14 @@ internal fun wrapPlain(body: String, column: Int): String {
     return normalized.split('\n').joinToString("\n") { wrapPlainLine(it, column) }
 }
 
+private val wrapSpaces = Regex("[ \t]+")
+
 private fun wrapPlainLine(line: String, column: Int): String {
     if (line.codePointCount(0, line.length) <= column) return line
     val prefix = quotePrefix(line)
     val prefixCount = prefix.codePointCount(0, prefix.length)
     if (prefixCount >= column) return line
-    val words = line.substring(prefix.length).split(Regex("[ \t]+")).filter { it.isNotEmpty() }
+    val words = line.substring(prefix.length).split(wrapSpaces).filter { it.isNotEmpty() }
     if (words.isEmpty()) return line
     val lines = ArrayList<String>()
     val current = StringBuilder(prefix)

@@ -92,9 +92,11 @@ fun connectionLimits(maxConnections: Int, idleBudget: Int): ConnectionLimits {
 fun connectionLimits(settings: AccountSettings): ConnectionLimits =
     connectionLimits(settings.maxConnections, settings.extraIdleBudget)
 
+private val connectionDigits = Regex("\\d{1,3}")
+
 /** Digits in MinConnections..MaxConnectionsCeiling, or null (never unlimited). */
 fun maxConnectionsFromText(text: String): Int? =
-    text.trim().takeIf { it.matches(Regex("\\d{1,3}")) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
+    text.trim().takeIf { it.matches(connectionDigits) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
 /** Retries each extra IDLE slot, including a folder the last apply left on STATUS. Over-budget names are not opened.
  *  [seenGeneration] is the value read before extraIdleLock. A stop that bumped it does not open. */
@@ -127,9 +129,11 @@ fun watchedFoldersFromText(text: String): List<String> {
 /** F81: upper bound on extra IDLE connections, so a pasted list cannot open hundreds of logins. */
 const val MaxExtraIdle = 8
 
+private val signedDigits = Regex("-?\\d+")
+
 fun extraIdleBudgetFromText(text: String): Int? {
     val trimmed = text.trim()
-    if (trimmed.isEmpty() || !trimmed.matches(Regex("-?\\d+"))) return null
+    if (trimmed.isEmpty() || !trimmed.matches(signedDigits)) return null
     return trimmed.toIntOrNull()?.takeIf { it in 0..MaxExtraIdle }
 }
 

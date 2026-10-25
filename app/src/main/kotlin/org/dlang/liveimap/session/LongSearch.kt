@@ -89,10 +89,12 @@ class LongSearch(private val link: LongSearchLink, private val pollMs: Long = 25
         }
 }
 
+private val advancedTextSearch = Regex("(^|\n)[^\t\n]*\t(Text|Body)\t")
+
 /** Searches that can run for minutes: text and body scans. Header and flag searches stay on the main session. */
 fun isLongSearch(kind: String, argument: String = ""): Boolean = when (kind) {
     "Text", "Body" -> true
-    "Advanced" -> Regex("(^|\n)[^\t\n]*\t(Text|Body)\t").containsMatchIn(argument)
+    "Advanced" -> advancedTextSearch.containsMatchIn(argument)
     else -> false
 }
 

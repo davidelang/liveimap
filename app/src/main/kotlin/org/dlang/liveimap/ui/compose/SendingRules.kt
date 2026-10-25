@@ -401,11 +401,13 @@ fun dsnMask(mode: DsnMode): Int = when (mode) {
 fun headerNames(list: String): List<String> =
     list.split(',', ' ', '\n').map { it.trim().trimEnd(':') }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
 
+private val listPostMailto = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE)
+
 /** RFC 2369 List-Post mailto address, or null (absent, "NO", or not mailto). */
 fun listPostAddress(message: ParsedRfc822): String? {
     // F95: the header as sent; encoded words are never decoded into an address.
     val value = message.headers.firstOrNull { it.name.equals("List-Post", ignoreCase = true) }?.raw?.trim() ?: return null
-    val m = Regex("<mailto:([^>?]+)", RegexOption.IGNORE_CASE).find(value) ?: return null
+    val m = listPostMailto.find(value) ?: return null
     // F59: RFC 3986 percent-decoding by hand: no '+' to space, a bad escape gives null (not a crash), and the
     // result must be a plain addr-spec that can go raw into RCPT TO (no CR/LF or other controls).
     val decoded = percentDecodeOrNull(m.groupValues[1])?.trim() ?: return null
@@ -445,10 +447,12 @@ internal fun percentDecodeOrNull(v: String): String? {
  * The author address of an outgoing message, as pine takes it for MAIL FROM (alpine sets return_path from From):
  * Resent-From for a resent (bounced) message, nothing when it is resent without one, else From.
  */
+private val unfoldedHeader = Regex("\r\n[ \t]+")
+
 fun headerFromAddress(rfc822: ByteArray): String {
     val text = String(rfc822, Charsets.ISO_8859_1)
     val end = text.indexOf("\r\n\r\n").let { if (it < 0) text.length else it }
-    val fields = text.substring(0, end).replace(Regex("\r\n[ \t]+"), " ").split("\r\n")
+    val fields = text.substring(0, end).replace(unfoldedHeader, " ").split("\r\n")
     fun field(name: String) = fields.firstOrNull { it.startsWith("$name:", ignoreCase = true) }
         ?.substring(name.length + 1)?.trim()
     field("Resent-From")?.let { return addrSpec(it).trim() }

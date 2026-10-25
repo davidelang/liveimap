@@ -3761,3 +3761,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The unsent list reads each copy's meta and keeps the message path. The subject comes from the meta, or from header lines when an old meta has none. A meta that throws stays one row. Compose reads one draft file when it loads or sends. A failed address book is shown and is not cached; an empty book is.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Constant regular expressions are built once.
+
+- Approved plan: sandbox/plans/hoist-regex-20261024-1813-plan.md
+- A pattern that does not depend on input is a top-level value in the file that uses it. The glob built from a sending rule stays on that match.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

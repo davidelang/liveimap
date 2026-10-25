@@ -6,6 +6,8 @@ private val scramImapAuth = listOf("SCRAM-SHA-256", "SCRAM-SHA-1")
 
 private val plaintextImapAuth = listOf("PLAIN", "LOGIN")
 
+private val imapTokenSplit = Regex("\\s+")
+
 /**
  * Picks one SASL mechanism from an IMAP capability line (the first of [imapAuthOrder]).
  * A null result is not the IMAP LOGIN command.
@@ -46,11 +48,11 @@ fun imapAuthOrder(
     clientCert: Boolean = false,
 ): List<String> {
     // Only mechanisms the local SASL library has; blank means unknown (no filter). X-PLUS comes with X.
-    val client = clientMechanisms.uppercase().split(Regex("\\s+")).filter { it.isNotEmpty() }.toSet()
+    val client = clientMechanisms.uppercase().split(imapTokenSplit).filter { it.isNotEmpty() }.toSet()
     fun clientHas(name: String) = client.isEmpty() || name in client || name.removeSuffix("-PLUS") in client
     val allowPlus = tls && channelBinding
     val offered = HashSet<String>()
-    for (token in capabilities.split(Regex("\\s+"))) {
+    for (token in capabilities.split(imapTokenSplit)) {
         if (token.isEmpty()) continue
         val upper = token.uppercase()
         if (!upper.startsWith("AUTH=")) continue

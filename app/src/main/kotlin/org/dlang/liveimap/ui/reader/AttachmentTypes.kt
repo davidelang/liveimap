@@ -44,11 +44,13 @@ private val allowedPrefixes = listOf(
 
 const val FallbackAttachmentMime = "application/octet-stream"
 
+private val mimeToken = Regex("[a-z0-9][a-z0-9!#$&^_.+-]*")
+
 fun safeAttachmentMime(type: String, subtype: String): String {
     val t = type.trim().lowercase()
     val s = subtype.trim().lowercase()
-    if (t.isEmpty() || s.isEmpty() || !Regex("[a-z0-9][a-z0-9!#$&^_.+-]*").matches(t) ||
-        !Regex("[a-z0-9][a-z0-9!#$&^_.+-]*").matches(s)
+    if (t.isEmpty() || s.isEmpty() || !mimeToken.matches(t) ||
+        !mimeToken.matches(s)
     ) {
         return FallbackAttachmentMime
     }
